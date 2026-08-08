@@ -16,6 +16,7 @@ main { min-height:100vh; }
 h1 { margin:10px 0 16px; font-size:clamp(44px,6vw,82px); line-height:.94; letter-spacing:-5px; }
 h1 em { color:var(--orange); font-style:normal; }
 .intro { max-width:630px; color:#5f6159; line-height:1.7; }
+.source-name { margin-top:20px; font:10px DM Mono; color:var(--muted); letter-spacing:1px; }
 .scorecard { border-top:3px solid var(--ink); padding-top:14px; }
 .scorecard strong { display:block; margin:10px 0; font-size:47px; }
 .scorecard small { color:#92948b; font-size:22px; }
@@ -23,16 +24,26 @@ h1 em { color:var(--orange); font-style:normal; }
 .progress b { display:block; height:100%; background:var(--orange); }
 .scorecard p { font:12px DM Mono; color:var(--muted); }
 .workspace { display:grid; grid-template-columns:minmax(0,1fr) 290px; margin:0 5vw; border:1px solid var(--ink); background:#fff; box-shadow:9px 9px 0 var(--ink); }
+.warnings { margin:0 5vw 18px; padding:10px 14px; border-left:4px solid var(--orange); background:#ffe5dc; }
+.warnings p { margin:4px 0; font:11px/1.5 DM Mono; }
 .viewer { min-width:0; padding:18px; border-right:1px solid var(--ink); }
 .court { position:relative; aspect-ratio:16/7; overflow:hidden; background:linear-gradient(145deg,#183f4d,#2c7377); }
 .court:before { content:""; position:absolute; inset:45% -10% -25%; background:#ce7652; transform:perspective(500px) rotateX(35deg); border:2px solid #f4dfbb; }
+.court.has-video:before { display:none; }
+.video-stage video { display:block; width:100%; height:100%; object-fit:contain; background:#070806; }
+.court-overlay { position:absolute; z-index:1; inset:0; width:100%; height:100%; pointer-events:none; }
+.court-overlay line { stroke:var(--acid); stroke-width:.35; vector-effect:non-scaling-stroke; opacity:.7; }
 .court-lines span { position:absolute; z-index:1; background:#f8f3df; opacity:.8; }
 .court-lines span:nth-child(1) { width:2px; height:70%; left:50%; bottom:0; }
 .court-lines span:nth-child(2) { width:70%; height:2px; left:15%; bottom:18%; }
 .court-lines span:nth-child(3) { width:47%; height:2px; left:26.5%; bottom:53%; }
 .play { position:absolute; z-index:2; inset:50% auto auto 50%; transform:translate(-50%,-50%); width:62px; height:62px; border:0; border-radius:50%; color:var(--ink); background:var(--acid); cursor:pointer; padding-left:6px; }
+.play.playing { opacity:0; }
+.play.playing:hover { opacity:.9; }
+.play:disabled { cursor:not-allowed; }
 .timecode { position:absolute; z-index:2; left:14px; bottom:12px; padding:6px 9px; background:var(--ink); color:white; font:12px DM Mono; }
 .timecode span { color:#96988e; }
+.court-status { position:absolute; z-index:2; right:12px; top:12px; padding:6px 8px; background:rgba(22,24,19,.85); color:var(--acid); font:9px DM Mono; text-transform:uppercase; }
 .timeline-labels { display:flex; justify-content:space-between; margin:16px 0 7px; color:#92948b; font:9px DM Mono; }
 .timeline { position:relative; height:46px; background:repeating-linear-gradient(90deg,#e2e0d7 0,#e2e0d7 1px,transparent 1px,transparent 10%); border-top:1px solid #aaa; border-bottom:1px solid #aaa; }
 .timeline button { position:absolute; top:7px; height:30px; border:0; background:#2b676d; cursor:pointer; min-width:8px; }
@@ -49,6 +60,11 @@ dl { margin:0; }
 dl div { display:flex; justify-content:space-between; padding:13px 0; border-bottom:1px solid #dedcd3; }
 dt { color:var(--muted); font-size:12px; } dd { margin:0; font:12px DM Mono; }
 .include { width:100%; margin-top:24px; padding:13px; border:1px solid var(--ink); background:transparent; cursor:pointer; font-size:12px; font-weight:700; }
+.diagnostic-link { display:block; margin-top:16px; color:var(--muted); font:10px DM Mono; text-decoration:none; }
+.diagnostic-link:hover { color:var(--orange); }
+.empty-state { padding-top:10px; }
+.empty-state span { font:500 11px DM Mono; letter-spacing:1px; color:var(--orange); }
+.empty-state p { color:var(--muted); font-size:13px; line-height:1.6; }
 .controls { margin-top:80px; padding:54px 5vw 70px; display:grid; grid-template-columns:1.3fr 1fr 1fr .8fr; gap:5vw; background:var(--ink); color:white; }
 h2 { margin:8px 0 0; font-size:31px; line-height:1.05; letter-spacing:-1.5px; }
 .controls label { align-self:center; font-size:13px; }
