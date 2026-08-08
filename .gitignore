@@ -1,0 +1,20 @@
+# Dependencies and build output
+/node_modules
+/.next
+/out
+
+# Local configuration
+.env*
+!.env.example
+
+# Local video corpus and generated media
+/data/videos/*
+!/data/videos/README.md
+!/data/videos/.gitkeep
+/data/proxies/
+/data/exports/
+
+# Logs and editor files
+*.log
+.DS_Store
+*.tsbuildinfo
