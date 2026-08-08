@@ -2,14 +2,18 @@
   "name": "volleycut",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "analysis:setup": "python3 -m venv .venv && .venv/bin/python -m pip install -r analysis/requirements.txt",
+    "fixture:analysis": "bash scripts/create-analysis-fixture.sh",
     "analyze": ".venv/bin/python -m analysis",
-    "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v"
+    "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v",
+    "test:web": "node --experimental-strip-types --test tests/web/*.test.mts",
+    "test": "npm run test:web && npm run test:analysis"
   },
   "dependencies": {
     "next": "16.3.0",

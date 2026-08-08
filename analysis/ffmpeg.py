@@ -77,7 +77,7 @@ def create_proxy(source: Path, destination: Path) -> None:
         "-y",
         "-i", str(source),
         "-map", "0:v:0",
-        "-map", "0:a?",
+        "-map", "0:a:0?",
         "-vf", "scale=w='min(960,iw)':h=-2:flags=lanczos,fps=30,setsar=1,format=yuv420p",
         "-fps_mode", "cfr",
         "-avoid_negative_ts", "make_zero",
