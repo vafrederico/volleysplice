@@ -6,7 +6,7 @@ The feasibility pipeline writes one immutable analysis directory per run under `
 data/analyses/<analysis-id>/
   analysis.json
   court-preview.jpg
-  proxy.mp4
+  proxy.mp4                 # optional; normalization may be managed separately
 ```
 
 `analysis.json` is the boundary between video processing and the review application. Times are floating-point seconds relative to the normalized proxy.
@@ -27,12 +27,9 @@ data/analyses/<analysis-id>/
     "fps": 59.94,
     "hasAudio": true
   },
-  "assets": {
-    "proxyUrl": "/api/media/practice-set-20260807-221500/proxy.mp4",
-    "courtPreviewUrl": "/api/media/practice-set-20260807-221500/court-preview.jpg"
-  },
+  "assets": { "courtPreviewPath": "court-preview.jpg" },
   "analysis": {
-    "method": "court-motion-audio-heuristic-v1",
+    "method": "court-motion-temporal-logistic-v0",
     "analysisFps": 4,
     "warnings": [],
     "court": {
@@ -52,7 +49,7 @@ data/analyses/<analysis-id>/
       "evidence": { "motionPeak": 0.88, "audioPeak": 0.64 }
     }
   ],
-  "signals": [{ "time": 0, "motion": 0.1, "audio": 0.04, "activity": 0.08 }]
+  "signals": [{ "time": 0, "motion": 0.1, "liveProbability": 0.08 }]
 }
 ```
 
@@ -65,3 +62,5 @@ The detector owns only the objective core interval from estimated serve contact 
 - Rally intervals must be ordered, non-negative, non-overlapping, and bounded by `source.duration`.
 - Confidence describes the heuristic's certainty, not a calibrated probability.
 - The local API exposes only known generated asset names and never exposes source recordings.
+- `assets.proxyUrl` is optional for local inference. `courtPreviewPath` is relative to the immutable analysis directory; a serving API may replace it with a URL.
+- Additional analysis provenance, decoder, feature configuration, warnings, evidence, and signal keys are optional and backward-compatible.

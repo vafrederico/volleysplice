@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "name": "volleycut-feasibility",
+  "annotationPolicy": {
+    "id": "serve-contact-to-dead-ball-v1",
+    "rallyStart": "serve-ball contact",
+    "rallyEnd": "first instant live play has ended",
+    "intervalConvention": "half-open [start,end) seconds on the normalized video"
+  },
+  "recordings": [
+    {
+      "id": "match-001-set-01",
+      "video": "../../data/videos/indoor/match-001-set-01.mp4",
+      "split": "train",
+      "sourceGroup": "match-001",
+      "environment": "indoor",
+      "game": {
+        "playersPerTeam": 6,
+        "targetPoints": 25,
+        "format": "indoor 6v6",
+        "scoringRule": "rally scoring"
+      },
+      "consent": {
+        "analyze": true,
+        "train": true
+      },
+      "capture": {
+        "position": "centered-behind-endline",
+        "stationary": true,
+        "fullCourtVisible": true,
+        "serviceAreasVisible": true,
+        "heightMeters": null
+      },
+      "roi": {
+        "x": 0.05,
+        "y": 0.12,
+        "width": 0.9,
+        "height": 0.86
+      },
+      "rallies": [
+        {
+          "start": 12.4,
+          "end": 21.75
+        },
+        {
+          "start": 36.1,
+          "end": 44.0
+        }
+      ]
+    },
+    {
+      "id": "match-002-set-01",
+      "video": "../../data/videos/beach/match-002-set-01.mp4",
+      "split": "validation",
+      "sourceGroup": "match-002",
+      "environment": "beach",
+      "game": {
+        "playersPerTeam": 2,
+        "targetPoints": 21,
+        "format": "beach 2v2",
+        "scoringRule": "rally scoring"
+      },
+      "consent": {
+        "analyze": true,
+        "train": true
+      },
+      "capture": {
+        "position": "centered-behind-endline",
+        "stationary": true,
+        "fullCourtVisible": true,
+        "serviceAreasVisible": true,
+        "heightMeters": 2.7
+      },
+      "rallies": [
+        {
+          "start": 18.2,
+          "end": 29.6
+        }
+      ]
+    },
+    {
+      "id": "match-003-set-01",
+      "video": "../../data/videos/grass/match-003-set-01.mp4",
+      "split": "test",
+      "sourceGroup": "match-003",
+      "environment": "grass",
+      "game": {
+        "playersPerTeam": 2,
+        "targetPoints": null,
+        "format": "grass 2v2"
+      },
+      "consent": {
+        "analyze": true,
+        "train": false
+      },
+      "capture": {
+        "position": "centered-behind-endline",
+        "stationary": true,
+        "fullCourtVisible": true,
+        "serviceAreasVisible": true,
+        "heightMeters": 2.7
+      },
+      "rallies": [
+        {
+          "start": 9.75,
+          "end": 17.1
+        }
+      ]
+    }
+  ]
+}

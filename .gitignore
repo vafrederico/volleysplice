@@ -3,6 +3,8 @@
 /.next
 /out
 /.venv
+__pycache__/
+*.py[cod]
 
 # Local configuration
 .env*
@@ -15,6 +17,9 @@
 /data/proxies/
 /data/exports/
 /data/analyses/
+/data/features/
+/data/models/
+/data/reports/
 
 # Logs and editor files
 *.log

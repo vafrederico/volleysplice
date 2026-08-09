@@ -15,3 +15,5 @@ data/videos/
 ```
 
 Keep originals unchanged. Future ingestion should create proxies in `data/proxies/` and record provenance, consent-for-training status, capture conditions, and annotations separately.
+
+The implemented v0 writes a constant-frame-rate analysis master and SHA-256 provenance sidecar with `python -m analysis normalize`. Rally annotations and leakage-safe recording groups live in a manifest; start with `analysis/examples/dataset.example.json` or run `python -m analysis init-manifest`. Do not annotate the variable-frame-rate original and then silently train against a transcoded proxy.
