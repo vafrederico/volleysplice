@@ -2,9 +2,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { CourtLine, ReviewAnalysis } from "@/lib/analysis-types";
 import type { Rally } from "@/lib/edit-list";
+import { getAnalysesRoot } from "@/lib/storage";
 
 const ANALYSIS_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
-const analysesRoot = path.join(process.cwd(), "data", "analyses");
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -88,6 +88,7 @@ export function parseAnalysis(value: unknown): ReviewAnalysis | null {
 }
 
 export async function loadLatestAnalysis(): Promise<ReviewAnalysis | null> {
+  const analysesRoot = getAnalysesRoot();
   let entries;
   try {
     entries = await fs.readdir(analysesRoot, { withFileTypes: true });

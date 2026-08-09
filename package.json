@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "analysis:setup": "python3 -m venv .venv && .venv/bin/python -m pip install -r analysis/requirements.txt",
     "fixture:analysis": "bash scripts/create-analysis-fixture.sh",
-    "analyze": ".venv/bin/python -m analysis",
+    "analyze": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; .venv/bin/python -m analysis",
     "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v",
     "test:web": "node --experimental-strip-types --test tests/web/*.test.mts",
     "test": "npm run test:web && npm run test:analysis"

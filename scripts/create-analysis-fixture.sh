@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-fixture_path="${1:-data/videos/synthetic-two-bursts.mp4}"
+if [[ -f .env.local ]]; then
+  set -a
+  source .env.local
+  set +a
+fi
+
+fixture_path="${1:-${VOLLEYCUT_DATA_ROOT:-data}/raw/synthetic/synthetic-two-bursts.mp4}"
 mkdir -p "$(dirname "$fixture_path")"
 
 ffmpeg -nostdin -hide_banner -loglevel error -y \

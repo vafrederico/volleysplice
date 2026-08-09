@@ -1,6 +1,6 @@
 # Source video intake
 
-Put local source recordings here while building the feasibility dataset. The directory is intended for the owner's indoor, grass, and beach volleyball videos, including files downloaded from their YouTube channel later.
+This is the repository-local fallback when `VOLLEYCUT_DATA_ROOT` is unset. The durable dataset should live outside Git under `$VOLLEYCUT_DATA_ROOT/raw/`; this machine uses `/mnt/freenas/volleycut/raw/`.
 
 Video files are intentionally ignored by Git because they are large and may contain private or youth footage. Only this guide and `.gitkeep` are tracked.
 

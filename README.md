@@ -19,18 +19,25 @@ npm run analysis:setup
 
 The second command creates a local `.venv` and installs NumPy plus headless OpenCV. Both `.venv` and all generated video artifacts are ignored by Git.
 
-## Analyze a recording
-
-Put a source recording anywhere under `data/videos/`, then run:
+Set the durable media location in an ignored `.env.local` file. This machine currently uses `/mnt/freenas/volleycut`:
 
 ```bash
-npm run analyze -- data/videos/indoor/my-set.mp4
+cp .env.example .env.local
+# Edit VOLLEYCUT_DATA_ROOT in .env.local.
+```
+
+## Analyze a recording
+
+Put a source recording under `$VOLLEYCUT_DATA_ROOT/raw/`, then run:
+
+```bash
+npm run analyze -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv
 ```
 
 Optional arguments include:
 
 ```bash
-npm run analyze -- data/videos/indoor/my-set.mp4 \
+npm run analyze -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv \
   --title "Indoor practice — set 1" \
   --id indoor-practice-set-1 \
   --analysis-fps 4
@@ -39,7 +46,7 @@ npm run analyze -- data/videos/indoor/my-set.mp4 \
 Each run creates an immutable, ignored directory:
 
 ```text
-data/analyses/<analysis-id>/
+$VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/
   analysis.json
   court-preview.jpg
   proxy.mp4
@@ -49,7 +56,7 @@ Existing IDs are never overwritten. The app opens the most recently modified val
 
 ```bash
 npm run fixture:analysis
-npm run analyze -- data/videos/synthetic-two-bursts.mp4
+npm run analyze -- /mnt/freenas/volleycut/raw/synthetic/synthetic-two-bursts.mp4
 ```
 
 ## Review locally
@@ -98,8 +105,9 @@ The tests cover interval merging and clamping, timeline formatting, synthetic ac
 - `app/` — Next.js application and private local media route.
 - `components/` — interactive review editor.
 - `lib/` — analysis validation and edit decision list calculations.
-- `data/videos/` — local untracked source recordings and future YouTube intake.
-- `data/analyses/` — local untracked proxies, JSON results, and diagnostics.
+- `$VOLLEYCUT_DATA_ROOT/raw/` — external source recordings organized by surface.
+- `$VOLLEYCUT_DATA_ROOT/analyses/` — external proxies, JSON results, and diagnostics.
+- `data/` — ignored fallback storage when `VOLLEYCUT_DATA_ROOT` is unset.
 - `docs/research/` — retained feasibility and implementation research.
 - `docs/analysis-format.md` — versioned processing/UI contract.
 

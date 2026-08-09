@@ -1,9 +1,9 @@
 # Local analysis output
 
-The feasibility pipeline writes one immutable analysis directory per run under `data/analyses/<analysis-id>/`. Generated directories are local artifacts and are intentionally ignored by Git.
+The feasibility pipeline writes one immutable analysis directory per run under `$VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/`. When the variable is unset it falls back to `data/analyses/`. Generated directories are external or ignored artifacts and are never tracked by Git.
 
 ```text
-data/analyses/<analysis-id>/
+$VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/
   analysis.json
   court-preview.jpg
   proxy.mp4

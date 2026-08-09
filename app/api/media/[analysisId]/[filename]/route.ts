@@ -2,6 +2,7 @@ import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { NextRequest } from "next/server";
+import { getAnalysesRoot } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ type RouteContext = {
 async function resolveAsset(context: RouteContext) {
   const { analysisId, filename } = await context.params;
   if (!ANALYSIS_ID.test(analysisId) || !(filename in ASSETS)) return null;
-  const assetPath = path.join(process.cwd(), "data", "analyses", analysisId, filename);
+  const assetPath = path.join(getAnalysesRoot(), analysisId, filename);
   try {
     const stats = await fs.stat(assetPath);
     return stats.isFile() ? { assetPath, filename, size: stats.size } : null;

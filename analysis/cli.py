@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -21,6 +22,8 @@ def slugify(value: str) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    configured_root = os.environ.get("VOLLEYCUT_DATA_ROOT", "").strip()
+    default_output_root = Path(configured_root).expanduser() / "analyses" if configured_root else Path("data/analyses")
     parser = argparse.ArgumentParser(
         prog="python -m analysis",
         description="Create a local review proxy and heuristic rally suggestions.",
@@ -29,8 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path("data/analyses"),
-        help="Generated analysis root (default: data/analyses)",
+        default=default_output_root,
+        help=f"Generated analysis root (default: {default_output_root})",
     )
     parser.add_argument("--id", dest="analysis_id", help="Optional URL-safe analysis identifier")
     parser.add_argument("--title", help="Display title (defaults to the source filename)")
