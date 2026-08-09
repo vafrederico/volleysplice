@@ -59,6 +59,20 @@ npm run fixture:analysis
 npm run analyze -- /mnt/freenas/volleycut/raw/synthetic/synthetic-two-bursts.mp4
 ```
 
+Refresh the external dataset inventory at any point with:
+
+```bash
+npm run dataset:status
+```
+
+The report is written to `$VOLLEYCUT_DATA_ROOT/manifests/status.md` and summarizes raw-download and analysis progress without tracking media in Git.
+
+To analyze every complete source listed in the external `manifests/sources.json`, while safely skipping existing analyses and incomplete downloads:
+
+```bash
+npm run analyze:dataset
+```
+
 ## Review locally
 
 ```bash
