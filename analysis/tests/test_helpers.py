@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 
 from analysis.cli import slugify
 from analysis.court import estimate_court
+from analysis.ffmpeg import proxy_backend
 
 
 class HelperTests(unittest.TestCase):
@@ -30,6 +32,12 @@ class HelperTests(unittest.TestCase):
         estimate = estimate_court(frame)
         self.assertEqual(estimate.source, "detected-lines")
         self.assertGreaterEqual(len(estimate.lines), 3)
+
+    def test_proxy_backend_defaults_to_software_and_honors_configuration(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(proxy_backend(), "software")
+        with patch.dict("os.environ", {"VOLLEYCUT_PROXY_BACKEND": "jellyfin-vaapi"}, clear=True):
+            self.assertEqual(proxy_backend(), "jellyfin-vaapi")
 
 
 if __name__ == "__main__":

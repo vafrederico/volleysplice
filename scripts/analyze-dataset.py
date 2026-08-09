@@ -57,6 +57,10 @@ def main() -> int:
             print(f"SKIP {analysis_id}: analysis already exists", flush=True)
             skipped += 1
             continue
+        if (data_root / "analyses" / f".{analysis_id}.incomplete").exists():
+            print(f"SKIP {analysis_id}: analysis is already in progress", flush=True)
+            skipped += 1
+            continue
         media = find_media(data_root, source)
         if media is None:
             print(f"WAIT {analysis_id}: raw media is not complete", flush=True)

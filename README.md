@@ -26,6 +26,8 @@ cp .env.example .env.local
 # Edit VOLLEYCUT_DATA_ROOT in .env.local.
 ```
 
+The default proxy backend is portable FFmpeg/libx264. On a Linux host with Intel VAAPI and the pinned Jellyfin image already available, `VOLLEYCUT_PROXY_BACKEND=jellyfin-vaapi` enables an opt-in Docker-backed hardware path without changing host group membership. See `.env.example` for the corresponding pinned image setting.
+
 ## Analyze a recording
 
 Put a source recording under `$VOLLEYCUT_DATA_ROOT/raw/`, then run:

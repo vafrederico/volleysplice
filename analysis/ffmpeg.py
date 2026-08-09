@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,8 +12,19 @@ class MediaToolError(RuntimeError):
     pass
 
 
+def proxy_backend() -> str:
+    return os.environ.get("VOLLEYCUT_PROXY_BACKEND", "software").strip() or "software"
+
+
 def require_media_tools() -> None:
     missing = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
+    backend = proxy_backend()
+    if backend == "jellyfin-vaapi" and shutil.which("docker") is None:
+        missing.append("docker")
+    if backend not in {"software", "jellyfin-vaapi"}:
+        raise MediaToolError(f"Unsupported VOLLEYCUT_PROXY_BACKEND: {backend}")
+    if backend == "jellyfin-vaapi" and not Path("/dev/dri/renderD128").exists():
+        raise MediaToolError("The jellyfin-vaapi proxy backend requires /dev/dri/renderD128")
     if missing:
         raise MediaToolError(f"Missing required media tools: {', '.join(missing)}")
 
@@ -67,8 +79,17 @@ def probe(path: Path) -> dict[str, Any]:
     }
 
 
-def create_proxy(source: Path, destination: Path) -> None:
+def create_proxy(source: Path, destination: Path) -> str:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    backend = proxy_backend()
+    if backend == "jellyfin-vaapi":
+        _create_jellyfin_vaapi_proxy(source, destination)
+    else:
+        _create_software_proxy(source, destination)
+    return backend
+
+
+def _create_software_proxy(source: Path, destination: Path) -> None:
     _run([
         "ffmpeg",
         "-nostdin",
@@ -90,4 +111,45 @@ def create_proxy(source: Path, destination: Path) -> None:
         "-map_chapters", "-1",
         "-movflags", "+faststart",
         str(destination),
+    ])
+
+
+def _create_jellyfin_vaapi_proxy(source: Path, destination: Path) -> None:
+    device = Path("/dev/dri/renderD128")
+    image = os.environ.get(
+        "VOLLEYCUT_VAAPI_IMAGE",
+        "jellyfin/jellyfin@sha256:17285f9cce63b3519ccad82b84497fc22482c20f8b8bbe0580d51fec5deaa6fd",
+    )
+    _run([
+        "docker", "run", "--rm",
+        "--network", "none",
+        "--entrypoint", "/usr/lib/jellyfin-ffmpeg/ffmpeg",
+        "--device", str(device),
+        "--user", f"{os.getuid()}:{os.getgid()}",
+        "--group-add", str(device.stat().st_gid),
+        "-v", f"{source.parent}:/input:ro",
+        "-v", f"{destination.parent}:/output",
+        image,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        "-hwaccel", "vaapi",
+        "-hwaccel_device", str(device),
+        "-hwaccel_output_format", "vaapi",
+        "-i", f"/input/{source.name}",
+        "-map", "0:v:0",
+        "-map", "0:a:0?",
+        "-vf", "scale_vaapi=w=960:h=-2:format=nv12",
+        "-r", "30",
+        "-fps_mode", "cfr",
+        "-avoid_negative_ts", "make_zero",
+        "-c:v", "h264_vaapi",
+        "-qp", "24",
+        "-c:a", "aac",
+        "-b:a", "96k",
+        "-map_metadata", "-1",
+        "-map_chapters", "-1",
+        "-movflags", "+faststart",
+        f"/output/{destination.name}",
     ])

@@ -118,7 +118,19 @@ def build_status(data_root: Path) -> str:
             detail = analysis.get("analysis") if isinstance(analysis.get("analysis"), dict) else {}
             court = detail.get("court") if isinstance(detail.get("court"), dict) else {}
             rallies = analysis.get("rallies") if isinstance(analysis.get("rallies"), list) else []
-            analysis_status = f"{len(rallies)} candidates; court {float(court.get('confidence', 0)):.0%}"
+            source_detail = analysis.get("source") if isinstance(analysis.get("source"), dict) else {}
+            duration = float(source_detail.get("duration", 0) or 0)
+            core_seconds = sum(
+                max(0, float(rally.get("end", 0)) - float(rally.get("start", 0)))
+                for rally in rallies
+                if isinstance(rally, dict)
+            )
+            coverage = core_seconds / duration if duration > 0 else 0
+            backend = str(detail.get("proxyBackend") or "software")
+            analysis_status = (
+                f"{len(rallies)} candidates; {coverage:.0%} core; "
+                f"court {float(court.get('confidence', 0)):.0%}; {backend}"
+            )
         else:
             analysis_status = "pending"
 

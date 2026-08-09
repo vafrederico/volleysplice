@@ -67,7 +67,7 @@ def analyze(args: argparse.Namespace) -> Path:
         source_info = probe(source)
         proxy_path = staging / "proxy.mp4"
         print("[2/5] Creating normalized review proxy")
-        create_proxy(source, proxy_path)
+        proxy_backend = create_proxy(source, proxy_path)
         proxy_info = probe(proxy_path)
 
         print("[3/5] Estimating stable court lines and region")
@@ -111,6 +111,7 @@ def analyze(args: argparse.Namespace) -> Path:
             },
             "analysis": {
                 "method": METHOD,
+                "proxyBackend": proxy_backend,
                 "analysisFps": args.analysis_fps,
                 "cameraStability": round(camera_stability, 3),
                 "warnings": warnings,
