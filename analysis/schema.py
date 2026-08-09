@@ -36,6 +36,7 @@ class Recording:
     environment: str
     game: dict[str, Any]
     rallies: tuple[Interval, ...]
+    ignored_intervals: tuple[Interval, ...]
     roi: tuple[float, float, float, float] | None
     capture: dict[str, Any]
     consent: dict[str, bool]
@@ -58,13 +59,17 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _read_intervals(value: Any, prefix: str) -> tuple[Interval, ...]:
+def _read_intervals(
+    value: Any,
+    prefix: str,
+    field: str = "rallies",
+) -> tuple[Interval, ...]:
     if not isinstance(value, list):
-        raise ManifestError(f"{prefix}.rallies must be an array")
+        raise ManifestError(f"{prefix}.{field} must be an array")
     intervals: list[Interval] = []
     previous_end = -1.0
     for index, item in enumerate(value):
-        where = f"{prefix}.rallies[{index}]"
+        where = f"{prefix}.{field}[{index}]"
         if not isinstance(item, dict) or not _is_number(item.get("start")) or not _is_number(item.get("end")):
             raise ManifestError(f"{where} must contain numeric start and end")
         start, end = float(item["start"]), float(item["end"])
@@ -75,6 +80,15 @@ def _read_intervals(value: Any, prefix: str) -> tuple[Interval, ...]:
         intervals.append(Interval(start=start, end=end))
         previous_end = end
     return tuple(intervals)
+
+
+def _intervals_overlap(left: Iterable[Interval], right: Iterable[Interval]) -> bool:
+    right_rows = tuple(right)
+    return any(
+        first.start < second.end and second.start < first.end
+        for first in left
+        for second in right_rows
+    )
 
 
 def _read_roi(value: Any, prefix: str) -> tuple[float, float, float, float] | None:
@@ -241,6 +255,13 @@ def load_manifest(path: str | Path, *, require_videos: bool = True) -> DatasetMa
             raise ManifestError(f"{prefix}.environment must be one of {sorted(ENVIRONMENTS)}")
         game = _read_game(row.get("game"), prefix)
         rallies = _read_intervals(row.get("rallies"), prefix)
+        ignored_intervals = _read_intervals(
+            row.get("ignoredIntervals", []),
+            prefix,
+            "ignoredIntervals",
+        )
+        if _intervals_overlap(rallies, ignored_intervals):
+            raise ManifestError(f"{prefix}.ignoredIntervals must not overlap labeled rallies")
         roi = _read_roi(row.get("roi"), prefix)
         capture = row.get("capture", {})
         consent = row.get("consent", {})
@@ -260,6 +281,7 @@ def load_manifest(path: str | Path, *, require_videos: bool = True) -> DatasetMa
                 environment=environment,
                 game=game,
                 rallies=rallies,
+                ignored_intervals=ignored_intervals,
                 roi=roi,
                 capture=dict(capture),
                 consent={str(key): bool(item) for key, item in consent.items()},
@@ -283,6 +305,16 @@ def labels_for_times(times: "Any", intervals: Iterable[Interval]) -> "Any":
     result = np.zeros(len(times), dtype=np.float32)
     for interval in intervals:
         result[(times >= interval.start) & (times < interval.end)] = 1.0
+    return result
+
+
+def mask_for_times(times: "Any", ignored_intervals: Iterable[Interval]) -> "Any":
+    """Return a boolean mask that excludes ambiguous/censored half-open intervals."""
+    import numpy as np
+
+    result = np.ones(len(times), dtype=np.bool_)
+    for interval in ignored_intervals:
+        result[(times >= interval.start) & (times < interval.end)] = False
     return result
 
 
@@ -310,6 +342,11 @@ def manifest_warnings(manifest: DatasetManifest) -> list[str]:
             warnings.append(f"{recording.id}: players per team are unknown")
         if recording.game.get("targetPoints") is None:
             warnings.append(f"{recording.id}: game target points are unknown")
+        if recording.ignored_intervals:
+            warnings.append(
+                f"{recording.id}: {len(recording.ignored_intervals)} ambiguous/censored intervals "
+                "will be excluded from fitting and scoring"
+            )
         if not recording.rallies:
             warnings.append(f"{recording.id}: zero rallies (valid only for an intentional hard negative)")
     return warnings

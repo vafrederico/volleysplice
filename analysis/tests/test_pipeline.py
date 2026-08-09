@@ -124,6 +124,7 @@ class ImmutableEvaluationTests(unittest.TestCase):
                     contextual_values=values,
                     contextual_names=("motion",),
                     labels=labels_for_times(times, recording.rallies),
+                    sample_mask=np.ones(len(times), dtype=np.bool_),
                 )
             )
         return result

@@ -11,6 +11,8 @@ npm run dev
 
 Open the URL printed by Next.js. The initial screen is a front-end prototype: adjust the pre/post-roll settings, select rallies, and inspect the resulting edit decision list.
 
+Open `/label` for the local gold-label workstation. It loads a task JSON and matching proxy through browser file pickers, supports precise rally/ignored/hard-negative intervals, and exports resumable or completed labels without uploading video. See [`docs/labeling-guide.md`](docs/labeling-guide.md).
+
 ## Rally-analysis baseline
 
 The worktree now includes a CPU-only v0 that can normalize and validate recordings, train a temporal rally classifier, infer rally intervals into `analysis.json`, and evaluate an untouched test split. It can be exercised before real video arrives with:
@@ -30,6 +32,7 @@ See [`analysis/README.md`](analysis/README.md) for the annotation contract and e
 - `lib/` — edit decision list types and interval calculations.
 - `data/videos/` — local, untracked source recordings and a future YouTube intake area.
 - `docs/research/` — feasibility and implementation research retained for reference.
+- `docs/labeling-guide.md` — exact boundary policy, keyboard workflow, and label validation/import.
 - `analysis/` — local video normalization, feature extraction, training, inference, and evaluation.
 
 Large videos, proxies, and exports are deliberately excluded from Git. The eventual production design will upload originals directly to private object storage.

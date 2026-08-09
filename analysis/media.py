@@ -205,10 +205,14 @@ def normalize_video(
         except OSError:
             output_path.unlink(missing_ok=True)
             raise
-    except (OSError, subprocess.CalledProcessError, NormalizationError) as error:
+    except BaseException as error:
         temporary_path.unlink(missing_ok=True)
         temporary_provenance.unlink(missing_ok=True)
+        if isinstance(error, (KeyboardInterrupt, SystemExit)):
+            raise
         if isinstance(error, NormalizationError):
+            raise
+        if not isinstance(error, (OSError, subprocess.CalledProcessError)):
             raise
         raise NormalizationError(f"ffmpeg normalization failed: {error}") from error
     return {"video": str(output_path), "provenance": str(provenance_path), **provenance}

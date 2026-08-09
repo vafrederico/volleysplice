@@ -27,7 +27,15 @@ from .features import (
 )
 from .metrics import aggregate_evaluations, evaluate_intervals
 from .model import LogisticModel, ModelError, load_model, train_logistic_model
-from .schema import DatasetManifest, ManifestError, Recording, labels_for_times, load_manifest
+from .schema import (
+    DatasetManifest,
+    Interval,
+    ManifestError,
+    Recording,
+    labels_for_times,
+    load_manifest,
+    mask_for_times,
+)
 from .version import __version__
 
 
@@ -38,6 +46,7 @@ class PreparedRecording:
     contextual_values: np.ndarray
     contextual_names: tuple[str, ...]
     labels: np.ndarray
+    sample_mask: np.ndarray
 
 
 def _manifest_digest(manifest: DatasetManifest) -> str:
@@ -95,6 +104,7 @@ def prepare_recording(
         contextual_values=values,
         contextual_names=names,
         labels=labels_for_times(sequence.times, recording.rallies),
+        sample_mask=mask_for_times(sequence.times, recording.ignored_intervals),
     )
 
 
@@ -121,7 +131,21 @@ def _evaluate_prepared(
             decoder,
             model.feature_config.analysis_fps,
         )
-        metrics = evaluate_intervals(item.recording.rallies, predictions)
+        scored_predictions = [
+            Interval(start=prediction.start, end=prediction.end) for prediction in predictions
+        ]
+        for ignored in item.recording.ignored_intervals:
+            fragments: list[Interval] = []
+            for prediction in scored_predictions:
+                if prediction.end <= ignored.start or prediction.start >= ignored.end:
+                    fragments.append(prediction)
+                    continue
+                if prediction.start < ignored.start:
+                    fragments.append(Interval(prediction.start, ignored.start))
+                if prediction.end > ignored.end:
+                    fragments.append(Interval(ignored.end, prediction.end))
+            scored_predictions = fragments
+        metrics = evaluate_intervals(item.recording.rallies, scored_predictions)
         metrics["id"] = item.recording.id
         metrics["environment"] = item.recording.environment
         metrics["playersPerTeam"] = item.recording.game.get("playersPerTeam")
@@ -218,8 +242,10 @@ def train_dataset(
     training_started = time.perf_counter()
     training = _prepare_many(train_rows, feature_config, cache_dir)
     validation = _prepare_many(validation_rows, feature_config, cache_dir)
-    validation_live = sum(float(np.sum(item.labels > 0.5)) for item in validation)
-    validation_samples = sum(len(item.labels) for item in validation)
+    validation_live = sum(
+        float(np.sum(item.labels[item.sample_mask] > 0.5)) for item in validation
+    )
+    validation_samples = sum(int(np.sum(item.sample_mask)) for item in validation)
     if validation_live == 0 or validation_live == validation_samples:
         raise ManifestError("validation data must contain both live and dead samples")
     signature = training[0].contextual_names
@@ -227,10 +253,10 @@ def train_dataset(
         if item.contextual_names != signature:
             raise ModelError("extracted feature signatures differ between recordings")
     model = train_logistic_model(
-        [item.contextual_values for item in training],
-        [item.labels for item in training],
-        [item.contextual_values for item in validation],
-        [item.labels for item in validation],
+        [item.contextual_values[item.sample_mask] for item in training],
+        [item.labels[item.sample_mask] for item in training],
+        [item.contextual_values[item.sample_mask] for item in validation],
+        [item.labels[item.sample_mask] for item in validation],
         feature_config,
         signature,
         decoder_config,

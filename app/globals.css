@@ -9,6 +9,8 @@ main { min-height:100vh; }
 .topbar { height:72px; padding:0 5vw; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #c8c6bd; }
 .brand { color:inherit; text-decoration:none; font-size:21px; font-weight:800; letter-spacing:-1px; }
 .brand span { padding:4px 7px; margin-left:6px; background:var(--ink); color:var(--acid); font:500 10px DM Mono; letter-spacing:1px; }
+.top-actions { display:flex; align-items:center; gap:24px; }
+.top-actions > a { color:var(--ink); font:500 11px DM Mono; text-decoration:none; text-transform:uppercase; border-bottom:1px solid var(--ink); }
 .project-state { color:var(--muted); font:12px DM Mono; text-transform:uppercase; }
 .project-state i { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; background:#54a95e; }
 .hero { padding:64px 5vw 42px; display:grid; grid-template-columns:1fr 260px; gap:50px; align-items:end; }
@@ -58,6 +60,7 @@ input[type="range"] { width:100%; margin-top:20px; accent-color:var(--acid); }
 .export strong { display:block; margin:6px 0 13px; font-size:35px; }
 .export button { border:0; padding:11px 14px; background:#40423d; color:#888b82; font-size:11px; }
 @media (max-width:800px) {
+  .top-actions > a { display:none; }
   .hero { grid-template-columns:1fr; padding-top:40px; }
   h1 { letter-spacing:-3px; }
   .workspace { grid-template-columns:1fr; }

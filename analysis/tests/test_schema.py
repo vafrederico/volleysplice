@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from analysis.schema import Interval, ManifestError, labels_for_times, load_manifest
+from analysis.schema import Interval, ManifestError, labels_for_times, load_manifest, mask_for_times
 
 
 class ManifestTests(unittest.TestCase):
@@ -135,6 +135,16 @@ class ManifestTests(unittest.TestCase):
                 with self.assertRaises(ManifestError):
                     load_manifest(path, require_videos=False)
 
+    def test_ignored_intervals_must_not_overlap_rallies(self) -> None:
+        row = self.recording("match-1", rallies=[{"start": 2.0, "end": 5.0}])
+        row["ignoredIntervals"] = [{"start": 0.0, "end": 2.0}]
+        manifest = load_manifest(self.write_manifest([row]), require_videos=False)
+        self.assertEqual(manifest.recordings[0].ignored_intervals, (Interval(0.0, 2.0),))
+
+        row["ignoredIntervals"] = [{"start": 1.9, "end": 2.1}]
+        with self.assertRaisesRegex(ManifestError, "must not overlap"):
+            load_manifest(self.write_manifest([row]), require_videos=False)
+
     def test_rejects_source_group_crossing_splits(self) -> None:
         path = self.write_manifest(
             [
@@ -177,6 +187,11 @@ class LabelTests(unittest.TestCase):
 
         np.testing.assert_array_equal(labels, np.asarray([0, 1, 1, 0, 0, 1, 0], dtype=np.float32))
         self.assertEqual(labels.dtype, np.float32)
+
+    def test_mask_excludes_half_open_ignored_intervals(self) -> None:
+        times = np.asarray([0.0, 1.0, 1.999, 2.0, 3.0], dtype=np.float64)
+        mask = mask_for_times(times, [Interval(1.0, 2.0)])
+        np.testing.assert_array_equal(mask, np.asarray([True, False, False, True, True]))
 
 
 if __name__ == "__main__":

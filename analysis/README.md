@@ -47,6 +47,8 @@ Each recording has a `sourceGroup`. Every set, excerpt, proxy, or re-encode deri
 
 Record game context in the optional `game` object. `playersPerTeam` accepts integers from 1 through 6; `targetPoints` accepts 1 through 100 or `null`. Use `null` when the clip does not establish the target—filenames and conventional scoring rules are not sufficient evidence. Evaluation reports stratify results by both fields, including an `unknown` target-points group.
 
+Use `ignoredIntervals` for partial/censored rallies, camera gaps, or genuinely unresolvable spans. Those samples are removed from model fitting, decoder selection, and evaluation rather than silently becoming dead-time labels. Completed workstation exports can be checked with `validate-labels` and combined with `build-manifest`; see [`../docs/labeling-guide.md`](../docs/labeling-guide.md).
+
 The optional normalized ROI is `{x,y,width,height}` in fractions of the source frame. Start with the full playing zone plus both service areas and a small margin. Consistent manual ROIs are safer than premature automatic court detection.
 
 Validate before extracting hours of video:

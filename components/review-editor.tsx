@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { buildEditList, formatTime, type Rally } from "@/lib/edit-list";
 
@@ -37,7 +38,10 @@ export function ReviewEditor() {
     <main>
       <header className="topbar">
         <a className="brand" href="#">VOLLEYCUT <span>LAB</span></a>
-        <div className="project-state"><i /> Local prototype</div>
+        <div className="top-actions">
+          <Link href="/label">Open labeling station →</Link>
+          <div className="project-state"><i /> Local prototype</div>
+        </div>
       </header>
 
       <section className="hero">

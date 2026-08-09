@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from analysis.media import normalize_video
 from analysis.schema import ManifestError, load_manifest
@@ -22,6 +23,23 @@ def sha256(path: Path) -> str:
 
 @unittest.skipUnless(FFMPEG and FFPROBE, "ffmpeg and ffprobe are required")
 class VideoNormalizationTests(unittest.TestCase):
+    def test_interrupted_normalization_removes_temporary_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-normalize-interrupt-test-") as directory:
+            root = Path(directory)
+            source = root / "source.mkv"
+            source.write_bytes(b"synthetic-source")
+            output = root / "normalized.mp4"
+
+            with patch("analysis.media.subprocess.run", side_effect=KeyboardInterrupt):
+                with self.assertRaises(KeyboardInterrupt):
+                    normalize_video(source, output, preset="ultrafast", threads=1)
+
+            self.assertFalse(output.exists())
+            temporary_outputs = [
+                path for path in root.iterdir() if path.name.startswith(".normalized-")
+            ]
+            self.assertEqual(temporary_outputs, [])
+
     def test_odd_width_is_normalized_to_even_dimensions_with_provenance(self) -> None:
         with tempfile.TemporaryDirectory(prefix="volleycut-normalize-test-") as directory:
             root = Path(directory)

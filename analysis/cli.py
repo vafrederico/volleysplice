@@ -116,6 +116,51 @@ def build_parser() -> argparse.ArgumentParser:
 
     initialize = subparsers.add_parser("init-manifest", help="write an annotation manifest template")
     initialize.add_argument("--output", required=True, type=Path)
+
+    prepare_label = subparsers.add_parser(
+        "prepare-label",
+        help="create a resumable rally-label document for one normalized video",
+    )
+    prepare_label.add_argument("--video", required=True, type=Path)
+    prepare_label.add_argument("--output", required=True, type=Path)
+    prepare_label.add_argument("--id", required=True)
+    prepare_label.add_argument("--source-group", required=True)
+    prepare_label.add_argument("--split", choices=sorted(("train", "validation", "test", "challenge")), required=True)
+    prepare_label.add_argument("--environment", choices=sorted(("indoor", "beach", "grass", "broadcast", "unknown")), required=True)
+    prepare_label.add_argument("--players-per-team", type=int)
+    prepare_label.add_argument("--target-points", type=int)
+    prepare_label.add_argument("--format-name")
+    prepare_label.add_argument("--roi", type=_roi)
+    prepare_label.add_argument("--position", default="centered-behind-endline")
+    prepare_label.add_argument("--height-meters", type=float)
+
+    validate_labels = subparsers.add_parser(
+        "validate-labels",
+        help="validate a rally-label document and its referenced video",
+    )
+    validate_labels.add_argument("--labels", required=True, type=Path)
+    validate_labels.add_argument("--allow-incomplete", action="store_true")
+    validate_labels.add_argument("--allow-missing-video", action="store_true")
+
+    build_manifest = subparsers.add_parser(
+        "build-manifest",
+        help="combine completed *.labels.json files into a training manifest",
+    )
+    build_manifest.add_argument("--labels-dir", required=True, type=Path)
+    build_manifest.add_argument("--output", required=True, type=Path)
+    build_manifest.add_argument("--name", required=True)
+
+    prepare_workspace = subparsers.add_parser(
+        "prepare-labeling-workspace",
+        help="create or resume normalized full-video labeling tasks",
+    )
+    prepare_workspace.add_argument("--plan", required=True, type=Path)
+    prepare_workspace.add_argument("--workspace", required=True, type=Path)
+    prepare_workspace.add_argument("--fps", type=float, default=30.0)
+    prepare_workspace.add_argument("--max-width", type=int, default=960)
+    prepare_workspace.add_argument("--crf", type=int, default=24)
+    prepare_workspace.add_argument("--preset", choices=sorted(X264_PRESETS), default="ultrafast")
+    prepare_workspace.add_argument("--threads", type=int, default=1)
     return parser
 
 
@@ -317,6 +362,88 @@ def run(argv: Sequence[str] | None = None) -> int:
                 json.dumps(_manifest_template(), indent=2, allow_nan=False) + "\n",
             )
             _json({"created": str(destination)})
+            return 0
+        if arguments.command == "prepare-label":
+            from .annotations import create_label_draft
+
+            payload = create_label_draft(
+                arguments.video,
+                arguments.output,
+                recording_id=arguments.id,
+                source_group=arguments.source_group,
+                split=arguments.split,
+                environment=arguments.environment,
+                players_per_team=arguments.players_per_team,
+                target_points=arguments.target_points,
+                format_name=arguments.format_name,
+                roi=arguments.roi,
+                capture={
+                    "position": arguments.position,
+                    "stationary": True,
+                    "fullCourtVisible": True,
+                    "serviceAreasVisible": True,
+                    "heightMeters": arguments.height_meters,
+                },
+            )
+            _json(
+                {
+                    "created": str(arguments.output.expanduser().resolve()),
+                    "recording": payload["recording"]["id"],
+                    "video": payload["recording"]["videoFilename"],
+                    "durationSeconds": payload["recording"]["durationSeconds"],
+                }
+            )
+            return 0
+        if arguments.command == "validate-labels":
+            from .annotations import load_label_document
+
+            document = load_label_document(
+                arguments.labels,
+                require_complete=not arguments.allow_incomplete,
+                require_video=not arguments.allow_missing_video,
+            )
+            _json(
+                {
+                    "valid": True,
+                    "recording": document.recording_id,
+                    "durationSeconds": document.duration,
+                    "rallies": len(document.rallies),
+                    "ignoredIntervals": len(document.ignored_intervals),
+                    "hardNegatives": len(document.hard_negatives),
+                    "warnings": list(document.warnings),
+                }
+            )
+            return 0
+        if arguments.command == "build-manifest":
+            from .annotations import build_manifest_from_labels
+
+            label_paths = sorted(arguments.labels_dir.expanduser().resolve().glob("*.labels.json"))
+            payload = build_manifest_from_labels(
+                label_paths,
+                arguments.output,
+                name=arguments.name,
+            )
+            _json(
+                {
+                    "created": str(arguments.output.expanduser().resolve()),
+                    "recordings": len(payload["recordings"]),
+                }
+            )
+            return 0
+        if arguments.command == "prepare-labeling-workspace":
+            from .labeling_workspace import prepare_labeling_workspace
+
+            result = prepare_labeling_workspace(
+                arguments.plan,
+                arguments.workspace,
+                fps=arguments.fps,
+                max_width=arguments.max_width,
+                crf=arguments.crf,
+                preset=arguments.preset,
+                threads=arguments.threads,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(result)
             return 0
     except (ManifestError, NormalizationError, OSError, RuntimeError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
