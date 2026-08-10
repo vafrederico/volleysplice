@@ -8,6 +8,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Source-access log — 2026-08-07](./source-access-2026-08-07.md) — exact artifacts, immutable identifiers, checksums, and access outcomes.
 - [Real-footage v0 evaluation — 2026-08-09](./real-footage-v0-evaluation-2026-08-09.md) — raw-corpus inventory, camera fit, leakage-safe pilot, real metrics, observed failures, and the next model decision.
 - [Completed-label training result — 2026-08-09](./completed-label-training-2026-08-09.md) — frozen nine-clip dataset, normalization and decoder improvements, validation gain, held-out limitation, and model artifact locations.
+- [Full-corpus labeling increment — 2026-08-10](./full-corpus-labeling-increment-2026-08-10.md) — prepared 2.52-hour task pack, batch-aware workstation decisions, validation results, and the requested annotation contract.
 
 ## Related context
 

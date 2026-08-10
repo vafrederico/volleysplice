@@ -1,6 +1,6 @@
 # Rally labeling guide
 
-The `/label` route is a local-only annotation workstation. It reads a task JSON and an MP4 through browser file pickers; neither file is uploaded or copied into the web application.
+The `/label` route is a local-only annotation workstation. Prepared tasks and their MP4 proxies stream from the NAS through the local application; fallback browser file pickers remain available. Nothing is uploaded to a cloud service or copied into the web application.
 
 ## Required label contract
 
@@ -44,7 +44,7 @@ Do **not** label player identity, individual touches, ball trajectories, scores 
 ## Workstation controls
 
 1. Start the app with `npm run dev -- --hostname 0.0.0.0` and open `/label` on the printed LAN URL.
-2. Choose a prepared pilot task from the first selector. The app loads both its task JSON and matching NAS proxy.
+2. Choose the **Full corpus** or **Pilot** batch, then choose a prepared task. The app loads both its task JSON and matching NAS proxy. Ready and saved counts appear in the batch selector; the catalog refreshes while full proxies are being prepared.
 3. To resume a downloaded draft, use the two local fallback pickers for the draft and its matching MP4.
 4. Use `S` at serve contact and `E` at end of play.
 5. Use `[` then `]` for an ignored span and `H` twice for an optional hard negative.
@@ -52,7 +52,7 @@ Do **not** label player identity, individual touches, ball trajectories, scores 
 7. Use **Save draft to NAS** often. Selecting that prepared task later resumes the saved draft automatically; downloading a backup JSON is optional.
 8. After the entire video is reviewed, check the confirmation box and export completed labels.
 
-Direct pilot drafts are written atomically as `labels/pilot/<recording-id>.labels.json`. The browser can also download the same naming format for offline backups. Do not modify the originals under `tasks/`.
+Direct drafts are written atomically to `labels/full/<recording-id>.labels.json` or `labels/pilot/<recording-id>.labels.json`, according to the selected batch. The browser can also download the same naming format for offline backups. Do not modify the originals under `tasks/`.
 
 ## CLI validation and manifest creation
 
@@ -81,7 +81,7 @@ The current NAS/host produces full annotation proxies at approximately real time
 npm run analyze -- prepare-labeling-workspace \
   --plan /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-corpus-plan.json \
   --workspace /mnt/freenas/volleycut/labeling-v1-2026-08-09 \
-  --fps 30 --max-width 960 --crf 24 --preset ultrafast --threads 1
+  --fps 30 --max-width 960 --crf 24 --preset ultrafast --threads 2
 ```
 
-The 960×540 files are seekable annotation proxies. Raw 1080p/4K sources remain immutable and should be used for later learned-frame extraction where feasible.
+The width-limited, constant-frame-rate files are seekable annotation proxies. Each completed proxy and task appears automatically in the **Full corpus** picker. Raw 1080p/4K sources remain immutable and should be used for later learned-frame extraction where feasible.

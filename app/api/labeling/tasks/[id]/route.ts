@@ -18,6 +18,7 @@ export async function GET(
     return Response.json(saved.document, {
       headers: {
         "Cache-Control": "no-store",
+        "X-VolleyCut-Batch": task.batch,
         "X-VolleyCut-Document-Source": saved.savedAt ? "draft" : "task",
         ...(saved.savedAt ? { "X-VolleyCut-Saved-At": saved.savedAt } : {}),
       },

@@ -16,11 +16,11 @@ const labelingWorkspace = path.resolve(
   /* turbopackIgnore: true */
   process.env.VOLLEYCUT_LABELING_WORKSPACE ?? DEFAULT_LABELING_WORKSPACE,
 );
-const pilotIndexPath = path.join(
-  labelingWorkspace,
-  "manifests",
-  "pilot-task-index.json",
-);
+const manifestsDirectory = path.join(labelingWorkspace, "manifests");
+const pilotIndexPath = path.join(manifestsDirectory, "pilot-task-index.json");
+const fullPlanPath = path.join(manifestsDirectory, "full-corpus-plan.json");
+
+export type LabelingBatch = "pilot" | "full";
 
 type PilotIndexEntry = {
   priority: number;
@@ -33,8 +33,27 @@ type PilotIndex = {
   tasks: PilotIndexEntry[];
 };
 
+type FullPlanRow = {
+  id: string;
+  environment: LabelDocument["recording"]["environment"];
+};
+
+type FullPlan = {
+  schemaVersion: number;
+  recordings: FullPlanRow[];
+};
+
+type LabelingTaskEntry = {
+  id: string;
+  batch: LabelingBatch;
+  priority: number;
+  taskPath: string;
+  proxyPath: string;
+};
+
 export type PreparedLabelingTask = {
   id: string;
+  batch: LabelingBatch;
   priority: number;
   document: LabelDocument;
   draftPath: string;
@@ -42,6 +61,11 @@ export type PreparedLabelingTask = {
   taskPath: string;
   proxyPath: string;
   proxySize: number;
+};
+
+export type PreparedLabelingCatalog = {
+  tasks: PreparedLabelingTask[];
+  totals: Record<LabelingBatch, number>;
 };
 
 export class LabelingTaskNotFoundError extends Error {}
@@ -83,6 +107,24 @@ function isMissingFile(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "ENOENT"
   );
+}
+
+async function isFile(filePath: string): Promise<boolean> {
+  try {
+    return (await stat(filePath)).isFile();
+  } catch (error) {
+    if (isMissingFile(error)) return false;
+    throw error;
+  }
+}
+
+function taskIdFromPath(taskPath: string): string {
+  const suffix = ".labels.json";
+  const filename = path.basename(taskPath);
+  if (!filename.endsWith(suffix)) throw new Error("task path must end in .labels.json");
+  const id = filename.slice(0, -suffix.length);
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("task id contains unsafe characters");
+  return id;
 }
 
 function intervalsOverlap(
@@ -159,7 +201,7 @@ function validateDraftContent(document: LabelDocument, task: PreparedLabelingTas
   }
 }
 
-async function readPilotIndex(): Promise<PilotIndex> {
+async function readPilotEntries(): Promise<LabelingTaskEntry[]> {
   const raw = JSON.parse(await readFile(pilotIndexPath, "utf8")) as unknown;
   if (
     typeof raw !== "object" ||
@@ -170,35 +212,98 @@ async function readPilotIndex(): Promise<PilotIndex> {
   ) {
     throw new Error("pilot task index has an invalid schema");
   }
-  return raw as PilotIndex;
+  const index = raw as PilotIndex;
+  const indexDirectory = path.dirname(pilotIndexPath);
+  return index.tasks.map((entry) => {
+    if (!Number.isInteger(entry.priority) || entry.priority < 1) {
+      throw new Error("pilot task priority must be a positive integer");
+    }
+    const taskPath = resolveRestrictedPath(
+      indexDirectory,
+      entry.task,
+      labelingWorkspace,
+      "pilot task",
+    );
+    return {
+      id: taskIdFromPath(taskPath),
+      batch: "pilot",
+      priority: entry.priority,
+      taskPath,
+      proxyPath: resolveRestrictedPath(
+        indexDirectory,
+        entry.proxy,
+        mediaRoot,
+        "pilot proxy",
+      ),
+    };
+  });
 }
 
-async function loadEntry(entry: PilotIndexEntry): Promise<PreparedLabelingTask> {
-  if (!Number.isInteger(entry.priority) || entry.priority < 1) {
-    throw new Error("pilot task priority must be a positive integer");
+async function readFullEntries(): Promise<LabelingTaskEntry[]> {
+  const raw = JSON.parse(await readFile(fullPlanPath, "utf8")) as unknown;
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    Array.isArray(raw) ||
+    (raw as { schemaVersion?: unknown }).schemaVersion !== 1 ||
+    !Array.isArray((raw as { recordings?: unknown }).recordings)
+  ) {
+    throw new Error("full-corpus plan has an invalid schema");
   }
-  const indexDirectory = path.dirname(pilotIndexPath);
-  const taskPath = resolveRestrictedPath(
-    indexDirectory,
-    entry.task,
-    labelingWorkspace,
-    "task",
-  );
-  const proxyPath = resolveRestrictedPath(
-    indexDirectory,
-    entry.proxy,
-    mediaRoot,
-    "proxy",
-  );
+  const plan = raw as FullPlan;
+  return plan.recordings.map((row, index) => {
+    if (
+      typeof row.id !== "string" ||
+      !/^[A-Za-z0-9_-]+$/.test(row.id) ||
+      !["indoor", "beach", "grass", "broadcast", "unknown"].includes(row.environment)
+    ) {
+      throw new Error(`full-corpus plan recording ${index + 1} is invalid`);
+    }
+    const proxyFilename = row.id.endsWith("-full") ? `${row.id}.mp4` : `${row.id}-full.mp4`;
+    return {
+      id: row.id,
+      batch: "full",
+      priority: index + 1,
+      taskPath: resolveRestrictedPath(
+        labelingWorkspace,
+        path.join("tasks", "full", `${row.id}.labels.json`),
+        labelingWorkspace,
+        "full task",
+      ),
+      proxyPath: resolveRestrictedPath(
+        labelingWorkspace,
+        path.join("proxies", row.environment, proxyFilename),
+        mediaRoot,
+        "full proxy",
+      ),
+    };
+  });
+}
+
+async function readAllEntries(): Promise<LabelingTaskEntry[]> {
+  const [pilot, full] = await Promise.all([readPilotEntries(), readFullEntries()]);
+  const entries = [...full, ...pilot];
+  const ids = new Set<string>();
+  for (const entry of entries) {
+    if (ids.has(entry.id)) throw new Error(`duplicate prepared task id: ${entry.id}`);
+    ids.add(entry.id);
+  }
+  return entries;
+}
+
+async function loadEntry(entry: LabelingTaskEntry): Promise<PreparedLabelingTask> {
   const provenancePath = resolveRestrictedPath(
     mediaRoot,
-    `${proxyPath}.provenance.json`,
+    `${entry.proxyPath}.provenance.json`,
     mediaRoot,
     "proxy provenance",
   );
   const document = parseLabelDocument(
-    JSON.parse(await readFile(taskPath, "utf8")) as unknown,
+    JSON.parse(await readFile(entry.taskPath, "utf8")) as unknown,
   );
+  if (document.recording.id !== entry.id) {
+    throw new Error(`task ${entry.id} document has an unexpected recording id`);
+  }
   const provenance = JSON.parse(await readFile(provenancePath, "utf8")) as unknown;
   const originalFilename =
     typeof provenance === "object" &&
@@ -211,56 +316,92 @@ async function loadEntry(entry: PilotIndexEntry): Promise<PreparedLabelingTask> 
     throw new Error(`task ${document.recording.id} provenance has no valid source filename`);
   }
   const referencedVideo = resolveRestrictedPath(
-    path.dirname(taskPath),
+    path.dirname(entry.taskPath),
     document.recording.video,
     mediaRoot,
     "recording.video",
   );
-  if (referencedVideo !== proxyPath) {
+  if (referencedVideo !== entry.proxyPath) {
     throw new Error(`task ${document.recording.id} does not reference its indexed proxy`);
   }
-  if (document.recording.videoFilename !== path.basename(proxyPath)) {
+  if (document.recording.videoFilename !== path.basename(entry.proxyPath)) {
     throw new Error(`task ${document.recording.id} has an unexpected proxy filename`);
   }
-  const proxyMetadata = await stat(proxyPath);
+  const proxyMetadata = await stat(entry.proxyPath);
   if (!proxyMetadata.isFile() || proxyMetadata.size === 0) {
     throw new Error(`task ${document.recording.id} proxy is unavailable`);
   }
   return {
     id: document.recording.id,
+    batch: entry.batch,
     priority: entry.priority,
     document,
-    draftPath: path.join(labelingWorkspace, "labels", "pilot", `${document.recording.id}.labels.json`),
+    draftPath: path.join(
+      labelingWorkspace,
+      "labels",
+      entry.batch,
+      `${document.recording.id}.labels.json`,
+    ),
     originalFilename,
-    taskPath,
-    proxyPath,
+    taskPath: entry.taskPath,
+    proxyPath: entry.proxyPath,
     proxySize: proxyMetadata.size,
   };
 }
 
-export async function listPreparedLabelingTasks(): Promise<PreparedLabelingTask[]> {
-  const index = await readPilotIndex();
-  const tasks = await Promise.all(index.tasks.map(loadEntry));
-  const ids = new Set<string>();
-  for (const task of tasks) {
-    if (ids.has(task.id)) throw new Error(`duplicate pilot task id: ${task.id}`);
-    ids.add(task.id);
+async function loadAvailableEntry(
+  entry: LabelingTaskEntry,
+): Promise<PreparedLabelingTask | null> {
+  const provenancePath = `${entry.proxyPath}.provenance.json`;
+  const [taskExists, proxyExists, provenanceExists] = await Promise.all([
+    isFile(entry.taskPath),
+    isFile(entry.proxyPath),
+    isFile(provenancePath),
+  ]);
+  if (!taskExists) {
+    if (entry.batch === "pilot") throw new Error(`pilot task is unavailable: ${entry.id}`);
+    return null;
   }
-  return tasks.sort((left, right) => left.priority - right.priority);
+  if (!proxyExists || !provenanceExists) {
+    throw new Error(`prepared task ${entry.id} has incomplete proxy artifacts`);
+  }
+  return loadEntry(entry);
+}
+
+export async function getPreparedLabelingCatalog(): Promise<PreparedLabelingCatalog> {
+  const entries = await readAllEntries();
+  const loaded = await Promise.all(entries.map(loadAvailableEntry));
+  return {
+    tasks: loaded
+      .filter((task): task is PreparedLabelingTask => task !== null)
+      .sort((left, right) => {
+        if (left.batch !== right.batch) return left.batch === "full" ? -1 : 1;
+        return left.priority - right.priority;
+      }),
+    totals: {
+      pilot: entries.filter((entry) => entry.batch === "pilot").length,
+      full: entries.filter((entry) => entry.batch === "full").length,
+    },
+  };
+}
+
+export async function listPreparedLabelingTasks(): Promise<PreparedLabelingTask[]> {
+  return (await getPreparedLabelingCatalog()).tasks;
 }
 
 export async function getPreparedLabelingTask(id: string): Promise<PreparedLabelingTask> {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new LabelingTaskNotFoundError();
-  const index = await readPilotIndex();
-  const expectedFilename = `${id}.labels.json`;
-  const entry = index.tasks.find(
-    (candidate) =>
-      typeof candidate.task === "string" && path.basename(candidate.task) === expectedFilename,
-  );
+  const entries = await readAllEntries();
+  const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new LabelingTaskNotFoundError();
-  const task = await loadEntry(entry);
-  if (task.id !== id) throw new LabelingTaskNotFoundError();
-  return task;
+  try {
+    const task = await loadAvailableEntry(entry);
+    if (!task) throw new LabelingTaskNotFoundError();
+    return task;
+  } catch (error) {
+    if (isMissingFile(error)) throw new LabelingTaskNotFoundError();
+    throw error;
+  }
 }
 
 export async function getSavedLabelingDocument(

@@ -33,6 +33,7 @@ export async function PUT(
       {
         saved: true,
         id: task.id,
+        batch: task.batch,
         savedAt: saved.savedAt,
         rallies: saved.document.rallies.length,
       },

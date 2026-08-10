@@ -12,6 +12,19 @@ from .schema import ENVIRONMENTS, SPLITS, ManifestError, _read_game, _read_roi
 Progress = Callable[[str], None]
 
 
+def _resolve_source(value: Any, plan_file: Path, where: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ManifestError(f"{where}.video must be a non-empty path string")
+    source = Path(value).expanduser()
+    if not source.is_absolute():
+        source = (plan_file.parent / source).resolve()
+    else:
+        source = source.resolve()
+    if not source.is_file():
+        raise ManifestError(f"{where}.video does not exist: {source}")
+    return source
+
+
 def prepare_labeling_workspace(
     plan_path: str | Path,
     workspace_path: str | Path,
@@ -34,6 +47,14 @@ def prepare_labeling_workspace(
     rows = plan.get("recordings")
     if not isinstance(rows, list) or not rows:
         raise ManifestError("labeling plan recordings must be a non-empty array")
+    # Resolve every source before the first expensive transcode. A bad later row
+    # must not waste hours of preparation before it is discovered.
+    sources = []
+    for index, row in enumerate(rows):
+        where = f"recordings[{index}]"
+        if not isinstance(row, dict):
+            raise ManifestError(f"{where} must be an object")
+        sources.append(_resolve_source(row.get("video"), plan_file, where))
 
     report: dict[str, Any] = {
         "workspace": str(workspace),
@@ -52,7 +73,6 @@ def prepare_labeling_workspace(
             raise ManifestError(f"{where} must be an object")
         recording_id = row.get("id")
         source_group = row.get("sourceGroup")
-        source_value = row.get("video")
         split = row.get("split")
         environment = row.get("environment")
         if not isinstance(recording_id, str) or not recording_id.strip():
@@ -71,22 +91,19 @@ def prepare_labeling_workspace(
             )
         if environment not in ENVIRONMENTS:
             raise ManifestError(f"{where}.environment must be one of {sorted(ENVIRONMENTS)}")
-        if not isinstance(source_value, str) or not source_value:
-            raise ManifestError(f"{where}.video must be a non-empty path string")
-        source = Path(source_value).expanduser()
-        if not source.is_absolute():
-            source = (plan_file.parent / source).resolve()
-        else:
-            source = source.resolve()
-        if not source.is_file():
-            raise ManifestError(f"{where}.video does not exist: {source}")
+        source = sources[index]
         game = _read_game(row.get("game"), where)
         roi = _read_roi(row.get("roi"), where)
         capture = row.get("capture", {})
         if not isinstance(capture, dict):
             raise ManifestError(f"{where}.capture must be an object")
 
-        proxy = workspace / "proxies" / environment / f"{recording_id}-full.mp4"
+        proxy_name = (
+            f"{recording_id}.mp4"
+            if recording_id.endswith("-full")
+            else f"{recording_id}-full.mp4"
+        )
+        proxy = workspace / "proxies" / environment / proxy_name
         provenance = proxy.with_suffix(proxy.suffix + ".provenance.json")
         task = workspace / "tasks" / "full" / f"{recording_id}.labels.json"
         if proxy.exists() != provenance.exists():

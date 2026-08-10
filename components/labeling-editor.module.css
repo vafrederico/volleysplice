@@ -123,7 +123,7 @@
 
 .preparedTask {
   grid-column: 1 / -1;
-  grid-template-columns: 240px minmax(260px, 1fr) auto;
+  grid-template-columns: 210px minmax(210px, 0.45fr) minmax(320px, 1fr) auto;
   align-items: center;
   padding: 14px;
   border: 1px solid var(--label-ink);

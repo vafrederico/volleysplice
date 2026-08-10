@@ -15,15 +15,30 @@ import {
 import styles from "./labeling-editor.module.css";
 
 type IntervalKind = "rally" | "ignored" | "negative";
+type LabelingBatch = "full" | "pilot";
 
 type PreparedTaskSummary = {
   id: string;
+  batch: LabelingBatch;
   priority: number;
   environment: LabelDocument["recording"]["environment"];
   split: LabelDocument["recording"]["split"];
   durationSeconds: number;
   originalFilename: string;
   videoFilename: string;
+  savedAt: string | null;
+  annotationStatus: LabelDocument["annotation"]["status"];
+  rallyCount: number;
+};
+
+type BatchSummary = Record<
+  LabelingBatch,
+  { ready: number; total: number; saved: number }
+>;
+
+const emptyBatchSummary: BatchSummary = {
+  full: { ready: 0, total: 0, saved: 0 },
+  pilot: { ready: 0, total: 0, saved: 0 },
 };
 
 function overlaps(start: number, end: number, rows: Array<{ start: number; end: number }>): boolean {
@@ -39,6 +54,8 @@ export function LabelingEditor() {
   const preparedRequestRef = useRef<AbortController | null>(null);
   const [labels, setLabels] = useState<LabelDocument | null>(null);
   const [preparedTasks, setPreparedTasks] = useState<PreparedTaskSummary[]>([]);
+  const [batchSummary, setBatchSummary] = useState<BatchSummary>(emptyBatchSummary);
+  const [selectedBatch, setSelectedBatch] = useState<LabelingBatch>("full");
   const [selectedPreparedTask, setSelectedPreparedTask] = useState("");
   const [preparedTasksLoading, setPreparedTasksLoading] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -52,7 +69,7 @@ export function LabelingEditor() {
   const [negativeStart, setNegativeStart] = useState<number | null>(null);
   const [negativeCategory, setNegativeCategory] = useState("foreground-crossing");
   const [message, setMessage] = useState(
-    "Choose a prepared pilot task, or use the local fallback files.",
+    "Choose a prepared full-corpus task, or use the local fallback files.",
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -64,26 +81,40 @@ export function LabelingEditor() {
 
   useEffect(() => {
     const controller = new AbortController();
+    let firstLoad = true;
     async function loadPreparedTasks() {
       try {
         const response = await fetch("/api/labeling/tasks", {
           cache: "no-store",
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error("Prepared pilot tasks are unavailable");
-        const payload = (await response.json()) as { tasks?: PreparedTaskSummary[] };
-        if (!Array.isArray(payload.tasks)) throw new Error("Prepared task list is invalid");
+        if (!response.ok) throw new Error("Prepared labeling tasks are unavailable");
+        const payload = (await response.json()) as {
+          batches?: BatchSummary;
+          tasks?: PreparedTaskSummary[];
+        };
+        if (!Array.isArray(payload.tasks) || !payload.batches) {
+          throw new Error("Prepared task catalog is invalid");
+        }
         setPreparedTasks(payload.tasks);
+        setBatchSummary(payload.batches);
       } catch (loadError) {
         if (!controller.signal.aborted) {
-          setError(loadError instanceof Error ? loadError.message : "Could not list pilot tasks");
+          setError(loadError instanceof Error ? loadError.message : "Could not list labeling tasks");
         }
       } finally {
-        if (!controller.signal.aborted) setPreparedTasksLoading(false);
+        if (!controller.signal.aborted && firstLoad) {
+          setPreparedTasksLoading(false);
+          firstLoad = false;
+        }
       }
     }
     void loadPreparedTasks();
-    return () => controller.abort();
+    const refresh = window.setInterval(() => void loadPreparedTasks(), 15_000);
+    return () => {
+      window.clearInterval(refresh);
+      controller.abort();
+    };
   }, []);
 
   const allRows = useMemo(() => {
@@ -94,6 +125,11 @@ export function LabelingEditor() {
   const selectedPreparedSummary = useMemo(
     () => preparedTasks.find((task) => task.id === selectedPreparedTask) ?? null,
     [preparedTasks, selectedPreparedTask],
+  );
+
+  const tasksForSelectedBatch = useMemo(
+    () => preparedTasks.filter((task) => task.batch === selectedBatch),
+    [preparedTasks, selectedBatch],
   );
 
   const completionIssues = useMemo(() => {
@@ -192,7 +228,8 @@ export function LabelingEditor() {
         cache: "no-store",
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error("Could not load the selected pilot task");
+      if (!response.ok) throw new Error("Could not load the selected prepared task");
+      const batch = response.headers.get("X-VolleyCut-Batch");
       const documentSource = response.headers.get("X-VolleyCut-Document-Source");
       const savedAt = response.headers.get("X-VolleyCut-Saved-At");
       const document = parseLabelDocument(await response.json());
@@ -205,6 +242,7 @@ export function LabelingEditor() {
       setIgnoredStart(null);
       setNegativeStart(null);
       setLastSavedAt(savedAt);
+      if (batch === "full" || batch === "pilot") setSelectedBatch(batch);
       setMessage(
         documentSource === "draft"
           ? `Resumed the NAS draft for ${document.recording.id} with ${document.rallies.length} rallies.`
@@ -212,7 +250,7 @@ export function LabelingEditor() {
       );
     } catch (loadError) {
       if (!controller.signal.aborted) {
-        setError(loadError instanceof Error ? loadError.message : "Could not load pilot task");
+        setError(loadError instanceof Error ? loadError.message : "Could not load prepared task");
       }
     } finally {
       if (!controller.signal.aborted) setPreparedTasksLoading(false);
@@ -223,7 +261,7 @@ export function LabelingEditor() {
     if (!labels) return;
     const preparedTask = preparedTasks.find((task) => task.id === labels.recording.id);
     if (!preparedTask) {
-      setError("Direct save is available only for a prepared pilot task.");
+      setError("Direct save is available only for a prepared NAS task.");
       return;
     }
     const draft: LabelDocument = {
@@ -245,14 +283,39 @@ export function LabelingEditor() {
           body: JSON.stringify(draft),
         },
       );
-      const result = (await response.json()) as { error?: string; savedAt?: string };
+      const result = (await response.json()) as {
+        batch?: LabelingBatch;
+        error?: string;
+        savedAt?: string;
+      };
       if (!response.ok || !result.savedAt) {
         throw new Error(result.error ?? "The draft could not be saved");
       }
       setLabels(draft);
       setLastSavedAt(result.savedAt);
+      setPreparedTasks((current) =>
+        current.map((task) =>
+          task.id === preparedTask.id
+            ? {
+                ...task,
+                annotationStatus: "in-progress",
+                rallyCount: draft.rallies.length,
+                savedAt: result.savedAt ?? null,
+              }
+            : task,
+        ),
+      );
+      if (!preparedTask.savedAt) {
+        setBatchSummary((current) => ({
+          ...current,
+          [preparedTask.batch]: {
+            ...current[preparedTask.batch],
+            saved: current[preparedTask.batch].saved + 1,
+          },
+        }));
+      }
       setMessage(
-        `Draft saved directly to the NAS at ${new Date(result.savedAt).toLocaleTimeString()}.`,
+        `${preparedTask.batch === "full" ? "Full-corpus" : "Pilot"} draft saved directly to the NAS at ${new Date(result.savedAt).toLocaleTimeString()}.`,
       );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "The draft could not be saved");
@@ -446,22 +509,43 @@ export function LabelingEditor() {
 
       <section className={styles.loaders}>
         <label className={styles.preparedTask}>
-          <span>Prepared pilot task · recommended</span>
+          <span>Prepared NAS task · recommended</span>
           <select
+            aria-label="Labeling batch"
+            value={selectedBatch}
+            disabled={preparedTasksLoading}
+            onChange={(event) => {
+              setSelectedBatch(event.target.value as LabelingBatch);
+              setSelectedPreparedTask("");
+            }}
+          >
+            <option value="full">
+              Full corpus · {batchSummary.full.ready}/{batchSummary.full.total} ready · {batchSummary.full.saved} saved
+            </option>
+            <option value="pilot">
+              Pilot · {batchSummary.pilot.ready}/{batchSummary.pilot.total} ready · {batchSummary.pilot.saved} saved
+            </option>
+          </select>
+          <select
+            aria-label="Prepared labeling task"
             value={selectedPreparedTask}
-            disabled={preparedTasksLoading || preparedTasks.length === 0}
+            disabled={preparedTasksLoading || tasksForSelectedBatch.length === 0}
             onChange={(event) => void loadPreparedTask(event.target.value)}
           >
             <option value="">
-              {preparedTasksLoading ? "Loading pilot tasks…" : "Choose a task and video…"}
+              {preparedTasksLoading
+                ? "Loading prepared tasks…"
+                : tasksForSelectedBatch.length === 0
+                  ? "Waiting for this batch to be prepared…"
+                  : "Choose a task and video…"}
             </option>
-            {preparedTasks.map((task) => (
+            {tasksForSelectedBatch.map((task) => (
               <option key={task.id} value={task.id}>
-                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)}
+                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : "not started"}
               </option>
             ))}
           </select>
-          <small>Loads both files directly from the prepared NAS workspace.</small>
+          <small>Loads both files from the NAS. The list refreshes as full proxies finish.</small>
         </label>
         <label>
           <span>Local fallback · task or saved draft</span>
@@ -472,6 +556,8 @@ export function LabelingEditor() {
           <input type="file" accept="video/mp4,video/*" onChange={(event) => loadVideo(event.target.files?.[0])} />
         </label>
         <div className={styles.loaded}>
+          <span>Batch</span>
+          <strong>{selectedPreparedSummary?.batch ?? "Local fallback"}</strong>
           <span>Original source</span>
           <strong>{selectedPreparedSummary?.originalFilename ?? "Local task or draft"}</strong>
           <span>Annotation proxy</span>
