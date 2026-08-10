@@ -1,8 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { CourtLine, ReviewAnalysis } from "@/lib/analysis-types";
-import type { Rally } from "@/lib/edit-list";
-import { getAnalysesRoot } from "@/lib/storage";
+import type { CourtLine, ReviewAnalysis } from "./analysis-types.ts";
+import type { Rally } from "./edit-list.ts";
+import { getAnalysesRoot } from "./storage.ts";
 
 const ANALYSIS_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
 
@@ -87,13 +87,13 @@ export function parseAnalysis(value: unknown): ReviewAnalysis | null {
   };
 }
 
-export async function loadLatestAnalysis(): Promise<ReviewAnalysis | null> {
+export async function loadAnalyses(): Promise<ReviewAnalysis[]> {
   const analysesRoot = getAnalysesRoot();
   let entries;
   try {
     entries = await fs.readdir(analysesRoot, { withFileTypes: true });
   } catch {
-    return null;
+    return [];
   }
   const candidates = await Promise.all(
     entries
@@ -109,14 +109,16 @@ export async function loadLatestAnalysis(): Promise<ReviewAnalysis | null> {
       }),
   );
   candidates.sort((a, b) => (b?.modified ?? 0) - (a?.modified ?? 0));
+
+  const analyses: ReviewAnalysis[] = [];
   for (const candidate of candidates) {
     if (!candidate) continue;
     try {
       const parsed = parseAnalysis(JSON.parse(await fs.readFile(candidate.filename, "utf-8")));
-      if (parsed) return parsed;
+      if (parsed) analyses.push(parsed);
     } catch {
-      // Ignore incomplete or malformed local runs and try the next one.
+      // Ignore incomplete or malformed local runs.
     }
   }
-  return null;
+  return analyses;
 }

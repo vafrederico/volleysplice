@@ -23,3 +23,10 @@ export type ReviewAnalysis = {
   warnings: string[];
   rallies: Rally[];
 };
+
+export type AnalysisOption = {
+  id: string;
+  title: string;
+  duration: number;
+  rallyCount: number;
+};

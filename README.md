@@ -54,7 +54,7 @@ $VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/
   proxy.mp4
 ```
 
-Existing IDs are never overwritten. The app opens the most recently modified valid analysis. To try the whole flow without a real recording:
+Existing IDs are never overwritten. The app opens the most recently modified valid analysis by default and provides a dataset picker for switching between every valid run. The selected analysis is stored in the URL, so a review can be bookmarked. To try the whole flow without a real recording:
 
 ```bash
 npm run fixture:analysis
@@ -83,6 +83,7 @@ npm run dev
 
 The review screen provides:
 
+- A dataset picker for every valid local analysis.
 - Proxy video playback and byte-range seeking.
 - Suggested activity intervals with uncalibrated confidence.
 - Detected court-line overlays and a court diagnostic image.
@@ -113,7 +114,7 @@ npm run lint
 npm run build
 ```
 
-The tests cover interval merging and clamping, timeline formatting, synthetic activity segmentation, signal normalization, and detected/fallback court regions. The generated fixture provides a codec-level smoke test for the full pipeline.
+The tests cover analysis catalog loading, interval merging and clamping, timeline formatting, synthetic activity segmentation, signal normalization, and detected/fallback court regions. The generated fixture provides a codec-level smoke test for the full pipeline.
 
 ## Project layout
 

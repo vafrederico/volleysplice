@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import type { ReviewAnalysis } from "@/lib/analysis-types";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import type { AnalysisOption, ReviewAnalysis } from "@/lib/analysis-types";
 import { buildEditList, formatTime, timelinePercent, timelineTicks, type Rally } from "@/lib/edit-list";
 
 const demoRallies: Rally[] = [
@@ -28,8 +29,15 @@ const demoAnalysis: ReviewAnalysis = {
   rallies: demoRallies,
 };
 
-export function ReviewEditor({ initialAnalysis }: { initialAnalysis: ReviewAnalysis | null }) {
+type ReviewEditorProps = {
+  initialAnalysis: ReviewAnalysis | null;
+  analysisOptions: AnalysisOption[];
+};
+
+export function ReviewEditor({ initialAnalysis, analysisOptions }: ReviewEditorProps) {
   const analysis = initialAnalysis ?? demoAnalysis;
+  const router = useRouter();
+  const [isAnalysisPending, startAnalysisTransition] = useTransition();
   const [rallies, setRallies] = useState(analysis.rallies);
   const [selectedId, setSelectedId] = useState(analysis.rallies[0]?.id ?? "");
   const [preRoll, setPreRoll] = useState(3);
@@ -45,6 +53,14 @@ export function ReviewEditor({ initialAnalysis }: { initialAnalysis: ReviewAnaly
   const keptSeconds = intervals.reduce((total, interval) => total + interval.keptEnd - interval.keptStart, 0);
   const keptCount = rallies.filter((rally) => rally.included).length;
   const ticks = timelineTicks(analysis.duration);
+  const analysisIndex = analysisOptions.findIndex((option) => option.id === analysis.id);
+
+  function selectAnalysis(id: string) {
+    if (!id || id === analysis.id) return;
+    startAnalysisTransition(() => {
+      router.push(`/?analysis=${encodeURIComponent(id)}`);
+    });
+  }
 
   function selectRally(rally: Rally) {
     setSelectedId(rally.id);
@@ -70,8 +86,37 @@ export function ReviewEditor({ initialAnalysis }: { initialAnalysis: ReviewAnaly
     <main>
       <header className="topbar">
         <a className="brand" href="#">VOLLEYCUT <span>LAB</span></a>
-        <div className="project-state"><i /> {initialAnalysis ? "Latest local analysis" : "Demo mode"}</div>
+        <div className="project-state"><i /> {initialAnalysis ? `${analysisOptions.length} analyses ready` : "Demo mode"}</div>
       </header>
+
+      {analysisOptions.length > 0 && (
+        <nav className="analysis-picker" aria-label="Analysis selection">
+          <div>
+            <span className="picker-kicker">REVIEW DATASET</span>
+            <strong>Choose an analysis</strong>
+          </div>
+          <label>
+            <span className="sr-only">Analysis</span>
+            <select
+              key={analysis.id}
+              defaultValue={analysis.id}
+              disabled={isAnalysisPending}
+              onChange={(event) => selectAnalysis(event.target.value)}
+            >
+              {analysisOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.title} · {formatTime(option.duration)} · {option.rallyCount} candidates
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="analysis-position" aria-live="polite">
+            <strong>{analysisIndex + 1}</strong>
+            <span>/ {analysisOptions.length}</span>
+            <small>{isAnalysisPending ? "LOADING…" : analysis.id}</small>
+          </div>
+        </nav>
+      )}
 
       <section className="hero">
         <div>
