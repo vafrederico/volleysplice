@@ -104,6 +104,7 @@
 }
 
 .loaders input,
+.loaders select,
 .metadata input,
 .metadata select,
 .metadata textarea,
@@ -118,6 +119,21 @@
   background: #fff;
   color: var(--label-ink);
   font: 12px "DM Mono", monospace;
+}
+
+.preparedTask {
+  grid-column: 1 / -1;
+  grid-template-columns: 240px minmax(260px, 1fr) auto;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--label-ink);
+  background: #f1ffd0;
+}
+
+.preparedTask small {
+  color: #65695d;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .loaded {
@@ -381,6 +397,7 @@
 }
 
 .exportButtons button { border-color: #fff; color: #fff; }
+.exportButtons .directSave { background: var(--label-teal); }
 .exportButtons .complete { background: var(--label-acid); color: var(--label-ink); border-color: var(--label-acid); }
 
 @media (max-width: 1000px) {
@@ -399,6 +416,7 @@
   .intro { padding-top: 35px; }
   .intro h1 { letter-spacing: -2px; }
   .loaders { grid-template-columns: 1fr; }
+  .preparedTask { grid-template-columns: 1fr; }
   .loaded { grid-column: auto; }
   .transport,
   .markers { flex-wrap: wrap; }

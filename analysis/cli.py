@@ -95,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--resize-width", type=int, default=192)
     train.add_argument("--resize-height", type=int, default=108)
     train.add_argument("--no-optical-flow", action="store_true")
+    train.add_argument(
+        "--sequence-normalization",
+        choices=("none", "percentile-rank"),
+        default="percentile-rank",
+    )
     train.add_argument("--epochs", type=int, default=180)
     train.add_argument("--batch-size", type=int, default=2048)
     train.add_argument("--learning-rate", type=float, default=0.02)
@@ -306,6 +311,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 resize_width=arguments.resize_width,
                 resize_height=arguments.resize_height,
                 use_optical_flow=not arguments.no_optical_flow,
+                sequence_normalization=arguments.sequence_normalization,
             )
             training = TrainingConfig(
                 epochs=arguments.epochs,

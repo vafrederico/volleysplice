@@ -43,16 +43,16 @@ Do **not** label player identity, individual touches, ball trajectories, scores 
 
 ## Workstation controls
 
-1. Start the app with `npm run dev` and open `/label` on the printed URL.
-2. Load one `*.labels.json` task or previously downloaded draft.
-3. Select the matching MP4 shown in the task metadata.
+1. Start the app with `npm run dev -- --hostname 0.0.0.0` and open `/label` on the printed LAN URL.
+2. Choose a prepared pilot task from the first selector. The app loads both its task JSON and matching NAS proxy.
+3. To resume a downloaded draft, use the two local fallback pickers for the draft and its matching MP4.
 4. Use `S` at serve contact and `E` at end of play.
 5. Use `[` then `]` for an ignored span and `H` twice for an optional hard negative.
 6. Use `Space` to play/pause, `J`/`K` for ±0.1 seconds, and Shift+`J`/`K` for ±1 second.
-7. Download drafts often. Reload a draft through the same task picker to resume.
+7. Use **Save draft to NAS** often. Selecting that prepared task later resumes the saved draft automatically; downloading a backup JSON is optional.
 8. After the entire video is reviewed, check the confirmation box and export completed labels.
 
-The browser downloads `<recording-id>.labels.json`. Move it into the workspace's `labels/pilot/` or `labels/full/` directory rather than modifying the original task.
+Direct pilot drafts are written atomically as `labels/pilot/<recording-id>.labels.json`. The browser can also download the same naming format for offline backups. Do not modify the originals under `tasks/`.
 
 ## CLI validation and manifest creation
 

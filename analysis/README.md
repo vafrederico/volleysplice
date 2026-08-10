@@ -2,7 +2,7 @@
 
 This package is a CPU-first feasibility baseline for continuous, fixed-camera volleyball video. It genuinely trains a model, runs inference, and evaluates rally intervals; it is not a claim of production accuracy before representative videos arrive.
 
-The learned task is binary `live` versus `dead` at 4 samples per second. Each sample contains low-resolution court appearance, frame difference, regional motion, and optical-flow features. Five centered temporal samples (`-2, -1, 0, +1, +2` seconds) are passed to a class-weighted logistic classifier. A validation-selected hysteresis decoder smooths probabilities, bridges short occlusions, and converts them into core rally intervals. User-facing pre-roll and post-roll remain separate edit-list settings.
+The learned task is binary `live` versus `dead` at 4 samples per second. Each sample contains low-resolution court appearance, frame difference, regional motion, and optical-flow features. Feature channels are converted to tied within-recording percentile ranks to reduce camera/court scale shift. Five centered temporal samples (`-2, -1, 0, +1, +2` seconds) are passed to a class-weighted logistic classifier. A validation-selected hysteresis decoder jointly tunes smoothing, thresholds, minimum rally duration, and gap bridging to convert probabilities into core rally intervals. User-facing pre-roll and post-roll remain separate edit-list settings.
 
 This deliberately mirrors the reusable ideas in the beach-volleyball thesis—fixed view, temporal frame clusters, a learned classifier, smoothing, minimum-duration filtering—without depending on its unavailable code, model, or data. The extractor/classifier boundary allows a later EfficientNetV2 or STES-derived model to reuse the same manifests, splits, decoder, metrics, and `analysis.json` output.
 
@@ -76,6 +76,8 @@ Validate before extracting hours of video:
   --split test \
   --output data/reports/rally-v0-test.json
 ```
+
+New training runs default to tied within-recording percentile normalization. Use `--sequence-normalization none` only for an explicit raw-feature ablation. The normalization mode is stored in the model artifact, and older saved models without that field retain their original raw-feature behavior.
 
 Feature caches are keyed by source-content SHA-256, ROI, extractor version, and configuration. Model artifacts contain human-readable metadata plus NumPy weights and never use pickle. Existing model, analysis, normalization, and evaluation artifacts are not overwritten.
 

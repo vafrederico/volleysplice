@@ -11,7 +11,12 @@ import numpy as np
 from analysis.config import DecoderConfig, FeatureConfig
 from analysis.features import FeatureSequence, VideoMetadata
 from analysis.model import LogisticModel, ModelError
-from analysis.pipeline import PreparedRecording, _manifest_digest, evaluate_dataset
+from analysis.pipeline import (
+    PreparedRecording,
+    _manifest_digest,
+    _tune_decoder,
+    evaluate_dataset,
+)
 from analysis.schema import Recording, labels_for_times, load_manifest
 
 
@@ -186,6 +191,39 @@ class ImmutableEvaluationTests(unittest.TestCase):
                     self.root / "cache",
                     split="test",
                 )
+
+
+class DecoderSelectionTests(unittest.TestCase):
+    def test_searches_temporal_cleanup_and_prioritizes_event_quality(self) -> None:
+        target = DecoderConfig(
+            smoothing_seconds=1.5,
+            enter_threshold=0.6,
+            exit_threshold=0.5,
+            min_live_seconds=2.0,
+            bridge_gap_seconds=1.0,
+        )
+
+        def evaluate(_prepared, _model, candidate):
+            exact = candidate == target
+            return [], {
+                "eventF1": 1.0 if exact else 0.0,
+                "timeIoU": 0.8 if exact else 0.0,
+                "liveTimeRecall": 0.9 if exact else 0.0,
+                "liveTimePrecision": 0.85 if exact else 0.0,
+                "predictedRallies": 4 if exact else 12,
+                "trueRallies": 4,
+            }
+
+        with patch("analysis.pipeline._evaluate_prepared", side_effect=evaluate):
+            selected, summary = _tune_decoder(
+                [object()],  # type: ignore[list-item]
+                object(),  # type: ignore[arg-type]
+                DecoderConfig(),
+            )
+
+        self.assertEqual(selected, target)
+        self.assertEqual(summary["candidateCount"], 1584)
+        self.assertEqual(summary["validationMetrics"]["eventF1"], 1.0)
 
 
 if __name__ == "__main__":

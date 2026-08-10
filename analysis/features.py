@@ -338,6 +338,9 @@ def extract_features(
 
 def contextualize(sequence: FeatureSequence, config: FeatureConfig) -> tuple[np.ndarray, tuple[str, ...]]:
     times = sequence.times
+    values = sequence.values
+    if config.sequence_normalization == "percentile-rank":
+        values = percentile_rank_values(values)
     blocks: list[np.ndarray] = []
     names: list[str] = []
     for offset in config.context_offsets_seconds:
@@ -349,10 +352,32 @@ def contextualize(sequence: FeatureSequence, config: FeatureConfig) -> tuple[np.
         nearest = np.where(choose_left, left, right)
         nearest = np.where(targets <= times[0], 0, nearest)
         nearest = np.where(targets >= times[-1], len(times) - 1, nearest)
-        blocks.append(sequence.values[nearest])
+        blocks.append(values[nearest])
         prefix = f"t{offset:+g}s/"
         names.extend(prefix + name for name in sequence.names)
     return np.concatenate(blocks, axis=1).astype(np.float32, copy=False), tuple(names)
+
+
+def percentile_rank_values(values: np.ndarray) -> np.ndarray:
+    """Map every feature to tied within-recording percentile ranks."""
+    if values.ndim != 2:
+        raise ValueError("feature values must be a two-dimensional matrix")
+    if len(values) == 0:
+        return values.astype(np.float32, copy=True)
+    if len(values) == 1:
+        return np.full(values.shape, 0.5, dtype=np.float32)
+    result = np.empty(values.shape, dtype=np.float32)
+    denominator = float(len(values) - 1)
+    for column in range(values.shape[1]):
+        _, inverse, counts = np.unique(
+            values[:, column],
+            return_inverse=True,
+            return_counts=True,
+        )
+        starts = np.cumsum(counts) - counts
+        midranks = starts + (counts - 1) / 2.0
+        result[:, column] = midranks[inverse] / denominator
+    return result
 
 
 def _valid_cached_sequence(sequence: FeatureSequence, config: FeatureConfig) -> bool:

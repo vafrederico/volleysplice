@@ -7,6 +7,7 @@ from typing import Any
 
 FEATURE_VERSION = "court-motion-flow-v1"
 MODEL_TYPE = "weighted-logistic-v1"
+SEQUENCE_NORMALIZATIONS = {"none", "percentile-rank"}
 
 
 def _finite_number(value: Any) -> bool:
@@ -21,6 +22,7 @@ class FeatureConfig:
     grid_size: int = 3
     use_optical_flow: bool = True
     context_offsets_seconds: tuple[float, ...] = (-2.0, -1.0, 0.0, 1.0, 2.0)
+    sequence_normalization: str = "percentile-rank"
 
     def validate(self) -> None:
         if not _finite_number(self.analysis_fps) or not 0.25 <= self.analysis_fps <= 30:
@@ -44,6 +46,11 @@ class FeatureConfig:
             raise ValueError("context offsets must include 0 seconds")
         if not all(_finite_number(offset) for offset in self.context_offsets_seconds):
             raise ValueError("context offsets must be finite")
+        if self.sequence_normalization not in SEQUENCE_NORMALIZATIONS:
+            raise ValueError(
+                "sequence_normalization must be one of "
+                f"{sorted(SEQUENCE_NORMALIZATIONS)}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -59,11 +66,14 @@ class FeatureConfig:
             "grid_size",
             "use_optical_flow",
             "context_offsets_seconds",
+            "sequence_normalization",
         }
         unknown = set(value) - known
         if unknown:
             raise ValueError(f"unknown feature configuration keys: {sorted(unknown)}")
         kwargs = dict(value)
+        # Models saved before sequence-level normalization existed used raw values.
+        kwargs.setdefault("sequence_normalization", "none")
         if "context_offsets_seconds" in kwargs:
             if not isinstance(kwargs["context_offsets_seconds"], (list, tuple)) or not all(
                 _finite_number(item) for item in kwargs["context_offsets_seconds"]

@@ -11,7 +11,7 @@ npm run dev
 
 Open the URL printed by Next.js. The initial screen is a front-end prototype: adjust the pre/post-roll settings, select rallies, and inspect the resulting edit decision list.
 
-Open `/label` for the local gold-label workstation. It loads a task JSON and matching proxy through browser file pickers, supports precise rally/ignored/hard-negative intervals, and exports resumable or completed labels without uploading video. See [`docs/labeling-guide.md`](docs/labeling-guide.md).
+Open `/label` for the local gold-label workstation. Its prepared-task selector loads pilot tasks and streams their exact NAS proxies directly; local file pickers remain available for saved drafts. It supports precise rally/ignored/hard-negative intervals and exports resumable or completed labels. See [`docs/labeling-guide.md`](docs/labeling-guide.md).
 
 ## Rally-analysis baseline
 

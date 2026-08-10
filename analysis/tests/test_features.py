@@ -15,8 +15,10 @@ from analysis.features import (
     FeatureSequence,
     VideoMetadata,
     cached_features,
+    contextualize,
     extract_features,
     feature_names,
+    percentile_rank_values,
 )
 
 
@@ -27,6 +29,51 @@ except Exception:  # dependency test must also tolerate binary/ABI import failur
 
 
 class CacheIntegrityTests(unittest.TestCase):
+    def test_old_feature_config_defaults_to_raw_sequence_values(self) -> None:
+        legacy = FeatureConfig().to_dict()
+        legacy.pop("sequence_normalization")
+
+        loaded = FeatureConfig.from_dict(legacy)
+
+        self.assertEqual(loaded.sequence_normalization, "none")
+
+    def test_percentile_rank_uses_average_ranks_for_ties(self) -> None:
+        values = np.asarray(
+            [[0.0, 7.0], [0.0, 7.0], [2.0, 7.0], [4.0, 7.0]],
+            dtype=np.float32,
+        )
+
+        ranked = percentile_rank_values(values)
+
+        np.testing.assert_allclose(
+            ranked[:, 0],
+            np.asarray([1 / 6, 1 / 6, 2 / 3, 1.0], dtype=np.float32),
+            rtol=0.0,
+            atol=1e-7,
+        )
+        np.testing.assert_array_equal(ranked[:, 1], np.full(4, 0.5, dtype=np.float32))
+
+    def test_contextualize_records_sequence_normalization_in_values(self) -> None:
+        sequence = FeatureSequence(
+            times=np.asarray([0.0, 1.0, 2.0], dtype=np.float64),
+            values=np.asarray([[10.0], [30.0], [20.0]], dtype=np.float32),
+            names=("motion",),
+            metadata=VideoMetadata(3.0, 1280, 720, 30.0, 90, False),
+        )
+        config = FeatureConfig(
+            use_optical_flow=False,
+            context_offsets_seconds=(0.0,),
+            sequence_normalization="percentile-rank",
+        )
+
+        values, names = contextualize(sequence, config)
+
+        np.testing.assert_array_equal(
+            values[:, 0],
+            np.asarray([0.0, 1.0, 0.5], dtype=np.float32),
+        )
+        self.assertEqual(names, ("t+0s/motion",))
+
     def test_same_size_same_mtime_content_change_invalidates_cache(self) -> None:
         with tempfile.TemporaryDirectory(prefix="volleycut-cache-integrity-") as directory:
             root = Path(directory)

@@ -174,41 +174,53 @@ def _tune_decoder(
     best = base
     best_metrics: dict[str, Any] | None = None
     best_objective = -1.0
-    best_tie_break = (-1.0, -1.0, -1.0)
-    candidates = np.arange(0.25, 0.751, 0.05)
-    for threshold in candidates:
-        candidate = replace(
-            base,
-            enter_threshold=float(round(threshold, 2)),
-            exit_threshold=float(round(max(0.05, threshold - 0.1), 2)),
-        )
-        _, aggregate = _evaluate_prepared(prepared, model, candidate)
-        objective = (
-            0.45 * aggregate["liveTimeRecall"]
-            + 0.35 * aggregate["timeIoU"]
-            + 0.20 * aggregate["eventF1"]
-        )
-        tie_break = (
-            aggregate["liveTimePrecision"],
-            -abs(candidate.enter_threshold - base.enter_threshold),
-            candidate.enter_threshold,
-        )
-        if objective > best_objective + 1e-9 or (
-            abs(objective - best_objective) <= 1e-9 and tie_break > best_tie_break
-        ):
-            best_objective = objective
-            best_tie_break = tie_break
-            best = candidate
-            best_metrics = aggregate
+    best_tie_break: tuple[float, ...] = (-1.0,)
+    candidate_count = 0
+    for smoothing_seconds in (0.5, 1.0, 1.5, 2.0):
+        for threshold in np.arange(0.35, 0.851, 0.05):
+            for exit_delta in (0.05, 0.10, 0.15):
+                for min_live_seconds in (1.0, 2.0, 3.0):
+                    for bridge_gap_seconds in (0.0, 0.5, 1.0, 1.5):
+                        enter_threshold = float(round(threshold, 2))
+                        candidate = replace(
+                            base,
+                            smoothing_seconds=smoothing_seconds,
+                            enter_threshold=enter_threshold,
+                            exit_threshold=float(round(enter_threshold - exit_delta, 2)),
+                            min_live_seconds=min_live_seconds,
+                            bridge_gap_seconds=bridge_gap_seconds,
+                        )
+                        candidate_count += 1
+                        _, aggregate = _evaluate_prepared(prepared, model, candidate)
+                        objective = (
+                            0.55 * aggregate["eventF1"]
+                            + 0.30 * aggregate["timeIoU"]
+                            + 0.15 * aggregate["liveTimeRecall"]
+                        )
+                        tie_break = (
+                            aggregate["eventF1"],
+                            aggregate["liveTimePrecision"],
+                            -abs(aggregate["predictedRallies"] - aggregate["trueRallies"]),
+                            aggregate["timeIoU"],
+                            -abs(candidate.enter_threshold - base.enter_threshold),
+                        )
+                        if objective > best_objective + 1e-9 or (
+                            abs(objective - best_objective) <= 1e-9
+                            and tie_break > best_tie_break
+                        ):
+                            best_objective = objective
+                            best_tie_break = tie_break
+                            best = candidate
+                            best_metrics = aggregate
     return best, {
         "status": "selected-on-validation",
-        "objective": "0.45*liveTimeRecall + 0.35*timeIoU + 0.20*eventF1",
+        "objective": "0.55*eventF1 + 0.30*timeIoU + 0.15*liveTimeRecall",
         "tieBreak": (
-            "higher live-time precision, then nearest base enter threshold "
-            f"({base.enter_threshold:g}), then higher threshold"
+            "higher event F1, live-time precision, rally-count proximity, time IoU, "
+            f"then nearest base enter threshold ({base.enter_threshold:g})"
         ),
         "objectiveValue": best_objective,
-        "candidateCount": len(candidates),
+        "candidateCount": candidate_count,
         "selected": best.to_dict(),
         "validationMetrics": best_metrics,
     }

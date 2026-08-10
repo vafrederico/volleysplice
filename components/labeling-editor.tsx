@@ -16,6 +16,16 @@ import styles from "./labeling-editor.module.css";
 
 type IntervalKind = "rally" | "ignored" | "negative";
 
+type PreparedTaskSummary = {
+  id: string;
+  priority: number;
+  environment: LabelDocument["recording"]["environment"];
+  split: LabelDocument["recording"]["split"];
+  durationSeconds: number;
+  originalFilename: string;
+  videoFilename: string;
+};
+
 function overlaps(start: number, end: number, rows: Array<{ start: number; end: number }>): boolean {
   return rows.some((row) => start < row.end && row.start < end);
 }
@@ -26,7 +36,13 @@ function totalSeconds(rows: Array<{ start: number; end: number }>): number {
 
 export function LabelingEditor() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const preparedRequestRef = useRef<AbortController | null>(null);
   const [labels, setLabels] = useState<LabelDocument | null>(null);
+  const [preparedTasks, setPreparedTasks] = useState<PreparedTaskSummary[]>([]);
+  const [selectedPreparedTask, setSelectedPreparedTask] = useState("");
+  const [preparedTasksLoading, setPreparedTasksLoading] = useState(true);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoFilename, setVideoFilename] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
@@ -35,19 +51,50 @@ export function LabelingEditor() {
   const [ignoredStart, setIgnoredStart] = useState<number | null>(null);
   const [negativeStart, setNegativeStart] = useState<number | null>(null);
   const [negativeCategory, setNegativeCategory] = useState("foreground-crossing");
-  const [message, setMessage] = useState("Load a task JSON and its matching proxy video.");
+  const [message, setMessage] = useState(
+    "Choose a prepared pilot task, or use the local fallback files.",
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
-      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      if (videoUrl?.startsWith("blob:")) URL.revokeObjectURL(videoUrl);
     };
   }, [videoUrl]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadPreparedTasks() {
+      try {
+        const response = await fetch("/api/labeling/tasks", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Prepared pilot tasks are unavailable");
+        const payload = (await response.json()) as { tasks?: PreparedTaskSummary[] };
+        if (!Array.isArray(payload.tasks)) throw new Error("Prepared task list is invalid");
+        setPreparedTasks(payload.tasks);
+      } catch (loadError) {
+        if (!controller.signal.aborted) {
+          setError(loadError instanceof Error ? loadError.message : "Could not list pilot tasks");
+        }
+      } finally {
+        if (!controller.signal.aborted) setPreparedTasksLoading(false);
+      }
+    }
+    void loadPreparedTasks();
+    return () => controller.abort();
+  }, []);
 
   const allRows = useMemo(() => {
     if (!labels) return [];
     return [...labels.rallies, ...labels.ignoredIntervals, ...labels.hardNegatives];
   }, [labels]);
+
+  const selectedPreparedSummary = useMemo(
+    () => preparedTasks.find((task) => task.id === selectedPreparedTask) ?? null,
+    [preparedTasks, selectedPreparedTask],
+  );
 
   const completionIssues = useMemo(() => {
     if (!labels) return ["Load a label task"];
@@ -101,6 +148,9 @@ export function LabelingEditor() {
 
   async function loadTask(file: File | undefined) {
     if (!file) return;
+    preparedRequestRef.current?.abort();
+    setSelectedPreparedTask("");
+    setLastSavedAt(null);
     setError(null);
     try {
       const document = parseLabelDocument(JSON.parse(await file.text()));
@@ -127,6 +177,88 @@ export function LabelingEditor() {
     setVideoFilename(file.name);
     setVideoDuration(null);
     setMessage(`Loaded local video ${file.name}. Nothing is uploaded.`);
+  }
+
+  async function loadPreparedTask(id: string) {
+    setSelectedPreparedTask(id);
+    if (!id) return;
+    preparedRequestRef.current?.abort();
+    const controller = new AbortController();
+    preparedRequestRef.current = controller;
+    setError(null);
+    setPreparedTasksLoading(true);
+    try {
+      const response = await fetch(`/api/labeling/tasks/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Could not load the selected pilot task");
+      const documentSource = response.headers.get("X-VolleyCut-Document-Source");
+      const savedAt = response.headers.get("X-VolleyCut-Saved-At");
+      const document = parseLabelDocument(await response.json());
+      setLabels(document);
+      setVideoUrl(`/api/labeling/tasks/${encodeURIComponent(id)}/video`);
+      setVideoFilename(document.recording.videoFilename);
+      setVideoDuration(null);
+      setCurrentTime(0);
+      setRallyStart(null);
+      setIgnoredStart(null);
+      setNegativeStart(null);
+      setLastSavedAt(savedAt);
+      setMessage(
+        documentSource === "draft"
+          ? `Resumed the NAS draft for ${document.recording.id} with ${document.rallies.length} rallies.`
+          : `Loaded ${document.recording.id} and its matching NAS proxy. No local file selection needed.`,
+      );
+    } catch (loadError) {
+      if (!controller.signal.aborted) {
+        setError(loadError instanceof Error ? loadError.message : "Could not load pilot task");
+      }
+    } finally {
+      if (!controller.signal.aborted) setPreparedTasksLoading(false);
+    }
+  }
+
+  async function saveDraftDirectly() {
+    if (!labels) return;
+    const preparedTask = preparedTasks.find((task) => task.id === labels.recording.id);
+    if (!preparedTask) {
+      setError("Direct save is available only for a prepared pilot task.");
+      return;
+    }
+    const draft: LabelDocument = {
+      ...labels,
+      annotation: {
+        ...labels.annotation,
+        status: "in-progress",
+        reviewedAt: null,
+      },
+    };
+    setError(null);
+    setSavingDraft(true);
+    try {
+      const response = await fetch(
+        `/api/labeling/tasks/${encodeURIComponent(preparedTask.id)}/draft`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draft),
+        },
+      );
+      const result = (await response.json()) as { error?: string; savedAt?: string };
+      if (!response.ok || !result.savedAt) {
+        throw new Error(result.error ?? "The draft could not be saved");
+      }
+      setLabels(draft);
+      setLastSavedAt(result.savedAt);
+      setMessage(
+        `Draft saved directly to the NAS at ${new Date(result.savedAt).toLocaleTimeString()}.`,
+      );
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "The draft could not be saved");
+    } finally {
+      setSavingDraft(false);
+    }
   }
 
   function seek(seconds: number) {
@@ -296,7 +428,7 @@ export function LabelingEditor() {
     <main className={styles.page}>
       <header className={styles.header}>
         <Link href="/" className={styles.brand}>VOLLEYCUT <span>LABEL</span></Link>
-        <div className={styles.local}>Local files only · no upload</div>
+        <div className={styles.local}>Local workspace · no cloud upload</div>
       </header>
 
       <section className={styles.intro}>
@@ -313,16 +445,36 @@ export function LabelingEditor() {
       </section>
 
       <section className={styles.loaders}>
+        <label className={styles.preparedTask}>
+          <span>Prepared pilot task · recommended</span>
+          <select
+            value={selectedPreparedTask}
+            disabled={preparedTasksLoading || preparedTasks.length === 0}
+            onChange={(event) => void loadPreparedTask(event.target.value)}
+          >
+            <option value="">
+              {preparedTasksLoading ? "Loading pilot tasks…" : "Choose a task and video…"}
+            </option>
+            {preparedTasks.map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)}
+              </option>
+            ))}
+          </select>
+          <small>Loads both files directly from the prepared NAS workspace.</small>
+        </label>
         <label>
-          <span>1 · Label task or saved draft</span>
+          <span>Local fallback · task or saved draft</span>
           <input type="file" accept="application/json,.json" onChange={(event) => void loadTask(event.target.files?.[0])} />
         </label>
         <label>
-          <span>2 · Matching proxy video</span>
+          <span>Local fallback · matching proxy</span>
           <input type="file" accept="video/mp4,video/*" onChange={(event) => loadVideo(event.target.files?.[0])} />
         </label>
         <div className={styles.loaded}>
-          <span>Expected video</span>
+          <span>Original source</span>
+          <strong>{selectedPreparedSummary?.originalFilename ?? "Local task or draft"}</strong>
+          <span>Annotation proxy</span>
           <strong>{labels?.recording.videoFilename ?? "Load a task first"}</strong>
         </div>
       </section>
@@ -335,6 +487,7 @@ export function LabelingEditor() {
           <div className={styles.videoWrap}>
             {videoUrl ? (
               <video
+                key={videoUrl}
                 ref={videoRef}
                 src={videoUrl}
                 controls
@@ -520,14 +673,25 @@ export function LabelingEditor() {
           <div className={styles.exportPanel}>
             <div>
               <p className={styles.eyebrow}>SAVE OFTEN</p>
-              <h2>Download the JSON back to the task folder.</h2>
-              <p>Drafts can be reloaded here. Completed files are validated by the Python CLI before training.</p>
+              <h2>Save your progress directly.</h2>
+              <p>
+                Prepared-task drafts save directly to the NAS and resume from the selector.
+                Downloads remain available as backups. Completed files are validated before training.
+              </p>
+              {lastSavedAt && <p>Last direct save: {new Date(lastSavedAt).toLocaleString()}</p>}
             </div>
             <div className={styles.issueList}>
               {completionIssues.length > 0 ? completionIssues.map((issue) => <span key={issue}>• {issue}</span>) : <strong>Ready to export complete labels.</strong>}
             </div>
             <div className={styles.exportButtons}>
-              <button onClick={() => downloadLabels(labels, false)}>Download draft</button>
+              <button
+                className={styles.directSave}
+                disabled={savingDraft || !preparedTasks.some((task) => task.id === labels.recording.id)}
+                onClick={() => void saveDraftDirectly()}
+              >
+                {savingDraft ? "Saving…" : "Save draft to NAS"}
+              </button>
+              <button onClick={() => downloadLabels(labels, false)}>Download backup JSON</button>
               <button className={styles.complete} disabled={completionIssues.length > 0} onClick={() => downloadLabels(labels, true)}>Export completed labels</button>
             </div>
           </div>
