@@ -78,8 +78,10 @@ npm run analyze:dataset
 ## Review locally
 
 ```bash
-npm run dev
+npm run dev -- --hostname 0.0.0.0
 ```
+
+Open `http://<host-lan-ip>:3000` from another machine. The Next.js development allowlist automatically includes this host's active non-loopback IPv4 interfaces so dev chunks and HMR work over the LAN. If you use a custom DNS name or reverse proxy, add its hostname (without a scheme or port) to the optional comma-separated `VOLLEYCUT_DEV_ORIGINS` setting.
 
 The review screen provides:
 
