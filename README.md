@@ -75,6 +75,18 @@ To analyze every complete source listed in the external `manifests/sources.json`
 npm run analyze:dataset
 ```
 
+Evaluate generated intervals against a completed label manifest with:
+
+```bash
+npm run evaluate:labels -- \
+  --labels /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/pilot-gold-v1.json \
+  --parameter-search
+```
+
+The optional parameter search is diagnostic: it includes a leave-one-source-group-out result, but nine short segments are not enough evidence to change production thresholds without a larger held-out label pack.
+
+The first pilot evaluation and its prioritized improvement plan are documented in [`docs/research/analysis-vs-pilot-gold-2026-08-09.md`](docs/research/analysis-vs-pilot-gold-2026-08-09.md).
+
 ## Review locally
 
 ```bash
