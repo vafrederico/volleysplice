@@ -455,12 +455,17 @@ def infer_video(
     if names != model.feature_names:
         raise ModelError("inference extractor signature does not match the model")
     probabilities = model.predict(values)
+    decode_fps = (
+        1.0 / float(np.median(np.diff(sequence.times)))
+        if len(sequence.times) > 1
+        else 1.0
+    )
     intervals, smoothed = decode_probabilities(
         sequence.times,
         probabilities,
         sequence.metadata.duration,
         model.decoder,
-        model.feature_config.analysis_fps,
+        decode_fps,
     )
     serve_probabilities: np.ndarray | None = None
     serve_detections = []
@@ -476,7 +481,7 @@ def infer_video(
             probabilities,
             sequence.metadata.duration,
             composition.permissive_decoder,
-            model.feature_config.analysis_fps,
+            decode_fps,
         )
         serve_detections = decode_serve_probabilities(
             sequence.times,
@@ -490,7 +495,7 @@ def infer_video(
             serve_detections,
             sequence.metadata.duration,
             composition,
-            sample_seconds=1.0 / model.feature_config.analysis_fps,
+            sample_seconds=1.0 / decode_fps,
         )
         serve_decoder_payload = serve_decoder.to_dict()
         composition_payload = composition.to_dict()

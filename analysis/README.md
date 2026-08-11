@@ -177,7 +177,8 @@ rejected.
 
 This path is opt-in because its first real-data experiment improved short-rally coverage but did
 not improve strict held-out event recall. See the
-[serve-specialist experiment](../docs/research/serve-specialist-experiment-2026-08-11.md).
+[serve-specialist experiment](../docs/research/serve-specialist-experiment-2026-08-11.md) and the
+[audiovisual follow-up](../docs/research/serve-specialist-audiovisual-experiment-2026-08-11.md).
 
 ## What the current model does not do
 

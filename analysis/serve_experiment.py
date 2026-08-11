@@ -14,7 +14,13 @@ import numpy as np
 from .artifacts import atomic_write_text
 from .config import DecoderConfig, TrainingConfig
 from .decoder import DecodedInterval, decode_probabilities
-from .metrics import aggregate_evaluations, evaluate_intervals, ordered_interval_matches
+from .metrics import (
+    aggregate_evaluations,
+    aggregate_outcome_slices,
+    evaluate_intervals,
+    ordered_interval_matches,
+    outcome_slice_metrics,
+)
 from .model import (
     RALLY_LIVE_TASK,
     SERVE_CONTACT_TASK,
@@ -49,6 +55,11 @@ class PairedPrediction:
     composed: tuple[DecodedInterval, ...]
 
 
+def _effective_analysis_fps(prepared: PreparedRecording) -> float:
+    times = prepared.sequence.times
+    return 1.0 / float(np.median(np.diff(times))) if len(times) > 1 else 1.0
+
+
 def _validate_model_pair(
     rally_model: LogisticModel,
     serve_model: LogisticModel,
@@ -59,6 +70,8 @@ def _validate_model_pair(
         raise ModelError("the primary model must predict rally-live state")
     if serve_model.prediction_task != SERVE_CONTACT_TASK:
         raise ModelError("the specialist model must predict serve-contact")
+    if rally_model.feature_version != serve_model.feature_version:
+        raise ModelError("rally and serve models use different feature versions")
     if rally_model.feature_config != serve_model.feature_config:
         raise ModelError("rally and serve models require different feature configurations")
     if rally_model.feature_names != serve_model.feature_names:
@@ -95,7 +108,7 @@ def _prediction_inputs(
     live_probabilities = rally_model.predict(prepared.contextual_values)
     serve_probabilities = serve_model.predict(prepared.contextual_values)
     duration = prepared.sequence.metadata.duration
-    fps = rally_model.feature_config.analysis_fps
+    fps = _effective_analysis_fps(prepared)
     primary, _ = decode_probabilities(
         prepared.sequence.times,
         live_probabilities,
@@ -258,7 +271,7 @@ def _tune_composition(
             live,
             item.sequence.metadata.duration,
             rally_model.decoder,
-            rally_model.feature_config.analysis_fps,
+            _effective_analysis_fps(item),
         )
         cached.append((item, live, serve, tuple(primary)))
 
@@ -303,7 +316,7 @@ def _tune_composition(
                     live,
                     item.sequence.metadata.duration,
                     config,
-                    rally_model.feature_config.analysis_fps,
+                    _effective_analysis_fps(item),
                 )[0]
             )
             for item, live, _, _ in cached
@@ -334,7 +347,7 @@ def _tune_composition(
                             serve_cache[serve_config][index],
                             item.sequence.metadata.duration,
                             composition,
-                            sample_seconds=1.0 / rally_model.feature_config.analysis_fps,
+                            sample_seconds=1.0 / _effective_analysis_fps(item),
                         )
                         predictions.append(
                             PairedPrediction(
@@ -385,74 +398,25 @@ def _clip_ignored(
     return fragments
 
 
-def _outcome_rows(recording: Recording) -> list[tuple[Interval, set[str]]]:
-    raw_rallies = recording.raw.get("rallies", [])
-    if len(raw_rallies) != len(recording.rallies):
-        raise ManifestError(f"{recording.id}: raw and parsed rally counts differ")
-    rows: list[tuple[Interval, set[str]]] = []
-    for rally, raw in zip(recording.rallies, raw_rallies, strict=True):
-        tags = raw.get("tags", []) if isinstance(raw, dict) else []
-        rows.append((rally, {str(tag) for tag in tags if isinstance(tag, str)}))
-    return rows
-
-
 def _slice_truth(recording: Recording) -> dict[str, tuple[Interval, ...]]:
-    rows = _outcome_rows(recording)
+    rows = tuple((rally, set(rally.tags)) for rally in recording.rallies)
     return {
         "all": tuple(rally for rally, _ in rows),
         "shortAtMost3Seconds": tuple(
-            rally for rally, _ in rows if rally.end - rally.start <= SHORT_RALLY_SECONDS + 1e-9
+            rally for rally, _ in rows if rally.end - rally.start <= SHORT_RALLY_SECONDS
         ),
         "ace": tuple(rally for rally, tags in rows if "ace" in tags),
         "serviceFault": tuple(
-            rally
-            for rally, tags in rows
-            if "service-fault" in tags or "service-error" in tags
+            rally for rally, tags in rows if "service-fault" in tags
         ),
         "ordinaryLong": tuple(
             rally
             for rally, tags in rows
-            if rally.end - rally.start > SHORT_RALLY_SECONDS + 1e-9
+            if rally.end - rally.start > SHORT_RALLY_SECONDS
             and "ace" not in tags
             and "service-fault" not in tags
-            and "service-error" not in tags
         ),
     }
-
-
-def _slice_metrics(predictions: Sequence[PairedPrediction], field: str) -> dict[str, Any]:
-    totals: dict[str, dict[str, float]] = {}
-    for prediction in predictions:
-        scored = _clip_ignored(
-            getattr(prediction, field), prediction.prepared.recording.ignored_intervals
-        )
-        for name, truth in _slice_truth(prediction.prepared.recording).items():
-            bucket = totals.setdefault(
-                name,
-                {"rallies": 0.0, "strict": 0.0, "overlap": 0.0, "coverage95": 0.0, "coverage": 0.0},
-            )
-            bucket["rallies"] += len(truth)
-            bucket["strict"] += len(ordered_interval_matches(truth, scored, 0.5))
-            for rally in truth:
-                overlap = sum(
-                    max(0.0, min(rally.end, item.end) - max(rally.start, item.start))
-                    for item in scored
-                )
-                coverage = min(1.0, overlap / (rally.end - rally.start))
-                bucket["overlap"] += coverage > 0
-                bucket["coverage95"] += coverage >= 0.95 - 1e-9
-                bucket["coverage"] += coverage
-    result: dict[str, Any] = {}
-    for name, bucket in totals.items():
-        count = int(bucket["rallies"])
-        result[name] = {
-            "rallies": count,
-            "strictMatchRecall": bucket["strict"] / count if count else 1.0,
-            "anyOverlapRecall": bucket["overlap"] / count if count else 1.0,
-            "coverageAtLeast95Rate": bucket["coverage95"] / count if count else 1.0,
-            "meanCoverage": bucket["coverage"] / count if count else 1.0,
-        }
-    return result
 
 
 def _interval_report(predictions: Sequence[PairedPrediction], field: str) -> dict[str, Any]:
@@ -461,10 +425,13 @@ def _interval_report(predictions: Sequence[PairedPrediction], field: str) -> dic
         item = prediction.prepared
         scored = _clip_ignored(getattr(prediction, field), item.recording.ignored_intervals)
         metrics = evaluate_intervals(item.recording.rallies, scored)
+        metrics["outcomeSlices"] = outcome_slice_metrics(item.recording.rallies, scored)
         metrics.update({"id": item.recording.id, "environment": item.recording.environment})
         per_recording.append(metrics)
     aggregate = aggregate_evaluations(per_recording)
-    aggregate["outcomeSlices"] = _slice_metrics(predictions, field)
+    aggregate["outcomeSlices"] = aggregate_outcome_slices(
+        [item["outcomeSlices"] for item in per_recording]
+    )
     return {"aggregate": aggregate, "recordings": per_recording}
 
 
@@ -552,11 +519,16 @@ def _delta(composed: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]
         "deadSecondsRetained",
     )
     result = {key: composed[key] - baseline[key] for key in keys}
-    result["outcomeStrictRecall"] = {
-        name: composed["outcomeSlices"][name]["strictMatchRecall"]
-        - baseline["outcomeSlices"][name]["strictMatchRecall"]
-        for name in composed["outcomeSlices"]
-    }
+    result["outcomeStrictRecall"] = {}
+    for name, composed_slice in composed["outcomeSlices"].items():
+        baseline_slice = baseline["outcomeSlices"].get(name, {})
+        composed_recall = composed_slice.get("strictMatchRecall")
+        baseline_recall = baseline_slice.get("strictMatchRecall")
+        result["outcomeStrictRecall"][name] = (
+            composed_recall - baseline_recall
+            if composed_recall is not None and baseline_recall is not None
+            else None
+        )
     return result
 
 
@@ -692,6 +664,7 @@ def train_serve_dataset(
         training_config or TrainingConfig(),
         prediction_task=SERVE_CONTACT_TASK,
     )
+    serve_model.feature_version = rally_model.feature_version
     serve_model.training_summary.update(
         {
             "dataset": manifest.name,

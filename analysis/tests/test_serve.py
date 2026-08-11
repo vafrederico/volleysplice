@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from analysis.config import DecoderConfig, FeatureConfig
+from analysis.config import FEATURE_VERSION, DecoderConfig, FeatureConfig
 from analysis.decoder import DecodedInterval
 from analysis.features import FeatureSequence, VideoMetadata
 from analysis.model import (
@@ -32,8 +32,12 @@ from analysis.pipeline import PreparedRecording, evaluate_dataset, infer_video
 from analysis.schema import Interval, ManifestError, Recording
 from analysis.serve_experiment import (
     PairedPrediction,
+    _delta,
+    _effective_analysis_fps,
+    _prediction_inputs,
     _selection_score,
     _serve_metrics,
+    _slice_truth,
     _validate_serve_validation_targets,
     _validate_model_pair,
 )
@@ -74,6 +78,39 @@ class ServeTargetTests(unittest.TestCase):
         _validate_serve_validation_targets(
             [np.asarray([0.0, 1.0], dtype=np.float32)]
         )
+
+    def test_effective_analysis_fps_uses_actual_sample_cadence(self) -> None:
+        times = np.asarray([0.0, 1.0 / 3.75, 2.0 / 3.75], dtype=np.float64)
+        sequence = FeatureSequence(
+            times=times,
+            values=np.zeros((len(times), 1), dtype=np.float32),
+            names=("motion",),
+            metadata=VideoMetadata(1.0, 1280, 720, 30.0, 30, False),
+        )
+        prepared = PreparedRecording(
+            recording=Recording(
+                id="cadence",
+                video=Path("cadence.mp4"),
+                split="validation",
+                source_group="cadence-source",
+                environment="indoor",
+                game={},
+                rallies=(),
+                ignored_intervals=(),
+                roi=None,
+                capture={},
+                consent={"analyze": True, "train": True},
+                content_sha256=None,
+                raw={"rallies": []},
+            ),
+            sequence=sequence,
+            contextual_values=sequence.values,
+            contextual_names=sequence.names,
+            labels=np.zeros(len(times), dtype=np.float32),
+            sample_mask=np.ones(len(times), dtype=np.bool_),
+        )
+
+        self.assertAlmostEqual(_effective_analysis_fps(prepared), 3.75)
 
 
 class ServeDecoderTests(unittest.TestCase):
@@ -235,10 +272,70 @@ class ServeCompositionTests(unittest.TestCase):
         )
         self.assertGreater(clean_key, early_key)
 
+    def test_zero_count_outcome_delta_is_null(self) -> None:
+        fields = (
+            "eventPrecision",
+            "eventRecall",
+            "eventF1",
+            "timeIoU",
+            "liveTimeRecall",
+            "liveTimePrecision",
+            "missedLiveSeconds",
+            "deadSecondsRetained",
+        )
+        baseline = {field: 0.0 for field in fields}
+        composed = {field: 0.1 for field in fields}
+        baseline["outcomeSlices"] = {
+            "all": {"rallies": 1, "strictMatchRecall": 0.0},
+            "ace": {"rallies": 0},
+        }
+        composed["outcomeSlices"] = {
+            "all": {"rallies": 1, "strictMatchRecall": 1.0},
+            "ace": {"rallies": 0},
+        }
+
+        result = _delta(composed, baseline)
+
+        self.assertEqual(result["outcomeStrictRecall"]["all"], 1.0)
+        self.assertIsNone(result["outcomeStrictRecall"]["ace"])
+
+    def test_serve_slices_use_canonical_interval_tags(self) -> None:
+        recording = Recording(
+            id="slice-tags",
+            video=Path("slice-tags.mp4"),
+            split="validation",
+            source_group="slice-tags-source",
+            environment="indoor",
+            game={},
+            rallies=(
+                Interval(0.0, 4.0, ("service-error",)),
+                Interval(10.0, 11.0, ("service-fault",)),
+            ),
+            ignored_intervals=(),
+            roi=None,
+            capture={},
+            consent={"analyze": True, "train": True},
+            content_sha256=None,
+            raw={"rallies": []},
+        )
+
+        slices = _slice_truth(recording)
+
+        self.assertEqual(len(slices["serviceFault"]), 1)
+        self.assertEqual(len(slices["ordinaryLong"]), 1)
+        self.assertEqual(slices["serviceFault"][0].tags, ("service-fault",))
+        self.assertEqual(slices["ordinaryLong"][0].tags, ("service-error",))
+
 
 class ServeArtifactTests(unittest.TestCase):
     @staticmethod
-    def model(task: str, *, artifact: str, rally_artifact: str | None = None) -> LogisticModel:
+    def model(
+        task: str,
+        *,
+        artifact: str,
+        rally_artifact: str | None = None,
+        feature_version: str = FEATURE_VERSION,
+    ) -> LogisticModel:
         training = {
             "manifestSha256": "manifest",
             "serveDecoder": ServeDecoderConfig().to_dict(),
@@ -263,6 +360,7 @@ class ServeArtifactTests(unittest.TestCase):
             decoder=DecoderConfig(),
             training_summary=training,
             artifact_sha256=artifact,
+            feature_version=feature_version,
             prediction_task=task,
         )
 
@@ -299,6 +397,124 @@ class ServeArtifactTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ModelError, "different rally model"):
             _validate_model_pair(rally, serve)
+
+    def test_pair_rejects_different_feature_versions(self) -> None:
+        rally = self.model(RALLY_LIVE_TASK, artifact="rally")
+        serve = self.model(
+            SERVE_CONTACT_TASK,
+            artifact="serve",
+            rally_artifact="rally",
+            feature_version="court-motion-quality-v1",
+        )
+
+        with self.assertRaisesRegex(ModelError, "different feature versions"):
+            _validate_model_pair(rally, serve)
+
+    def test_paired_primary_decode_uses_effective_sample_cadence(self) -> None:
+        rally = self.model(RALLY_LIVE_TASK, artifact="rally")
+        rally.decoder = DecoderConfig(
+            min_live_seconds=3.0,
+            bridge_gap_seconds=0.0,
+            short_event_min_seconds=3.0,
+            short_event_threshold=1.0,
+        )
+        serve = self.model(
+            SERVE_CONTACT_TASK, artifact="serve", rally_artifact="rally"
+        )
+        times = np.arange(12, dtype=np.float64) * (7.0 / 30.0)
+        sequence = FeatureSequence(
+            times=times,
+            values=np.ones((len(times), 1), dtype=np.float32),
+            names=("motion",),
+            metadata=VideoMetadata(3.0, 1280, 720, 30.0, 90, False),
+        )
+        prepared = PreparedRecording(
+            recording=Recording(
+                id="cadence-primary",
+                video=Path("cadence-primary.mp4"),
+                split="test",
+                source_group="cadence-primary-source",
+                environment="indoor",
+                game={},
+                rallies=(),
+                ignored_intervals=(),
+                roi=None,
+                capture={},
+                consent={"analyze": True, "train": True},
+                content_sha256=None,
+                raw={"rallies": []},
+            ),
+            sequence=sequence,
+            contextual_values=sequence.values,
+            contextual_names=sequence.names,
+            labels=np.zeros(len(times), dtype=np.float32),
+            sample_mask=np.ones(len(times), dtype=np.bool_),
+        )
+
+        prediction = _prediction_inputs(
+            prepared,
+            rally,
+            serve,
+            ServeDecoderConfig(threshold=0.9),
+            ServeCompositionConfig(
+                1.0,
+                0.0,
+                5.0,
+                DecoderConfig(min_live_seconds=0.5, bridge_gap_seconds=0.0),
+            ),
+        )
+
+        self.assertEqual(prediction.primary, ())
+
+    def test_noop_specialist_preserves_primary_inference_intervals(self) -> None:
+        rally = self.model(RALLY_LIVE_TASK, artifact="rally")
+        rally.decoder = DecoderConfig(
+            min_live_seconds=3.0,
+            bridge_gap_seconds=0.0,
+            short_event_min_seconds=3.0,
+            short_event_threshold=1.0,
+        )
+        serve = self.model(
+            SERVE_CONTACT_TASK, artifact="serve", rally_artifact="rally"
+        )
+        rally.feature_names = ("t+0s/motion",)
+        serve.feature_names = ("t+0s/motion",)
+        serve.weights[:] = 0.0
+        serve.bias = -10.0
+        times = np.arange(12, dtype=np.float64) * (7.0 / 30.0)
+        sequence = FeatureSequence(
+            times=times,
+            values=np.ones((len(times), 1), dtype=np.float32),
+            names=("motion",),
+            metadata=VideoMetadata(3.0, 1280, 720, 30.0, 90, False),
+        )
+
+        def write_preview_stub(
+            _video: Path,
+            destination: Path,
+            _roi: tuple[float, float, float, float] | None,
+        ) -> None:
+            Path(destination).write_bytes(b"preview")
+
+        with tempfile.TemporaryDirectory(prefix="volleycut-serve-noop-") as directory:
+            root = Path(directory)
+            with (
+                patch("analysis.pipeline.load_model", side_effect=[rally, rally, serve]),
+                patch("analysis.pipeline.extract_features", return_value=sequence),
+                patch("analysis.pipeline.write_preview", side_effect=write_preview_stub),
+            ):
+                primary = infer_video(
+                    root / "input.mp4", root / "rally", root / "primary"
+                )
+                paired = infer_video(
+                    root / "input.mp4",
+                    root / "rally",
+                    root / "paired",
+                    serve_model_path=root / "serve",
+                )
+
+        self.assertEqual(primary["rallies"], paired["rallies"])
+        self.assertEqual(primary["rallies"], [])
 
     def test_inference_rejects_role_mismatch_before_feature_extraction(self) -> None:
         with tempfile.TemporaryDirectory(prefix="volleycut-serve-infer-role-") as directory:

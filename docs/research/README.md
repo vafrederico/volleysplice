@@ -14,6 +14,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Full-video inference and crop-padding sensitivity — 2026-08-11](./model-inference-and-crop-padding-2026-08-11.md) — 27 model/video inference artifacts, cross-model comparison, and the measured 0–3 second export-padding tradeoff.
 - [Audiovisual feature feasibility, ablation, pruning, and final regression — 2026-08-11](./audiovisual-feature-ablation-2026-08-11.md) — implemented audio/motion/quality proxies, nested source-group evaluation, family ablation, 90-signal importance, targeted pruning, short-outcome analysis, and final padding sensitivity.
 - [Serve-specialist composition experiment — 2026-08-11](./serve-specialist-experiment-2026-08-11.md) — separate serve-contact head, validation-selected paired decoding, short/ace/fault recall, and the non-promotion decision.
+- [Audiovisual serve-specialist experiment — 2026-08-11](./serve-specialist-audiovisual-experiment-2026-08-11.md) — 450-input contact head, corrected cadence-parity evaluation, strict short/ace recall gains, precision cost, and the non-promotion decision.
 
 ## Related context
 

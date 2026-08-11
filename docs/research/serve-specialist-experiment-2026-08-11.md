@@ -143,6 +143,9 @@ Do not enable the composition by default. Keep the serve model and optional pair
 a reproducible diagnostic. The contact head is strong enough to justify a second iteration, but
 that iteration needs a better end decision rather than a more aggressive fixed crop.
 
+The [audiovisual follow-up](./serve-specialist-audiovisual-experiment-2026-08-11.md) completes the
+next feature iteration. It recovers strict short events but still fails the precision/F1 guardrail.
+
 Recommended next steps:
 
 1. compare against a rally-only permissive rescue and equal-footage padding before attributing a
