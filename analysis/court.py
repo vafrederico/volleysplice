@@ -7,6 +7,9 @@ import cv2
 import numpy as np
 
 
+FALLBACK_ROI = (0.06, 0.2, 0.88, 0.75)
+
+
 @dataclass(frozen=True)
 class CourtEstimate:
     confidence: float
@@ -79,9 +82,8 @@ def estimate_court(frame: np.ndarray) -> CourtEstimate:
 
     candidates.sort(reverse=True, key=lambda item: item[0])
     selected = [line for _, line in candidates[:14]]
-    fallback = (0.06, 0.2, 0.88, 0.75)
     if len(selected) < 3:
-        return CourtEstimate(0.18, "fallback-region", fallback, tuple())
+        return CourtEstimate(0.18, "fallback-region", FALLBACK_ROI, tuple())
 
     points = np.array([(x, y) for line in selected for x, y in ((line[0], line[1]), (line[2], line[3]))])
     x_min, y_min = points.min(axis=0)
@@ -89,7 +91,7 @@ def estimate_court(frame: np.ndarray) -> CourtEstimate:
     coverage_x = (x_max - x_min) / width
     coverage_y = (y_max - y_min) / height
     if coverage_x < 0.42 or coverage_y < 0.18:
-        return CourtEstimate(0.24, "fallback-region", fallback, tuple())
+        return CourtEstimate(0.24, "fallback-region", FALLBACK_ROI, tuple())
 
     margin_x = width * 0.04
     margin_y = height * 0.06
@@ -102,7 +104,10 @@ def estimate_court(frame: np.ndarray) -> CourtEstimate:
         (x1 / width, y1 / height, x2 / width, y2 / height)
         for x1, y1, x2, y2 in selected
     )
-    return CourtEstimate(confidence, "detected-lines", (left, top, right - left, bottom - top), normalized_lines)
+    roi = (left, top, right - left, bottom - top)
+    if top > 0.55 or roi[3] < 0.42:
+        return CourtEstimate(0.24, "fallback-region", FALLBACK_ROI, normalized_lines)
+    return CourtEstimate(confidence, "detected-lines", roi, normalized_lines)
 
 
 def save_preview(frame: np.ndarray, estimate: CourtEstimate, destination: Path) -> None:

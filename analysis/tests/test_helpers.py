@@ -33,6 +33,15 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(estimate.source, "detected-lines")
         self.assertGreaterEqual(len(estimate.lines), 3)
 
+    def test_bottom_only_lines_use_the_broad_fallback_region(self):
+        frame = np.full((360, 640, 3), 40, dtype=np.uint8)
+        for y in (260, 300, 340):
+            cv2.line(frame, (20, y), (620, y), (245, 245, 245), 5)
+        estimate = estimate_court(frame)
+        self.assertEqual(estimate.source, "fallback-region")
+        self.assertLessEqual(estimate.roi[1], 0.2)
+        self.assertGreaterEqual(estimate.roi[3], 0.75)
+
     def test_proxy_backend_defaults_to_software_and_honors_configuration(self):
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(proxy_backend(), "software")

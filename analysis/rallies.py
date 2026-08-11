@@ -9,10 +9,20 @@ import numpy as np
 class DetectionSettings:
     high_threshold: float = 0.46
     low_threshold: float = 0.25
-    max_gap_seconds: float = 2.5
+    max_gap_seconds: float = 0.75
     min_rally_seconds: float = 3.0
     onset_lead_seconds: float = 0.75
-    ending_tail_seconds: float = 1.0
+    ending_tail_seconds: float = 0.0
+
+    def as_dict(self) -> dict[str, float]:
+        return {
+            "highThreshold": self.high_threshold,
+            "lowThreshold": self.low_threshold,
+            "maxGapSeconds": self.max_gap_seconds,
+            "minRallySeconds": self.min_rally_seconds,
+            "onsetLeadSeconds": self.onset_lead_seconds,
+            "endingTailSeconds": self.ending_tail_seconds,
+        }
 
 
 def detect_rallies(

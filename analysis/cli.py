@@ -12,7 +12,7 @@ from pathlib import Path
 from . import METHOD, SCHEMA_VERSION
 from .court import estimate_court, representative_frame, save_preview
 from .ffmpeg import MediaToolError, create_proxy, probe, require_media_tools
-from .rallies import detect_rallies
+from .rallies import DetectionSettings, detect_rallies
 from .signals import audio_signal, combine_signals, motion_signal
 
 
@@ -82,7 +82,13 @@ def analyze(args: argparse.Namespace) -> Path:
         signals = combine_signals(motion_times, motion, audio_times, audio)
 
         print("[5/5] Suggesting conservative rally intervals")
-        rallies = detect_rallies(signals, proxy_info["duration"], camera_stability)
+        detection_settings = DetectionSettings()
+        rallies = detect_rallies(
+            signals,
+            proxy_info["duration"],
+            camera_stability,
+            detection_settings,
+        )
         warnings: list[str] = [
             "Heuristic suggestions require human review and are not trained volleyball classifications."
         ]
@@ -113,6 +119,7 @@ def analyze(args: argparse.Namespace) -> Path:
                 "method": METHOD,
                 "proxyBackend": proxy_backend,
                 "analysisFps": args.analysis_fps,
+                "rallyDetector": detection_settings.as_dict(),
                 "cameraStability": round(camera_stability, 3),
                 "warnings": warnings,
                 "court": court.as_dict(),
