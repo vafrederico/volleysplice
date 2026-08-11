@@ -376,6 +376,7 @@ def infer_video(
         "assets": {"courtPreviewPath": "court-preview.jpg"},
         "analysis": {
             "method": "court-motion-temporal-logistic-v0",
+            "modelVersion": Path(model_path).expanduser().resolve().name,
             "producer": f"volleycut-analysis/{__version__}",
             "analysisFps": model.feature_config.analysis_fps,
             "featureConfig": model.feature_config.to_dict(),

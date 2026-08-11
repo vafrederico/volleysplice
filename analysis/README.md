@@ -88,6 +88,28 @@ Validate before extracting hours of video:
   --output data/reports/rally-v0-test.json
 ```
 
+To infer every recording in an immutable manifest with one saved model, use the repository
+batch wrapper. It writes `model-<version>--<recording-id>` analysis directories, safely skips
+completed runs, and refuses incomplete or ambiguous destinations:
+
+```bash
+npm run infer:model-dataset -- \
+  --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-percentile-v1
+```
+
+After the batch is complete, measure how symmetric export padding changes coverage and
+footage cost without changing the model's core predictions:
+
+```bash
+npm run evaluate:model-padding -- \
+  --model-version full-percentile-v1 \
+  --padding-seconds 0 1 2 3 \
+  --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-model-padding-v1.json
+```
+
+The report merges overlapping padded crops and reports each split separately so training,
+validation/tuning, and held-out evaluation results are not conflated.
+
 New training runs default to tied within-recording percentile normalization. Use `--sequence-normalization none` only for an explicit raw-feature ablation. The normalization mode is stored in the model artifact, and older saved models without that field retain their original raw-feature behavior.
 
 Feature caches are keyed by source-content SHA-256, ROI, extractor version, and configuration. Model artifacts contain human-readable metadata plus NumPy weights and never use pickle. Existing model, analysis, normalization, and evaluation artifacts are not overwritten.

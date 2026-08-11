@@ -1,9 +1,9 @@
 # Local analysis output
 
-The feasibility pipeline writes one immutable analysis directory per run under `data/analyses/<analysis-id>/`. Generated directories are local artifacts and are intentionally ignored by Git.
+The feasibility pipeline writes one immutable analysis directory per run under `$VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/`. When the variable is unset it falls back to `data/analyses/`. Generated directories are external or ignored artifacts and are never tracked by Git.
 
 ```text
-data/analyses/<analysis-id>/
+$VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/
   analysis.json
   court-preview.jpg
   proxy.mp4                 # optional; normalization may be managed separately
@@ -29,8 +29,16 @@ data/analyses/<analysis-id>/
   },
   "assets": { "courtPreviewPath": "court-preview.jpg" },
   "analysis": {
-    "method": "court-motion-temporal-logistic-v0",
+    "method": "court-motion-audio-heuristic-v2",
     "analysisFps": 4,
+    "rallyDetector": {
+      "highThreshold": 0.46,
+      "lowThreshold": 0.25,
+      "maxGapSeconds": 0.75,
+      "minRallySeconds": 3.0,
+      "onsetLeadSeconds": 0.75,
+      "endingTailSeconds": 0.0
+    },
     "warnings": [],
     "court": {
       "confidence": 0.72,
@@ -52,6 +60,11 @@ data/analyses/<analysis-id>/
   "signals": [{ "time": 0, "motion": 0.1, "liveProbability": 0.08 }]
 }
 ```
+
+Trained-model inference uses the same top-level rally and signal contract with
+`analysis.method: "court-motion-temporal-logistic-v0"`, `analysis.modelSha256`, and
+`signals[].liveProbability`. The review catalog accepts either analyzer family and groups
+immutable runs by recording and version.
 
 The detector owns only the objective core interval from estimated serve contact through estimated end of live play. User-selected pre-roll and post-roll remain edit-list settings and never modify these timestamps.
 

@@ -2,14 +2,24 @@
   "name": "volleycut",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "analysis:setup": "python3 -m venv .venv && .venv/bin/python -m pip install -r analysis/requirements.txt",
-    "analyze": ".venv/bin/python -m analysis",
-    "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v"
+    "fixture:analysis": "bash scripts/create-analysis-fixture.sh",
+    "dataset:status": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; python3 scripts/dataset-status.py",
+    "analyze-no-model": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; .venv/bin/python -m analysis.heuristic_cli",
+    "analyze-no-model:dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; .venv/bin/python scripts/analyze-no-model-dataset.py",
+    "reanalyze-no-model:dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/reanalyze-no-model-dataset.py",
+    "infer:model-dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-model-dataset.py",
+    "evaluate:model-padding": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-model-padding.py",
+    "evaluate:labels": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-labels.py",
+    "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v",
+    "test:web": "node --experimental-strip-types --test tests/web/*.test.mts",
+    "test": "npm run test:web && npm run test:analysis"
   },
   "dependencies": {
     "next": "16.3.0",

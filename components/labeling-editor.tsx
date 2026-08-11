@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
 import {
   downloadLabels,
   formatPreciseTime,
@@ -973,46 +974,64 @@ export function LabelingEditor() {
           </div>
 
           {labels && (
-            <div className={styles.timeline} aria-label="Label timeline">
-              {labels.rallies.map((row, index) => (
-                <button
-                  key={`rally-${index}`}
-                  className={`${styles.rallyBar} ${selectedRallyIndex === index ? styles.selectedRallyBar : ""}`}
-                  style={{ left: `${(row.start / labels.recording.durationSeconds) * 100}%`, width: `${((row.end - row.start) / labels.recording.durationSeconds) * 100}%` }}
-                  onClick={() => seekTo(row.start)}
-                  title={`Rally ${index + 1}`}
-                />
-              ))}
-              {labels.ignoredIntervals.map((row, index) => (
-                <button
-                  key={`ignored-${index}`}
-                  className={styles.ignoredBar}
-                  style={{ left: `${(row.start / labels.recording.durationSeconds) * 100}%`, width: `${((row.end - row.start) / labels.recording.durationSeconds) * 100}%` }}
-                  onClick={() => seekTo(row.start)}
-                  title={`Ignored ${index + 1}`}
-                />
-              ))}
-              {labels.sideSwitches.map((marker, index) => (
-                <button
-                  key={`side-switch-${index}`}
-                  className={styles.sideSwitchPoint}
-                  style={{ left: `${(marker.time / labels.recording.durationSeconds) * 100}%` }}
-                  onClick={() => seekTo(marker.time)}
-                  title={`Side switch ${index + 1}${marker.notes ? ` · ${marker.notes}` : ""}`}
-                  aria-label={`Seek to side switch ${index + 1}`}
-                />
-              ))}
-              <div
-                className={styles.playhead}
-                style={{
-                  left: `${Math.min(
-                    100,
-                    Math.max(0, (currentTime / labels.recording.durationSeconds) * 100),
-                  )}%`,
-                }}
-                aria-hidden="true"
-              />
-            </div>
+            <RallyTimeline
+              duration={labels.recording.durationSeconds}
+              currentTime={currentTime}
+              tracks={[
+                {
+                  id: "rallies",
+                  label: "Rallies",
+                  detail: `${labels.rallies.length} labeled`,
+                  active: true,
+                  intervals: labels.rallies.map((row, index) => ({
+                    id: `rally-${index}`,
+                    start: row.start,
+                    end: row.end,
+                    title: `Rally ${index + 1}`,
+                    tone: "gold" as const,
+                  })),
+                },
+                ...(labels.ignoredIntervals.length
+                  ? [{
+                      id: "ignored",
+                      label: "Ignored",
+                      detail: `${labels.ignoredIntervals.length} spans`,
+                      intervals: labels.ignoredIntervals.map((row, index) => ({
+                        id: `ignored-${index}`,
+                        start: row.start,
+                        end: row.end,
+                        title: `Ignored ${index + 1}`,
+                        tone: "ignored" as const,
+                      })),
+                    } satisfies TimelineTrack]
+                  : []),
+                ...(labels.hardNegatives.length
+                  ? [{
+                      id: "hard-negatives",
+                      label: "Hard negatives",
+                      detail: `${labels.hardNegatives.length} spans`,
+                      intervals: labels.hardNegatives.map((row, index) => ({
+                        id: `negative-${index}`,
+                        start: row.start,
+                        end: row.end,
+                        title: `Hard negative ${index + 1}`,
+                        tone: "negative" as const,
+                      })),
+                    } satisfies TimelineTrack]
+                  : []),
+              ]}
+              markers={labels.sideSwitches.map((marker, index) => ({
+                id: `side-switch-${index}`,
+                time: marker.time,
+                title: `Side switch ${index + 1}${marker.notes ? ` · ${marker.notes}` : ""}`,
+              }))}
+              selectedTrackId="rallies"
+              selectedIntervalId={
+                selectedRallyIndex >= 0 ? `rally-${selectedRallyIndex}` : undefined
+              }
+              onSeek={(time) => seekTo(time)}
+              ariaLabel="Label timeline"
+            />
           )}
         </div>
 

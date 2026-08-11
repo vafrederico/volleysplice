@@ -1,0 +1,138 @@
+.timeline {
+  --timeline-label-width: 158px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ticks {
+  display: grid;
+  grid-template-columns: var(--timeline-label-width) 1fr;
+  align-items: end;
+}
+
+.tickRail {
+  display: flex;
+  justify-content: space-between;
+  color: #8b8d84;
+  font: 9px "DM Mono", monospace;
+}
+
+.track {
+  display: grid;
+  grid-template-columns: var(--timeline-label-width) minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 42px;
+}
+
+.trackLabel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 12px 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+button.trackLabel {
+  cursor: pointer;
+}
+
+.trackLabel strong {
+  overflow: hidden;
+  font: 500 10px "DM Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackLabel small {
+  overflow: hidden;
+  color: #77796f;
+  font: 9px "DM Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-top: 1px solid #b9b8b0;
+  border-bottom: 1px solid #b9b8b0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #e2e0d7 0,
+      #e2e0d7 1px,
+      transparent 1px,
+      transparent 10%
+    ),
+    #f8f7f2;
+}
+
+.trackActive .rail {
+  box-shadow: inset 0 0 0 2px #161813;
+}
+
+.interval {
+  position: absolute;
+  top: 7px;
+  height: 26px;
+  min-width: 3px;
+  border: 0;
+  background: #2b676d;
+  cursor: pointer;
+}
+
+.interval[data-tone="model"] { background: #275fc2; }
+.interval[data-tone="heuristic"] { background: #27746f; }
+.interval[data-tone="sol"] { background: #9a5bd4; }
+.interval[data-tone="gold"] { background: #161813; }
+.interval[data-tone="ignored"] { background: #ff5c35; }
+.interval[data-tone="negative"] { background: #b5b2a8; }
+.interval[data-uncertain="true"] { opacity: .58; }
+.interval[data-selected="true"] {
+  z-index: 3;
+  outline: 3px solid #dfff35;
+  outline-offset: 1px;
+}
+
+.marker {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  padding: 0;
+  border: 0;
+  background: #ff5c35;
+  cursor: pointer;
+}
+
+.playhead {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #d81717;
+  pointer-events: none;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #8b8d84;
+  font: 9px "DM Mono", monospace;
+}
+
+@media (max-width: 720px) {
+  .timeline { --timeline-label-width: 104px; }
+  .trackLabel small { display: none; }
+}

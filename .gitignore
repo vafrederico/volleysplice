@@ -23,5 +23,7 @@ __pycache__/
 
 # Logs and editor files
 *.log
+__pycache__/
+*.py[cod]
 .DS_Store
 *.tsbuildinfo
