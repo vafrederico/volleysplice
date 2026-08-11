@@ -27,7 +27,8 @@ from .version import __version__
 MODEL_SCHEMA_VERSION = 1
 RALLY_LIVE_TASK = "rally-live"
 SERVE_CONTACT_TASK = "serve-contact"
-PREDICTION_TASKS = {RALLY_LIVE_TASK, SERVE_CONTACT_TASK}
+STACKED_RALLY_TASK = "rally-live-stacked-serve"
+PREDICTION_TASKS = {RALLY_LIVE_TASK, SERVE_CONTACT_TASK, STACKED_RALLY_TASK}
 
 
 class ModelError(RuntimeError):

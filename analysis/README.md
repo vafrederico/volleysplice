@@ -180,6 +180,34 @@ not improve strict held-out event recall. See the
 [serve-specialist experiment](../docs/research/serve-specialist-experiment-2026-08-11.md) and the
 [audiovisual follow-up](../docs/research/serve-specialist-audiovisual-experiment-2026-08-11.md).
 
+The research-only stacking path appends the frozen specialist's continuous score to the rally
+inputs. Training rows use leave-one-`sourceGroup`-out specialist scores; validation and evaluation
+use the exact frozen specialist bound into the artifact. It also trains a matched base-feature
+control and reports frozen-decoder, validation-selected, and score-clamped variants:
+
+```bash
+.venv/bin/python -m analysis train-rally-with-serve \
+  --manifest data/videos/manifest.json \
+  --baseline-rally-model data/models/rally-v0 \
+  --serve-model data/models/serve-v0 \
+  --control-model data/models/rally-stack-control-v0 \
+  --model data/models/rally-stack-v0 \
+  --output data/reports/rally-stack-v0-validation.json
+
+.venv/bin/python -m analysis evaluate-rally-with-serve \
+  --manifest data/videos/manifest.json \
+  --baseline-rally-model data/models/rally-v0 \
+  --serve-model data/models/serve-v0 \
+  --control-model data/models/rally-stack-control-v0 \
+  --model data/models/rally-stack-v0 \
+  --split test \
+  --output data/reports/rally-stack-v0-test.json
+```
+
+The first real-data stack did not improve the retrospective test and is not wired into ordinary
+inference. See the
+[stacking experiment](../docs/research/rally-with-serve-feature-experiment-2026-08-11.md).
+
 ## What the current model does not do
 
 - It does not detect whether the whole court is visible; capture geometry must be confirmed by a person.

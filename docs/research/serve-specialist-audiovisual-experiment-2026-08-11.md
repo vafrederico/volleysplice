@@ -53,9 +53,6 @@ uses the canonical cadence and outcome-slice implementation; a regression test n
 Audiovisual validation contact precision/recall/F1 is 0.680/0.895/0.773. Test is
 0.681/0.821/0.744, versus 0.635/0.846/0.725 for visual-only v2. The new head is more selective and
 much stronger on validation short/fault contacts, but the one-source test comparison is mixed.
-Compared with visual v2's composed test output, v4 has more strict matches overall (31 versus 28)
-and for short rallies (2 versus 1), but the same 9/10 short overlap and worse 95% short coverage
-(5/10 versus 8/10). The upgrade is not uniformly better.
 
 Two of the serve head's 15 largest absolute coefficients are audio channels:
 `t+1s/audio_seconds_since_transient` and `t+1s/audio_onset_cadence`. Advanced visual motion spread,

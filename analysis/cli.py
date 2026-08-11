@@ -123,6 +123,22 @@ def build_parser() -> argparse.ArgumentParser:
     train_serve.add_argument("--learning-rate", type=float, default=0.02)
     train_serve.add_argument("--seed", type=int, default=7)
 
+    train_stacked = subparsers.add_parser(
+        "train-rally-with-serve",
+        help="train a rally head with cross-fitted serve probability as an added feature",
+    )
+    train_stacked.add_argument("--manifest", required=True, type=Path)
+    train_stacked.add_argument("--baseline-rally-model", required=True, type=Path)
+    train_stacked.add_argument("--serve-model", required=True, type=Path)
+    train_stacked.add_argument("--control-model", required=True, type=Path)
+    train_stacked.add_argument("--model", required=True, type=Path)
+    train_stacked.add_argument("--cache-dir", type=Path, default=_default_cache())
+    train_stacked.add_argument("--output", type=Path)
+    train_stacked.add_argument("--epochs", type=int, default=180)
+    train_stacked.add_argument("--batch-size", type=int, default=2048)
+    train_stacked.add_argument("--learning-rate", type=float, default=0.02)
+    train_stacked.add_argument("--seed", type=int, default=7)
+
     infer = subparsers.add_parser("infer", help="detect rallies in one continuous video")
     infer.add_argument("--model", required=True, type=Path)
     infer.add_argument(
@@ -153,6 +169,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--split", choices=("validation", "test", "challenge"), default="test"
     )
     evaluate_serve.add_argument("--output", type=Path)
+
+    evaluate_stacked = subparsers.add_parser(
+        "evaluate-rally-with-serve",
+        help="evaluate a rally head that consumes a frozen serve probability feature",
+    )
+    evaluate_stacked.add_argument("--manifest", required=True, type=Path)
+    evaluate_stacked.add_argument("--baseline-rally-model", required=True, type=Path)
+    evaluate_stacked.add_argument("--serve-model", required=True, type=Path)
+    evaluate_stacked.add_argument("--control-model", required=True, type=Path)
+    evaluate_stacked.add_argument("--model", required=True, type=Path)
+    evaluate_stacked.add_argument("--cache-dir", type=Path, default=_default_cache())
+    evaluate_stacked.add_argument(
+        "--split", choices=("validation", "test", "challenge"), default="test"
+    )
+    evaluate_stacked.add_argument("--output", type=Path)
 
     initialize = subparsers.add_parser("init-manifest", help="write an annotation manifest template")
     initialize.add_argument("--output", required=True, type=Path)
@@ -423,6 +454,37 @@ def run(argv: Sequence[str] | None = None) -> int:
                 }
             )
             return 0
+        if arguments.command == "train-rally-with-serve":
+            from .stacked_serve_experiment import train_stacked_rally_dataset
+
+            result = train_stacked_rally_dataset(
+                arguments.manifest,
+                arguments.baseline_rally_model,
+                arguments.serve_model,
+                arguments.control_model,
+                arguments.model,
+                arguments.cache_dir,
+                training_config=TrainingConfig(
+                    epochs=arguments.epochs,
+                    batch_size=arguments.batch_size,
+                    learning_rate=arguments.learning_rate,
+                    seed=arguments.seed,
+                ),
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "controlModel": str(arguments.control_model.expanduser().resolve()),
+                    "stackedModel": str(arguments.model.expanduser().resolve()),
+                    "stackedFeature": result["stackedFeature"],
+                    "frozenBaseline": result["frozenBaseline"]["aggregate"],
+                    "retrainedControl": result["retrainedControl"]["aggregate"],
+                    "stackedRally": result["stackedRally"]["aggregate"],
+                    "deltaVsRetrainedControl": result["deltaVsRetrainedControl"],
+                }
+            )
+            return 0
         if arguments.command == "infer":
             from .pipeline import infer_video
 
@@ -472,6 +534,33 @@ def run(argv: Sequence[str] | None = None) -> int:
                     "baseline": result["baseline"]["aggregate"],
                     "composed": result["composed"]["aggregate"],
                     "delta": result["delta"],
+                }
+            )
+            return 0
+        if arguments.command == "evaluate-rally-with-serve":
+            from .stacked_serve_experiment import evaluate_stacked_rally_dataset
+
+            result = evaluate_stacked_rally_dataset(
+                arguments.manifest,
+                arguments.baseline_rally_model,
+                arguments.serve_model,
+                arguments.control_model,
+                arguments.model,
+                arguments.cache_dir,
+                split=arguments.split,
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "frozenBaseline": result["frozenBaseline"]["aggregate"],
+                    "retrainedControl": result["retrainedControl"]["aggregate"],
+                    "stackedFrozenDecoder": result["stackedFrozenDecoder"]["aggregate"],
+                    "stackedRally": result["stackedRally"]["aggregate"],
+                    "stackedServeFeatureClamped": result["stackedServeFeatureClamped"][
+                        "aggregate"
+                    ],
+                    "deltaVsRetrainedControl": result["deltaVsRetrainedControl"],
                 }
             )
             return 0
