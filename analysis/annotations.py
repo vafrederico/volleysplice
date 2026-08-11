@@ -42,6 +42,12 @@ HARD_NEGATIVE_CATEGORIES = {
 
 
 @dataclass(frozen=True)
+class SideSwitch:
+    time: float
+    notes: str | None
+
+
+@dataclass(frozen=True)
 class LabelDocument:
     path: Path
     payload: dict[str, Any]
@@ -54,6 +60,7 @@ class LabelDocument:
     rallies: tuple[Interval, ...]
     ignored_intervals: tuple[Interval, ...]
     hard_negatives: tuple[Interval, ...]
+    side_switches: tuple[SideSwitch, ...]
     warnings: tuple[str, ...]
 
 
@@ -88,6 +95,36 @@ def _validate_bounds(
                 f"{where}[{index}].end exceeds recording duration "
                 f"({interval.end:.3f}s > {duration:.3f}s)"
             )
+
+
+def _read_side_switches(value: Any, duration: float) -> tuple[SideSwitch, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ManifestError("sideSwitches must be an array")
+    markers: list[SideSwitch] = []
+    previous_time = -1.0
+    for index, row in enumerate(value):
+        if not isinstance(row, dict):
+            raise ManifestError(f"sideSwitches[{index}] must be an object")
+        raw_time = row.get("time")
+        if (
+            not isinstance(raw_time, (int, float))
+            or isinstance(raw_time, bool)
+            or not math.isfinite(float(raw_time))
+        ):
+            raise ManifestError(f"sideSwitches[{index}].time must be finite")
+        marker_time = float(raw_time)
+        if marker_time < 0 or marker_time > duration or marker_time <= previous_time:
+            raise ManifestError(
+                "sideSwitches must be strictly ordered points within the recording duration"
+            )
+        notes = row.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            raise ManifestError(f"sideSwitches[{index}].notes must be a string when present")
+        markers.append(SideSwitch(time=marker_time, notes=notes))
+        previous_time = marker_time
+    return tuple(markers)
 
 
 def load_label_document(
@@ -172,6 +209,7 @@ def load_label_document(
     rallies = _read_intervals(payload.get("rallies"), "labels")
     ignored = _read_intervals(payload.get("ignoredIntervals", []), "labels", "ignoredIntervals")
     hard_negatives = _read_intervals(payload.get("hardNegatives", []), "labels", "hardNegatives")
+    side_switches = _read_side_switches(payload.get("sideSwitches", []), duration)
     _validate_bounds(rallies, duration, "rallies")
     _validate_bounds(ignored, duration, "ignoredIntervals")
     _validate_bounds(hard_negatives, duration, "hardNegatives")
@@ -211,6 +249,7 @@ def load_label_document(
         rallies=rallies,
         ignored_intervals=ignored,
         hard_negatives=hard_negatives,
+        side_switches=side_switches,
         warnings=tuple(warnings),
     )
 
@@ -284,6 +323,7 @@ def create_label_draft(
         "rallies": [],
         "ignoredIntervals": [],
         "hardNegatives": [],
+        "sideSwitches": [],
     }
     atomic_write_text(output, json.dumps(payload, indent=2, allow_nan=False) + "\n")
     return payload
@@ -334,6 +374,7 @@ def build_manifest_from_labels(
                 "rallies": document.payload["rallies"],
                 "ignoredIntervals": document.payload.get("ignoredIntervals", []),
                 "hardNegatives": document.payload.get("hardNegatives", []),
+                "sideSwitches": document.payload.get("sideSwitches", []),
                 "annotation": document.payload["annotation"],
             }
         )

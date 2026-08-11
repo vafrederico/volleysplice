@@ -11,6 +11,7 @@ import {
   type IgnoredInterval,
   type LabelDocument,
   type RallyLabel,
+  type SideSwitch,
 } from "@/lib/annotations";
 import styles from "./labeling-editor.module.css";
 
@@ -26,6 +27,7 @@ type PreparedTaskSummary = {
   durationSeconds: number;
   originalFilename: string;
   videoFilename: string;
+  documentSource: "draft" | "prelabel" | "task";
   savedAt: string | null;
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
@@ -33,13 +35,49 @@ type PreparedTaskSummary = {
 
 type BatchSummary = Record<
   LabelingBatch,
-  { ready: number; total: number; saved: number }
+  { ready: number; total: number; saved: number; prelabeled: number }
 >;
 
 const emptyBatchSummary: BatchSummary = {
-  full: { ready: 0, total: 0, saved: 0 },
-  pilot: { ready: 0, total: 0, saved: 0 },
+  full: { ready: 0, total: 0, saved: 0, prelabeled: 0 },
+  pilot: { ready: 0, total: 0, saved: 0, prelabeled: 0 },
 };
+
+const editableRallyTags = new Set(["service-fault", "ace", "interrupted-replay"]);
+const playbackResumeKey = "volleycut.labeling.playback.v1";
+
+type PlaybackResume = {
+  version: 1;
+  taskId: string;
+  time: number;
+};
+
+function readPlaybackResume(): PlaybackResume | null {
+  try {
+    const raw = window.localStorage.getItem(playbackResumeKey);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<PlaybackResume>;
+    if (
+      value.version !== 1 ||
+      typeof value.taskId !== "string" ||
+      !/^[A-Za-z0-9_-]+$/.test(value.taskId) ||
+      typeof value.time !== "number" ||
+      !Number.isFinite(value.time) ||
+      value.time < 0
+    ) {
+      window.localStorage.removeItem(playbackResumeKey);
+      return null;
+    }
+    return value as PlaybackResume;
+  } catch {
+    try {
+      window.localStorage.removeItem(playbackResumeKey);
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
+    return null;
+  }
+}
 
 function overlaps(start: number, end: number, rows: Array<{ start: number; end: number }>): boolean {
   return rows.some((row) => start < row.end && row.start < end);
@@ -52,6 +90,9 @@ function totalSeconds(rows: Array<{ start: number; end: number }>): number {
 export function LabelingEditor() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const preparedRequestRef = useRef<AbortController | null>(null);
+  const pendingResumeSecondsRef = useRef<number | null>(null);
+  const resumeAttemptedRef = useRef(false);
+  const lastPersistedPlaybackRef = useRef<{ taskId: string; time: number } | null>(null);
   const [labels, setLabels] = useState<LabelDocument | null>(null);
   const [preparedTasks, setPreparedTasks] = useState<PreparedTaskSummary[]>([]);
   const [batchSummary, setBatchSummary] = useState<BatchSummary>(emptyBatchSummary);
@@ -98,6 +139,17 @@ export function LabelingEditor() {
         }
         setPreparedTasks(payload.tasks);
         setBatchSummary(payload.batches);
+        if (!resumeAttemptedRef.current) {
+          resumeAttemptedRef.current = true;
+          const resume = readPlaybackResume();
+          const resumedTask = resume
+            ? payload.tasks.find((task) => task.id === resume.taskId)
+            : undefined;
+          if (resume && resumedTask) {
+            setSelectedBatch(resumedTask.batch);
+            void loadPreparedTask(resume.taskId, resume.time);
+          }
+        }
       } catch (loadError) {
         if (!controller.signal.aborted) {
           setError(loadError instanceof Error ? loadError.message : "Could not list labeling tasks");
@@ -121,6 +173,25 @@ export function LabelingEditor() {
     if (!labels) return [];
     return [...labels.rallies, ...labels.ignoredIntervals, ...labels.hardNegatives];
   }, [labels]);
+
+  const selectedRallyIndex = useMemo(
+    () =>
+      labels?.rallies.findIndex(
+        (row) => row.start < currentTime && currentTime < row.end,
+      ) ?? -1,
+    [currentTime, labels],
+  );
+
+  const previousRallyIndex = useMemo(() => {
+    if (!labels) return -1;
+    let previous = -1;
+    labels.rallies.forEach((row, index) => {
+      if (row.end <= currentTime) previous = index;
+    });
+    return previous;
+  }, [currentTime, labels]);
+
+  const playheadInsideRally = selectedRallyIndex >= 0;
 
   const selectedPreparedSummary = useMemo(
     () => preparedTasks.find((task) => task.id === selectedPreparedTask) ?? null,
@@ -168,6 +239,16 @@ export function LabelingEditor() {
     labels.ignoredIntervals.forEach((row) => {
       if (overlaps(row.start, row.end, labels.hardNegatives)) issues.push("Ignored time overlaps a hard negative");
     });
+    labels.sideSwitches.forEach((marker, index) => {
+      if (
+        !Number.isFinite(marker.time) ||
+        marker.time < 0 ||
+        marker.time > labels.recording.durationSeconds ||
+        (index > 0 && marker.time <= labels.sideSwitches[index - 1].time)
+      ) {
+        issues.push("Side-switch points must be in range and strictly ordered");
+      }
+    });
     return [...new Set(issues)];
   }, [ignoredStart, labels, negativeStart, rallyStart, videoDuration, videoFilename, videoUrl]);
 
@@ -185,6 +266,7 @@ export function LabelingEditor() {
   async function loadTask(file: File | undefined) {
     if (!file) return;
     preparedRequestRef.current?.abort();
+    pendingResumeSecondsRef.current = null;
     setSelectedPreparedTask("");
     setLastSavedAt(null);
     setError(null);
@@ -207,6 +289,7 @@ export function LabelingEditor() {
 
   function loadVideo(file: File | undefined) {
     if (!file) return;
+    pendingResumeSecondsRef.current = null;
     setError(null);
     const nextUrl = URL.createObjectURL(file);
     setVideoUrl(nextUrl);
@@ -215,9 +298,13 @@ export function LabelingEditor() {
     setMessage(`Loaded local video ${file.name}. Nothing is uploaded.`);
   }
 
-  async function loadPreparedTask(id: string) {
+  async function loadPreparedTask(id: string, resumeSeconds: number | null = null) {
     setSelectedPreparedTask(id);
     if (!id) return;
+    pendingResumeSecondsRef.current =
+      resumeSeconds !== null && Number.isFinite(resumeSeconds) && resumeSeconds >= 0
+        ? resumeSeconds
+        : null;
     preparedRequestRef.current?.abort();
     const controller = new AbortController();
     preparedRequestRef.current = controller;
@@ -237,7 +324,7 @@ export function LabelingEditor() {
       setVideoUrl(`/api/labeling/tasks/${encodeURIComponent(id)}/video`);
       setVideoFilename(document.recording.videoFilename);
       setVideoDuration(null);
-      setCurrentTime(0);
+      setCurrentTime(pendingResumeSecondsRef.current ?? 0);
       setRallyStart(null);
       setIgnoredStart(null);
       setNegativeStart(null);
@@ -246,15 +333,63 @@ export function LabelingEditor() {
       setMessage(
         documentSource === "draft"
           ? `Resumed the NAS draft for ${document.recording.id} with ${document.rallies.length} rallies.`
+          : documentSource === "prelabel"
+            ? `Loaded ${document.rallies.length} unvalidated GPT-5.6 Sol rally candidates for ${document.recording.id}. Review every boundary before completing.`
           : `Loaded ${document.recording.id} and its matching NAS proxy. No local file selection needed.`,
       );
     } catch (loadError) {
       if (!controller.signal.aborted) {
+        pendingResumeSecondsRef.current = null;
         setError(loadError instanceof Error ? loadError.message : "Could not load prepared task");
       }
     } finally {
       if (!controller.signal.aborted) setPreparedTasksLoading(false);
     }
+  }
+
+  function persistPlaybackPosition(video: HTMLVideoElement, force = false) {
+    if (
+      !selectedPreparedTask ||
+      labels?.recording.id !== selectedPreparedTask ||
+      !videoUrl?.startsWith("/api/labeling/tasks/") ||
+      !Number.isFinite(video.currentTime) ||
+      video.currentTime < 0
+    ) {
+      return;
+    }
+    const previous = lastPersistedPlaybackRef.current;
+    if (
+      !force &&
+      previous?.taskId === selectedPreparedTask &&
+      Math.abs(previous.time - video.currentTime) < 0.25
+    ) {
+      return;
+    }
+    const resume: PlaybackResume = {
+      version: 1,
+      taskId: selectedPreparedTask,
+      time: roundTime(video.currentTime),
+    };
+    try {
+      window.localStorage.setItem(playbackResumeKey, JSON.stringify(resume));
+      lastPersistedPlaybackRef.current = resume;
+    } catch {
+      // Browsers can deny local storage; labeling and NAS draft saves still work.
+    }
+  }
+
+  function handleLoadedMetadata(video: HTMLVideoElement) {
+    setVideoDuration(video.duration);
+    const resumeSeconds = pendingResumeSecondsRef.current;
+    pendingResumeSecondsRef.current = null;
+    if (resumeSeconds !== null) {
+      video.currentTime = Math.max(0, Math.min(video.duration || Infinity, resumeSeconds));
+      setMessage(
+        `Resumed ${labels?.recording.id ?? "prepared task"} at ${formatPreciseTime(video.currentTime)}.`,
+      );
+    }
+    setCurrentTime(video.currentTime);
+    persistPlaybackPosition(video, true);
   }
 
   async function saveDraftDirectly() {
@@ -299,6 +434,7 @@ export function LabelingEditor() {
             ? {
                 ...task,
                 annotationStatus: "in-progress",
+                documentSource: "draft",
                 rallyCount: draft.rallies.length,
                 savedAt: result.savedAt ?? null,
               }
@@ -329,6 +465,7 @@ export function LabelingEditor() {
     if (!video) return;
     video.currentTime = Math.min(video.duration || Infinity, Math.max(0, video.currentTime + seconds));
     setCurrentTime(video.currentTime);
+    persistPlaybackPosition(video, true);
   }
 
   function seekTo(seconds: number) {
@@ -336,6 +473,7 @@ export function LabelingEditor() {
     if (!video) return;
     video.currentTime = Math.max(0, Math.min(video.duration || Infinity, seconds));
     setCurrentTime(video.currentTime);
+    persistPlaybackPosition(video, true);
     video.focus();
   }
 
@@ -348,13 +486,60 @@ export function LabelingEditor() {
 
   function beginRally() {
     if (!labels || !videoRef.current) return;
-    setRallyStart(roundTime(videoRef.current.currentTime));
+    const time = roundTime(videoRef.current.currentTime);
+    const existingIndex = labels.rallies.findIndex(
+      (row) => row.start < time && time < row.end,
+    );
+    if (existingIndex >= 0) {
+      updateRally(existingIndex, { start: time });
+      setMessage(
+        `Moved rally ${existingIndex + 1} start to ${formatPreciseTime(time)}.`,
+      );
+      return;
+    }
+    setRallyStart(time);
     setMessage("Rally start marked. Seek to the first instant live play has ended, then press E.");
   }
 
+  function moveRallyEnd(index: number, end: number): boolean {
+    if (!labels) return false;
+    const rally = labels.rallies[index];
+    if (!rally || end <= rally.start) {
+      setError("Rally end must be after its serve contact.");
+      return false;
+    }
+    if (end > labels.recording.durationSeconds) {
+      setError("Rally end cannot exceed the video duration.");
+      return false;
+    }
+    const otherRallies = labels.rallies.filter((_, rowIndex) => rowIndex !== index);
+    if (
+      overlaps(rally.start, end, otherRallies) ||
+      overlaps(rally.start, end, labels.ignoredIntervals) ||
+      overlaps(rally.start, end, labels.hardNegatives)
+    ) {
+      setError(
+        "That end would overlap the next rally, an ignored span, or a hard negative.",
+      );
+      return false;
+    }
+    setError(null);
+    updateRally(index, { end });
+    setMessage(`Moved rally ${index + 1} end to ${formatPreciseTime(end)}.`);
+    return true;
+  }
+
   function finishRally() {
-    if (!labels || rallyStart === null || !videoRef.current) return;
+    if (!labels || !videoRef.current) return;
     const end = roundTime(videoRef.current.currentTime);
+    if (rallyStart === null) {
+      if (selectedRallyIndex >= 0) {
+        moveRallyEnd(selectedRallyIndex, end);
+        return;
+      }
+      if (previousRallyIndex >= 0) moveRallyEnd(previousRallyIndex, end);
+      return;
+    }
     if (!addInterval(rallyStart, end, "rally")) return;
     setRallyStart(null);
   }
@@ -379,6 +564,25 @@ export function LabelingEditor() {
       return;
     }
     if (addInterval(negativeStart, time, "negative")) setNegativeStart(null);
+  }
+
+  function addSideSwitch() {
+    if (!labels || !videoRef.current) return;
+    const time = roundTime(videoRef.current.currentTime);
+    if (labels.sideSwitches.some((marker) => marker.time === time)) {
+      setError("A side switch is already marked at this timestamp.");
+      return;
+    }
+    if (time > labels.recording.durationSeconds) {
+      setError("A side switch cannot be marked beyond the task duration.");
+      return;
+    }
+    const sideSwitches = [...labels.sideSwitches, { time }].sort(
+      (left, right) => left.time - right.time,
+    );
+    setError(null);
+    setLabels(markChanged({ ...labels, sideSwitches }));
+    setMessage(`Marked a side switch at ${formatPreciseTime(time)}.`);
   }
 
   function addInterval(start: number, end: number, kind: IntervalKind): boolean {
@@ -424,7 +628,7 @@ export function LabelingEditor() {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select")) return;
+      if (target?.closest("input, textarea, select, button, [contenteditable='true']")) return;
       const key = event.key.toLowerCase();
       if (key === " ") {
         event.preventDefault();
@@ -434,9 +638,21 @@ export function LabelingEditor() {
       else if (key === "[") toggleIgnored();
       else if (key === "]" && ignoredStart !== null) toggleIgnored();
       else if (key === "h") toggleNegative();
+      else if (key === "x") addSideSwitch();
       else if (key === "escape") cancelMarker();
+      else if ((key === "delete" || key === "backspace") && selectedRallyIndex >= 0) {
+        event.preventDefault();
+        removeSelectedRally();
+      }
       else if (key === "j") seek(event.shiftKey ? -1 : -0.1);
       else if (key === "k") seek(event.shiftKey ? 1 : 0.1);
+      else if (key === "arrowleft") {
+        event.preventDefault();
+        seek(-1);
+      } else if (key === "arrowright") {
+        event.preventDefault();
+        seek(1);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -464,6 +680,40 @@ export function LabelingEditor() {
       rowIndex === index ? { ...row, ...patch } : row,
     );
     setLabels(markChanged({ ...labels, hardNegatives }));
+  }
+
+  function updateSideSwitch(index: number, patch: Partial<SideSwitch>) {
+    if (!labels) return;
+    const sideSwitches = labels.sideSwitches.map((marker, markerIndex) =>
+      markerIndex === index ? { ...marker, ...patch } : marker,
+    );
+    setLabels(markChanged({ ...labels, sideSwitches }));
+  }
+
+  function removeSideSwitch(index: number) {
+    if (!labels) return;
+    setLabels(
+      markChanged({
+        ...labels,
+        sideSwitches: labels.sideSwitches.filter((_, markerIndex) => markerIndex !== index),
+      }),
+    );
+    setMessage(`Deleted side-switch marker ${index + 1}.`);
+  }
+
+  function removeSelectedRally() {
+    if (!labels || selectedRallyIndex < 0) return;
+    const rally = labels.rallies[selectedRallyIndex];
+    setLabels(
+      markChanged({
+        ...labels,
+        rallies: labels.rallies.filter((_, index) => index !== selectedRallyIndex),
+      }),
+    );
+    setError(null);
+    setMessage(
+      `Deleted rally ${selectedRallyIndex + 1} (${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}).`,
+    );
   }
 
   function removeRow(kind: IntervalKind, index: number) {
@@ -521,6 +771,7 @@ export function LabelingEditor() {
           >
             <option value="full">
               Full corpus · {batchSummary.full.ready}/{batchSummary.full.total} ready · {batchSummary.full.saved} saved
+              {batchSummary.full.prelabeled > 0 ? ` · ${batchSummary.full.prelabeled} AI prelabels` : ""}
             </option>
             <option value="pilot">
               Pilot · {batchSummary.pilot.ready}/{batchSummary.pilot.total} ready · {batchSummary.pilot.saved} saved
@@ -541,7 +792,7 @@ export function LabelingEditor() {
             </option>
             {tasksForSelectedBatch.map((task) => (
               <option key={task.id} value={task.id}>
-                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : "not started"}
+                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.documentSource === "prelabel" ? `${task.rallyCount} AI rallies to review` : "not started"}
               </option>
             ))}
           </select>
@@ -558,6 +809,16 @@ export function LabelingEditor() {
         <div className={styles.loaded}>
           <span>Batch</span>
           <strong>{selectedPreparedSummary?.batch ?? "Local fallback"}</strong>
+          <span>Starting point</span>
+          <strong>
+            {selectedPreparedSummary?.documentSource === "prelabel"
+              ? `Unvalidated GPT-5.6 Sol prelabel · ${labels?.prelabel?.ambiguities.length ?? 0} ambiguities`
+              : selectedPreparedSummary?.documentSource === "draft"
+                ? labels?.prelabel
+                  ? "Human-saved NAS draft · started from AI prelabel"
+                  : "Human-saved NAS draft"
+                : "Blank task"}
+          </strong>
           <span>Original source</span>
           <strong>{selectedPreparedSummary?.originalFilename ?? "Local task or draft"}</strong>
           <span>Annotation proxy</span>
@@ -578,11 +839,14 @@ export function LabelingEditor() {
                 src={videoUrl}
                 controls
                 preload="metadata"
-                onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-                onLoadedMetadata={(event) => {
-                  setVideoDuration(event.currentTarget.duration);
+                onTimeUpdate={(event) => {
                   setCurrentTime(event.currentTarget.currentTime);
+                  persistPlaybackPosition(event.currentTarget);
                 }}
+                onSeeked={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                onPlay={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                onPause={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget)}
               />
             ) : (
               <div className={styles.videoEmpty}>Select the proxy listed by the task.</div>
@@ -591,22 +855,44 @@ export function LabelingEditor() {
           </div>
 
           <div className={styles.transport}>
-            <button onClick={() => seek(-1)}>−1s</button>
+            <button onClick={() => seek(-1)}>−1s <kbd>←</kbd></button>
             <button onClick={() => seek(-0.1)}>−0.1s <kbd>J</kbd></button>
             <button className={styles.playButton} onClick={togglePlayback}>Play / pause <kbd>Space</kbd></button>
             <button onClick={() => seek(0.1)}>+0.1s <kbd>K</kbd></button>
-            <button onClick={() => seek(1)}>+1s</button>
+            <button onClick={() => seek(1)}>+1s <kbd>→</kbd></button>
           </div>
 
           <div className={styles.markers}>
             <button className={styles.start} onClick={beginRally} disabled={!labels || !videoUrl || rallyStart !== null}>
-              Mark serve contact <kbd>S</kbd>
+              {playheadInsideRally ? "Move rally start" : "Mark serve contact"} <kbd>S</kbd>
             </button>
-            <button className={styles.end} onClick={finishRally} disabled={rallyStart === null}>
-              Mark end of play <kbd>E</kbd>
+            <button
+              className={styles.end}
+              onClick={finishRally}
+              disabled={
+                !labels ||
+                !videoUrl ||
+                (rallyStart === null && selectedRallyIndex < 0 && previousRallyIndex < 0)
+              }
+            >
+              {rallyStart !== null
+                ? "Mark end of play"
+                : selectedRallyIndex >= 0
+                  ? "Move rally end"
+                  : "Extend previous rally"} <kbd>E</kbd>
+            </button>
+            <button
+              className={styles.deleteSelected}
+              onClick={removeSelectedRally}
+              disabled={selectedRallyIndex < 0}
+            >
+              Delete selected <kbd>Del</kbd>
             </button>
             <button onClick={toggleIgnored} disabled={!labels || !videoUrl}>
               {ignoredStart === null ? "Start ignored span" : "Finish ignored span"} <kbd>[ ]</kbd>
+            </button>
+            <button onClick={addSideSwitch} disabled={!labels || !videoUrl}>
+              Mark side switch <kbd>X</kbd>
             </button>
             <button onClick={cancelMarker} disabled={rallyStart === null && ignoredStart === null && negativeStart === null}>
               Cancel <kbd>Esc</kbd>
@@ -618,7 +904,7 @@ export function LabelingEditor() {
               {labels.rallies.map((row, index) => (
                 <button
                   key={`rally-${index}`}
-                  className={styles.rallyBar}
+                  className={`${styles.rallyBar} ${selectedRallyIndex === index ? styles.selectedRallyBar : ""}`}
                   style={{ left: `${(row.start / labels.recording.durationSeconds) * 100}%`, width: `${((row.end - row.start) / labels.recording.durationSeconds) * 100}%` }}
                   onClick={() => seekTo(row.start)}
                   title={`Rally ${index + 1}`}
@@ -633,6 +919,26 @@ export function LabelingEditor() {
                   title={`Ignored ${index + 1}`}
                 />
               ))}
+              {labels.sideSwitches.map((marker, index) => (
+                <button
+                  key={`side-switch-${index}`}
+                  className={styles.sideSwitchPoint}
+                  style={{ left: `${(marker.time / labels.recording.durationSeconds) * 100}%` }}
+                  onClick={() => seekTo(marker.time)}
+                  title={`Side switch ${index + 1}${marker.notes ? ` · ${marker.notes}` : ""}`}
+                  aria-label={`Seek to side switch ${index + 1}`}
+                />
+              ))}
+              <div
+                className={styles.playhead}
+                style={{
+                  left: `${Math.min(
+                    100,
+                    Math.max(0, (currentTime / labels.recording.durationSeconds) * 100),
+                  )}%`,
+                }}
+                aria-hidden="true"
+              />
             </div>
           )}
         </div>
@@ -684,14 +990,35 @@ export function LabelingEditor() {
           </div>
           <div className={styles.rows}>
             {labels.rallies.map((row, index) => (
-              <div className={styles.row} key={`rally-row-${index}`}>
-                <strong>R{String(index + 1).padStart(3, "0")}</strong>
+              <div
+                className={`${styles.row} ${selectedRallyIndex === index ? styles.selectedRow : ""}`}
+                key={`rally-row-${index}`}
+                aria-current={selectedRallyIndex === index ? "true" : undefined}
+              >
+                <strong
+                  title={[
+                    ...row.tags.filter((tag) => tag.startsWith("ai-") || tag.includes("confidence:")),
+                    ...(row.notes ? [row.notes] : []),
+                  ].join(" · ")}
+                >
+                  R{String(index + 1).padStart(3, "0")}{row.tags.includes("ai-prelabel") ? " AI" : ""}
+                </strong>
                 <button onClick={() => seekTo(row.start)}>{formatPreciseTime(row.start)}</button>
                 <span>→</span>
                 <button onClick={() => seekTo(row.end)}>{formatPreciseTime(row.end)}</button>
                 <input aria-label="Rally start seconds" type="number" step="0.001" value={row.start} onChange={(event) => updateRally(index, { start: Number(event.target.value) })} />
                 <input aria-label="Rally end seconds" type="number" step="0.001" value={row.end} onChange={(event) => updateRally(index, { end: Number(event.target.value) })} />
-                <select aria-label="Rally tag" value={row.tags[0] ?? ""} onChange={(event) => updateRally(index, { tags: event.target.value ? [event.target.value] : [] })}>
+                <select
+                  className={selectedRallyIndex === index ? styles.selectedClassification : undefined}
+                  aria-label="Rally tag"
+                  value={row.tags.find((tag) => editableRallyTags.has(tag)) ?? ""}
+                  onChange={(event) => updateRally(index, {
+                    tags: [
+                      ...row.tags.filter((tag) => !editableRallyTags.has(tag)),
+                      ...(event.target.value ? [event.target.value] : []),
+                    ],
+                  })}
+                >
                   <option value="">Normal rally</option>
                   <option value="service-fault">Service fault</option>
                   <option value="ace">Ace / very short</option>
@@ -701,6 +1028,43 @@ export function LabelingEditor() {
               </div>
             ))}
             {labels.rallies.length === 0 && <p className={styles.empty}>No rallies yet. Play to serve contact and press S.</p>}
+          </div>
+
+          <div className={styles.pointSection}>
+            <div className={styles.tableHeading}>
+              <div><p className={styles.eyebrow}>OPTIONAL · WHEN PRESENT</p><h2>Side switches</h2></div>
+              <span>{labels.sideSwitches.length} point markers · press X at the switch</span>
+            </div>
+            <p className={styles.help}>
+              Mark the moment teams switch court sides when the recording format includes it. Add a note if the exact transition is obscured.
+            </p>
+            <div className={styles.pointRows}>
+              {labels.sideSwitches.map((marker, index) => (
+                <div className={styles.pointRow} key={`side-switch-row-${index}`}>
+                  <strong>SW{String(index + 1).padStart(2, "0")}</strong>
+                  <button onClick={() => seekTo(marker.time)}>{formatPreciseTime(marker.time)}</button>
+                  <input
+                    aria-label={`Side switch ${index + 1} seconds`}
+                    type="number"
+                    step="0.001"
+                    value={marker.time}
+                    onChange={(event) => updateSideSwitch(index, { time: Number(event.target.value) })}
+                  />
+                  <input
+                    aria-label={`Side switch ${index + 1} notes`}
+                    placeholder="Optional note"
+                    value={marker.notes ?? ""}
+                    onChange={(event) => updateSideSwitch(index, {
+                      notes: event.target.value || undefined,
+                    })}
+                  />
+                  <button className={styles.delete} onClick={() => removeSideSwitch(index)}>Delete</button>
+                </div>
+              ))}
+              {labels.sideSwitches.length === 0 && (
+                <p className={styles.empty}>No side switches marked for this video.</p>
+              )}
+            </div>
           </div>
 
           <div className={styles.secondaryGrid}>

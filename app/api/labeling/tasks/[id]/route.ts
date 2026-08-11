@@ -19,7 +19,7 @@ export async function GET(
       headers: {
         "Cache-Control": "no-store",
         "X-VolleyCut-Batch": task.batch,
-        "X-VolleyCut-Document-Source": saved.savedAt ? "draft" : "task",
+        "X-VolleyCut-Document-Source": saved.source,
         ...(saved.savedAt ? { "X-VolleyCut-Saved-At": saved.savedAt } : {}),
       },
     });

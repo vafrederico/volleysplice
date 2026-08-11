@@ -110,6 +110,7 @@
 .metadata textarea,
 .row input,
 .row select,
+.pointRow input,
 .smallRow select,
 .negativeMarker select {
   min-width: 0;
@@ -220,6 +221,7 @@
 .transport button,
 .markers button,
 .row button,
+.pointRow button,
 .smallRow button,
 .negativeMarker button,
 .exportButtons button {
@@ -243,6 +245,7 @@
 .markers button { flex: 1; }
 .markers .start { background: var(--label-teal); color: #fff; }
 .markers .end { background: var(--label-orange); color: #fff; }
+.markers .deleteSelected { border-color: #9b3822; color: #9b3822; }
 
 .page kbd {
   margin-left: 5px;
@@ -268,7 +271,37 @@
 }
 
 .rallyBar { top: 5px; height: 20px; background: var(--label-teal); }
+.selectedRallyBar {
+  z-index: 1;
+  top: 3px;
+  height: 24px;
+  background: var(--label-acid);
+  outline: 2px solid var(--label-ink);
+  outline-offset: -2px;
+}
 .ignoredBar { top: 0; height: 6px; background: var(--label-orange); }
+
+.sideSwitchPoint {
+  z-index: 2;
+  top: -3px;
+  bottom: -3px;
+  width: 4px;
+  margin-left: -2px;
+  background: var(--label-orange);
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.playhead {
+  position: absolute;
+  z-index: 3;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--label-ink);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 70%);
+  pointer-events: none;
+}
 
 .metadata {
   padding: 22px;
@@ -325,7 +358,21 @@
   border-bottom: 1px solid #cccac0;
 }
 
+.selectedRow {
+  padding-inline: 9px;
+  background: #efffc0;
+  box-shadow: inset 5px 0 0 var(--label-teal);
+}
+
+.selectedRow > strong { color: var(--label-teal); }
+
+.selectedClassification {
+  border-color: var(--label-teal) !important;
+  box-shadow: 0 0 0 2px rgb(43 103 109 / 22%);
+}
+
 .row > button:not(.delete),
+.pointRow > button:not(.delete),
 .smallRow > button:first-child {
   padding-inline: 0;
   border: 0;
@@ -334,6 +381,7 @@
 }
 
 .row .delete,
+.pointRow .delete,
 .smallRow .delete {
   border-color: #d6a99e;
   color: #9b3822;
@@ -351,6 +399,19 @@
   grid-template-columns: 1fr 1fr;
   gap: 6vw;
   margin-top: 60px;
+}
+
+.pointSection { margin-top: 55px; }
+
+.pointRows { border-top: 2px solid var(--label-ink); }
+
+.pointRow {
+  display: grid;
+  grid-template-columns: 70px 100px minmax(110px, 0.45fr) minmax(180px, 1fr) 70px;
+  gap: 9px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid #cccac0;
 }
 
 .smallRow {
@@ -410,6 +471,7 @@
   .videoColumn { border-right: 0; border-bottom: 1px solid var(--label-ink); }
   .row { grid-template-columns: 60px 1fr 20px 1fr 1fr 1fr; }
   .row select { grid-column: 2 / 6; }
+  .pointRow { grid-template-columns: 60px 100px minmax(90px, 0.45fr) minmax(160px, 1fr) 70px; }
 }
 
 @media (max-width: 650px) {
@@ -426,5 +488,7 @@
   .row { grid-template-columns: 55px 1fr 16px 1fr; }
   .row input,
   .row select { grid-column: span 2; }
+  .pointRow { grid-template-columns: 55px 1fr; }
+  .pointRow input { grid-column: span 2; }
   .smallRow { grid-template-columns: 1fr; }
 }

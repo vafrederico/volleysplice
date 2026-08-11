@@ -21,6 +21,11 @@ export type HardNegative = {
   notes?: string;
 };
 
+export type SideSwitch = {
+  time: number;
+  notes?: string;
+};
+
 export type LabelDocument = {
   schemaVersion: 1;
   kind: "volleycut-rally-labels";
@@ -56,9 +61,16 @@ export type LabelDocument = {
     reviewedAt: string | null;
     notes: string;
   };
+  prelabel?: {
+    analysisMethod: string;
+    candidateFile: string;
+    analyzedAt: string;
+    ambiguities: unknown[];
+  };
   rallies: RallyLabel[];
   ignoredIntervals: IgnoredInterval[];
   hardNegatives: HardNegative[];
+  sideSwitches: SideSwitch[];
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -83,6 +95,27 @@ function assertIntervals(value: unknown, name: string): asserts value is Array<R
   });
 }
 
+function readSideSwitches(value: unknown): SideSwitch[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error("sideSwitches must be an array");
+  let previousTime = -1;
+  value.forEach((row, index) => {
+    if (
+      !isObject(row) ||
+      !isFiniteNumber(row.time) ||
+      row.time < 0 ||
+      row.time <= previousTime ||
+      (row.notes !== undefined && typeof row.notes !== "string")
+    ) {
+      throw new Error(
+        `sideSwitches[${index}] must have an ordered, non-negative finite time and optional notes`,
+      );
+    }
+    previousTime = row.time;
+  });
+  return value as SideSwitch[];
+}
+
 export function parseLabelDocument(value: unknown): LabelDocument {
   if (!isObject(value) || value.schemaVersion !== 1 || value.kind !== "volleycut-rally-labels") {
     throw new Error("This is not a VolleyCut rally-label document (schema version 1)");
@@ -105,10 +138,21 @@ export function parseLabelDocument(value: unknown): LabelDocument {
   if (value.annotationPolicy.id !== annotationPolicyId) {
     throw new Error(`annotationPolicy.id must be ${annotationPolicyId}`);
   }
+  if (
+    value.prelabel !== undefined &&
+    (!isObject(value.prelabel) ||
+      typeof value.prelabel.analysisMethod !== "string" ||
+      typeof value.prelabel.candidateFile !== "string" ||
+      typeof value.prelabel.analyzedAt !== "string" ||
+      !Array.isArray(value.prelabel.ambiguities))
+  ) {
+    throw new Error("prelabel metadata is invalid");
+  }
   assertIntervals(value.rallies, "rallies");
   assertIntervals(value.ignoredIntervals, "ignoredIntervals");
   assertIntervals(value.hardNegatives, "hardNegatives");
-  return value as unknown as LabelDocument;
+  const sideSwitches = readSideSwitches(value.sideSwitches);
+  return { ...(value as unknown as LabelDocument), sideSwitches };
 }
 
 export function roundTime(value: number): number {

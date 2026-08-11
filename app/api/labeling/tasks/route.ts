@@ -25,6 +25,10 @@ export async function GET() {
               const index = catalog.tasks.indexOf(task);
               return savedDocuments[index].savedAt !== null;
             }).length,
+            prelabeled: batchTasks.filter((task) => {
+              const index = catalog.tasks.indexOf(task);
+              return savedDocuments[index].source === "prelabel";
+            }).length,
           },
         ];
       }),
@@ -41,6 +45,7 @@ export async function GET() {
           durationSeconds: task.document.recording.durationSeconds,
           originalFilename: task.originalFilename,
           videoFilename: task.document.recording.videoFilename,
+          documentSource: savedDocuments[index].source,
           savedAt: savedDocuments[index].savedAt,
           annotationStatus: savedDocuments[index].document.annotation.status,
           rallyCount: savedDocuments[index].document.rallies.length,

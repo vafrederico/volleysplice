@@ -57,6 +57,7 @@ export type PreparedLabelingTask = {
   priority: number;
   document: LabelDocument;
   draftPath: string;
+  prelabelPath: string;
   originalFilename: string;
   taskPath: string;
   proxyPath: string;
@@ -73,6 +74,7 @@ export class LabelingDraftValidationError extends Error {}
 
 export type SavedLabelingDocument = {
   document: LabelDocument;
+  source: "draft" | "prelabel" | "task";
   savedAt: string | null;
 };
 
@@ -182,6 +184,20 @@ function validateDraftContent(document: LabelDocument, task: PreparedLabelingTas
   ];
   if (allIntervals.some((row) => row.end > document.recording.durationSeconds)) {
     throw new LabelingDraftValidationError("an interval exceeds the video duration");
+  }
+  if (
+    document.sideSwitches.some(
+      (marker, index) =>
+        !Number.isFinite(marker.time) ||
+        marker.time < 0 ||
+        marker.time > document.recording.durationSeconds ||
+        (index > 0 && marker.time <= document.sideSwitches[index - 1].time) ||
+        (marker.notes !== undefined && typeof marker.notes !== "string"),
+    )
+  ) {
+    throw new LabelingDraftValidationError(
+      "side switches must be finite, in range, strictly ordered points with optional notes",
+    );
   }
   if (
     intervalsOverlap(document.rallies, document.ignoredIntervals) ||
@@ -342,6 +358,12 @@ async function loadEntry(entry: LabelingTaskEntry): Promise<PreparedLabelingTask
       entry.batch,
       `${document.recording.id}.labels.json`,
     ),
+    prelabelPath: path.join(
+      labelingWorkspace,
+      "prelabels",
+      "sol-xhigh",
+      `${document.recording.id}.labels.json`,
+    ),
     originalFilename,
     taskPath: entry.taskPath,
     proxyPath: entry.proxyPath,
@@ -414,11 +436,22 @@ export async function getSavedLabelingDocument(
       JSON.parse(await readFile(task.draftPath, "utf8")) as unknown,
     );
     validateDraftContent(document, task);
-    return { document, savedAt: metadata.mtime.toISOString() };
+    return { document, source: "draft", savedAt: metadata.mtime.toISOString() };
   } catch (error) {
-    if (isMissingFile(error)) return { document: task.document, savedAt: null };
-    throw error;
+    if (!isMissingFile(error)) throw error;
   }
+  if (task.batch === "full") {
+    try {
+      const document = parseLabelDocument(
+        JSON.parse(await readFile(task.prelabelPath, "utf8")) as unknown,
+      );
+      validateDraftContent(document, task);
+      return { document, source: "prelabel", savedAt: null };
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+    }
+  }
+  return { document: task.document, source: "task", savedAt: null };
 }
 
 export async function saveLabelingDraft(
@@ -454,5 +487,5 @@ export async function saveLabelingDraft(
     await rm(temporaryPath, { force: true });
   }
   const metadata = await stat(task.draftPath);
-  return { document, savedAt: metadata.mtime.toISOString() };
+  return { document, source: "draft", savedAt: metadata.mtime.toISOString() };
 }

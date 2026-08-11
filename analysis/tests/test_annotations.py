@@ -68,6 +68,10 @@ class AnnotationDocumentTests(unittest.TestCase):
         payload["hardNegatives"] = [
             {"start": 35.0, "end": 42.0, "category": "foreground-crossing"}
         ]
+        payload["sideSwitches"] = [
+            {"time": 18.0, "notes": "teams cross after the point"},
+            {"time": 48.0},
+        ]
         self.labels.write_text(json.dumps(payload), encoding="utf-8")
         return payload
 
@@ -87,7 +91,25 @@ class AnnotationDocumentTests(unittest.TestCase):
         self.assertEqual(len(document.rallies), 2)
         self.assertEqual(len(document.ignored_intervals), 1)
         self.assertEqual(len(document.hard_negatives), 1)
+        self.assertEqual([marker.time for marker in document.side_switches], [18.0, 48.0])
         self.assertIn("target points are unknown", document.warnings)
+
+    def test_side_switches_are_optional_but_validated_when_present(self) -> None:
+        legacy_payload = json.loads(self.labels.read_text(encoding="utf-8"))
+        legacy_payload.pop("sideSwitches")
+        self.labels.write_text(json.dumps(legacy_payload), encoding="utf-8")
+        draft = load_label_document(
+            self.labels,
+            require_complete=False,
+            require_video=False,
+        )
+        self.assertEqual(draft.side_switches, ())
+
+        payload = self.complete_payload()
+        payload["sideSwitches"] = [{"time": 18.0}, {"time": 18.0}]
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "strictly ordered"):
+            load_label_document(self.labels, require_video=False)
 
     def test_rejects_overlap_between_rally_and_ignored_time(self) -> None:
         payload = self.complete_payload()
@@ -109,6 +131,7 @@ class AnnotationDocumentTests(unittest.TestCase):
         manifest = load_manifest(manifest_path, require_videos=False)
         self.assertEqual(len(manifest.recordings[0].rallies), 2)
         self.assertEqual(len(manifest.recordings[0].ignored_intervals), 1)
+        self.assertEqual(payload["recordings"][0]["sideSwitches"][0]["time"], 18.0)
 
 
 if __name__ == "__main__":

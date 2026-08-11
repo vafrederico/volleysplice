@@ -166,6 +166,14 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_workspace.add_argument("--crf", type=int, default=24)
     prepare_workspace.add_argument("--preset", choices=sorted(X264_PRESETS), default="ultrafast")
     prepare_workspace.add_argument("--threads", type=int, default=1)
+
+    import_prelabels = subparsers.add_parser(
+        "import-model-prelabels",
+        help="validate blind audiovisual candidates and create isolated review drafts",
+    )
+    import_prelabels.add_argument("--candidates-dir", required=True, type=Path)
+    import_prelabels.add_argument("--tasks-dir", required=True, type=Path)
+    import_prelabels.add_argument("--output-dir", required=True, type=Path)
     return parser
 
 
@@ -450,6 +458,17 @@ def run(argv: Sequence[str] | None = None) -> int:
                 progress=lambda message: print(message, file=sys.stderr, flush=True),
             )
             _json(result)
+            return 0
+        if arguments.command == "import-model-prelabels":
+            from .model_prelabels import materialize_model_prelabels
+
+            _json(
+                materialize_model_prelabels(
+                    arguments.candidates_dir,
+                    arguments.tasks_dir,
+                    arguments.output_dir,
+                )
+            )
             return 0
     except (ManifestError, NormalizationError, OSError, RuntimeError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)

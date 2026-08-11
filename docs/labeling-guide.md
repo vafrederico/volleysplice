@@ -45,14 +45,19 @@ Do **not** label player identity, individual touches, ball trajectories, scores 
 
 1. Start the app with `npm run dev -- --hostname 0.0.0.0` and open `/label` on the printed LAN URL.
 2. Choose the **Full corpus** or **Pilot** batch, then choose a prepared task. The app loads both its task JSON and matching NAS proxy. Ready and saved counts appear in the batch selector; the catalog refreshes while full proxies are being prepared.
+   When an isolated GPT-5.6 Sol prelabel exists and no human draft has been saved yet, the task picker reports its AI rally count and loads it as an explicitly unvalidated starting point. AI rows are marked `AI`; inspect and correct both boundaries rather than accepting them as ground truth.
 3. To resume a downloaded draft, use the two local fallback pickers for the draft and its matching MP4.
-4. Use `S` at serve contact and `E` at end of play.
-5. Use `[` then `]` for an ignored span and `H` twice for an optional hard negative.
-6. Use `Space` to play/pause, `J`/`K` for ±0.1 seconds, and Shift+`J`/`K` for ±1 second.
-7. Use **Save draft to NAS** often. Selecting that prepared task later resumes the saved draft automatically; downloading a backup JSON is optional.
-8. After the entire video is reviewed, check the confirmation box and export completed labels.
+4. Use `S` at serve contact and `E` at end of play. The rally strictly containing the playhead is highlighted in both the timeline and rally table. Within that rally, `S` moves its start and `E` moves its end to the playhead. In dead time after a rally, `E` extends that immediately preceding rally to the playhead; the editor rejects an extension that would overlap the next rally, an ignored span, or a hard negative.
+5. Delete the highlighted rally with **Delete selected**, `Delete`, or `Backspace`. Keyboard deletion is disabled while focus is in a form control.
+6. If teams switch court sides in this video or format, press `X` at the switch. Side switches are point markers rather than rally intervals; their time and optional note can be edited or deleted in the **Side switches** section.
+7. Use `[` then `]` for an ignored span and `H` twice for an optional hard negative.
+8. Use `Space` to play/pause, `J`/`K` for ±0.1 seconds, and either Shift+`J`/`K` or `←`/`→` for ±1 second. The vertical line on the label timeline tracks the current video time.
+9. Use **Save draft to NAS** often. Selecting that prepared task later resumes the saved draft automatically; downloading a backup JSON is optional. Independently, the browser records the last prepared task and playhead time in versioned local storage during playback and seeking. Reloading `/label` reopens that prepared task at the saved time; local fallback files are never stored.
+10. After the entire video is reviewed, check the confirmation box and export completed labels.
 
 Direct drafts are written atomically to `labels/full/<recording-id>.labels.json` or `labels/pilot/<recording-id>.labels.json`, according to the selected batch. The browser can also download the same naming format for offline backups. Do not modify the originals under `tasks/`.
+
+Model-generated candidates are kept separately under `prelabels/sol-xhigh/`. The editor only uses one when a human draft does not exist. The first **Save draft to NAS** writes a human draft under `labels/full/`, after which that draft always takes precedence. Candidate provenance, confidence tags, and ambiguity notes remain in the saved document so that later evaluation can distinguish assisted labels from independently created labels.
 
 ## CLI validation and manifest creation
 
