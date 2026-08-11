@@ -307,6 +307,70 @@
   padding: 22px;
 }
 
+.currentRallyCard {
+  margin: -22px -22px 24px;
+  padding: 20px 22px 22px;
+  border-bottom: 1px solid var(--label-ink);
+  background: #efffc0;
+}
+
+.currentRallyHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.currentRallyHeading strong {
+  color: var(--label-teal);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.currentRallyHeading span,
+.currentRallyEvidence {
+  color: #62665a;
+  font: 10px "DM Mono", monospace;
+}
+
+.currentRallyTimes {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 16px;
+}
+
+.currentRallyTimes button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label-ink);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font: 11px "DM Mono", monospace;
+}
+
+.currentRallyTimes button:last-child { text-align: right; }
+
+.currentRallyCard label { margin-top: 12px; }
+
+.currentRallyEvidence {
+  margin: 14px 0 0;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.currentRallyEmpty {
+  margin: 10px 0 0;
+  color: #62665a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .taskId {
   display: block;
   margin: 8px 0 18px;

@@ -45,6 +45,7 @@ const emptyBatchSummary: BatchSummary = {
 
 const editableRallyTags = new Set(["service-fault", "ace", "interrupted-replay"]);
 const playbackResumeKey = "volleycut.labeling.playback.v1";
+const timestampEpsilon = 0.0005;
 
 type PlaybackResume = {
   version: 1;
@@ -186,12 +187,27 @@ export function LabelingEditor() {
     if (!labels) return -1;
     let previous = -1;
     labels.rallies.forEach((row, index) => {
-      if (row.end <= currentTime) previous = index;
+      if (row.end <= currentTime + timestampEpsilon) previous = index;
     });
     return previous;
   }, [currentTime, labels]);
 
   const playheadInsideRally = selectedRallyIndex >= 0;
+  const startingRallyIndex = useMemo(
+    () =>
+      labels?.rallies.findIndex(
+        (row) => Math.abs(row.start - currentTime) < timestampEpsilon,
+      ) ?? -1,
+    [currentTime, labels],
+  );
+  const sidebarRallyIndex =
+    selectedRallyIndex >= 0
+      ? selectedRallyIndex
+      : startingRallyIndex >= 0
+        ? startingRallyIndex
+        : previousRallyIndex;
+  const sidebarRally =
+    labels && sidebarRallyIndex >= 0 ? labels.rallies[sidebarRallyIndex] : null;
 
   const selectedPreparedSummary = useMemo(
     () => preparedTasks.find((task) => task.id === selectedPreparedTask) ?? null,
@@ -705,6 +721,17 @@ export function LabelingEditor() {
     setLabels(markChanged({ ...labels, rallies }));
   }
 
+  function updateRallyClassification(index: number, classification: string) {
+    const rally = labels?.rallies[index];
+    if (!rally) return;
+    updateRally(index, {
+      tags: [
+        ...rally.tags.filter((tag) => !editableRallyTags.has(tag)),
+        ...(classification ? [classification] : []),
+      ],
+    });
+  }
+
   function updateIgnored(index: number, patch: Partial<IgnoredInterval>) {
     if (!labels) return;
     const ignoredIntervals = labels.ignoredIntervals.map((row, rowIndex) =>
@@ -985,6 +1012,79 @@ export function LabelingEditor() {
         </div>
 
         <aside className={styles.metadata}>
+          <div className={styles.currentRallyCard}>
+            <p className={styles.eyebrow}>
+              {selectedRallyIndex >= 0 || startingRallyIndex >= 0
+                ? "CURRENT RALLY"
+                : sidebarRally
+                  ? "PREVIOUS RALLY"
+                  : "CURRENT RALLY"}
+            </p>
+            {sidebarRally ? (
+              <>
+                <div className={styles.currentRallyHeading}>
+                  <strong>
+                    R{String(sidebarRallyIndex + 1).padStart(3, "0")}
+                    {sidebarRally.tags.includes("ai-prelabel") ? " AI" : ""}
+                  </strong>
+                  <span>{(sidebarRally.end - sidebarRally.start).toFixed(3)}s</span>
+                </div>
+                <div className={styles.currentRallyTimes}>
+                  <button onClick={() => seekTo(sidebarRally.start)}>
+                    {formatPreciseTime(sidebarRally.start)}
+                  </button>
+                  <span aria-hidden="true">→</span>
+                  <button onClick={() => seekTo(sidebarRally.end)}>
+                    {formatPreciseTime(sidebarRally.end)}
+                  </button>
+                </div>
+                <label>
+                  Classification
+                  <select
+                    aria-label="Current rally classification"
+                    value={
+                      sidebarRally.tags.find((tag) => editableRallyTags.has(tag)) ?? ""
+                    }
+                    onChange={(event) =>
+                      updateRallyClassification(sidebarRallyIndex, event.target.value)
+                    }
+                  >
+                    <option value="">Normal rally</option>
+                    <option value="service-fault">Service fault</option>
+                    <option value="ace">Ace / very short</option>
+                    <option value="interrupted-replay">Interrupted / replayed</option>
+                  </select>
+                </label>
+                <label>
+                  Rally notes
+                  <textarea
+                    rows={3}
+                    placeholder="Optional note"
+                    value={sidebarRally.notes ?? ""}
+                    onChange={(event) =>
+                      updateRally(sidebarRallyIndex, {
+                        notes: event.target.value || undefined,
+                      })
+                    }
+                  />
+                </label>
+                {sidebarRally.tags.some(
+                  (tag) => tag.startsWith("ai-") || tag.includes("confidence:"),
+                ) && (
+                  <p className={styles.currentRallyEvidence}>
+                    {sidebarRally.tags
+                      .filter((tag) => tag.startsWith("ai-") || tag.includes("confidence:"))
+                      .join(" · ")}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className={styles.currentRallyEmpty}>
+                Move the playhead inside a labeled rally to classify it here.
+              </p>
+            )}
+          </div>
+
           <p className={styles.eyebrow}>TASK METADATA</p>
           <strong className={styles.taskId}>{labels?.recording.id ?? "No task"}</strong>
           {labels && (
@@ -1053,12 +1153,7 @@ export function LabelingEditor() {
                   className={selectedRallyIndex === index ? styles.selectedClassification : undefined}
                   aria-label="Rally tag"
                   value={row.tags.find((tag) => editableRallyTags.has(tag)) ?? ""}
-                  onChange={(event) => updateRally(index, {
-                    tags: [
-                      ...row.tags.filter((tag) => !editableRallyTags.has(tag)),
-                      ...(event.target.value ? [event.target.value] : []),
-                    ],
-                  })}
+                  onChange={(event) => updateRallyClassification(index, event.target.value)}
                 >
                   <option value="">Normal rally</option>
                   <option value="service-fault">Service fault</option>
