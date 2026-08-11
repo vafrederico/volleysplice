@@ -529,6 +529,38 @@ export function LabelingEditor() {
     return true;
   }
 
+  function splitRallyFromOpenStart(index: number, start: number, split: number): boolean {
+    if (!labels) return false;
+    const existing = labels.rallies[index];
+    if (!existing || split <= start || split >= existing.end) {
+      setError("The split must be after the new start and before the existing rally end.");
+      return false;
+    }
+    const otherRallies = labels.rallies.filter((_, rowIndex) => rowIndex !== index);
+    if (
+      overlaps(start, existing.end, otherRallies) ||
+      overlaps(start, existing.end, labels.ignoredIntervals) ||
+      overlaps(start, existing.end, labels.hardNegatives)
+    ) {
+      setError(
+        "The split rally would overlap another rally, an ignored span, or a hard negative.",
+      );
+      return false;
+    }
+    const first: RallyLabel = { ...existing, start, end: split };
+    const remainder: RallyLabel = { ...existing, start: split, end: existing.end };
+    const rallies = [...otherRallies, first, remainder].sort(
+      (left, right) => left.start - right.start,
+    );
+    setError(null);
+    setLabels(markChanged({ ...labels, rallies }));
+    setRallyStart(null);
+    setMessage(
+      `Split rally ${index + 1} at ${formatPreciseTime(split)}: the first part now starts at ${formatPreciseTime(start)}, and the remainder ends at ${formatPreciseTime(existing.end)}.`,
+    );
+    return true;
+  }
+
   function finishRally() {
     if (!labels || !videoRef.current) return;
     const end = roundTime(videoRef.current.currentTime);
@@ -538,6 +570,13 @@ export function LabelingEditor() {
         return;
       }
       if (previousRallyIndex >= 0) moveRallyEnd(previousRallyIndex, end);
+      return;
+    }
+    const containingRallyIndex = labels.rallies.findIndex(
+      (row) => row.start < end && end < row.end,
+    );
+    if (containingRallyIndex >= 0) {
+      splitRallyFromOpenStart(containingRallyIndex, rallyStart, end);
       return;
     }
     if (!addInterval(rallyStart, end, "rally")) return;
@@ -876,7 +915,9 @@ export function LabelingEditor() {
               }
             >
               {rallyStart !== null
-                ? "Mark end of play"
+                ? selectedRallyIndex >= 0
+                  ? "Split rally here"
+                  : "Mark end of play"
                 : selectedRallyIndex >= 0
                   ? "Move rally end"
                   : "Extend previous rally"} <kbd>E</kbd>
