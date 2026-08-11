@@ -8,6 +8,8 @@ Source-group-nested development evaluation says the added families help collecti
 
 On the single indoor regression-test source, the full audiovisual model improves event F1 from **0.629 to 0.690**, reduces predicted events from 50 to 45, and improves end-boundary MAE from **1.921 to 1.511 seconds**. Time IoU is essentially flat at **0.672**, while live-time recall falls from 92.68% to 91.01%. This is a better event segmentation result, not a universal improvement.
 
+A follow-up targeted-pruning pass removed the signals implicated by the ablation while retaining three individually helpful exceptions. The 365-input candidate improved pooled development F1 and IoU, but its live recall fell by **11.92 percentage points**, it improved only two of four source groups, and its paired group effect was uncertain. It was therefore **not promoted**. A frozen retrospective run on the one test video favored the diagnostic on F1 and IoU but slightly reduced recall and short-event coverage; that single-source result does not override the grouped development decision.
+
 ## Cue feasibility and disposition
 
 | Requested cue | Feasibility now | Disposition |
@@ -97,6 +99,24 @@ Delta is `full objective − full-minus-family objective`: positive means the fa
 
 The disagreement for legacy appearance is a correlation warning: the fitted full model uses appearance channels, but removing the whole group and retraining improves three of four source groups. These are operational column groups, not independent causal sensors. Formation channels also derive from residual player motion, so their family effects overlap conceptually.
 
+## Targeted pruning follow-up
+
+The follow-up locked its candidates before computing any new scores. Every listed base signal was removed with all five temporal offsets. The primary candidate removes `audio_onset_cadence`, removes the audio-onset family except `audio_rms_novelty`, and removes legacy appearance except `luma_std` and `luma_grid_0`. It retains 73 of 90 base signals, or 365 of 450 contextual inputs.
+
+The same 8 development videos and 4 source groups were evaluated out of fold. This is post-selection exploratory evidence because those groups also generated the original importance findings; it is not an independent confirmation.
+
+| Candidate | Inputs | Pooled objective | Event F1 | Time IoU | Live recall | Mean paired candidate−full | Label |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Frozen full | 450 | 0.5313 | 0.4655 | 0.4862 | **86.26%** | — | Reference |
+| Drop `audio_onset_cadence` | 445 | 0.5246 | 0.4435 | 0.4846 | **90.18%** | -0.0097 | Neutral |
+| Audio-onset rescue | 435 | 0.5236 | 0.4608 | 0.4798 | 84.16% | -0.0060 | Uncertain |
+| Appearance rescue | 385 | 0.5155 | 0.4680 | 0.4998 | 72.11% | -0.0301 | Uncertain |
+| **Targeted primary** | **365** | **0.5354** | **0.4914** | **0.5121** | 74.35% | -0.0116 | **Uncertain** |
+
+The targeted primary's pooled objective is slightly higher because the recordings have different sizes, but its equally weighted source-group objective is lower (0.5215 versus 0.5331). Its per-group objective changes are +0.0270, +0.0706, -0.0186, and -0.1254. It fails both the paired 3-of-4 rule and the live-recall guardrail. The result also shows why “harmful” is conditional: a correlated family can look harmful in a full-minus-family refit without every rescue or combined removal being beneficial.
+
+The cadence-only diagnostic is the only one that raises live recall, but it loses 0.0220 event F1 and is neutral across groups. None of the four new pruned candidates qualifies as a production replacement.
+
 ## Individual-signal importance
 
 Every base signal was circularly shifted within each held-out recording, after which all five contextual offsets were rebuilt. The outer model and decoder stayed frozen. Of 90 signals, 7 are helpful, 1 harmful, 56 neutral, and 26 uncertain under the same group-consistency rule.
@@ -165,6 +185,23 @@ The same frozen settings on the final test source are:
 
 One second remains the practical knee: it roughly halves missed live time on both OOF development and final test while retaining materially less dead footage than 2 or 3 seconds. Two seconds remains a conservative option. Three seconds has little marginal coverage value.
 
+### Pruned-candidate padding comparison
+
+Padding remains descriptive and did not participate in pruning selection. “Pruned” below is the non-promoted 365-input diagnostic.
+
+| Scope | Padding | F1 full / pruned | IoU full / pruned | Live recall full / pruned | Video retained full / pruned |
+|---|---:|---:|---:|---:|---:|
+| 8-video development OOF | 0s | 0.4655 / **0.4914** | 0.4862 / **0.5121** | **86.26%** / 74.35% | 47.04% / **34.35%** |
+| 8-video development OOF | 1s | 0.4458 / **0.4757** | 0.4626 / **0.4932** | **93.18%** / 81.95% | 55.93% / **42.57%** |
+| 8-video development OOF | 2s | 0.3561 / **0.3952** | 0.4214 / **0.4506** | **95.54%** / 85.09% | 63.87% / **49.99%** |
+| 8-video development OOF | 3s | 0.2607 / **0.2877** | 0.3867 / **0.4090** | **96.52%** / 86.31% | 70.74% / **56.71%** |
+| 1-video retrospective test | 0s | 0.6905 / **0.7160** | 0.6715 / **0.7084** | **91.01%** / 89.37% | 36.89% / **33.69%** |
+| 1-video retrospective test | 1s | 0.6506 / **0.7000** | 0.6023 / **0.6490** | **95.62%** / 95.05% | 45.01% / **41.26%** |
+| 1-video retrospective test | 2s | 0.5067 / **0.6933** | 0.5336 / **0.5699** | **96.83%** / 96.53% | 51.99% / **48.38%** |
+| 1-video retrospective test | 3s | 0.3429 / **0.4167** | 0.4829 / **0.5075** | **97.17%** / 96.64% | 57.84% / **54.54%** |
+
+On the one test video, the pruned diagnostic predicts 42 crops rather than 45 and retains less dead footage. It matches the same 29 rallies, but short-rally any-overlap recall falls from 40% to 30% and service-fault overlap from 42.86% to 28.57%. This test source was already opened for the earlier full-model regression, so these numbers are retrospective rather than fresh selection evidence.
+
 ## Artifacts
 
 - Final model: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-v2-final`
@@ -176,17 +213,51 @@ One second remains the practical knee: it roughly halves missed live time on bot
 - Development report SHA-256: `56af84c296f2a50c9becc804019bb688751f109426d2020a3c70d79e88888eef`
 - Final report: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-audiovisual-v2-final-test.json`
 - Final report SHA-256: `7e82ad543e9eb7b95a3c4791ec90c83e7d4a9f5d885a7884589ea08a08f120ad`
+- Targeted-pruning development report: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/audiovisual-v2-targeted-pruning-development.json`
+- Targeted-pruning report SHA-256: `6ef738b289306ca356af351d7d542314bbce9a3846978d09743d0db4b5b39b34`
+- Non-promoted diagnostic model: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/models/audiovisual-v2-targeted-pruned-diagnostic`
+- Diagnostic model artifact SHA-256: `594cd3f9ea590ccf8a728d7be7b8fb99751c7a9fa17256e9af54b770efa189c8`
+- Diagnostic model metadata SHA-256: `12300a6e18312f6d23186a39bc1c7d7498bb61b530c73e5f13273bd1b1c4d80c`
+- Diagnostic weights SHA-256: `4909738b3c5e9e9408b9ea9061d2c1c231900afb3054672d62eb41c5492cf98b`
+- Diagnostic final report: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/audiovisual-v2-targeted-pruned-regression-test.json`
+- Diagnostic final report SHA-256: `0cdfce7ccb49df679a695d5f400dcaa62715be208f4cf741ec0a75139d0c6226`
 
-The development study took 2,591.1 seconds with a warm superset cache. The final fixed-split training used the same deterministic weights as the preceding verified full run.
+The original development study took 2,591.1 seconds. The warm-cache targeted pruning study took 748.3 seconds for 64 logistic fits, and its fixed-split diagnostic training plus regression test took 24.4 seconds.
+
+## Reproduction
+
+Run the development-only pruning pass first. It refuses to overwrite an existing report and never prepares the test split:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python scripts/evaluate-pruned-features.py development \
+  --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
+  --baseline-report /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/audiovisual-v2-feature-study-development.json \
+  --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-v2 \
+  --output /path/to/new-targeted-pruning-development.json
+```
+
+Only after that report is frozen, an explicit retrospective diagnostic can open the already-used test labels. `--allow-unpromoted-diagnostic` records that this candidate did not pass development promotion:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python scripts/evaluate-pruned-features.py final-test \
+  --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
+  --pruning-report /path/to/new-targeted-pruning-development.json \
+  --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-v2 \
+  --model /path/to/new-pruned-model-directory \
+  --output /path/to/new-pruned-regression-test.json \
+  --candidate targeted_pruned \
+  --allow-unpromoted-diagnostic \
+  --open-test
+```
 
 ## Decision and limitations
 
-Keep `full-audiovisual-v2-final` as the requested all-feature review-assist artifact, with 1-second symmetric export padding as the default. Do not treat its scores as calibrated probabilities or use it for unattended exports.
+Keep `full-audiovisual-v2-final` as the production candidate, with 1-second symmetric export padding as the default. The full model still contains the two families and cadence signal flagged by the first ablation: the follow-up deliberately tested removing them, but the combined pruned model failed the grouped recall and consistency criteria. Keep `audiovisual-v2-targeted-pruned-diagnostic` only as an auditable experiment, not as the replacement model. Do not treat either model's scores as calibrated probabilities or use them for unattended exports.
 
 For the next model iteration:
 
-1. investigate sparse/group-regularized selection rather than blindly deleting whole correlated families;
-2. remove or redesign `audio_onset_cadence`, and retest the audio-onset and legacy-appearance groups;
+1. investigate sparse/group-regularized selection rather than deleting correlated families as a block;
+2. retest the simpler complete audio-onset-family removal on genuinely new source groups; the individually useful `audio_rms_novelty` did not rescue that family here;
 3. build a dedicated short-outcome branch rather than relying on generic duration cleanup;
 4. collect new source groups with untouched indoor, grass, and beach test coverage;
 5. add high-resolution aligned derivatives and ball labels before revisiting trajectory features.
