@@ -1,0 +1,4 @@
+interface:
+  display_name: "Analyze Volleyball Video"
+  short_description: "Create blind audiovisual rally prelabels"
+  default_prompt: "Use $analyze-volleyball-video to create blind, validation-ready rally prelabels from these volleyball videos."

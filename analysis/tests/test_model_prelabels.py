@@ -124,6 +124,19 @@ class ModelPrelabelTests(unittest.TestCase):
         with self.assertRaisesRegex(ManifestError, "videoPath does not match"):
             materialize_model_prelabels(self.candidates, self.tasks, self.output)
 
+    def test_materializes_zero_event_candidate_for_human_review(self) -> None:
+        self.candidate["events"] = []
+        self.candidate["ambiguities"] = ["No plausible rallies found in the blind pass."]
+        self.write_candidate()
+
+        result = materialize_model_prelabels(self.candidates, self.tasks, self.output)
+
+        self.assertEqual(result["rallies"], 0)
+        payload = json.loads((self.output / "match-full.labels.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["rallies"], [])
+        self.assertEqual(payload["annotation"]["status"], "in-progress")
+        self.assertFalse(payload["annotation"]["continuousVideoReviewed"])
+
 
 if __name__ == "__main__":
     unittest.main()

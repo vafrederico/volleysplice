@@ -31,8 +31,8 @@ def _candidate_events(
     duration: float,
     recording_id: str,
 ) -> list[dict[str, Any]]:
-    if not isinstance(value, list) or not value:
-        raise ManifestError(f"{recording_id}: events must be a non-empty array")
+    if not isinstance(value, list):
+        raise ManifestError(f"{recording_id}: events must be an array")
     events: list[dict[str, Any]] = []
     previous_end = -1.0
     for index, row in enumerate(value):
