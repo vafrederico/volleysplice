@@ -65,8 +65,13 @@ def clean_mask(
     *,
     min_live_samples: int,
     bridge_gap_samples: int,
+    scores: np.ndarray | None = None,
+    short_event_min_samples: int | None = None,
+    short_event_threshold: float = 1.0,
 ) -> np.ndarray:
     result = mask.astype(bool, copy=True)
+    if scores is not None and (scores.ndim != 1 or len(scores) != len(result)):
+        raise ValueError("scores must be a one-dimensional array aligned with mask")
     if bridge_gap_samples > 0:
         for start, end in _runs(result, False):
             if start > 0 and end < len(result) and end - start <= bridge_gap_samples:
@@ -74,7 +79,13 @@ def clean_mask(
     if min_live_samples > 1:
         for start, end in _runs(result, True):
             if end - start < min_live_samples:
-                result[start:end] = False
+                keep_short = bool(
+                    scores is not None
+                    and end - start >= (short_event_min_samples or min_live_samples)
+                    and float(np.max(scores[start:end])) >= short_event_threshold
+                )
+                if not keep_short:
+                    result[start:end] = False
     return result
 
 
@@ -97,6 +108,11 @@ def decode_probabilities(
         mask,
         min_live_samples=max(1, round(config.min_live_seconds * analysis_fps)),
         bridge_gap_samples=max(0, round(config.bridge_gap_seconds * analysis_fps)),
+        scores=smoothed,
+        short_event_min_samples=max(
+            1, round(config.short_event_min_seconds * analysis_fps)
+        ),
+        short_event_threshold=config.short_event_threshold,
     )
     sample_width = 1.0 / analysis_fps
     intervals: list[DecodedInterval] = []

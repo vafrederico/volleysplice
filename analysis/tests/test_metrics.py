@@ -4,7 +4,14 @@ import unittest
 from dataclasses import dataclass
 from unittest.mock import patch
 
-from analysis.metrics import evaluate_intervals, interval_iou, ordered_interval_matches
+from analysis.metrics import (
+    aggregate_evaluations,
+    aggregate_interval_selection,
+    evaluate_interval_selection,
+    evaluate_intervals,
+    interval_iou,
+    ordered_interval_matches,
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +89,39 @@ class IntervalMetricTests(unittest.TestCase):
         self.assertEqual(metrics["deadSecondsRetained"], 3.0)
         self.assertEqual(metrics["startErrorsSeconds"], [1.0, 0.0])
         self.assertEqual(metrics["endErrorsSeconds"], [1.0, -1.0])
+
+    def test_selection_projection_matches_full_aggregate_fields_exactly(self) -> None:
+        first_truth = [IntervalValue(0.0, 4.0), IntervalValue(10.0, 14.0)]
+        first_predictions = [
+            IntervalValue(1.0, 5.0),
+            IntervalValue(10.0, 13.0),
+            IntervalValue(20.0, 22.0),
+        ]
+        second_truth = [IntervalValue(2.0, 3.0)]
+        second_predictions = [IntervalValue(1.75, 3.0)]
+        full = aggregate_evaluations(
+            [
+                evaluate_intervals(first_truth, first_predictions),
+                evaluate_intervals(second_truth, second_predictions),
+            ]
+        )
+        selection = aggregate_interval_selection(
+            [
+                evaluate_interval_selection(first_truth, first_predictions),
+                evaluate_interval_selection(second_truth, second_predictions),
+            ]
+        )
+
+        for key in (
+            "trueRallies",
+            "predictedRallies",
+            "matchedRallies",
+            "eventF1",
+            "timeIoU",
+            "liveTimeRecall",
+            "liveTimePrecision",
+        ):
+            self.assertEqual(selection[key], full[key])
 
 
 if __name__ == "__main__":

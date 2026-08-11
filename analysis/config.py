@@ -5,7 +5,8 @@ import math
 from typing import Any
 
 
-FEATURE_VERSION = "court-motion-flow-v1"
+FEATURE_VERSION = "audiovisual-motion-quality-v2"
+LEGACY_FEATURE_VERSIONS = {"court-motion-flow-v1"}
 MODEL_TYPE = "weighted-logistic-v1"
 SEQUENCE_NORMALIZATIONS = {"none", "percentile-rank"}
 
@@ -21,6 +22,9 @@ class FeatureConfig:
     resize_height: int = 108
     grid_size: int = 3
     use_optical_flow: bool = True
+    use_advanced_visual: bool = True
+    use_audio: bool = True
+    audio_sample_rate: int = 16000
     context_offsets_seconds: tuple[float, ...] = (-2.0, -1.0, 0.0, 1.0, 2.0)
     sequence_normalization: str = "percentile-rank"
 
@@ -40,6 +44,16 @@ class FeatureConfig:
             raise ValueError("grid_size must be between 1 and 6")
         if not isinstance(self.use_optical_flow, bool):
             raise ValueError("use_optical_flow must be boolean")
+        if not isinstance(self.use_advanced_visual, bool):
+            raise ValueError("use_advanced_visual must be boolean")
+        if not isinstance(self.use_audio, bool):
+            raise ValueError("use_audio must be boolean")
+        if (
+            not isinstance(self.audio_sample_rate, int)
+            or isinstance(self.audio_sample_rate, bool)
+            or not 2000 <= self.audio_sample_rate <= 48000
+        ):
+            raise ValueError("audio_sample_rate must be between 2000 and 48000")
         if not self.context_offsets_seconds:
             raise ValueError("at least one context offset is required")
         if 0.0 not in self.context_offsets_seconds:
@@ -65,6 +79,9 @@ class FeatureConfig:
             "resize_height",
             "grid_size",
             "use_optical_flow",
+            "use_advanced_visual",
+            "use_audio",
+            "audio_sample_rate",
             "context_offsets_seconds",
             "sequence_normalization",
         }
@@ -74,6 +91,11 @@ class FeatureConfig:
         kwargs = dict(value)
         # Models saved before sequence-level normalization existed used raw values.
         kwargs.setdefault("sequence_normalization", "none")
+        # The original visual-only artifact predates these switches. Missing keys must
+        # remain disabled when loading it; direct FeatureConfig() calls use the v2 defaults.
+        kwargs.setdefault("use_advanced_visual", False)
+        kwargs.setdefault("use_audio", False)
+        kwargs.setdefault("audio_sample_rate", 16000)
         if "context_offsets_seconds" in kwargs:
             if not isinstance(kwargs["context_offsets_seconds"], (list, tuple)) or not all(
                 _finite_number(item) for item in kwargs["context_offsets_seconds"]
@@ -121,6 +143,8 @@ class DecoderConfig:
     exit_threshold: float = 0.4
     min_live_seconds: float = 1.0
     bridge_gap_seconds: float = 2.0
+    short_event_min_seconds: float = 0.5
+    short_event_threshold: float = 0.8
 
     def validate(self) -> None:
         if not _finite_number(self.smoothing_seconds) or self.smoothing_seconds < 0:
@@ -134,17 +158,32 @@ class DecoderConfig:
         if (
             not _finite_number(self.min_live_seconds)
             or not _finite_number(self.bridge_gap_seconds)
+            or not _finite_number(self.short_event_min_seconds)
             or self.min_live_seconds < 0
             or self.bridge_gap_seconds < 0
+            or self.short_event_min_seconds < 0
         ):
             raise ValueError("decoder durations must be non-negative")
+        if (
+            not _finite_number(self.short_event_threshold)
+            or not self.enter_threshold <= self.short_event_threshold <= 1
+        ):
+            raise ValueError(
+                "short_event_threshold must be between enter_threshold and 1"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "DecoderConfig":
-        result = cls(**value)
+        kwargs = dict(value)
+        # Preserve the old decoder exactly: artifacts without a short-event path
+        # continue to remove every run shorter than min_live_seconds.
+        if "short_event_min_seconds" not in kwargs:
+            kwargs["short_event_min_seconds"] = float(kwargs.get("min_live_seconds", 1.0))
+        kwargs.setdefault("short_event_threshold", 1.0)
+        result = cls(**kwargs)
         result.validate()
         return result
 

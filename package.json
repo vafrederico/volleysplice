@@ -16,6 +16,7 @@
     "reanalyze-no-model:dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/reanalyze-no-model-dataset.py",
     "infer:model-dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-model-dataset.py",
     "evaluate:model-padding": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-model-padding.py",
+    "evaluate:model-features": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py",
     "evaluate:labels": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-labels.py",
     "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v",
     "test:web": "node --experimental-strip-types --test tests/web/*.test.mts",

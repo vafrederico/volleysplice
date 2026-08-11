@@ -25,7 +25,14 @@ from .features import (
     probe_video,
     write_preview,
 )
-from .metrics import aggregate_evaluations, evaluate_intervals
+from .metrics import (
+    aggregate_evaluations,
+    aggregate_interval_selection,
+    aggregate_outcome_slices,
+    evaluate_interval_selection,
+    evaluate_intervals,
+    outcome_slice_metrics,
+)
 from .model import LogisticModel, ModelError, load_model, train_logistic_model
 from .schema import (
     DatasetManifest,
@@ -128,15 +135,27 @@ def _evaluate_prepared(
     model: LogisticModel,
     decoder: DecoderConfig,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    probabilities = [model.predict(item.contextual_values) for item in prepared]
+    return _evaluate_prepared_probabilities(prepared, probabilities, decoder)
+
+
+def _evaluate_prepared_probabilities(
+    prepared: Sequence[PreparedRecording],
+    probabilities: Sequence[np.ndarray],
+    decoder: DecoderConfig,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if len(prepared) != len(probabilities):
+        raise ModelError("prepared recordings and probability sequences must be aligned")
     per_recording: list[dict[str, Any]] = []
-    for item in prepared:
-        probabilities = model.predict(item.contextual_values)
+    for item, item_probabilities in zip(prepared, probabilities, strict=True):
         predictions, _ = decode_probabilities(
             item.sequence.times,
-            probabilities,
+            item_probabilities,
             item.sequence.metadata.duration,
             decoder,
-            model.feature_config.analysis_fps,
+            1.0 / float(np.median(np.diff(item.sequence.times)))
+            if len(item.sequence.times) > 1
+            else 1.0,
         )
         scored_predictions = [
             Interval(start=prediction.start, end=prediction.end) for prediction in predictions
@@ -153,7 +172,11 @@ def _evaluate_prepared(
                     fragments.append(Interval(ignored.end, prediction.end))
             scored_predictions = fragments
         metrics = evaluate_intervals(item.recording.rallies, scored_predictions)
+        metrics["outcomeSlices"] = outcome_slice_metrics(
+            item.recording.rallies, scored_predictions
+        )
         metrics["id"] = item.recording.id
+        metrics["sourceGroup"] = item.recording.source_group
         metrics["environment"] = item.recording.environment
         metrics["playersPerTeam"] = item.recording.game.get("playersPerTeam")
         metrics["targetPoints"] = item.recording.game.get("targetPoints")
@@ -168,7 +191,51 @@ def _evaluate_prepared(
             else "unknown-or-unsupported"
         )
         per_recording.append(metrics)
-    return per_recording, aggregate_evaluations(per_recording)
+    aggregate = aggregate_evaluations(per_recording)
+    aggregate["outcomeSlices"] = aggregate_outcome_slices(
+        [item["outcomeSlices"] for item in per_recording]
+    )
+    return per_recording, aggregate
+
+
+def _evaluate_prepared_probabilities_for_selection(
+    prepared: Sequence[PreparedRecording],
+    probabilities: Sequence[np.ndarray],
+    decoder: DecoderConfig,
+) -> dict[str, float | int]:
+    """Evaluate exactly the fields used by decoder selection, and nothing else."""
+    if len(prepared) != len(probabilities):
+        raise ModelError("prepared recordings and probability sequences must be aligned")
+    per_recording: list[dict[str, float | int]] = []
+    for item, item_probabilities in zip(prepared, probabilities, strict=True):
+        predictions, _ = decode_probabilities(
+            item.sequence.times,
+            item_probabilities,
+            item.sequence.metadata.duration,
+            decoder,
+            1.0 / float(np.median(np.diff(item.sequence.times)))
+            if len(item.sequence.times) > 1
+            else 1.0,
+        )
+        scored_predictions = [
+            Interval(start=prediction.start, end=prediction.end)
+            for prediction in predictions
+        ]
+        for ignored in item.recording.ignored_intervals:
+            fragments: list[Interval] = []
+            for prediction in scored_predictions:
+                if prediction.end <= ignored.start or prediction.start >= ignored.end:
+                    fragments.append(prediction)
+                    continue
+                if prediction.start < ignored.start:
+                    fragments.append(Interval(prediction.start, ignored.start))
+                if prediction.end > ignored.end:
+                    fragments.append(Interval(ignored.end, prediction.end))
+            scored_predictions = fragments
+        per_recording.append(
+            evaluate_interval_selection(item.recording.rallies, scored_predictions)
+        )
+    return aggregate_interval_selection(per_recording)
 
 
 def _tune_decoder(
@@ -183,6 +250,34 @@ def _tune_decoder(
     best_objective = -1.0
     best_tie_break: tuple[float, ...] = (-1.0,)
     candidate_count = 0
+    probabilities = [model.predict(item.contextual_values) for item in prepared]
+
+    def consider(candidate: DecoderConfig) -> None:
+        nonlocal best, best_metrics, best_objective, best_tie_break, candidate_count
+        candidate_count += 1
+        aggregate = _evaluate_prepared_probabilities_for_selection(
+            prepared, probabilities, candidate
+        )
+        objective = (
+            0.55 * aggregate["eventF1"]
+            + 0.30 * aggregate["timeIoU"]
+            + 0.15 * aggregate["liveTimeRecall"]
+        )
+        tie_break = (
+            aggregate["eventF1"],
+            aggregate["liveTimePrecision"],
+            -abs(aggregate["predictedRallies"] - aggregate["trueRallies"]),
+            aggregate["timeIoU"],
+            -abs(candidate.enter_threshold - base.enter_threshold),
+        )
+        if objective > best_objective + 1e-9 or (
+            abs(objective - best_objective) <= 1e-9 and tie_break > best_tie_break
+        ):
+            best_objective = objective
+            best_tie_break = tie_break
+            best = candidate
+            best_metrics = aggregate
+
     for smoothing_seconds in (0.5, 1.0, 1.5, 2.0):
         for threshold in np.arange(0.35, 0.851, 0.05):
             for exit_delta in (0.05, 0.10, 0.15):
@@ -196,29 +291,31 @@ def _tune_decoder(
                             exit_threshold=float(round(enter_threshold - exit_delta, 2)),
                             min_live_seconds=min_live_seconds,
                             bridge_gap_seconds=bridge_gap_seconds,
+                            short_event_min_seconds=min_live_seconds,
+                            short_event_threshold=1.0,
                         )
-                        candidate_count += 1
-                        _, aggregate = _evaluate_prepared(prepared, model, candidate)
-                        objective = (
-                            0.55 * aggregate["eventF1"]
-                            + 0.30 * aggregate["timeIoU"]
-                            + 0.15 * aggregate["liveTimeRecall"]
-                        )
-                        tie_break = (
-                            aggregate["eventF1"],
-                            aggregate["liveTimePrecision"],
-                            -abs(aggregate["predictedRallies"] - aggregate["trueRallies"]),
-                            aggregate["timeIoU"],
-                            -abs(candidate.enter_threshold - base.enter_threshold),
-                        )
-                        if objective > best_objective + 1e-9 or (
-                            abs(objective - best_objective) <= 1e-9
-                            and tie_break > best_tie_break
-                        ):
-                            best_objective = objective
-                            best_tie_break = tie_break
-                            best = candidate
-                            best_metrics = aggregate
+                        consider(candidate)
+
+    base_selected = best
+    short_candidates = {
+        (base_selected.min_live_seconds, 1.0),
+        *{
+            (minimum, threshold)
+            for minimum in (0.25, 0.5, 0.75, 1.0)
+            for threshold in (0.7, 0.8, 0.9, 1.0)
+            if minimum <= base_selected.min_live_seconds
+            and threshold >= base_selected.enter_threshold
+        },
+    }
+    for minimum, threshold in sorted(short_candidates):
+        consider(
+            replace(
+                base_selected,
+                short_event_min_seconds=minimum,
+                short_event_threshold=threshold,
+            )
+        )
+    _, best_metrics = _evaluate_prepared_probabilities(prepared, probabilities, best)
     return best, {
         "status": "selected-on-validation",
         "objective": "0.55*eventF1 + 0.30*timeIoU + 0.15*liveTimeRecall",
@@ -502,6 +599,12 @@ def evaluate_dataset(
         )
         for profile in sorted({item["captureProfile"] for item in per_recording})
     }
+    source_groups = {
+        source_group: aggregate_evaluations(
+            [item for item in per_recording if item["sourceGroup"] == source_group]
+        )
+        for source_group in sorted({item["sourceGroup"] for item in per_recording})
+    }
 
     def grouped_metrics(key: str) -> dict[str, Any]:
         values = {item[key] for item in per_recording}
@@ -532,6 +635,7 @@ def evaluate_dataset(
         },
         "aggregate": aggregate,
         "byEnvironment": environments,
+        "bySourceGroup": source_groups,
         "byCaptureProfile": capture_profiles,
         "byPlayersPerTeam": grouped_metrics("playersPerTeam"),
         "byTargetPoints": grouped_metrics("targetPoints"),

@@ -13,7 +13,14 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from .config import FEATURE_VERSION, MODEL_TYPE, DecoderConfig, FeatureConfig, TrainingConfig
+from .config import (
+    FEATURE_VERSION,
+    LEGACY_FEATURE_VERSIONS,
+    MODEL_TYPE,
+    DecoderConfig,
+    FeatureConfig,
+    TrainingConfig,
+)
 from .version import __version__
 
 
@@ -35,6 +42,7 @@ class LogisticModel:
     decoder: DecoderConfig
     training_summary: dict[str, Any]
     artifact_sha256: str | None = None
+    feature_version: str = FEATURE_VERSION
 
     def predict(self, values: np.ndarray) -> np.ndarray:
         if values.ndim != 2 or values.shape[1] != len(self.feature_names):
@@ -78,7 +86,7 @@ class LogisticModel:
                 "producer": f"volleycut-analysis/{__version__}",
                 "createdAt": datetime.now(timezone.utc).isoformat(),
                 "modelType": MODEL_TYPE,
-                "featureVersion": FEATURE_VERSION,
+                "featureVersion": self.feature_version,
                 "featureConfig": self.feature_config.to_dict(),
                 "featureNames": list(self.feature_names),
                 "decoder": self.decoder.to_dict(),
@@ -121,7 +129,11 @@ def load_model(path: str | Path) -> LogisticModel:
         raise ModelError("model metadata root must be an object")
     if metadata.get("schemaVersion") != MODEL_SCHEMA_VERSION:
         raise ModelError(f"unsupported model schemaVersion: {metadata.get('schemaVersion')!r}")
-    if metadata.get("modelType") != MODEL_TYPE or metadata.get("featureVersion") != FEATURE_VERSION:
+    feature_version = metadata.get("featureVersion")
+    if (
+        metadata.get("modelType") != MODEL_TYPE
+        or feature_version not in {FEATURE_VERSION, *LEGACY_FEATURE_VERSIONS}
+    ):
         raise ModelError("unsupported model or feature type")
     weights_file = metadata.get("weightsFile")
     if not isinstance(weights_file, str) or Path(weights_file).name != weights_file:
@@ -179,6 +191,7 @@ def load_model(path: str | Path) -> LogisticModel:
         decoder=decoder,
         training_summary=dict(training_summary),
         artifact_sha256=_artifact_sha256(metadata_bytes, weights_bytes),
+        feature_version=str(feature_version),
     )
 
 

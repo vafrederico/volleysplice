@@ -1,8 +1,10 @@
-# Rally detector v0
+# Rally detector
 
 This package is a CPU-first feasibility baseline for continuous, fixed-camera volleyball video. It genuinely trains a model, runs inference, and evaluates rally intervals; it is not a claim of production accuracy before representative videos arrive.
 
-The learned task is binary `live` versus `dead` at 4 samples per second. Each sample contains low-resolution court appearance, frame difference, regional motion, and optical-flow features. Feature channels are converted to tied within-recording percentile ranks to reduce camera/court scale shift. Five centered temporal samples (`-2, -1, 0, +1, +2` seconds) are passed to a class-weighted logistic classifier. A validation-selected hysteresis decoder jointly tunes smoothing, thresholds, minimum rally duration, and gap bridging to convert probabilities into core rally intervals. User-facing pre-roll and post-roll remain separate edit-list settings.
+The learned task is binary `live` versus `dead` at 4 samples per second. The audiovisual v2 extractor contains 90 base signals: the original low-resolution appearance, frame-difference, and optical-flow channels; camera motion, focus/blur, visibility, and occlusion proxies; camera-compensated court-motion and stand-down/formation-change proxies; and audio level, transient, onset-cadence, cadence-collapse, and time-since-transient signals. Five centered temporal samples (`-2, -1, 0, +1, +2` seconds) produce 450 model inputs for a class-weighted logistic classifier.
+
+Most channels are converted to tied within-recording percentile ranks to reduce camera/court scale shift. Absolute availability and quality gates retain their original scale. A validation-selected hysteresis decoder jointly tunes smoothing, thresholds, minimum rally duration, gap bridging, and an optional high-confidence short-event exception. User-facing pre-roll and post-roll remain separate edit-list settings.
 
 This deliberately mirrors the reusable ideas in the beach-volleyball thesis—fixed view, temporal frame clusters, a learned classifier, smoothing, minimum-duration filtering—without depending on its unavailable code, model, or data. The extractor/classifier boundary allows a later EfficientNetV2 or STES-derived model to reuse the same manifests, splits, decoder, metrics, and `analysis.json` output.
 
@@ -16,7 +18,7 @@ npm run analysis:setup
 .venv/bin/python -m analysis smoke
 ```
 
-`ffmpeg` and `ffprobe` should be installed on the host. Source recordings remain unchanged. Normalize phone footage to a constant-frame-rate analysis master before annotating it:
+`ffmpeg` and `ffprobe` are required when audio features are enabled (the default) and for media normalization. Source recordings remain unchanged. Normalize phone footage to a constant-frame-rate analysis master before annotating it:
 
 ```bash
 .venv/bin/python -m analysis normalize \
@@ -112,14 +114,44 @@ validation/tuning, and held-out evaluation results are not conflated.
 
 New training runs default to tied within-recording percentile normalization. Use `--sequence-normalization none` only for an explicit raw-feature ablation. The normalization mode is stored in the model artifact, and older saved models without that field retain their original raw-feature behavior.
 
+Use `--no-audio` or `--no-advanced-visual` only for explicit extractor ablations. Audio is decoded to 16 kHz mono by default; change it with `--audio-sample-rate`. Videos without a decodable audio stream receive zero-valued audio channels plus `audio_available=0` rather than a fabricated percentile signal.
+
 Feature caches are keyed by source-content SHA-256, ROI, extractor version, and configuration. Model artifacts contain human-readable metadata plus NumPy weights and never use pickle. Existing model, analysis, normalization, and evaluation artifacts are not overwritten.
 
 Evaluation reports product-relevant interval precision/recall/F1 at IoU 0.5, temporal IoU, live-time recall, dead time retained, exact rally-count rate, and boundary errors. Frame accuracy is intentionally not the primary metric because long dead periods can make it look good while rallies are missed.
 
-## What v0 does not do
+## Grouped feature study
+
+The feature-study runner keeps the fixed test split unopened while it performs nested leave-one-`sourceGroup`-out development evaluation. It prepares the audiovisual superset once, then fits full, legacy-only, added-only, and full-minus-family candidates. It also reports grouped circular-shift importance for every family and every base signal, standardized coefficient profiles, the short-event decoder ablation, outcome slices, and 0/1/2/3-second padding sensitivity:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py development \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --padding-seconds 0 1 2 3 \
+  --output data/reports/audiovisual-v2-development.json
+```
+
+Only after that report is frozen, explicitly open the fixed regression-test split:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py final-test \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --development-report data/reports/audiovisual-v2-development.json \
+  --model data/models/audiovisual-v2-final \
+  --output data/reports/audiovisual-v2-final-test.json \
+  --open-test
+```
+
+The final-test gate verifies the manifest, recording snapshots, feature version/signature, and experiment-code hashes. Importance labels require directionally consistent source-group effects plus compatible mean and median magnitude. They are exploratory evidence, not significance tests.
+
+## What the current model does not do
 
 - It does not detect whether the whole court is visible; capture geometry must be confirmed by a person.
-- It does not yet use audio, ball tracking, player detection, or VNL action labels.
+- It does not identify players, poses, receiving formations, ball trajectories, aces, or service faults as semantic classes. Motion/formation/occlusion channels are deliberately named proxies.
+- Reliable ball tracking remains out of scope at the current 4 fps, 192×108 analysis resolution without ball labels or detector weights.
+- The short-event decoder is a generic high-confidence duration exception; ace and service-fault tags are used for evaluation slices, not outcome-aware inference.
 - Weighted logistic output is a ranking confidence, not a calibrated probability.
 - It is an offline centered-context model, not low-latency live detection.
 - It should establish a reproducible baseline and expose data problems, not substitute for benchmarking on unseen indoor, grass, and beach matches.

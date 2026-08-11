@@ -95,6 +95,9 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--resize-width", type=int, default=192)
     train.add_argument("--resize-height", type=int, default=108)
     train.add_argument("--no-optical-flow", action="store_true")
+    train.add_argument("--no-advanced-visual", action="store_true")
+    train.add_argument("--no-audio", action="store_true")
+    train.add_argument("--audio-sample-rate", type=int, default=16000)
     train.add_argument(
         "--sequence-normalization",
         choices=("none", "percentile-rank"),
@@ -209,11 +212,14 @@ def _doctor() -> tuple[dict[str, Any], int]:
         "ffmpeg": {"available": shutil.which("ffmpeg") is not None},
         "ffprobe": {"available": shutil.which("ffprobe") is not None},
     }
-    required = all(dependencies[name]["available"] for name in ("python", "numpy", "opencv"))
+    required = all(
+        dependencies[name]["available"]
+        for name in ("python", "numpy", "opencv", "ffmpeg", "ffprobe")
+    )
     result = {
         "ready": bool(required),
         "dependencies": dependencies,
-        "note": "ffmpeg/ffprobe are recommended for normalized phone footage and audio inspection",
+        "note": "ffmpeg/ffprobe are required by the default audiovisual feature extractor",
     }
     return result, 0 if required else 1
 
@@ -335,6 +341,9 @@ def run(argv: Sequence[str] | None = None) -> int:
                 resize_width=arguments.resize_width,
                 resize_height=arguments.resize_height,
                 use_optical_flow=not arguments.no_optical_flow,
+                use_advanced_visual=not arguments.no_advanced_visual,
+                use_audio=not arguments.no_audio,
+                audio_sample_rate=arguments.audio_sample_rate,
                 sequence_normalization=arguments.sequence_normalization,
             )
             training = TrainingConfig(

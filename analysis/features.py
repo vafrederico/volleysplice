@@ -150,7 +150,9 @@ def camera_warnings(metadata: VideoMetadata, capture: dict[str, Any] | None = No
     if metadata.fps < 24:
         warnings.append("frame rate below 24 fps; 30 or 60 fps is preferred")
     if metadata.has_audio is False:
-        warnings.append("video has no audio; visual v0 works, but future multimodal cues will be unavailable")
+        warnings.append(
+            "video has no audio; audiovisual channels will be marked unavailable and zero-imputed"
+        )
     if capture:
         if capture.get("stationary") is not True:
             warnings.append("camera is not confirmed stationary")
@@ -188,7 +190,19 @@ def _grid_means(image: np.ndarray, size: int) -> list[float]:
     return result
 
 
-def feature_names(config: FeatureConfig) -> tuple[str, ...]:
+ABSOLUTE_FEATURE_NAMES = frozenset(
+    {
+        "audio_available",
+        "focus_quality",
+        "blur_probability",
+        "occlusion_fraction",
+        "visibility_quality",
+        "camera_shift_response",
+    }
+)
+
+
+def _frame_feature_names(config: FeatureConfig) -> tuple[str, ...]:
     grid_count = config.grid_size * config.grid_size
     static = [
         "luma_mean",
@@ -201,12 +215,103 @@ def feature_names(config: FeatureConfig) -> tuple[str, ...]:
     static.extend(f"luma_grid_{index}" for index in range(grid_count))
     dynamic = ["diff_mean", "diff_std", "diff_p90", "diff_active_fraction"]
     dynamic.extend(f"diff_grid_{index}" for index in range(grid_count))
+    if config.use_advanced_visual:
+        dynamic.extend(
+            [
+                "focus_quality",
+                "blur_probability",
+                "dark_fraction",
+                "bright_fraction",
+                "low_texture_fraction",
+                "occlusion_fraction",
+                "visibility_quality",
+                "camera_shift_x",
+                "camera_shift_y",
+                "camera_shift_magnitude",
+                "camera_shift_response",
+            ]
+        )
     if config.use_optical_flow:
         dynamic.extend(
             ["flow_mean", "flow_p90", "flow_active_fraction", "flow_median_x", "flow_median_y"]
         )
         dynamic.extend(f"flow_grid_{index}" for index in range(grid_count))
+        if config.use_advanced_visual:
+            dynamic.extend(
+                [
+                    "player_motion_mean",
+                    "player_motion_p90",
+                    "player_motion_active_fraction",
+                    "player_motion_active_zone_fraction",
+                    "player_motion_spatial_entropy",
+                    "player_motion_centroid_x",
+                    "player_motion_centroid_y",
+                    "player_motion_spread_x",
+                    "player_motion_spread_y",
+                    "player_motion_coherence",
+                    "quality_gated_player_motion",
+                ]
+            )
+            dynamic.extend(
+                f"player_motion_grid_{index}" for index in range(grid_count)
+            )
     return tuple(static + dynamic)
+
+
+def _temporal_visual_feature_names(config: FeatureConfig) -> tuple[str, ...]:
+    if not config.use_advanced_visual or not config.use_optical_flow:
+        return ()
+    return (
+        "player_motion_onset",
+        "player_motion_collapse",
+        "synchronized_stand_down",
+        "receiving_formation_change_proxy",
+    )
+
+
+def _audio_feature_names(config: FeatureConfig) -> tuple[str, ...]:
+    if not config.use_audio:
+        return ()
+    return (
+        "audio_available",
+        "audio_rms",
+        "audio_peak",
+        "audio_peak_to_rms",
+        "audio_noise_floor",
+        "audio_snr",
+        "audio_spectral_flux",
+        "audio_rms_novelty",
+        "audio_onset_strength",
+        "audio_contact_like_transient",
+        "audio_onset_cadence",
+        "audio_cadence_collapse",
+        "audio_seconds_since_transient",
+    )
+
+
+def feature_names(config: FeatureConfig) -> tuple[str, ...]:
+    return (
+        *_frame_feature_names(config),
+        *_temporal_visual_feature_names(config),
+        *_audio_feature_names(config),
+    )
+
+
+def _weighted_motion_geometry(magnitude: np.ndarray) -> tuple[float, float, float, float]:
+    weights = np.where(magnitude >= 0.5, magnitude, 0.0).astype(np.float64, copy=False)
+    total = float(np.sum(weights))
+    if total <= 1e-9:
+        return 0.5, 0.5, 0.0, 0.0
+    height, width = magnitude.shape
+    x_coordinates = (np.arange(width, dtype=np.float64) + 0.5) / width
+    y_coordinates = (np.arange(height, dtype=np.float64) + 0.5) / height
+    x_weights = np.sum(weights, axis=0)
+    y_weights = np.sum(weights, axis=1)
+    centroid_x = float(x_weights @ x_coordinates / total)
+    centroid_y = float(y_weights @ y_coordinates / total)
+    spread_x = float(np.sqrt(x_weights @ np.square(x_coordinates - centroid_x) / total))
+    spread_y = float(np.sqrt(y_weights @ np.square(y_coordinates - centroid_y) / total))
+    return centroid_x, centroid_y, spread_x, spread_y
 
 
 def _frame_features(
@@ -224,13 +329,16 @@ def _frame_features(
     hsv = cv2.cvtColor(resized, cv2.COLOR_BGR2HSV)
     edges = cv2.Canny(gray, 60, 140)
     laplacian = cv2.Laplacian(gray, cv2.CV_32F)
+    laplacian_variance = float(np.var(laplacian))
+    luma_std = float(np.std(gray) / 255.0)
+    edge_density = float(np.mean(edges > 0))
     values: list[float] = [
         float(np.mean(gray) / 255.0),
-        float(np.std(gray) / 255.0),
+        luma_std,
         float(np.mean(hsv[:, :, 1]) / 255.0),
         float(np.std(hsv[:, :, 1]) / 255.0),
-        float(np.mean(edges > 0)),
-        float(min(np.var(laplacian) / 2000.0, 5.0)),
+        edge_density,
+        float(min(laplacian_variance / 2000.0, 5.0)),
     ]
     values.extend(value / 255.0 for value in _grid_means(gray, config.grid_size))
 
@@ -247,6 +355,66 @@ def _frame_features(
         ]
     )
     values.extend(value / 255.0 for value in _grid_means(difference, config.grid_size))
+
+    visibility_quality = 1.0
+    camera_shift_magnitude = 0.0
+    if config.use_advanced_visual:
+        focus_quality = laplacian_variance / (laplacian_variance + 100.0)
+        blur_probability = 1.0 - focus_quality
+        dark_fraction = float(np.mean(gray <= 12))
+        bright_fraction = float(np.mean(gray >= 243))
+        gradient_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+        gradient_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+        gradient = np.hypot(gradient_x, gradient_y)
+        low_texture_fraction = float(np.mean(gradient < 8.0))
+        occluded_cells = 0
+        for row in range(config.grid_size):
+            y0 = round(row * gray.shape[0] / config.grid_size)
+            y1 = round((row + 1) * gray.shape[0] / config.grid_size)
+            for column in range(config.grid_size):
+                x0 = round(column * gray.shape[1] / config.grid_size)
+                x1 = round((column + 1) * gray.shape[1] / config.grid_size)
+                cell = gray[y0:y1, x0:x1]
+                if cell.size and (
+                    (float(np.mean(cell)) <= 16.0 or float(np.mean(cell)) >= 239.0)
+                    and float(np.std(cell)) <= 8.0
+                ):
+                    occluded_cells += 1
+        occlusion_fraction = occluded_cells / (config.grid_size * config.grid_size)
+        exposure_quality = max(0.0, 1.0 - min(1.0, dark_fraction + bright_fraction))
+        contrast_quality = min(1.0, luma_std / 0.12)
+        visibility_quality = float(
+            np.sqrt(max(0.0, focus_quality * exposure_quality * contrast_quality))
+            * (1.0 - occlusion_fraction)
+        )
+        if previous_gray is None:
+            shift_x = shift_y = response = 0.0
+        else:
+            try:
+                shift, response = cv2.phaseCorrelate(
+                    previous_gray.astype(np.float32), gray.astype(np.float32)
+                )
+                shift_x, shift_y = float(shift[0]), float(shift[1])
+                response = float(np.clip(response, 0.0, 1.0))
+            except cv2.error:
+                shift_x = shift_y = response = 0.0
+        diagonal = float(np.hypot(config.resize_width, config.resize_height))
+        camera_shift_magnitude = float(np.hypot(shift_x, shift_y) / diagonal)
+        values.extend(
+            [
+                focus_quality,
+                blur_probability,
+                dark_fraction,
+                bright_fraction,
+                low_texture_fraction,
+                occlusion_fraction,
+                visibility_quality,
+                shift_x / config.resize_width,
+                shift_y / config.resize_height,
+                camera_shift_magnitude,
+                response,
+            ]
+        )
 
     if config.use_optical_flow:
         if previous_gray is None:
@@ -276,8 +444,264 @@ def _frame_features(
             ]
         )
         values.extend(value / diagonal for value in _grid_means(magnitude, config.grid_size))
+        if config.use_advanced_visual:
+            median_x = float(np.median(flow[:, :, 0]))
+            median_y = float(np.median(flow[:, :, 1]))
+            residual = flow - np.asarray([median_x, median_y], dtype=np.float32)
+            residual_magnitude = np.linalg.norm(residual, axis=2)
+            residual_grid_pixels = np.asarray(
+                _grid_means(residual_magnitude, config.grid_size), dtype=np.float64
+            )
+            residual_grid = residual_grid_pixels / diagonal
+            grid_total = float(np.sum(residual_grid_pixels))
+            if grid_total > 1e-9:
+                distribution = residual_grid_pixels / grid_total
+                positive = distribution > 0
+                entropy = float(
+                    -np.sum(distribution[positive] * np.log(distribution[positive]))
+                    / math.log(len(distribution))
+                ) if len(distribution) > 1 else 0.0
+            else:
+                entropy = 0.0
+            centroid_x, centroid_y, spread_x, spread_y = _weighted_motion_geometry(
+                residual_magnitude
+            )
+            active = residual_magnitude >= 1.0
+            if np.any(active):
+                active_vectors = residual[active]
+                coherence = float(
+                    np.linalg.norm(np.mean(active_vectors, axis=0))
+                    / max(float(np.mean(np.linalg.norm(active_vectors, axis=1))), 1e-6)
+                )
+            else:
+                coherence = 0.0
+            camera_gate = max(0.0, 1.0 - min(1.0, camera_shift_magnitude / 0.03))
+            residual_mean = float(np.mean(residual_magnitude) / diagonal)
+            values.extend(
+                [
+                    residual_mean,
+                    float(np.percentile(residual_magnitude, 90) / diagonal),
+                    float(np.mean(active)),
+                    float(np.mean(residual_grid_pixels >= 0.75)),
+                    entropy,
+                    centroid_x,
+                    centroid_y,
+                    spread_x,
+                    spread_y,
+                    coherence,
+                    residual_mean * visibility_quality * camera_gate,
+                ]
+            )
+            values.extend(float(value) for value in residual_grid)
 
     return np.asarray(values, dtype=np.float32), gray
+
+
+def _rolling_mean(values: np.ndarray, window_samples: int, *, future: bool) -> np.ndarray:
+    if values.ndim != 1:
+        raise ValueError("rolling input must be one-dimensional")
+    if len(values) == 0:
+        return values.astype(np.float32, copy=True)
+    window_samples = max(1, int(window_samples))
+    cumulative = np.concatenate(([0.0], np.cumsum(values, dtype=np.float64)))
+    indexes = np.arange(len(values))
+    if future:
+        starts = indexes
+        ends = np.minimum(len(values), indexes + window_samples)
+    else:
+        starts = np.maximum(0, indexes - window_samples + 1)
+        ends = indexes + 1
+    return ((cumulative[ends] - cumulative[starts]) / (ends - starts)).astype(np.float32)
+
+
+def _temporal_visual_features(
+    matrix: np.ndarray,
+    names: tuple[str, ...],
+    config: FeatureConfig,
+) -> np.ndarray:
+    temporal_names = _temporal_visual_feature_names(config)
+    if not temporal_names:
+        return np.empty((len(matrix), 0), dtype=np.float32)
+    indexes = {name: index for index, name in enumerate(names)}
+    player_motion = matrix[:, indexes["player_motion_mean"]]
+    active_zones = matrix[:, indexes["player_motion_active_zone_fraction"]]
+    window = max(1, round(config.analysis_fps))
+    short_window = max(1, round(0.5 * config.analysis_fps))
+    past_motion = _rolling_mean(player_motion, window, future=False)
+    future_motion = _rolling_mean(player_motion, short_window, future=True)
+    past_zones = _rolling_mean(active_zones, window, future=False)
+    future_zones = _rolling_mean(active_zones, short_window, future=True)
+    onset = np.maximum(future_motion - past_motion, 0.0)
+    collapse = np.maximum(past_motion - future_motion, 0.0)
+    synchronized = collapse * np.maximum(past_zones - future_zones, 0.0)
+
+    geometry = []
+    for name in (
+        "player_motion_centroid_x",
+        "player_motion_centroid_y",
+        "player_motion_spread_x",
+        "player_motion_spread_y",
+    ):
+        values = matrix[:, indexes[name]]
+        geometry.append(
+            _rolling_mean(values, window, future=True)
+            - _rolling_mean(values, window, future=False)
+        )
+    formation_change = np.sqrt(sum(np.square(value) for value in geometry))
+    activity_gate = np.minimum(1.0, (past_motion + future_motion) / 0.015)
+    formation_change *= activity_gate
+    return np.column_stack((onset, collapse, synchronized, formation_change)).astype(
+        np.float32, copy=False
+    )
+
+
+def _decode_audio_samples(
+    video_path: Path,
+    metadata: VideoMetadata,
+    sample_rate: int,
+) -> tuple[np.ndarray, bool]:
+    if metadata.has_audio is False:
+        return np.empty(0, dtype=np.float32), False
+    executable = shutil.which("ffmpeg")
+    if executable is None:
+        raise VideoError("FFmpeg is required when audio features are enabled")
+    command = [
+        executable,
+        "-nostdin",
+        "-v",
+        "error",
+        "-i",
+        str(video_path),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        str(sample_rate),
+        "-f",
+        "s16le",
+        "pipe:1",
+    ]
+    timeout = max(120.0, metadata.duration * 0.5)
+    try:
+        result = subprocess.run(command, capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise VideoError(f"could not decode audio from {video_path}: {error}") from error
+    if result.returncode != 0:
+        if metadata.has_audio is None:
+            return np.empty(0, dtype=np.float32), False
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise VideoError(f"could not decode audio from {video_path}: {detail or 'FFmpeg failed'}")
+    if not result.stdout:
+        return np.empty(0, dtype=np.float32), False
+    samples = np.frombuffer(result.stdout, dtype="<i2").astype(np.float32)
+    samples *= np.float32(1.0 / 32768.0)
+    return samples, True
+
+
+def _rank_vector(values: np.ndarray) -> np.ndarray:
+    return percentile_rank_values(values.reshape(-1, 1))[:, 0]
+
+
+def _audio_features_from_samples(
+    samples: np.ndarray,
+    times: np.ndarray,
+    config: FeatureConfig,
+    *,
+    available: bool,
+) -> np.ndarray:
+    names = _audio_feature_names(config)
+    if not names:
+        return np.empty((len(times), 0), dtype=np.float32)
+    if not available or len(samples) == 0:
+        return np.zeros((len(times), len(names)), dtype=np.float32)
+
+    frame_seconds = 0.05
+    frame_samples = max(16, round(config.audio_sample_rate * frame_seconds))
+    frame_count = max(1, math.ceil(len(samples) / frame_samples))
+    padded = np.pad(samples, (0, frame_count * frame_samples - len(samples)))
+    frames = padded.reshape(frame_count, frame_samples)
+    rms = np.sqrt(np.mean(np.square(frames, dtype=np.float64), axis=1)).astype(np.float32)
+    peak = np.max(np.abs(frames), axis=1).astype(np.float32)
+    window = np.hanning(frame_samples).astype(np.float32)
+    fft_size = 1 << max(1, (frame_samples - 1).bit_length())
+    previous_spectrum: np.ndarray | None = None
+    spectral_flux = np.zeros(frame_count, dtype=np.float32)
+    for index, frame in enumerate(frames):
+        spectrum = np.abs(np.fft.rfft(frame * window, n=fft_size)).astype(np.float32)
+        spectrum /= max(float(np.sum(spectrum)), 1e-8)
+        if previous_spectrum is not None:
+            spectral_flux[index] = float(
+                np.sqrt(np.sum(np.square(np.maximum(spectrum - previous_spectrum, 0.0))))
+            )
+        previous_spectrum = spectrum
+    rms_novelty = np.maximum(rms - np.concatenate(([rms[0]], rms[:-1])), 0.0)
+    peak_rank = _rank_vector(peak)
+    novelty_rank = _rank_vector(rms_novelty)
+    flux_rank = _rank_vector(spectral_flux)
+    onset_strength = (0.45 * flux_rank + 0.35 * novelty_rank + 0.20 * peak_rank).astype(
+        np.float32
+    )
+    contact_like = (onset_strength * np.sqrt(peak_rank)).astype(np.float32)
+    strong_threshold = max(0.72, float(np.percentile(contact_like, 85)))
+    strong = (contact_like >= strong_threshold) & (peak_rank >= 0.60)
+
+    cadence_window = max(1, round(2.0 / frame_seconds))
+    collapse_window = max(1, round(1.0 / frame_seconds))
+    cadence = _rolling_mean(contact_like, cadence_window, future=False)
+    future_cadence = _rolling_mean(contact_like, collapse_window, future=True)
+    cadence_collapse = np.maximum(cadence - future_cadence, 0.0)
+    elapsed = np.full(frame_count, 10.0, dtype=np.float32)
+    last_time: float | None = None
+    audio_times = (np.arange(frame_count, dtype=np.float64) + 0.5) * frame_seconds
+    for index, timestamp in enumerate(audio_times):
+        if strong[index]:
+            last_time = float(timestamp)
+            elapsed[index] = 0.0
+        elif last_time is not None:
+            elapsed[index] = min(10.0, float(timestamp) - last_time)
+
+    noise_floor = np.empty(frame_count, dtype=np.float32)
+    noise_window = max(1, round(10.0 / frame_seconds))
+    for index in range(frame_count):
+        start = max(0, index - noise_window + 1)
+        noise_floor[index] = float(np.percentile(rms[start : index + 1], 20))
+    snr = np.log1p(np.maximum(rms - noise_floor, 0.0) / (noise_floor + 1e-4)).astype(
+        np.float32
+    )
+    peak_to_rms = np.clip(peak / (rms + 1e-5), 0.0, 30.0).astype(np.float32)
+
+    sources = (
+        rms,
+        peak,
+        peak_to_rms,
+        noise_floor,
+        snr,
+        spectral_flux,
+        rms_novelty,
+        onset_strength,
+        contact_like,
+        cadence,
+        cadence_collapse,
+        elapsed,
+    )
+    output = np.empty((len(times), len(names)), dtype=np.float32)
+    output[:, 0] = 1.0
+    half_width = 0.5 / config.analysis_fps
+    for row, timestamp in enumerate(times):
+        left = int(np.searchsorted(audio_times, timestamp - half_width, side="left"))
+        right = int(np.searchsorted(audio_times, timestamp + half_width, side="right"))
+        if right <= left:
+            nearest = min(frame_count - 1, max(0, int(round(timestamp / frame_seconds - 0.5))))
+            left, right = nearest, nearest + 1
+        for column, source in enumerate(sources, start=1):
+            if column in {1, 4, 5, 10, 11, 12}:
+                value = float(np.mean(source[left:right]))
+            else:
+                value = float(np.max(source[left:right]))
+            output[row, column] = value
+    return output
 
 
 def extract_features(
@@ -322,14 +746,32 @@ def extract_features(
         capture.release()
     if not rows:
         raise VideoError(f"video yielded no decodable frames: {video_path}")
-    names = feature_names(config)
+    frame_names = _frame_feature_names(config)
     matrix = np.vstack(rows).astype(np.float32, copy=False)
+    if matrix.shape[1] != len(frame_names):
+        raise VideoError("internal frame-feature signature mismatch")
+    time_values = np.asarray(times, dtype=np.float64)
+    temporal = _temporal_visual_features(matrix, frame_names, config)
+    if config.use_audio:
+        audio_samples, audio_available = _decode_audio_samples(
+            video_path, metadata, config.audio_sample_rate
+        )
+        audio = _audio_features_from_samples(
+            audio_samples,
+            time_values,
+            config,
+            available=audio_available,
+        )
+    else:
+        audio = np.empty((len(matrix), 0), dtype=np.float32)
+    matrix = np.concatenate((matrix, temporal, audio), axis=1).astype(np.float32, copy=False)
+    names = feature_names(config)
     if matrix.shape[1] != len(names):
         raise VideoError("internal feature signature mismatch")
-    if not np.isfinite(matrix).all() or not np.isfinite(times).all():
+    if not np.isfinite(matrix).all() or not np.isfinite(time_values).all():
         raise VideoError("video feature extraction produced non-finite values")
     return FeatureSequence(
-        times=np.asarray(times, dtype=np.float64),
+        times=time_values,
         values=matrix,
         names=names,
         metadata=metadata,
@@ -340,7 +782,11 @@ def contextualize(sequence: FeatureSequence, config: FeatureConfig) -> tuple[np.
     times = sequence.times
     values = sequence.values
     if config.sequence_normalization == "percentile-rank":
-        values = percentile_rank_values(values)
+        ranked = percentile_rank_values(values)
+        for index, name in enumerate(sequence.names):
+            if name in ABSOLUTE_FEATURE_NAMES:
+                ranked[:, index] = values[:, index]
+        values = ranked
     blocks: list[np.ndarray] = []
     names: list[str] = []
     for offset in config.context_offsets_seconds:

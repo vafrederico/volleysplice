@@ -61,6 +61,8 @@ class DecoderTests(unittest.TestCase):
             exit_threshold=0.4,
             min_live_seconds=1.0,
             bridge_gap_seconds=0.0,
+            short_event_min_seconds=1.0,
+            short_event_threshold=1.0,
         )
 
         intervals, smoothed = decode_probabilities(times, probabilities, 3.0, config, fps)
@@ -70,6 +72,28 @@ class DecoderTests(unittest.TestCase):
         self.assertAlmostEqual(intervals[0].start, 1.25)
         self.assertAlmostEqual(intervals[0].end, 2.25)
         self.assertAlmostEqual(intervals[0].confidence, 0.9, places=6)
+
+    def test_keeps_a_short_high_confidence_event_but_rejects_a_weak_one(self) -> None:
+        fps = 4.0
+        times = np.arange(8, dtype=np.float64) / fps
+        probabilities = np.asarray(
+            [0.1, 0.92, 0.91, 0.1, 0.1, 0.65, 0.64, 0.1], dtype=np.float32
+        )
+        config = DecoderConfig(
+            smoothing_seconds=0.0,
+            enter_threshold=0.6,
+            exit_threshold=0.5,
+            min_live_seconds=1.0,
+            bridge_gap_seconds=0.0,
+            short_event_min_seconds=0.5,
+            short_event_threshold=0.85,
+        )
+
+        intervals, _ = decode_probabilities(times, probabilities, 2.0, config, fps)
+
+        self.assertEqual(len(intervals), 1)
+        self.assertAlmostEqual(intervals[0].start, 0.125)
+        self.assertAlmostEqual(intervals[0].end, 0.625)
 
 
 if __name__ == "__main__":

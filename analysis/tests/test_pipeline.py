@@ -203,10 +203,22 @@ class DecoderSelectionTests(unittest.TestCase):
             bridge_gap_seconds=1.0,
         )
 
-        def evaluate(_prepared, _model, candidate):
+        disabled_target = DecoderConfig(
+            smoothing_seconds=target.smoothing_seconds,
+            enter_threshold=target.enter_threshold,
+            exit_threshold=target.exit_threshold,
+            min_live_seconds=target.min_live_seconds,
+            bridge_gap_seconds=target.bridge_gap_seconds,
+            short_event_min_seconds=target.min_live_seconds,
+            short_event_threshold=1.0,
+        )
+
+        def metrics(candidate):
             exact = candidate == target
-            return [], {
-                "eventF1": 1.0 if exact else 0.0,
+            base_exact = candidate == disabled_target
+            score = 1.0 if exact else (0.9 if base_exact else 0.0)
+            return {
+                "eventF1": score,
                 "timeIoU": 0.8 if exact else 0.0,
                 "liveTimeRecall": 0.9 if exact else 0.0,
                 "liveTimePrecision": 0.85 if exact else 0.0,
@@ -214,15 +226,34 @@ class DecoderSelectionTests(unittest.TestCase):
                 "trueRallies": 4,
             }
 
-        with patch("analysis.pipeline._evaluate_prepared", side_effect=evaluate):
+        def evaluate_selection(_prepared, _probabilities, candidate):
+            return metrics(candidate)
+
+        def evaluate_full(_prepared, _probabilities, candidate):
+            return [], metrics(candidate)
+
+        class Model:
+            def predict(self, _values):
+                return np.zeros(1, dtype=np.float32)
+
+        class Prepared:
+            contextual_values = np.zeros((1, 1), dtype=np.float32)
+
+        with patch(
+            "analysis.pipeline._evaluate_prepared_probabilities_for_selection",
+            side_effect=evaluate_selection,
+        ), patch(
+            "analysis.pipeline._evaluate_prepared_probabilities",
+            side_effect=evaluate_full,
+        ):
             selected, summary = _tune_decoder(
-                [object()],  # type: ignore[list-item]
-                object(),  # type: ignore[arg-type]
+                [Prepared()],  # type: ignore[list-item]
+                Model(),  # type: ignore[arg-type]
                 DecoderConfig(),
             )
 
         self.assertEqual(selected, target)
-        self.assertEqual(summary["candidateCount"], 1584)
+        self.assertEqual(summary["candidateCount"], 1601)
         self.assertEqual(summary["validationMetrics"]["eventF1"], 1.0)
 
 

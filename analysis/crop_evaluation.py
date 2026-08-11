@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
-from .metrics import aggregate_evaluations, evaluate_intervals
+from .metrics import (
+    aggregate_evaluations,
+    aggregate_outcome_slices,
+    evaluate_intervals,
+    outcome_slice_metrics,
+)
 from .schema import Interval
 
 
@@ -54,16 +59,26 @@ def evaluate_crop_padding(
         if padding < 0:
             raise ValueError("padding values cannot be negative")
         per_recording: list[dict[str, Any]] = []
+        input_crop_count = 0
+        output_crop_count = 0
         for recording in recordings:
+            input_crop_count += len(recording.predictions)
             predictions = pad_and_merge_intervals(
                 recording.predictions,
                 recording.duration,
                 float(padding),
             )
+            output_crop_count += len(predictions)
             metrics = evaluate_intervals(recording.truth, predictions)
             metrics["id"] = recording.id
+            metrics["outcomeSlices"] = outcome_slice_metrics(
+                recording.truth, predictions
+            )
             per_recording.append(metrics)
         aggregate = aggregate_evaluations(per_recording)
+        aggregate["outcomeSlices"] = aggregate_outcome_slices(
+            [item["outcomeSlices"] for item in per_recording]
+        )
         retained = float(aggregate["predictedLiveSeconds"])
         rows.append(
             {
@@ -73,6 +88,13 @@ def evaluate_crop_padding(
                 "retainedVideoRate": retained / total_video_seconds,
                 "removedVideoSeconds": total_video_seconds - retained,
                 "removedVideoRate": 1.0 - retained / total_video_seconds,
+                "inputCropCount": input_crop_count,
+                "outputCropCount": output_crop_count,
+                "cropMergeRate": (
+                    1.0 - output_crop_count / input_crop_count
+                    if input_crop_count
+                    else 0.0
+                ),
                 "recordings": per_recording,
             }
         )

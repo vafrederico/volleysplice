@@ -22,9 +22,13 @@ class ManifestError(ValueError):
 class Interval:
     start: float
     end: float
+    tags: tuple[str, ...] = ()
 
-    def to_dict(self) -> dict[str, float]:
-        return {"start": self.start, "end": self.end}
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"start": self.start, "end": self.end}
+        if self.tags:
+            payload["tags"] = list(self.tags)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -77,7 +81,15 @@ def _read_intervals(
             raise ManifestError(f"{where} must satisfy 0 <= start < end")
         if start < previous_end:
             raise ManifestError(f"{where} overlaps or is not ordered")
-        intervals.append(Interval(start=start, end=end))
+        raw_tags = item.get("tags", [])
+        if (
+            not isinstance(raw_tags, list)
+            or any(not isinstance(tag, str) or not tag.strip() for tag in raw_tags)
+        ):
+            raise ManifestError(f"{where}.tags must be an array of non-empty strings")
+        intervals.append(
+            Interval(start=start, end=end, tags=tuple(dict.fromkeys(raw_tags)))
+        )
         previous_end = end
     return tuple(intervals)
 
