@@ -25,6 +25,9 @@ from .version import __version__
 
 
 MODEL_SCHEMA_VERSION = 1
+RALLY_LIVE_TASK = "rally-live"
+SERVE_CONTACT_TASK = "serve-contact"
+PREDICTION_TASKS = {RALLY_LIVE_TASK, SERVE_CONTACT_TASK}
 
 
 class ModelError(RuntimeError):
@@ -43,6 +46,7 @@ class LogisticModel:
     training_summary: dict[str, Any]
     artifact_sha256: str | None = None
     feature_version: str = FEATURE_VERSION
+    prediction_task: str = RALLY_LIVE_TASK
 
     def predict(self, values: np.ndarray) -> np.ndarray:
         if values.ndim != 2 or values.shape[1] != len(self.feature_names):
@@ -54,6 +58,8 @@ class LogisticModel:
         return (1.0 / (1.0 + np.exp(-logits))).astype(np.float32)
 
     def save(self, destination: str | Path) -> Path:
+        if self.prediction_task not in PREDICTION_TASKS:
+            raise ModelError(f"unsupported prediction task: {self.prediction_task!r}")
         model_dir = Path(destination).expanduser().resolve()
         if model_dir.exists():
             if not model_dir.is_dir() or any(model_dir.iterdir()):
@@ -87,6 +93,7 @@ class LogisticModel:
                 "createdAt": datetime.now(timezone.utc).isoformat(),
                 "modelType": MODEL_TYPE,
                 "featureVersion": self.feature_version,
+                "predictionTask": self.prediction_task,
                 "featureConfig": self.feature_config.to_dict(),
                 "featureNames": list(self.feature_names),
                 "decoder": self.decoder.to_dict(),
@@ -181,6 +188,9 @@ def load_model(path: str | Path) -> LogisticModel:
     training_summary = metadata.get("training", {})
     if not isinstance(training_summary, dict):
         raise ModelError("model training metadata must be an object")
+    prediction_task = metadata.get("predictionTask", RALLY_LIVE_TASK)
+    if prediction_task not in PREDICTION_TASKS:
+        raise ModelError(f"unsupported model predictionTask: {prediction_task!r}")
     return LogisticModel(
         feature_config=feature_config,
         feature_names=names,
@@ -192,6 +202,7 @@ def load_model(path: str | Path) -> LogisticModel:
         training_summary=dict(training_summary),
         artifact_sha256=_artifact_sha256(metadata_bytes, weights_bytes),
         feature_version=str(feature_version),
+        prediction_task=prediction_task,
     )
 
 
@@ -256,7 +267,11 @@ def train_logistic_model(
     feature_names: tuple[str, ...],
     decoder: DecoderConfig,
     config: TrainingConfig,
+    *,
+    prediction_task: str = RALLY_LIVE_TASK,
 ) -> LogisticModel:
+    if prediction_task not in PREDICTION_TASKS:
+        raise ModelError(f"unsupported prediction task: {prediction_task!r}")
     config.validate()
     feature_config.validate()
     if len(train_values) != len(train_labels) or not train_values:
@@ -377,4 +392,5 @@ def train_logistic_model(
         bias=float(best_bias),
         decoder=decoder,
         training_summary=summary,
+        prediction_task=prediction_task,
     )

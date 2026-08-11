@@ -1,0 +1,340 @@
+from __future__ import annotations
+
+import json
+import tempfile
+import unittest
+from dataclasses import dataclass
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+
+from analysis.config import DecoderConfig, FeatureConfig
+from analysis.decoder import DecodedInterval
+from analysis.features import FeatureSequence, VideoMetadata
+from analysis.model import (
+    RALLY_LIVE_TASK,
+    SERVE_CONTACT_TASK,
+    LogisticModel,
+    ModelError,
+    load_model,
+)
+from analysis.serve import (
+    ServeCompositionConfig,
+    ServeDecoderConfig,
+    ServeDetection,
+    compose_serve_anchored_intervals,
+    decode_serve_probabilities,
+    match_serve_contacts,
+    serve_labels_for_times,
+)
+from analysis.pipeline import PreparedRecording, evaluate_dataset, infer_video
+from analysis.schema import Interval, ManifestError, Recording
+from analysis.serve_experiment import (
+    PairedPrediction,
+    _selection_score,
+    _serve_metrics,
+    _validate_serve_validation_targets,
+    _validate_model_pair,
+)
+
+
+@dataclass(frozen=True)
+class IntervalValue:
+    start: float
+    end: float
+
+
+class ServeTargetTests(unittest.TestCase):
+    def test_labels_radius_and_nearest_sample_for_between_sample_contact(self) -> None:
+        times = np.asarray([0.0, 0.25, 0.5, 0.75], dtype=np.float64)
+
+        pulse = serve_labels_for_times(times, [IntervalValue(0.37, 0.6)], 0.0)
+        window = serve_labels_for_times(times, [IntervalValue(0.5, 0.6)], 0.25)
+
+        np.testing.assert_array_equal(pulse, np.asarray([0, 1, 0, 0], dtype=np.float32))
+        np.testing.assert_array_equal(window, np.asarray([0, 1, 1, 1], dtype=np.float32))
+
+    def test_rejects_unordered_sampling_grid(self) -> None:
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            serve_labels_for_times(
+                np.asarray([0.0, 0.5, 0.25]), [IntervalValue(0.2, 0.3)], 0.5
+            )
+
+    def test_validation_requires_contact_and_non_contact_samples(self) -> None:
+        for labels in (
+            [np.zeros(4, dtype=np.float32)],
+            [np.ones(4, dtype=np.float32)],
+            [np.asarray([], dtype=np.float32)],
+        ):
+            with self.subTest(labels=labels):
+                with self.assertRaisesRegex(ManifestError, "both contact-window"):
+                    _validate_serve_validation_targets(labels)
+
+        _validate_serve_validation_targets(
+            [np.asarray([0.0, 1.0], dtype=np.float32)]
+        )
+
+
+class ServeDecoderTests(unittest.TestCase):
+    def test_collapses_islands_and_applies_score_first_nms(self) -> None:
+        times = np.arange(8, dtype=np.float64)
+        probabilities = np.asarray([0.1, 0.8, 0.9, 0.1, 0.85, 0.1, 0.95, 0.1])
+
+        detections = decode_serve_probabilities(
+            times,
+            probabilities,
+            ServeDecoderConfig(threshold=0.8, min_separation_seconds=3.0),
+        )
+
+        self.assertEqual([(item.time, item.confidence) for item in detections], [(2.0, 0.9), (6.0, 0.95)])
+
+    def test_peak_ties_use_earliest_time_and_offset_is_clipped(self) -> None:
+        detections = decode_serve_probabilities(
+            np.asarray([0.0, 0.5, 1.0]),
+            np.asarray([0.9, 0.9, 0.1]),
+            ServeDecoderConfig(0.8, 0.0, -0.5),
+            duration=1.5,
+        )
+
+        self.assertEqual(detections, [ServeDetection(0.0, 0.9)])
+
+    def test_contact_matching_prioritizes_lower_error_after_match_count(self) -> None:
+        matches = match_serve_contacts(
+            [1.0, 2.0], [ServeDetection(1.6, 0.9)], tolerance_seconds=0.6
+        )
+
+        self.assertEqual([(truth, predicted) for truth, predicted, _ in matches], [(1, 0)])
+        self.assertAlmostEqual(matches[0][2], -0.4)
+
+
+class ServeCompositionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.config = ServeCompositionConfig(
+            association_seconds=1.0,
+            fallback_seconds=2.0,
+            max_rescue_seconds=5.0,
+            permissive_decoder=DecoderConfig(
+                smoothing_seconds=0.5,
+                enter_threshold=0.4,
+                exit_threshold=0.3,
+                min_live_seconds=0.25,
+                bridge_gap_seconds=0.0,
+            ),
+        )
+
+    def test_anchors_rescues_and_clips_without_splitting_primary(self) -> None:
+        composed = compose_serve_anchored_intervals(
+            [DecodedInterval(5.0, 10.0, 0.7)],
+            [DecodedInterval(20.0, 21.25, 0.55)],
+            [
+                ServeDetection(4.5, 0.9),
+                ServeDetection(7.0, 0.99),
+                ServeDetection(20.0, 0.8),
+                ServeDetection(30.0, 0.75),
+            ],
+            31.0,
+            self.config,
+            sample_seconds=0.25,
+        )
+
+        self.assertEqual(
+            [(item.start, item.end) for item in composed],
+            [(4.5, 10.0), (20.0, 21.25), (30.0, 31.0)],
+        )
+
+    def test_overlapping_rescue_and_primary_are_merged(self) -> None:
+        composed = compose_serve_anchored_intervals(
+            [DecodedInterval(10.0, 15.0, 0.7)],
+            [],
+            [ServeDetection(8.5, 0.9)],
+            20.0,
+            self.config,
+            sample_seconds=0.25,
+        )
+
+        self.assertEqual([(item.start, item.end) for item in composed], [(8.5, 15.0)])
+
+    def test_touching_primary_and_rescue_remain_distinct_half_open_events(self) -> None:
+        composed = compose_serve_anchored_intervals(
+            [DecodedInterval(0.0, 2.0, 0.7)],
+            [DecodedInterval(2.0, 3.0, 0.6)],
+            [ServeDetection(2.0, 0.9)],
+            5.0,
+            self.config,
+            sample_seconds=0.25,
+        )
+
+        self.assertEqual(
+            [(item.start, item.end) for item in composed], [(0.0, 2.0), (2.0, 3.0)]
+        )
+
+    def test_selection_and_serve_metrics_exclude_ignored_region(self) -> None:
+        recording = Recording(
+            id="ignored-test",
+            video=Path("ignored-test.mp4"),
+            split="validation",
+            source_group="ignored-source",
+            environment="indoor",
+            game={},
+            rallies=(Interval(1.0, 2.0),),
+            ignored_intervals=(Interval(3.0, 4.0),),
+            roi=None,
+            capture={},
+            consent={"analyze": True, "train": True},
+            content_sha256=None,
+            raw={"rallies": [{"start": 1.0, "end": 2.0, "tags": []}]},
+        )
+        sequence = FeatureSequence(
+            times=np.asarray([0.0, 1.0]),
+            values=np.zeros((2, 1), dtype=np.float32),
+            names=("motion",),
+            metadata=VideoMetadata(10.0, 1280, 720, 30.0, 300, False),
+        )
+        prepared = PreparedRecording(
+            recording=recording,
+            sequence=sequence,
+            contextual_values=sequence.values,
+            contextual_names=sequence.names,
+            labels=np.asarray([0.0, 1.0], dtype=np.float32),
+            sample_mask=np.ones(2, dtype=np.bool_),
+        )
+        prediction = PairedPrediction(
+            prepared=prepared,
+            primary=(),
+            serves=(ServeDetection(1.0, 0.9), ServeDetection(3.5, 0.99)),
+            composed=(DecodedInterval(3.2, 3.8, 0.99),),
+        )
+
+        _, selection = _selection_score([prediction])
+        serve_metrics = _serve_metrics([prediction], 0.5)
+
+        self.assertEqual(selection["predictedRallies"], 0)
+        self.assertEqual(serve_metrics["predictedServes"], 1)
+        self.assertEqual(serve_metrics["matchedServes"], 1)
+
+        clean_key, _ = _selection_score(
+            [
+                PairedPrediction(
+                    prepared=prepared,
+                    primary=(),
+                    serves=(),
+                    composed=(DecodedInterval(1.0, 2.0, 0.8),),
+                )
+            ]
+        )
+        early_key, _ = _selection_score(
+            [
+                PairedPrediction(
+                    prepared=prepared,
+                    primary=(),
+                    serves=(),
+                    composed=(DecodedInterval(0.0, 2.0, 0.8),),
+                )
+            ]
+        )
+        self.assertGreater(clean_key, early_key)
+
+
+class ServeArtifactTests(unittest.TestCase):
+    @staticmethod
+    def model(task: str, *, artifact: str, rally_artifact: str | None = None) -> LogisticModel:
+        training = {
+            "manifestSha256": "manifest",
+            "serveDecoder": ServeDecoderConfig().to_dict(),
+            "composition": ServeCompositionConfig(
+                1.0,
+                2.0,
+                5.0,
+                DecoderConfig(min_live_seconds=0.5, bridge_gap_seconds=0.0),
+            ).to_dict(),
+        }
+        if rally_artifact is not None:
+            training["rallyModelSha256"] = rally_artifact
+        return LogisticModel(
+            feature_config=FeatureConfig(
+                use_optical_flow=False, context_offsets_seconds=(0.0,)
+            ),
+            feature_names=("motion",),
+            mean=np.zeros(1, dtype=np.float32),
+            scale=np.ones(1, dtype=np.float32),
+            weights=np.ones(1, dtype=np.float32),
+            bias=0.0,
+            decoder=DecoderConfig(),
+            training_summary=training,
+            artifact_sha256=artifact,
+            prediction_task=task,
+        )
+
+    def test_legacy_artifact_defaults_to_rally_live(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-legacy-task-") as directory:
+            model_path = self.model(RALLY_LIVE_TASK, artifact="unused").save(
+                Path(directory) / "model"
+            )
+            metadata_path = model_path / "model.json"
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            del metadata["predictionTask"]
+            metadata_path.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+
+            restored = load_model(model_path)
+
+        self.assertEqual(restored.prediction_task, RALLY_LIVE_TASK)
+
+    def test_save_load_preserves_serve_task_and_rejects_role_swap(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-serve-task-") as directory:
+            restored = load_model(
+                self.model(SERVE_CONTACT_TASK, artifact="unused").save(Path(directory) / "model")
+            )
+
+        self.assertEqual(restored.prediction_task, SERVE_CONTACT_TASK)
+        rally = self.model(RALLY_LIVE_TASK, artifact="rally")
+        with self.assertRaisesRegex(ModelError, "specialist model"):
+            _validate_model_pair(rally, rally)
+
+    def test_pair_is_bound_to_exact_rally_artifact(self) -> None:
+        rally = self.model(RALLY_LIVE_TASK, artifact="rally")
+        serve = self.model(
+            SERVE_CONTACT_TASK, artifact="serve", rally_artifact="different-rally"
+        )
+
+        with self.assertRaisesRegex(ModelError, "different rally model"):
+            _validate_model_pair(rally, serve)
+
+    def test_inference_rejects_role_mismatch_before_feature_extraction(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-serve-infer-role-") as directory:
+            root = Path(directory)
+            rally_path = self.model(RALLY_LIVE_TASK, artifact="unused").save(
+                root / "rally"
+            )
+            wrong_serve_path = self.model(RALLY_LIVE_TASK, artifact="unused").save(
+                root / "wrong-serve"
+            )
+            with patch(
+                "analysis.pipeline.extract_features",
+                side_effect=AssertionError("role rejection must precede video decoding"),
+            ):
+                with self.assertRaisesRegex(ModelError, "specialist model"):
+                    infer_video(
+                        root / "missing.mp4",
+                        rally_path,
+                        root / "output",
+                        serve_model_path=wrong_serve_path,
+                    )
+
+    def test_standard_evaluation_rejects_serve_model_before_manifest_loading(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-serve-evaluate-role-") as directory:
+            root = Path(directory)
+            serve_path = self.model(SERVE_CONTACT_TASK, artifact="unused").save(
+                root / "serve"
+            )
+
+            with self.assertRaisesRegex(ModelError, "must predict rally-live"):
+                evaluate_dataset(
+                    root / "missing-manifest.json",
+                    serve_path,
+                    root / "cache",
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()

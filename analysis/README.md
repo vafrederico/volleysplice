@@ -146,6 +146,39 @@ PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py final-test \
 
 The final-test gate verifies the manifest, recording snapshots, feature version/signature, and experiment-code hashes. Importance labels require directionally consistent source-group effects plus compatible mean and median magnitude. They are exploratory evidence, not significance tests.
 
+## Experimental serve specialist
+
+The optional serve path trains a second logistic head on narrow windows around rally starts while
+reusing the rally model's cached features. Its validation search freezes a contact threshold,
+temporal non-maximum suppression, and an anchored short-rally composition. Artifacts record their
+`predictionTask`; legacy artifacts default to `rally-live`, and incompatible model pairs are
+rejected.
+
+```bash
+.venv/bin/python -m analysis train-serve \
+  --manifest data/videos/manifest.json \
+  --rally-model data/models/rally-v0 \
+  --model data/models/serve-v0 \
+  --output data/reports/serve-v0-validation.json
+
+.venv/bin/python -m analysis evaluate-serve \
+  --manifest data/videos/manifest.json \
+  --rally-model data/models/rally-v0 \
+  --serve-model data/models/serve-v0 \
+  --split test \
+  --output data/reports/serve-v0-test.json
+
+.venv/bin/python -m analysis infer \
+  --model data/models/rally-v0 \
+  --serve-model data/models/serve-v0 \
+  --video data/videos/indoor/unseen-set.mp4 \
+  --output data/analyses/unseen-set-paired
+```
+
+This path is opt-in because its first real-data experiment improved short-rally coverage but did
+not improve strict held-out event recall. See the
+[serve-specialist experiment](../docs/research/serve-specialist-experiment-2026-08-11.md).
+
 ## What the current model does not do
 
 - It does not detect whether the whole court is visible; capture geometry must be confirmed by a person.

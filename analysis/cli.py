@@ -108,8 +108,28 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--learning-rate", type=float, default=0.02)
     train.add_argument("--seed", type=int, default=7)
 
+    train_serve = subparsers.add_parser(
+        "train-serve",
+        help="train a serve-contact specialist and select rally composition on validation",
+    )
+    train_serve.add_argument("--manifest", required=True, type=Path)
+    train_serve.add_argument("--rally-model", required=True, type=Path)
+    train_serve.add_argument("--model", required=True, type=Path, help="new serve model directory")
+    train_serve.add_argument("--cache-dir", type=Path, default=_default_cache())
+    train_serve.add_argument("--output", type=Path, help="new validation experiment report")
+    train_serve.add_argument("--target-radius", type=float, default=1.0)
+    train_serve.add_argument("--epochs", type=int, default=180)
+    train_serve.add_argument("--batch-size", type=int, default=2048)
+    train_serve.add_argument("--learning-rate", type=float, default=0.02)
+    train_serve.add_argument("--seed", type=int, default=7)
+
     infer = subparsers.add_parser("infer", help="detect rallies in one continuous video")
     infer.add_argument("--model", required=True, type=Path)
+    infer.add_argument(
+        "--serve-model",
+        type=Path,
+        help="optional paired serve-contact specialist with frozen composition metadata",
+    )
     infer.add_argument("--video", required=True, type=Path)
     infer.add_argument("--output", required=True, type=Path, help="new analysis directory")
     infer.add_argument("--roi", type=_roi, help="normalized x,y,width,height court rectangle")
@@ -121,6 +141,18 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--cache-dir", type=Path, default=_default_cache())
     evaluate.add_argument("--split", choices=("validation", "test", "challenge"), default="test")
     evaluate.add_argument("--output", type=Path)
+
+    evaluate_serve = subparsers.add_parser(
+        "evaluate-serve", help="compare a frozen rally+serve composition on one manifest split"
+    )
+    evaluate_serve.add_argument("--manifest", required=True, type=Path)
+    evaluate_serve.add_argument("--rally-model", required=True, type=Path)
+    evaluate_serve.add_argument("--serve-model", required=True, type=Path)
+    evaluate_serve.add_argument("--cache-dir", type=Path, default=_default_cache())
+    evaluate_serve.add_argument(
+        "--split", choices=("validation", "test", "challenge"), default="test"
+    )
+    evaluate_serve.add_argument("--output", type=Path)
 
     initialize = subparsers.add_parser("init-manifest", help="write an annotation manifest template")
     initialize.add_argument("--output", required=True, type=Path)
@@ -363,6 +395,34 @@ def run(argv: Sequence[str] | None = None) -> int:
             )
             _json(result)
             return 0
+        if arguments.command == "train-serve":
+            from .serve_experiment import train_serve_dataset
+
+            result = train_serve_dataset(
+                arguments.manifest,
+                arguments.rally_model,
+                arguments.model,
+                arguments.cache_dir,
+                target_radius_seconds=arguments.target_radius,
+                training_config=TrainingConfig(
+                    epochs=arguments.epochs,
+                    batch_size=arguments.batch_size,
+                    learning_rate=arguments.learning_rate,
+                    seed=arguments.seed,
+                ),
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "model": str(arguments.model.expanduser().resolve()),
+                    "serveSpottingAt1Second": result["serveSpotting"]["at1Second"],
+                    "baseline": result["baseline"]["aggregate"],
+                    "composed": result["composed"]["aggregate"],
+                    "delta": result["delta"],
+                }
+            )
+            return 0
         if arguments.command == "infer":
             from .pipeline import infer_video
 
@@ -372,6 +432,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.output,
                 roi=arguments.roi,
                 title=arguments.title,
+                serve_model_path=arguments.serve_model,
             )
             _json(
                 {
@@ -393,6 +454,26 @@ def run(argv: Sequence[str] | None = None) -> int:
                 progress=lambda message: print(message, file=sys.stderr, flush=True),
             )
             _json(result["aggregate"])
+            return 0
+        if arguments.command == "evaluate-serve":
+            from .serve_experiment import evaluate_serve_dataset
+
+            result = evaluate_serve_dataset(
+                arguments.manifest,
+                arguments.rally_model,
+                arguments.serve_model,
+                arguments.cache_dir,
+                split=arguments.split,
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "baseline": result["baseline"]["aggregate"],
+                    "composed": result["composed"]["aggregate"],
+                    "delta": result["delta"],
+                }
+            )
             return 0
         if arguments.command == "init-manifest":
             destination = arguments.output.expanduser().resolve()

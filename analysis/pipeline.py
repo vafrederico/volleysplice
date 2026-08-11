@@ -33,7 +33,7 @@ from .metrics import (
     evaluate_intervals,
     outcome_slice_metrics,
 )
-from .model import LogisticModel, ModelError, load_model, train_logistic_model
+from .model import RALLY_LIVE_TASK, LogisticModel, ModelError, load_model, train_logistic_model
 from .schema import (
     DatasetManifest,
     Interval,
@@ -430,9 +430,20 @@ def infer_video(
     roi: tuple[float, float, float, float] | None = None,
     title: str | None = None,
     capture: dict[str, Any] | None = None,
+    serve_model_path: str | Path | None = None,
 ) -> dict[str, Any]:
     inference_started = time.perf_counter()
     model = load_model(model_path)
+    if model.prediction_task != RALLY_LIVE_TASK:
+        raise ModelError("primary inference model must predict rally-live state")
+    serve_model: LogisticModel | None = None
+    serve_decoder = None
+    composition = None
+    if serve_model_path is not None:
+        from .serve_experiment import _validate_model_pair
+
+        serve_model = load_model(serve_model_path)
+        serve_decoder, composition = _validate_model_pair(model, serve_model)
     video = Path(video_path).expanduser().resolve()
     destination = Path(output_dir).expanduser().resolve()
     analysis_path = destination / "analysis.json"
@@ -451,6 +462,38 @@ def infer_video(
         model.decoder,
         model.feature_config.analysis_fps,
     )
+    serve_probabilities: np.ndarray | None = None
+    serve_detections = []
+    serve_decoder_payload: dict[str, Any] | None = None
+    composition_payload: dict[str, Any] | None = None
+    if serve_model is not None:
+        from .serve import compose_serve_anchored_intervals, decode_serve_probabilities
+
+        assert serve_decoder is not None and composition is not None
+        serve_probabilities = serve_model.predict(values)
+        permissive, _ = decode_probabilities(
+            sequence.times,
+            probabilities,
+            sequence.metadata.duration,
+            composition.permissive_decoder,
+            model.feature_config.analysis_fps,
+        )
+        serve_detections = decode_serve_probabilities(
+            sequence.times,
+            serve_probabilities,
+            serve_decoder,
+            duration=sequence.metadata.duration,
+        )
+        intervals = compose_serve_anchored_intervals(
+            intervals,
+            permissive,
+            serve_detections,
+            sequence.metadata.duration,
+            composition,
+            sample_seconds=1.0 / model.feature_config.analysis_fps,
+        )
+        serve_decoder_payload = serve_decoder.to_dict()
+        composition_payload = composition.to_dict()
     dynamic_name = "diff_active_fraction"
     dynamic_index = sequence.names.index(dynamic_name) if dynamic_name in sequence.names else None
     warnings = camera_warnings(sequence.metadata, capture)
@@ -461,6 +504,40 @@ def infer_video(
         roi_payload = {"x": roi[0], "y": roi[1], "width": roi[2], "height": roi[3]}
     created_at = datetime.now(timezone.utc).isoformat()
     processing_seconds = time.perf_counter() - inference_started
+    rally_rows: list[dict[str, Any]] = []
+    for index, interval in enumerate(intervals, start=1):
+        live_confidence = interval.confidence
+        evidence: dict[str, Any] = {}
+        if serve_model is not None:
+            live_samples = smoothed[
+                (sequence.times >= interval.start) & (sequence.times < interval.end)
+            ]
+            if len(live_samples):
+                live_confidence = float(np.mean(live_samples))
+            supporting_serves = [
+                serve
+                for serve in serve_detections
+                if interval.start - composition.association_seconds <= serve.time < interval.end
+            ]
+            if supporting_serves:
+                strongest = max(supporting_serves, key=lambda serve: serve.confidence)
+                evidence.update(
+                    {
+                        "serveContactTime": round(strongest.time, 3),
+                        "serveConfidence": round(strongest.confidence, 5),
+                    }
+                )
+        evidence["meanLiveProbability"] = round(live_confidence, 5)
+        rally_rows.append(
+            {
+                "id": f"R{index:03d}",
+                "start": max(0.0, round(interval.start, 3)),
+                "end": min(sequence.metadata.duration, round(interval.end, 3)),
+                "confidence": round(live_confidence, 5),
+                "included": True,
+                "evidence": evidence,
+            }
+        )
     payload: dict[str, Any] = {
         "schemaVersion": 1,
         "id": destination.name,
@@ -472,13 +549,35 @@ def infer_video(
         },
         "assets": {"courtPreviewPath": "court-preview.jpg"},
         "analysis": {
-            "method": "court-motion-temporal-logistic-v0",
+            "method": (
+                "court-motion-temporal-logistic+serve-specialist-v1"
+                if serve_model is not None
+                else "court-motion-temporal-logistic-v0"
+            ),
             "modelVersion": Path(model_path).expanduser().resolve().name,
             "producer": f"volleycut-analysis/{__version__}",
             "analysisFps": model.feature_config.analysis_fps,
             "featureConfig": model.feature_config.to_dict(),
             "decoder": model.decoder.to_dict(),
             "modelSha256": model.artifact_sha256,
+            **(
+                {
+                    "models": {
+                        "rally": {
+                            "version": Path(model_path).expanduser().resolve().name,
+                            "sha256": model.artifact_sha256,
+                        },
+                        "serve": {
+                            "version": Path(serve_model_path).expanduser().resolve().name,
+                            "sha256": serve_model.artifact_sha256,
+                        },
+                    },
+                    "serveDecoder": serve_decoder_payload,
+                    "composition": composition_payload,
+                }
+                if serve_model is not None
+                else {}
+            ),
             "processingSeconds": round(processing_seconds, 3),
             "processingToVideoRatio": (
                 processing_seconds / sequence.metadata.duration
@@ -491,21 +590,16 @@ def infer_video(
                 "roi": roi_payload,
             },
         },
-        "rallies": [
-            {
-                "id": f"R{index:03d}",
-                "start": max(0.0, round(interval.start, 3)),
-                "end": min(sequence.metadata.duration, round(interval.end, 3)),
-                "confidence": round(interval.confidence, 5),
-                "included": True,
-                "evidence": {"meanLiveProbability": round(interval.confidence, 5)},
-            }
-            for index, interval in enumerate(intervals, start=1)
-        ],
+        "rallies": rally_rows,
         "signals": [
             {
                 "time": round(float(time), 3),
                 "liveProbability": round(float(probability), 5),
+                **(
+                    {"serveProbability": round(float(serve_probabilities[index]), 5)}
+                    if serve_probabilities is not None
+                    else {}
+                ),
                 **(
                     {"motion": round(float(sequence.values[index, dynamic_index]), 5)}
                     if dynamic_index is not None
@@ -557,6 +651,8 @@ def evaluate_dataset(
     if output_path is not None and Path(output_path).expanduser().resolve().exists():
         raise ModelError(f"evaluation output already exists: {Path(output_path).expanduser().resolve()}")
     model = load_model(model_path)
+    if model.prediction_task != RALLY_LIVE_TASK:
+        raise ModelError("evaluation model must predict rally-live state")
     manifest = load_manifest(manifest_path)
     current_digest = _manifest_digest(manifest)
     training_digest = model.training_summary.get("manifestSha256")
