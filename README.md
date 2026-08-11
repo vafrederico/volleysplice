@@ -28,18 +28,18 @@ cp .env.example .env.local
 
 The default proxy backend is portable FFmpeg/libx264. On a Linux host with Intel VAAPI and the pinned Jellyfin image already available, `VOLLEYCUT_PROXY_BACKEND=jellyfin-vaapi` enables an opt-in Docker-backed hardware path without changing host group membership. See `.env.example` for the corresponding pinned image setting.
 
-## Analyze a recording
+## Analyze a recording with the no-model heuristic
 
 Put a source recording under `$VOLLEYCUT_DATA_ROOT/raw/`, then run:
 
 ```bash
-npm run analyze -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv
+npm run analyze-no-model -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv
 ```
 
 Optional arguments include:
 
 ```bash
-npm run analyze -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv \
+npm run analyze-no-model -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv \
   --title "Indoor practice — set 1" \
   --id indoor-practice-set-1 \
   --analysis-fps 4
@@ -58,7 +58,7 @@ Existing IDs are never overwritten. The app opens the most recently modified val
 
 ```bash
 npm run fixture:analysis
-npm run analyze -- /mnt/freenas/volleycut/raw/synthetic/synthetic-two-bursts.mp4
+npm run analyze-no-model -- /mnt/freenas/volleycut/raw/synthetic/synthetic-two-bursts.mp4
 ```
 
 Refresh the external dataset inventory at any point with:
@@ -72,7 +72,7 @@ The report is written to `$VOLLEYCUT_DATA_ROOT/manifests/status.md` and summariz
 To analyze every complete source listed in the external `manifests/sources.json`, while safely skipping existing analyses and incomplete downloads:
 
 ```bash
-npm run analyze:dataset
+npm run analyze-no-model:dataset
 ```
 
 Evaluate generated intervals against a completed label manifest with:
@@ -92,7 +92,7 @@ The first pilot evaluation and its prioritized improvement plan are documented i
 After changing court validation or rally decoding, create immutable analyses from the existing proxies without transcoding the videos again:
 
 ```bash
-npm run reanalyze:dataset
+npm run reanalyze-no-model:dataset
 ```
 
 This writes suffixed analysis directories, hard-links their proxies when supported, and recomputes motion only when the validated court region changed. The full-video ground-truth comparison that selected analyzer v2 is documented in [`docs/research/full-video-ground-truth-analyzer-v2-2026-08-10.md`](docs/research/full-video-ground-truth-analyzer-v2-2026-08-10.md).

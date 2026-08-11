@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     configured_root = os.environ.get("VOLLEYCUT_DATA_ROOT", "").strip()
     default_output_root = Path(configured_root).expanduser() / "analyses" if configured_root else Path("data/analyses")
     parser = argparse.ArgumentParser(
-        prog="python -m analysis",
+        prog="analyze-no-model",
         description="Create a local review proxy and heuristic rally suggestions.",
     )
     parser.add_argument("video", type=Path, help="Source volleyball recording")
@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def analyze(args: argparse.Namespace) -> Path:
+def analyze_no_model(args: argparse.Namespace) -> Path:
     source = args.video.expanduser().resolve()
     if not source.is_file():
         raise ValueError(f"Video does not exist: {source}")
@@ -140,7 +140,7 @@ def analyze(args: argparse.Namespace) -> Path:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        destination = analyze(args)
+        destination = analyze_no_model(args)
     except (ValueError, MediaToolError, RuntimeError) as exc:
         print(f"Analysis failed: {exc}", file=sys.stderr)
         return 1

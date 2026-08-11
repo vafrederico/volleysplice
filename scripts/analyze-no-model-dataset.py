@@ -33,7 +33,9 @@ def find_media(data_root: Path, source: dict[str, str]) -> Path | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Analyze complete videos in the external VolleyCut source manifest.")
+    parser = argparse.ArgumentParser(
+        description="Run the no-model heuristic over complete videos in the external source manifest."
+    )
     parser.add_argument("--data-root", type=Path, default=Path(os.environ.get("VOLLEYCUT_DATA_ROOT", "data")))
     parser.add_argument("--surface", choices=("grass", "indoor", "beach"))
     parser.add_argument("--limit", type=int)

@@ -53,7 +53,7 @@ def _warnings(
     return warnings
 
 
-def reanalyze(source_directory: Path, destination: Path) -> Path:
+def reanalyze_no_model(source_directory: Path, destination: Path) -> Path:
     source_json = source_directory / "analysis.json"
     source = json.loads(source_json.read_text(encoding="utf-8"))
     proxy_path = source_directory / "proxy.mp4"
@@ -178,7 +178,7 @@ def main() -> int:
             skipped += 1
             continue
         print(f"RUN  {source_directory.name} -> {destination.name}", flush=True)
-        result = reanalyze(source_directory, destination)
+        result = reanalyze_no_model(source_directory, destination)
         print(f"DONE {result / 'analysis.json'}", flush=True)
         completed += 1
     print(f"Dataset re-analysis summary: completed={completed} skipped={skipped}", flush=True)
