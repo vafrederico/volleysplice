@@ -9,6 +9,7 @@ from unittest.mock import patch
 from analysis.annotations import (
     build_manifest_from_labels,
     create_label_draft,
+    freeze_label_snapshot,
     load_label_document,
 )
 from analysis.features import VideoMetadata
@@ -94,6 +95,20 @@ class AnnotationDocumentTests(unittest.TestCase):
         self.assertEqual([marker.time for marker in document.side_switches], [18.0, 48.0])
         self.assertIn("target points are unknown", document.warnings)
 
+    def test_completed_document_rejects_touching_rallies(self) -> None:
+        payload = self.complete_payload()
+        payload["rallies"][1]["start"] = payload["rallies"][0]["end"]
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+
+        draft = load_label_document(
+            self.labels,
+            require_complete=False,
+            require_video=False,
+        )
+        self.assertEqual(len(draft.rallies), 2)
+        with self.assertRaisesRegex(ManifestError, "positive dead time"):
+            load_label_document(self.labels, require_video=False)
+
     def test_side_switches_are_optional_but_validated_when_present(self) -> None:
         legacy_payload = json.loads(self.labels.read_text(encoding="utf-8"))
         legacy_payload.pop("sideSwitches")
@@ -132,6 +147,91 @@ class AnnotationDocumentTests(unittest.TestCase):
         self.assertEqual(len(manifest.recordings[0].rallies), 2)
         self.assertEqual(len(manifest.recordings[0].ignored_intervals), 1)
         self.assertEqual(payload["recordings"][0]["sideSwitches"][0]["time"], 18.0)
+
+    def test_reviewed_draft_freezes_without_mutating_source(self) -> None:
+        payload = self.complete_payload()
+        payload["annotation"]["status"] = "in-progress"
+        payload["annotation"]["annotator"] = "inherited-model-source"
+        payload["annotation"]["reviewedAt"] = None
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        source_before = self.labels.read_bytes()
+        snapshot = self.root / "completed" / "full-v1"
+
+        documents = freeze_label_snapshot(
+            [self.labels],
+            snapshot,
+            annotator="reviewer-1",
+            require_videos=False,
+        )
+
+        self.assertEqual(self.labels.read_bytes(), source_before)
+        self.assertEqual(len(documents), 1)
+        frozen = load_label_document(
+            snapshot / self.labels.name,
+            require_video=False,
+        )
+        self.assertEqual(frozen.payload["annotation"]["status"], "complete")
+        self.assertEqual(frozen.payload["annotation"]["annotator"], "reviewer-1")
+        self.assertTrue(frozen.payload["annotation"]["continuousVideoReviewed"])
+        self.assertIsInstance(frozen.payload["annotation"]["reviewedAt"], str)
+        self.assertEqual(frozen.video, self.video.resolve())
+        ledger = json.loads((snapshot / "snapshot.json").read_text(encoding="utf-8"))
+        self.assertEqual(ledger["kind"], "volleycut-completed-label-snapshot")
+        self.assertEqual(ledger["recordings"][0]["recordingId"], "match-1")
+        self.assertEqual((snapshot / self.labels.name).stat().st_mode & 0o777, 0o444)
+        with self.assertRaisesRegex(FileExistsError, "refusing to overwrite"):
+            freeze_label_snapshot(
+                [self.labels],
+                snapshot,
+                annotator="reviewer-1",
+                require_videos=False,
+            )
+
+    def test_unreviewed_draft_cannot_be_frozen(self) -> None:
+        with self.assertRaisesRegex(ManifestError, "continuousVideoReviewed must be true"):
+            freeze_label_snapshot(
+                [self.labels],
+                self.root / "completed" / "full-v1",
+                annotator="reviewer-1",
+                require_videos=False,
+            )
+
+    def test_freeze_can_audit_and_drop_touching_duplicate_tail(self) -> None:
+        payload = self.complete_payload()
+        payload["annotation"]["status"] = "in-progress"
+        payload["annotation"]["reviewedAt"] = None
+        payload["rallies"] = [
+            {
+                "start": 5.0,
+                "end": 12.0,
+                "tags": ["ai-prelabel", "serve-confidence:high"],
+                "notes": "copied candidate note",
+            },
+            {
+                "start": 12.0,
+                "end": 12.4,
+                "tags": ["ai-prelabel", "serve-confidence:high"],
+                "notes": "copied candidate note",
+            },
+            {"start": 22.0, "end": 30.0, "tags": []},
+        ]
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        snapshot = self.root / "completed" / "full-v1"
+
+        documents = freeze_label_snapshot(
+            [self.labels],
+            snapshot,
+            annotator="reviewer-1",
+            drop_touching_duplicate_tails=True,
+            require_videos=False,
+        )
+
+        self.assertEqual(len(documents[0].rallies), 2)
+        ledger = json.loads((snapshot / "snapshot.json").read_text(encoding="utf-8"))
+        transformations = ledger["recordings"][0]["transformations"]
+        self.assertEqual(len(transformations), 1)
+        self.assertEqual(transformations[0]["sourceRallyIndex"], 1)
+        self.assertEqual(transformations[0]["removed"]["end"], 12.4)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -112,8 +112,15 @@ def _prepare_many(
     recordings: Sequence[Recording],
     feature_config: FeatureConfig,
     cache_dir: str | Path,
+    *,
+    progress: Callable[[str], None] | None = None,
 ) -> list[PreparedRecording]:
-    return [prepare_recording(recording, feature_config, cache_dir) for recording in recordings]
+    prepared: list[PreparedRecording] = []
+    for index, recording in enumerate(recordings, start=1):
+        if progress is not None:
+            progress(f"Preparing features {index}/{len(recordings)}: {recording.id}")
+        prepared.append(prepare_recording(recording, feature_config, cache_dir))
+    return prepared
 
 
 def _evaluate_prepared(
@@ -234,6 +241,7 @@ def train_dataset(
     feature_config: FeatureConfig | None = None,
     training_config: TrainingConfig | None = None,
     decoder_config: DecoderConfig | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     model_target = Path(model_destination).expanduser().resolve()
     if model_target.exists() and (not model_target.is_dir() or any(model_target.iterdir())):
@@ -252,8 +260,12 @@ def train_dataset(
     if not validation_rows:
         raise ManifestError("manifest has no validation recordings; decoder selection must not use test data")
     training_started = time.perf_counter()
-    training = _prepare_many(train_rows, feature_config, cache_dir)
-    validation = _prepare_many(validation_rows, feature_config, cache_dir)
+    if progress is None:
+        training = _prepare_many(train_rows, feature_config, cache_dir)
+        validation = _prepare_many(validation_rows, feature_config, cache_dir)
+    else:
+        training = _prepare_many(train_rows, feature_config, cache_dir, progress=progress)
+        validation = _prepare_many(validation_rows, feature_config, cache_dir, progress=progress)
     validation_live = sum(
         float(np.sum(item.labels[item.sample_mask] > 0.5)) for item in validation
     )
@@ -264,6 +276,8 @@ def train_dataset(
     for item in (*training, *validation):
         if item.contextual_names != signature:
             raise ModelError("extracted feature signatures differ between recordings")
+    if progress is not None:
+        progress("Fitting the class-weighted temporal logistic model")
     model = train_logistic_model(
         [item.contextual_values[item.sample_mask] for item in training],
         [item.labels[item.sample_mask] for item in training],
@@ -274,6 +288,8 @@ def train_dataset(
         decoder_config,
         training_config,
     )
+    if progress is not None:
+        progress("Selecting interval decoder parameters on validation data")
     decoder, selection = _tune_decoder(validation, model, decoder_config)
     model.decoder = decoder
     model.training_summary.update(
@@ -437,6 +453,7 @@ def evaluate_dataset(
     *,
     split: str = "test",
     output_path: str | Path | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     evaluation_started = time.perf_counter()
     if output_path is not None and Path(output_path).expanduser().resolve().exists():
@@ -458,7 +475,16 @@ def evaluate_dataset(
     overlap = protected_groups & {recording.source_group for recording in recordings}
     if overlap:
         raise ModelError(f"evaluation split leaks trained/tuned source groups: {sorted(overlap)}")
-    prepared = _prepare_many(recordings, model.feature_config, cache_dir)
+    prepared = (
+        _prepare_many(recordings, model.feature_config, cache_dir)
+        if progress is None
+        else _prepare_many(
+            recordings,
+            model.feature_config,
+            cache_dir,
+            progress=progress,
+        )
+    )
     for item in prepared:
         if item.contextual_names != model.feature_names:
             raise ModelError(f"feature signature mismatch for {item.recording.id}")

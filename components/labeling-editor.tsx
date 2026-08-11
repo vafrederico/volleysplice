@@ -248,6 +248,11 @@ export function LabelingEditor() {
         if (index > 0 && row.start < rows[index - 1].end) issues.push("Intervals overlap or are unordered");
       });
     });
+    labels.rallies.forEach((row, index) => {
+      if (index > 0 && row.start <= labels.rallies[index - 1].end) {
+        issues.push("Separate touching rallies with a positive dead-time gap");
+      }
+    });
     labels.rallies.forEach((row) => {
       if (overlaps(row.start, row.end, labels.ignoredIntervals)) issues.push("A rally overlaps ignored time");
       if (overlaps(row.start, row.end, labels.hardNegatives)) issues.push("A rally overlaps a hard negative");

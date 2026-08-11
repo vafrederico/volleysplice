@@ -49,6 +49,17 @@ Record game context in the optional `game` object. `playersPerTeam` accepts inte
 
 Use `ignoredIntervals` for partial/censored rallies, camera gaps, or genuinely unresolvable spans. Those samples are removed from model fitting, decoder selection, and evaluation rather than silently becoming dead-time labels. Completed workstation exports can be checked with `validate-labels` and combined with `build-manifest`; see [`../docs/labeling-guide.md`](../docs/labeling-guide.md).
 
+After a batch has been continuously reviewed, freeze it before training. This preserves the editable drafts, refuses to overwrite an existing snapshot, marks the copies complete with one review timestamp, validates them, rewrites relative video paths for the snapshot location, emits a SHA-256 ledger, and makes the snapshot files read-only. Completed snapshots reject exactly touching rallies because the binary live/dead target cannot represent two events without dead time between them:
+
+```bash
+.venv/bin/python -m analysis freeze-labels \
+  --labels-dir data/labels/full \
+  --output-dir data/completed/full-v1 \
+  --annotator "Reviewer name"
+```
+
+If a pre-freeze audit identifies split-shortcut remnants, `--drop-touching-duplicate-tails` removes only a zero-gap second interval whose tags and note exactly duplicate the preceding rally. Every removal is embedded verbatim in `snapshot.json`; other touching intervals still fail validation.
+
 The optional normalized ROI is `{x,y,width,height}` in fractions of the source frame. Start with the full playing zone plus both service areas and a small margin. Consistent manual ROIs are safer than premature automatic court detection.
 
 Validate before extracting hours of video:

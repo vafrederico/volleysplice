@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -213,6 +215,16 @@ def load_label_document(
     _validate_bounds(rallies, duration, "rallies")
     _validate_bounds(ignored, duration, "ignoredIntervals")
     _validate_bounds(hard_negatives, duration, "hardNegatives")
+    if require_complete:
+        for index, (previous, current) in enumerate(
+            zip(rallies, rallies[1:], strict=False),
+            start=1,
+        ):
+            if current.start <= previous.end:
+                raise ManifestError(
+                    "completed rallies must have positive dead time between them "
+                    f"(rallies {index} and {index + 1} touch at {current.start:.3f}s)"
+                )
     if _intervals_overlap(rallies, ignored):
         raise ManifestError("ignoredIntervals must not overlap rallies")
     if _intervals_overlap(rallies, hard_negatives):
@@ -404,3 +416,144 @@ def build_manifest_from_labels(
         Path(temporary_name).unlink(missing_ok=True)
     atomic_write_text(output, json.dumps(payload, indent=2, allow_nan=False) + "\n")
     return payload
+
+
+def freeze_label_snapshot(
+    label_paths: Sequence[str | Path],
+    destination: str | Path,
+    *,
+    annotator: str,
+    drop_touching_duplicate_tails: bool = False,
+    require_videos: bool = True,
+) -> tuple[LabelDocument, ...]:
+    """Freeze reviewed drafts as an immutable, fully validated snapshot directory."""
+    if not label_paths:
+        raise ManifestError("at least one reviewed label document is required")
+    reviewer = _nonempty_string(annotator, "annotator")
+    output = Path(destination).expanduser().resolve()
+    if output.exists():
+        raise FileExistsError(f"refusing to overwrite existing snapshot: {output}")
+    documents = [
+        load_label_document(path, require_complete=False, require_video=require_videos)
+        for path in label_paths
+    ]
+    ids: set[str] = set()
+    for document in documents:
+        if document.recording_id in ids:
+            raise ManifestError(f"duplicate recording id: {document.recording_id}")
+        ids.add(document.recording_id)
+        if document.payload["annotation"].get("continuousVideoReviewed") is not True:
+            raise ManifestError(
+                f"{document.recording_id}: continuousVideoReviewed must be true before freezing"
+            )
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{output.name}-staging-", dir=output.parent)
+    )
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+    frozen: list[LabelDocument] = []
+    ledger_rows: list[dict[str, Any]] = []
+    try:
+        for document in sorted(documents, key=lambda item: item.recording_id):
+            # JSON round-tripping makes an independent, JSON-safe copy without sharing nested state.
+            payload = json.loads(json.dumps(document.payload, allow_nan=False))
+            transformations: list[dict[str, Any]] = []
+            if drop_touching_duplicate_tails:
+                cleaned_rallies: list[dict[str, Any]] = []
+                for source_index, rally in enumerate(payload["rallies"]):
+                    previous = cleaned_rallies[-1] if cleaned_rallies else None
+                    is_duplicate_tail = (
+                        previous is not None
+                        and abs(float(rally["start"]) - float(previous["end"])) < 1e-9
+                        and rally.get("tags", []) == previous.get("tags", [])
+                        and rally.get("notes") == previous.get("notes")
+                    )
+                    if is_duplicate_tail:
+                        transformations.append(
+                            {
+                                "type": "drop-touching-duplicate-tail",
+                                "sourceRallyIndex": source_index,
+                                "removed": rally,
+                                "reason": (
+                                    "zero dead-time gap and metadata identical to the preceding "
+                                    "rally; deterministic split-shortcut artifact"
+                                ),
+                            }
+                        )
+                    else:
+                        cleaned_rallies.append(rally)
+                payload["rallies"] = cleaned_rallies
+            payload["recording"]["video"] = os.path.relpath(document.video, output)
+            payload["annotation"] = {
+                **payload["annotation"],
+                "status": "complete",
+                "annotator": reviewer,
+                "continuousVideoReviewed": True,
+                "reviewedAt": reviewed_at,
+            }
+            if payload["annotation"].get("notes") == (
+                "Blind audiovisual AI prelabel. Validate every serve-contact and dead-ball "
+                "boundary before marking this recording complete."
+            ):
+                payload["annotation"]["notes"] = (
+                    "Human-verified from a blind audiovisual AI prelabel; per-rally AI "
+                    "provenance tags are retained for comparison."
+                )
+            snapshot_path = staging / document.path.name
+            atomic_write_text(
+                snapshot_path,
+                json.dumps(payload, indent=2, allow_nan=False) + "\n",
+            )
+            frozen.append(
+                load_label_document(
+                    snapshot_path,
+                    require_complete=True,
+                    require_video=require_videos,
+                )
+            )
+            ledger_rows.append(
+                {
+                    "recordingId": document.recording_id,
+                    "sourceDraft": str(document.path),
+                    "sourceDraftSha256": hashlib.sha256(document.path.read_bytes()).hexdigest(),
+                    "snapshotFile": snapshot_path.name,
+                    "snapshotSha256": hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),
+                    "video": str(document.video),
+                    "videoContentSha256": document.payload["recording"]["contentSha256"],
+                    "transformations": transformations,
+                }
+            )
+        ledger_path = staging / "snapshot.json"
+        atomic_write_text(
+            ledger_path,
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "kind": "volleycut-completed-label-snapshot",
+                    "createdAt": reviewed_at,
+                    "annotator": reviewer,
+                    "recordings": ledger_rows,
+                },
+                indent=2,
+                allow_nan=False,
+            )
+            + "\n",
+        )
+        for artifact in staging.iterdir():
+            artifact.chmod(0o444)
+        if output.exists():
+            raise FileExistsError(f"refusing to overwrite existing snapshot: {output}")
+        staging.replace(output)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+    return tuple(
+        load_label_document(
+            output / document.path.name,
+            require_complete=True,
+            require_video=require_videos,
+        )
+        for document in frozen
+    )

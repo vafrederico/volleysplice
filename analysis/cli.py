@@ -155,6 +155,22 @@ def build_parser() -> argparse.ArgumentParser:
     build_manifest.add_argument("--output", required=True, type=Path)
     build_manifest.add_argument("--name", required=True)
 
+    freeze_labels = subparsers.add_parser(
+        "freeze-labels",
+        help="freeze reviewed label drafts as an immutable completed snapshot",
+    )
+    freeze_labels.add_argument("--labels-dir", required=True, type=Path)
+    freeze_labels.add_argument("--output-dir", required=True, type=Path)
+    freeze_labels.add_argument("--annotator", required=True)
+    freeze_labels.add_argument(
+        "--drop-touching-duplicate-tails",
+        action="store_true",
+        help=(
+            "drop only zero-gap second intervals whose tags and notes exactly duplicate the "
+            "preceding rally, recording every removal in the snapshot ledger"
+        ),
+    )
+
     prepare_workspace = subparsers.add_parser(
         "prepare-labeling-workspace",
         help="create or resume normalized full-video labeling tasks",
@@ -334,6 +350,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 feature_config=features,
                 training_config=training,
                 decoder_config=DecoderConfig(),
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
             )
             _json(result)
             return 0
@@ -364,6 +381,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.cache_dir,
                 split=arguments.split,
                 output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
             )
             _json(result["aggregate"])
             return 0
@@ -441,6 +459,27 @@ def run(argv: Sequence[str] | None = None) -> int:
                 {
                     "created": str(arguments.output.expanduser().resolve()),
                     "recordings": len(payload["recordings"]),
+                }
+            )
+            return 0
+        if arguments.command == "freeze-labels":
+            from .annotations import freeze_label_snapshot
+
+            label_paths = sorted(
+                arguments.labels_dir.expanduser().resolve().glob("*.labels.json")
+            )
+            documents = freeze_label_snapshot(
+                label_paths,
+                arguments.output_dir,
+                annotator=arguments.annotator,
+                drop_touching_duplicate_tails=arguments.drop_touching_duplicate_tails,
+            )
+            _json(
+                {
+                    "created": str(arguments.output_dir.expanduser().resolve()),
+                    "recordings": len(documents),
+                    "rallies": sum(len(document.rallies) for document in documents),
+                    "annotator": arguments.annotator,
                 }
             )
             return 0
