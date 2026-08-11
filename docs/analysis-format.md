@@ -32,8 +32,16 @@ $VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/
     "courtPreviewUrl": "/api/media/practice-set-20260807-221500/court-preview.jpg"
   },
   "analysis": {
-    "method": "court-motion-audio-heuristic-v1",
+    "method": "court-motion-audio-heuristic-v2",
     "analysisFps": 4,
+    "rallyDetector": {
+      "highThreshold": 0.46,
+      "lowThreshold": 0.25,
+      "maxGapSeconds": 0.75,
+      "minRallySeconds": 3.0,
+      "onsetLeadSeconds": 0.75,
+      "endingTailSeconds": 0.0
+    },
     "warnings": [],
     "court": {
       "confidence": 0.72,

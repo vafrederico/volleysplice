@@ -39,7 +39,11 @@ class Recording:
     label_path: str
 
 
-def load_recordings(labels_path: Path, analyses_root: Path) -> list[Recording]:
+def load_recordings(
+    labels_path: Path,
+    analyses_root: Path,
+    analysis_suffix: str = "",
+) -> list[Recording]:
     if labels_path.is_dir():
         label_files = sorted(labels_path.glob("*.labels.json"))
         if not label_files:
@@ -82,7 +86,7 @@ def load_recordings(labels_path: Path, analyses_root: Path) -> list[Recording]:
                 duration = float(segment.group("duration"))
                 analysis_id = f"{raw['environment']}-{segment.group('youtube')}"
 
-            analysis_path = analyses_root / analysis_id / "analysis.json"
+            analysis_path = analyses_root / f"{analysis_id}{analysis_suffix}" / "analysis.json"
             analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
             truth = [
                 Interval(float(item["start"]), float(item["end"]))
@@ -310,6 +314,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate generated analysis intervals against a labeled segment manifest.")
     parser.add_argument("--labels", type=Path, required=True, help="Gold label manifest built from completed labels")
     parser.add_argument("--analyses-root", type=Path, default=configured_root / "analyses")
+    parser.add_argument(
+        "--analysis-suffix",
+        default="",
+        help="Suffix appended to mapped analysis IDs, for example -v2",
+    )
     parser.add_argument("--output", type=Path, help="Optional immutable JSON report destination")
     parser.add_argument("--parameter-search", action="store_true", help="Run a diagnostic decoder grid and source-group CV")
     return parser
@@ -317,13 +326,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     arguments = build_parser().parse_args()
-    recordings = load_recordings(arguments.labels.resolve(), arguments.analyses_root.resolve())
+    if arguments.analysis_suffix and not re.fullmatch(
+        r"-[A-Za-z0-9][A-Za-z0-9_-]{0,19}",
+        arguments.analysis_suffix,
+    ):
+        raise ValueError("--analysis-suffix must be empty or a safe hyphen-prefixed suffix")
+    recordings = load_recordings(
+        arguments.labels.resolve(),
+        arguments.analyses_root.resolve(),
+        arguments.analysis_suffix,
+    )
     baseline = [evaluate_recording(item, item.baseline_predictions) for item in recordings]
     report: dict[str, Any] = {
         "schemaVersion": 1,
         "createdAt": datetime.now(UTC).isoformat(),
         "labels": str(arguments.labels.resolve()),
         "analysesRoot": str(arguments.analyses_root.resolve()),
+        "analysisSuffix": arguments.analysis_suffix,
         "matching": {"minimumIntervalIoU": 0.5},
         "baseline": {
             "aggregate": aggregate_evaluations(baseline),

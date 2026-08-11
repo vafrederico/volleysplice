@@ -89,6 +89,14 @@ The optional parameter search is diagnostic: it includes a leave-one-source-grou
 
 The first pilot evaluation and its prioritized improvement plan are documented in [`docs/research/analysis-vs-pilot-gold-2026-08-09.md`](docs/research/analysis-vs-pilot-gold-2026-08-09.md).
 
+After changing court validation or rally decoding, create immutable analyses from the existing proxies without transcoding the videos again:
+
+```bash
+npm run reanalyze:dataset
+```
+
+This writes suffixed analysis directories, hard-links their proxies when supported, and recomputes motion only when the validated court region changed. The full-video ground-truth comparison that selected analyzer v2 is documented in [`docs/research/full-video-ground-truth-analyzer-v2-2026-08-10.md`](docs/research/full-video-ground-truth-analyzer-v2-2026-08-10.md).
+
 ## Review locally
 
 ```bash
@@ -118,9 +126,9 @@ Generated videos are served only through an allowlisted local media route. Origi
 4. Samples proxy frames at 4 fps, compensates small camera translations, and measures motion inside that region.
 5. Measures mono audio energy when audio is available.
 6. Combines normalized motion and supporting audio into activity scores.
-7. Applies conservative hysteresis, gap filling, duration filters, and bounded confidence to produce review candidates.
+7. Applies hysteresis, bridges at most 0.75 seconds of inactivity, filters short noise, and adds no automatic ending tail before producing review candidates.
 
-The line detector currently estimates a rectangular activity region from stable line segments; it does not yet solve full court calibration or distinguish court lines from every similar gym marking. Audio can support a visual candidate but cannot create one by itself.
+The line detector currently estimates a rectangular activity region from stable line segments; it does not yet solve full court calibration or distinguish court lines from every similar gym marking. Severely bottom-cropped estimates fall back to a broad activity region. Audio can support a visual candidate but cannot create one by itself.
 
 ## Tests
 

@@ -13,6 +13,7 @@
     "dataset:status": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; python3 scripts/dataset-status.py",
     "analyze": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; .venv/bin/python -m analysis",
     "analyze:dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; .venv/bin/python scripts/analyze-dataset.py",
+    "reanalyze:dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/reanalyze-dataset.py",
     "evaluate:labels": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-labels.py",
     "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v",
     "test:web": "node --experimental-strip-types --test tests/web/*.test.mts",
