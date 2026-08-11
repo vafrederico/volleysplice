@@ -23,7 +23,7 @@ def merge_intervals(intervals: Iterable[Interval]) -> list[Interval]:
     for interval in sorted(intervals, key=lambda item: (item.start, item.end)):
         if interval.end <= interval.start:
             continue
-        if merged and interval.start <= merged[-1].end:
+        if merged and interval.start < merged[-1].end:
             merged[-1] = Interval(merged[-1].start, max(merged[-1].end, interval.end))
         else:
             merged.append(interval)

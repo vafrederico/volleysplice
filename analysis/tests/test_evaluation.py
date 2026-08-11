@@ -29,6 +29,14 @@ class EvaluationTests(unittest.TestCase):
         self.assertAlmostEqual(result["liveTimeRecall"], 1)
         self.assertAlmostEqual(result["liveTimePrecision"], 0.75)
 
+    def test_touching_intervals_remain_distinct_events(self):
+        intervals = [Interval(2, 5), Interval(5, 8)]
+        self.assertEqual(merge_intervals(intervals), intervals)
+        result = evaluate_intervals(intervals, intervals)
+        self.assertEqual(result["trueRallies"], 2)
+        self.assertEqual(result["predictedRallies"], 2)
+        self.assertEqual(result["eventF1"], 1)
+
     def test_matching_maximizes_count_before_overlap(self):
         truth = [Interval(0, 10), Interval(10, 20)]
         predictions = [Interval(0, 9), Interval(9, 20)]

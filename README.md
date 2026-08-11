@@ -85,6 +85,8 @@ npm run evaluate:labels -- \
 
 The optional parameter search is diagnostic: it includes a leave-one-source-group-out result, but nine short segments are not enough evidence to change production thresholds without a larger held-out label pack.
 
+`--labels` also accepts a directory of full-video `*.labels.json` documents.
+
 The first pilot evaluation and its prioritized improvement plan are documented in [`docs/research/analysis-vs-pilot-gold-2026-08-09.md`](docs/research/analysis-vs-pilot-gold-2026-08-09.md).
 
 ## Review locally

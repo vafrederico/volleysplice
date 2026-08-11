@@ -28,6 +28,7 @@ class Recording:
     id: str
     environment: str
     source_group: str
+    split: str
     duration: float
     offset: float
     truth: list[Interval]
@@ -35,49 +36,84 @@ class Recording:
     signals: list[dict[str, float]]
     camera_stability: float
     baseline_predictions: list[Interval]
+    label_path: str
 
 
 def load_recordings(labels_path: Path, analyses_root: Path) -> list[Recording]:
-    payload = json.loads(labels_path.read_text(encoding="utf-8"))
-    raw_recordings = payload.get("recordings")
-    if payload.get("schemaVersion") != 1 or not isinstance(raw_recordings, list):
-        raise ValueError("labels manifest must contain a schema-version 1 recordings list")
+    if labels_path.is_dir():
+        label_files = sorted(labels_path.glob("*.labels.json"))
+        if not label_files:
+            raise ValueError(f"label directory contains no *.labels.json files: {labels_path}")
+    elif labels_path.is_file():
+        label_files = [labels_path]
+    else:
+        raise ValueError(f"labels path does not exist: {labels_path}")
 
     recordings: list[Recording] = []
-    for raw in raw_recordings:
-        segment = SEGMENT_PATTERN.search(Path(str(raw.get("video", ""))).name)
-        if not segment:
-            raise ValueError(f"could not determine source segment for {raw.get('id', '<unknown>')}")
-        offset = float(segment.group("start"))
-        duration = float(segment.group("duration"))
-        analysis_id = f"{raw['environment']}-{segment.group('youtube')}"
-        analysis_path = analyses_root / analysis_id / "analysis.json"
-        analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
-        truth = [Interval(float(item["start"]), float(item["end"])) for item in raw.get("rallies", [])]
-        tags = [list(item.get("tags", [])) for item in raw.get("rallies", [])]
-        predictions: list[Interval] = []
-        for item in analysis.get("rallies", []):
-            start = max(offset, float(item["start"]))
-            end = min(offset + duration, float(item["end"]))
-            if end > start:
-                predictions.append(Interval(start - offset, end - offset))
-        signals = [
-            {**sample, "time": float(sample["time"]) - offset}
-            for sample in analysis.get("signals", [])
-            if offset <= float(sample["time"]) < offset + duration
-        ]
-        recordings.append(Recording(
-            id=str(raw["id"]),
-            environment=str(raw["environment"]),
-            source_group=str(raw["sourceGroup"]),
-            duration=duration,
-            offset=offset,
-            truth=truth,
-            tags=tags,
-            signals=signals,
-            camera_stability=float(analysis["analysis"]["cameraStability"]),
-            baseline_predictions=predictions,
-        ))
+    for label_file in label_files:
+        payload = json.loads(label_file.read_text(encoding="utf-8"))
+        if payload.get("schemaVersion") != 1:
+            raise ValueError(f"unsupported label schema in {label_file}")
+        if payload.get("kind") == "volleycut-rally-labels":
+            raw_recordings = [{**payload["recording"], "rallies": payload.get("rallies", [])}]
+            full_recording = True
+        else:
+            raw_recordings = payload.get("recordings")
+            full_recording = False
+            if not isinstance(raw_recordings, list):
+                raise ValueError(
+                    f"labels must be a rally-label document or contain a recordings list: {label_file}"
+                )
+
+        for raw in raw_recordings:
+            if full_recording:
+                recording_id = str(raw["id"])
+                analysis_id = recording_id.removesuffix("-full")
+                offset = 0.0
+                duration = float(raw["durationSeconds"])
+            else:
+                segment = SEGMENT_PATTERN.search(Path(str(raw.get("video", ""))).name)
+                if not segment:
+                    raise ValueError(
+                        f"could not determine source segment for {raw.get('id', '<unknown>')}"
+                    )
+                recording_id = str(raw["id"])
+                offset = float(segment.group("start"))
+                duration = float(segment.group("duration"))
+                analysis_id = f"{raw['environment']}-{segment.group('youtube')}"
+
+            analysis_path = analyses_root / analysis_id / "analysis.json"
+            analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+            truth = [
+                Interval(float(item["start"]), float(item["end"]))
+                for item in raw.get("rallies", [])
+            ]
+            tags = [list(item.get("tags", [])) for item in raw.get("rallies", [])]
+            predictions: list[Interval] = []
+            for item in analysis.get("rallies", []):
+                start = max(offset, float(item["start"]))
+                end = min(offset + duration, float(item["end"]))
+                if end > start:
+                    predictions.append(Interval(start - offset, end - offset))
+            signals = [
+                {**sample, "time": float(sample["time"]) - offset}
+                for sample in analysis.get("signals", [])
+                if offset <= float(sample["time"]) < offset + duration
+            ]
+            recordings.append(Recording(
+                id=recording_id,
+                environment=str(raw["environment"]),
+                source_group=str(raw["sourceGroup"]),
+                split=str(raw.get("split", "unspecified")),
+                duration=duration,
+                offset=offset,
+                truth=truth,
+                tags=tags,
+                signals=signals,
+                camera_stability=float(analysis["analysis"]["cameraStability"]),
+                baseline_predictions=predictions,
+                label_path=str(label_file.resolve()),
+            ))
     return recordings
 
 
@@ -87,6 +123,8 @@ def evaluate_recording(recording: Recording, predictions: list[Interval]) -> dic
         "id": recording.id,
         "environment": recording.environment,
         "sourceGroup": recording.source_group,
+        "split": recording.split,
+        "labelPath": recording.label_path,
         "segmentOffsetSeconds": recording.offset,
         "segmentDurationSeconds": recording.duration,
         "truth": [asdict(item) for item in recording.truth],
@@ -290,6 +328,7 @@ def main() -> int:
         "baseline": {
             "aggregate": aggregate_evaluations(baseline),
             "byEnvironment": grouped_summary(baseline, "environment"),
+            "bySplit": grouped_summary(baseline, "split"),
             "truthSlices": truth_slice_summary(recordings, baseline),
             "recordings": baseline,
         },
