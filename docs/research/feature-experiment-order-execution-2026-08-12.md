@@ -107,10 +107,35 @@ exists because the frozen gate failed.
 
 ## 4. Out-of-fold component selector
 
-Implementation is ready. Fresh v4/v5 rally and serve candidates will be generated out of fold and
-compared with the frozen conservative intersection. The available assessment is leakage-controlled
-but has only one held grass validation source, so it is explicitly diagnostic and non-promotable;
-the frozen intersection remains selected regardless of its raw validation delta.
+Fresh v4/v5 rally and serve candidates were generated with 16 fold-specific heads, yielding 431
+components over eight development recordings. The selector trained on 328 components from three
+training source groups and was assessed on 103 components from the held grass validation group. It
+converged after 1,686 iterations and selected 47 v4, 34 v5, and 22 intersection actions.
+
+| Held-grass validation policy | Predictions / matches | F1 @ .5 | Time IoU | Objective | Dead retained |
+|---|---:|---:|---:|---:|---:|
+| v4 | 90 / 37 | .4458 | .4116 | .5093 | 575.407 s |
+| frozen intersection | 90 / 36 | .4337 | .4098 | .5015 | 575.407 s |
+| trained selector | 98 / 42 | **.4828** | **.4479** | **.5394** | **484.552 s** |
+
+Versus the frozen intersection, the selector gained six strict matches, `+.0490` F1, `+.0382` time
+IoU, and `+.0415` live precision while losing only .34 percentage points of live recall and
+retaining 90.854 fewer dead seconds. This is encouraging tuning evidence, but only one grass
+validation source is available, so it is not full nested multi-source evidence. Per the predeclared
+decision, retain `frozenIntersection` for production, keep the trained selector diagnostic, and do
+not open test. A promotable follow-up needs full nested generator/selector cross-fitting or fresh
+indoor, grass, and beach source groups.
+
+The initial `v1` cache/report reached the optimizer's 1,000-iteration cap. An audit with 5,000
+iterations converged with identical selected actions and metrics; the implementation now rejects a
+non-converged official fit. The immutable corrected artifacts are:
+
+- `models/feature-order-2026-08-12/component-selector-oof-v2/oof-components.json`, SHA-256
+  `2333c963f27a6a5b877e91915fd9f3a3eb68c31474086c649f2de26bd415c343`;
+- `reports/feature-order-2026-08-12/component-selector-v2-development.json`, SHA-256
+  `cc501e8216a988c3dead8faa3bff86de09f52da1a4c90c40febe7c89f6bd07da`.
+
+The `v1` artifacts are superseded and must not be cited as the official outcome.
 
 ## 5. Labeling system and current label debt
 
