@@ -279,11 +279,20 @@
 
 .solBox,
 .detectorBox {
-  fill: rgba(191, 103, 255, 0.08);
-  stroke: #dc83ff;
+  fill: var(--sol-box-fill, rgba(191, 103, 255, 0.08));
+  stroke: var(--sol-box-stroke, #dc83ff);
   stroke-width: 3px;
   stroke-dasharray: 8 4;
   pointer-events: none;
+  transition: opacity 100ms ease, stroke-width 100ms ease;
+}
+
+.solBox[data-highlighted="true"] {
+  stroke-width: 6px;
+}
+
+.solBox[data-muted="true"] {
+  opacity: 0.16;
 }
 
 .detectorBox {
@@ -509,17 +518,40 @@
   gap: 5px;
   align-items: center;
   padding: 7px;
-  border: 1px solid #b05bd0;
-  background: #faf1ff;
+  border: 2px solid var(--sol-box-color, #b05bd0);
+  border-left-width: 9px;
+  background: var(--sol-box-surface, #faf1ff);
+  transition: box-shadow 100ms ease, transform 100ms ease;
+}
+
+.solBoxDecision[data-highlighted="true"] {
+  box-shadow: 3px 3px 0 var(--sol-box-color, #b05bd0);
+  transform: translate(-1px, -1px);
 }
 
 .solBoxDecision span {
-  color: #5b355f;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--sol-box-ink, #5b355f);
   font: 600 8px/1.4 "DM Mono", monospace;
+}
+
+.solBoxDecision span b {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--sol-box-color, #b05bd0);
+  font: 700 10px "DM Mono", monospace;
 }
 
 .solBoxDecision button {
   padding: 6px;
+  border-color: var(--sol-box-color, #161813);
 }
 
 @media (max-width: 520px) {

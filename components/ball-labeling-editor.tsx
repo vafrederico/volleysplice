@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
@@ -67,6 +68,19 @@ const stateLabels: Record<PrimaryBallState, string> = {
   out_of_frame: "Out of frame",
   indeterminate: "Indeterminate",
 };
+
+const solBoxPalette = [
+  { stroke: "#e53935", fill: "rgba(229, 57, 53, 0.16)", surface: "#fff0ef", ink: "#7d1714" },
+  { stroke: "#1565c0", fill: "rgba(21, 101, 192, 0.16)", surface: "#edf5ff", ink: "#0c3d74" },
+  { stroke: "#2e7d32", fill: "rgba(46, 125, 50, 0.16)", surface: "#effaf0", ink: "#174a1a" },
+  { stroke: "#f57c00", fill: "rgba(245, 124, 0, 0.17)", surface: "#fff5e8", ink: "#834300" },
+  { stroke: "#8e24aa", fill: "rgba(142, 36, 170, 0.15)", surface: "#fbf0ff", ink: "#541365" },
+  { stroke: "#00838f", fill: "rgba(0, 131, 143, 0.16)", surface: "#eaf9fa", ink: "#00515a" },
+] as const;
+
+function solBoxColors(index: number) {
+  return solBoxPalette[index % solBoxPalette.length];
+}
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -162,6 +176,7 @@ export function BallLabelingEditor() {
   const [comparisonByFrame, setComparisonByFrame] = useState<Record<string, BallComparisonLayers>>({});
   const [comparisonAttempted, setComparisonAttempted] = useState<Record<string, boolean>>({});
   const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [highlightedSolObjectIndex, setHighlightedSolObjectIndex] = useState<number | null>(null);
   const [visibleLayers, setVisibleLayers] = useState({ human: true, sol: true, detector: true });
   const [imageLoaded, setImageLoaded] = useState(false);
   const [annotator, setAnnotator] = useState("");
@@ -392,6 +407,7 @@ export function BallLabelingEditor() {
     setSelectedTaskId(id);
     setTask(null);
     setFrameIndex(0);
+    setHighlightedSolObjectIndex(null);
     setPlaying(false);
     setAssistedMode(true);
     setComparisonByFrame({});
@@ -498,6 +514,7 @@ export function BallLabelingEditor() {
         setSelectedObjectIndex(null);
         setDrawing(null);
         drawingRef.current = null;
+        setHighlightedSolObjectIndex(null);
         setImageLoaded(false);
         setFrameIndex(nextIndex);
       }
@@ -573,6 +590,7 @@ export function BallLabelingEditor() {
     setSelectedObjectIndex(null);
     setDrawing(null);
     drawingRef.current = null;
+    setHighlightedSolObjectIndex(null);
     setImageLoaded(false);
     setFrameIndex(Math.max(0, Math.min(task.immutable.frames.length - 1, nextIndex)));
   }
@@ -1077,10 +1095,16 @@ export function BallLabelingEditor() {
                     <rect
                       key={`sol-${object.id}-${index}`}
                       className={styles.solBox}
+                      data-highlighted={highlightedSolObjectIndex === index}
+                      data-muted={highlightedSolObjectIndex !== null && highlightedSolObjectIndex !== index}
                       x={object.bbox.x}
                       y={object.bbox.y}
                       width={object.bbox.width}
                       height={object.bbox.height}
+                      style={{
+                        "--sol-box-stroke": solBoxColors(index).stroke,
+                        "--sol-box-fill": solBoxColors(index).fill,
+                      } as CSSProperties}
                       vectorEffect="non-scaling-stroke"
                     />
                   ))}
@@ -1283,8 +1307,26 @@ export function BallLabelingEditor() {
                             (humanObject) => boxIoU(humanObject.bbox, solObject.bbox) > 0.1,
                           );
                         return (
-                          <div key={`${solObject.id}-${objectIndex}`} className={styles.solBoxDecision}>
+                          <div
+                            key={`${solObject.id}-${objectIndex}`}
+                            className={styles.solBoxDecision}
+                            data-highlighted={highlightedSolObjectIndex === objectIndex}
+                            style={{
+                              "--sol-box-color": solBoxColors(objectIndex).stroke,
+                              "--sol-box-surface": solBoxColors(objectIndex).surface,
+                              "--sol-box-ink": solBoxColors(objectIndex).ink,
+                            } as CSSProperties}
+                            onMouseEnter={() => setHighlightedSolObjectIndex(objectIndex)}
+                            onMouseLeave={() => setHighlightedSolObjectIndex(null)}
+                            onFocus={() => setHighlightedSolObjectIndex(objectIndex)}
+                            onBlur={(event) => {
+                              if (!event.currentTarget.contains(event.relatedTarget)) {
+                                setHighlightedSolObjectIndex(null);
+                              }
+                            }}
+                          >
                             <span>
+                              <b>{objectIndex + 1}</b>
                               Sol box {objectIndex + 1} · {roleLabels[solObject.role]} ·{
                               exact ? " accepted" : adjusted ? " adjusted" : " pending"
                               }
