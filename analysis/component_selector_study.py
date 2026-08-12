@@ -1804,6 +1804,10 @@ def run_component_selector_development(
         permit_union=False,
         allow_uncovered_additions=False,
     )
+    if not model.converged:
+        raise ComponentSelectorStudyError(
+            "component selector did not converge; refusing to report assessment metrics"
+        )
     assessment_groups = {
         row.component.source_group for row in assessment_components
     }

@@ -392,6 +392,7 @@ class ComponentSelectorCacheAndDevelopmentTests(unittest.TestCase):
 
         self.assertFalse(report["testLabelsUsed"])
         self.assertFalse(report["testRecordingsPrepared"])
+        self.assertTrue(report["selector"]["model"]["training"]["converged"])
         self.assertEqual(
             report["assessment"]["sourceGroups"], ["d"]
         )

@@ -1610,7 +1610,7 @@ def fit_component_selector(
     targets: Mapping[Any, str] | Sequence[SelectorTarget] | Sequence[str],
     *,
     l2: float = 0.1,
-    max_iterations: int = 1000,
+    max_iterations: int = 5000,
     tolerance: float = 1e-6,
     permit_union: bool = False,
     allow_uncovered_additions: bool = False,
