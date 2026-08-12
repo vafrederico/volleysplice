@@ -29,6 +29,10 @@ export default async function Home({ searchParams }: HomeProps) {
   const defaultAnalysis =
     analyses.find(
       (candidate) =>
+        candidate.id === `model-full-percentile-v1--${selectedVideo?.id}`,
+    ) ??
+    analyses.find(
+      (candidate) =>
         candidate.kind === "model" && candidate.modelVersion === "full-percentile-v1",
     ) ??
     analyses.find((candidate) => candidate.kind === "model") ??

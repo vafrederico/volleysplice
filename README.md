@@ -104,6 +104,10 @@ Run a saved learned model over every full-video manifest entry and evaluate the 
 npm run infer:model-dataset -- \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-percentile-v1
 
+# Materialize the frozen v4+v5 fusion and all persisted specialist iterations.
+npm run infer:dual-serve-fusion-dataset
+npm run infer:specialist-model-dataset
+
 npm run evaluate:model-padding -- \
   --model-version full-percentile-v1 \
   --padding-seconds 0 1 2 3 \

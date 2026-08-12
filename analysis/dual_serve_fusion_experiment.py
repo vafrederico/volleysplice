@@ -3,6 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import re
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -12,7 +16,8 @@ from typing import Any, Callable, Sequence
 import numpy as np
 
 from .artifacts import atomic_write_text
-from .decoder import DecodedInterval
+from .decoder import DecodedInterval, decode_probabilities
+from .features import camera_warnings, write_preview
 from .metrics import (
     aggregate_evaluations,
     aggregate_outcome_slices,
@@ -32,6 +37,7 @@ from .schema import Interval, Recording, load_manifest
 from .serve_experiment import (
     PairedPrediction,
     _clip_ignored,
+    _effective_analysis_fps,
     _prediction_inputs,
     _validate_model_pair,
 )
@@ -39,7 +45,14 @@ from .version import __version__
 
 
 EXPERIMENT_ID = "dual-serve-v4-v5-fusion-v1"
+FUSION_VARIANT_LABEL = "Trained model · v4+v5 boundary refinement"
+FUSION_VARIANT_DESCRIPTION = (
+    "Frozen fusion iteration: v4 supplies the rallies, while v5's "
+    "noise-normalized-audio model may shorten an unambiguous boundary when both "
+    "pairs agree. Unmatched v5 rallies are not added."
+)
 BOUNDARY_ACTIONS = {"keep-v4", "v5", "intersection"}
+SAFE_ANALYSIS_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
 
 
 @dataclass(frozen=True)
@@ -748,6 +761,536 @@ def _validate_decision(
     if config not in _selector_grid():
         raise ModelError("fusion decision selector was not in the declared validation grid")
     return config
+
+
+def _analysis_run_id(model_version: str, recording_id: str) -> str:
+    run_id = f"model-{model_version}--{recording_id}"
+    if not SAFE_ANALYSIS_ID.fullmatch(run_id):
+        raise ModelError(
+            "fusion model version and recording id do not form a dashboard-safe id: "
+            f"{run_id!r}"
+        )
+    return run_id
+
+
+def _mean_probability(
+    times: np.ndarray,
+    probabilities: np.ndarray,
+    start: float,
+    end: float,
+) -> float:
+    selected = probabilities[(times >= start) & (times < end)]
+    return float(np.mean(selected)) if len(selected) else 0.0
+
+
+def _peak_probability_near(
+    times: np.ndarray,
+    probabilities: np.ndarray,
+    center: float,
+    radius: float = 1.0,
+) -> float:
+    selected = probabilities[
+        (times >= center - radius) & (times <= center + radius)
+    ]
+    return float(np.max(selected)) if len(selected) else 0.0
+
+
+def _fusion_rally_rows(
+    intervals: Sequence[DecodedInterval],
+    original_v4: Sequence[DecodedInterval],
+    times: np.ndarray,
+    v4_smoothed: np.ndarray,
+    v5_smoothed: np.ndarray,
+    v4_serve_scores: np.ndarray,
+    v5_serve_scores: np.ndarray,
+    duration: float,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, interval in enumerate(intervals, start=1):
+        unchanged = any(
+            abs(interval.start - original.start) <= 1e-9
+            and abs(interval.end - original.end) <= 1e-9
+            for original in original_v4
+        )
+        mean_v4 = _mean_probability(
+            times, v4_smoothed, interval.start, interval.end
+        )
+        mean_v5 = _mean_probability(
+            times, v5_smoothed, interval.start, interval.end
+        )
+        evidence = {
+            "fusionAction": "keep-v4" if unchanged else "v4-v5-intersection",
+            "meanV4LiveProbability": round(mean_v4, 5),
+            "meanV5LiveProbability": round(mean_v5, 5),
+            "v4ServeProbabilityNearStart": round(
+                _peak_probability_near(
+                    times, v4_serve_scores, interval.start
+                ),
+                5,
+            ),
+            "v5ServeProbabilityNearStart": round(
+                _peak_probability_near(
+                    times, v5_serve_scores, interval.start
+                ),
+                5,
+            ),
+            "selectorConfidence": round(float(interval.confidence), 5),
+        }
+        rows.append(
+            {
+                "id": f"R{index:03d}",
+                "start": max(0.0, round(float(interval.start), 3)),
+                "end": min(duration, round(float(interval.end), 3)),
+                "confidence": round(max(0.0, min(1.0, mean_v4)), 5),
+                "included": True,
+                "evidence": evidence,
+            }
+        )
+    return rows
+
+
+def _fusion_analysis_payload(
+    prediction: DualPrediction,
+    selected: Sequence[DecodedInterval],
+    changed_intervals: int,
+    v4_rally_model: LogisticModel,
+    v5_rally_model: LogisticModel,
+    selector: BoundarySelectorConfig,
+    decision_sha256: str,
+    model_bindings: dict[str, Any],
+    component_versions: dict[str, str],
+    *,
+    run_id: str,
+    variant_label: str,
+    variant_description: str,
+    processing_seconds: float,
+) -> dict[str, Any]:
+    recording = prediction.recording
+    v4_sequence = prediction.v4.prepared.sequence
+    v5_sequence = prediction.v5.prepared.sequence
+    if (
+        v4_sequence.times.shape != v5_sequence.times.shape
+        or not np.allclose(v4_sequence.times, v5_sequence.times, rtol=0.0, atol=1e-9)
+    ):
+        raise ModelError(f"v4 and v5 inference time grids differ for {recording.id}")
+    times = v4_sequence.times
+    v4_fps = _effective_analysis_fps(prediction.v4.prepared)
+    v5_fps = _effective_analysis_fps(prediction.v5.prepared)
+    _, v4_smoothed = decode_probabilities(
+        times,
+        prediction.v4_live_scores,
+        v4_sequence.metadata.duration,
+        v4_rally_model.decoder,
+        v4_fps,
+    )
+    _, v5_smoothed = decode_probabilities(
+        times,
+        prediction.v5_live_scores,
+        v5_sequence.metadata.duration,
+        v5_rally_model.decoder,
+        v5_fps,
+    )
+    duration = v4_sequence.metadata.duration
+    warnings = camera_warnings(v4_sequence.metadata, recording.capture)
+    if recording.roi is None:
+        warnings.append(
+            "no court ROI supplied; full-frame motion may include spectators or adjacent courts"
+        )
+    warnings.append(
+        "experimental frozen v4+v5 fusion: unmatched v5 rallies are not added"
+    )
+    roi_payload = None
+    if recording.roi is not None:
+        roi_payload = {
+            "x": recording.roi[0],
+            "y": recording.roi[1],
+            "width": recording.roi[2],
+            "height": recording.roi[3],
+        }
+    component_models = {
+        "v4": {
+            "iteration": (
+                "Original audiovisual pair with broadband audio and the first "
+                "serve-specialist composition."
+            ),
+            "rally": {
+                "version": component_versions["v4Rally"],
+                **model_bindings["v4Rally"],
+            },
+            "serve": {
+                "version": component_versions["v4Serve"],
+                **model_bindings["v4Serve"],
+            },
+        },
+        "v5": {
+            "iteration": (
+                "Noise-normalized and frequency-band audio pair used only for "
+                "validated boundary agreement."
+            ),
+            "rally": {
+                "version": component_versions["v5Rally"],
+                **model_bindings["v5Rally"],
+            },
+            "serve": {
+                "version": component_versions["v5Serve"],
+                **model_bindings["v5Serve"],
+            },
+        },
+    }
+    fusion_digest = hashlib.sha256(
+        json.dumps(
+            {
+                "experiment": EXPERIMENT_ID,
+                "decisionReportSha256": decision_sha256,
+                "models": model_bindings,
+                "selector": selector.to_dict(),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    dynamic_index = (
+        v4_sequence.names.index("diff_active_fraction")
+        if "diff_active_fraction" in v4_sequence.names
+        else None
+    )
+    signals: list[dict[str, Any]] = []
+    for index, timestamp in enumerate(times):
+        signal = {
+            "time": round(float(timestamp), 3),
+            "liveProbability": round(float(v4_smoothed[index]), 5),
+            "serveProbability": round(float(prediction.v4_serve_scores[index]), 5),
+            "v4LiveProbability": round(
+                float(prediction.v4_live_scores[index]), 5
+            ),
+            "v4ServeProbability": round(
+                float(prediction.v4_serve_scores[index]), 5
+            ),
+            "v5LiveProbability": round(
+                float(prediction.v5_live_scores[index]), 5
+            ),
+            "v5ServeProbability": round(
+                float(prediction.v5_serve_scores[index]), 5
+            ),
+        }
+        if dynamic_index is not None:
+            signal["motion"] = round(
+                float(v4_sequence.values[index, dynamic_index]), 5
+            )
+        signals.append(signal)
+    return {
+        "schemaVersion": 1,
+        "id": run_id,
+        "recordingId": recording.id,
+        "title": recording.id,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "source": {
+            "filename": recording.video.name,
+            "contentSha256": recording.content_sha256,
+            **v4_sequence.metadata.to_dict(),
+        },
+        "assets": {"courtPreviewPath": "court-preview.jpg"},
+        "analysis": {
+            "method": "court-motion-temporal-logistic+dual-serve-fusion-v1",
+            # Keep the authoritative v4 rally artifact at the top level so the
+            # review catalog can classify train/validation/evaluation lineage.
+            "modelVersion": component_versions["v4Rally"],
+            "modelSha256": model_bindings["v4Rally"]["sha256"],
+            "variantLabel": variant_label,
+            "variantDescription": variant_description,
+            "producer": f"volleycut-analysis/{__version__}",
+            "analysisFps": v4_rally_model.feature_config.analysis_fps,
+            "featureConfig": v4_rally_model.feature_config.to_dict(),
+            "decoder": v4_rally_model.decoder.to_dict(),
+            "models": component_models,
+            "fusion": {
+                "experiment": EXPERIMENT_ID,
+                "sha256": fusion_digest,
+                "decisionReportSha256": decision_sha256,
+                "selectedOn": "validation",
+                "addOnly": {"selectedPolicy": "disabled"},
+                "boundarySelector": selector.to_dict(),
+                "changedIntervals": changed_intervals,
+                "modelBindings": model_bindings,
+            },
+            "processingSeconds": round(processing_seconds, 3),
+            "processingToVideoRatio": (
+                processing_seconds / duration if duration > 0 else None
+            ),
+            "warnings": warnings,
+            "court": {
+                "source": "manual-roi" if recording.roi is not None else "full-frame-fallback",
+                "roi": roi_payload,
+            },
+        },
+        "rallies": _fusion_rally_rows(
+            selected,
+            prediction.v4.composed,
+            times,
+            v4_smoothed,
+            v5_smoothed,
+            prediction.v4_serve_scores,
+            prediction.v5_serve_scores,
+            duration,
+        ),
+        "signals": signals,
+    }
+
+
+def _write_fusion_analysis(
+    recording: Recording,
+    destination: Path,
+    payload: dict[str, Any],
+    *,
+    preview_source: Path | None = None,
+) -> None:
+    analysis_path = destination / "analysis.json"
+    preview_path = destination / "court-preview.jpg"
+    if destination.exists():
+        raise ModelError(f"fusion analysis destination already exists: {destination}")
+    destination.mkdir(parents=True)
+    descriptor, temporary_preview_name = tempfile.mkstemp(
+        prefix=".court-preview-", suffix=".jpg", dir=destination
+    )
+    os.close(descriptor)
+    temporary_preview = Path(temporary_preview_name)
+    temporary_preview.unlink()
+    try:
+        if preview_source is not None:
+            shutil.copyfile(preview_source, temporary_preview)
+        else:
+            write_preview(recording.video, temporary_preview, recording.roi)
+        temporary_preview.replace(preview_path)
+        try:
+            atomic_write_text(
+                analysis_path,
+                json.dumps(payload, indent=2, allow_nan=False) + "\n",
+            )
+        except Exception:
+            preview_path.unlink(missing_ok=True)
+            raise
+    except Exception:
+        temporary_preview.unlink(missing_ok=True)
+        analysis_path.unlink(missing_ok=True)
+        preview_path.unlink(missing_ok=True)
+        try:
+            destination.rmdir()
+        except OSError:
+            pass
+        raise
+
+
+def _validate_existing_fusion_analysis(
+    destination: Path,
+    *,
+    run_id: str,
+    recording_id: str,
+    source_filename: str,
+    content_sha256: str | None,
+    decision_sha256: str,
+    model_bindings: dict[str, Any],
+    component_versions: dict[str, str],
+    selector: BoundarySelectorConfig,
+    variant_label: str,
+    variant_description: str,
+) -> None:
+    analysis_path = destination / "analysis.json"
+    preview_path = destination / "court-preview.jpg"
+    if (
+        not destination.is_dir()
+        or not analysis_path.is_file()
+        or not preview_path.is_file()
+        or preview_path.stat().st_size == 0
+    ):
+        raise ModelError(f"incomplete fusion analysis destination exists: {destination}")
+    try:
+        payload = json.loads(analysis_path.read_text(encoding="utf-8"))
+        analysis = payload["analysis"]
+        fusion = analysis["fusion"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise ModelError(f"invalid existing fusion analysis {analysis_path}: {error}") from error
+    component_models = analysis.get("models", {})
+    expected = (
+        payload.get("id") == run_id
+        and payload.get("recordingId") == recording_id
+        and payload.get("source", {}).get("filename") == source_filename
+        and payload.get("source", {}).get("contentSha256") == content_sha256
+        and analysis.get("method")
+        == "court-motion-temporal-logistic+dual-serve-fusion-v1"
+        and analysis.get("modelVersion") == component_versions["v4Rally"]
+        and analysis.get("modelSha256") == model_bindings["v4Rally"]["sha256"]
+        and analysis.get("variantLabel") == variant_label
+        and analysis.get("variantDescription") == variant_description
+        and component_models.get("v4", {}).get("rally", {}).get("version")
+        == component_versions["v4Rally"]
+        and component_models.get("v4", {}).get("serve", {}).get("version")
+        == component_versions["v4Serve"]
+        and component_models.get("v5", {}).get("rally", {}).get("version")
+        == component_versions["v5Rally"]
+        and component_models.get("v5", {}).get("serve", {}).get("version")
+        == component_versions["v5Serve"]
+        and fusion.get("experiment") == EXPERIMENT_ID
+        and fusion.get("decisionReportSha256") == decision_sha256
+        and fusion.get("modelBindings") == model_bindings
+        and fusion.get("boundarySelector") == selector.to_dict()
+        and fusion.get("addOnly", {}).get("selectedPolicy") == "disabled"
+        and isinstance(payload.get("rallies"), list)
+    )
+    if not expected:
+        raise ModelError(
+            f"existing fusion analysis is bound to different inputs: {analysis_path}"
+        )
+
+
+def infer_dual_serve_fusion_dataset(
+    manifest_path: str | Path,
+    v4_rally_model_path: str | Path,
+    v4_serve_model_path: str | Path,
+    v4_cache_dir: str | Path,
+    v5_rally_model_path: str | Path,
+    v5_serve_model_path: str | Path,
+    v5_cache_dir: str | Path,
+    decision_path: str | Path,
+    output_root: str | Path,
+    *,
+    model_version: str = EXPERIMENT_ID,
+    variant_label: str = FUSION_VARIANT_LABEL,
+    variant_description: str = FUSION_VARIANT_DESCRIPTION,
+    limit: int | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Materialize the frozen v4+v5 selector as dashboard analysis artifacts."""
+    manifest = load_manifest(manifest_path)
+    manifest_sha256 = _manifest_digest(manifest)
+    rows = list(manifest.recordings)
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("fusion inference limit must be positive")
+        rows = rows[:limit]
+    destination_root = Path(output_root).expanduser().resolve()
+    destinations: dict[str, Path] = {}
+    for recording in rows:
+        run_id = _analysis_run_id(model_version, recording.id)
+        destination = destination_root / run_id
+        if destination.exists() and not (
+            destination.is_dir()
+            and (destination / "analysis.json").is_file()
+            and (destination / "court-preview.jpg").is_file()
+        ):
+            raise ModelError(f"incomplete fusion analysis destination exists: {destination}")
+        destinations[recording.id] = destination
+
+    model_paths = {
+        "v4Rally": Path(v4_rally_model_path).expanduser().resolve(),
+        "v4Serve": Path(v4_serve_model_path).expanduser().resolve(),
+        "v5Rally": Path(v5_rally_model_path).expanduser().resolve(),
+        "v5Serve": Path(v5_serve_model_path).expanduser().resolve(),
+    }
+    v4_rally = load_model(model_paths["v4Rally"])
+    v4_serve = load_model(model_paths["v4Serve"])
+    v5_rally = load_model(model_paths["v5Rally"])
+    v5_serve = load_model(model_paths["v5Serve"])
+    _validate_model_pair(v4_rally, v4_serve, manifest_sha256=manifest_sha256)
+    _validate_model_pair(v5_rally, v5_serve, manifest_sha256=manifest_sha256)
+    model_bindings = _model_bindings(v4_rally, v4_serve, v5_rally, v5_serve)
+    decision_file = Path(decision_path).expanduser().resolve()
+    try:
+        decision_bytes = decision_file.read_bytes()
+        decision_payload = json.loads(decision_bytes)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ModelError(f"could not read frozen fusion decision: {error}") from error
+    decision_sha256 = hashlib.sha256(decision_bytes).hexdigest()
+    selector = _validate_decision(
+        decision_payload, manifest_sha256, model_bindings
+    )
+    component_versions = {
+        key: path.name for key, path in model_paths.items()
+    }
+
+    created: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for index, recording in enumerate(rows, start=1):
+        run_id = _analysis_run_id(model_version, recording.id)
+        destination = destinations[recording.id]
+        if destination.exists():
+            _validate_existing_fusion_analysis(
+                destination,
+                run_id=run_id,
+                recording_id=recording.id,
+                source_filename=recording.video.name,
+                content_sha256=recording.content_sha256,
+                decision_sha256=decision_sha256,
+                model_bindings=model_bindings,
+                component_versions=component_versions,
+                selector=selector,
+                variant_label=variant_label,
+                variant_description=variant_description,
+            )
+            skipped.append({"recordingId": recording.id, "output": str(destination)})
+            if progress is not None:
+                progress(f"Skipping verified fusion output {index}/{len(rows)}: {recording.id}")
+            continue
+        if progress is not None:
+            progress(f"Materializing fusion {index}/{len(rows)}: {recording.id}")
+        started = time.perf_counter()
+        prediction = _prepare_predictions(
+            [recording],
+            v4_rally,
+            v4_serve,
+            v4_cache_dir,
+            v5_rally,
+            v5_serve,
+            v5_cache_dir,
+            progress=None,
+        )[0]
+        selected, changed = apply_boundary_selector(
+            prediction.v4.composed, prediction.v5.composed, selector
+        )
+        payload = _fusion_analysis_payload(
+            prediction,
+            selected,
+            changed,
+            v4_rally,
+            v5_rally,
+            selector,
+            decision_sha256,
+            model_bindings,
+            component_versions,
+            run_id=run_id,
+            variant_label=variant_label,
+            variant_description=variant_description,
+            processing_seconds=time.perf_counter() - started,
+        )
+        preview_source = (
+            destination_root
+            / f"model-full-percentile-v1--{recording.id}"
+            / "court-preview.jpg"
+        )
+        _write_fusion_analysis(
+            recording,
+            destination,
+            payload,
+            preview_source=(preview_source if preview_source.is_file() else None),
+        )
+        created.append(
+            {
+                "recordingId": recording.id,
+                "output": str(destination),
+                "rallies": len(payload["rallies"]),
+                "changedIntervals": changed,
+            }
+        )
+    return {
+        "experiment": EXPERIMENT_ID,
+        "manifest": manifest.name,
+        "manifestSha256": manifest_sha256,
+        "decisionReport": str(decision_file),
+        "decisionReportSha256": decision_sha256,
+        "modelVersion": model_version,
+        "recordings": len(rows),
+        "created": created,
+        "skipped": skipped,
+    }
 
 
 def evaluate_dual_serve_fusion_dataset(

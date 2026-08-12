@@ -24,6 +24,7 @@ const demoAnalysis: ReviewAnalysis = {
   recordingId: "demo",
   title: "Example analysis",
   variantLabel: "Demo",
+  variantDescription: null,
   kind: "unknown",
   method: "demo",
   modelVersion: null,
@@ -58,6 +59,10 @@ function tone(kind: AnalysisKind): "model" | "heuristic" | "sol" | "gold" {
 
 function preferredAnalysis(video: ReviewVideoOption): AnalysisOption | undefined {
   return (
+    video.analyses.find(
+      (analysis) =>
+        analysis.id === `model-full-percentile-v1--${video.id}`,
+    ) ??
     video.analyses.find(
       (analysis) =>
         analysis.kind === "model" && analysis.modelVersion === "full-percentile-v1",
@@ -124,6 +129,7 @@ export function ReviewEditor({
         return {
           id: candidate.id,
           label: candidate.variantLabel,
+          title: candidate.variantDescription ?? undefined,
           detail: `${candidate.datasetRoleLabel} · ${trackRallies.length} rallies`,
           active: candidate.id === analysis.id,
           intervals: trackRallies.map((rally) => ({
@@ -225,12 +231,17 @@ export function ReviewEditor({
               <span>Analysis source</span>
               <select
                 aria-label="Analysis source"
+                title={analysis.variantDescription ?? undefined}
                 value={analysis.id}
                 disabled={isPending}
                 onChange={(event) => selectAnalysis(event.target.value)}
               >
                 {analysisOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
+                  <option
+                    key={option.id}
+                    value={option.id}
+                    title={option.variantDescription ?? undefined}
+                  >
                     {option.variantLabel} · {option.datasetRoleLabel} · {option.rallyCount}
                   </option>
                 ))}
@@ -248,7 +259,12 @@ export function ReviewEditor({
       <section className="hero">
         <div>
           <div className="analysis-badges">
-            <span data-kind={analysis.kind}>{analysis.variantLabel}</span>
+            <span
+              data-kind={analysis.kind}
+              title={analysis.variantDescription ?? undefined}
+            >
+              {analysis.variantLabel}
+            </span>
             <span data-role={analysis.datasetRole}>{analysis.datasetRoleLabel}</span>
           </div>
           <h1>Find the rallies.<br /><em>Compare the evidence.</em></h1>

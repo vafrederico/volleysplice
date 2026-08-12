@@ -16,6 +16,7 @@ export type ReviewAnalysis = {
   recordingId: string;
   title: string;
   variantLabel: string;
+  variantDescription: string | null;
   kind: AnalysisKind;
   method: string;
   modelVersion: string | null;
@@ -40,6 +41,7 @@ export type AnalysisOption = {
   recordingId: string;
   title: string;
   variantLabel: string;
+  variantDescription: string | null;
   kind: AnalysisKind;
   modelVersion: string | null;
   datasetRole: DatasetRole;

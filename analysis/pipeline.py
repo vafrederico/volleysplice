@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import tempfile
 import time
 from dataclasses import dataclass, replace
@@ -439,6 +440,13 @@ def infer_video(
     title: str | None = None,
     capture: dict[str, Any] | None = None,
     serve_model_path: str | Path | None = None,
+    cache_dir: str | Path | None = None,
+    recording_id: str | None = None,
+    content_sha256: str | None = None,
+    variant_label: str | None = None,
+    variant_description: str | None = None,
+    include_signals: bool = True,
+    preview_source: str | Path | None = None,
 ) -> dict[str, Any]:
     inference_started = time.perf_counter()
     model = load_model(model_path)
@@ -458,7 +466,19 @@ def infer_video(
     preview_path = destination / "court-preview.jpg"
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
         raise ModelError(f"analysis output is not an empty directory: {destination}")
-    sequence = extract_features(video, model.feature_config, roi)
+    if cache_dir is not None:
+        if not recording_id:
+            raise ModelError("cached inference requires a recording id")
+        sequence = cached_features(
+            recording_id,
+            video,
+            model.feature_config,
+            roi,
+            cache_dir,
+            content_sha256=content_sha256,
+        )
+    else:
+        sequence = extract_features(video, model.feature_config, roi)
     values, names = contextualize(sequence, model.feature_config)
     if names != model.feature_names:
         raise ModelError("inference extractor signature does not match the model")
@@ -554,10 +574,12 @@ def infer_video(
     payload: dict[str, Any] = {
         "schemaVersion": 1,
         "id": destination.name,
+        **({"recordingId": recording_id} if recording_id else {}),
         "title": title or video.stem,
         "createdAt": created_at,
         "source": {
             "filename": video.name,
+            **({"contentSha256": content_sha256} if content_sha256 else {}),
             **sequence.metadata.to_dict(),
         },
         "assets": {"courtPreviewPath": "court-preview.jpg"},
@@ -568,6 +590,12 @@ def infer_video(
                 else "court-motion-temporal-logistic-v0"
             ),
             "modelVersion": Path(model_path).expanduser().resolve().name,
+            **({"variantLabel": variant_label} if variant_label else {}),
+            **(
+                {"variantDescription": variant_description}
+                if variant_description
+                else {}
+            ),
             "producer": f"volleycut-analysis/{__version__}",
             "analysisFps": model.feature_config.analysis_fps,
             "featureConfig": model.feature_config.to_dict(),
@@ -604,23 +632,39 @@ def infer_video(
             },
         },
         "rallies": rally_rows,
-        "signals": [
+        **(
             {
-                "time": round(float(time), 3),
-                "liveProbability": round(float(probability), 5),
-                **(
-                    {"serveProbability": round(float(serve_probabilities[index]), 5)}
-                    if serve_probabilities is not None
-                    else {}
-                ),
-                **(
-                    {"motion": round(float(sequence.values[index, dynamic_index]), 5)}
-                    if dynamic_index is not None
-                    else {}
-                ),
+                "signals": [
+                    {
+                        "time": round(float(time), 3),
+                        "liveProbability": round(float(probability), 5),
+                        **(
+                            {
+                                "serveProbability": round(
+                                    float(serve_probabilities[index]), 5
+                                )
+                            }
+                            if serve_probabilities is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "motion": round(
+                                    float(sequence.values[index, dynamic_index]), 5
+                                )
+                            }
+                            if dynamic_index is not None
+                            else {}
+                        ),
+                    }
+                    for index, (time, probability) in enumerate(
+                        zip(sequence.times, smoothed, strict=True)
+                    )
+                ]
             }
-            for index, (time, probability) in enumerate(zip(sequence.times, smoothed, strict=True))
-        ],
+            if include_signals
+            else {}
+        ),
     }
     payload_text = json.dumps(payload, indent=2, allow_nan=False) + "\n"
     created_directory = not destination.exists()
@@ -632,7 +676,13 @@ def infer_video(
     temporary_preview = Path(temporary_preview_name)
     temporary_preview.unlink()
     try:
-        write_preview(video, temporary_preview, roi)
+        if preview_source is not None:
+            source_preview = Path(preview_source).expanduser().resolve()
+            if not source_preview.is_file():
+                raise ModelError(f"preview source does not exist: {source_preview}")
+            shutil.copyfile(source_preview, temporary_preview)
+        else:
+            write_preview(video, temporary_preview, roi)
         temporary_preview.replace(preview_path)
         try:
             atomic_write_text(analysis_path, payload_text)

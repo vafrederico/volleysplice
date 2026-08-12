@@ -46,6 +46,16 @@ def _roi(value: str) -> tuple[float, float, float, float]:
     return parsed  # type: ignore[return-value]
 
 
+def _json_object(value: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise argparse.ArgumentTypeError("value must be a JSON object") from error
+    if not isinstance(parsed, dict):
+        raise argparse.ArgumentTypeError("value must be a JSON object")
+    return parsed
+
+
 def _default_cache() -> Path:
     return Path("data/features")
 
@@ -256,6 +266,18 @@ def build_parser() -> argparse.ArgumentParser:
     infer.add_argument("--output", required=True, type=Path, help="new analysis directory")
     infer.add_argument("--roi", type=_roi, help="normalized x,y,width,height court rectangle")
     infer.add_argument("--title")
+    infer.add_argument("--capture-json", type=_json_object)
+    infer.add_argument("--cache-dir", type=Path)
+    infer.add_argument("--recording-id")
+    infer.add_argument("--content-sha256")
+    infer.add_argument("--variant-label")
+    infer.add_argument("--variant-description")
+    infer.add_argument("--preview-source", type=Path)
+    infer.add_argument(
+        "--omit-signals",
+        action="store_true",
+        help="omit per-sample probabilities when only review timelines are needed",
+    )
 
     evaluate = subparsers.add_parser("evaluate", help="evaluate an immutable manifest split")
     evaluate.add_argument("--manifest", required=True, type=Path)
@@ -791,7 +813,15 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.output,
                 roi=arguments.roi,
                 title=arguments.title,
+                capture=arguments.capture_json,
                 serve_model_path=arguments.serve_model,
+                cache_dir=arguments.cache_dir,
+                recording_id=arguments.recording_id,
+                content_sha256=arguments.content_sha256,
+                variant_label=arguments.variant_label,
+                variant_description=arguments.variant_description,
+                include_signals=not arguments.omit_signals,
+                preview_source=arguments.preview_source,
             )
             _json(
                 {
