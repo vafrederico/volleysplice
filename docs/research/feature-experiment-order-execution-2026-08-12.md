@@ -84,11 +84,26 @@ Immutable reports:
 
 ## 3. Serve-anchored multistate model
 
-Implementation is ready. The study will compare a legal `DEAD -> SETUP -> SERVE -> LIVE -> DEAD`
-semi-Markov path with a same-feature binary control. Its development promotion gate requires a
-positive paired objective result, higher aggregate objective, better short and service-fault strict
-recall, preserved ordinary-long strict recall, and no more than one percentage point of live-recall
-loss. The protected retrospective stays closed if any condition fails.
+The study compared a legal `DEAD -> SETUP -> SERVE -> LIVE -> DEAD` semi-Markov path with a
+same-feature binary control. The multistate aggregate improved F1 from .5244 to .5550, time IoU from
+.5131 to .5457, objective from .5681 to .5863, start MAE from .941 to .616 seconds, and end MAE from
+1.938 to 1.654 seconds. It recovered seven additional short strict matches (`11/63` versus `4/63`)
+and six additional service-fault matches (`10/41` versus `4/41`).
+
+It nevertheless failed four mandatory promotion checks. Paired evidence was uncertain: two source
+groups improved and two regressed, with objective deltas from `-.0847` to `+.1095`, mean `+.0087`,
+and median `+.0051`. It lost one ordinary-long strict match (`147` versus `148`) and lost 5.56
+percentage points of live recall (.7826 versus .8382), beyond the one-point tolerance. The selected
+architecture therefore remains `binary_control`; the protected retrospective was not opened.
+
+This is useful diagnostic evidence that the explicit state representation targets the short/fault
+problem, but its current duration/transition model is too source-sensitive and sacrifices live
+coverage. Revisit it only with new transition supervision or fresh source groups.
+
+Immutable development report:
+`reports/feature-order-2026-08-12/multistate-v1-development.json`, SHA-256
+`37522a6e5dbe9de8fdc1d518bbd6b0cb2cb9695105238abb7aaa161c81d2718f`. No retrospective report
+exists because the frozen gate failed.
 
 ## 4. Out-of-fold component selector
 
