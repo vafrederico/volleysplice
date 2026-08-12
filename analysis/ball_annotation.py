@@ -1392,6 +1392,41 @@ def validate_ball_annotation_task(
             {"status", "primaryBallState", "objects", "notes"},
             where,
         )
+        unsupported_annotation_fields = set(row) - {
+            "status",
+            "primaryBallState",
+            "objects",
+            "notes",
+            "proposalExposure",
+            "proposalSources",
+        }
+        if unsupported_annotation_fields:
+            raise BallAnnotationError(
+                f"{where} has unsupported fields {sorted(unsupported_annotation_fields)}"
+            )
+        proposal_exposure = row.get("proposalExposure")
+        if proposal_exposure is not None and proposal_exposure not in {
+            "not_shown",
+            "shown_before_label_finalized",
+        }:
+            raise BallAnnotationError(f"{where}.proposalExposure is invalid")
+        proposal_sources = row.get("proposalSources", [])
+        if (
+            not isinstance(proposal_sources, list)
+            or any(source not in {"sol", "detector"} for source in proposal_sources)
+            or len(set(proposal_sources)) != len(proposal_sources)
+        ):
+            raise BallAnnotationError(f"{where}.proposalSources is invalid")
+        if "proposalSources" in row and (
+            (proposal_exposure == "not_shown" and proposal_sources)
+            or (
+                proposal_exposure == "shown_before_label_finalized"
+                and not proposal_sources
+            )
+        ):
+            raise BallAnnotationError(
+                f"{where}.proposalSources does not match proposalExposure"
+            )
         if row["status"] not in {"unreviewed", "reviewed"}:
             raise BallAnnotationError(f"{where}.status is invalid")
         state = row["primaryBallState"]
@@ -1460,13 +1495,13 @@ def validate_ball_annotation_task(
             raise BallAnnotationError(
                 "an in-progress review requires some, but not all, frames to be reviewed"
             )
-        if not isinstance(review["annotator"], str) or not review["annotator"].strip():
-            raise BallAnnotationError("an in-progress review requires an annotator")
+        if review["annotator"] is not None and not isinstance(review["annotator"], str):
+            raise BallAnnotationError("annotations.review.annotator must be a string or null")
         if review["reviewedAt"] is not None:
             raise BallAnnotationError("reviewedAt must remain null until review is complete")
     else:
-        if not isinstance(review["annotator"], str) or not review["annotator"].strip():
-            raise BallAnnotationError("a complete review requires an annotator")
+        if review["annotator"] is not None and not isinstance(review["annotator"], str):
+            raise BallAnnotationError("annotations.review.annotator must be a string or null")
         reviewed_at = review["reviewedAt"]
         if not isinstance(reviewed_at, str) or not reviewed_at.strip():
             raise BallAnnotationError("a complete review requires reviewedAt")

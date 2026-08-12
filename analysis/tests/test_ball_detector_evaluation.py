@@ -286,6 +286,7 @@ def write_completed_sol_review(
     for frame_id, annotation in human_task["annotations"]["frames"].items():
         copied = copy.deepcopy(annotation)
         copied.pop("proposalExposure", None)
+        copied.pop("proposalSources", None)
         sol_frames[frame_id] = copied
     sol["annotations"] = {
         "review": {
@@ -928,12 +929,13 @@ class SolReviewEvaluationTests(unittest.TestCase):
             ):
                 load_completed_sol_reviews([second_sol], first_human)
 
-    def test_assisted_human_frames_are_excluded_for_both_methods(self) -> None:
+    def test_sol_assisted_human_frames_remain_in_inclusive_metrics(self) -> None:
         task = completed_task()
         frame_ids = list(task["annotations"]["frames"])
         task["annotations"]["frames"][frame_ids[0]]["proposalExposure"] = (
             "shown_before_label_finalized"
         )
+        task["annotations"]["frames"][frame_ids[0]]["proposalSources"] = ["sol"]
 
         def poison_excluded_sol_frames(sol: dict[str, object]) -> None:
             assisted = sol["annotations"]["frames"][frame_ids[0]]
@@ -956,26 +958,30 @@ class SolReviewEvaluationTests(unittest.TestCase):
             )
             merged = json.loads(merged_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(report["coverage"]["frames"], 269)
-        self.assertEqual(report["coverage"]["excludedAssistedHumanFrames"], 1)
+        self.assertEqual(report["coverage"]["frames"], 270)
+        self.assertEqual(report["coverage"]["detectorIndependentFrames"], 270)
+        self.assertEqual(report["coverage"]["solIndependentFrames"], 269)
+        self.assertEqual(report["coverage"]["assistedHumanFrames"], 1)
+        self.assertEqual(report["coverage"]["excludedFromDetectorSelection"], 0)
         self.assertEqual(report["coverage"]["excludedHumanFramesWithoutExposureAudit"], 0)
         self.assertEqual(
-            report["solComparison"]["provenance"][
-                "humanFramesExcludedForProposalExposure"
-            ],
-            1,
+            report["solComparison"]["provenance"]["humanVerifiedFrames"],
+            270,
         )
+        self.assertEqual(report["solComparison"]["independentHumanSubset"]["frames"], 269)
         exposure = merged["blindMergeProvenance"]["humanReviewExposure"]
         self.assertFalse(exposure["blanketBlindnessClaim"])
-        self.assertEqual(exposure["qualityEligibleFrameCount"], 269)
+        self.assertEqual(exposure["allHumanVerifiedFrameCount"], 270)
+        self.assertEqual(exposure["detectorIndependentFrameCount"], 270)
+        self.assertEqual(exposure["solIndependentFrameCount"], 269)
         detector_primary = report["operatingPoint"]["overallMicro"]["framePresence"][
             "primaryLocalizable"
         ]
-        self.assertEqual(detector_primary["positiveFrames"], 1)
-        self.assertEqual(detector_primary["truePositive"], 0)
+        self.assertEqual(detector_primary["positiveFrames"], 2)
+        self.assertEqual(detector_primary["truePositive"], 1)
         sol_overall = report["solComparison"]["overallMicro"]["framePresence"]
-        self.assertEqual(sol_overall["primaryLocalizable"]["positiveFrames"], 1)
-        self.assertEqual(sol_overall["primaryLocalizable"]["recall"], 1.0)
+        self.assertEqual(sol_overall["primaryLocalizable"]["positiveFrames"], 2)
+        self.assertEqual(sol_overall["primaryLocalizable"]["recall"], 0.5)
         self.assertEqual(sol_overall["anyAnnotatedRealBall"]["falsePositive"], 0)
 
 

@@ -105,6 +105,7 @@ class EvaluationFrame:
     ball_presence_probability: float
     detections: tuple[Detection, ...]
     proposal_exposure: str = "not_shown"
+    proposal_sources: tuple[str, ...] = ()
 
     @property
     def primary_truth(self) -> tuple[TruthObject, ...]:
@@ -118,6 +119,8 @@ class EvaluationFrame:
 @dataclass(frozen=True)
 class LoadedEvaluation:
     frames: tuple[EvaluationFrame, ...]
+    all_frames: tuple[EvaluationFrame, ...]
+    sol_independent_frames: tuple[EvaluationFrame, ...]
     tasks: tuple[dict[str, Any], ...]
     detector: dict[str, Any]
     detector_signature_sha256: str
@@ -199,6 +202,29 @@ def _proposal_exposure_status(annotation: Mapping[str, Any]) -> str:
     return str(exposure)
 
 
+def _proposal_sources(annotation: Mapping[str, Any]) -> tuple[str, ...]:
+    sources = annotation.get("proposalSources")
+    if sources is None:
+        return () if annotation.get("proposalExposure") == "not_shown" else ("unknown",)
+    if (
+        not isinstance(sources, list)
+        or any(source not in {"sol", "detector"} for source in sources)
+        or len(set(sources)) != len(sources)
+    ):
+        raise BallDetectorEvaluationError(
+            "annotation proposalSources must be a unique array containing only 'sol' "
+            "and/or 'detector'"
+        )
+    exposure = annotation.get("proposalExposure")
+    if (exposure == "not_shown" and sources) or (
+        exposure == "shown_before_label_finalized" and not sources
+    ):
+        raise BallDetectorEvaluationError(
+            "annotation proposalSources does not match proposalExposure"
+        )
+    return tuple(source for source in ("sol", "detector") if source in sources)
+
+
 def _human_exposure_summary(task: Mapping[str, Any]) -> dict[str, int]:
     counts = {
         "not_shown": 0,
@@ -207,6 +233,29 @@ def _human_exposure_summary(task: Mapping[str, Any]) -> dict[str, int]:
     }
     for annotation in task["annotations"]["frames"].values():
         counts[_proposal_exposure_status(annotation)] += 1
+    return counts
+
+
+def _method_independence_summary(task: Mapping[str, Any]) -> dict[str, int]:
+    counts = {
+        "all_reviewed": 0,
+        "detector_independent": 0,
+        "sol_independent": 0,
+        "unknown_source": 0,
+    }
+    for annotation in task["annotations"]["frames"].values():
+        if annotation.get("status") != "reviewed":
+            continue
+        counts["all_reviewed"] += 1
+        sources = _proposal_sources(annotation)
+        exposure = _proposal_exposure_status(annotation)
+        if exposure == "not_recorded" or "unknown" in sources:
+            counts["unknown_source"] += 1
+            continue
+        if "detector" not in sources:
+            counts["detector_independent"] += 1
+        if "sol" not in sources:
+            counts["sol_independent"] += 1
     return counts
 
 
@@ -270,17 +319,22 @@ def _validate_completed_human_review_structure(task: Mapping[str, Any]) -> None:
     if not isinstance(frames, dict):
         raise BallDetectorEvaluationError("reviewed-label frames must be an object")
     for frame_id, annotation in frames.items():
-        frame_row = _require_exact_mapping_keys(
-            annotation,
-            {
-                "status",
-                "primaryBallState",
-                "objects",
-                "notes",
-                "proposalExposure",
-            },
-            f"reviewed-label frame {frame_id!r}",
-        )
+        expected_frame_fields = {
+            "status",
+            "primaryBallState",
+            "objects",
+            "notes",
+            "proposalExposure",
+        }
+        actual_frame_fields = set(annotation) if isinstance(annotation, dict) else set()
+        if not isinstance(annotation, dict) or (
+            actual_frame_fields != expected_frame_fields
+            and actual_frame_fields != expected_frame_fields | {"proposalSources"}
+        ):
+            raise BallDetectorEvaluationError(
+                f"reviewed-label frame {frame_id!r} has unsupported fields"
+            )
+        frame_row = annotation
         if frame_row["proposalExposure"] not in {
             "not_shown",
             "shown_before_label_finalized",
@@ -288,6 +342,7 @@ def _validate_completed_human_review_structure(task: Mapping[str, Any]) -> None:
             raise BallDetectorEvaluationError(
                 f"reviewed-label frame {frame_id!r} proposalExposure is invalid"
             )
+        _proposal_sources(frame_row)
         for object_index, object_row in enumerate(frame_row["objects"]):
             object_mapping = _require_exact_mapping_keys(
                 object_row,
@@ -774,14 +829,21 @@ def _validate_blind_merge_provenance(
             "merged suggestions do not exactly match the SHA-pinned detector-proposal source"
         )
     exposure_counts = _human_exposure_summary(source_tasks["reviewedLabels"])
+    method_counts = _method_independence_summary(source_tasks["reviewedLabels"])
     expected_exposure = {
-        "field": "annotations.frames[*].proposalExposure",
+        "fields": [
+            "annotations.frames[*].proposalExposure",
+            "annotations.frames[*].proposalSources",
+        ],
         "notShownFrameCount": exposure_counts["not_shown"],
         "shownBeforeLabelFinalizedFrameCount": exposure_counts[
             "shown_before_label_finalized"
         ],
         "notRecordedFrameCount": exposure_counts["not_recorded"],
-        "qualityEligibleFrameCount": exposure_counts["not_shown"],
+        "allHumanVerifiedFrameCount": method_counts["all_reviewed"],
+        "detectorIndependentFrameCount": method_counts["detector_independent"],
+        "solIndependentFrameCount": method_counts["sol_independent"],
+        "unknownProposalSourceFrameCount": method_counts["unknown_source"],
         "blanketBlindnessClaim": False,
     }
     if provenance["humanReviewExposure"] != expected_exposure:
@@ -1344,6 +1406,7 @@ def merge_blind_review_with_detector_suggestions(
     merged = copy.deepcopy(reviewed)
     merged["suggestions"] = copy.deepcopy(proposals["suggestions"])
     review_exposure = _human_exposure_summary(reviewed)
+    method_independence = _method_independence_summary(reviewed)
     merged["blindMergeProvenance"] = {
         "schemaVersion": 1,
         "kind": "volleycut-ball-presence-blind-review-merge",
@@ -1359,13 +1422,23 @@ def merge_blind_review_with_detector_suggestions(
             "requiredState": "complete suggestions with unreviewed annotations",
         },
         "humanReviewExposure": {
-            "field": "annotations.frames[*].proposalExposure",
+            "fields": [
+                "annotations.frames[*].proposalExposure",
+                "annotations.frames[*].proposalSources",
+            ],
             "notShownFrameCount": review_exposure["not_shown"],
             "shownBeforeLabelFinalizedFrameCount": review_exposure[
                 "shown_before_label_finalized"
             ],
             "notRecordedFrameCount": review_exposure["not_recorded"],
-            "qualityEligibleFrameCount": review_exposure["not_shown"],
+            "allHumanVerifiedFrameCount": method_independence["all_reviewed"],
+            "detectorIndependentFrameCount": method_independence[
+                "detector_independent"
+            ],
+            "solIndependentFrameCount": method_independence["sol_independent"],
+            "unknownProposalSourceFrameCount": method_independence[
+                "unknown_source"
+            ],
             "blanketBlindnessClaim": False,
         },
         "immutableDigestSha256": reviewed["immutable"]["digestSha256"],
@@ -1428,6 +1501,8 @@ def load_completed_reviewed_tasks(inputs: Iterable[str | Path]) -> LoadedEvaluat
     """Load complete development reviews with complete, embedded detector suggestions."""
 
     frames: list[EvaluationFrame] = []
+    all_frames: list[EvaluationFrame] = []
+    sol_independent_frames: list[EvaluationFrame] = []
     task_provenance: list[dict[str, Any]] = []
     task_ids: set[str] = set()
     detector_payload: dict[str, Any] | None = None
@@ -1491,8 +1566,7 @@ def load_completed_reviewed_tasks(inputs: Iterable[str | Path]) -> LoadedEvaluat
                 )
             exposure = _proposal_exposure_status(label)
             exposure_summary[exposure] += 1
-            if exposure != "not_shown":
-                continue
+            proposal_sources = _proposal_sources(label)
             proposal = proposals[frame_id]
             window = windows[frame_row["windowId"]]
             image = frame_row["image"]
@@ -1526,8 +1600,7 @@ def load_completed_reviewed_tasks(inputs: Iterable[str | Path]) -> LoadedEvaluat
                     f"{task_id}/{frame_id} ballPresenceProbability is not the maximum "
                     "stored detection confidence"
                 )
-            frames.append(
-                EvaluationFrame(
+            evaluation_frame = EvaluationFrame(
                     key=f"{task_id}/{frame_id}",
                     task_id=task_id,
                     recording_id=recording["id"],
@@ -1548,8 +1621,21 @@ def load_completed_reviewed_tasks(inputs: Iterable[str | Path]) -> LoadedEvaluat
                     ball_presence_probability=presence_probability,
                     detections=detections,
                     proposal_exposure=exposure,
+                    proposal_sources=proposal_sources,
                 )
-            )
+            all_frames.append(evaluation_frame)
+            if (
+                exposure != "not_recorded"
+                and "detector" not in proposal_sources
+                and "unknown" not in proposal_sources
+            ):
+                frames.append(evaluation_frame)
+            if (
+                exposure != "not_recorded"
+                and "sol" not in proposal_sources
+                and "unknown" not in proposal_sources
+            ):
+                sol_independent_frames.append(evaluation_frame)
         task_provenance.append(
             {
                 "taskId": task_id,
@@ -1575,11 +1661,13 @@ def load_completed_reviewed_tasks(inputs: Iterable[str | Path]) -> LoadedEvaluat
         raise AssertionError("task discovery returned no loadable tasks")
     if not frames:
         raise BallDetectorEvaluationError(
-            "no quality-eligible human frames remain: every frame was assisted or lacks "
-            "a persisted proposalExposure audit"
+            "no detector-independent human frames remain: every frame was exposed to "
+            "detector proposals or lacks a persisted proposal-source audit"
         )
     return LoadedEvaluation(
         frames=tuple(frames),
+        all_frames=tuple(all_frames),
+        sol_independent_frames=tuple(sol_independent_frames),
         tasks=tuple(sorted(task_provenance, key=lambda item: item["recordingId"])),
         detector=detector_payload,
         detector_signature_sha256=detector_signature,
@@ -2712,6 +2800,7 @@ def _sol_prediction_frames(
                 ball_presence_probability=float(bool(sol_objects)),
                 detections=detections,
                 proposal_exposure=human.proposal_exposure,
+                proposal_sources=human.proposal_sources,
             )
         )
     return tuple(transformed)
@@ -2868,9 +2957,16 @@ def _sol_comparison(
             "reason": "no --sol-task inputs were supplied",
         }
     sol_by_key = {frame.key: frame for frame in sol.frames}
-    overall = _sol_fixed_point_metrics(human.frames, sol_by_key)
-    primary_frames = _sol_prediction_frames(human.frames, sol_by_key, target="primary")
-    any_frames = _sol_prediction_frames(human.frames, sol_by_key, target="any")
+    inclusive_frames = human.all_frames
+    independent_frames = human.sol_independent_frames
+    overall = _sol_fixed_point_metrics(inclusive_frames, sol_by_key)
+    independent_overall = (
+        _sol_fixed_point_metrics(independent_frames, sol_by_key)
+        if independent_frames
+        else None
+    )
+    primary_frames = _sol_prediction_frames(inclusive_frames, sol_by_key, target="primary")
+    any_frames = _sol_prediction_frames(inclusive_frames, sol_by_key, target="any")
     identities = sorted(
         {
             (
@@ -2884,8 +2980,19 @@ def _sol_comparison(
     return {
         "available": True,
         "population": (
-            "the same proposal-unexposed human-truth frames used for detector quality metrics"
+            "all completed human-verified frames, including frames where Sol was shown "
+            "before finalization; this inclusive population is not an independent Sol "
+            "accuracy estimate"
         ),
+        "independentHumanSubset": {
+            "available": bool(independent_frames),
+            "frames": len(independent_frames),
+            "overallMicro": independent_overall,
+            "meaning": (
+                "human frames for which Sol was not shown before finalization; use this "
+                "subset for independent Sol-quality interpretation"
+            ),
+        },
         "confidence": {
             "available": False,
             "thresholdSweepReported": False,
@@ -2904,13 +3011,13 @@ def _sol_comparison(
         "overallMicro": overall,
         "grouped": {
             "sourceGroup": _sol_grouped_metrics(
-                human.frames, sol_by_key, lambda frame: frame.source_group
+                inclusive_frames, sol_by_key, lambda frame: frame.source_group
             ),
             "environment": _sol_grouped_metrics(
-                human.frames, sol_by_key, lambda frame: frame.environment
+                inclusive_frames, sol_by_key, lambda frame: frame.environment
             ),
             "stratum": _sol_grouped_metrics(
-                human.frames, sol_by_key, lambda frame: frame.stratum
+                inclusive_frames, sol_by_key, lambda frame: frame.stratum
             ),
             "visibility": {
                 "primaryLocalizable": _positive_object_slices(
@@ -2943,19 +3050,19 @@ def _sol_comparison(
         },
         "macro": {
             "byWindow": _sol_macro_summary(
-                human.frames,
+                inclusive_frames,
                 sol_by_key,
                 lambda frame: frame.window_key,
                 unit_name="three-second annotation window",
             ),
             "byRecording": _sol_macro_summary(
-                human.frames,
+                inclusive_frames,
                 sol_by_key,
                 lambda frame: frame.recording_id,
                 unit_name="recording",
             ),
             "bySourceGroup": _sol_macro_summary(
-                human.frames,
+                inclusive_frames,
                 sol_by_key,
                 lambda frame: frame.source_group,
                 unit_name="source group",
@@ -2983,11 +3090,9 @@ def _sol_comparison(
                 "information"
             ),
             "allSampledFramesLabeled": True,
-            "qualityEligibleHumanFrames": len(human.frames),
-            "humanFramesExcludedForProposalExposure": (
-                human.exposure_summary["shown_before_label_finalized"]
-                + human.exposure_summary["not_recorded"]
-            ),
+            "humanVerifiedFrames": len(inclusive_frames),
+            "independentHumanFrames": len(independent_frames),
+            "framesWithoutExposureAudit": human.exposure_summary["not_recorded"],
         },
     }
 
@@ -3416,6 +3521,10 @@ def evaluate_ball_detector_tasks(
         ),
     }
     operating = evaluate_frames_at_threshold(loaded.frames, candidate_threshold)
+    inclusive_operating = evaluate_frames_at_threshold(
+        loaded.all_frames,
+        candidate_threshold,
+    )
     sol_comparison = _sol_comparison(loaded, loaded_sol)
     grouped = {
         "sourceGroup": _grouped_metrics(
@@ -3487,8 +3596,9 @@ def evaluate_ball_detector_tasks(
         "kind": BALL_DETECTOR_EVALUATION_KIND,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "population": (
-            "complete manually reviewed train/validation ball-pilot tasks, restricted to "
-            "frames whose persisted proposalExposure is not_shown"
+            "complete human-verified train/validation ball-pilot tasks; threshold selection "
+            "uses only detector-independent frames, while an assisted-inclusive operating "
+            "point reports every reviewed frame"
         ),
         "targetDefinitions": {
             "primaryLocalizable": (
@@ -3549,11 +3659,12 @@ def evaluate_ball_detector_tasks(
             "tasks": list(loaded.tasks),
             "humanProposalExposure": {
                 **loaded.exposure_summary,
-                "eligibleValue": "not_shown",
-                "excludedValues": [
-                    "shown_before_label_finalized",
-                    "not_recorded",
-                ],
+                "detectorSelectionEligibility": (
+                    "proposalSources does not contain detector and exposure was recorded"
+                ),
+                "solIndependentEligibility": (
+                    "proposalSources does not contain sol and exposure was recorded"
+                ),
                 "meaning": (
                     "blindMergeProvenance records how separate files were combined; it does "
                     "not assert that every human frame was proposal-blind"
@@ -3567,10 +3678,13 @@ def evaluate_ball_detector_tasks(
             "sourceGroups": len({frame.source_group for frame in loaded.frames}),
             "windows": len({frame.window_key for frame in loaded.frames}),
             "frames": len(loaded.frames),
+            "detectorIndependentFrames": len(loaded.frames),
+            "solIndependentFrames": len(loaded.sol_independent_frames),
             "allHumanReviewedFrames": sum(loaded.exposure_summary.values()),
-            "excludedAssistedHumanFrames": loaded.exposure_summary[
+            "assistedHumanFrames": loaded.exposure_summary[
                 "shown_before_label_finalized"
             ],
+            "excludedFromDetectorSelection": len(loaded.all_frames) - len(loaded.frames),
             "excludedHumanFramesWithoutExposureAudit": loaded.exposure_summary[
                 "not_recorded"
             ],
@@ -3630,6 +3744,15 @@ def evaluate_ball_detector_tasks(
                 else "all-development-candidate-not-frozen"
             ),
             "overallMicro": operating,
+            "assistedInclusiveHumanVerified": {
+                "frames": len(loaded.all_frames),
+                "overallMicro": inclusive_operating,
+                "caveat": (
+                    "includes frames whose human decision was made after seeing detector "
+                    "and/or Sol proposals; this measures the verified assisted workflow, "
+                    "not independent detector accuracy, and never selects the threshold"
+                ),
+            },
             "grouped": grouped,
             "macro": macro,
         },
@@ -3644,10 +3767,9 @@ def evaluate_ball_detector_tasks(
                 "reviews the labels."
             ),
             (
-                "Human frames exposed to Sol or detector proposals before the label was "
-                "finalized are excluded from detector selection and both detector/Sol "
-                "quality metrics. Completed human inputs lacking the exposure field are "
-                "rejected before blind merge."
+                "All reviewed frames remain in assisted-inclusive human-verified metrics. "
+                "Detector threshold selection excludes detector-exposed frames, and the "
+                "Sol comparison separately reports its Sol-unexposed independent subset."
             ),
             (
                 "Coverage alone never freezes or promotes a threshold; source-group-held-out "

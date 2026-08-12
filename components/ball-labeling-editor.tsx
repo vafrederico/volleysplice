@@ -72,6 +72,22 @@ function clamp(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function boxIoU(first: NormalizedBox, second: NormalizedBox): number {
+  const left = Math.max(first.x, second.x);
+  const top = Math.max(first.y, second.y);
+  const right = Math.min(first.x + first.width, second.x + second.width);
+  const bottom = Math.min(first.y + first.height, second.y + second.height);
+  const intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
+  const union = first.width * first.height + second.width * second.height - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+function sameBox(first: NormalizedBox, second: NormalizedBox): boolean {
+  return (["x", "y", "width", "height"] as const).every(
+    (key) => Math.abs(first[key] - second[key]) <= 1e-9,
+  );
+}
+
 function boxFromDrawing(drawing: Drawing): NormalizedBox {
   const x = Math.min(drawing.startX, drawing.currentX);
   const y = Math.min(drawing.startY, drawing.currentY);
@@ -86,6 +102,7 @@ function boxFromDrawing(drawing: Drawing): NormalizedBox {
 function cloneAnnotation(annotation: BallFrameAnnotation): BallFrameAnnotation {
   return {
     ...annotation,
+    proposalSources: [...annotation.proposalSources],
     objects: annotation.objects.map((object) => ({
       ...object,
       bbox: { ...object.bbox },
@@ -141,7 +158,7 @@ export function BallLabelingEditor() {
   const drawingRef = useRef<Drawing | null>(null);
   const [zoom, setZoom] = useState<1 | 2 | 4>(1);
   const [playing, setPlaying] = useState(false);
-  const [assistedMode, setAssistedMode] = useState(false);
+  const [assistedMode, setAssistedMode] = useState(true);
   const [comparisonByFrame, setComparisonByFrame] = useState<Record<string, BallComparisonLayers>>({});
   const [comparisonAttempted, setComparisonAttempted] = useState<Record<string, boolean>>({});
   const [comparisonLoading, setComparisonLoading] = useState(false);
@@ -152,7 +169,7 @@ export function BallLabelingEditor() {
   const [saving, setSaving] = useState(false);
   const saveInFlightRef = useRef(false);
   const revisionRef = useRef(0);
-  const [message, setMessage] = useState("Choose a development task to begin a blind review.");
+  const [message, setMessage] = useState("Choose a development task to begin review.");
   const [error, setError] = useState<string | null>(null);
 
   const frames = task?.immutable.frames ?? [];
@@ -192,7 +209,7 @@ export function BallLabelingEditor() {
         setError(
           reviewedFrameCount(document) === document.immutable.frames.length
             ? "All frames are reviewed. Use Complete review to save the final frame."
-            : "Review at least one frame and enter an annotator before saving.",
+            : "Review at least one frame before saving.",
         );
       }
       return false;
@@ -273,7 +290,7 @@ export function BallLabelingEditor() {
 
   const requestComparison = useCallback(async (
     mode: "post-decision" | "assisted",
-    sources: Array<"sol" | "detector"> = ["sol", "detector"],
+    sources: Array<"sol" | "detector"> = ["sol"],
   ): Promise<BallComparisonLayers | null> => {
     if (!task || !currentFrame || comparisonLoading) return null;
     if (mode === "post-decision" && currentAnnotation?.status !== "reviewed") {
@@ -303,7 +320,19 @@ export function BallLabelingEditor() {
       ) {
         throw new Error("Comparison response does not match the current source frame");
       }
-      setComparisonByFrame((current) => ({ ...current, [currentFrame.id]: payload }));
+      setComparisonByFrame((current) => {
+        const previous = current[currentFrame.id];
+        return {
+          ...current,
+          [currentFrame.id]: {
+            ...payload,
+            layers: {
+              sol: payload.layers.sol ?? previous?.layers.sol ?? null,
+              detector: payload.layers.detector ?? previous?.layers.detector ?? null,
+            },
+          },
+        };
+      });
       if (mode === "assisted" && payload.proposalExposure !== "blind") {
         setTask((current) => {
           if (!current) return current;
@@ -316,6 +345,15 @@ export function BallLabelingEditor() {
                 [currentFrame.id]: {
                   ...current.annotations.frames[currentFrame.id],
                   proposalExposure: "shown_before_label_finalized",
+                  proposalSources: Array.from(
+                    new Set([
+                      ...current.annotations.frames[currentFrame.id].proposalSources,
+                      ...sources,
+                    ]),
+                  ).filter(
+                    (source): source is "sol" | "detector" =>
+                      source === "sol" || source === "detector",
+                  ),
                 },
               },
             },
@@ -333,8 +371,8 @@ export function BallLabelingEditor() {
       }
       setMessage(
         mode === "assisted"
-          ? "Assisted overlays loaded. This frame is excluded from blind metrics."
-          : "Post-decision comparison loaded; the saved human decision remains blind.",
+          ? "Sol pre-label loaded. Human verification will be reported as assisted."
+          : "Post-decision comparison loaded; the saved human decision remains independent.",
       );
       return payload;
     } catch (comparisonError) {
@@ -355,7 +393,7 @@ export function BallLabelingEditor() {
     setTask(null);
     setFrameIndex(0);
     setPlaying(false);
-    setAssistedMode(false);
+    setAssistedMode(true);
     setComparisonByFrame({});
     setComparisonAttempted({});
     setSelectedObjectIndex(null);
@@ -363,7 +401,7 @@ export function BallLabelingEditor() {
     setImageLoaded(false);
     setDirty(false);
     setError(null);
-    setMessage("Loading blind review task…");
+    setMessage("Loading review task…");
     try {
       const response = await fetch(`/api/ball-labeling/tasks/${encodeURIComponent(id)}`, {
         cache: "no-store",
@@ -382,7 +420,7 @@ export function BallLabelingEditor() {
       setFrameIndex(firstUnreviewed >= 0 ? firstUnreviewed : 0);
       setMessage(
         document.annotations.review.status === "complete"
-          ? "Completed blind review loaded read-only."
+          ? "Completed human review loaded read-only."
           : "Task loaded without detector suggestions.",
       );
     } catch (loadError) {
@@ -477,23 +515,21 @@ export function BallLabelingEditor() {
     ) {
       return;
     }
-    const timeout = window.setTimeout(() => void requestComparison("assisted"), 0);
+    const mode = currentAnnotation?.status === "reviewed" ? "post-decision" : "assisted";
+    const timeout = window.setTimeout(() => void requestComparison(mode), 0);
     return () => window.clearTimeout(timeout);
   }, [
     assistedMode,
     comparisonAttempted,
     comparisonLoading,
     currentComparison,
+    currentAnnotation?.status,
     currentFrame,
     requestComparison,
   ]);
 
   function ensureEditable(): boolean {
     if (!task || !currentFrame || reviewLocked) return false;
-    if (!annotator.trim()) {
-      setError("Enter the annotator name before reviewing frames.");
-      return false;
-    }
     return true;
   }
 
@@ -518,7 +554,7 @@ export function BallLabelingEditor() {
                 : nextReviewed === 0
                   ? "unreviewed"
                   : "in_progress",
-            annotator: nextReviewed === 0 ? null : annotator.trim(),
+            annotator: nextReviewed === 0 ? null : annotator.trim() || null,
             reviewedAt: current.annotations.review.status === "complete" ? current.annotations.review.reviewedAt : null,
             notes: current.annotations.review.notes,
           },
@@ -600,9 +636,96 @@ export function BallLabelingEditor() {
     updateFrameAnnotation(currentFrame, () => ({
       ...cloneAnnotation(sol.annotation),
       proposalExposure: "shown_before_label_finalized",
+      proposalSources: ["sol"],
     }));
     setSelectedObjectIndex(sol.annotation.objects.length ? 0 : null);
     setMessage("Sol label copied explicitly; this frame is marked assisted.");
+  }
+
+  function acceptSolObject(objectIndex: number): void {
+    if (!currentFrame || !currentComparison?.layers.sol || !ensureEditable()) return;
+    const solAnnotation = currentComparison.layers.sol.annotation;
+    const solObject = solAnnotation.objects[objectIndex];
+    if (!solObject) return;
+    updateFrameAnnotation(currentFrame, (annotation) => {
+      const retained = annotation.objects.filter(
+        (object) =>
+          object.id !== solObject.id &&
+          (solObject.role !== "primary-court" || object.role !== "primary-court"),
+      );
+      return {
+        ...annotation,
+        status: "reviewed",
+        primaryBallState:
+          solObject.role === "primary-court"
+            ? "localizable"
+            : annotation.primaryBallState ??
+              (solAnnotation.primaryBallState === "localizable"
+                ? "indeterminate"
+                : solAnnotation.primaryBallState),
+        objects: [
+          ...retained,
+          { ...solObject, bbox: { ...solObject.bbox } },
+        ],
+        proposalExposure: "shown_before_label_finalized",
+        proposalSources: Array.from(new Set([...annotation.proposalSources, "sol" as const])),
+      };
+    });
+    setSelectedObjectIndex(null);
+    setMessage("Sol box accepted as correct; it remains classified as human-verified assisted data.");
+  }
+
+  function redrawSolObject(objectIndex: number): void {
+    if (!currentFrame || !currentComparison?.layers.sol || !ensureEditable()) return;
+    const solObject = currentComparison.layers.sol.annotation.objects[objectIndex];
+    if (!solObject) return;
+    updateFrameAnnotation(currentFrame, (annotation) => {
+      const objects = annotation.objects.filter(
+        (object) =>
+          solObject.role === "primary-court"
+            ? object.role !== "primary-court"
+            : !(
+                object.role === solObject.role &&
+                (object.id === solObject.id || boxIoU(object.bbox, solObject.bbox) > 0.1)
+              ),
+      );
+      const remainingPrimary = objects.some((object) => object.role === "primary-court");
+      return {
+        ...annotation,
+        objects,
+        status: objects.length ? annotation.status : "unreviewed",
+        primaryBallState:
+          solObject.role === "primary-court"
+            ? remainingPrimary
+              ? "localizable"
+              : objects.length
+                ? "indeterminate"
+                : null
+            : annotation.primaryBallState,
+        proposalExposure: "shown_before_label_finalized",
+        proposalSources: Array.from(new Set([...annotation.proposalSources, "sol" as const])),
+      };
+    });
+    setDrawRole(solObject.role);
+    setSelectedObjectIndex(null);
+    setMessage(`Draw the improved ${roleLabels[solObject.role].toLowerCase()} box on the image.`);
+  }
+
+  function acceptSolState(): void {
+    if (!currentFrame || !currentComparison?.layers.sol || !ensureEditable()) return;
+    const solAnnotation = currentComparison.layers.sol.annotation;
+    updateFrameAnnotation(currentFrame, (annotation) => ({
+      ...annotation,
+      status: "reviewed",
+      primaryBallState: solAnnotation.primaryBallState,
+      objects: solAnnotation.objects.map((object) => ({
+        ...object,
+        bbox: { ...object.bbox },
+      })),
+      proposalExposure: "shown_before_label_finalized",
+      proposalSources: Array.from(new Set([...annotation.proposalSources, "sol" as const])),
+    }));
+    setMessage("Sol state accepted as correct; it remains classified as human-verified assisted data.");
   }
 
   async function copyDetectorComparison(): Promise<void> {
@@ -648,6 +771,7 @@ export function BallLabelingEditor() {
         primaryBallState: role === "primary-court" ? "localizable" : annotation.primaryBallState,
         objects: [...retained, object],
         proposalExposure: "shown_before_label_finalized",
+        proposalSources: Array.from(new Set([...annotation.proposalSources, "detector" as const])),
       };
     });
     setMessage("Detector box copied explicitly; this frame is marked assisted.");
@@ -767,8 +891,8 @@ export function BallLabelingEditor() {
   }
 
   async function completeReview(): Promise<void> {
-    if (!task || reviewed !== totalFrames || !annotator.trim()) {
-      setError("Review every frame and enter the annotator name before completing the task.");
+    if (!task || reviewed !== totalFrames) {
+      setError("Review every frame before completing the task.");
       return;
     }
     const completed: BallReviewDocument = {
@@ -778,7 +902,7 @@ export function BallLabelingEditor() {
         review: {
           ...task.annotations.review,
           status: "complete",
-          annotator: annotator.trim(),
+          annotator: annotator.trim() || null,
           reviewedAt: new Date().toISOString(),
         },
       },
@@ -831,9 +955,9 @@ export function BallLabelingEditor() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
-          <p className={styles.kicker}>BLIND BALL-PRESENCE PILOT</p>
+          <p className={styles.kicker}>HUMAN-VERIFIED BALL-PRESENCE PILOT</p>
           <h1>Frame review</h1>
-          <p>Human boxes and visibility states stay isolated from detector output.</p>
+          <p>Verify Sol pre-labels quickly, redraw only when needed, and track each source.</p>
         </div>
         <nav>
           <Link href="/label/ball/benchmark">Effort benchmark</Link>
@@ -861,11 +985,11 @@ export function BallLabelingEditor() {
           </select>
         </label>
         <label>
-          Annotator
+          Annotator (optional)
           <input
             value={annotator}
             disabled={!task || reviewLocked}
-            placeholder="Required before labeling"
+            placeholder="Optional name"
             onChange={(event) => setAnnotator(event.target.value)}
           />
         </label>
@@ -1065,7 +1189,7 @@ export function BallLabelingEditor() {
                 }
               >
                 {currentAnnotation.proposalExposure === "shown_before_label_finalized"
-                  ? "ASSISTED · EXCLUDE FROM BLIND METRICS"
+                  ? `${currentAnnotation.proposalSources.length ? currentAnnotation.proposalSources.join(" + ").toUpperCase() : "PROPOSAL"}-ASSISTED · INCLUDED AS HUMAN VERIFIED`
                   : "BLIND HUMAN LABEL"}
               </strong>
               <label className={styles.assistedToggle}>
@@ -1077,7 +1201,7 @@ export function BallLabelingEditor() {
                     if (
                       event.target.checked &&
                       !window.confirm(
-                        "Enable assisted mode? Proposal layers will be shown before decisions and every exposed frame will be excluded from blind metrics.",
+                        "Enable assisted mode? Sol labels will be shown as pre-labels. Accepted or corrected frames remain in assisted human-verified metrics and are also reported separately from independent labels.",
                       )
                     ) {
                       return;
@@ -1085,7 +1209,7 @@ export function BallLabelingEditor() {
                     setAssistedMode(event.target.checked);
                     setMessage(
                       event.target.checked
-                        ? "Assisted mode enabled; exposure is recorded per frame."
+                        ? "Sol-assisted mode enabled; verify each proposed box or draw a better one."
                         : "Blind mode restored for frames not previously exposed.",
                     );
                   }}
@@ -1142,25 +1266,73 @@ export function BallLabelingEditor() {
                     </div>
                   </dl>
                   <div className={styles.copyActions}>
+                    {currentComparison.layers.sol?.annotation.objects.map(
+                      (solObject, objectIndex) => {
+                        const candidates = currentAnnotation.objects.filter(
+                          (humanObject) => humanObject.role === solObject.role,
+                        );
+                        const exact = candidates.some(
+                          (humanObject) =>
+                            sameBox(humanObject.bbox, solObject.bbox) &&
+                            humanObject.visibility === solObject.visibility &&
+                            humanObject.truncated === solObject.truncated,
+                        );
+                        const adjusted =
+                          !exact &&
+                          candidates.some(
+                            (humanObject) => boxIoU(humanObject.bbox, solObject.bbox) > 0.1,
+                          );
+                        return (
+                          <div key={`${solObject.id}-${objectIndex}`} className={styles.solBoxDecision}>
+                            <span>
+                              Sol box {objectIndex + 1} · {roleLabels[solObject.role]} ·{
+                              exact ? " accepted" : adjusted ? " adjusted" : " pending"
+                              }
+                            </span>
+                            <button
+                              disabled={reviewLocked || exact}
+                              onClick={() => acceptSolObject(objectIndex)}
+                            >
+                              {exact ? "Correct ✓" : "Correct · accept"}
+                            </button>
+                            <button
+                              disabled={reviewLocked}
+                              onClick={() => redrawSolObject(objectIndex)}
+                            >
+                              Draw better
+                            </button>
+                          </div>
+                        );
+                      },
+                    )}
+                    {currentComparison.layers.sol &&
+                      currentComparison.layers.sol.annotation.objects.length === 0 && (
+                        <button disabled={reviewLocked} onClick={acceptSolState}>
+                          Accept Sol state: {stateLabels[currentComparison.layers.sol.annotation.primaryBallState!]}
+                        </button>
+                      )}
                     <button
                       disabled={reviewLocked || !currentComparison.layers.sol}
                       onClick={() => void copySolComparison()}
                     >
-                      Use Sol label
+                      Accept entire Sol label
                     </button>
                     <button
-                      disabled={
-                        reviewLocked ||
-                        !currentComparison.layers.detector?.detections.length
-                      }
-                      onClick={() => void copyDetectorComparison()}
+                      disabled={reviewLocked || comparisonLoading}
+                      onClick={() => void requestComparison("assisted", ["detector"])}
                     >
-                      Use best detector box
+                      {currentComparison.layers.detector ? "Detector loaded" : "Load detector separately"}
                     </button>
+                    {currentComparison.layers.detector?.detections.length ? (
+                      <button disabled={reviewLocked} onClick={() => void copyDetectorComparison()}>
+                        Use best detector box
+                      </button>
+                    ) : null}
                   </div>
                   <p className={styles.hint}>
-                    Viewing after a saved decision remains blind. Copying a proposal changes this
-                    frame to assisted.
+                    Verify Sol boxes one by one. Accept correct boxes directly; use Draw better
+                    only when a box is wrong or can be improved. Assisted and independent metrics
+                    are reported separately.
                   </p>
                 </>
               )}
@@ -1315,7 +1487,7 @@ export function BallLabelingEditor() {
               <button
                 className={styles.complete}
                 onClick={() => void completeReview()}
-                disabled={reviewLocked || saving || reviewed !== totalFrames || !annotator.trim()}
+                disabled={reviewLocked || saving || reviewed !== totalFrames}
               >
                 {reviewLocked ? "Review complete" : "Complete review"}
               </button>

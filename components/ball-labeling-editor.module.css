@@ -502,6 +502,36 @@
   gap: 6px;
 }
 
+.solBoxDecision {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 5px;
+  align-items: center;
+  padding: 7px;
+  border: 1px solid #b05bd0;
+  background: #faf1ff;
+}
+
+.solBoxDecision span {
+  color: #5b355f;
+  font: 600 8px/1.4 "DM Mono", monospace;
+}
+
+.solBoxDecision button {
+  padding: 6px;
+}
+
+@media (max-width: 520px) {
+  .solBoxDecision {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .solBoxDecision span {
+    grid-column: 1 / -1;
+  }
+}
+
 .sectionLabel {
   margin: 0 0 8px;
   color: #696b63;

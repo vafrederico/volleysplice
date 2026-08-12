@@ -1087,7 +1087,7 @@ export async function saveBallReviewDocument(
     const now = new Date().toISOString();
     for (const frame of prepared.base.immutable.frames) {
       const before = existing.document.annotations.frames[frame.id].proposalExposure;
-      const after = submission.annotations.frames[frame.id].proposalExposure;
+      let after = submission.annotations.frames[frame.id].proposalExposure;
       const entry = audit.frames[frame.id];
       const auditedAssistance = (entry?.assistedSources.length ?? 0) > 0;
       if (
@@ -1097,6 +1097,19 @@ export async function saveBallReviewDocument(
         throw new BallLabelingDraftValidationError(
           `${frame.id} proposal exposure is irreversible and cannot be marked blind`,
         );
+      }
+
+      if (auditedAssistance && entry) {
+        const assistedSources = mergeSources(
+          submission.annotations.frames[frame.id].proposalSources,
+          entry.assistedSources,
+        );
+        submission.annotations.frames[frame.id] = {
+          ...submission.annotations.frames[frame.id],
+          proposalExposure: "shown_before_label_finalized",
+          proposalSources: assistedSources,
+        };
+        after = "shown_before_label_finalized";
       }
 
       if (!entry?.postDecisionSources.length) continue;
@@ -1110,11 +1123,12 @@ export async function saveBallReviewDocument(
         submittedRevision !== entry.postDecisionHumanAnnotationSha256;
       if (after !== "shown_before_label_finalized" && !changedAfterReveal) continue;
 
+      const assistedSources = mergeSources(entry.assistedSources, entry.postDecisionSources);
       submission.annotations.frames[frame.id] = {
         ...submission.annotations.frames[frame.id],
         proposalExposure: "shown_before_label_finalized",
+        proposalSources: assistedSources,
       };
-      const assistedSources = mergeSources(entry.assistedSources, entry.postDecisionSources);
       audit.frames[frame.id] = {
         ...entry,
         proposalExposure: exposureFromSources(assistedSources),
@@ -1209,6 +1223,10 @@ export async function getBallComparisonLayers(
       human.document.annotations.frames[frameId] = {
         ...human.document.annotations.frames[frameId],
         proposalExposure: "shown_before_label_finalized",
+        proposalSources: mergeSources(
+          human.document.annotations.frames[frameId].proposalSources,
+          availableSources,
+        ),
       };
       await writeReviewArtifact(prepared, human.document);
     }

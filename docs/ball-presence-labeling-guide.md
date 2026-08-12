@@ -2,8 +2,9 @@
 
 The `/label/ball` route reviews the 15 fps, development-only ball-presence
 sample. It streams the exact SHA-256-pinned PNGs from the pilot workspace and
-writes role-aware human labels back to the NAS. It does not load a detector or
-Sol artifact in its default blind mode.
+writes role-aware human labels back to the NAS. It opens in Sol-assisted mode
+when a prepared Sol artifact exists; assisted source exposure is recorded per
+frame and can be disabled before opening an unreviewed frame.
 
 ## Start the workstation
 
@@ -39,7 +40,7 @@ explicit assisted-mode opt-in.
 
 ## Blind review
 
-1. Choose a task and enter the annotator name.
+1. Choose a task. The annotator name is optional.
 2. Use the six numbered window tabs. The sampling stratum and rally reference
    are intentionally hidden in the editor.
 3. Step through all 45 frames in each window. Playback is only a context aid;
@@ -72,24 +73,34 @@ boxes are cyan dotted.
   the label, boxes, state, or notes are revised after viewing a proposal, the
   server irreversibly changes the frame to
   `shown_before_label_finalized` and excludes it from blind metrics.
-- **Assisted pre-label mode** requires a confirmation. It fetches comparison
-  layers as each frame opens. Before returning an available proposal, the
+- **Assisted pre-label mode** fetches the Sol comparison as each unreviewed
+  frame opens. Before returning an available proposal, the
   server irreversibly persists
   `proposalExposure: "shown_before_label_finalized"` on that human frame.
-  These frames must be excluded from blind detector/Sol-versus-human metrics.
-- **Use Sol label** and **Use best detector box** are explicit copy actions with
-  an additional confirmation. Merely viewing a post-decision overlay does not
-  alter the human label. Copying always marks the frame assisted. Detector
-  boxes are role-free, so the active draw role determines how the selected box
-  is copied; the default is primary-court.
+  Each Sol object has **Correct · accept** and **Draw better** actions. Accept
+  preserves the exact Sol geometry as a human-verified label; Draw better
+  removes the corresponding proposal and activates the matching draw role.
+  **Accept entire Sol label** remains available for a completely correct frame.
+- Detector proposals are loaded separately on demand. **Use best detector
+  box** is an explicit copy action. Detector boxes are role-free, so the active
+  draw role determines how the selected box is copied; the default is
+  primary-court.
+
+Assisted frames are not discarded. They remain in the headline
+human-verified workflow metrics, and each frame records `proposalSources` so
+the evaluator can also report detector-independent and Sol-independent
+subsets. Only detector-independent frames may select or freeze a detector
+threshold. The inclusive Sol comparison is useful for measuring the verified
+workflow but is explicitly circular when Sol supplied the pre-label; the
+separate Sol-independent subset is the quality estimate.
 
 Every comparison request also updates
 `reviews/<recording-id>.proposal-exposure.json`. That sidecar records which
 sources were shown before a decision, which were revealed afterward, and the
 SHA-256 of the human annotation at the first post-decision reveal. Review and
 exposure mutations are serialized per task so an overlapping autosave cannot
-erase this state. The self-contained frame field is authoritative for metric
-inclusion; the sidecar retains source, timing, and revision history.
+erase this state. The self-contained frame fields are authoritative for metric
+populations; the sidecar retains source, timing, and revision history.
 
 Sol overlays are accepted only when the artifact has complete annotations,
 empty detector suggestions, exact immutable task identity, and validated

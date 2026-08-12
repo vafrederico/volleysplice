@@ -652,12 +652,37 @@
 .overlayPicker label {
   padding: 6px 7px;
   border: 1px solid var(--run-color);
+  background: #fff;
+  cursor: pointer;
   font: 500 8px "DM Mono", monospace;
   text-transform: uppercase;
+  transition: opacity 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.overlayPicker label:has(input:disabled) {
-  opacity: 0.38;
+.overlayPicker label:has(input:not(:checked)) {
+  opacity: 0.42;
+}
+
+.overlayPicker label[data-highlighted="true"] {
+  opacity: 1;
+  box-shadow: 3px 3px 0 var(--run-color);
+  transform: translate(-1px, -1px);
+}
+
+.overlayBulkActions {
+  display: flex;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.overlayBulkActions button {
+  padding: 3px 6px;
+  border: 1px solid #aaa;
+  color: var(--bench-ink);
+  background: var(--bench-paper);
+  cursor: pointer;
+  font: 500 7px "DM Mono", monospace;
+  text-transform: uppercase;
 }
 
 .overlayWorkspace {
@@ -681,6 +706,12 @@
   padding: 10px;
   border-left: 5px solid var(--run-color);
   background: #fff;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.overlayNotes article[data-highlighted="true"] {
+  box-shadow: 4px 4px 0 var(--run-color, var(--bench-ink));
+  transform: translate(-2px, -2px);
 }
 
 .overlayNotes article[data-reference="true"] {

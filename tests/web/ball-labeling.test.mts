@@ -33,17 +33,20 @@ test("copying a prior frame label preserves the target exposure audit", () => {
     ],
     notes: "copy semantics only",
     proposalExposure: "not_shown" as const,
+    proposalSources: [] as Array<"sol" | "detector">,
   };
   const target = {
     ...source,
     objects: [],
     primaryBallState: "out_of_frame" as const,
     proposalExposure: "shown_before_label_finalized" as const,
+    proposalSources: ["sol"] as Array<"sol" | "detector">,
   };
 
   const copied = copyBallFrameLabelPreservingExposure(source, target);
 
   assert.equal(copied.proposalExposure, "shown_before_label_finalized");
+  assert.deepEqual(copied.proposalSources, ["sol"]);
   assert.equal(copied.primaryBallState, "localizable");
   assert.notEqual(copied.objects, source.objects);
   assert.notEqual(copied.objects[0].bbox, source.objects[0].bbox);
@@ -338,7 +341,7 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
       };
       loaded.document.annotations.review = {
         status: "in_progress",
-        annotator: "reviewer",
+        annotator: null,
         reviewedAt: null,
         notes: "",
       };
@@ -352,6 +355,7 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
       );
       assert.deepEqual(disk.suggestions, { status: "empty", model: null, frames: {} });
       assert.equal(disk.annotations.frames[firstFrame].status, "reviewed");
+      assert.equal(disk.annotations.review.annotator, null);
       assert.deepEqual(
         (await fs.readdir(path.join(fixture.root, "reviews"))).filter((name) => name.endsWith(".tmp")),
         [],
@@ -470,6 +474,10 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
         saved.document.annotations.frames[fixture.frameIds[0]].proposalExposure,
         "shown_before_label_finalized",
       );
+      assert.deepEqual(
+        saved.document.annotations.frames[fixture.frameIds[0]].proposalSources,
+        ["sol", "detector"],
+      );
       const audit = JSON.parse(
         await fs.readFile(
           path.join(
@@ -500,7 +508,12 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
         loaded.document.annotations.frames[fixture.frameIds[1]].proposalExposure,
         "shown_before_label_finalized",
       );
+      assert.deepEqual(
+        loaded.document.annotations.frames[fixture.frameIds[1]].proposalSources,
+        ["sol", "detector"],
+      );
       loaded.document.annotations.frames[fixture.frameIds[1]].proposalExposure = "not_shown";
+      loaded.document.annotations.frames[fixture.frameIds[1]].proposalSources = [];
       await assert.rejects(
         saveBallReviewDocument(fixture.recordingId, loaded.document),
         /proposal exposure is irreversible/,

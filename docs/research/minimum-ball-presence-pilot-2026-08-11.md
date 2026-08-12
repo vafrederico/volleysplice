@@ -86,18 +86,22 @@ clear, motion-blurred, or partly occluded visibility.
 Human reviews, detector proposals, and Sol reviews are different files with
 different provenance. Sol review copies can only be prepared from an original
 task whose detector suggestions are empty, and their source SHA is retained.
-Human review defaults to blind. A proposal layer can be shown after the current
-human decision without contaminating that decision. Revealing Sol or detector
-output before a decision is an explicit assisted action and irreversibly marks
-that frame `shown_before_label_finalized`; assisted frames are excluded from
-blind quality metrics, while completed inputs without an exposure audit are
-rejected. A post-decision reveal is bound to the saved human-annotation hash,
-so changing that decision afterward also marks the frame assisted.
+Human review supports blind and Sol-assisted modes. A proposal layer can be
+shown after the current human decision without contaminating that saved
+decision. Revealing Sol or detector output before a decision irreversibly marks
+that frame `shown_before_label_finalized` and records the exact proposal source.
+Assisted frames remain in inclusive human-verified workflow metrics;
+detector-exposed frames are excluded only from detector threshold selection,
+and Sol-exposed frames are excluded only from the separate Sol-independent
+quality subset. Completed inputs without an exposure audit are rejected. A
+post-decision reveal is bound to the saved human-annotation hash, so changing
+that decision afterward also marks the frame assisted.
 
 The local `/label/ball` route supports frame playback/stepping, zoom, SVG box
 editing, roles and visibility, copy-forward, progress, and toggleable Human,
-Sol, and Detector overlays. Proposal boxes are never silently copied into
-human truth.
+Sol, and Detector overlays. Sol boxes can be accepted individually as correct
+or replaced with a better human box; proposal boxes are never silently copied
+into human truth.
 
 ## Detector evaluation gate
 

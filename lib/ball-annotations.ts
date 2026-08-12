@@ -40,6 +40,7 @@ export type BallFrameAnnotation = {
   objects: BallObject[];
   notes: string;
   proposalExposure: "not_shown" | "shown_before_label_finalized";
+  proposalSources: BallProposalSource[];
 };
 
 export function copyBallFrameLabelPreservingExposure(
@@ -55,6 +56,7 @@ export function copyBallFrameLabelPreservingExposure(
     })),
     notes: source.notes,
     proposalExposure: target.proposalExposure,
+    proposalSources: [...(target.proposalSources ?? [])],
   };
 }
 
@@ -302,8 +304,15 @@ function validateAnnotations(
     if (
       !isRecord(annotationValue) ||
       !["status", "primaryBallState", "objects", "notes"].every((key) => annotationKeys.includes(key)) ||
-      annotationKeys.some(
-        (key) => !["status", "primaryBallState", "objects", "notes", "proposalExposure"].includes(key),
+      annotationKeys.some((key) =>
+        ![
+          "status",
+          "primaryBallState",
+          "objects",
+          "notes",
+          "proposalExposure",
+          "proposalSources",
+        ].includes(key),
       ) ||
       !["unreviewed", "reviewed"].includes(String(annotationValue.status)) ||
       !Array.isArray(annotationValue.objects) ||
@@ -311,7 +320,16 @@ function validateAnnotations(
       (annotationValue.proposalExposure !== undefined &&
         !["not_shown", "shown_before_label_finalized"].includes(
           String(annotationValue.proposalExposure),
-        ))
+        )) ||
+      (annotationValue.proposalSources !== undefined &&
+        (!Array.isArray(annotationValue.proposalSources) ||
+          annotationValue.proposalSources.some(
+            (source) => source !== "sol" && source !== "detector",
+          ) ||
+          new Set(annotationValue.proposalSources).size !==
+            annotationValue.proposalSources.length ||
+          (annotationValue.proposalExposure === "not_shown" &&
+            annotationValue.proposalSources.length > 0)))
     ) {
       throw new BallReviewValidationError(`${where} is invalid`);
     }
@@ -363,16 +381,14 @@ function validateAnnotations(
     if (
       reviewedCount <= 0 ||
       reviewedCount >= frames.length ||
-      typeof review.annotator !== "string" ||
-      !review.annotator.trim() ||
+      (review.annotator !== null && typeof review.annotator !== "string") ||
       review.reviewedAt !== null
     ) {
       throw new BallReviewValidationError("in-progress review metadata is inconsistent");
     }
   } else if (
     reviewedCount !== frames.length ||
-    typeof review.annotator !== "string" ||
-    !review.annotator.trim() ||
+    (review.annotator !== null && typeof review.annotator !== "string") ||
     typeof review.reviewedAt !== "string" ||
     !review.reviewedAt.trim() ||
     Number.isNaN(Date.parse(review.reviewedAt))
@@ -403,6 +419,7 @@ function parseReviewRoot(value: unknown): BallReviewDocument {
           {
             ...annotation,
             proposalExposure: annotation.proposalExposure ?? "not_shown",
+            proposalSources: annotation.proposalSources ?? [],
           },
         ]),
       ),

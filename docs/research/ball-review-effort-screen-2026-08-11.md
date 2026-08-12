@@ -122,6 +122,11 @@ validation-quality pass.
 
 - Reusable harness: `scripts/benchmark-ball-review-effort.py`
 - Visual comparison UI: `/label/ball/benchmark` in the local VolleyCut app.
+
+The comparison route opens with all nine outputs overlaid on one source image.
+Every run has an independent visibility toggle; hovering or keyboard-focusing
+a run emphasizes its boxes and dims the others. The 9-up, A/B, metrics, and
+pairwise views remain available for detailed comparison.
 - External report:
   `/mnt/freenas/volleycut/ball-presence-v1/reports/ball-review-effort-screen12-v1/report.json`
 - Corrected report SHA-256:
@@ -145,4 +150,5 @@ serving a sanitized bundle. It exposes no detector output, human-review draft,
 event log, stderr, source path, or generic filesystem route. The default 9-up
 view places all configurations on the same frame; A/B, multi-layer overlay,
 metrics/scatter, and numeric pairwise heatmap views make localization and state
-differences inspectable without treating the pseudo-reference as truth.
+differences inspectable without treating the pseudo-reference as truth. The
+default is now the single-image, all-nine overlay rather than the 9-up grid.

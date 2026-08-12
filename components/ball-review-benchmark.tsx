@@ -66,9 +66,9 @@ const similarityLabels: Record<SimilarityKey, string> = {
 };
 
 const viewLabels: Array<{ id: ViewMode; label: string; key: string }> = [
+  { id: "overlay", label: "All overlays", key: "O" },
   { id: "grid", label: "9-up grid", key: "G" },
   { id: "focus", label: "A / B", key: "F" },
-  { id: "overlay", label: "Overlay", key: "O" },
   { id: "metrics", label: "Metrics", key: "M" },
   { id: "heatmap", label: "Pairwise", key: "H" },
 ];
@@ -166,6 +166,7 @@ function AnnotationStage({
   zoom,
   showLabels = false,
   eager = false,
+  highlightedLayerId = null,
 }: {
   imageUrl: string;
   frameId: string;
@@ -175,7 +176,14 @@ function AnnotationStage({
   zoom: 1 | 2 | 4;
   showLabels?: boolean;
   eager?: boolean;
+  highlightedLayerId?: string | null;
 }) {
+  const orderedLayers = highlightedLayerId
+    ? [
+        ...layers.filter((layer) => layer.id !== highlightedLayerId),
+        ...layers.filter((layer) => layer.id === highlightedLayerId),
+      ]
+    : layers;
   return (
     <div className={styles.stageViewport} data-zoom={zoom}>
       <div
@@ -196,8 +204,10 @@ function AnnotationStage({
           aria-hidden="true"
           className={styles.boxOverlay}
         >
-          {layers.flatMap((layer) =>
+          {orderedLayers.flatMap((layer) =>
             layer.annotation.objects.map((object, objectIndex) => {
+              const highlighted = highlightedLayerId === layer.id;
+              const muted = highlightedLayerId !== null && !highlighted;
               const x = object.bbox.x * width;
               const y = object.bbox.y * height;
               const boxWidth = object.bbox.width * width;
@@ -210,7 +220,10 @@ function AnnotationStage({
                     : "#54d7dd";
               const labelY = Math.max(12, y - 4);
               return (
-                <g key={`${layer.id}-${object.id}-${objectIndex}`}>
+                <g
+                  key={`${layer.id}-${object.id}-${objectIndex}`}
+                  opacity={muted ? 0.13 : 1}
+                >
                   <rect
                     x={x}
                     y={y}
@@ -218,11 +231,13 @@ function AnnotationStage({
                     height={boxHeight}
                     fill={`${roleColor}22`}
                     stroke={roleColor}
-                    strokeWidth={layer.dashed ? 2.8 : 2.2}
+                    strokeWidth={
+                      highlighted ? 4.5 : layer.dashed ? 2.8 : 2.2
+                    }
                     strokeDasharray={layer.dashed ? "7 5" : undefined}
                     vectorEffect="non-scaling-stroke"
                   />
-                  {showLabels && (
+                  {showLabels && (!muted || highlightedLayerId === null) && (
                     <>
                       <rect
                         x={x}
@@ -470,16 +485,17 @@ export function BallReviewBenchmark({
   benchmark: BallReviewBenchmarkBundle;
 }) {
   const [frameIndex, setFrameIndex] = useState(0);
-  const [view, setView] = useState<ViewMode>("grid");
+  const [view, setView] = useState<ViewMode>("overlay");
   const [zoom, setZoom] = useState<1 | 2 | 4>(1);
   const [showReference, setShowReference] = useState(false);
   const [focusA, setFocusA] = useState<LayerChoice>("sol-high");
   const [focusB, setFocusB] = useState<LayerChoice>("sol-xhigh");
   const [overlayIds, setOverlayIds] = useState<BenchmarkConfigurationId[]>([
-    "sol-low",
-    "sol-high",
-    "sol-xhigh",
+    ...benchmarkConfigurationIds,
   ]);
+  const [highlightedOverlayId, setHighlightedOverlayId] = useState<
+    BenchmarkConfigurationId | "reference" | null
+  >(null);
   const [metricSort, setMetricSort] = useState<MetricSort>("elapsedSeconds");
   const [scatterMetric, setScatterMetric] = useState<SimilarityKey>("boxF1Iou25");
   const [heatMetric, setHeatMetric] = useState<SimilarityKey>("stateAccuracy");
@@ -577,9 +593,9 @@ export function BallReviewBenchmark({
   function toggleOverlay(id: BenchmarkConfigurationId) {
     setOverlayIds((current) => {
       if (current.includes(id)) return current.filter((candidate) => candidate !== id);
-      if (current.length >= 4) return current;
       return [...current, id];
     });
+    if (highlightedOverlayId === id) setHighlightedOverlayId(null);
   }
 
   const focusComparison = compareFrameAnnotations(
@@ -597,6 +613,12 @@ export function BallReviewBenchmark({
         : focusA !== "reference" && focusB !== "reference"
           ? benchmark.pairwise[focusA][focusB]
           : null;
+  const visibleOverlayIds =
+    highlightedOverlayId &&
+    highlightedOverlayId !== "reference" &&
+    !overlayIds.includes(highlightedOverlayId)
+      ? [...overlayIds, highlightedOverlayId]
+      : overlayIds;
 
   return (
     <main className={styles.page}>
@@ -822,15 +844,41 @@ export function BallReviewBenchmark({
         <section className={styles.overlayView}>
           <div className={styles.overlayPicker}>
             <div>
-              <strong>Visible runs</strong>
-              <span>Choose up to four layers. Other/unknown roles keep fixed colors.</span>
+              <strong>All nine label sets</strong>
+              <span>
+                Toggle any run; hover or focus one to emphasize its boxes and dim the rest.
+              </span>
+              <span className={styles.overlayBulkActions}>
+                <button
+                  type="button"
+                  onClick={() => setOverlayIds([...benchmarkConfigurationIds])}
+                >
+                  Show all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverlayIds([]);
+                    setHighlightedOverlayId(null);
+                  }}
+                >
+                  Hide all
+                </button>
+              </span>
             </div>
             {benchmarkConfigurationIds.map((id) => (
-              <label key={id} style={{ "--run-color": configurationPresentation[id].color } as CSSProperties}>
+              <label
+                key={id}
+                data-highlighted={highlightedOverlayId === id}
+                style={{ "--run-color": configurationPresentation[id].color } as CSSProperties}
+                onMouseEnter={() => setHighlightedOverlayId(id)}
+                onMouseLeave={() => setHighlightedOverlayId(null)}
+                onFocus={() => setHighlightedOverlayId(id)}
+                onBlur={() => setHighlightedOverlayId(null)}
+              >
                 <input
                   type="checkbox"
                   checked={overlayIds.includes(id)}
-                  disabled={!overlayIds.includes(id) && overlayIds.length >= 4}
                   onChange={() => toggleOverlay(id)}
                 />
                 {configurationPresentation[id].label}
@@ -844,23 +892,41 @@ export function BallReviewBenchmark({
               width={benchmark.width}
               height={benchmark.height}
               layers={[
-                ...overlayIds.map((id) => layerFor(id)),
+                ...visibleOverlayIds.map((id) => layerFor(id)),
                 ...(showReference ? [layerFor("reference")] : []),
               ]}
               zoom={zoom}
               showLabels
               eager
+              highlightedLayerId={highlightedOverlayId}
             />
             <div className={styles.overlayNotes}>
               {overlayIds.map((id) => (
-                <article key={id} style={{ "--run-color": configurationPresentation[id].color } as CSSProperties}>
+                <article
+                  key={id}
+                  tabIndex={0}
+                  data-highlighted={highlightedOverlayId === id}
+                  style={{ "--run-color": configurationPresentation[id].color } as CSSProperties}
+                  onMouseEnter={() => setHighlightedOverlayId(id)}
+                  onMouseLeave={() => setHighlightedOverlayId(null)}
+                  onFocus={() => setHighlightedOverlayId(id)}
+                  onBlur={() => setHighlightedOverlayId(null)}
+                >
                   <strong>{configurationPresentation[id].label}</strong>
                   <span>{stateLabels[frame.outputs[id].primaryBallState]} · {frame.outputs[id].objects.length} objects</span>
                   <p>{frame.outputs[id].notes || "No note."}</p>
                 </article>
               ))}
               {showReference && (
-                <article data-reference="true">
+                <article
+                  data-reference="true"
+                  data-highlighted={highlightedOverlayId === "reference"}
+                  tabIndex={0}
+                  onMouseEnter={() => setHighlightedOverlayId("reference")}
+                  onMouseLeave={() => setHighlightedOverlayId(null)}
+                  onFocus={() => setHighlightedOverlayId("reference")}
+                  onBlur={() => setHighlightedOverlayId(null)}
+                >
                   <strong>Prior pseudo-reference</strong>
                   <span>{stateLabels[frame.reference.primaryBallState]} · {frame.reference.objects.length} objects</span>
                   <p>{frame.reference.notes || "No note."}</p>

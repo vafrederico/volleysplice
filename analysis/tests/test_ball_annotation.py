@@ -381,7 +381,7 @@ class BallAnnotationSchemaTests(unittest.TestCase):
         }
         task["annotations"]["review"] = {
             "status": "in_progress",
-            "annotator": "reviewer",
+            "annotator": None,
             "reviewedAt": None,
             "notes": "",
         }
