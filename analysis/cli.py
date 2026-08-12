@@ -285,6 +285,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate_serve_evidence.add_argument("--output", type=Path)
 
+    evaluate_dual_fusion = subparsers.add_parser(
+        "evaluate-dual-serve-fusion",
+        help="select or replay v4/v5 add-only and boundary fusion",
+    )
+    evaluate_dual_fusion.add_argument("--manifest", required=True, type=Path)
+    evaluate_dual_fusion.add_argument("--v4-rally-model", required=True, type=Path)
+    evaluate_dual_fusion.add_argument("--v4-serve-model", required=True, type=Path)
+    evaluate_dual_fusion.add_argument("--v4-cache-dir", required=True, type=Path)
+    evaluate_dual_fusion.add_argument("--v5-rally-model", required=True, type=Path)
+    evaluate_dual_fusion.add_argument("--v5-serve-model", required=True, type=Path)
+    evaluate_dual_fusion.add_argument("--v5-cache-dir", required=True, type=Path)
+    evaluate_dual_fusion.add_argument(
+        "--split", choices=("validation", "test", "challenge"), default="validation"
+    )
+    evaluate_dual_fusion.add_argument(
+        "--decision",
+        type=Path,
+        help="required frozen validation report for non-validation evaluation",
+    )
+    evaluate_dual_fusion.add_argument(
+        "--retrospective",
+        action="store_true",
+        help="mark a previously inspected non-validation split as retrospective",
+    )
+    evaluate_dual_fusion.add_argument("--output", type=Path)
+
     initialize = subparsers.add_parser("init-manifest", help="write an annotation manifest template")
     initialize.add_argument("--output", required=True, type=Path)
 
@@ -773,6 +799,37 @@ def run(argv: Sequence[str] | None = None) -> int:
                         "aggregate"
                     ],
                     "peakWindowRally": result["peakWindowRally"]["aggregate"],
+                }
+            )
+            return 0
+        if arguments.command == "evaluate-dual-serve-fusion":
+            from .dual_serve_fusion_experiment import (
+                evaluate_dual_serve_fusion_dataset,
+            )
+
+            result = evaluate_dual_serve_fusion_dataset(
+                arguments.manifest,
+                arguments.v4_rally_model,
+                arguments.v4_serve_model,
+                arguments.v4_cache_dir,
+                arguments.v5_rally_model,
+                arguments.v5_serve_model,
+                arguments.v5_cache_dir,
+                split=arguments.split,
+                decision_path=arguments.decision,
+                retrospective=arguments.retrospective,
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "selection": result["selection"],
+                    "v4": result["v4Composition"]["aggregate"],
+                    "v5": result["v5Composition"]["aggregate"],
+                    "selectedCombined": result["selectedCombined"]["aggregate"],
+                    "fullIntersectionAblation": result[
+                        "fullIntersectionAblation"
+                    ]["aggregate"],
                 }
             )
             return 0

@@ -235,6 +235,42 @@ The first run did not pass validation promotion guardrails. Its no-fallback gate
 retrospective test, while the learned head recovered faults at the cost of ordinary rallies. See
 the [serve-evidence follow-up](../docs/research/serve-evidence-gate-and-peak-window-2026-08-11.md).
 
+The dual-pair fusion evaluator compares an older rally+serve pair with a newer pair. Validation
+decides whether to enable add-only fusion after auditing score gates (including two-head serve
+agreement and live-score uplift), and selects a conservative boundary selector over unambiguous
+overlap components. Non-validation evaluation requires the immutable validation report so the
+chosen thresholds cannot change after test access:
+
+```bash
+.venv/bin/python -m analysis evaluate-dual-serve-fusion \
+  --manifest data/videos/manifest.json \
+  --v4-rally-model data/models/rally-v4 \
+  --v4-serve-model data/models/serve-v4 \
+  --v4-cache-dir data/features/v4 \
+  --v5-rally-model data/models/rally-v5 \
+  --v5-serve-model data/models/serve-v5 \
+  --v5-cache-dir data/features/v5 \
+  --split validation \
+  --output data/reports/dual-fusion-validation.json
+
+.venv/bin/python -m analysis evaluate-dual-serve-fusion \
+  --manifest data/videos/manifest.json \
+  --v4-rally-model data/models/rally-v4 \
+  --v4-serve-model data/models/serve-v4 \
+  --v4-cache-dir data/features/v4 \
+  --v5-rally-model data/models/rally-v5 \
+  --v5-serve-model data/models/serve-v5 \
+  --v5-cache-dir data/features/v5 \
+  --split test --retrospective \
+  --decision data/reports/dual-fusion-validation.json \
+  --output data/reports/dual-fusion-test.json
+```
+
+The first real-data run disabled uncovered additions because all eight validation candidates were
+false. Its selected boundary rule improved validation event F1 and retrospective boundary quality,
+but not retrospective strict event recall. See the
+[v4/v5 fusion experiment](../docs/research/dual-serve-v4-v5-fusion-experiment-2026-08-11.md).
+
 ## What the current model does not do
 
 - It does not detect whether the whole court is visible; capture geometry must be confirmed by a person.
