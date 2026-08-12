@@ -129,6 +129,8 @@ the pristine source-task SHA-256 and contain role-free normalized proposals.
 | `C` | Mark primary ball fully occluded and advance |
 | `I` | Mark primary-ball state indeterminate and advance |
 | `V` | Copy the previous human frame label and track IDs |
+| `B` | Mark the selected human box motion blurred |
+| `X` | Mark the selected human box partially occluded |
 | `Delete` / `Backspace` | Delete the selected human box |
 | `Esc` | Cancel the active draw tool |
 

@@ -880,6 +880,15 @@ export function BallLabelingEditor() {
     }));
   }
 
+  function setSelectedObjectVisibility(visibility: BallObjectVisibility): void {
+    if (reviewLocked || selectedObjectIndex === null || !selectedObject) {
+      setError("Select a human bounding box before changing its visibility.");
+      return;
+    }
+    updateSelectedObject((object) => ({ ...object, visibility }));
+    setMessage(`Selected box visibility changed to ${visibilityLabels[visibility].toLowerCase()}.`);
+  }
+
   function deleteSelectedObject(): void {
     if (!currentFrame || selectedObjectIndex === null || !selectedObject) return;
     const removedPrimary = selectedObject.role === "primary-court";
@@ -962,6 +971,8 @@ export function BallLabelingEditor() {
       } else if (key === "arrowleft") stepWithinWindow(-1);
       else if (key === "arrowright" || key === "enter") stepWithinWindow(1);
       else if (key === " ") setPlaying((current) => !current);
+      else if (key === "b") setSelectedObjectVisibility("motion-blurred");
+      else if (key === "x") setSelectedObjectVisibility("partially-occluded");
       else if (key === "p") setDrawRole("primary-court");
       else if (key === "a") setDrawRole("other-court");
       else if (key === "u") setDrawRole("unknown");
@@ -1491,7 +1502,14 @@ export function BallLabelingEditor() {
                     }
                   >
                     {ballObjectVisibilities.map((visibility) => (
-                      <option key={visibility} value={visibility}>{visibilityLabels[visibility]}</option>
+                      <option key={visibility} value={visibility}>
+                        {visibilityLabels[visibility]}
+                        {visibility === "motion-blurred"
+                          ? " · B"
+                          : visibility === "partially-occluded"
+                            ? " · X"
+                            : ""}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -1532,6 +1550,7 @@ export function BallLabelingEditor() {
               <p><kbd>←</kbd><kbd>→</kbd> step · <kbd>Space</kbd> play · <kbd>Enter</kbd> next</p>
               <p><kbd>1</kbd>–<kbd>9</kbd> accept matching Sol box + next frame</p>
               <p><kbd>P</kbd><kbd>A</kbd><kbd>U</kbd> draw roles · <kbd>V</kbd> copy previous</p>
+              <p><kbd>B</kbd> selected box blurred · <kbd>X</kbd> partly occluded</p>
               <p><kbd>Delete</kbd> remove selected · <kbd>Esc</kbd> cancel tool</p>
             </section>
 
