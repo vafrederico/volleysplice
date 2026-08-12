@@ -16,6 +16,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Serve-specialist composition experiment — 2026-08-11](./serve-specialist-experiment-2026-08-11.md) — separate serve-contact head, validation-selected paired decoding, short/ace/fault recall, and the non-promotion decision.
 - [Audiovisual serve-specialist experiment — 2026-08-11](./serve-specialist-audiovisual-experiment-2026-08-11.md) — 450-input contact head, corrected cadence-parity evaluation, strict short/ace recall gains, precision cost, and the non-promotion decision.
 - [Rally model with serve-probability feature — 2026-08-11](./rally-with-serve-feature-experiment-2026-08-11.md) — source-group-cross-fitted stacking test, exact missed-event audit, matched and clamped controls, and a negative promotion result.
+- [Serve-evidence gate and peak-window rally feature — 2026-08-11](./serve-evidence-gate-and-peak-window-2026-08-11.md) — no-fallback evidence gating, decoded two-second peak features, cross-fitted training, false-peak audit, and non-promotion decisions.
 
 ## Related context
 

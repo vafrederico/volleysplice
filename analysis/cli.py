@@ -155,6 +155,26 @@ def build_parser() -> argparse.ArgumentParser:
     train_dead_ball.add_argument("--learning-rate", type=float, default=0.02)
     train_dead_ball.add_argument("--seed", type=int, default=7)
 
+    train_serve_evidence = subparsers.add_parser(
+        "train-serve-evidence",
+        help="test a no-fallback serve gate and train a +/-2-second peak-feature rally head",
+    )
+    train_serve_evidence.add_argument("--manifest", required=True, type=Path)
+    train_serve_evidence.add_argument(
+        "--baseline-rally-model", required=True, type=Path
+    )
+    train_serve_evidence.add_argument("--serve-model", required=True, type=Path)
+    train_serve_evidence.add_argument("--control-model", required=True, type=Path)
+    train_serve_evidence.add_argument("--model", required=True, type=Path)
+    train_serve_evidence.add_argument(
+        "--cache-dir", type=Path, default=_default_cache()
+    )
+    train_serve_evidence.add_argument("--output", type=Path)
+    train_serve_evidence.add_argument("--epochs", type=int, default=180)
+    train_serve_evidence.add_argument("--batch-size", type=int, default=2048)
+    train_serve_evidence.add_argument("--learning-rate", type=float, default=0.02)
+    train_serve_evidence.add_argument("--seed", type=int, default=7)
+
     infer = subparsers.add_parser("infer", help="detect rallies in one continuous video")
     infer.add_argument("--model", required=True, type=Path)
     infer.add_argument(
@@ -214,6 +234,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--split", choices=("validation", "test", "challenge"), default="test"
     )
     evaluate_dead_ball.add_argument("--output", type=Path)
+
+    evaluate_serve_evidence = subparsers.add_parser(
+        "evaluate-serve-evidence",
+        help="evaluate the frozen no-fallback gate and serve-peak-feature rally head",
+    )
+    evaluate_serve_evidence.add_argument("--manifest", required=True, type=Path)
+    evaluate_serve_evidence.add_argument(
+        "--baseline-rally-model", required=True, type=Path
+    )
+    evaluate_serve_evidence.add_argument("--serve-model", required=True, type=Path)
+    evaluate_serve_evidence.add_argument("--control-model", required=True, type=Path)
+    evaluate_serve_evidence.add_argument("--model", required=True, type=Path)
+    evaluate_serve_evidence.add_argument(
+        "--cache-dir", type=Path, default=_default_cache()
+    )
+    evaluate_serve_evidence.add_argument(
+        "--split", choices=("validation", "test", "challenge"), default="test"
+    )
+    evaluate_serve_evidence.add_argument("--output", type=Path)
 
     initialize = subparsers.add_parser("init-manifest", help="write an annotation manifest template")
     initialize.add_argument("--output", required=True, type=Path)
@@ -544,6 +583,37 @@ def run(argv: Sequence[str] | None = None) -> int:
                 }
             )
             return 0
+        if arguments.command == "train-serve-evidence":
+            from .serve_evidence_experiment import train_serve_evidence_dataset
+
+            result = train_serve_evidence_dataset(
+                arguments.manifest,
+                arguments.baseline_rally_model,
+                arguments.serve_model,
+                arguments.control_model,
+                arguments.model,
+                arguments.cache_dir,
+                training_config=TrainingConfig(
+                    epochs=arguments.epochs,
+                    batch_size=arguments.batch_size,
+                    learning_rate=arguments.learning_rate,
+                    seed=arguments.seed,
+                ),
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "peakWindowModel": str(arguments.model.expanduser().resolve()),
+                    "validationDecision": result["validationDecision"],
+                    "v4Composition": result["v4Composition"]["aggregate"],
+                    "evidenceGatedComposition": result["evidenceGatedComposition"][
+                        "aggregate"
+                    ],
+                    "peakWindowRally": result["peakWindowRally"]["aggregate"],
+                }
+            )
+            return 0
         if arguments.command == "infer":
             from .pipeline import infer_video
 
@@ -642,6 +712,32 @@ def run(argv: Sequence[str] | None = None) -> int:
                     "v4Composition": result["v4Composition"]["aggregate"],
                     "selected": result["selected"]["aggregate"],
                     "deltaSelectedVsV4": result["deltaSelectedVsV4"],
+                }
+            )
+            return 0
+        if arguments.command == "evaluate-serve-evidence":
+            from .serve_evidence_experiment import evaluate_serve_evidence_dataset
+
+            result = evaluate_serve_evidence_dataset(
+                arguments.manifest,
+                arguments.baseline_rally_model,
+                arguments.serve_model,
+                arguments.control_model,
+                arguments.model,
+                arguments.cache_dir,
+                split=arguments.split,
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "validationDecision": result["validationDecision"],
+                    "serveSpottingAt2Seconds": result["serveSpottingAt2Seconds"],
+                    "v4Composition": result["v4Composition"]["aggregate"],
+                    "evidenceGatedComposition": result["evidenceGatedComposition"][
+                        "aggregate"
+                    ],
+                    "peakWindowRally": result["peakWindowRally"]["aggregate"],
                 }
             )
             return 0

@@ -208,6 +208,33 @@ The first real-data stack did not improve the retrospective test and is not wire
 inference. See the
 [stacking experiment](../docs/research/rally-with-serve-feature-experiment-2026-08-11.md).
 
+The follow-up evidence experiment compares a zero-fallback serve gate with a rally head that
+consumes four decoded peak-window features. Training peaks are source-group cross-fitted; the
+fixed two-second radius and frozen serve decoder are recorded in the artifact:
+
+```bash
+.venv/bin/python -m analysis train-serve-evidence \
+  --manifest data/videos/manifest.json \
+  --baseline-rally-model data/models/rally-v0 \
+  --serve-model data/models/serve-v0 \
+  --control-model data/models/rally-stack-control-v0 \
+  --model data/models/rally-peak-window-v0 \
+  --output data/reports/serve-evidence-v0-validation.json
+
+.venv/bin/python -m analysis evaluate-serve-evidence \
+  --manifest data/videos/manifest.json \
+  --baseline-rally-model data/models/rally-v0 \
+  --serve-model data/models/serve-v0 \
+  --control-model data/models/rally-stack-control-v0 \
+  --model data/models/rally-peak-window-v0 \
+  --split test \
+  --output data/reports/serve-evidence-v0-test.json
+```
+
+The first run did not pass validation promotion guardrails. Its no-fallback gate was cleaner on the
+retrospective test, while the learned head recovered faults at the cost of ordinary rallies. See
+the [serve-evidence follow-up](../docs/research/serve-evidence-gate-and-peak-window-2026-08-11.md).
+
 ## What the current model does not do
 
 - It does not detect whether the whole court is visible; capture geometry must be confirmed by a person.
