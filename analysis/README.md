@@ -199,6 +199,33 @@ npm run evaluate:court-relative-features -- retrospective-test \
   --open-test
 ```
 
+## Serve-anchored multistate study
+
+The multistate runner reconstructs the frozen court-study winner and compares two architectures
+with exactly the same feature rows: an ordinary binary logistic control and four one-vs-rest state
+heads decoded through the legal `DEAD -> SETUP -> SERVE -> LIVE -> DEAD` graph. State-duration
+priors and transition bonuses are fit inside each training fold:
+
+```bash
+npm run evaluate:multistate-features -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --upstream-report data/reports/court-relative-v1-development.json \
+  --output data/reports/multistate-v1-development.json
+```
+
+The retrospective command rejects reduced-inner-fold reports and stays closed unless multistate
+passes every frozen objective, short/fault, ordinary-long, and live-recall development guardrail:
+
+```bash
+npm run evaluate:multistate-features -- retrospective-test \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --development-report data/reports/multistate-v1-development.json \
+  --output data/reports/multistate-v1-retrospective-test.json \
+  --open-test
+```
+
 ## Experimental serve specialist
 
 The optional serve path trains a second logistic head on narrow windows around rally starts while
