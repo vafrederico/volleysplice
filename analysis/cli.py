@@ -139,6 +139,22 @@ def build_parser() -> argparse.ArgumentParser:
     train_stacked.add_argument("--learning-rate", type=float, default=0.02)
     train_stacked.add_argument("--seed", type=int, default=7)
 
+    train_dead_ball = subparsers.add_parser(
+        "train-dead-ball",
+        help="train a rally-end specialist and select serve-gated closure on validation",
+    )
+    train_dead_ball.add_argument("--manifest", required=True, type=Path)
+    train_dead_ball.add_argument("--rally-model", required=True, type=Path)
+    train_dead_ball.add_argument("--serve-model", required=True, type=Path)
+    train_dead_ball.add_argument("--model", required=True, type=Path)
+    train_dead_ball.add_argument("--cache-dir", type=Path, default=_default_cache())
+    train_dead_ball.add_argument("--output", type=Path)
+    train_dead_ball.add_argument("--target-radius", type=float, default=0.5)
+    train_dead_ball.add_argument("--epochs", type=int, default=120)
+    train_dead_ball.add_argument("--batch-size", type=int, default=2048)
+    train_dead_ball.add_argument("--learning-rate", type=float, default=0.02)
+    train_dead_ball.add_argument("--seed", type=int, default=7)
+
     infer = subparsers.add_parser("infer", help="detect rallies in one continuous video")
     infer.add_argument("--model", required=True, type=Path)
     infer.add_argument(
@@ -184,6 +200,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--split", choices=("validation", "test", "challenge"), default="test"
     )
     evaluate_stacked.add_argument("--output", type=Path)
+
+    evaluate_dead_ball = subparsers.add_parser(
+        "evaluate-dead-ball",
+        help="evaluate a frozen rally, serve, and dead-ball model triplet",
+    )
+    evaluate_dead_ball.add_argument("--manifest", required=True, type=Path)
+    evaluate_dead_ball.add_argument("--rally-model", required=True, type=Path)
+    evaluate_dead_ball.add_argument("--serve-model", required=True, type=Path)
+    evaluate_dead_ball.add_argument("--model", required=True, type=Path)
+    evaluate_dead_ball.add_argument("--cache-dir", type=Path, default=_default_cache())
+    evaluate_dead_ball.add_argument(
+        "--split", choices=("validation", "test", "challenge"), default="test"
+    )
+    evaluate_dead_ball.add_argument("--output", type=Path)
 
     initialize = subparsers.add_parser("init-manifest", help="write an annotation manifest template")
     initialize.add_argument("--output", required=True, type=Path)
@@ -485,6 +515,35 @@ def run(argv: Sequence[str] | None = None) -> int:
                 }
             )
             return 0
+        if arguments.command == "train-dead-ball":
+            from .dead_ball_experiment import train_dead_ball_dataset
+
+            result = train_dead_ball_dataset(
+                arguments.manifest,
+                arguments.rally_model,
+                arguments.serve_model,
+                arguments.model,
+                arguments.cache_dir,
+                target_radius_seconds=arguments.target_radius,
+                training_config=TrainingConfig(
+                    epochs=arguments.epochs,
+                    batch_size=arguments.batch_size,
+                    learning_rate=arguments.learning_rate,
+                    seed=arguments.seed,
+                ),
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "model": str(arguments.model.expanduser().resolve()),
+                    "endSpottingAt1Second": result["endSpotting"]["at1Second"],
+                    "v4Composition": result["v4Composition"]["aggregate"],
+                    "selected": result["selected"]["aggregate"],
+                    "deltaSelectedVsV4": result["deltaSelectedVsV4"],
+                }
+            )
+            return 0
         if arguments.command == "infer":
             from .pipeline import infer_video
 
@@ -561,6 +620,28 @@ def run(argv: Sequence[str] | None = None) -> int:
                         "aggregate"
                     ],
                     "deltaVsRetrainedControl": result["deltaVsRetrainedControl"],
+                }
+            )
+            return 0
+        if arguments.command == "evaluate-dead-ball":
+            from .dead_ball_experiment import evaluate_dead_ball_dataset
+
+            result = evaluate_dead_ball_dataset(
+                arguments.manifest,
+                arguments.rally_model,
+                arguments.serve_model,
+                arguments.model,
+                arguments.cache_dir,
+                split=arguments.split,
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "endSpottingAt1Second": result["endSpotting"]["at1Second"],
+                    "v4Composition": result["v4Composition"]["aggregate"],
+                    "selected": result["selected"]["aggregate"],
+                    "deltaSelectedVsV4": result["deltaSelectedVsV4"],
                 }
             )
             return 0
