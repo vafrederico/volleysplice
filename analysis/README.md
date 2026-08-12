@@ -249,6 +249,37 @@ the exact frozen v4/v5 intersection. This is leakage-safe tuning evidence, not a
 promotion study; the report predeclares the frozen intersection as the retained policy and does not
 implement a retrospective-test path.
 
+## Frozen high-resolution embedding study
+
+The high-resolution extractor uses an explicitly supplied, SHA-pinned official OpenCV Zoo
+MobileNetV2 ONNX graph. It samples four role-neutral rectangle-ROI crops at one fps, extracts the
+1,280-value penultimate global-average-pool representation, and applies a deterministic 64-value
+projection. It never downloads a model or overwrites a cache:
+
+```bash
+npm run extract:highres-embeddings -- \
+  --manifest data/manifests/full-gold-v1.json \
+  --backbone data/models/image_classification_mobilenetv2_2022apr.onnx \
+  --backbone-sha256 <pinned-sha256> \
+  --cache-dir data/features/highres-mobilenetv2 \
+  --output data/reports/highres-development-extraction.json
+
+npm run evaluate:highres-embeddings -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --warm-cache-dir data/features/audiovisual-v2 \
+  --highres-cache-dir data/features/highres-mobilenetv2 \
+  --upstream-report data/reports/court-relative-v1-development.json \
+  --backbone data/models/image_classification_mobilenetv2_2022apr.onnx \
+  --backbone-sha256 <pinned-sha256> \
+  --output data/reports/highres-mobilenetv2-v1-development.json
+```
+
+Centered 2/8-second summaries make this an offline-cutter experiment. Protected caches are not
+extracted during development. Only if the candidate passes the full nested paired gate may test be
+extracted with `--splits test --allow-protected-splits`; the retrospective evaluator then requires
+that separate extraction index and `--open-test`. Reports pin the manifest, upstream config,
+backbone, projection, cache hashes, implementation hashes, and OpenCV CPU runtime identity.
+
 ## Experimental serve specialist
 
 The optional serve path trains a second logistic head on narrow windows around rally starts while
