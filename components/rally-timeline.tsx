@@ -13,6 +13,7 @@ export type TimelineInterval = {
 export type TimelineTrack = {
   id: string;
   label: string;
+  title?: string;
   detail?: string;
   active?: boolean;
   intervals: TimelineInterval[];
@@ -66,13 +67,14 @@ export function RallyTimeline({
             <button
               type="button"
               className={styles.trackLabel}
+              title={track.title}
               onClick={() => onTrackSelect(track.id)}
             >
               <strong>{track.label}</strong>
               {track.detail && <small>{track.detail}</small>}
             </button>
           ) : (
-            <div className={styles.trackLabel}>
+            <div className={styles.trackLabel} title={track.title}>
               <strong>{track.label}</strong>
               {track.detail && <small>{track.detail}</small>}
             </div>

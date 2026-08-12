@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import json
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from analysis.cli import build_parser
@@ -9,9 +12,11 @@ from analysis.dual_serve_fusion_experiment import (
     BoundarySelectorConfig,
     EXPERIMENT_ID,
     _add_only_audit,
+    _analysis_run_id,
     _check_evaluation_groups,
     _clip_decoded,
     _validate_decision,
+    _validate_existing_fusion_analysis,
     add_only_candidates,
     apply_boundary_selector,
     evaluate_dual_serve_fusion_dataset,
@@ -104,6 +109,93 @@ class DualServeFusionTests(unittest.TestCase):
         self.assertEqual(BoundarySelectorConfig.from_dict(config.to_dict()), config)
         with self.assertRaisesRegex(ValueError, "unsupported boundary action"):
             BoundarySelectorConfig(action="union").validate()
+
+    def test_dashboard_run_id_is_safe_and_length_bounded(self) -> None:
+        self.assertEqual(
+            _analysis_run_id("fusion-v1", "indoor-test-full"),
+            "model-fusion-v1--indoor-test-full",
+        )
+        with self.assertRaisesRegex(ModelError, "dashboard-safe"):
+            _analysis_run_id("fusion version", "indoor-test-full")
+        with self.assertRaisesRegex(ModelError, "dashboard-safe"):
+            _analysis_run_id("x" * 70, "indoor-test-full")
+
+    def test_existing_fusion_output_binds_source_content(self) -> None:
+        selector = BoundarySelectorConfig(action="intersection")
+        bindings = {"v4Rally": {"sha256": "v4"}}
+        versions = {
+            "v4Rally": "v4-rally",
+            "v4Serve": "v4-serve",
+            "v5Rally": "v5-rally",
+            "v5Serve": "v5-serve",
+        }
+        with tempfile.TemporaryDirectory(prefix="fusion-output-") as directory:
+            destination = Path(directory) / "model-fusion--recording"
+            destination.mkdir()
+            (destination / "court-preview.jpg").write_bytes(b"jpeg")
+            payload = {
+                "id": destination.name,
+                "recordingId": "recording",
+                "source": {
+                    "filename": "recording.mp4",
+                    "contentSha256": "video-sha",
+                },
+                "analysis": {
+                    "method": "court-motion-temporal-logistic+dual-serve-fusion-v1",
+                    "modelVersion": "v4-rally",
+                    "modelSha256": "v4",
+                    "variantLabel": "Fusion",
+                    "variantDescription": "Frozen fusion.",
+                    "models": {
+                        "v4": {
+                            "rally": {"version": "v4-rally"},
+                            "serve": {"version": "v4-serve"},
+                        },
+                        "v5": {
+                            "rally": {"version": "v5-rally"},
+                            "serve": {"version": "v5-serve"},
+                        },
+                    },
+                    "fusion": {
+                        "experiment": EXPERIMENT_ID,
+                        "decisionReportSha256": "decision-sha",
+                        "modelBindings": bindings,
+                        "boundarySelector": selector.to_dict(),
+                        "addOnly": {"selectedPolicy": "disabled"},
+                    }
+                },
+                "rallies": [],
+            }
+            (destination / "analysis.json").write_text(
+                json.dumps(payload), encoding="utf-8"
+            )
+            _validate_existing_fusion_analysis(
+                destination,
+                run_id=destination.name,
+                recording_id="recording",
+                source_filename="recording.mp4",
+                content_sha256="video-sha",
+                decision_sha256="decision-sha",
+                model_bindings=bindings,
+                component_versions=versions,
+                selector=selector,
+                variant_label="Fusion",
+                variant_description="Frozen fusion.",
+            )
+            with self.assertRaisesRegex(ModelError, "different inputs"):
+                _validate_existing_fusion_analysis(
+                    destination,
+                    run_id=destination.name,
+                    recording_id="recording",
+                    source_filename="recording.mp4",
+                    content_sha256="changed-video-sha",
+                    decision_sha256="decision-sha",
+                    model_bindings=bindings,
+                    component_versions=versions,
+                    selector=selector,
+                    variant_label="Fusion",
+                    variant_description="Frozen fusion.",
+                )
 
     def test_ignored_region_is_removed_before_fusion(self) -> None:
         clipped = _clip_decoded(

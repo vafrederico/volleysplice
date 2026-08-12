@@ -110,6 +110,7 @@ function labelAnalysis(
     recordingId: task.id,
     title: task.originalFilename,
     variantLabel: verified ? "Human-verified labels" : "Blind Sol audiovisual prelabel",
+    variantDescription: null,
     kind,
     method: verified
       ? "human-verified-serve-contact-to-dead-ball-v1"
@@ -197,6 +198,7 @@ function toOption(analysis: ReviewAnalysis): AnalysisOption {
     recordingId: analysis.recordingId,
     title: analysis.title,
     variantLabel: analysis.variantLabel,
+    variantDescription: analysis.variantDescription,
     kind: analysis.kind,
     modelVersion: analysis.modelVersion,
     datasetRole: analysis.datasetRole,

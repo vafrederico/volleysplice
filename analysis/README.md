@@ -271,6 +271,22 @@ false. Its selected boundary rule improved validation event F1 and retrospective
 but not retrospective strict event recall. See the
 [v4/v5 fusion experiment](../docs/research/dual-serve-v4-v5-fusion-experiment-2026-08-11.md).
 
+To materialize the frozen v4+v5 decision and every persisted specialist iteration as immutable
+review-dashboard timelines, use the cache-backed dataset wrappers:
+
+```bash
+npm run infer:dual-serve-fusion-dataset
+npm run infer:specialist-model-dataset
+```
+
+The specialist wrapper validates every stacked, endpoint, and dead-state artifact against its
+recorded rally/serve dependencies and manifest before prediction. It uses only persisted
+validation-selected decoders and refinements. Pure serve-contact and end-contact heads are shown
+through their defined rally composition rather than decoded as meaningless standalone intervals.
+Long artifact names use a short SHA-based analysis directory ID while retaining the full model
+version and lineage inside `analysis.json`. Existing complete outputs are verified and skipped;
+partial or differently bound destinations are rejected.
+
 The end-boundary experiments support two additional specialist targets. `train-dead-ball` fits a
 narrow pulse around annotated rally ends. `train-dead-state` fits either a local live-to-dead
 transition (`end-transition`, the default) or the all-frame inverse-rally control (`global-dead`).

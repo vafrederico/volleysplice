@@ -660,6 +660,54 @@ class ServeArtifactTests(unittest.TestCase):
                         serve_model_path=wrong_serve_path,
                     )
 
+    def test_cached_timeline_inference_reuses_preview_and_can_omit_signals(self) -> None:
+        rally = self.model(RALLY_LIVE_TASK, artifact="rally")
+        rally.feature_names = ("t+0s/motion",)
+        sequence = FeatureSequence(
+            times=np.arange(4, dtype=np.float64) * 0.25,
+            values=np.ones((4, 1), dtype=np.float32),
+            names=("motion",),
+            metadata=VideoMetadata(1.0, 1280, 720, 30.0, 30, True),
+        )
+        with tempfile.TemporaryDirectory(prefix="volleycut-cached-infer-") as directory:
+            root = Path(directory)
+            preview = root / "existing-preview.jpg"
+            preview.write_bytes(b"shared-preview")
+            with (
+                patch("analysis.pipeline.load_model", return_value=rally),
+                patch("analysis.pipeline.cached_features", return_value=sequence) as cached,
+                patch(
+                    "analysis.pipeline.extract_features",
+                    side_effect=AssertionError("cached inference must not decode the video"),
+                ),
+                patch(
+                    "analysis.pipeline.write_preview",
+                    side_effect=AssertionError("a supplied preview must be reused"),
+                ),
+            ):
+                payload = infer_video(
+                    root / "input.mp4",
+                    root / "rally",
+                    root / "output",
+                    cache_dir=root / "cache",
+                    recording_id="recording-full",
+                    content_sha256="a" * 64,
+                    variant_label="Trained model · cached",
+                    variant_description="Cached timeline materialization.",
+                    include_signals=False,
+                    preview_source=preview,
+                )
+
+            cached.assert_called_once()
+            self.assertEqual(payload["recordingId"], "recording-full")
+            self.assertEqual(payload["source"]["contentSha256"], "a" * 64)
+            self.assertEqual(payload["analysis"]["variantLabel"], "Trained model · cached")
+            self.assertNotIn("signals", payload)
+            self.assertEqual(
+                (root / "output" / "court-preview.jpg").read_bytes(),
+                b"shared-preview",
+            )
+
     def test_standard_evaluation_rejects_serve_model_before_manifest_loading(self) -> None:
         with tempfile.TemporaryDirectory(prefix="volleycut-serve-evaluate-role-") as directory:
             root = Path(directory)

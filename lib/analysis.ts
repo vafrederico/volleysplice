@@ -6,6 +6,21 @@ import { getAnalysesRoot } from "./storage.ts";
 
 const ANALYSIS_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
 
+const MODEL_VARIANT_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "pilot-baseline-v0":
+    "Pilot iteration v0: the original visual live/dead baseline, trained on 90-second excerpts without within-recording percentile normalization.",
+  "pilot-percentile-v1":
+    "Pilot iteration v1: adds within-recording percentile normalization to the visual live/dead baseline trained on 90-second excerpts.",
+  "full-percentile-v1":
+    "Full-corpus iteration v1: the visual live/dead baseline with within-recording percentile normalization, developed from the full-video corpus.",
+  "full-audiovisual-v2-final":
+    "Audiovisual iteration v2: adds camera-compensated motion, quality and formation proxies, plus legacy audio features to the full-corpus rally model.",
+  "full-audiovisual-audio-normalized-v3":
+    "Audiovisual iteration v3: adds causal noise-normalized frequency-band audio features to the v2 rally feature set.",
+  "dual-serve-v4-v5-fusion-v1":
+    "Fusion iteration v1: starts with the v4 audiovisual rally/serve pair and selectively refines boundaries with the v5 noise-normalized-audio pair; unmatched v5 rallies are not added.",
+};
+
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -42,13 +57,34 @@ function analysisIdentity(
         ? sourceStem
         : modelId?.[2] ?? id.replace(/-v\d+$/, "");
   const version = /-v(\d+)$/.exec(id)?.[1];
+  const explicitVariantLabel =
+    typeof analysis.variantLabel === "string" && analysis.variantLabel.trim()
+      ? analysis.variantLabel.trim()
+      : null;
   const variantLabel =
-    kind === "model"
+    explicitVariantLabel ??
+    (kind === "model"
       ? `Trained model · ${modelVersion ?? "unknown version"}`
       : kind === "heuristic"
         ? `No-model heuristic · ${version ? `v${version}` : "v1"}`
-        : method;
-  return { kind, method, modelVersion, recordingId, variantLabel } as const;
+        : method);
+  const explicitVariantDescription =
+    typeof analysis.variantDescription === "string" && analysis.variantDescription.trim()
+      ? analysis.variantDescription.trim()
+      : null;
+  const variantDescription = explicitVariantDescription ?? (kind === "model"
+    ? modelVersion && MODEL_VARIANT_DESCRIPTIONS[modelVersion]
+      ? MODEL_VARIANT_DESCRIPTIONS[modelVersion]
+      : `Model iteration ${modelVersion ?? "unknown"}. This analysis artifact does not include a detailed iteration description.`
+    : null);
+  return {
+    kind,
+    method,
+    modelVersion,
+    recordingId,
+    variantLabel,
+    variantDescription,
+  } as const;
 }
 
 export function parseAnalysis(value: unknown): ReviewAnalysis | null {
@@ -113,6 +149,7 @@ export function parseAnalysis(value: unknown): ReviewAnalysis | null {
     recordingId: identity.recordingId,
     title: typeof root.title === "string" && root.title.trim() ? root.title : root.id,
     variantLabel: identity.variantLabel,
+    variantDescription: identity.variantDescription,
     kind: identity.kind,
     method: identity.method,
     modelVersion: identity.modelVersion,
