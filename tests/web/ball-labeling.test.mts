@@ -254,6 +254,48 @@ async function writeComparisonArtifacts(fixture: Awaited<ReturnType<typeof creat
     pythonFloatJson(detector),
   );
 
+  const detectorTiled = structuredClone(fixture.taskDocument) as unknown as MutableTask;
+  detectorTiled.suggestions = {
+    status: "complete",
+    model: {
+      modelId: "fixture-detector-tiled",
+      modelSha256: "6".repeat(64),
+      sourceTask: {
+        pathHint: fixture.taskPath,
+        sha256: sha256(fixture.encodedTask),
+      },
+      settings: {
+        viewStrategy: {
+          id: "full-plus-overlap-2x2-v1",
+          viewsPerFrame: 5,
+        },
+      },
+    },
+    frames: Object.fromEntries(
+      fixture.frameIds.map((frameId) => [
+        frameId,
+        {
+          ballPresenceProbability: 0.65,
+          detections: [
+            {
+              confidence: 0.6,
+              bbox: { x: 0.1, y: 0.2, width: 0.04, height: 0.05 },
+            },
+          ],
+        },
+      ]),
+    ),
+  };
+  const tiledDirectory = path.join(
+    fixture.root,
+    "suggestions-yolox-s-full-plus-2x2-v1",
+  );
+  await fs.mkdir(tiledDirectory, { recursive: true });
+  await fs.writeFile(
+    path.join(tiledDirectory, fixture.taskFilename),
+    pythonFloatJson(detectorTiled),
+  );
+
   const sol = structuredClone(fixture.taskDocument) as unknown as MutableTask;
   const solDirectory = path.join(fixture.root, "sol-labels");
   const solPath = path.join(solDirectory, fixture.taskFilename);
@@ -399,6 +441,22 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
       assert.equal(comparison.layers.sol?.provenance.annotator, "sol-agent");
       assert.equal(comparison.layers.detector?.provenance.modelId, "fixture-detector");
       assert.equal(comparison.layers.detector?.detections.length, 1);
+      assert.equal(comparison.layers.detector?.provenance.variantId, "full-frame-v1");
+      assert.equal(
+        comparison.layers.detectorTiled?.provenance.variantId,
+        "full-plus-overlap-2x2-v1",
+      );
+      assert.equal(
+        comparison.layers.detectorTiled?.provenance.modelId,
+        "fixture-detector-tiled",
+      );
+      assert.equal(comparison.layers.detectorTiled?.ballPresenceProbability, 0.65);
+      assert.deepEqual(comparison.layers.detectorTiled?.detections[0].bbox, {
+        x: 0.1,
+        y: 0.2,
+        width: 0.04,
+        height: 0.05,
+      });
       const rawSol = JSON.parse(
         await fs.readFile(
           path.join(fixture.root, "sol-labels", fixture.taskFilename),
@@ -433,6 +491,102 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
         audit.frames[fixture.frameIds[0]].postDecisionHumanAnnotationSha256,
         /^[a-f0-9]{64}$/,
       );
+    });
+
+    await context.test("supports either detector artifact without double-counting exposure", async () => {
+      const fullPath = path.join(fixture.root, "suggestions", fixture.taskFilename);
+      const tiledPath = path.join(
+        fixture.root,
+        "suggestions-yolox-s-full-plus-2x2-v1",
+        fixture.taskFilename,
+      );
+      await fs.rm(tiledPath);
+      const fullOnly = await getBallComparisonLayers(
+        fixture.recordingId,
+        fixture.frameIds[0],
+        "post-decision",
+        ["detector"],
+      );
+      assert.ok(fullOnly.layers.detector);
+      assert.equal(fullOnly.layers.detectorTiled, null);
+
+      await writeComparisonArtifacts(fixture);
+      await fs.rm(fullPath);
+      const tiledOnly = await getBallComparisonLayers(
+        fixture.recordingId,
+        fixture.frameIds[0],
+        "post-decision",
+        ["detector"],
+      );
+      assert.equal(tiledOnly.layers.detector, null);
+      assert.ok(tiledOnly.layers.detectorTiled);
+      const audit = JSON.parse(
+        await fs.readFile(
+          path.join(
+            fixture.root,
+            "reviews",
+            `${fixture.recordingId}.proposal-exposure.json`,
+          ),
+          "utf8",
+        ),
+      );
+      assert.deepEqual(audit.frames[fixture.frameIds[0]].postDecisionSources, [
+        "sol",
+        "detector",
+      ]);
+      await writeComparisonArtifacts(fixture);
+    });
+
+    await context.test("rejects detector artifacts in the wrong mode directory", async () => {
+      const fullPath = path.join(fixture.root, "suggestions", fixture.taskFilename);
+      const tiledPath = path.join(
+        fixture.root,
+        "suggestions-yolox-s-full-plus-2x2-v1",
+        fixture.taskFilename,
+      );
+      await fs.copyFile(tiledPath, fullPath);
+      await assert.rejects(
+        getBallComparisonLayers(
+          fixture.recordingId,
+          fixture.frameIds[0],
+          "post-decision",
+          ["detector"],
+        ),
+        /wrong view strategy for full-frame-v1/,
+      );
+
+      await writeComparisonArtifacts(fixture);
+      const tiled = JSON.parse(await fs.readFile(tiledPath, "utf8"));
+      tiled.suggestions.model.settings.viewStrategy.viewsPerFrame = 4;
+      await fs.writeFile(tiledPath, pythonFloatJson(tiled));
+      await assert.rejects(
+        getBallComparisonLayers(
+          fixture.recordingId,
+          fixture.frameIds[0],
+          "post-decision",
+          ["detector"],
+        ),
+        /wrong view strategy for full-plus-overlap-2x2-v1/,
+      );
+      await writeComparisonArtifacts(fixture);
+    });
+
+    await context.test("rejects detector artifact symlinks", async () => {
+      const fullPath = path.join(fixture.root, "suggestions", fixture.taskFilename);
+      const outsidePath = path.join(fixture.root, "outside-detector.json");
+      await fs.rename(fullPath, outsidePath);
+      await fs.symlink(outsidePath, fullPath);
+      await assert.rejects(
+        getBallComparisonLayers(
+          fixture.recordingId,
+          fixture.frameIds[0],
+          "post-decision",
+          ["detector"],
+        ),
+        /regular file, not a symbolic link/,
+      );
+      await fs.rm(fullPath);
+      await fs.rename(outsidePath, fullPath);
     });
 
     await context.test("validates the Sol preparation receipt and reviewer chronology", async () => {

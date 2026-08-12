@@ -69,9 +69,10 @@ schema.
 
 ## Comparison and assisted review
 
-Human, Sol, and detector boxes are visually distinct and independently
-toggleable. Human boxes are solid, Sol boxes are purple dashed, and detector
-boxes are cyan dotted.
+Human, Sol, and both detector variants are visually distinct and independently
+toggleable. Human boxes are solid, numbered Sol boxes use separate colors with
+dashes, full-frame YOLOX boxes are cyan with short dots, and full-frame plus
+2×2 tiled YOLOX boxes are orange with long dashes.
 
 - **Reveal after human decision** first saves the current human frame, then
   requests only that frame's comparison layers. This is post-decision review;
@@ -92,10 +93,17 @@ boxes are cyan dotted.
   immediately advance to the next frame. Clicking **Correct · accept** has the
   same accept-and-advance behavior.
   **Accept entire Sol label** remains available for a completely correct frame.
-- Detector proposals are loaded separately on demand. **Use best detector
-  box** is an explicit copy action. Detector boxes are role-free, so the active
-  draw role determines how the selected box is copied; the default is
-  primary-court.
+- Reviewed frames load the full-frame and tiled detector layers together as a
+  post-decision comparison. They can also be requested explicitly with **Load
+  both detector versions**. Side-by-side cards report each variant's retained
+  box count, maximum confidence, and every numbered confidence at the 1%
+  extraction floor. Hovering or focusing a numbered score isolates that box on
+  the image. **Use best full-frame box** and **Use best tiled box** are separate,
+  explicit copy actions. Detector boxes are role-free, so the active draw role
+  determines how the selected box is copied; the default is primary-court.
+  Either detector variant is recorded as the single broad proposal source
+  `detector`, preserving detector-independent evaluation without counting a
+  frame twice.
 
 Assisted frames are not discarded. They remain in the headline
 human-verified workflow metrics, and each frame records `proposalSources` so

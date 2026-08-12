@@ -12,6 +12,8 @@ import {
   toBallReviewDocument,
   type BallAnnotationTask,
   type BallComparisonLayers,
+  type BallDetectorComparisonLayer,
+  type BallDetectorVariantId,
   type BallFrame,
   type BallFrameAnnotation,
   type BallProposalExposure,
@@ -998,13 +1000,57 @@ async function loadSolLayer(
   };
 }
 
+type DetectorLayerDefinition = {
+  directory: "suggestions" | "suggestions-yolox-s-full-plus-2x2-v1";
+  variantId: BallDetectorVariantId;
+  label: string;
+};
+
+const fullFrameDetector: DetectorLayerDefinition = {
+  directory: "suggestions",
+  variantId: "full-frame-v1",
+  label: "YOLOX-S · full frame",
+};
+
+const tiledDetector: DetectorLayerDefinition = {
+  directory: "suggestions-yolox-s-full-plus-2x2-v1",
+  variantId: "full-plus-overlap-2x2-v1",
+  label: "YOLOX-S · full frame + 2×2 tiles",
+};
+
 async function loadDetectorLayer(
   prepared: PreparedBallLabelingTask,
   frameId: string,
-): Promise<BallComparisonLayers["layers"]["detector"]> {
-  const suggestionsRoot = path.join(getBallPilotRoot(), "suggestions");
+  definition: DetectorLayerDefinition,
+): Promise<BallDetectorComparisonLayer | null> {
+  const suggestionsRoot = path.join(getBallPilotRoot(), definition.directory);
   const artifactPath = path.join(suggestionsRoot, `${prepared.id}${taskSuffix}`);
-  if (!isWithin(suggestionsRoot, artifactPath) || !(await isFile(artifactPath))) return null;
+  if (!isWithin(suggestionsRoot, artifactPath)) {
+    throw new BallLabelingWorkspaceError("detector artifact path is outside its fixed directory");
+  }
+  try {
+    const metadata = await lstat(artifactPath);
+    if (metadata.isSymbolicLink() || !metadata.isFile()) {
+      throw new BallLabelingWorkspaceError(
+        `detector layer ${prepared.id} must be a regular file, not a symbolic link`,
+      );
+    }
+    const [canonicalRoot, canonicalArtifact] = await Promise.all([
+      realpath(suggestionsRoot),
+      realpath(artifactPath),
+    ]);
+    if (!isWithin(canonicalRoot, canonicalArtifact)) {
+      throw new BallLabelingWorkspaceError(
+        `detector layer ${prepared.id} resolves outside its fixed directory`,
+      );
+    }
+  } catch (error) {
+    if (isRecord(error) && error.code === "ENOENT") return null;
+    if (error instanceof BallLabelingWorkspaceError) throw error;
+    throw new BallLabelingWorkspaceError(
+      `detector layer ${prepared.id} is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const encoded = await readFile(artifactPath);
   let value: unknown;
   try {
@@ -1031,6 +1077,26 @@ async function loadDetectorLayer(
   const sourceTask = suggestions.model.sourceTask;
   if (!isRecord(sourceTask) || sourceTask.sha256 !== prepared.baseSha256) {
     throw new BallLabelingWorkspaceError(`detector layer ${prepared.id} source task SHA-256 differs`);
+  }
+  const settings = suggestions.model.settings;
+  const viewStrategy = isRecord(settings) ? settings.viewStrategy : undefined;
+  if (definition.variantId === "full-frame-v1") {
+    if (
+      viewStrategy !== undefined &&
+      (!isRecord(viewStrategy) || viewStrategy.id !== "full-frame-v1")
+    ) {
+      throw new BallLabelingWorkspaceError(
+        `detector layer ${prepared.id} has the wrong view strategy for ${definition.variantId}`,
+      );
+    }
+  } else if (
+    !isRecord(viewStrategy) ||
+    viewStrategy.id !== "full-plus-overlap-2x2-v1" ||
+    viewStrategy.viewsPerFrame !== 5
+  ) {
+    throw new BallLabelingWorkspaceError(
+      `detector layer ${prepared.id} has the wrong view strategy for ${definition.variantId}`,
+    );
   }
   const frame = suggestions.frames[frameId];
   if (
@@ -1066,6 +1132,8 @@ async function loadDetectorLayer(
       modelSha256: validSha256(suggestions.model.modelSha256)
         ? suggestions.model.modelSha256
         : null,
+      variantId: definition.variantId,
+      label: definition.label,
     },
     ballPresenceProbability: frame.ballPresenceProbability,
     detections,
@@ -1241,15 +1309,18 @@ export async function getBallComparisonLayers(
       );
     }
 
-    const [sol, detector] = await Promise.all([
+    const [sol, detector, detectorTiled] = await Promise.all([
       requestedSources.includes("sol") ? loadSolLayer(prepared, frameId) : Promise.resolve(null),
       requestedSources.includes("detector")
-        ? loadDetectorLayer(prepared, frameId)
+        ? loadDetectorLayer(prepared, frameId, fullFrameDetector)
+        : Promise.resolve(null),
+      requestedSources.includes("detector")
+        ? loadDetectorLayer(prepared, frameId, tiledDetector)
         : Promise.resolve(null),
     ]);
     const availableSources: BallProposalSource[] = [
       ...(sol ? (["sol"] as const) : []),
-      ...(detector ? (["detector"] as const) : []),
+      ...(detector || detectorTiled ? (["detector"] as const) : []),
     ];
     const audit = await readExposureAudit(prepared);
     const previous = audit.frames[frameId] ?? {
@@ -1312,7 +1383,7 @@ export async function getBallComparisonLayers(
       frameId,
       accessMode,
       proposalExposure: entry.proposalExposure,
-      layers: { sol, detector },
+      layers: { sol, detector, detectorTiled },
     };
   });
 }

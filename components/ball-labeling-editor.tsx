@@ -57,6 +57,13 @@ type WindowPrefetchProgress = {
   total: number;
 };
 
+type DetectorLayerKey = "detector" | "detectorTiled";
+
+type HighlightedDetectorBox = {
+  layer: DetectorLayerKey;
+  index: number;
+};
+
 const roleLabels: Record<BallObjectRole, string> = {
   "primary-court": "Primary ball",
   "other-court": "Other-court ball",
@@ -74,6 +81,18 @@ const stateLabels: Record<PrimaryBallState, string> = {
   fully_occluded: "Fully occluded",
   out_of_frame: "Out of frame",
   indeterminate: "Indeterminate",
+};
+
+const comparisonLayerLabels = {
+  human: "Human",
+  sol: "Sol",
+  detector: "Full detector",
+  detectorTiled: "Tiled detector",
+} as const;
+
+const detectorLayerLabels: Record<DetectorLayerKey, string> = {
+  detector: "Full frame",
+  detectorTiled: "Full + 2×2 tiles",
 };
 
 const solBoxPalette = [
@@ -188,7 +207,14 @@ export function BallLabelingEditor() {
   const [comparisonAttempted, setComparisonAttempted] = useState<Record<string, boolean>>({});
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [highlightedSolObjectIndex, setHighlightedSolObjectIndex] = useState<number | null>(null);
-  const [visibleLayers, setVisibleLayers] = useState({ human: true, sol: true, detector: true });
+  const [highlightedDetectorBox, setHighlightedDetectorBox] =
+    useState<HighlightedDetectorBox | null>(null);
+  const [visibleLayers, setVisibleLayers] = useState({
+    human: true,
+    sol: true,
+    detector: true,
+    detectorTiled: true,
+  });
   const [imageLoaded, setImageLoaded] = useState(false);
   const loadedFrameUrlsRef = useRef(new Set<string>());
   const prefetchImagesRef = useRef(new Map<string, HTMLImageElement>());
@@ -361,11 +387,19 @@ export function BallLabelingEditor() {
             layers: {
               sol: payload.layers.sol ?? previous?.layers.sol ?? null,
               detector: payload.layers.detector ?? previous?.layers.detector ?? null,
+              detectorTiled:
+                payload.layers.detectorTiled ?? previous?.layers.detectorTiled ?? null,
             },
           },
         };
       });
       if (mode === "assisted" && payload.proposalExposure !== "blind") {
+        const availableSources: Array<"sol" | "detector"> = [
+          ...(payload.layers.sol ? (["sol"] as const) : []),
+          ...(payload.layers.detector || payload.layers.detectorTiled
+            ? (["detector"] as const)
+            : []),
+        ];
         setTask((current) => {
           if (!current) return current;
           return {
@@ -380,7 +414,7 @@ export function BallLabelingEditor() {
                   proposalSources: Array.from(
                     new Set([
                       ...current.annotations.frames[currentFrame.id].proposalSources,
-                      ...sources,
+                      ...availableSources,
                     ]),
                   ).filter(
                     (source): source is "sol" | "detector" =>
@@ -403,7 +437,9 @@ export function BallLabelingEditor() {
       }
       setMessage(
         mode === "assisted"
-          ? "Sol pre-label loaded. Human verification will be reported as assisted."
+          ? sources.includes("detector")
+            ? "Detector proposals loaded. Human verification will be reported as assisted."
+            : "Sol pre-label loaded. Human verification will be reported as assisted."
           : "Post-decision comparison loaded; the saved human decision remains independent.",
       );
       return payload;
@@ -425,6 +461,7 @@ export function BallLabelingEditor() {
     setTask(null);
     setFrameIndex(0);
     setHighlightedSolObjectIndex(null);
+    setHighlightedDetectorBox(null);
     setPlaying(false);
     setContextVideoOpen(false);
     setContextVideoAutoplay(false);
@@ -567,6 +604,7 @@ export function BallLabelingEditor() {
         setDrawing(null);
         drawingRef.current = null;
         setHighlightedSolObjectIndex(null);
+        setHighlightedDetectorBox(null);
         setImageLoaded(false);
         setFrameIndex(nextIndex);
       }
@@ -585,7 +623,9 @@ export function BallLabelingEditor() {
       return;
     }
     const mode = currentAnnotation?.status === "reviewed" ? "post-decision" : "assisted";
-    const timeout = window.setTimeout(() => void requestComparison(mode), 0);
+    const sources: Array<"sol" | "detector"> =
+      mode === "post-decision" ? ["sol", "detector"] : ["sol"];
+    const timeout = window.setTimeout(() => void requestComparison(mode, sources), 0);
     return () => window.clearTimeout(timeout);
   }, [
     assistedMode,
@@ -643,6 +683,7 @@ export function BallLabelingEditor() {
     setDrawing(null);
     drawingRef.current = null;
     setHighlightedSolObjectIndex(null);
+    setHighlightedDetectorBox(null);
     setImageLoaded(false);
     setFrameIndex(Math.max(0, Math.min(task.immutable.frames.length - 1, nextIndex)));
   }
@@ -825,7 +866,7 @@ export function BallLabelingEditor() {
     setMessage("Sol state accepted as correct; it remains classified as human-verified assisted data.");
   }
 
-  async function copyDetectorComparison(): Promise<void> {
+  function copyDetectorComparison(layer: DetectorLayerKey): void {
     if (!currentFrame || !currentAnnotation || reviewLocked || !ensureEditable()) return;
     const role = drawRole ?? "primary-court";
     if (
@@ -835,18 +876,17 @@ export function BallLabelingEditor() {
       setError("Set the primary-ball state before copying a non-primary detector box.");
       return;
     }
-    if (!window.confirm(`Copy the detector's best box as ${roleLabels[role]} and mark it assisted?`)) {
+    if (!window.confirm(`Copy the ${detectorLayerLabels[layer].toLowerCase()} detector's best box as ${roleLabels[role]} and mark it assisted?`)) {
       return;
     }
-    const comparison = await requestComparison("assisted", ["detector"]);
-    const detector = comparison?.layers.detector;
+    const detector = currentComparison?.layers[layer];
     const best = detector?.detections.reduce<null | { confidence: number; bbox: NormalizedBox }>(
       (current, candidate) =>
         current === null || candidate.confidence > current.confidence ? candidate : current,
       null,
     );
     if (!best) {
-      setError("The detector has no box for this frame.");
+      setError(`The ${detectorLayerLabels[layer].toLowerCase()} detector has no box for this frame.`);
       return;
     }
     updateFrameAnnotation(currentFrame, (annotation) => {
@@ -871,7 +911,9 @@ export function BallLabelingEditor() {
         proposalSources: Array.from(new Set([...annotation.proposalSources, "detector" as const])),
       };
     });
-    setMessage("Detector box copied explicitly; this frame is marked assisted.");
+    setMessage(
+      `${detectorLayerLabels[layer]} detector box copied explicitly; this frame is marked assisted.`,
+    );
   }
 
   function beginDrawing(event: ReactPointerEvent<SVGSVGElement>): void {
@@ -1219,17 +1261,54 @@ export function BallLabelingEditor() {
                       vectorEffect="non-scaling-stroke"
                     />
                   ))}
-                  {visibleLayers.detector && currentComparison?.layers.detector?.detections.map((detection, index) => (
-                    <rect
-                      key={`detector-${index}`}
-                      className={styles.detectorBox}
-                      x={detection.bbox.x}
-                      y={detection.bbox.y}
-                      width={detection.bbox.width}
-                      height={detection.bbox.height}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  ))}
+                  {visibleLayers.detector &&
+                    currentComparison?.layers.detector?.detections.map((detection, index) => (
+                      <rect
+                        key={`detector-${index}`}
+                        className={styles.detectorBox}
+                        data-highlighted={
+                          highlightedDetectorBox?.layer === "detector" &&
+                          highlightedDetectorBox.index === index
+                        }
+                        data-muted={
+                          highlightedDetectorBox !== null &&
+                          !(
+                            highlightedDetectorBox.layer === "detector" &&
+                            highlightedDetectorBox.index === index
+                          )
+                        }
+                        x={detection.bbox.x}
+                        y={detection.bbox.y}
+                        width={detection.bbox.width}
+                        height={detection.bbox.height}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                  {visibleLayers.detectorTiled &&
+                    currentComparison?.layers.detectorTiled?.detections.map(
+                      (detection, index) => (
+                        <rect
+                          key={`detector-tiled-${index}`}
+                          className={styles.detectorTiledBox}
+                          data-highlighted={
+                            highlightedDetectorBox?.layer === "detectorTiled" &&
+                            highlightedDetectorBox.index === index
+                          }
+                          data-muted={
+                            highlightedDetectorBox !== null &&
+                            !(
+                              highlightedDetectorBox.layer === "detectorTiled" &&
+                              highlightedDetectorBox.index === index
+                            )
+                          }
+                          x={detection.bbox.x}
+                          y={detection.bbox.y}
+                          width={detection.bbox.width}
+                          height={detection.bbox.height}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ),
+                    )}
                   {visibleLayers.human && currentAnnotation.objects.map((object, index) => (
                     <rect
                       key={`${object.id}-${index}`}
@@ -1431,7 +1510,7 @@ export function BallLabelingEditor() {
               ) : (
                 <>
                   <div className={styles.layerToggles}>
-                    {(["human", "sol", "detector"] as const).map((layer) => (
+                    {(["human", "sol", "detector", "detectorTiled"] as const).map((layer) => (
                       <label key={layer} data-layer={layer}>
                         <input
                           type="checkbox"
@@ -1443,7 +1522,7 @@ export function BallLabelingEditor() {
                             }))
                           }
                         />
-                        {layer}
+                        {comparisonLayerLabels[layer]}
                       </label>
                     ))}
                   </div>
@@ -1456,15 +1535,80 @@ export function BallLabelingEditor() {
                           : "unavailable"}
                       </dd>
                     </div>
-                    <div>
-                      <dt>Detector</dt>
-                      <dd>
-                        {currentComparison.layers.detector
-                          ? `${currentComparison.layers.detector.detections.length} box(es) · ${Math.round(currentComparison.layers.detector.ballPresenceProbability * 100)}%`
-                          : "unavailable"}
-                      </dd>
-                    </div>
                   </dl>
+                  <button
+                    className={styles.reveal}
+                    disabled={
+                      comparisonLoading ||
+                      Boolean(
+                        currentComparison.layers.detector &&
+                          currentComparison.layers.detectorTiled,
+                      )
+                    }
+                    onClick={() =>
+                      void requestComparison(
+                        currentAnnotation.status === "reviewed" ? "post-decision" : "assisted",
+                        ["detector"],
+                      )
+                    }
+                  >
+                    {comparisonLoading
+                      ? "Loading detectors…"
+                      : currentComparison.layers.detector &&
+                          currentComparison.layers.detectorTiled
+                        ? "Both detector versions loaded"
+                        : "Load both detector versions"}
+                  </button>
+                  <div className={styles.detectorComparisonGrid}>
+                    {(["detector", "detectorTiled"] as const).map((layer) => {
+                      const detector = currentComparison.layers[layer];
+                      return (
+                        <article key={layer} data-variant={layer} className={styles.detectorCard}>
+                          <header>
+                            <span aria-hidden="true" />
+                            <strong>{detectorLayerLabels[layer]}</strong>
+                          </header>
+                          {detector ? (
+                            <>
+                              <p>
+                                {detector.detections.length} box(es) · max{" "}
+                                {(detector.ballPresenceProbability * 100).toFixed(1)}%
+                              </p>
+                              <div className={styles.detectorBoxList}>
+                                {detector.detections.length ? (
+                                  detector.detections.map((detection, index) => (
+                                    <button
+                                      type="button"
+                                      key={`${layer}-${index}`}
+                                      data-highlighted={
+                                        highlightedDetectorBox?.layer === layer &&
+                                        highlightedDetectorBox.index === index
+                                      }
+                                      onMouseEnter={() =>
+                                        setHighlightedDetectorBox({ layer, index })
+                                      }
+                                      onMouseLeave={() => setHighlightedDetectorBox(null)}
+                                      onFocus={() => setHighlightedDetectorBox({ layer, index })}
+                                      onBlur={() => setHighlightedDetectorBox(null)}
+                                      onClick={() => setHighlightedDetectorBox({ layer, index })}
+                                      aria-label={`Highlight ${detectorLayerLabels[layer]} detector box ${index + 1}, confidence ${(detection.confidence * 100).toFixed(1)} percent`}
+                                    >
+                                      <b>{index + 1}</b>
+                                      <span>{(detection.confidence * 100).toFixed(1)}%</span>
+                                    </button>
+                                  ))
+                                ) : (
+                                  <small>No retained box on this frame</small>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <p>Unavailable</p>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
                   <div className={styles.copyActions}>
                     {currentComparison.layers.sol?.annotation.objects.map(
                       (solObject, objectIndex) => {
@@ -1537,22 +1681,28 @@ export function BallLabelingEditor() {
                     >
                       Accept entire Sol label
                     </button>
-                    <button
-                      disabled={reviewLocked || comparisonLoading}
-                      onClick={() => void requestComparison("assisted", ["detector"])}
-                    >
-                      {currentComparison.layers.detector ? "Detector loaded" : "Load detector separately"}
-                    </button>
                     {currentComparison.layers.detector?.detections.length ? (
-                      <button disabled={reviewLocked} onClick={() => void copyDetectorComparison()}>
-                        Use best detector box
+                      <button
+                        disabled={reviewLocked}
+                        onClick={() => void copyDetectorComparison("detector")}
+                      >
+                        Use best full-frame box
+                      </button>
+                    ) : null}
+                    {currentComparison.layers.detectorTiled?.detections.length ? (
+                      <button
+                        disabled={reviewLocked}
+                        onClick={() => void copyDetectorComparison("detectorTiled")}
+                      >
+                        Use best tiled box
                       </button>
                     ) : null}
                   </div>
                   <p className={styles.hint}>
                     Verify Sol boxes one by one. Accept correct boxes directly; use Draw better
                     only when a box is wrong or can be improved. Assisted and independent metrics
-                    are reported separately.
+                    are reported separately. Detector cards show every proposal retained at the
+                    1% extraction floor; hover or focus a numbered score to isolate its box.
                   </p>
                 </>
               )}

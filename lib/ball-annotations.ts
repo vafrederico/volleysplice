@@ -145,6 +145,22 @@ export type BallAnnotationTask = BallReviewDocument & {
 export type BallProposalSource = "sol" | "detector";
 export type BallProposalExposure = "blind" | "sol" | "detector" | "both";
 
+export type BallDetectorVariantId =
+  | "full-frame-v1"
+  | "full-plus-overlap-2x2-v1";
+
+export type BallDetectorComparisonLayer = {
+  provenance: {
+    artifactSha256: string;
+    modelId: string;
+    modelSha256: string | null;
+    variantId: BallDetectorVariantId;
+    label: string;
+  };
+  ballPresenceProbability: number;
+  detections: Array<{ confidence: number; bbox: NormalizedBox }>;
+};
+
 export type BallComparisonLayers = {
   schemaVersion: 1;
   taskId: string;
@@ -160,15 +176,8 @@ export type BallComparisonLayers = {
       };
       annotation: BallFrameAnnotation;
     };
-    detector: null | {
-      provenance: {
-        artifactSha256: string;
-        modelId: string;
-        modelSha256: string | null;
-      };
-      ballPresenceProbability: number;
-      detections: Array<{ confidence: number; bbox: NormalizedBox }>;
-    };
+    detector: BallDetectorComparisonLayer | null;
+    detectorTiled: BallDetectorComparisonLayer | null;
   };
 };
 

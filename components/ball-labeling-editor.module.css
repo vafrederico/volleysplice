@@ -335,7 +335,8 @@
 }
 
 .solBox,
-.detectorBox {
+.detectorBox,
+.detectorTiledBox {
   fill: var(--sol-box-fill, rgba(191, 103, 255, 0.08));
   stroke: var(--sol-box-stroke, #dc83ff);
   stroke-width: 3px;
@@ -356,6 +357,23 @@
   fill: rgba(74, 219, 255, 0.06);
   stroke: #4adbff;
   stroke-dasharray: 3 4;
+}
+
+.detectorTiledBox {
+  fill: rgba(255, 148, 46, 0.07);
+  stroke: #ff942e;
+  stroke-dasharray: 9 3;
+}
+
+.detectorBox[data-highlighted="true"],
+.detectorTiledBox[data-highlighted="true"] {
+  opacity: 1;
+  stroke-width: 6px;
+}
+
+.detectorBox[data-muted="true"],
+.detectorTiledBox[data-muted="true"] {
+  opacity: 0.13;
 }
 
 .transport,
@@ -512,7 +530,7 @@
 
 .layerToggles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 5px;
 }
 
@@ -539,6 +557,10 @@
   border-color: #36a9c7;
 }
 
+.layerToggles label[data-layer="detectorTiled"] {
+  border-color: #e47b1d;
+}
+
 .layerFacts {
   margin: 0;
   font: 500 9px "DM Mono", monospace;
@@ -560,6 +582,91 @@
 .layerFacts dd {
   overflow-wrap: anywhere;
   text-align: right;
+}
+
+.detectorComparisonGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.detectorCard {
+  --detector-color: #36a9c7;
+  min-width: 0;
+  padding: 7px;
+  border: 2px solid var(--detector-color);
+  background: #f4fcfe;
+}
+
+.detectorCard[data-variant="detectorTiled"] {
+  --detector-color: #e47b1d;
+  background: #fff7eb;
+}
+
+.detectorCard header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.detectorCard header > span {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border: 3px dashed var(--detector-color);
+}
+
+.detectorCard header strong {
+  overflow-wrap: anywhere;
+  font: 700 8px/1.35 "DM Mono", monospace;
+  text-transform: uppercase;
+}
+
+.detectorCard > p {
+  margin: 6px 0;
+  color: #5e6158;
+  font: 500 8px/1.4 "DM Mono", monospace;
+}
+
+.detectorBoxList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  max-height: 126px;
+  overflow-y: auto;
+}
+
+.detectorBoxList button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 5px;
+  border: 1px solid var(--detector-color);
+  background: #fff;
+  color: #292b26;
+  cursor: pointer;
+  font: 600 8px "DM Mono", monospace;
+}
+
+.detectorBoxList button[data-highlighted="true"],
+.detectorBoxList button:hover,
+.detectorBoxList button:focus-visible {
+  outline: 2px solid var(--detector-color);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--detector-color) 14%, white);
+}
+
+.detectorBoxList button b {
+  color: var(--detector-color);
+}
+
+.detectorBoxList small {
+  grid-column: 1 / -1;
+  color: #74776e;
+  font: 500 8px/1.4 "DM Mono", monospace;
 }
 
 .copyActions {
@@ -612,6 +719,10 @@
 }
 
 @media (max-width: 520px) {
+  .detectorComparisonGrid {
+    grid-template-columns: 1fr;
+  }
+
   .solBoxDecision {
     grid-template-columns: 1fr 1fr;
   }
