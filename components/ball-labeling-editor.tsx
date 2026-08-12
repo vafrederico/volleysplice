@@ -170,8 +170,12 @@ export function BallLabelingEditor() {
   const [drawRole, setDrawRole] = useState<BallObjectRole | null>(null);
   const [drawing, setDrawing] = useState<Drawing | null>(null);
   const drawingRef = useRef<Drawing | null>(null);
+  const contextVideoRef = useRef<HTMLVideoElement | null>(null);
   const [zoom, setZoom] = useState<1 | 2 | 4>(1);
   const [playing, setPlaying] = useState(false);
+  const [contextVideoOpen, setContextVideoOpen] = useState(false);
+  const [contextVideoTarget, setContextVideoTarget] = useState(0);
+  const [contextVideoAutoplay, setContextVideoAutoplay] = useState(false);
   const [assistedMode, setAssistedMode] = useState(true);
   const [comparisonByFrame, setComparisonByFrame] = useState<Record<string, BallComparisonLayers>>({});
   const [comparisonAttempted, setComparisonAttempted] = useState<Record<string, boolean>>({});
@@ -409,6 +413,8 @@ export function BallLabelingEditor() {
     setFrameIndex(0);
     setHighlightedSolObjectIndex(null);
     setPlaying(false);
+    setContextVideoOpen(false);
+    setContextVideoAutoplay(false);
     setAssistedMode(true);
     setComparisonByFrame({});
     setComparisonAttempted({});
@@ -593,6 +599,30 @@ export function BallLabelingEditor() {
     setHighlightedSolObjectIndex(null);
     setImageLoaded(false);
     setFrameIndex(Math.max(0, Math.min(task.immutable.frames.length - 1, nextIndex)));
+  }
+
+  function seekContextVideo(targetSeconds: number, autoplay = false): void {
+    if (!task) return;
+    const duration = task.immutable.source.proxy.durationSeconds;
+    const target = Math.max(0, Math.min(duration, targetSeconds));
+    setContextVideoTarget(target);
+    setContextVideoAutoplay(autoplay);
+    setContextVideoOpen(true);
+    const player = contextVideoRef.current;
+    if (player && player.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      player.currentTime = target;
+      if (autoplay) void player.play().catch(() => undefined);
+    }
+  }
+
+  function prepareContextVideo(): void {
+    const player = contextVideoRef.current;
+    if (!player) return;
+    player.currentTime = contextVideoTarget;
+    if (contextVideoAutoplay) {
+      void player.play().catch(() => undefined);
+      setContextVideoAutoplay(false);
+    }
   }
 
   function stepWithinWindow(delta: number): void {
@@ -1194,6 +1224,71 @@ export function BallLabelingEditor() {
                 </select>
               </label>
             </div>
+
+            <div className={styles.contextControls}>
+              <button
+                type="button"
+                onClick={() =>
+                  currentFrame && seekContextVideo(currentFrame.sourceTimestampSeconds - 5, true)
+                }
+              >
+                Watch from 5s before
+              </button>
+              {contextVideoOpen && currentFrame && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => seekContextVideo(currentFrame.sourceTimestampSeconds, false)}
+                  >
+                    Jump to exact frame
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      seekContextVideo(
+                        task.immutable.windows[currentWindowIndex]?.startSeconds ??
+                          currentFrame.sourceTimestampSeconds,
+                        false,
+                      )
+                    }
+                  >
+                    Window start
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      contextVideoRef.current?.pause();
+                      setContextVideoOpen(false);
+                    }}
+                  >
+                    Close video
+                  </button>
+                </>
+              )}
+              <span>
+                Frame time {currentFrame.sourceTimestampSeconds.toFixed(3)}s · use playback to
+                resolve primary-court association
+              </span>
+            </div>
+
+            {contextVideoOpen && (
+              <section className={styles.contextPlayer} aria-label="Source video context">
+                <video
+                  ref={contextVideoRef}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  src={`/api/ball-labeling/tasks/${encodeURIComponent(task.immutable.recording.id)}/video`}
+                  onLoadedMetadata={prepareContextVideo}
+                >
+                  Your browser does not support the source-video player.
+                </video>
+                <p>
+                  This is the immutable 960×540 source proxy. The still being labeled is at
+                  <strong> {currentFrame.sourceTimestampSeconds.toFixed(3)}s</strong>.
+                </p>
+              </section>
+            )}
 
             <input
               className={styles.scrubber}

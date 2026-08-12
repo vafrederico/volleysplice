@@ -14,6 +14,7 @@ import {
   getBallFrameImage,
   getBallLabelingCatalog,
   getBallReviewDocument,
+  getBallSourceVideo,
   saveBallReviewDocument,
 } from "../../lib/server/ball-labeling-tasks.ts";
 
@@ -77,11 +78,17 @@ async function createWorkspace(options: { escapedImage?: boolean } = {}) {
   const recordingId = "indoor-fixture-full";
   const taskDirectory = path.join(root, "tasks");
   const imageDirectory = path.join(root, "images", recordingId, "01-window");
+  const labelingWorkspace = path.join(root, "labeling-workspace");
+  const proxyDirectory = path.join(labelingWorkspace, "proxies", "indoor");
+  const videoPath = path.join(proxyDirectory, `${recordingId}.mp4`);
+  const videoBytes = Buffer.from("fixture-mp4-source-video");
   await Promise.all([
     fs.mkdir(taskDirectory, { recursive: true }),
     fs.mkdir(imageDirectory, { recursive: true }),
+    fs.mkdir(proxyDirectory, { recursive: true }),
     fs.mkdir(path.join(root, "suggestions"), { recursive: true }),
   ]);
+  await fs.writeFile(videoPath, videoBytes);
   const imageBytes = Buffer.from("exact-png-fixture");
   const frameIds = ["f000000000", "f000000002", "f000000004"];
   for (const frameId of frameIds) {
@@ -103,9 +110,9 @@ async function createWorkspace(options: { escapedImage?: boolean } = {}) {
     source: {
       proxy: {
         filename: `${recordingId}.mp4`,
-        pathHint: `/private/${recordingId}.mp4`,
-        sizeBytes: 1000,
-        sha256: "2".repeat(64),
+        pathHint: videoPath,
+        sizeBytes: videoBytes.byteLength,
+        sha256: sha256(videoBytes),
         width: 960,
         height: 540,
         fps: 30,
@@ -203,6 +210,9 @@ async function createWorkspace(options: { escapedImage?: boolean } = {}) {
     taskPath: path.join(taskDirectory, taskFilename),
     taskFilename,
     encodedTask,
+    labelingWorkspace,
+    videoBytes,
+    videoPath,
   };
 }
 
@@ -316,8 +326,10 @@ async function writeComparisonArtifacts(fixture: Awaited<ReturnType<typeof creat
 
 test("blind ball review catalog, saves, provenance, and image binding", async (context) => {
   const previousRoot = process.env.VOLLEYCUT_BALL_PILOT_ROOT;
+  const previousLabelingWorkspace = process.env.VOLLEYCUT_LABELING_WORKSPACE;
   const fixture = await createWorkspace();
   process.env.VOLLEYCUT_BALL_PILOT_ROOT = fixture.root;
+  process.env.VOLLEYCUT_LABELING_WORKSPACE = fixture.labelingWorkspace;
 
   try {
     await context.test("loads pristine tasks without reading detector suggestions", async () => {
@@ -607,9 +619,27 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
         BallLabelingImageValidationError,
       );
     });
+
+    await context.test("serves only the immutable SHA-pinned source video", async () => {
+      const video = await getBallSourceVideo(fixture.recordingId);
+      assert.equal(video.filePath, fixture.videoPath);
+      assert.equal(video.filename, `${fixture.recordingId}.mp4`);
+      assert.equal(video.size, fixture.videoBytes.byteLength);
+      assert.equal(video.sha256, sha256(fixture.videoBytes));
+      await fs.appendFile(fixture.videoPath, "tampered");
+      await assert.rejects(
+        getBallSourceVideo(fixture.recordingId),
+        /metadata does not match/,
+      );
+    });
   } finally {
     if (previousRoot === undefined) delete process.env.VOLLEYCUT_BALL_PILOT_ROOT;
     else process.env.VOLLEYCUT_BALL_PILOT_ROOT = previousRoot;
+    if (previousLabelingWorkspace === undefined) {
+      delete process.env.VOLLEYCUT_LABELING_WORKSPACE;
+    } else {
+      process.env.VOLLEYCUT_LABELING_WORKSPACE = previousLabelingWorkspace;
+    }
     await fs.rm(fixture.root, { recursive: true, force: true });
   }
 

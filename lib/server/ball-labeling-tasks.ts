@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { lstat, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 
@@ -20,6 +21,7 @@ import {
 } from "../ball-annotations.ts";
 
 const defaultBallPilotRoot = "/mnt/freenas/volleycut/ball-presence-v1/round-01";
+const defaultLabelingWorkspace = "/mnt/freenas/volleycut/labeling-v1-2026-08-09";
 const taskSuffix = ".ball-presence.json";
 
 type BallPilotIndexRow = {
@@ -84,14 +86,24 @@ export type BallFrameImage = {
   filename: string;
 };
 
+export type BallSourceVideo = {
+  filePath: string;
+  filename: string;
+  size: number;
+  sha256: string;
+  durationSeconds: number;
+};
+
 export class BallLabelingTaskNotFoundError extends Error {}
 export class BallLabelingWorkspaceError extends Error {}
 export class BallLabelingDraftValidationError extends Error {}
 export class BallLabelingImageValidationError extends Error {}
+export class BallLabelingVideoValidationError extends Error {}
 export class BallComparisonAccessError extends Error {}
 
 const taskMutationTails = new Map<string, Promise<void>>();
 const preparedTaskCatalogs = new Map<string, Promise<PreparedBallLabelingTask[]>>();
+const verifiedVideoHashes = new Map<string, Promise<void>>();
 
 async function withTaskMutationLock<T>(
   key: string,
@@ -151,6 +163,16 @@ function validNonzeroSha256(value: unknown): value is string {
 
 function sha256(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function sha256File(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.once("error", reject);
+    stream.once("end", () => resolve(hash.digest("hex")));
+  });
 }
 
 function canonicalJson(value: unknown): string {
@@ -1276,6 +1298,94 @@ export async function getBallFrameImage(id: string, frameId: string): Promise<Ba
     throw new BallLabelingImageValidationError("frame image SHA-256 does not match its task");
   }
   return { bytes, sha256: actualSha256, filename: path.basename(imagePath) };
+}
+
+export async function getBallSourceVideo(id: string): Promise<BallSourceVideo> {
+  const prepared = await getPreparedBallLabelingTask(id);
+  const proxy = prepared.base.immutable.source.proxy;
+  const workspace = path.resolve(
+    /* turbopackIgnore: true */
+    process.env.VOLLEYCUT_LABELING_WORKSPACE ?? defaultLabelingWorkspace,
+  );
+  const proxiesRoot = path.join(workspace, "proxies");
+  const environmentRoot = path.join(
+    proxiesRoot,
+    prepared.base.immutable.recording.environment,
+  );
+  const expectedPath = path.join(environmentRoot, proxy.filename);
+  const candidatePath = path.resolve(proxy.pathHint);
+  if (
+    candidatePath !== expectedPath ||
+    !isWithin(proxiesRoot, candidatePath) ||
+    path.basename(candidatePath) !== proxy.filename ||
+    path.extname(candidatePath).toLowerCase() !== ".mp4"
+  ) {
+    throw new BallLabelingVideoValidationError(
+      "source proxy path is not bound to its immutable task",
+    );
+  }
+
+  let metadata: Awaited<ReturnType<typeof stat>>;
+  let canonicalRoot: string;
+  let canonicalPath: string;
+  try {
+    const linkMetadata = await lstat(candidatePath);
+    if (linkMetadata.isSymbolicLink()) {
+      throw new BallLabelingVideoValidationError("source proxy cannot be a symbolic link");
+    }
+    [metadata, canonicalRoot, canonicalPath] = await Promise.all([
+      stat(candidatePath),
+      realpath(proxiesRoot),
+      realpath(candidatePath),
+    ]);
+  } catch (error) {
+    if (error instanceof BallLabelingVideoValidationError) throw error;
+    throw new BallLabelingVideoValidationError(
+      `source proxy is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (
+    !metadata.isFile() ||
+    metadata.size !== proxy.sizeBytes ||
+    !isWithin(canonicalRoot, canonicalPath)
+  ) {
+    throw new BallLabelingVideoValidationError(
+      "source proxy metadata does not match its immutable task",
+    );
+  }
+
+  const verificationKey = [
+    canonicalPath,
+    proxy.sha256,
+    metadata.size,
+    metadata.mtimeMs,
+  ].join(":");
+  let verification = verifiedVideoHashes.get(verificationKey);
+  if (!verification) {
+    verification = (async () => {
+      if ((await sha256File(canonicalPath)) !== proxy.sha256) {
+        throw new BallLabelingVideoValidationError(
+          "source proxy SHA-256 does not match its immutable task",
+        );
+      }
+    })();
+    verifiedVideoHashes.set(verificationKey, verification);
+  }
+  try {
+    await verification;
+  } catch (error) {
+    if (verifiedVideoHashes.get(verificationKey) === verification) {
+      verifiedVideoHashes.delete(verificationKey);
+    }
+    throw error;
+  }
+  return {
+    filePath: canonicalPath,
+    filename: proxy.filename,
+    size: metadata.size,
+    sha256: proxy.sha256,
+    durationSeconds: proxy.durationSeconds,
+  };
 }
 
 export { BallReviewValidationError };

@@ -90,6 +90,58 @@
   font: 500 11px "DM Mono", monospace;
 }
 
+.contextControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #7e8277;
+  background: #f7f6ef;
+}
+
+.contextControls button {
+  padding: 7px 9px;
+  border: 1px solid #161813;
+  background: #fff;
+  color: #161813;
+  cursor: pointer;
+  font: 600 9px "DM Mono", monospace;
+}
+
+.contextControls button:first-child {
+  border-color: #db4927;
+  color: #8d250f;
+  background: #fff1ed;
+}
+
+.contextControls span {
+  margin-left: auto;
+  color: #696b63;
+  font: 500 8px/1.45 "DM Mono", monospace;
+}
+
+.contextPlayer {
+  margin-top: 8px;
+  padding: 8px;
+  border: 2px solid #161813;
+  background: #080906;
+}
+
+.contextPlayer video {
+  display: block;
+  width: 100%;
+  max-height: 68vh;
+  background: #000;
+}
+
+.contextPlayer p {
+  margin: 7px 0 0;
+  color: #f7f6ef;
+  font: 500 8px/1.45 "DM Mono", monospace;
+}
+
 .taskFacts {
   display: flex;
   align-items: center;

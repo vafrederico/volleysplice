@@ -45,6 +45,10 @@ explicit assisted-mode opt-in.
    are intentionally hidden in the editor.
 3. Step through all 45 frames in each window. Playback is only a context aid;
    pause on the exact frame before labeling it.
+   **Watch from 5s before** opens the immutable source proxy at five seconds
+   before the current still. Use **Jump to exact frame** or **Window start** to
+   reposition it while resolving which visible ball belongs to the filmed
+   court's preceding or next play.
 4. Draw exactly one primary-court box when the primary ball is localizable.
    Add other-court and unknown-role volleyballs separately when visible.
 5. Otherwise choose **Out of frame**, **Fully occluded**, or **Indeterminate**.
@@ -136,3 +140,6 @@ the pristine source-task SHA-256 and contain role-free normalized proposals.
 
 Use 2× or 4× zoom for tiny balls. A copied prior-frame box remains a human
 label and can be deleted and redrawn; no proposal is ever copied implicitly.
+The contextual player streams only the source MP4 whose filename, size,
+SHA-256, duration, and environment path are pinned by the immutable task; it
+does not expose an arbitrary media path.
