@@ -55,9 +55,32 @@ Immutable reports under the frozen labeling workspace:
 
 ## 2. Rectangle-ROI court-relative summaries
 
-Implementation is ready. This study will reconstruct the exact frozen step-1 winner and compare it
-with orientation-invariant, signed fixed-endline, and combined rectangle-ROI summaries. Rectangle
-thirds remain rough proxies; they are not a court homography and do not infer which team is serving.
+The study reconstructed the exact 1,084-input frozen step-1 winner and compared it with
+orientation-invariant, signed fixed-endline, and combined rectangle-ROI summaries. None passed the
+paired development gate:
+
+| Development OOF candidate | Inputs | F1 @ .5 | Time IoU | Objective | Paired classification |
+|---|---:|---:|---:|---:|---|
+| step-1 control | 1,084 | **.5244** | **.5131** | **.5681** | selected |
+| + orientation invariant | 1,107 | .4875 | .5034 | .5522 | harmful |
+| + fixed endline | 1,111 | .4806 | .4945 | .5470 | harmful |
+| + combined court bank | 1,123 | .4907 | .5006 | .5528 | uncertain |
+
+Orientation-invariant and fixed-endline objective deltas averaged `-.0167` and `-.0228`; combined
+averaged `-.0130` and split two positive/two negative source groups. The frozen winner is therefore
+the unchanged step-1 control. Its separate court-study retrospective refit measured F1 .6923, time
+IoU .6588, live recall .8610, end MAE 1.703 seconds, and 27 strict matches from 39 predictions. That
+one-match difference from the step-1 control's retrospective refit comes from the separately frozen
+training seed and is training variance, not evidence for a court feature. Do not promote rough
+rectangle-relative features. Rectangle thirds remain proxies rather than calibrated geometry and
+do not infer which team is serving.
+
+Immutable reports:
+
+- `reports/feature-order-2026-08-12/court-relative-v1-development.json`, SHA-256
+  `45728e68884914c1eaad76602c05cab73c06688a77389b748df4337fe71d12cd`;
+- `reports/feature-order-2026-08-12/court-relative-v1-retrospective-test.json`, SHA-256
+  `d85ce25e1ff96f2170876dc099942e1f9ea860e1a52d9894d13c209b2e401ede`.
 
 ## 3. Serve-anchored multistate model
 
