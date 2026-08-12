@@ -173,6 +173,32 @@ npm run evaluate:transition-features -- retrospective-test \
   --open-test
 ```
 
+## Court-relative feature study
+
+The court-relative runner uses the exact frozen winner from the transition study as its control.
+It derives reflection-invariant, signed fixed-endline, and combined directional summaries from the
+existing rectangle ROI and cached 3×3 motion grids. No environment, player-count, side-switch, or
+annotation fields enter the model:
+
+```bash
+npm run evaluate:court-relative-features -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --step1-development-report data/reports/multiscale-interactions-v1-development.json \
+  --output data/reports/court-relative-v1-development.json
+```
+
+After development selection is frozen, the explicit retrospective regression check is:
+
+```bash
+npm run evaluate:court-relative-features -- retrospective-test \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --development-report data/reports/court-relative-v1-development.json \
+  --output data/reports/court-relative-v1-retrospective-test.json \
+  --open-test
+```
+
 ## Experimental serve specialist
 
 The optional serve path trains a second logistic head on narrow windows around rally starts while
