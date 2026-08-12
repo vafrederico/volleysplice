@@ -298,12 +298,25 @@ signature:
 These paths remain research-only. The first audio ablation favored the legacy-audio local
 transition head and did not support promoting the new band features. See the
 [end-boundary/dead-state experiment](../docs/research/end-and-dead-state-audio-experiment-2026-08-12.md).
+## Ball-presence feasibility pilot
+
+Ball presence is isolated from the production extractor until a detector is
+validated. The pilot samples exact 15 fps development frames, keeps Human, Sol,
+and detector layers provenance-distinct, selects thresholds with held-out
+source groups, and can aggregate a validated high-rate detector sidecar into
+eight raw 4 fps signals. It rejects test/challenge tasks and excludes any human
+frame that saw proposals before its label was finalized.
+
+See the [ball-presence labeling guide](../docs/ball-presence-labeling-guide.md)
+for the UI workflow and the [pilot decision record](../docs/research/minimum-ball-presence-pilot-2026-08-11.md)
+for frozen artifacts, quality gates, and the reason downstream model training
+is deferred until independent labels exist.
 
 ## What the current model does not do
 
 - It does not detect whether the whole court is visible; capture geometry must be confirmed by a person.
 - It does not identify players, poses, receiving formations, ball trajectories, aces, or service faults as semantic classes. Motion/formation/occlusion channels are deliberately named proxies.
-- Reliable ball tracking remains out of scope at the current 4 fps, 192×108 analysis resolution without ball labels or detector weights.
+- Reliable ball tracking is not part of the current model. A separate high-resolution ball-presence pilot is collecting and validating the required labels before any promotion.
 - The short-event decoder is a generic high-confidence duration exception; ace and service-fault tags are used for evaluation slices, not outcome-aware inference.
 - Weighted logistic output is a ranking confidence, not a calibrated probability.
 - It is an offline centered-context model, not low-latency live detection.
