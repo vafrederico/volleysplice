@@ -50,6 +50,13 @@ type Drawing = {
   currentY: number;
 };
 
+type WindowPrefetchProgress = {
+  key: string;
+  loaded: number;
+  failed: number;
+  total: number;
+};
+
 const roleLabels: Record<BallObjectRole, string> = {
   "primary-court": "Primary ball",
   "other-court": "Other-court ball",
@@ -183,6 +190,9 @@ export function BallLabelingEditor() {
   const [highlightedSolObjectIndex, setHighlightedSolObjectIndex] = useState<number | null>(null);
   const [visibleLayers, setVisibleLayers] = useState({ human: true, sol: true, detector: true });
   const [imageLoaded, setImageLoaded] = useState(false);
+  const loadedFrameUrlsRef = useRef(new Set<string>());
+  const prefetchImagesRef = useRef(new Map<string, HTMLImageElement>());
+  const [windowPrefetch, setWindowPrefetch] = useState<WindowPrefetchProgress | null>(null);
   const [annotator, setAnnotator] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -203,6 +213,9 @@ export function BallLabelingEditor() {
   const totalFrames = frames.length;
   const progressPercent = totalFrames ? (reviewed / totalFrames) * 100 : 0;
   const currentComparison = currentFrame ? comparisonByFrame[currentFrame.id] ?? null : null;
+  const currentWindowId = currentFrame?.windowId ?? null;
+  const immutableFrames = task?.immutable.frames;
+  const recordingId = task?.immutable.recording.id ?? null;
 
   const currentWindowIndex = useMemo(() => {
     if (!task || !currentFrame) return -1;
@@ -211,10 +224,10 @@ export function BallLabelingEditor() {
 
   const currentWindowFrames = useMemo(
     () =>
-      task && currentFrame
-        ? task.immutable.frames.filter((frame) => frame.windowId === currentFrame.windowId)
+      immutableFrames && currentWindowId
+        ? immutableFrames.filter((frame) => frame.windowId === currentWindowId)
         : [],
-    [currentFrame, task],
+    [currentWindowId, immutableFrames],
   );
 
   const currentWindowFrameIndex = currentFrame
@@ -497,15 +510,48 @@ export function BallLabelingEditor() {
   }, [dirty]);
 
   useEffect(() => {
-    if (!task || !currentFrame || currentWindowFrameIndex < 0) return;
-    for (let offset = -3; offset <= 3; offset += 1) {
-      if (offset === 0) continue;
-      const candidate = currentWindowFrames[currentWindowFrameIndex + offset];
-      if (!candidate) continue;
+    if (!recordingId || !currentWindowId || currentWindowFrames.length === 0) return;
+    const key = `${recordingId}:${currentWindowId}`;
+    const urls = currentWindowFrames.map((frame) => frameImageUrl(recordingId, frame.id));
+    const failedUrls = new Set<string>();
+    const updateProgress = () => {
+      setWindowPrefetch((current) =>
+        current?.key === key
+          ? {
+              ...current,
+              loaded: urls.filter((url) => loadedFrameUrlsRef.current.has(url)).length,
+              failed: failedUrls.size,
+            }
+          : current,
+      );
+    };
+    queueMicrotask(() => {
+      setWindowPrefetch({
+        key,
+        loaded: urls.filter((url) => loadedFrameUrlsRef.current.has(url)).length,
+        failed: 0,
+        total: urls.length,
+      });
+    });
+    urls.forEach((url, index) => {
+      if (loadedFrameUrlsRef.current.has(url) || prefetchImagesRef.current.has(url)) return;
       const image = new Image();
-      image.src = frameImageUrl(task.immutable.recording.id, candidate.id);
-    }
-  }, [currentFrame, currentWindowFrameIndex, currentWindowFrames, task]);
+      image.decoding = "async";
+      image.fetchPriority = index < 6 ? "high" : "low";
+      image.onload = () => {
+        loadedFrameUrlsRef.current.add(url);
+        prefetchImagesRef.current.delete(url);
+        updateProgress();
+      };
+      image.onerror = () => {
+        failedUrls.add(url);
+        prefetchImagesRef.current.delete(url);
+        updateProgress();
+      };
+      prefetchImagesRef.current.set(url, image);
+      image.src = url;
+    });
+  }, [currentWindowFrames, currentWindowId, recordingId]);
 
   useEffect(() => {
     if (!playing || currentWindowFrameIndex < 0) return;
@@ -1112,6 +1158,12 @@ export function BallLabelingEditor() {
               <div>
                 <span>{currentFrame.sourceTimestampSeconds.toFixed(3)}s</span>
                 <span>{currentAnnotation.status === "reviewed" ? "reviewed" : "unreviewed"}</span>
+                {windowPrefetch?.key === `${recordingId}:${currentWindowId}` && (
+                  <span className={styles.prefetchStatus} aria-live="polite">
+                    {windowPrefetch.loaded}/{windowPrefetch.total} cached
+                    {windowPrefetch.failed ? ` · ${windowPrefetch.failed} retry` : ""}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -1130,7 +1182,12 @@ export function BallLabelingEditor() {
                   src={frameImageUrl(task.immutable.recording.id, currentFrame.id)}
                   alt={`Annotation frame ${currentWindowFrameIndex + 1}`}
                   draggable={false}
-                  onLoad={() => setImageLoaded(true)}
+                  onLoad={() => {
+                    loadedFrameUrlsRef.current.add(
+                      frameImageUrl(task.immutable.recording.id, currentFrame.id),
+                    );
+                    setImageLoaded(true);
+                  }}
                 />
                 {!imageLoaded && <div className={styles.imageLoading}>Loading exact frame…</div>}
                 <svg

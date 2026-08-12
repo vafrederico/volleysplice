@@ -45,6 +45,10 @@ explicit assisted-mode opt-in.
    are intentionally hidden in the editor.
 3. Step through all 45 frames in each window. Playback is only a context aid;
    pause on the exact frame before labeling it.
+   Opening a window immediately prefetches all 45 SHA-pinned PNGs into the
+   browser cache; the frame header shows the live cached count. The current
+   still loads directly, the first six window prefetches receive higher fetch
+   priority, and the remainder are queued in the background.
    **Watch from 5s before** opens the immutable source proxy at five seconds
    before the current still. Use **Jump to exact frame** or **Window start** to
    reposition it while resolving which visible ball belongs to the filmed

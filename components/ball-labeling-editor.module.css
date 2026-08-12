@@ -255,6 +255,11 @@
   text-transform: uppercase;
 }
 
+.frameMeta .prefetchStatus {
+  color: #2b5d30;
+  font-weight: 700;
+}
+
 .scroller {
   max-height: 72vh;
   overflow: auto;
