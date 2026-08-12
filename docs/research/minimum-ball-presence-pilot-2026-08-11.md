@@ -198,8 +198,8 @@ as useful presence quality. Tiling reduces pooled OOF precision and recall,
 increases the false-positive-frame rate by 64%, worsens medium- and large-ball
 localization, and still yields zero held-out beach recall because thresholds
 learned on the other source groups do not transfer. The result points to both
-small-object localization and severe score/domain calibration problems; image
-this simple 2×2 scaling scheme was insufficient.
+small-object localization and severe score/domain calibration problems; this
+simple 2×2 scaling scheme was insufficient.
 
 The full-frame report is
 `/mnt/freenas/volleycut/ball-presence-v1/reports/ball-presence-development.json`
