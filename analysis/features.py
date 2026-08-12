@@ -13,7 +13,11 @@ from typing import Any
 
 import numpy as np
 
-from .config import FEATURE_VERSION, FeatureConfig
+from .config import (
+    NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+    FeatureConfig,
+    feature_version_for_config,
+)
 
 
 class VideoError(RuntimeError):
@@ -272,7 +276,7 @@ def _temporal_visual_feature_names(config: FeatureConfig) -> tuple[str, ...]:
 def _audio_feature_names(config: FeatureConfig) -> tuple[str, ...]:
     if not config.use_audio:
         return ()
-    return (
+    legacy = (
         "audio_available",
         "audio_rms",
         "audio_peak",
@@ -287,6 +291,29 @@ def _audio_feature_names(config: FeatureConfig) -> tuple[str, ...]:
         "audio_cadence_collapse",
         "audio_seconds_since_transient",
     )
+    if config.audio_feature_set != NOISE_NORMALIZED_AUDIO_FEATURE_SET:
+        return legacy
+    normalized = (
+        "audio_noise_removed_broadband",
+        "audio_noise_normalized_flux",
+    )
+    bands = (
+        "80_250",
+        "250_500",
+        "500_1000",
+        "1000_2000",
+        "2000_4000",
+        "4000_7800",
+    )
+    frequency = tuple(
+        name
+        for band in bands
+        for name in (
+            f"audio_band_{band}_snr",
+            f"audio_band_{band}_snr_flux",
+        )
+    )
+    return (*legacy, *normalized, *frequency)
 
 
 def feature_names(config: FeatureConfig) -> tuple[str, ...]:
@@ -626,10 +653,36 @@ def _audio_features_from_samples(
     peak = np.max(np.abs(frames), axis=1).astype(np.float32)
     window = np.hanning(frame_samples).astype(np.float32)
     fft_size = 1 << max(1, (frame_samples - 1).bit_length())
+    use_noise_bands = (
+        config.audio_feature_set == NOISE_NORMALIZED_AUDIO_FEATURE_SET
+    )
+    band_bounds = (
+        (80.0, 250.0),
+        (250.0, 500.0),
+        (500.0, 1000.0),
+        (1000.0, 2000.0),
+        (2000.0, 4000.0),
+        (4000.0, 7800.0),
+    )
+    frequencies = np.fft.rfftfreq(fft_size, d=1.0 / config.audio_sample_rate)
+    band_masks = tuple(
+        (frequencies >= lower) & (frequencies < upper)
+        for lower, upper in band_bounds
+    )
+    band_power = (
+        np.zeros((frame_count, len(band_masks)), dtype=np.float32)
+        if use_noise_bands
+        else None
+    )
     previous_spectrum: np.ndarray | None = None
     spectral_flux = np.zeros(frame_count, dtype=np.float32)
     for index, frame in enumerate(frames):
         spectrum = np.abs(np.fft.rfft(frame * window, n=fft_size)).astype(np.float32)
+        if band_power is not None:
+            power = np.square(spectrum, dtype=np.float32)
+            for band_index, mask in enumerate(band_masks):
+                if np.any(mask):
+                    band_power[index, band_index] = float(np.sum(power[mask]))
         spectrum /= max(float(np.sum(spectrum)), 1e-8)
         if previous_spectrum is not None:
             spectral_flux[index] = float(
@@ -664,28 +717,71 @@ def _audio_features_from_samples(
 
     noise_floor = np.empty(frame_count, dtype=np.float32)
     noise_window = max(1, round(10.0 / frame_seconds))
+    band_noise_floor = (
+        np.empty_like(band_power) if band_power is not None else None
+    )
     for index in range(frame_count):
         start = max(0, index - noise_window + 1)
         noise_floor[index] = float(np.percentile(rms[start : index + 1], 20))
+        if band_noise_floor is not None and band_power is not None:
+            band_noise_floor[index] = np.percentile(
+                band_power[start : index + 1], 20, axis=0
+            )
     snr = np.log1p(np.maximum(rms - noise_floor, 0.0) / (noise_floor + 1e-4)).astype(
         np.float32
     )
     peak_to_rms = np.clip(peak / (rms + 1e-5), 0.0, 30.0).astype(np.float32)
 
-    sources = (
-        rms,
-        peak,
-        peak_to_rms,
-        noise_floor,
-        snr,
-        spectral_flux,
-        rms_novelty,
-        onset_strength,
-        contact_like,
-        cadence,
-        cadence_collapse,
-        elapsed,
-    )
+    sources = {
+        "audio_rms": rms,
+        "audio_peak": peak,
+        "audio_peak_to_rms": peak_to_rms,
+        "audio_noise_floor": noise_floor,
+        "audio_snr": snr,
+        "audio_spectral_flux": spectral_flux,
+        "audio_rms_novelty": rms_novelty,
+        "audio_onset_strength": onset_strength,
+        "audio_contact_like_transient": contact_like,
+        "audio_onset_cadence": cadence,
+        "audio_cadence_collapse": cadence_collapse,
+        "audio_seconds_since_transient": elapsed,
+    }
+    if band_power is not None and band_noise_floor is not None:
+        band_excess = np.maximum(band_power - band_noise_floor, 0.0)
+        band_snr = np.log1p(
+            band_excess / (band_noise_floor + np.float32(1e-8))
+        ).astype(np.float32)
+        previous_band_snr = np.vstack((band_snr[0], band_snr[:-1]))
+        band_snr_flux = np.maximum(band_snr - previous_band_snr, 0.0)
+        broadband = np.log1p(
+            np.sum(band_excess, axis=1)
+            / (np.sum(band_noise_floor, axis=1) + np.float32(1e-8))
+        ).astype(np.float32)
+        normalized_flux = np.sqrt(
+            np.sum(np.square(band_snr_flux, dtype=np.float32), axis=1)
+        ).astype(np.float32)
+        sources["audio_noise_removed_broadband"] = broadband
+        sources["audio_noise_normalized_flux"] = normalized_flux
+        band_labels = (
+            "80_250",
+            "250_500",
+            "500_1000",
+            "1000_2000",
+            "2000_4000",
+            "4000_7800",
+        )
+        for band_index, label in enumerate(band_labels):
+            sources[f"audio_band_{label}_snr"] = band_snr[:, band_index]
+            sources[f"audio_band_{label}_snr_flux"] = band_snr_flux[:, band_index]
+
+    mean_pooled = {
+        "audio_rms",
+        "audio_noise_floor",
+        "audio_snr",
+        "audio_onset_cadence",
+        "audio_cadence_collapse",
+        "audio_seconds_since_transient",
+    }
     output = np.empty((len(times), len(names)), dtype=np.float32)
     output[:, 0] = 1.0
     half_width = 0.5 / config.analysis_fps
@@ -695,8 +791,9 @@ def _audio_features_from_samples(
         if right <= left:
             nearest = min(frame_count - 1, max(0, int(round(timestamp / frame_seconds - 0.5))))
             left, right = nearest, nearest + 1
-        for column, source in enumerate(sources, start=1):
-            if column in {1, 4, 5, 10, 11, 12}:
+        for column, name in enumerate(names[1:], start=1):
+            source = sources[name]
+            if name in mean_pooled:
                 value = float(np.mean(source[left:right]))
             else:
                 value = float(np.max(source[left:right]))
@@ -855,7 +952,7 @@ def _cache_key(
     content_sha256: str,
 ) -> str:
     payload = {
-        "featureVersion": FEATURE_VERSION,
+        "featureVersion": feature_version_for_config(config),
         "path": str(video),
         "contentSha256": content_sha256,
         "config": config.to_dict(),

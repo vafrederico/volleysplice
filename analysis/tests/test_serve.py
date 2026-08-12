@@ -9,9 +9,15 @@ from unittest.mock import patch
 
 import numpy as np
 
-from analysis.config import FEATURE_VERSION, DecoderConfig, FeatureConfig
+from analysis.cli import build_parser
+from analysis.config import (
+    FEATURE_VERSION,
+    NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+    DecoderConfig,
+    FeatureConfig,
+)
 from analysis.decoder import DecodedInterval
-from analysis.features import FeatureSequence, VideoMetadata
+from analysis.features import FeatureSequence, VideoMetadata, feature_names
 from analysis.model import (
     RALLY_LIVE_TASK,
     SERVE_CONTACT_TASK,
@@ -31,13 +37,18 @@ from analysis.serve import (
 from analysis.pipeline import PreparedRecording, evaluate_dataset, infer_video
 from analysis.schema import Interval, ManifestError, Recording
 from analysis.serve_experiment import (
+    NEW_AUDIO_ONLY_SERVE_INPUT_PROFILE,
+    NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE,
     PairedPrediction,
     _delta,
     _effective_analysis_fps,
     _prediction_inputs,
     _selection_score,
     _serve_metrics,
+    _serve_input_profile_metadata,
+    _serve_input_mask,
     _slice_truth,
+    train_serve_dataset,
     _validate_serve_validation_targets,
     _validate_model_pair,
 )
@@ -50,6 +61,108 @@ class IntervalValue:
 
 
 class ServeTargetTests(unittest.TestCase):
+    def test_evaluate_serve_cli_accepts_retrospective_marker(self) -> None:
+        parsed = build_parser().parse_args(
+            [
+                "evaluate-serve",
+                "--manifest",
+                "manifest.json",
+                "--rally-model",
+                "rally",
+                "--serve-model",
+                "serve",
+                "--retrospective",
+            ]
+        )
+
+        self.assertTrue(parsed.retrospective)
+
+    def test_training_rejects_report_inside_model_before_loading(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-serve-destinations-") as directory:
+            model_path = Path(directory) / "model"
+            with (
+                patch("analysis.serve_experiment.load_model") as load,
+                self.assertRaisesRegex(ModelError, "must not be inside"),
+            ):
+                train_serve_dataset(
+                    "manifest.json",
+                    "rally",
+                    model_path,
+                    "cache",
+                    output_path=model_path / "report.json",
+                )
+            load.assert_not_called()
+
+    def test_train_serve_cli_accepts_normalized_audio_ablation(self) -> None:
+        parsed = build_parser().parse_args(
+            [
+                "train-serve",
+                "--manifest",
+                "manifest.json",
+                "--rally-model",
+                "rally",
+                "--model",
+                "serve",
+                "--serve-input-profile",
+                NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE,
+            ]
+        )
+
+        self.assertEqual(
+            parsed.serve_input_profile, NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE
+        )
+
+    def test_serve_input_profiles_ablate_only_the_requested_features(self) -> None:
+        names = (
+            "t+0s/player_motion_mean",
+            "t+0s/audio_rms",
+            "t+0s/audio_noise_floor",
+            "t+0s/audio_noise_removed_broadband",
+            "t+0s/audio_noise_normalized_flux",
+            "t+0s/audio_band_80_250_snr",
+        )
+
+        no_legacy = _serve_input_mask(
+            names, NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE
+        )
+        new_only = _serve_input_mask(
+            names, NEW_AUDIO_ONLY_SERVE_INPUT_PROFILE
+        )
+
+        np.testing.assert_array_equal(
+            no_legacy, np.asarray([1, 0, 0, 1, 1, 1], dtype=np.bool_)
+        )
+        np.testing.assert_array_equal(
+            new_only, np.asarray([0, 0, 0, 1, 1, 1], dtype=np.bool_)
+        )
+
+    def test_normalized_audio_profile_rejects_legacy_signature(self) -> None:
+        with self.assertRaisesRegex(ModelError, "require normalized audio"):
+            _serve_input_mask(
+                ("t+0s/player_motion_mean", "t+0s/audio_rms"),
+                NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE,
+            )
+
+    def test_real_normalized_signature_has_expected_ablation_counts(self) -> None:
+        config = FeatureConfig(
+            audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET
+        )
+        names = tuple(
+            f"t{offset:+g}s/{name}"
+            for offset in config.context_offsets_seconds
+            for name in feature_names(config)
+        )
+
+        self.assertEqual(len(names), 520)
+        self.assertEqual(
+            int(np.sum(_serve_input_mask(names, NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE))),
+            455,
+        )
+        self.assertEqual(
+            int(np.sum(_serve_input_mask(names, NEW_AUDIO_ONLY_SERVE_INPUT_PROFILE))),
+            70,
+        )
+
     def test_labels_radius_and_nearest_sample_for_between_sample_contact(self) -> None:
         times = np.asarray([0.0, 0.25, 0.5, 0.75], dtype=np.float64)
 
@@ -377,6 +490,16 @@ class ServeArtifactTests(unittest.TestCase):
             restored = load_model(model_path)
 
         self.assertEqual(restored.prediction_task, RALLY_LIVE_TASK)
+
+    def test_pre_profile_serve_artifact_reports_full_input_profile(self) -> None:
+        serve = self.model(SERVE_CONTACT_TASK, artifact="serve")
+
+        profile = _serve_input_profile_metadata(serve)
+
+        self.assertEqual(profile["id"], "full")
+        self.assertEqual(profile["retainedInputs"], 1)
+        self.assertEqual(profile["removedInputs"], 0)
+        self.assertTrue(profile["legacyDefault"])
 
     def test_save_load_preserves_serve_task_and_rejects_role_swap(self) -> None:
         with tempfile.TemporaryDirectory(prefix="volleycut-serve-task-") as directory:

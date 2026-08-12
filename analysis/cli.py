@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .artifacts import atomic_write_text
-from .config import DecoderConfig, FeatureConfig, TrainingConfig
+from .config import (
+    AUDIO_FEATURE_SETS,
+    DecoderConfig,
+    FeatureConfig,
+    TrainingConfig,
+)
 from .media import X264_PRESETS, NormalizationError, normalize_video
 from .schema import ManifestError, load_manifest, manifest_warnings
 from .version import __version__
@@ -99,6 +104,12 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--no-audio", action="store_true")
     train.add_argument("--audio-sample-rate", type=int, default=16000)
     train.add_argument(
+        "--audio-feature-set",
+        choices=sorted(AUDIO_FEATURE_SETS),
+        default="legacy-v2",
+        help="opt into causal noise-normalized spectral-band audio features",
+    )
+    train.add_argument(
         "--sequence-normalization",
         choices=("none", "percentile-rank"),
         default="percentile-rank",
@@ -118,6 +129,16 @@ def build_parser() -> argparse.ArgumentParser:
     train_serve.add_argument("--cache-dir", type=Path, default=_default_cache())
     train_serve.add_argument("--output", type=Path, help="new validation experiment report")
     train_serve.add_argument("--target-radius", type=float, default=1.0)
+    train_serve.add_argument(
+        "--serve-input-profile",
+        choices=(
+            "full",
+            "visual-plus-normalized-band-audio",
+            "normalized-band-audio-only",
+        ),
+        default="full",
+        help="ablate legacy audio or all non-normalized-band inputs in the serve head",
+    )
     train_serve.add_argument("--epochs", type=int, default=180)
     train_serve.add_argument("--batch-size", type=int, default=2048)
     train_serve.add_argument("--learning-rate", type=float, default=0.02)
@@ -192,6 +213,11 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--model", required=True, type=Path)
     evaluate.add_argument("--cache-dir", type=Path, default=_default_cache())
     evaluate.add_argument("--split", choices=("validation", "test", "challenge"), default="test")
+    evaluate.add_argument(
+        "--retrospective",
+        action="store_true",
+        help="mark a previously inspected non-validation split as retrospective",
+    )
     evaluate.add_argument("--output", type=Path)
 
     evaluate_serve = subparsers.add_parser(
@@ -203,6 +229,11 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_serve.add_argument("--cache-dir", type=Path, default=_default_cache())
     evaluate_serve.add_argument(
         "--split", choices=("validation", "test", "challenge"), default="test"
+    )
+    evaluate_serve.add_argument(
+        "--retrospective",
+        action="store_true",
+        help="mark a previously inspected non-validation split as retrospective",
     )
     evaluate_serve.add_argument("--output", type=Path)
 
@@ -476,6 +507,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 use_advanced_visual=not arguments.no_advanced_visual,
                 use_audio=not arguments.no_audio,
                 audio_sample_rate=arguments.audio_sample_rate,
+                audio_feature_set=arguments.audio_feature_set,
                 sequence_normalization=arguments.sequence_normalization,
             )
             training = TrainingConfig(
@@ -504,6 +536,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.model,
                 arguments.cache_dir,
                 target_radius_seconds=arguments.target_radius,
+                serve_input_profile=arguments.serve_input_profile,
                 training_config=TrainingConfig(
                     epochs=arguments.epochs,
                     batch_size=arguments.batch_size,
@@ -641,6 +674,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.model,
                 arguments.cache_dir,
                 split=arguments.split,
+                retrospective=arguments.retrospective,
                 output_path=arguments.output,
                 progress=lambda message: print(message, file=sys.stderr, flush=True),
             )
@@ -655,6 +689,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.serve_model,
                 arguments.cache_dir,
                 split=arguments.split,
+                retrospective=arguments.retrospective,
                 output_path=arguments.output,
                 progress=lambda message: print(message, file=sys.stderr, flush=True),
             )

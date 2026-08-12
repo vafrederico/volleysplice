@@ -14,12 +14,14 @@ from typing import Any, Sequence
 import numpy as np
 
 from .config import (
+    AUDIO_NORMALIZED_FEATURE_VERSION,
     FEATURE_VERSION,
     LEGACY_FEATURE_VERSIONS,
     MODEL_TYPE,
     DecoderConfig,
     FeatureConfig,
     TrainingConfig,
+    feature_version_for_config,
 )
 from .version import __version__
 
@@ -67,6 +69,16 @@ class LogisticModel:
     def save(self, destination: str | Path) -> Path:
         if self.prediction_task not in PREDICTION_TASKS:
             raise ModelError(f"unsupported prediction task: {self.prediction_task!r}")
+        compatible_feature_versions = {feature_version_for_config(self.feature_config)}
+        if (
+            not self.feature_config.use_audio
+            and not self.feature_config.use_advanced_visual
+        ):
+            compatible_feature_versions.add("court-motion-flow-v1")
+        if self.feature_version not in compatible_feature_versions:
+            raise ModelError(
+                "model feature version does not match its feature configuration"
+            )
         model_dir = Path(destination).expanduser().resolve()
         if model_dir.exists():
             if not model_dir.is_dir() or any(model_dir.iterdir()):
@@ -146,7 +158,12 @@ def load_model(path: str | Path) -> LogisticModel:
     feature_version = metadata.get("featureVersion")
     if (
         metadata.get("modelType") != MODEL_TYPE
-        or feature_version not in {FEATURE_VERSION, *LEGACY_FEATURE_VERSIONS}
+        or feature_version
+        not in {
+            FEATURE_VERSION,
+            AUDIO_NORMALIZED_FEATURE_VERSION,
+            *LEGACY_FEATURE_VERSIONS,
+        }
     ):
         raise ModelError("unsupported model or feature type")
     weights_file = metadata.get("weightsFile")
@@ -198,6 +215,11 @@ def load_model(path: str | Path) -> LogisticModel:
     prediction_task = metadata.get("predictionTask", RALLY_LIVE_TASK)
     if prediction_task not in PREDICTION_TASKS:
         raise ModelError(f"unsupported model predictionTask: {prediction_task!r}")
+    compatible_feature_versions = {feature_version_for_config(feature_config)}
+    if not feature_config.use_audio and not feature_config.use_advanced_visual:
+        compatible_feature_versions.add("court-motion-flow-v1")
+    if feature_version not in compatible_feature_versions:
+        raise ModelError("model feature version does not match its feature configuration")
     return LogisticModel(
         feature_config=feature_config,
         feature_names=names,
@@ -399,5 +421,6 @@ def train_logistic_model(
         bias=float(best_bias),
         decoder=decoder,
         training_summary=summary,
+        feature_version=feature_version_for_config(feature_config),
         prediction_task=prediction_task,
     )

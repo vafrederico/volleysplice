@@ -29,7 +29,12 @@ from .model import (
     load_model,
     train_logistic_model,
 )
-from .pipeline import PreparedRecording, _manifest_digest, _prepare_many
+from .pipeline import (
+    PreparedRecording,
+    _manifest_digest,
+    _prepare_many,
+    assessment_role_for_split,
+)
 from .schema import Interval, ManifestError, Recording, load_manifest
 from .serve import (
     ServeCompositionConfig,
@@ -45,6 +50,59 @@ from .version import __version__
 
 SERVE_TARGET_ID = "serve-contact-window-v1"
 SHORT_RALLY_SECONDS = 3.0
+FULL_SERVE_INPUT_PROFILE = "full"
+NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE = "visual-plus-normalized-band-audio"
+NEW_AUDIO_ONLY_SERVE_INPUT_PROFILE = "normalized-band-audio-only"
+SERVE_INPUT_PROFILES = {
+    FULL_SERVE_INPUT_PROFILE,
+    NO_LEGACY_AUDIO_SERVE_INPUT_PROFILE,
+    NEW_AUDIO_ONLY_SERVE_INPUT_PROFILE,
+}
+
+
+def _is_normalized_band_audio(name: str) -> bool:
+    base = name.split("/", 1)[-1]
+    return base.startswith("audio_band_") or base in {
+        "audio_noise_removed_broadband",
+        "audio_noise_normalized_flux",
+    }
+
+
+def _serve_input_mask(
+    feature_names: Sequence[str], profile: str
+) -> np.ndarray:
+    if profile not in SERVE_INPUT_PROFILES:
+        raise ValueError(f"unsupported serve input profile: {profile!r}")
+    normalized_audio = np.asarray(
+        [_is_normalized_band_audio(name) for name in feature_names], dtype=np.bool_
+    )
+    if profile != FULL_SERVE_INPUT_PROFILE and not np.any(normalized_audio):
+        raise ModelError(
+            "normalized-band serve input profiles require normalized audio features"
+        )
+    if profile == FULL_SERVE_INPUT_PROFILE:
+        return np.ones(len(feature_names), dtype=np.bool_)
+    if profile == NEW_AUDIO_ONLY_SERVE_INPUT_PROFILE:
+        return normalized_audio
+    legacy_audio = np.asarray(
+        [
+            name.split("/", 1)[-1].startswith("audio_")
+            and not normalized_audio[index]
+            for index, name in enumerate(feature_names)
+        ],
+        dtype=np.bool_,
+    )
+    return ~legacy_audio
+
+
+def _masked_serve_values(values: np.ndarray, retained: np.ndarray) -> np.ndarray:
+    if retained.shape != (values.shape[1],):
+        raise ModelError("serve input mask does not match the feature matrix")
+    if np.all(retained):
+        return values
+    masked = values.copy()
+    masked[:, ~retained] = 0.0
+    return masked
 
 
 @dataclass(frozen=True)
@@ -532,6 +590,18 @@ def _delta(composed: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]
     return result
 
 
+def _serve_input_profile_metadata(serve_model: LogisticModel) -> dict[str, Any]:
+    stored = serve_model.training_summary.get("serveInputProfile")
+    if isinstance(stored, dict):
+        return stored
+    return {
+        "id": FULL_SERVE_INPUT_PROFILE,
+        "retainedInputs": len(serve_model.feature_names),
+        "removedInputs": 0,
+        "legacyDefault": True,
+    }
+
+
 def _build_report(
     prepared: Sequence[PreparedRecording],
     rally_model: LogisticModel,
@@ -542,6 +612,7 @@ def _build_report(
     dataset: str,
     manifest_sha256: str,
     split: str,
+    retrospective: bool = False,
     selection: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
@@ -561,18 +632,22 @@ def _build_report(
         "dataset": dataset,
         "manifestSha256": manifest_sha256,
         "split": split,
-        "assessmentRole": "tuning-only" if split == "validation" else "held-out-evaluation",
+        "assessmentRole": assessment_role_for_split(
+            split, retrospective=retrospective
+        ),
         "models": {
             "rally": {"sha256": rally_model.artifact_sha256, "task": rally_model.prediction_task},
             "serve": {"sha256": serve_model.artifact_sha256, "task": serve_model.prediction_task},
         },
         "serveTarget": serve_model.training_summary.get("serveTarget"),
+        "serveInputProfile": _serve_input_profile_metadata(serve_model),
         "serveDecoder": serve_decoder.to_dict(),
         "composition": composition.to_dict(),
         "selection": selection,
         "serveSpotting": {
             "at0.5Seconds": _serve_metrics(predictions, 0.5),
             "at1Second": _serve_metrics(predictions, 1.0),
+            "at2Seconds": _serve_metrics(predictions, 2.0),
         },
         "baseline": baseline,
         "composed": composed,
@@ -608,18 +683,27 @@ def train_serve_dataset(
     cache_dir: str | Path,
     *,
     target_radius_seconds: float = 1.0,
+    serve_input_profile: str = FULL_SERVE_INPUT_PROFILE,
     training_config: TrainingConfig | None = None,
     output_path: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     if not math.isfinite(target_radius_seconds) or target_radius_seconds < 0:
         raise ValueError("serve target radius must be non-negative")
+    if serve_input_profile not in SERVE_INPUT_PROFILES:
+        raise ValueError(
+            f"serve_input_profile must be one of {sorted(SERVE_INPUT_PROFILES)}"
+        )
     destination = Path(model_destination).expanduser().resolve()
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
         raise ModelError(f"model destination is not an empty directory: {destination}")
     report_destination = Path(output_path).expanduser().resolve() if output_path else None
     if report_destination is not None and report_destination.exists():
         raise ModelError(f"evaluation output already exists: {report_destination}")
+    if report_destination is not None and (
+        report_destination == destination or destination in report_destination.parents
+    ):
+        raise ModelError("evaluation output must not be inside the model destination")
 
     started = time.perf_counter()
     rally_model = load_model(rally_model_path)
@@ -651,12 +735,25 @@ def train_serve_dataset(
     train_labels = [targets(item)[item.sample_mask] for item in training]
     validation_labels = [targets(item)[item.sample_mask] for item in validation]
     _validate_serve_validation_targets(validation_labels)
+    retained_inputs = _serve_input_mask(rally_model.feature_names, serve_input_profile)
+    train_values = [
+        _masked_serve_values(
+            item.contextual_values[item.sample_mask], retained_inputs
+        )
+        for item in training
+    ]
+    validation_values = [
+        _masked_serve_values(
+            item.contextual_values[item.sample_mask], retained_inputs
+        )
+        for item in validation
+    ]
     if progress is not None:
         progress("Fitting the serve-contact specialist")
     serve_model = train_logistic_model(
-        [item.contextual_values[item.sample_mask] for item in training],
+        train_values,
         train_labels,
-        [item.contextual_values[item.sample_mask] for item in validation],
+        validation_values,
         validation_labels,
         rally_model.feature_config,
         rally_model.feature_names,
@@ -686,6 +783,22 @@ def train_serve_dataset(
                 "id": SERVE_TARGET_ID,
                 "radiusSeconds": target_radius_seconds,
                 "contactDefinition": "rally start under serve-contact-to-dead-ball-v1",
+            },
+            "serveInputProfile": {
+                "id": serve_input_profile,
+                "retainedInputs": int(np.sum(retained_inputs)),
+                "removedInputs": int(np.sum(~retained_inputs)),
+                "removedFeatureNames": [
+                    name
+                    for name, retained in zip(
+                        rally_model.feature_names, retained_inputs, strict=True
+                    )
+                    if not retained
+                ],
+                "masking": (
+                    "removed inputs are zeroed before normalization during fitting; "
+                    "their persisted standardized coefficients are exactly zero"
+                ),
             },
         }
     )
@@ -732,9 +845,11 @@ def evaluate_serve_dataset(
     cache_dir: str | Path,
     *,
     split: str = "test",
+    retrospective: bool = False,
     output_path: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    assessment_role_for_split(split, retrospective=retrospective)
     destination = Path(output_path).expanduser().resolve() if output_path else None
     if destination is not None and destination.exists():
         raise ModelError(f"evaluation output already exists: {destination}")
@@ -769,6 +884,7 @@ def evaluate_serve_dataset(
         dataset=manifest.name,
         manifest_sha256=manifest_sha256,
         split=split,
+        retrospective=retrospective,
         selection=serve_model.training_summary.get("selection"),
     )
     if destination is not None:

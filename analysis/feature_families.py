@@ -14,6 +14,8 @@ FEATURE_FAMILY_KINDS = {
     "audio_level": "added",
     "audio_onset": "added",
     "audio_cadence": "added",
+    "audio_normalized": "added",
+    "audio_frequency": "added",
 }
 
 
@@ -48,6 +50,13 @@ def feature_family(name: str) -> str:
     ):
         return "camera_quality"
     if base.startswith("audio_"):
+        if base.startswith("audio_band_"):
+            return "audio_frequency"
+        if base in {
+            "audio_noise_removed_broadband",
+            "audio_noise_normalized_flux",
+        }:
+            return "audio_normalized"
         if base in {
             "audio_available",
             "audio_rms",

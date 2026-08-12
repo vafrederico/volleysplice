@@ -56,6 +56,14 @@ class PreparedRecording:
     sample_mask: np.ndarray
 
 
+def assessment_role_for_split(split: str, *, retrospective: bool = False) -> str:
+    if split == "validation":
+        if retrospective:
+            raise ValueError("validation is tuning-only and cannot be retrospective")
+        return "tuning-only"
+    return "retrospective-regression" if retrospective else "held-out-evaluation"
+
+
 def _manifest_digest(manifest: DatasetManifest) -> str:
     snapshots: list[dict[str, Any]] = []
     for recording in manifest.recordings:
@@ -649,10 +657,12 @@ def evaluate_dataset(
     cache_dir: str | Path,
     *,
     split: str = "test",
+    retrospective: bool = False,
     output_path: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     evaluation_started = time.perf_counter()
+    assessment_role_for_split(split, retrospective=retrospective)
     if output_path is not None and Path(output_path).expanduser().resolve().exists():
         raise ModelError(f"evaluation output already exists: {Path(output_path).expanduser().resolve()}")
     model = load_model(model_path)
@@ -725,7 +735,9 @@ def evaluate_dataset(
         "manifestSha256": current_digest,
         "modelSha256": model.artifact_sha256,
         "split": split,
-        "assessmentRole": "tuning-only" if split == "validation" else "held-out-evaluation",
+        "assessmentRole": assessment_role_for_split(
+            split, retrospective=retrospective
+        ),
         "decoder": model.decoder.to_dict(),
         "matching": {"minimumIntervalIoU": 0.5},
         "processing": {

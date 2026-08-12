@@ -10,10 +10,17 @@ from unittest.mock import patch
 
 import numpy as np
 
-from analysis.config import FeatureConfig
+from analysis.config import (
+    AUDIO_NORMALIZED_FEATURE_VERSION,
+    FEATURE_VERSION,
+    NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+    FeatureConfig,
+    feature_version_for_config,
+)
 from analysis.features import (
     FeatureSequence,
     VideoMetadata,
+    _cache_key,
     cached_features,
     contextualize,
     extract_features,
@@ -29,6 +36,37 @@ except Exception:  # dependency test must also tolerate binary/ABI import failur
 
 
 class CacheIntegrityTests(unittest.TestCase):
+    def test_audio_feature_set_is_opt_in_and_round_trips(self) -> None:
+        legacy = FeatureConfig()
+        enhanced = FeatureConfig(
+            audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET
+        )
+
+        self.assertNotIn("audio_feature_set", legacy.to_dict())
+        self.assertEqual(
+            FeatureConfig.from_dict(legacy.to_dict()).audio_feature_set, "legacy-v2"
+        )
+        self.assertEqual(FeatureConfig.from_dict(enhanced.to_dict()), enhanced)
+        self.assertEqual(feature_version_for_config(legacy), FEATURE_VERSION)
+        self.assertEqual(
+            feature_version_for_config(enhanced), AUDIO_NORMALIZED_FEATURE_VERSION
+        )
+        self.assertNotEqual(
+            _cache_key(Path("/tmp/source.mp4"), legacy, None, "a" * 64),
+            _cache_key(Path("/tmp/source.mp4"), enhanced, None, "a" * 64),
+        )
+
+        with self.assertRaisesRegex(ValueError, "require use_audio"):
+            FeatureConfig(
+                use_audio=False,
+                audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+            ).validate()
+        with self.assertRaisesRegex(ValueError, "at least a 16000 Hz"):
+            FeatureConfig(
+                audio_sample_rate=8000,
+                audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+            ).validate()
+
     def test_old_feature_config_defaults_to_raw_sequence_values(self) -> None:
         legacy = FeatureConfig().to_dict()
         legacy.pop("sequence_normalization")

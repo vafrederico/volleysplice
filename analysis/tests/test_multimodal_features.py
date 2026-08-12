@@ -7,7 +7,11 @@ from pathlib import Path
 
 import numpy as np
 
-from analysis.config import DecoderConfig, FeatureConfig
+from analysis.config import (
+    NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+    DecoderConfig,
+    FeatureConfig,
+)
 from analysis.feature_families import (
     FEATURE_FAMILY_KINDS,
     base_feature_name,
@@ -54,6 +58,7 @@ class FeatureFamilyCoverageTests(unittest.TestCase):
             resize_width=64,
             resize_height=36,
             grid_size=2,
+            audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET,
             context_offsets_seconds=offsets,
             sequence_normalization="none",
         )
@@ -172,6 +177,50 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(values.shape, (len(times), len(_audio_feature_names(config))))
         self.assertTrue(np.isfinite(values).all())
         np.testing.assert_array_equal(values, np.zeros_like(values))
+
+    def test_noise_normalized_bands_are_scale_stable_and_frequency_specific(self) -> None:
+        config = FeatureConfig(
+            analysis_fps=4.0,
+            use_optical_flow=False,
+            use_advanced_visual=False,
+            use_audio=True,
+            audio_sample_rate=16000,
+            audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+            context_offsets_seconds=(0.0,),
+            sequence_normalization="none",
+        )
+        times = np.arange(0.0, 4.0, 1.0 / config.analysis_fps, dtype=np.float64)
+        sample_times = np.arange(4 * config.audio_sample_rate) / config.audio_sample_rate
+        noise = np.random.default_rng(17).normal(0.0, 0.001, len(sample_times))
+        samples = (
+            0.02 * np.sin(2 * np.pi * 120.0 * sample_times) + noise
+        ).astype(np.float32)
+        burst = (sample_times >= 2.0) & (sample_times < 2.05)
+        samples[burst] += (
+            0.35 * np.sin(2 * np.pi * 5200.0 * sample_times[burst])
+        ).astype(np.float32)
+
+        values = _audio_features_from_samples(samples, times, config, available=True)
+        scaled = _audio_features_from_samples(
+            samples * np.float32(0.25), times, config, available=True
+        )
+        names = _audio_feature_names(config)
+        high_flux = names.index("audio_band_4000_7800_snr_flux")
+        low_flux = names.index("audio_band_80_250_snr_flux")
+        normalized = [
+            index
+            for index, name in enumerate(names)
+            if name.startswith("audio_band_")
+            or name.startswith("audio_noise_normalized")
+            or name.startswith("audio_noise_removed")
+        ]
+        burst_row = int(np.argmin(np.abs(times - 2.0)))
+
+        self.assertEqual(int(np.argmax(values[:, high_flux])), burst_row)
+        self.assertGreater(values[burst_row, high_flux], values[burst_row, low_flux])
+        np.testing.assert_allclose(
+            values[:, normalized], scaled[:, normalized], rtol=2e-4, atol=2e-4
+        )
 
 
 class ContextNormalizationTests(unittest.TestCase):

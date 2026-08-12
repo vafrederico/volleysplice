@@ -6,9 +6,16 @@ from typing import Any
 
 
 FEATURE_VERSION = "audiovisual-motion-quality-v2"
+AUDIO_NORMALIZED_FEATURE_VERSION = "audiovisual-noise-normalized-audio-v3"
 LEGACY_FEATURE_VERSIONS = {"court-motion-flow-v1"}
 MODEL_TYPE = "weighted-logistic-v1"
 SEQUENCE_NORMALIZATIONS = {"none", "percentile-rank"}
+LEGACY_AUDIO_FEATURE_SET = "legacy-v2"
+NOISE_NORMALIZED_AUDIO_FEATURE_SET = "noise-normalized-bands-v3"
+AUDIO_FEATURE_SETS = {
+    LEGACY_AUDIO_FEATURE_SET,
+    NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+}
 
 
 def _finite_number(value: Any) -> bool:
@@ -25,6 +32,7 @@ class FeatureConfig:
     use_advanced_visual: bool = True
     use_audio: bool = True
     audio_sample_rate: int = 16000
+    audio_feature_set: str = LEGACY_AUDIO_FEATURE_SET
     context_offsets_seconds: tuple[float, ...] = (-2.0, -1.0, 0.0, 1.0, 2.0)
     sequence_normalization: str = "percentile-rank"
 
@@ -54,6 +62,19 @@ class FeatureConfig:
             or not 2000 <= self.audio_sample_rate <= 48000
         ):
             raise ValueError("audio_sample_rate must be between 2000 and 48000")
+        if self.audio_feature_set not in AUDIO_FEATURE_SETS:
+            raise ValueError(
+                f"audio_feature_set must be one of {sorted(AUDIO_FEATURE_SETS)}"
+            )
+        if self.audio_feature_set == NOISE_NORMALIZED_AUDIO_FEATURE_SET:
+            if not self.use_audio:
+                raise ValueError(
+                    "noise-normalized audio features require use_audio to be enabled"
+                )
+            if self.audio_sample_rate < 16000:
+                raise ValueError(
+                    "noise-normalized audio features require at least a 16000 Hz sample rate"
+                )
         if not self.context_offsets_seconds:
             raise ValueError("at least one context offset is required")
         if 0.0 not in self.context_offsets_seconds:
@@ -69,6 +90,10 @@ class FeatureConfig:
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["context_offsets_seconds"] = list(self.context_offsets_seconds)
+        # Keep old artifact/cache payloads byte-for-byte compatible. The explicit
+        # field is only needed for the opt-in v3 feature signature.
+        if self.audio_feature_set == LEGACY_AUDIO_FEATURE_SET:
+            value.pop("audio_feature_set")
         return value
 
     @classmethod
@@ -82,6 +107,7 @@ class FeatureConfig:
             "use_advanced_visual",
             "use_audio",
             "audio_sample_rate",
+            "audio_feature_set",
             "context_offsets_seconds",
             "sequence_normalization",
         }
@@ -96,6 +122,7 @@ class FeatureConfig:
         kwargs.setdefault("use_advanced_visual", False)
         kwargs.setdefault("use_audio", False)
         kwargs.setdefault("audio_sample_rate", 16000)
+        kwargs.setdefault("audio_feature_set", LEGACY_AUDIO_FEATURE_SET)
         if "context_offsets_seconds" in kwargs:
             if not isinstance(kwargs["context_offsets_seconds"], (list, tuple)) or not all(
                 _finite_number(item) for item in kwargs["context_offsets_seconds"]
@@ -107,6 +134,17 @@ class FeatureConfig:
         result = cls(**kwargs)
         result.validate()
         return result
+
+
+def feature_version_for_config(
+    config: FeatureConfig, *, legacy_visual: bool = False
+) -> str:
+    """Return the immutable extractor version implied by a feature config."""
+    if config.audio_feature_set == NOISE_NORMALIZED_AUDIO_FEATURE_SET:
+        return AUDIO_NORMALIZED_FEATURE_VERSION
+    if legacy_visual:
+        return "court-motion-flow-v1"
+    return FEATURE_VERSION
 
 
 @dataclass(frozen=True)

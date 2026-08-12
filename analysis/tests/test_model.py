@@ -8,11 +8,47 @@ from pathlib import Path
 
 import numpy as np
 
-from analysis.config import DecoderConfig, FeatureConfig, TrainingConfig
+from analysis.config import (
+    AUDIO_NORMALIZED_FEATURE_VERSION,
+    NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+    DecoderConfig,
+    FeatureConfig,
+    TrainingConfig,
+)
 from analysis.model import ModelError, load_model, train_logistic_model
 
 
 class LogisticModelTests(unittest.TestCase):
+    def test_training_records_noise_normalized_audio_feature_version(self) -> None:
+        train_values, train_labels, validation_values, validation_labels = (
+            self.training_inputs()
+        )
+        model = train_logistic_model(
+            train_values,
+            train_labels,
+            validation_values,
+            validation_labels,
+            FeatureConfig(
+                audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+                context_offsets_seconds=(0.0,),
+            ),
+            ("motion", "posture"),
+            DecoderConfig(smoothing_seconds=0.5, min_live_seconds=0.5),
+            TrainingConfig(epochs=2, batch_size=3, patience=2),
+        )
+
+        self.assertEqual(model.feature_version, AUDIO_NORMALIZED_FEATURE_VERSION)
+
+    def test_save_rejects_feature_version_and_config_mismatch(self) -> None:
+        model = self.train()
+        model.feature_config = FeatureConfig(
+            audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET
+        )
+
+        with tempfile.TemporaryDirectory(prefix="volleycut-version-mismatch-") as directory:
+            with self.assertRaisesRegex(ModelError, "feature version"):
+                model.save(Path(directory) / "model")
+
     @staticmethod
     def training_inputs() -> tuple[
         list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.ndarray]

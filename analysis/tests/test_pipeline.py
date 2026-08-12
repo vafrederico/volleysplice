@@ -15,12 +15,24 @@ from analysis.pipeline import (
     PreparedRecording,
     _manifest_digest,
     _tune_decoder,
+    assessment_role_for_split,
     evaluate_dataset,
 )
 from analysis.schema import Recording, labels_for_times, load_manifest
 
 
 class ImmutableEvaluationTests(unittest.TestCase):
+    def test_assessment_role_marks_retrospective_runs_explicitly(self) -> None:
+        self.assertEqual(
+            assessment_role_for_split("test", retrospective=True),
+            "retrospective-regression",
+        )
+        self.assertEqual(
+            assessment_role_for_split("challenge"), "held-out-evaluation"
+        )
+        with self.assertRaisesRegex(ValueError, "validation is tuning-only"):
+            assessment_role_for_split("validation", retrospective=True)
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(prefix="volleycut-evaluation-test-")
         self.addCleanup(self.temporary_directory.cleanup)

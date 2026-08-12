@@ -17,6 +17,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Audiovisual serve-specialist experiment — 2026-08-11](./serve-specialist-audiovisual-experiment-2026-08-11.md) — 450-input contact head, corrected cadence-parity evaluation, strict short/ace recall gains, precision cost, and the non-promotion decision.
 - [Rally model with serve-probability feature — 2026-08-11](./rally-with-serve-feature-experiment-2026-08-11.md) — source-group-cross-fitted stacking test, exact missed-event audit, matched and clamped controls, and a negative promotion result.
 - [Serve-evidence gate and peak-window rally feature — 2026-08-11](./serve-evidence-gate-and-peak-window-2026-08-11.md) — no-fallback evidence gating, decoded two-second peak features, cross-fitted training, false-peak audit, and non-promotion decisions.
+- [Noise-normalized frequency-band audio experiment — 2026-08-11](./noise-normalized-audio-serve-experiment-2026-08-11.md) — causal spectral background subtraction, six-band serve features, matched rally/serve retraining, slice results, coefficient controls, and a non-promotion decision.
 
 ## Related context
 
