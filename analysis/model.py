@@ -31,11 +31,13 @@ RALLY_LIVE_TASK = "rally-live"
 SERVE_CONTACT_TASK = "serve-contact"
 STACKED_RALLY_TASK = "rally-live-stacked-serve"
 DEAD_BALL_TASK = "dead-ball-boundary"
+DEAD_STATE_TASK = "dead-time-state"
 PREDICTION_TASKS = {
     RALLY_LIVE_TASK,
     SERVE_CONTACT_TASK,
     STACKED_RALLY_TASK,
     DEAD_BALL_TASK,
+    DEAD_STATE_TASK,
 }
 
 

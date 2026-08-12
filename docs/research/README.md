@@ -19,6 +19,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Serve-evidence gate and peak-window rally feature — 2026-08-11](./serve-evidence-gate-and-peak-window-2026-08-11.md) — no-fallback evidence gating, decoded two-second peak features, cross-fitted training, false-peak audit, and non-promotion decisions.
 - [Noise-normalized frequency-band audio experiment — 2026-08-11](./noise-normalized-audio-serve-experiment-2026-08-11.md) — causal spectral background subtraction, six-band serve features, matched rally/serve retraining, slice results, coefficient controls, and a non-promotion decision.
 - [v4/v5 add-only and boundary fusion experiment — 2026-08-11](./dual-serve-v4-v5-fusion-experiment-2026-08-11.md) — two-head confidence gates, overlap-component boundary selection, frozen validation replay, category tradeoffs, and a non-promotion decision.
+- [End-boundary and dead-state audio experiment — 2026-08-12](./end-and-dead-state-audio-experiment-2026-08-12.md) — end-pulse audio ablations, local transition refinement, direct global-dead parity control, and a non-promotion decision.
 
 ## Related context
 

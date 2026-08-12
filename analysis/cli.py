@@ -171,10 +171,59 @@ def build_parser() -> argparse.ArgumentParser:
     train_dead_ball.add_argument("--cache-dir", type=Path, default=_default_cache())
     train_dead_ball.add_argument("--output", type=Path)
     train_dead_ball.add_argument("--target-radius", type=float, default=0.5)
+    train_dead_ball.add_argument(
+        "--dead-ball-input-profile",
+        choices=(
+            "full",
+            "visual-plus-legacy-audio",
+            "visual-plus-normalized-band-audio",
+            "normalized-band-audio-only",
+        ),
+        default="full",
+        help="ablate legacy audio or all non-normalized-band inputs in the dead-ball head",
+    )
     train_dead_ball.add_argument("--epochs", type=int, default=120)
     train_dead_ball.add_argument("--batch-size", type=int, default=2048)
     train_dead_ball.add_argument("--learning-rate", type=float, default=0.02)
     train_dead_ball.add_argument("--seed", type=int, default=7)
+
+    train_dead_state = subparsers.add_parser(
+        "train-dead-state",
+        help="train a post-rally dead-state transition head and select v5 end refinement",
+    )
+    train_dead_state.add_argument("--manifest", required=True, type=Path)
+    train_dead_state.add_argument("--rally-model", required=True, type=Path)
+    train_dead_state.add_argument("--serve-model", required=True, type=Path)
+    train_dead_state.add_argument("--model", required=True, type=Path)
+    train_dead_state.add_argument("--cache-dir", type=Path, default=_default_cache())
+    train_dead_state.add_argument("--output", type=Path)
+    train_dead_state.add_argument("--before-end-seconds", type=float, default=2.0)
+    train_dead_state.add_argument("--after-end-seconds", type=float, default=2.0)
+    train_dead_state.add_argument("--pre-serve-setup-seconds", type=float, default=1.0)
+    train_dead_state.add_argument(
+        "--target-mode",
+        choices=("end-transition", "global-dead"),
+        default="end-transition",
+        help=(
+            "train the local end-transition target, or the global inverse-rally-live "
+            "dead-state control"
+        ),
+    )
+    train_dead_state.add_argument(
+        "--dead-state-input-profile",
+        choices=(
+            "full",
+            "visual-plus-legacy-audio",
+            "visual-plus-normalized-band-audio",
+            "normalized-band-audio-only",
+        ),
+        default="full",
+        help="select the visual/legacy/normalized-band inputs available to the dead-state head",
+    )
+    train_dead_state.add_argument("--epochs", type=int, default=120)
+    train_dead_state.add_argument("--batch-size", type=int, default=2048)
+    train_dead_state.add_argument("--learning-rate", type=float, default=0.02)
+    train_dead_state.add_argument("--seed", type=int, default=7)
 
     train_serve_evidence = subparsers.add_parser(
         "train-serve-evidence",
@@ -264,7 +313,31 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_dead_ball.add_argument(
         "--split", choices=("validation", "test", "challenge"), default="test"
     )
+    evaluate_dead_ball.add_argument(
+        "--retrospective",
+        action="store_true",
+        help="mark a previously inspected non-validation split as retrospective",
+    )
     evaluate_dead_ball.add_argument("--output", type=Path)
+
+    evaluate_dead_state = subparsers.add_parser(
+        "evaluate-dead-state",
+        help="evaluate a frozen rally, serve, and dead-state transition triplet",
+    )
+    evaluate_dead_state.add_argument("--manifest", required=True, type=Path)
+    evaluate_dead_state.add_argument("--rally-model", required=True, type=Path)
+    evaluate_dead_state.add_argument("--serve-model", required=True, type=Path)
+    evaluate_dead_state.add_argument("--model", required=True, type=Path)
+    evaluate_dead_state.add_argument("--cache-dir", type=Path, default=_default_cache())
+    evaluate_dead_state.add_argument(
+        "--split", choices=("validation", "test", "challenge"), default="test"
+    )
+    evaluate_dead_state.add_argument(
+        "--retrospective",
+        action="store_true",
+        help="mark a previously inspected non-validation split as retrospective",
+    )
+    evaluate_dead_state.add_argument("--output", type=Path)
 
     evaluate_serve_evidence = subparsers.add_parser(
         "evaluate-serve-evidence",
@@ -623,6 +696,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.model,
                 arguments.cache_dir,
                 target_radius_seconds=arguments.target_radius,
+                dead_ball_input_profile=arguments.dead_ball_input_profile,
                 training_config=TrainingConfig(
                     epochs=arguments.epochs,
                     batch_size=arguments.batch_size,
@@ -639,6 +713,41 @@ def run(argv: Sequence[str] | None = None) -> int:
                     "v4Composition": result["v4Composition"]["aggregate"],
                     "selected": result["selected"]["aggregate"],
                     "deltaSelectedVsV4": result["deltaSelectedVsV4"],
+                }
+            )
+            return 0
+        if arguments.command == "train-dead-state":
+            from .dead_state_experiment import train_dead_state_dataset
+
+            result = train_dead_state_dataset(
+                arguments.manifest,
+                arguments.rally_model,
+                arguments.serve_model,
+                arguments.model,
+                arguments.cache_dir,
+                before_end_seconds=arguments.before_end_seconds,
+                after_end_seconds=arguments.after_end_seconds,
+                pre_serve_setup_seconds=arguments.pre_serve_setup_seconds,
+                target_mode=arguments.target_mode,
+                dead_state_input_profile=arguments.dead_state_input_profile,
+                training_config=TrainingConfig(
+                    epochs=arguments.epochs,
+                    batch_size=arguments.batch_size,
+                    learning_rate=arguments.learning_rate,
+                    seed=arguments.seed,
+                ),
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "model": str(arguments.model.expanduser().resolve()),
+                    "endpointAt0.5Seconds": result["endpointAccuracy"]["selected"][
+                        "at0.5Seconds"
+                    ],
+                    "v5Composition": result["v5Composition"]["aggregate"],
+                    "selected": result["selected"]["aggregate"],
+                    "deltaSelectedVsV5": result["deltaSelectedVsV5"],
                 }
             )
             return 0
@@ -764,6 +873,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 arguments.model,
                 arguments.cache_dir,
                 split=arguments.split,
+                retrospective=arguments.retrospective,
                 output_path=arguments.output,
                 progress=lambda message: print(message, file=sys.stderr, flush=True),
             )
@@ -773,6 +883,31 @@ def run(argv: Sequence[str] | None = None) -> int:
                     "v4Composition": result["v4Composition"]["aggregate"],
                     "selected": result["selected"]["aggregate"],
                     "deltaSelectedVsV4": result["deltaSelectedVsV4"],
+                }
+            )
+            return 0
+        if arguments.command == "evaluate-dead-state":
+            from .dead_state_experiment import evaluate_dead_state_dataset
+
+            result = evaluate_dead_state_dataset(
+                arguments.manifest,
+                arguments.rally_model,
+                arguments.serve_model,
+                arguments.model,
+                arguments.cache_dir,
+                split=arguments.split,
+                retrospective=arguments.retrospective,
+                output_path=arguments.output,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
+            _json(
+                {
+                    "endpointAt0.5Seconds": result["endpointAccuracy"]["selected"][
+                        "at0.5Seconds"
+                    ],
+                    "v5Composition": result["v5Composition"]["aggregate"],
+                    "selected": result["selected"]["aggregate"],
+                    "deltaSelectedVsV5": result["deltaSelectedVsV5"],
                 }
             )
             return 0

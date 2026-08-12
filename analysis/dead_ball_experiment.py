@@ -29,7 +29,12 @@ from .model import (
     load_model,
     train_logistic_model,
 )
-from .pipeline import PreparedRecording, _manifest_digest, _prepare_many
+from .pipeline import (
+    PreparedRecording,
+    _manifest_digest,
+    _prepare_many,
+    assessment_role_for_split,
+)
 from .schema import Interval, ManifestError, load_manifest
 from .serve import (
     ServeCompositionConfig,
@@ -53,6 +58,66 @@ from .version import __version__
 DEAD_BALL_TARGET_ID = "dead-ball-boundary-window-v1"
 DEAD_BALL_EXPERIMENT_ID = "serve-anchored-dead-ball-v1"
 SHORT_RALLY_SECONDS = 3.0
+FULL_DEAD_BALL_INPUT_PROFILE = "full"
+LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE = "visual-plus-legacy-audio"
+NO_LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE = "visual-plus-normalized-band-audio"
+NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE = "normalized-band-audio-only"
+DEAD_BALL_INPUT_PROFILES = {
+    FULL_DEAD_BALL_INPUT_PROFILE,
+    LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE,
+    NO_LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE,
+    NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE,
+}
+
+
+def _is_normalized_band_audio(name: str) -> bool:
+    base = name.split("/", 1)[-1]
+    return base.startswith("audio_band_") or base in {
+        "audio_noise_removed_broadband",
+        "audio_noise_normalized_flux",
+    }
+
+
+def _dead_ball_input_mask(
+    feature_names: Sequence[str], profile: str
+) -> np.ndarray:
+    if profile not in DEAD_BALL_INPUT_PROFILES:
+        raise ValueError(f"unsupported dead-ball input profile: {profile!r}")
+    normalized_audio = np.asarray(
+        [_is_normalized_band_audio(name) for name in feature_names], dtype=np.bool_
+    )
+    if profile in {
+        NO_LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE,
+        NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE,
+    } and not np.any(normalized_audio):
+        raise ModelError(
+            "normalized-band dead-ball input profiles require normalized audio features"
+        )
+    if profile == FULL_DEAD_BALL_INPUT_PROFILE:
+        return np.ones(len(feature_names), dtype=np.bool_)
+    if profile == LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE:
+        return ~normalized_audio
+    if profile == NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE:
+        return normalized_audio
+    legacy_audio = np.asarray(
+        [
+            name.split("/", 1)[-1].startswith("audio_")
+            and not normalized_audio[index]
+            for index, name in enumerate(feature_names)
+        ],
+        dtype=np.bool_,
+    )
+    return ~legacy_audio
+
+
+def _masked_dead_ball_values(values: np.ndarray, retained: np.ndarray) -> np.ndarray:
+    if retained.shape != (values.shape[1],):
+        raise ModelError("dead-ball input mask does not match the feature matrix")
+    if np.all(retained):
+        return values
+    masked = values.copy()
+    masked[:, ~retained] = 0.0
+    return masked
 
 
 @dataclass(frozen=True)
@@ -492,8 +557,11 @@ def _crossfit_epoch_cap(
     rally_model: LogisticModel,
     config: TrainingConfig,
     *,
+    retained_inputs: np.ndarray | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[int, list[dict[str, Any]]]:
+    if retained_inputs is None:
+        retained_inputs = np.ones(len(rally_model.feature_names), dtype=np.bool_)
     groups = sorted({item.recording.source_group for item in prepared})
     if len(groups) < 3:
         raise ManifestError("dead-ball epoch selection requires three training source groups")
@@ -505,9 +573,19 @@ def _crossfit_epoch_cap(
         if progress is not None:
             progress(f"Selecting dead-ball epoch {index}/{len(groups)}: {held_out}")
         model = train_logistic_model(
-            [item.contextual_values[item.sample_mask] for item in train],
+            [
+                _masked_dead_ball_values(
+                    item.contextual_values[item.sample_mask], retained_inputs
+                )
+                for item in train
+            ],
             [labels[item.recording.id][item.sample_mask] for item in train],
-            [item.contextual_values[item.sample_mask] for item in validation],
+            [
+                _masked_dead_ball_values(
+                    item.contextual_values[item.sample_mask], retained_inputs
+                )
+                for item in validation
+            ],
             [labels[item.recording.id][item.sample_mask] for item in validation],
             rally_model.feature_config,
             rally_model.feature_names,
@@ -687,6 +765,20 @@ def _report_variant(
     return predictions, _interval_report(predictions, "candidate")
 
 
+def _dead_ball_input_profile_metadata(
+    dead_ball_model: LogisticModel,
+) -> dict[str, Any]:
+    stored = dead_ball_model.training_summary.get("deadBallInputProfile")
+    if isinstance(stored, dict):
+        return stored
+    return {
+        "id": FULL_DEAD_BALL_INPUT_PROFILE,
+        "retainedInputs": len(dead_ball_model.feature_names),
+        "removedInputs": 0,
+        "legacyDefault": True,
+    }
+
+
 def _build_report(
     prepared: Sequence[PreparedRecording],
     rally_model: LogisticModel,
@@ -702,6 +794,7 @@ def _build_report(
     dataset: str,
     manifest_sha256: str,
     split: str,
+    retrospective: bool = False,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     inputs = [
@@ -746,7 +839,9 @@ def _build_report(
         "dataset": dataset,
         "manifestSha256": manifest_sha256,
         "split": split,
-        "assessmentRole": "tuning-only" if split == "validation" else "retrospective-regression",
+        "assessmentRole": assessment_role_for_split(
+            split, retrospective=retrospective
+        ),
         "matching": {"minimumIntervalIoU": 0.5},
         "models": {
             "rally": {"sha256": rally_model.artifact_sha256, "task": rally_model.prediction_task},
@@ -757,6 +852,7 @@ def _build_report(
             },
         },
         "target": dead_ball_model.training_summary.get("deadBallTarget"),
+        "deadBallInputProfile": _dead_ball_input_profile_metadata(dead_ball_model),
         "selection": dead_ball_model.training_summary.get("selection"),
         "endSpotting": {
             "at0.25Seconds": _end_metrics(reporting_predictions, 0.25),
@@ -797,7 +893,15 @@ def _build_report(
         },
         "limitations": [
             "Validation is one reused grass source group and remains tuning evidence only.",
-            "The one-source indoor test was inspected in prior experiments and is retrospective.",
+            (
+                "This report uses validation for tuning and selection."
+                if split == "validation"
+                else (
+                    "This non-validation split was previously inspected and is retrospective."
+                    if retrospective
+                    else "This non-validation split is reported as held-out evaluation."
+                )
+            ),
             "The endpoint head is gated by the frozen serve detector and cannot recover missed serves.",
             "The centered feature context makes this an offline, non-causal boundary model.",
         ],
@@ -812,18 +916,28 @@ def train_dead_ball_dataset(
     cache_dir: str | Path,
     *,
     target_radius_seconds: float = 0.5,
+    dead_ball_input_profile: str = FULL_DEAD_BALL_INPUT_PROFILE,
     training_config: TrainingConfig | None = None,
     output_path: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     if not math.isfinite(target_radius_seconds) or target_radius_seconds < 0:
         raise ValueError("dead-ball target radius must be non-negative")
+    if dead_ball_input_profile not in DEAD_BALL_INPUT_PROFILES:
+        raise ValueError(
+            "dead_ball_input_profile must be one of "
+            f"{sorted(DEAD_BALL_INPUT_PROFILES)}"
+        )
     destination = Path(model_destination).expanduser().resolve()
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
         raise ModelError(f"model destination is not an empty directory: {destination}")
     report_destination = Path(output_path).expanduser().resolve() if output_path else None
     if report_destination is not None and report_destination.exists():
         raise ModelError(f"evaluation output already exists: {report_destination}")
+    if report_destination is not None and (
+        report_destination == destination or destination in report_destination.parents
+    ):
+        raise ModelError("evaluation output must not be inside the model destination")
     started = time.perf_counter()
     rally_model = load_model(rally_model_path)
     serve_model = load_model(serve_model_path)
@@ -854,15 +968,28 @@ def train_dead_ball_dataset(
     _validate_dead_ball_validation(
         [labels[item.recording.id][item.sample_mask] for item in validation]
     )
+    retained_inputs = _dead_ball_input_mask(
+        rally_model.feature_names, dead_ball_input_profile
+    )
     config = training_config or TrainingConfig(epochs=120)
     epoch_cap, epoch_folds = _crossfit_epoch_cap(
-        training, labels, rally_model, config, progress=progress
+        training,
+        labels,
+        rally_model,
+        config,
+        retained_inputs=retained_inputs,
+        progress=progress,
     )
     if progress is not None:
         progress(f"Fitting final dead-ball head for {epoch_cap} fixed epochs")
     final_config = replace(config, epochs=epoch_cap, patience=epoch_cap)
     dead_ball_model = train_logistic_model(
-        [item.contextual_values[item.sample_mask] for item in training],
+        [
+            _masked_dead_ball_values(
+                item.contextual_values[item.sample_mask], retained_inputs
+            )
+            for item in training
+        ],
         [labels[item.recording.id][item.sample_mask] for item in training],
         [],
         [],
@@ -913,6 +1040,22 @@ def train_dead_ball_dataset(
                 "id": DEAD_BALL_TARGET_ID,
                 "radiusSeconds": target_radius_seconds,
                 "boundaryDefinition": "rally end under serve-contact-to-dead-ball-v1",
+            },
+            "deadBallInputProfile": {
+                "id": dead_ball_input_profile,
+                "retainedInputs": int(np.sum(retained_inputs)),
+                "removedInputs": int(np.sum(~retained_inputs)),
+                "removedFeatureNames": [
+                    name
+                    for name, retained in zip(
+                        rally_model.feature_names, retained_inputs, strict=True
+                    )
+                    if not retained
+                ],
+                "masking": (
+                    "removed inputs are zeroed before normalization during fitting; "
+                    "their persisted standardized coefficients are exactly zero"
+                ),
             },
             "epochSelection": {
                 "method": "leave-one-training-source-group-out-median-best-epoch-v1",
@@ -970,6 +1113,7 @@ def evaluate_dead_ball_dataset(
     cache_dir: str | Path,
     *,
     split: str = "test",
+    retrospective: bool = False,
     output_path: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
@@ -1024,6 +1168,7 @@ def evaluate_dead_ball_dataset(
         dataset=manifest.name,
         manifest_sha256=manifest_sha256,
         split=split,
+        retrospective=retrospective,
     )
     if destination is not None:
         atomic_write_text(destination, json.dumps(report, indent=2, allow_nan=False) + "\n")

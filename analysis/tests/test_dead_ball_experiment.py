@@ -8,17 +8,29 @@ from unittest.mock import patch
 import numpy as np
 
 from analysis.cli import build_parser
-from analysis.config import DecoderConfig, FeatureConfig, TrainingConfig
+from analysis.config import (
+    NOISE_NORMALIZED_AUDIO_FEATURE_SET,
+    DecoderConfig,
+    FeatureConfig,
+    TrainingConfig,
+)
 from analysis.dead_ball import DeadBallDecoderConfig, DeadBallDetection
 from analysis.dead_ball_experiment import (
+    LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE,
+    NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE,
+    NO_LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE,
     DeadBallCompositionConfig,
     DeadBallInputs,
     _compose_candidate,
     _crossfit_epoch_cap,
+    _dead_ball_input_mask,
+    _dead_ball_input_profile_metadata,
+    _masked_dead_ball_values,
     _validate_model_triplet,
+    train_dead_ball_dataset,
 )
 from analysis.decoder import DecodedInterval
-from analysis.features import FeatureSequence, VideoMetadata
+from analysis.features import FeatureSequence, VideoMetadata, feature_names
 from analysis.model import (
     DEAD_BALL_TASK,
     RALLY_LIVE_TASK,
@@ -257,6 +269,113 @@ class DeadBallCompositionTests(unittest.TestCase):
 
 
 class DeadBallArtifactTests(unittest.TestCase):
+    def test_training_rejects_report_inside_model_destination_before_loading(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-dead-ball-output-") as directory:
+            model_path = Path(directory) / "model"
+            with self.assertRaisesRegex(ModelError, "must not be inside"):
+                train_dead_ball_dataset(
+                    "missing-manifest.json",
+                    "missing-rally",
+                    "missing-serve",
+                    model_path,
+                    Path(directory) / "cache",
+                    output_path=model_path / "report.json",
+                )
+
+    def test_dead_ball_input_profiles_preserve_the_full_signature(self) -> None:
+        names = (
+            "t+0s/player_motion_mean",
+            "t+0s/audio_rms",
+            "t+0s/audio_noise_floor",
+            "t+0s/audio_noise_removed_broadband",
+            "t+0s/audio_noise_normalized_flux",
+            "t+0s/audio_band_80_250_snr",
+        )
+        values = np.arange(12, dtype=np.float32).reshape(2, 6)
+
+        no_legacy = _dead_ball_input_mask(
+            names, NO_LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE
+        )
+        new_only = _dead_ball_input_mask(
+            names, NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE
+        )
+        masked = _masked_dead_ball_values(values, new_only)
+        legacy = _dead_ball_input_mask(
+            names, LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE
+        )
+
+        np.testing.assert_array_equal(
+            no_legacy, np.asarray([1, 0, 0, 1, 1, 1], dtype=np.bool_)
+        )
+        np.testing.assert_array_equal(
+            new_only, np.asarray([0, 0, 0, 1, 1, 1], dtype=np.bool_)
+        )
+        np.testing.assert_array_equal(
+            legacy, np.asarray([1, 1, 1, 0, 0, 0], dtype=np.bool_)
+        )
+        self.assertEqual(masked.shape, values.shape)
+        np.testing.assert_array_equal(masked[:, ~new_only], 0.0)
+        np.testing.assert_array_equal(masked[:, new_only], values[:, new_only])
+
+    def test_real_normalized_signature_has_expected_dead_ball_ablation_counts(self) -> None:
+        config = FeatureConfig(
+            audio_feature_set=NOISE_NORMALIZED_AUDIO_FEATURE_SET
+        )
+        names = tuple(
+            f"t{offset:+g}s/{name}"
+            for offset in config.context_offsets_seconds
+            for name in feature_names(config)
+        )
+
+        self.assertEqual(len(names), 520)
+        self.assertEqual(
+            int(
+                np.sum(
+                    _dead_ball_input_mask(
+                        names, LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE
+                    )
+                )
+            ),
+            450,
+        )
+        self.assertEqual(
+            int(
+                np.sum(
+                    _dead_ball_input_mask(
+                        names, NO_LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE
+                    )
+                )
+            ),
+            455,
+        )
+        self.assertEqual(
+            int(
+                np.sum(
+                    _dead_ball_input_mask(
+                        names, NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE
+                    )
+                )
+            ),
+            70,
+        )
+
+    def test_normalized_dead_ball_profile_rejects_legacy_signature(self) -> None:
+        with self.assertRaisesRegex(ModelError, "require normalized audio"):
+            _dead_ball_input_mask(
+                ("t+0s/player_motion_mean", "t+0s/audio_rms"),
+                NO_LEGACY_AUDIO_DEAD_BALL_INPUT_PROFILE,
+            )
+
+    def test_pre_profile_dead_ball_artifact_reports_full_input_profile(self) -> None:
+        _, _, dead = model_triplet()
+
+        profile = _dead_ball_input_profile_metadata(dead)
+
+        self.assertEqual(profile["id"], "full")
+        self.assertEqual(profile["retainedInputs"], len(dead.feature_names))
+        self.assertEqual(profile["removedInputs"], 0)
+        self.assertTrue(profile["legacyDefault"])
+
     def test_triplet_requires_exact_roles_and_hashes(self) -> None:
         rally, serve, dead = model_triplet()
         _validate_model_triplet(rally, serve, dead, manifest_sha256="manifest")
@@ -313,6 +432,8 @@ class DeadBallArtifactTests(unittest.TestCase):
                 "--rally-model", "rally",
                 "--serve-model", "serve",
                 "--model", "dead",
+                "--dead-ball-input-profile",
+                NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE,
             ]
         )
         evaluate = build_parser().parse_args(
@@ -322,10 +443,16 @@ class DeadBallArtifactTests(unittest.TestCase):
                 "--rally-model", "rally",
                 "--serve-model", "serve",
                 "--model", "dead",
+                "--retrospective",
             ]
         )
         self.assertEqual(train.command, "train-dead-ball")
+        self.assertEqual(
+            train.dead_ball_input_profile,
+            NEW_AUDIO_ONLY_DEAD_BALL_INPUT_PROFILE,
+        )
         self.assertEqual(evaluate.command, "evaluate-dead-ball")
+        self.assertTrue(evaluate.retrospective)
 
 
 if __name__ == "__main__":

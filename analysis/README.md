@@ -271,6 +271,34 @@ false. Its selected boundary rule improved validation event F1 and retrospective
 but not retrospective strict event recall. See the
 [v4/v5 fusion experiment](../docs/research/dual-serve-v4-v5-fusion-experiment-2026-08-11.md).
 
+The end-boundary experiments support two additional specialist targets. `train-dead-ball` fits a
+narrow pulse around annotated rally ends. `train-dead-state` fits either a local live-to-dead
+transition (`end-transition`, the default) or the all-frame inverse-rally control (`global-dead`).
+Both commands can ablate legacy and normalized-band audio while preserving the shared full feature
+signature:
+
+```bash
+.venv/bin/python -m analysis train-dead-state \
+  --manifest data/videos/manifest.json \
+  --rally-model data/models/rally-v5 \
+  --serve-model data/models/serve-v5 \
+  --model data/models/dead-state-v0 \
+  --dead-state-input-profile visual-plus-legacy-audio \
+  --output data/reports/dead-state-v0-validation.json
+
+.venv/bin/python -m analysis evaluate-dead-state \
+  --manifest data/videos/manifest.json \
+  --rally-model data/models/rally-v5 \
+  --serve-model data/models/serve-v5 \
+  --model data/models/dead-state-v0 \
+  --split test --retrospective \
+  --output data/reports/dead-state-v0-test.json
+```
+
+These paths remain research-only. The first audio ablation favored the legacy-audio local
+transition head and did not support promoting the new band features. See the
+[end-boundary/dead-state experiment](../docs/research/end-and-dead-state-audio-experiment-2026-08-12.md).
+
 ## What the current model does not do
 
 - It does not detect whether the whole court is visible; capture geometry must be confirmed by a person.
