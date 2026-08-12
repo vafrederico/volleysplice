@@ -226,6 +226,29 @@ npm run evaluate:multistate-features -- retrospective-test \
   --open-test
 ```
 
+## Out-of-fold component-selector study
+
+The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific
+models. Template artifacts donate configuration only; their fitted weights are never used for OOF
+predictions. The cache excludes protected rows and records generator provenance for every overlap
+component:
+
+```bash
+npm run evaluate:component-selector -- prepare-oof \
+  --manifest data/manifests/full-gold-v1.json \
+  --output-dir data/models/component-selector-oof-v1
+
+npm run evaluate:component-selector -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --oof-cache data/models/component-selector-oof-v1 \
+  --output data/reports/component-selector-v1-development.json
+```
+
+The trained selector is assessed on a generator-held grass validation source against v4, v5, and
+the exact frozen v4/v5 intersection. This is leakage-safe tuning evidence, not a full nested LOGO
+promotion study; the report predeclares the frozen intersection as the retained policy and does not
+implement a retrospective-test path.
+
 ## Experimental serve specialist
 
 The optional serve path trains a second logistic head on narrow windows around rally starts while
