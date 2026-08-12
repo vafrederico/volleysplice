@@ -185,9 +185,23 @@ The development index is
 SHA-256 is `c0c3f76d93fa3fd6580652a45618618a220fced18babf65774ed169de0432ad5`; the extractor
 configuration SHA-256 is `16361cf310edb75a090ab01f07946dc23fe030a476666f4da84b626b3fab4f92`.
 
-The nested development ablation will use the frozen step-2 report directly as its binary upstream.
-Protected test caches will be extracted only if the high-resolution candidate passes the strict
-paired development gate. The player-tracklet half of this step waits on the label pilot above.
+The nested development ablation used the frozen step-2 report directly as its binary upstream. The
+projected high-resolution features were decisively harmful in every development source group:
+
+| Development OOF candidate | F1 @ .5 | Time IoU | Objective | Live recall | End MAE |
+|---|---:|---:|---:|---:|---:|
+| frozen binary control | **.5244** | **.5131** | **.5681** | **.8382** | **1.938 s** |
+| + frozen high resolution | .3498 | .4035 | .4202 | .7116 | 2.019 s |
+
+The paired objective delta was negative for all four source groups, ranging from `-.2449` to
+`-.0522`, with mean `-.1537` and median `-.1588`. Strict matches fell from 161 to 106, and the
+high-resolution candidate found zero of 63 short rallies at IoU .5. Do not promote these features.
+Because the frozen gate failed, no protected high-resolution cache was extracted and no
+retrospective was run. The player-tracklet half of this step still waits on the label pilot above.
+
+Immutable development report:
+`reports/feature-order-2026-08-12/highres-mobilenetv2-v1-development.json`, SHA-256
+`d83a7af26228e7710f2b08431aa419d0c36399239215af972c810853de7c089a`.
 
 ## 7. Ball-dependent trajectory features
 
