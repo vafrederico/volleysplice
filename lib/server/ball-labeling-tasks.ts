@@ -77,6 +77,7 @@ export type PreparedBallLabelingTask = {
   taskPath: string;
   reviewPath: string;
   baseSha256: string;
+  baseImmutableJson: string;
   base: BallAnnotationTask;
 };
 
@@ -191,7 +192,10 @@ function canonicalJson(value: unknown): string {
 
 type RawJsonNode =
   | { kind: "array"; values: RawJsonNode[] }
-  | { kind: "object"; entries: Array<{ key: string; value: RawJsonNode }> }
+  | {
+      kind: "object";
+      entries: Array<{ key: string; value: RawJsonNode; valueSource?: string }>;
+    }
   | { kind: "number"; raw: string }
   | { kind: "scalar"; value: string | boolean | null };
 
@@ -246,7 +250,11 @@ function parseRawJson(source: string): RawJsonNode {
     }
     if (character === "{") {
       offset += 1;
-      const entries: Array<{ key: string; value: RawJsonNode }> = [];
+      const entries: Array<{
+        key: string;
+        value: RawJsonNode;
+        valueSource?: string;
+      }> = [];
       const keys = new Set<string>();
       skipWhitespace();
       if (source[offset] === "}") {
@@ -268,7 +276,14 @@ function parseRawJson(source: string): RawJsonNode {
           throw new BallLabelingWorkspaceError("task JSON object is invalid");
         }
         offset += 1;
-        entries.push({ key, value: parseNode() });
+        skipWhitespace();
+        const valueStart = offset;
+        const value = parseNode();
+        entries.push({
+          key,
+          value,
+          valueSource: source.slice(valueStart, offset),
+        });
         skipWhitespace();
         if (source[offset] === "}") {
           offset += 1;
@@ -340,6 +355,18 @@ function immutableDigestFromSource(source: string): string {
       ),
     }),
   );
+}
+
+function immutableJsonFromSource(source: string): string {
+  const root = parseRawJson(source);
+  if (root.kind !== "object") {
+    throw new BallLabelingWorkspaceError("task JSON root is invalid");
+  }
+  const matches = root.entries.filter((entry) => entry.key === "immutable");
+  if (matches.length !== 1 || !matches[0].valueSource) {
+    throw new BallLabelingWorkspaceError("task immutable provenance is missing");
+  }
+  return matches[0].valueSource;
 }
 
 function verifyImmutableDigest(task: BallAnnotationTask, source: string): void {
@@ -431,6 +458,7 @@ async function loadBaseTask(
   }
   let encoded: Uint8Array;
   let base: BallAnnotationTask;
+  let baseImmutableJson: string;
   try {
     encoded = await readFile(taskPath);
     if (sha256(encoded) !== row.initialTaskSha256) {
@@ -439,6 +467,7 @@ async function loadBaseTask(
     const source = Buffer.from(encoded).toString("utf8");
     base = parseBallAnnotationTask(JSON.parse(source) as unknown);
     verifyImmutableDigest(base, source);
+    baseImmutableJson = immutableJsonFromSource(source);
   } catch (error) {
     if (error instanceof BallLabelingWorkspaceError) throw error;
     throw new BallLabelingWorkspaceError(
@@ -458,6 +487,7 @@ async function loadBaseTask(
     taskPath,
     reviewPath: path.join(root, "reviews", expectedFilename),
     baseSha256: row.initialTaskSha256,
+    baseImmutableJson,
     base,
   };
 }
@@ -511,7 +541,26 @@ async function writeReviewArtifact(
   await mkdir(reviewsRoot, { recursive: true });
   const temporaryPath = path.join(reviewsRoot, `.${prepared.id}.${randomUUID()}.json.tmp`);
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(fullDocument, null, 2)}\n`, {
+    const immutablePlaceholder = `__VOLLEYCUT_IMMUTABLE_${randomUUID()}__`;
+    const serialized = JSON.stringify(
+      { ...fullDocument, immutable: immutablePlaceholder },
+      null,
+      2,
+    );
+    const encodedPlaceholder = JSON.stringify(immutablePlaceholder);
+    const placeholderOffset = serialized.indexOf(encodedPlaceholder);
+    if (placeholderOffset < 0) {
+      throw new BallLabelingWorkspaceError("cannot serialize immutable task provenance");
+    }
+    const artifact = `${serialized.slice(0, placeholderOffset)}${prepared.baseImmutableJson}${serialized.slice(
+      placeholderOffset + encodedPlaceholder.length,
+    )}\n`;
+    const serializedTask = parseBallAnnotationTask(JSON.parse(artifact) as unknown);
+    verifyImmutableDigest(serializedTask, artifact);
+    if (!isDeepStrictEqual(serializedTask.immutable, prepared.base.immutable)) {
+      throw new BallLabelingWorkspaceError("serialized review changed immutable provenance");
+    }
+    await writeFile(temporaryPath, artifact, {
       encoding: "utf8",
       flag: "wx",
       mode: 0o600,

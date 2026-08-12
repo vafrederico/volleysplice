@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +23,10 @@ from analysis.ball_annotation import (
     validate_ball_annotation_task,
 )
 from analysis.features import VideoMetadata
+from analysis.ball_review_repair import (
+    BallReviewRepairError,
+    canonicalize_ball_review_immutables,
+)
 from analysis.schema import Interval, Recording
 
 
@@ -435,6 +440,108 @@ class BallAnnotationSchemaTests(unittest.TestCase):
 
             with self.assertRaisesRegex(BallAnnotationError, "missing or has changed"):
                 validate_ball_annotation_task(task, task_path=task_path, verify_images=True)
+
+
+class BallReviewImmutableRepairTests(unittest.TestCase):
+    def _workspace(self, root: Path) -> tuple[Path, Path, str, dict[str, object]]:
+        tasks = root / "tasks"
+        reviews = root / "reviews"
+        tasks.mkdir()
+        reviews.mkdir()
+        task = task_fixture()
+        recording_id = task["immutable"]["recording"]["id"]
+        filename = f"{recording_id}.ball-presence.json"
+        pristine_source = json.dumps(task, indent=2, ensure_ascii=False) + "\n"
+        pristine_path = tasks / filename
+        pristine_path.write_text(pristine_source, encoding="utf-8")
+
+        review = copy.deepcopy(task)
+        frame_id = next(iter(review["annotations"]["frames"]))
+        review["annotations"]["frames"][frame_id] = {
+            "status": "reviewed",
+            "primaryBallState": "out_of_frame",
+            "objects": [],
+            "notes": "human annotation must remain exact",
+            "proposalExposure": "not_shown",
+            "proposalSources": [],
+        }
+        review["annotations"]["review"] = {
+            "status": "in_progress",
+            "annotator": None,
+            "reviewedAt": None,
+            "notes": "",
+        }
+        review_source = json.dumps(review, indent=2, ensure_ascii=False) + "\n"
+        review_source = review_source.replace('"fps": 30.0,', '"fps": 30,', 1)
+        (reviews / filename).write_text(review_source, encoding="utf-8")
+        (root / "index.json").write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "artifactType": "volleycut-ball-presence-pilot-index",
+                    "tasks": [
+                        {
+                            "recordingId": recording_id,
+                            "task": f"tasks/{filename}",
+                            "initialTaskSha256": hashlib.sha256(
+                                pristine_source.encode("utf-8")
+                            ).hexdigest(),
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return reviews, pristine_path, filename, review
+
+    def test_repairs_integral_float_drift_without_touching_source_or_annotations(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ball-review-repair-") as directory:
+            root = Path(directory)
+            reviews, _, filename, review = self._workspace(root)
+            source_before = (reviews / filename).read_bytes()
+            output = root / "reviews-canonical"
+
+            receipt = canonicalize_ball_review_immutables(root, output)
+
+            self.assertEqual((reviews / filename).read_bytes(), source_before)
+            repaired_source = (output / filename).read_text(encoding="utf-8")
+            self.assertIn('"fps": 30.0,', repaired_source)
+            repaired = validate_ball_annotation_task(output / filename)
+            self.assertEqual(repaired["annotations"], review["annotations"])
+            self.assertEqual(receipt["artifactCount"], 1)
+            artifact = receipt["artifacts"][0]
+            self.assertNotEqual(
+                artifact["sourceReviewSha256"], artifact["outputReviewSha256"]
+            )
+            self.assertTrue((output / "canonicalization-receipt.json").is_file())
+
+    def test_rejects_immutable_tampering_and_hidden_fields_without_output(self) -> None:
+        mutations = (
+            lambda review: review["immutable"]["source"]["proxy"].__setitem__(
+                "fps", 60.0
+            ),
+            lambda review: review["immutable"].__setitem__("hidden", "field"),
+            lambda review: review["annotations"]["review"].__setitem__(
+                "hidden", "field"
+            ),
+        )
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index), tempfile.TemporaryDirectory(
+                prefix="ball-review-repair-tamper-"
+            ) as directory:
+                root = Path(directory)
+                reviews, _, filename, review = self._workspace(root)
+                mutate(review)
+                (reviews / filename).write_text(
+                    json.dumps(review, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+                output = root / "reviews-canonical"
+                with self.assertRaises(BallReviewRepairError):
+                    canonicalize_ball_review_immutables(root, output)
+                self.assertFalse(output.exists())
 
 
 if __name__ == "__main__":

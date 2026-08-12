@@ -366,6 +366,11 @@ test("blind ball review catalog, saves, provenance, and image binding", async (c
         ),
       );
       assert.deepEqual(disk.suggestions, { status: "empty", model: null, frames: {} });
+      const diskSource = await fs.readFile(
+        path.join(fixture.root, "reviews", `${fixture.recordingId}.ball-presence.json`),
+        "utf8",
+      );
+      assert.match(diskSource, /"fps": 30\.0,/);
       assert.equal(disk.annotations.frames[firstFrame].status, "reviewed");
       assert.equal(disk.annotations.review.annotator, null);
       assert.deepEqual(
