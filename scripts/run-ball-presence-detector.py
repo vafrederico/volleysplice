@@ -11,6 +11,8 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from analysis.ball_detector import (
+    DETECTOR_MODES,
+    FULL_FRAME_DETECTOR_MODE,
     build_suggestion_index,
     infer_annotation_task,
     infer_video_sidecar,
@@ -66,6 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
     infer.add_argument("--nms-threshold", type=_probability, default=0.5)
     infer.add_argument("--maximum-detections", type=_positive, default=20)
     infer.add_argument("--opencv-threads", type=_positive, default=6)
+    infer.add_argument(
+        "--detector-mode",
+        choices=DETECTOR_MODES,
+        default=FULL_FRAME_DETECTOR_MODE,
+        help="frame view strategy (default: unchanged single full-frame inference)",
+    )
     infer.add_argument(
         "--limit",
         type=_positive,
@@ -134,6 +142,7 @@ def main() -> int:
             nms_threshold=arguments.nms_threshold,
             maximum_detections=arguments.maximum_detections,
             opencv_threads=arguments.opencv_threads,
+            detector_mode=arguments.detector_mode,
             limit=arguments.limit,
             progress=lambda message: print(message, file=sys.stderr, flush=True),
         )

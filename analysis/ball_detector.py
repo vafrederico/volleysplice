@@ -40,6 +40,13 @@ LICENSE_SHA256 = "0ec3668d3274bcf29e8a29e9576d5a2cd96fc78d3c5bec4387355a796e5d90
 SPORTS_BALL_CLASS_INDEX = 32
 INPUT_SIZE = 640
 STRIDES = (8, 16, 32)
+FULL_FRAME_DETECTOR_MODE = "full-frame-v1"
+FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE = "full-plus-overlap-2x2-v1"
+DETECTOR_MODES = (
+    FULL_FRAME_DETECTOR_MODE,
+    FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
+)
+TILE_OVERLAP_FRACTION = 0.20
 
 
 class BallDetectorError(RuntimeError):
@@ -70,6 +77,209 @@ class FrameDetections:
     maximum_raw_score: float
     raw_candidates_above_floor: int
     inference_milliseconds: float
+    view_inference_milliseconds: tuple[float, ...] = ()
+    processing_milliseconds: float | None = None
+
+
+@dataclass(frozen=True)
+class DetectorView:
+    id: str
+    x: int
+    y: int
+    width: int
+    height: int
+    ownership_quadrant: tuple[int, int] | None
+
+
+def detector_views(
+    image_width: int,
+    image_height: int,
+    detector_mode: str = FULL_FRAME_DETECTOR_MODE,
+) -> tuple[DetectorView, ...]:
+    """Return the deterministic crops and ownership regions for one frame."""
+
+    if image_width < 1 or image_height < 1:
+        raise ValueError("image dimensions must be positive")
+    if detector_mode not in DETECTOR_MODES:
+        raise ValueError(f"unsupported detector mode: {detector_mode!r}")
+    full = DetectorView(
+        id="full",
+        x=0,
+        y=0,
+        width=image_width,
+        height=image_height,
+        ownership_quadrant=None,
+    )
+    if detector_mode == FULL_FRAME_DETECTOR_MODE:
+        return (full,)
+
+    # ceil(axis / (2 - overlap)) makes the two edge-anchored crops cover the
+    # entire axis with at least the registered 20% overlap.
+    tile_width = min(
+        image_width,
+        int(math.ceil(image_width / (2.0 - TILE_OVERLAP_FRACTION))),
+    )
+    tile_height = min(
+        image_height,
+        int(math.ceil(image_height / (2.0 - TILE_OVERLAP_FRACTION))),
+    )
+    right_x = image_width - tile_width
+    bottom_y = image_height - tile_height
+    return (
+        full,
+        DetectorView("tile-top-left", 0, 0, tile_width, tile_height, (0, 0)),
+        DetectorView(
+            "tile-top-right", right_x, 0, tile_width, tile_height, (1, 0)
+        ),
+        DetectorView(
+            "tile-bottom-left", 0, bottom_y, tile_width, tile_height, (0, 1)
+        ),
+        DetectorView(
+            "tile-bottom-right",
+            right_x,
+            bottom_y,
+            tile_width,
+            tile_height,
+            (1, 1),
+        ),
+    )
+
+
+def project_view_detection(
+    detection: BallDetection,
+    view: DetectorView,
+    *,
+    image_width: int,
+    image_height: int,
+) -> BallDetection | None:
+    """Project a crop-local box, enforce ownership, and clip it to the frame."""
+
+    center_x = view.x + detection.x + detection.width / 2.0
+    center_y = view.y + detection.y + detection.height / 2.0
+    if view.ownership_quadrant is not None:
+        column, row = view.ownership_quadrant
+        owns_x = (
+            center_x < image_width / 2.0
+            if column == 0
+            else center_x >= image_width / 2.0
+        )
+        owns_y = (
+            center_y < image_height / 2.0
+            if row == 0
+            else center_y >= image_height / 2.0
+        )
+        if not (owns_x and owns_y):
+            return None
+
+    x0 = min(max(view.x + detection.x, 0.0), float(image_width))
+    y0 = min(max(view.y + detection.y, 0.0), float(image_height))
+    x1 = min(
+        max(view.x + detection.x + detection.width, 0.0),
+        float(image_width),
+    )
+    y1 = min(
+        max(view.y + detection.y + detection.height, 0.0),
+        float(image_height),
+    )
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return BallDetection(
+        x=x0,
+        y=y0,
+        width=x1 - x0,
+        height=y1 - y0,
+        score=detection.score,
+    )
+
+
+def global_detection_nms(
+    detections: tuple[BallDetection, ...] | list[BallDetection],
+    *,
+    nms_threshold: float,
+    maximum_detections: int,
+) -> tuple[BallDetection, ...]:
+    """Apply stable, frame-global NMS after all view boxes are projected."""
+
+    if not 0 <= nms_threshold <= 1:
+        raise ValueError("nms_threshold must be in [0, 1]")
+    if maximum_detections < 1:
+        raise ValueError("maximum_detections must be positive")
+
+    def intersection_over_union(left: BallDetection, right: BallDetection) -> float:
+        intersection_width = max(
+            0.0,
+            min(left.x + left.width, right.x + right.width) - max(left.x, right.x),
+        )
+        intersection_height = max(
+            0.0,
+            min(left.y + left.height, right.y + right.height) - max(left.y, right.y),
+        )
+        intersection = intersection_width * intersection_height
+        union = left.width * left.height + right.width * right.height - intersection
+        return intersection / union if union > 0 else 0.0
+
+    ordered = sorted(
+        range(len(detections)),
+        key=lambda index: (-detections[index].score, index),
+    )
+    kept: list[BallDetection] = []
+    for index in ordered:
+        candidate = detections[index]
+        if any(
+            intersection_over_union(candidate, prior) > nms_threshold
+            for prior in kept
+        ):
+            continue
+        kept.append(candidate)
+        if len(kept) == maximum_detections:
+            break
+    return tuple(kept)
+
+
+def detector_view_strategy(
+    detector_mode: str,
+    *,
+    image_width: int,
+    image_height: int,
+    nms_threshold: float,
+    maximum_detections: int,
+) -> dict[str, Any]:
+    """Serialize the complete, resolution-specific multi-view configuration."""
+
+    views = detector_views(image_width, image_height, detector_mode)
+    return {
+        "id": detector_mode,
+        "viewsPerFrame": len(views),
+        "tileGrid": [2, 2]
+        if detector_mode == FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE
+        else None,
+        "tileOverlapFraction": TILE_OVERLAP_FRACTION
+        if detector_mode == FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE
+        else None,
+        "tileSizeRule": "ceil(axis / (2 - overlap)), edge anchored"
+        if detector_mode == FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE
+        else None,
+        "tileOwnershipRule": "projected box center belongs to corresponding image quadrant"
+        if detector_mode == FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE
+        else None,
+        "views": [
+            {
+                "id": view.id,
+                "cropPixels": {
+                    "x": view.x,
+                    "y": view.y,
+                    "width": view.width,
+                    "height": view.height,
+                },
+                "ownershipQuadrant": list(view.ownership_quadrant)
+                if view.ownership_quadrant is not None
+                else None,
+            }
+            for view in views
+        ],
+        "globalNmsThreshold": nms_threshold,
+        "globalMaximumDetections": maximum_detections,
+    }
 
 
 def sha256_file(path: str | Path) -> str:
@@ -342,6 +552,7 @@ class YoloXBallDetector:
         nms_threshold: float = 0.5,
         maximum_detections: int = 20,
         opencv_threads: int = 6,
+        detector_mode: str = FULL_FRAME_DETECTOR_MODE,
     ) -> None:
         self.model_dir = Path(model_dir).expanduser().resolve()
         self.metadata = load_model_metadata(self.model_dir)
@@ -351,9 +562,19 @@ class YoloXBallDetector:
             raise ValueError("nms_threshold must be in [0, 1]")
         if maximum_detections < 1 or opencv_threads < 1:
             raise ValueError("maximum detections and OpenCV threads must be positive")
+        if detector_mode not in DETECTOR_MODES:
+            raise ValueError(f"unsupported detector mode: {detector_mode!r}")
+        if detector_mode == FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE and (
+            score_floor != 0.01 or nms_threshold != 0.5 or maximum_detections != 20
+        ):
+            raise ValueError(
+                f"{FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE} is registered with "
+                "score_floor=0.01, nms_threshold=0.5, and maximum_detections=20"
+            )
         self.score_floor = float(score_floor)
         self.nms_threshold = float(nms_threshold)
         self.maximum_detections = int(maximum_detections)
+        self.detector_mode = detector_mode
         cv2.setNumThreads(int(opencv_threads))
         try:
             self.net = cv2.dnn.readNetFromONNX(str(self.model_dir / MODEL_FILENAME))
@@ -362,7 +583,7 @@ class YoloXBallDetector:
         except cv2.error as error:
             raise BallDetectorError(f"cannot load YOLOX ONNX artifact: {error}") from error
 
-    def detect(self, frame_bgr: np.ndarray) -> FrameDetections:
+    def _detect_single_view(self, frame_bgr: np.ndarray) -> FrameDetections:
         blob, ratio = letterbox_rgb(frame_bgr)
         self.net.setInput(blob)
         start = time.perf_counter()
@@ -382,6 +603,58 @@ class YoloXBallDetector:
             maximum_raw_score=maximum_raw_score,
             raw_candidates_above_floor=raw_count,
             inference_milliseconds=elapsed_ms,
+            view_inference_milliseconds=(elapsed_ms,),
+        )
+
+    def detect(self, frame_bgr: np.ndarray) -> FrameDetections:
+        started = time.perf_counter()
+        if self.detector_mode == FULL_FRAME_DETECTOR_MODE:
+            result = self._detect_single_view(frame_bgr)
+            return FrameDetections(
+                detections=result.detections,
+                maximum_raw_score=result.maximum_raw_score,
+                raw_candidates_above_floor=result.raw_candidates_above_floor,
+                inference_milliseconds=result.inference_milliseconds,
+                view_inference_milliseconds=result.view_inference_milliseconds
+                or (result.inference_milliseconds,),
+                processing_milliseconds=(time.perf_counter() - started) * 1000.0,
+            )
+
+        image_height, image_width = frame_bgr.shape[:2]
+        projected: list[BallDetection] = []
+        maximum_raw_score = 0.0
+        raw_candidates = 0
+        view_times: list[float] = []
+        for view in detector_views(image_width, image_height, self.detector_mode):
+            crop = frame_bgr[
+                view.y : view.y + view.height,
+                view.x : view.x + view.width,
+            ]
+            result = self._detect_single_view(crop)
+            maximum_raw_score = max(maximum_raw_score, result.maximum_raw_score)
+            raw_candidates += result.raw_candidates_above_floor
+            view_times.append(result.inference_milliseconds)
+            for detection in result.detections:
+                global_detection = project_view_detection(
+                    detection,
+                    view,
+                    image_width=image_width,
+                    image_height=image_height,
+                )
+                if global_detection is not None:
+                    projected.append(global_detection)
+        detections = global_detection_nms(
+            projected,
+            nms_threshold=self.nms_threshold,
+            maximum_detections=self.maximum_detections,
+        )
+        return FrameDetections(
+            detections=detections,
+            maximum_raw_score=maximum_raw_score,
+            raw_candidates_above_floor=raw_candidates,
+            inference_milliseconds=float(sum(view_times)),
+            view_inference_milliseconds=tuple(view_times),
+            processing_milliseconds=(time.perf_counter() - started) * 1000.0,
         )
 
 
@@ -414,6 +687,7 @@ def infer_annotation_task(
     nms_threshold: float = 0.5,
     maximum_detections: int = 20,
     opencv_threads: int = 6,
+    detector_mode: str = FULL_FRAME_DETECTOR_MODE,
     limit: int | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> Path:
@@ -444,10 +718,13 @@ def infer_annotation_task(
         nms_threshold=nms_threshold,
         maximum_detections=maximum_detections,
         opencv_threads=opencv_threads,
+        detector_mode=detector_mode,
     )
     root = source.parent
     suggestion_frames: dict[str, dict[str, Any]] = {}
     times: list[float] = []
+    processing_times: list[float] = []
+    forward_passes = 0
     detections_total = 0
     frames_with_detection = 0
     for index, frame in enumerate(rows):
@@ -486,6 +763,15 @@ def infer_annotation_task(
         frames_with_detection += bool(suggestions)
         detections_total += len(suggestions)
         times.append(result.inference_milliseconds)
+        processing_times.append(
+            result.processing_milliseconds
+            if result.processing_milliseconds is not None
+            else result.inference_milliseconds
+        )
+        per_view_times = result.view_inference_milliseconds or (
+            result.inference_milliseconds,
+        )
+        forward_passes += len(per_view_times)
         suggestion_frames[frame_id] = {
             "ballPresenceProbability": max(
                 (item["confidence"] for item in suggestions), default=0.0
@@ -495,6 +781,9 @@ def infer_annotation_task(
                 "maximumRawSportsBallScore": result.maximum_raw_score,
                 "rawCandidatesAboveFloor": result.raw_candidates_above_floor,
                 "inferenceMilliseconds": result.inference_milliseconds,
+                "processingMilliseconds": processing_times[-1],
+                "viewInferenceMilliseconds": list(per_view_times),
+                "forwardPasses": len(per_view_times),
             },
         }
         if progress is not None and ((index + 1) % 50 == 0 or index + 1 == len(rows)):
@@ -521,6 +810,24 @@ def infer_annotation_task(
                 "maximumDetections": maximum_detections,
                 "sportsBallClassIndex": SPORTS_BALL_CLASS_INDEX,
                 "opencvThreads": opencv_threads,
+                "viewStrategy": detector_view_strategy(
+                    detector_mode,
+                    image_width=int(task["immutable"]["source"]["proxy"]["width"]),
+                    image_height=int(task["immutable"]["source"]["proxy"]["height"]),
+                    nms_threshold=nms_threshold,
+                    maximum_detections=maximum_detections,
+                ),
+            },
+            "timing": {
+                "inferenceMilliseconds": (
+                    "sum of OpenCV net.forward wall durations across frame views"
+                ),
+                "processingMilliseconds": (
+                    "detector wall duration including preprocessing, projection, and global NMS"
+                ),
+                "viewInferenceMilliseconds": (
+                    "OpenCV net.forward wall duration for each ordered view"
+                ),
             },
             "warning": "unreviewed proposals are not annotation truth",
         },
@@ -533,6 +840,12 @@ def infer_annotation_task(
             "medianInferenceMilliseconds": float(np.median(timing)),
             "p90InferenceMilliseconds": float(np.percentile(timing, 90)),
             "meanInferenceMilliseconds": float(np.mean(timing)),
+            "medianProcessingMilliseconds": float(np.median(processing_times)),
+            "p90ProcessingMilliseconds": float(
+                np.percentile(processing_times, 90)
+            ),
+            "meanProcessingMilliseconds": float(np.mean(processing_times)),
+            "forwardPasses": forward_passes,
         },
         "frames": suggestion_frames,
     }

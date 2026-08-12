@@ -14,14 +14,20 @@ from analysis.ball_annotation import _immutable_digest, validate_ball_annotation
 from analysis.ball_detector import (
     BallDetection,
     BallDetectorError,
-    BallDetectorError,
+    FULL_FRAME_DETECTOR_MODE,
+    FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
     FrameDetections,
+    YoloXBallDetector,
     _download_verified,
     build_suggestion_index,
     decode_sports_ball_output,
+    detector_view_strategy,
+    detector_views,
+    global_detection_nms,
     infer_annotation_task,
     infer_video_sidecar,
     letterbox_rgb,
+    project_view_detection,
     sha256_file,
 )
 from analysis.ball_presence import load_ball_presence_sidecar
@@ -46,19 +52,199 @@ class _Response:
 
 
 class _FakeDetector:
-    def __init__(self, model_dir: str | Path, **_: object) -> None:
+    def __init__(self, model_dir: str | Path, **settings: object) -> None:
         self.model_dir = Path(model_dir)
+        self.detector_mode = settings.get("detector_mode", FULL_FRAME_DETECTOR_MODE)
 
     def detect(self, _: np.ndarray) -> FrameDetections:
+        view_count = (
+            5
+            if self.detector_mode == FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE
+            else 1
+        )
         return FrameDetections(
             detections=(BallDetection(1.0, 2.0, 3.0, 4.0, 0.75),),
             maximum_raw_score=0.75,
             raw_candidates_above_floor=2,
-            inference_milliseconds=12.5,
+            inference_milliseconds=12.5 * view_count,
+            view_inference_milliseconds=(12.5,) * view_count,
+            processing_milliseconds=13.0 * view_count,
         )
 
 
 class BallDetectorTests(unittest.TestCase):
+    def test_overlap_view_geometry_is_exact_for_pilot_frames(self) -> None:
+        views = detector_views(
+            960,
+            540,
+            FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
+        )
+        self.assertEqual(
+            [
+                (view.id, view.x, view.y, view.width, view.height)
+                for view in views
+            ],
+            [
+                ("full", 0, 0, 960, 540),
+                ("tile-top-left", 0, 0, 534, 300),
+                ("tile-top-right", 426, 0, 534, 300),
+                ("tile-bottom-left", 0, 240, 534, 300),
+                ("tile-bottom-right", 426, 240, 534, 300),
+            ],
+        )
+        self.assertEqual(
+            [view.ownership_quadrant for view in views],
+            [None, (0, 0), (1, 0), (0, 1), (1, 1)],
+        )
+
+    def test_tile_projection_offsets_and_clips_boxes(self) -> None:
+        view = detector_views(
+            960,
+            540,
+            FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
+        )[-1]
+        projected = project_view_detection(
+            BallDetection(520.0, 285.0, 30.0, 30.0, 0.8),
+            view,
+            image_width=960,
+            image_height=540,
+        )
+        self.assertEqual(projected, BallDetection(946.0, 525.0, 14.0, 15.0, 0.8))
+
+    def test_tile_center_ownership_is_half_open_by_quadrant(self) -> None:
+        views = detector_views(
+            960,
+            540,
+            FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
+        )
+        top_left = views[1]
+        top_right = views[2]
+        # The midpoint belongs to the right/bottom quadrants, never both.
+        self.assertIsNone(
+            project_view_detection(
+                BallDetection(470.0, 250.0, 20.0, 20.0, 0.5),
+                top_left,
+                image_width=960,
+                image_height=540,
+            )
+        )
+        accepted = project_view_detection(
+            BallDetection(44.0, 250.0, 20.0, 20.0, 0.5),
+            top_right,
+            image_width=960,
+            image_height=540,
+        )
+        self.assertEqual(accepted, BallDetection(470.0, 250.0, 20.0, 20.0, 0.5))
+        bottom_left = views[3]
+        self.assertIsNone(
+            project_view_detection(
+                BallDetection(100.0, 260.0, 20.0, 20.0, 0.5),
+                top_left,
+                image_width=960,
+                image_height=540,
+            )
+        )
+        self.assertEqual(
+            project_view_detection(
+                BallDetection(100.0, 20.0, 20.0, 20.0, 0.5),
+                bottom_left,
+                image_width=960,
+                image_height=540,
+            ),
+            BallDetection(100.0, 260.0, 20.0, 20.0, 0.5),
+        )
+
+    def test_global_nms_deduplicates_views_and_caps_output(self) -> None:
+        detections = [
+            BallDetection(100.0, 100.0, 20.0, 20.0, 0.7),
+            BallDetection(101.0, 101.0, 20.0, 20.0, 0.9),
+            *[
+                BallDetection(
+                    200.0 + index * 30.0,
+                    100.0,
+                    10.0,
+                    10.0,
+                    0.6,
+                )
+                for index in range(3)
+            ],
+        ]
+        kept = global_detection_nms(
+            detections,
+            nms_threshold=0.5,
+            maximum_detections=3,
+        )
+        self.assertEqual(len(kept), 3)
+        self.assertEqual(kept[0], detections[1])
+        self.assertNotIn(detections[0], kept)
+
+    def test_full_frame_default_is_one_unchanged_single_view_call(self) -> None:
+        detector = object.__new__(YoloXBallDetector)
+        detector.detector_mode = FULL_FRAME_DETECTOR_MODE
+        expected = FrameDetections((), 0.2, 3, 7.5)
+        frame = np.zeros((540, 960, 3), dtype=np.uint8)
+        with patch.object(detector, "_detect_single_view", return_value=expected) as call:
+            actual = detector.detect(frame)
+        self.assertEqual(actual.detections, expected.detections)
+        self.assertEqual(actual.maximum_raw_score, expected.maximum_raw_score)
+        self.assertEqual(
+            actual.raw_candidates_above_floor,
+            expected.raw_candidates_above_floor,
+        )
+        self.assertEqual(actual.inference_milliseconds, expected.inference_milliseconds)
+        self.assertEqual(actual.view_inference_milliseconds, (7.5,))
+        self.assertIsNotNone(actual.processing_milliseconds)
+        call.assert_called_once_with(frame)
+
+    def test_overlap_mode_executes_five_ordered_view_calls(self) -> None:
+        detector = object.__new__(YoloXBallDetector)
+        detector.detector_mode = FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE
+        detector.nms_threshold = 0.5
+        detector.maximum_detections = 20
+        shapes: list[tuple[int, ...]] = []
+
+        def detect_view(frame: np.ndarray) -> FrameDetections:
+            shapes.append(frame.shape)
+            elapsed = float(len(shapes))
+            return FrameDetections(
+                (),
+                0.1 * len(shapes),
+                len(shapes),
+                elapsed,
+                (elapsed,),
+            )
+
+        frame = np.zeros((540, 960, 3), dtype=np.uint8)
+        with patch.object(detector, "_detect_single_view", side_effect=detect_view):
+            result = detector.detect(frame)
+        self.assertEqual(
+            shapes,
+            [(540, 960, 3)] + [(300, 534, 3)] * 4,
+        )
+        self.assertEqual(result.view_inference_milliseconds, (1.0, 2.0, 3.0, 4.0, 5.0))
+        self.assertEqual(result.inference_milliseconds, 15.0)
+        self.assertEqual(result.maximum_raw_score, 0.5)
+        self.assertEqual(result.raw_candidates_above_floor, 15)
+        self.assertIsNotNone(result.processing_milliseconds)
+
+    def test_registered_view_strategy_serializes_exact_settings(self) -> None:
+        strategy = detector_view_strategy(
+            FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
+            image_width=960,
+            image_height=540,
+            nms_threshold=0.5,
+            maximum_detections=20,
+        )
+        self.assertEqual(strategy["viewsPerFrame"], 5)
+        self.assertEqual(strategy["tileGrid"], [2, 2])
+        self.assertEqual(strategy["tileOverlapFraction"], 0.2)
+        self.assertEqual(strategy["globalNmsThreshold"], 0.5)
+        self.assertEqual(strategy["globalMaximumDetections"], 20)
+        self.assertEqual(
+            strategy["views"][-1]["cropPixels"],
+            {"x": 426, "y": 240, "width": 534, "height": 300},
+        )
+
     def test_letterbox_uses_rgb_top_left_without_normalization(self) -> None:
         frame = np.zeros((320, 640, 3), dtype=np.uint8)
         frame[0, 0] = (1, 2, 3)
@@ -152,13 +338,32 @@ class BallDetectorTests(unittest.TestCase):
                 "analysis.ball_detector.sha256_file",
                 side_effect=lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest(),
             ):
-                infer_annotation_task(task_path, model_dir, output, limit=1)
+                infer_annotation_task(
+                    task_path,
+                    model_dir,
+                    output,
+                    detector_mode=FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
+                    limit=1,
+                )
             payload = json.loads(output.read_text(encoding="utf-8"))
             validate_ball_annotation_task(payload, task_path=output, verify_images=True)
             self.assertEqual(payload["suggestions"]["status"], "partial")
             self.assertEqual(payload["suggestions"]["summary"]["processedFrames"], 1)
             suggested = next(iter(payload["suggestions"]["frames"].values()))
             self.assertEqual(suggested["detections"][0]["confidence"], 0.75)
+            settings = payload["suggestions"]["model"]["settings"]
+            self.assertEqual(
+                settings["viewStrategy"]["id"],
+                FULL_PLUS_OVERLAP_2X2_DETECTOR_MODE,
+            )
+            self.assertEqual(settings["scoreFloor"], 0.01)
+            self.assertEqual(settings["nmsThreshold"], 0.5)
+            self.assertEqual(settings["maximumDetections"], 20)
+            self.assertEqual(suggested["diagnostics"]["forwardPasses"], 5)
+            self.assertEqual(
+                payload["suggestions"]["summary"]["forwardPasses"],
+                5,
+            )
             self.assertEqual(
                 payload["annotations"]["frames"][next(iter(payload["annotations"]["frames"]))]["status"],
                 "unreviewed",

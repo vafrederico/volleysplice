@@ -68,6 +68,39 @@ tasks ran while unrelated CPU-heavy jobs occupied the host. An earlier
 uncontended development-only smoke test measured about 220 ms per FP32 forward
 pass, or roughly 4.5 sampled frames per second.
 
+### Registered tiled-recall mode
+
+The proposal runner also has an opt-in `full-plus-overlap-2x2-v1` mode for a
+controlled small-ball recall experiment. The default remains the original
+single `full-frame-v1` inference. On each 960×540 pilot image, the opt-in mode
+runs the full image plus four 534×300 edge-anchored crops starting at x=0/426
+and y=0/240. This is the deterministic integer realization of 20% overlap from
+`ceil(axis / (2 - 0.20))`.
+
+Tile boxes are projected and clipped into full-frame coordinates. A tile box is
+retained only when its center belongs to that tile's half-open image quadrant;
+the full-frame view remains unrestricted. Stable frame-global NMS then merges
+all retained view proposals at IoU 0.5 and caps the result at 20 boxes. The
+registered extraction floor remains 0.01. Proposal provenance stores the mode,
+ordered pixel crops, overlap, ownership rule, global NMS settings, and five-view
+count. Per-frame diagnostics separately store each forward-pass duration, their
+sum, total detector wall time, and forward-pass count, so the roughly 5× compute
+tradeoff cannot be mistaken for the original detector timing.
+
+Use a new non-overwriting suggestion directory when testing the mode:
+
+```bash
+npm run detect:ball-pilot -- infer-task \
+  --task /path/to/round-01/tasks/RECORDING.ball-presence.json \
+  --model /path/to/models/opencv-zoo-yolox-s-2022nov \
+  --detector-mode full-plus-overlap-2x2-v1 \
+  --output /path/to/round-01/suggestions-tiled/RECORDING.ball-presence.json
+```
+
+No corpus run or quality claim is part of registering this mode. Its proposals
+must be evaluated against the same independent human truth before it can
+replace the full-frame bootstrap.
+
 ## Annotation and comparison contract
 
 The positive target is every real volleyball associated with the primary
