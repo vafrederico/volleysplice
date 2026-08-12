@@ -214,10 +214,11 @@ the user observation that the ball features did not work as implemented.
 
 ## Validation status
 
-The experiment implementations currently pass 70 focused Python unit tests (six transition,
-thirteen court, twenty-three multistate, seventeen selector, nine high-resolution, and two readiness
-tests). Thirteen annotation tests, all 39 web tests, ESLint, Python compilation, and whitespace checks
-also pass. A LAN-served `/label` page, task catalog, draft label, and ranged video endpoint returned
-200/200/200/206 respectively in headless Chromium with no console or HTTP errors before task load;
-the deeper interaction pass timed out while the official nested run was consuming host memory, so
-the UI has static and automated schema coverage but not a completed end-to-end click audit yet.
+The final repository suite passes all 373 Python tests and all 39 web tests. The experiment subset
+includes 70 focused tests (six transition, thirteen court, twenty-three multistate, seventeen
+selector, nine high-resolution, and two readiness), plus thirteen annotation tests. TypeScript
+checking, ESLint, Python compilation, and whitespace checks also pass. A LAN-served `/label` page,
+task catalog, draft label, and ranged video endpoint returned 200/200/200/206 respectively in
+headless Chromium with no console or HTTP errors before task load; the deeper interaction pass timed
+out while the official nested run was consuming host memory, so the UI has static and automated
+schema coverage but not a completed end-to-end click audit yet.
