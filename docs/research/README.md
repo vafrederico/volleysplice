@@ -23,6 +23,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Minimum ball-presence pilot — 2026-08-11](./minimum-ball-presence-pilot-2026-08-11.md) — completed 2,160-frame human/Sol review, pinned CPU YOLOX-S and tiled comparison, failed source-group detector gates, candidate signal definitions, and the non-promotion decision.
 - [Ball-review model and effort screen — 2026-08-11](./ball-review-effort-screen-2026-08-11.md) — blinded 12-frame Sol/Terra/Luna effort benchmark, corrected similarity analysis, and the Sol-high confirmation decision.
 - [Future feature experiment backlog — 2026-08-12](./future-feature-experiment-backlog-2026-08-12.md) — prioritized non-ball and ball-dependent feature hypotheses, low-cost annotation additions, experiment order, and leakage guardrails.
+- [Feature experiment order execution — 2026-08-12](./feature-experiment-order-execution-2026-08-12.md) — ordered run ledger, measured gates, immutable artifacts, labeling readiness, and deferred follow-ups.
 
 ## Related context
 
