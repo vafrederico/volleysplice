@@ -14,6 +14,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Full-video inference and crop-padding sensitivity — 2026-08-11](./model-inference-and-crop-padding-2026-08-11.md) — 27 model/video inference artifacts, cross-model comparison, and the measured 0–3 second export-padding tradeoff.
 - [Audiovisual feature feasibility, ablation, pruning, and final regression — 2026-08-11](./audiovisual-feature-ablation-2026-08-11.md) — implemented audio/motion/quality proxies, nested source-group evaluation, family ablation, 90-signal importance, targeted pruning, short-outcome analysis, and final padding sensitivity.
 - [Minimum ball-presence pilot — 2026-08-11](./minimum-ball-presence-pilot-2026-08-11.md) — development-only exact-frame sampling, pinned CPU detector, blind Human/Sol/Detector comparison, detector gates, and deferred downstream feature promotion.
+- [Ball-review model and effort screen — 2026-08-11](./ball-review-effort-screen-2026-08-11.md) — blinded 12-frame Sol/Terra/Luna effort benchmark, corrected similarity analysis, and the Sol-high confirmation decision.
 
 ## Related context
 
