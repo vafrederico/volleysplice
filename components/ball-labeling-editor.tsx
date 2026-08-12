@@ -836,6 +836,7 @@ export function BallLabelingEditor() {
           <p>Human boxes and visibility states stay isolated from detector output.</p>
         </div>
         <nav>
+          <Link href="/label/ball/benchmark">Effort benchmark</Link>
           <Link href="/label">Rally labels</Link>
           <Link href="/">Review dashboard</Link>
         </nav>

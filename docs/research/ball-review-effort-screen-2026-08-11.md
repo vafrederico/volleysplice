@@ -121,6 +121,7 @@ validation-quality pass.
 ## Artifacts
 
 - Reusable harness: `scripts/benchmark-ball-review-effort.py`
+- Visual comparison UI: `/label/ball/benchmark` in the local VolleyCut app.
 - External report:
   `/mnt/freenas/volleycut/ball-presence-v1/reports/ball-review-effort-screen12-v1/report.json`
 - Corrected report SHA-256:
@@ -136,3 +137,12 @@ result, receipt, event log, and stderr artifact hash. `--score-existing` exists
 only to recompute metrics over such a completed, separately audited artifact
 set without paying for model execution again; it is not equivalent to the
 future fail-closed cache check.
+
+The comparison UI reads only the frozen benchmark pack. It validates the
+compiled report SHA, every report-pinned result and receipt, exact frame
+coverage, normalized annotation semantics, and every displayed PNG hash before
+serving a sanitized bundle. It exposes no detector output, human-review draft,
+event log, stderr, source path, or generic filesystem route. The default 9-up
+view places all configurations on the same frame; A/B, multi-layer overlay,
+metrics/scatter, and numeric pairwise heatmap views make localization and state
+differences inspectable without treating the pseudo-reference as truth.
