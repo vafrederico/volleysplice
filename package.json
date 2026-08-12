@@ -19,6 +19,7 @@
     "infer:specialist-model-dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-specialist-model-dataset.py",
     "evaluate:model-padding": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-model-padding.py",
     "evaluate:model-features": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py",
+    "evaluate:transition-features": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-transition-features.py",
     "prepare:ball-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/prepare-ball-presence-pilot.py",
     "prepare:ball-sol-review": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/prepare-ball-presence-sol-review.py",
     "detect:ball-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/run-ball-presence-detector.py",

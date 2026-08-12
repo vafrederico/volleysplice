@@ -146,6 +146,33 @@ PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py final-test \
 
 The final-test gate verifies the manifest, recording snapshots, feature version/signature, and experiment-code hashes. Importance labels require directionally consistent source-group effects plus compatible mean and median magnitude. They are exploratory evidence, not significance tests.
 
+## Multiscale transition and interaction study
+
+The transition-feature runner reuses the frozen 90-signal audiovisual cache and appends a
+predeclared bank of 0.5/1/2/4/8-second summaries and seven cross-modal interactions exactly once
+per timestamp. Development selection is nested leave-one-`sourceGroup`-out, reports each family
+and individual interaction ablations, and never prepares the protected test split:
+
+```bash
+npm run evaluate:transition-features -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --output data/reports/multiscale-interactions-v1-development.json
+```
+
+The derived bank uses centered windows and is therefore an offline cutting experiment, not a
+streaming model. Only after the development report is frozen can the selected candidate be fit on
+all development rows and checked once against the retrospective regression split:
+
+```bash
+npm run evaluate:transition-features -- retrospective-test \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --development-report data/reports/multiscale-interactions-v1-development.json \
+  --output data/reports/multiscale-interactions-v1-retrospective-test.json \
+  --open-test
+```
+
 ## Experimental serve specialist
 
 The optional serve path trains a second logistic head on narrow windows around rally starts while
