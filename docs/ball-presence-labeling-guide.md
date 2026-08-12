@@ -80,6 +80,9 @@ boxes are cyan dotted.
   Each Sol object has **Correct · accept** and **Draw better** actions. Accept
   preserves the exact Sol geometry as a human-verified label; Draw better
   removes the corresponding proposal and activates the matching draw role.
+  Keys **1** through **9** accept the correspondingly numbered Sol box and
+  immediately advance to the next frame. Clicking **Correct · accept** has the
+  same accept-and-advance behavior.
   **Accept entire Sol label** remains available for a completely correct frame.
 - Detector proposals are loaded separately on demand. **Use best detector
   box** is an explicit copy action. Detector boxes are role-free, so the active
@@ -118,6 +121,7 @@ the pristine source-task SHA-256 and contain role-free normalized proposals.
 | `←` / `→` | Previous or next frame in the current window |
 | `Space` | Play or pause the current window |
 | `Enter` | Next frame |
+| `1`–`9` | Accept the matching numbered Sol box and advance |
 | `P` | Draw primary-court ball |
 | `A` | Draw other-court ball |
 | `U` | Draw unknown-role ball |

@@ -690,7 +690,10 @@ export function BallLabelingEditor() {
       };
     });
     setSelectedObjectIndex(null);
-    setMessage("Sol box accepted as correct; it remains classified as human-verified assisted data.");
+    setMessage(
+      `Sol box ${objectIndex + 1} accepted as correct; advanced to the next frame.`,
+    );
+    advanceAfterLabel();
   }
 
   function redrawSolObject(objectIndex: number): void {
@@ -943,10 +946,20 @@ export function BallLabelingEditor() {
         return;
       }
       const key = event.key.toLowerCase();
-      if (["arrowleft", "arrowright", " ", "backspace", "delete"].includes(key)) {
+      const solShortcutIndex = /^[1-9]$/.test(key) ? Number(key) - 1 : null;
+      if (
+        ["arrowleft", "arrowright", " ", "backspace", "delete"].includes(key) ||
+        solShortcutIndex !== null
+      ) {
         event.preventDefault();
       }
-      if (key === "arrowleft") stepWithinWindow(-1);
+      if (
+        solShortcutIndex !== null &&
+        visibleLayers.sol &&
+        currentComparison?.layers.sol?.annotation.objects[solShortcutIndex]
+      ) {
+        acceptSolObject(solShortcutIndex);
+      } else if (key === "arrowleft") stepWithinWindow(-1);
       else if (key === "arrowright" || key === "enter") stepWithinWindow(1);
       else if (key === " ") setPlaying((current) => !current);
       else if (key === "p") setDrawRole("primary-court");
@@ -1333,6 +1346,8 @@ export function BallLabelingEditor() {
                             </span>
                             <button
                               disabled={reviewLocked || exact}
+                              aria-label={`Accept Sol box ${objectIndex + 1} as correct and go to the next frame`}
+                              title={`Shortcut: ${objectIndex + 1}`}
                               onClick={() => acceptSolObject(objectIndex)}
                             >
                               {exact ? "Correct ✓" : "Correct · accept"}
@@ -1515,6 +1530,7 @@ export function BallLabelingEditor() {
             <section className={styles.shortcutHelp}>
               <p className={styles.sectionLabel}>KEYBOARD</p>
               <p><kbd>←</kbd><kbd>→</kbd> step · <kbd>Space</kbd> play · <kbd>Enter</kbd> next</p>
+              <p><kbd>1</kbd>–<kbd>9</kbd> accept matching Sol box + next frame</p>
               <p><kbd>P</kbd><kbd>A</kbd><kbd>U</kbd> draw roles · <kbd>V</kbd> copy previous</p>
               <p><kbd>Delete</kbd> remove selected · <kbd>Esc</kbd> cancel tool</p>
             </section>
