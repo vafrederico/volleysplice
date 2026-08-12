@@ -2,22 +2,26 @@
 
 ## Outcome
 
-The minimum viable pilot is implemented as an isolated, development-only
-experiment. It does not change the production rally feature extractor or the
-saved audiovisual model. The pilot now has:
+The minimum viable pilot is complete as an isolated, development-only
+feasibility experiment. It does not change the production rally feature
+extractor or the saved audiovisual model. The pilot now has:
 
 - exact-frame, six-stratum sampling from all eight development recordings;
 - a checksum-pinned CPU detector and immutable proposal artifacts;
 - a native frame/box annotation schema and a local review UI;
 - separate human, detector, and detector-blind Sol layers;
 - a source-group-held-out detector evaluator; and
-- eight confidence/availability-gated signals that can later be appended to the
-  4 fps rally model without percentile-ranking missing values.
+- eight confidence/availability-gated signals that could later be appended to
+  the 4 fps rally model without percentile-ranking missing values; and
+- a completed full-frame-versus-tiled detector comparison against the same
+  human-verified frames.
 
-The generic detector has **not** been promoted and the ball signals have **not**
-been trained into the rally model yet. Human truth is required first. Treating
-the detector's low-threshold candidates as labels would make both detector
-quality and the downstream feature result circular.
+All 2,160 human labels and all 2,160 detector-blind Sol labels are complete.
+The generic detector nevertheless failed the predeclared source-group-held-out
+quality gate, and the registered tiled mode made the important presence metrics
+worse. No threshold was frozen, the detector was not promoted, and the ball
+signals were intentionally not trained into the rally model. This is the
+negative result the feasibility gate was designed to catch.
 
 ## Frozen Stage A data
 
@@ -39,6 +43,21 @@ quality and the downstream feature result circular.
 
 Every image, task, source proxy, manifest, sampling rule, frame index, and
 timestamp is hash- or derivation-checked. The task pack occupies about 1.5 GiB.
+
+Human review is complete for all 2,160 frames. Of these, 193 were reviewed
+without either proposal source, 1,965 were human-verified with Sol assistance,
+and 2 were exposed to both Sol and detector proposals. Detector calibration and
+quality evaluation therefore use 2,158 detector-independent frames. The 193
+Sol-independent frames contain no human-positive ball frames, so they cannot
+support a meaningful independent Sol recall or localization claim; the
+assisted-inclusive Sol comparison is descriptive and circular by construction.
+
+The browser had normalized some integral immutable JSON numbers while saving
+reviews. The original review files remain untouched. A non-destructive repair
+reconstructed their immutable sections from the SHA-pinned pristine tasks and
+wrote validated copies to `round-01/reviews-canonical`. The canonicalization
+receipt SHA-256 is
+`739409f3481187126ed0eafd6f86e4924bbcdaaf7d8cd84cb0fca837dd4c5f0c`.
 
 ## Bootstrap detector and proposals
 
@@ -63,10 +82,12 @@ target, while distant live balls can be only a few pixels wide. Thresholds are
 therefore selected only after independent labels, never from these proposal
 counts.
 
-Per-task timings in the proposal ledger are not a benchmark because several
-tasks ran while unrelated CPU-heavy jobs occupied the host. An earlier
-uncontended development-only smoke test measured about 220 ms per FP32 forward
-pass, or roughly 4.5 sampled frames per second.
+Per-task timings in the proposal ledger are not a controlled benchmark because
+the full-frame and tiled jobs ran under different host loads. The recorded
+means were 632 ms per full-frame pilot image and 1,395 ms per five-view tiled
+pilot image. These non-controlled figures establish that dense CPU extraction
+is expensive; they are not a fair tiled/full speed ratio or a throughput
+acceptance result.
 
 ### Registered tiled-recall mode
 
@@ -97,9 +118,10 @@ npm run detect:ball-pilot -- infer-task \
   --output /path/to/round-01/suggestions-tiled/RECORDING.ball-presence.json
 ```
 
-No corpus run or quality claim is part of registering this mode. Its proposals
-must be evaluated against the same independent human truth before it can
-replace the full-frame bootstrap.
+The controlled development run is now complete. Its proposal index SHA-256 is
+`48155d547484637286b75541c7e602a52713500944dc643bb6dc7cfbcb93255f`.
+It was evaluated against exactly the same detector-independent human truth as
+the full-frame bootstrap; no test recording was opened.
 
 ## Annotation and comparison contract
 
@@ -152,6 +174,42 @@ environment recall at least 0.45. A diagnostic fallback threshold cannot be
 frozen. Even a passing threshold remains downstream-ineligible until false
 track and uncontended throughput gates are measured.
 
+### Completed detector result
+
+Neither registered detector mode passes that gate:
+
+| Development metric | Full frame | Full + four tiles |
+|---|---:|---:|
+| All-development candidate threshold | 0.0356 | 0.3447 |
+| All-development presence precision | 0.850 | 0.851 |
+| All-development presence recall | 0.473 | 0.366 |
+| All-development presence F1 | 0.608 | 0.512 |
+| Source-group OOF presence precision | 0.790 | 0.677 |
+| Source-group OOF presence recall | 0.390 | 0.318 |
+| Source-group OOF presence F1 | 0.522 | 0.433 |
+| OOF box F1 at IoU 0.25 | 0.260 | 0.281 |
+| OOF box F1 at IoU 0.50 | 0.157 | 0.151 |
+| OOF center-match recall | 0.224 | 0.234 |
+| OOF false-positive frames / 1,000 ball-free frames | 263 | 432 |
+| 8–15 px center-match recall, all-development threshold | 0.094 | 0.113 |
+
+The tiles recover a few very small balls, but that narrow gain does not survive
+as useful presence quality. Tiling reduces pooled OOF precision and recall,
+increases the false-positive-frame rate by 64%, worsens medium- and large-ball
+localization, and still yields zero held-out beach recall because thresholds
+learned on the other source groups do not transfer. The result points to both
+small-object localization and severe score/domain calibration problems; image
+this simple 2×2 scaling scheme was insufficient.
+
+The full-frame report is
+`/mnt/freenas/volleycut/ball-presence-v1/reports/ball-presence-development.json`
+(SHA-256
+`941c056b16661b0a55b6e00d251c2fdbbe8dbdd8018ede71815c2f54623c28a2`).
+The tiled report is
+`/mnt/freenas/volleycut/ball-presence-v1/reports/ball-presence-development-yolox-s-full-plus-2x2-v1.json`
+(SHA-256
+`2aa6b7fc78e1a71ef98986fd29562379de5406df82fd83e15ef0e0c056b3494e`).
+
 Sol has no calibrated per-box confidence, so its comparison is one fixed
 operating point: presence and role-aware box/center precision, recall, and F1.
 It does not receive AP, calibration, or threshold-sweep claims.
@@ -175,9 +233,9 @@ unavailable detector stays zero instead of becoming 0.5. A missing sidecar is
 a hard error; an explicitly unavailable detector and a detector that ran but
 saw no ball are distinct states.
 
-Only after the detector gate passes should complete high-rate development
-sidecars be generated. The downstream comparison is then `full audiovisual`
-versus `full audiovisual + ball`, with candidate-specific nested
+Only after a detector gate passes should complete high-rate development
+sidecars be generated. The downstream comparison would then be `full
+audiovisual` versus `full audiovisual + ball`, with candidate-specific nested
 leave-one-source-group-out fitting and decoding. Model selection uses unpadded
 predictions; 0/1/2/3-second padding remains a reported operational tradeoff.
 Ball features should be promoted only if event F1 and time IoU each improve by
@@ -243,8 +301,15 @@ npm run evaluate:ball-pilot -- \
 
 ## Current decision
 
-Proceed with independent Sol and human labeling. Do not spend the several CPU
-hours required for full-corpus high-rate sidecars, and do not train or report
-ball-feature padding/ablation results, until the reviewed detector gate says
-the signal is real. This is a deliberate feasibility checkpoint rather than a
-partial success claim.
+Keep the completed labels, canonical reviews, proposal layers, and both reports
+as the reusable detector-development corpus. Do not spend several additional
+CPU hours generating dense development sidecars, and do not train or report
+ball-feature padding or ablation results from either failed detector mode.
+
+The next materially different experiment would be a volleyball-specific
+detector or fine-tune evaluated with source-group-held-out weights and
+thresholds. The boxes may supervise that detector, but other-court balls must
+remain real-ball positives rather than being turned into clean negatives;
+`indeterminate` and fully occluded frames require the target-policy handling
+already encoded in the annotation schema. That is a larger training project,
+not a threshold or image-scaling tweak to this minimum pilot.
