@@ -23,6 +23,7 @@
     "evaluate:court-relative-features": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-court-relative-features.py",
     "evaluate:multistate-features": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-multistate-features.py",
     "evaluate:component-selector": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-component-selector.py",
+    "report:label-readiness": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/report-label-readiness.py",
     "prepare:ball-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/prepare-ball-presence-pilot.py",
     "prepare:ball-sol-review": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/prepare-ball-presence-sol-review.py",
     "detect:ball-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/run-ball-presence-detector.py",
