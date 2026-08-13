@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [All-model `F1_padP_coreR` ranking and rally-score export sweep — 2026-08-13](./all-models-f1-padp-corer-score-thresholds-2026-08-13.md) — validation-only ranking of 32 complete model outputs, required 0–3 second padding sensitivity, and inclusive 0.50–0.90 rally-score export filters using the current label-document ignored-range revision.
 - [Beach cutting and VNL-STES reuse decision](./volleyball-cutting-vnl-reuse-decision.md) — availability and licensing, camera compatibility, reusable ideas, reproducibility defects, and the adoption decision.
 - [Source-access log — 2026-08-07](./source-access-2026-08-07.md) — exact artifacts, immutable identifiers, checksums, and access outcomes.
 - [Real-footage v0 evaluation — 2026-08-09](./real-footage-v0-evaluation-2026-08-09.md) — raw-corpus inventory, camera fit, leakage-safe pilot, real metrics, observed failures, and the next model decision.
