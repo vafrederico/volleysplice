@@ -318,6 +318,26 @@ multiclass log loss, Brier score, and calibration are held-source diagnostics an
 candidate. Advancement requires unanimous outer selection plus every v1 and operational-binary
 guardrail, and even then authorizes only a fresh independent source-group assessment.
 
+## Transition-label experiment gate
+
+The transition-cue pilot has a separate read-only gate that distinguishes the eight development
+recordings from the protected test recording. It validates each draft, content-hashes the label
+files, reports the five-rally-per-recording cue debt and three-hard-negative-per-recording debt,
+and registers the exact future serve-edge, terminal-edge, verified-result, and hard-negative
+studies without preparing video or model features:
+
+```bash
+npm run report:transition-label-gate -- \
+  --labels-dir data/labeling-v1-2026-08-09/labels/full \
+  --output data/reports/transition-label-experiment-gate-v1.json
+```
+
+Add `--require-development-ready` in an automated workflow to fail closed until the 40 development
+pilot rallies are fully cued. The five protected pilot rallies are reported as sealed debt but are
+never required or consumed by a development runner. A future experiment must rebuild and freeze a
+new manifest from the completed train/validation snapshots; it must not attach mutable draft fields
+to an earlier frozen report lineage.
+
 ## Out-of-fold component-selector study
 
 The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific
