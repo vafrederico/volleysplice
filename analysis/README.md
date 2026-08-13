@@ -226,6 +226,24 @@ npm run evaluate:multistate-features -- retrospective-test \
   --open-test
 ```
 
+The follow-up diagnostic command exactly refits each frozen outer-fold state and binary model,
+checks its fingerprint and metrics, and writes reusable development-only OOF scores. It reports
+per-state precision, recall, Brier score, log loss, calibration error, decoded durations, and true
+serves rejected by the constrained path. Its start/end boundary replacements use development
+labels only and are explicitly non-promotable upper bounds:
+
+```bash
+npm run evaluate:multistate-followup -- diagnostics \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --oof-cache-output data/models/multistate-followup-oof-v1 \
+  --output data/reports/multistate-followup-diagnostics-v1.json
+```
+
+The command never prepares protected rows. Downstream hybrid and calibration experiments must
+validate the cache index and its per-recording hashes before using these scores.
+
 ## Out-of-fold component-selector study
 
 The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific
