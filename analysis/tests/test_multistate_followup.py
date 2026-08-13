@@ -17,12 +17,24 @@ from analysis.multistate_followup import (
     _serve_rows,
     _summarize_serve_rows,
     _validate_development_study,
+    compose_conservative_hybrid,
+    select_inner_hybrid,
     state_classification_report,
 )
 from analysis.schema import DatasetManifest, Interval
 
 
 class MultistateFollowupTests(unittest.TestCase):
+    def _hybrid_arrays(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray, list[MultistateState], np.ndarray]:
+        times = np.arange(0.0, 20.0, 0.25)
+        probabilities = np.full((len(times), 4), 0.05, dtype=np.float64)
+        probabilities[:, int(MultistateState.DEAD)] = 0.85
+        states = [MultistateState.DEAD] * len(times)
+        smoothed = np.full(len(times), 0.1, dtype=np.float64)
+        return times, probabilities, states, smoothed
+
     def test_state_report_has_argmax_metrics_and_calibration(self) -> None:
         targets = np.asarray([0, 0, 1, 1, 2, 2, 3, 3], dtype=np.int8)
         probabilities = np.asarray(
@@ -163,6 +175,178 @@ class MultistateFollowupTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(RuntimeError, "full nested"):
                 _validate_development_study(manifest, report_path)
+
+    def test_hybrid_noop_preserves_binary_exactly(self) -> None:
+        times, probabilities, states, smoothed = self._hybrid_arrays()
+        binary = [Interval(2.0, 8.0)]
+        output, summary = compose_conservative_hybrid(
+            binary,
+            [Interval(2.25, 7.75)],
+            mode="binary_noop",
+            times=times,
+            state_probabilities=probabilities,
+            decoded_states=states,
+            smoothed_binary=smoothed,
+        )
+        self.assertEqual(output, binary)
+        self.assertEqual(summary["outputIntervals"], 1)
+
+    def test_hybrid_snaps_confident_boundaries_within_long_invariant(self) -> None:
+        times, probabilities, states, smoothed = self._hybrid_arrays()
+        candidate = Interval(2.25, 7.75)
+        start_index = int(np.argmin(np.abs(times - candidate.start)))
+        end_index = int(np.flatnonzero(times >= candidate.end)[0])
+        live = (times >= candidate.start) & (times < candidate.end)
+        probabilities[live] = [0.05, 0.05, 0.05, 0.85]
+        probabilities[start_index] = [0.05, 0.05, 0.85, 0.05]
+        probabilities[end_index] = [0.85, 0.05, 0.05, 0.05]
+        states = [
+            MultistateState.LIVE if selected else MultistateState.DEAD
+            for selected in live
+        ]
+        states[start_index] = MultistateState.SERVE
+        output, summary = compose_conservative_hybrid(
+            [Interval(2.0, 8.0)],
+            [candidate],
+            mode="boundary_snap",
+            times=times,
+            state_probabilities=probabilities,
+            decoded_states=states,
+            smoothed_binary=smoothed,
+        )
+        self.assertEqual(output, [candidate])
+        self.assertEqual(summary["snap"]["startSnaps"], 1)
+        self.assertEqual(summary["snap"]["endSnaps"], 1)
+
+    def test_hybrid_keeps_long_binary_when_snap_removes_too_much(self) -> None:
+        times, probabilities, states, smoothed = self._hybrid_arrays()
+        candidate = Interval(2.75, 7.25)
+        start_index = int(np.argmin(np.abs(times - candidate.start)))
+        end_index = int(np.flatnonzero(times >= candidate.end)[0])
+        live = (times >= candidate.start) & (times < candidate.end)
+        probabilities[live] = [0.05, 0.05, 0.05, 0.85]
+        probabilities[start_index] = [0.05, 0.05, 0.85, 0.05]
+        probabilities[end_index] = [0.85, 0.05, 0.05, 0.05]
+        states = [
+            MultistateState.LIVE if selected else MultistateState.DEAD
+            for selected in live
+        ]
+        states[start_index] = MultistateState.SERVE
+        base = Interval(2.0, 8.0)
+        output, summary = compose_conservative_hybrid(
+            [base],
+            [candidate],
+            mode="boundary_snap",
+            times=times,
+            state_probabilities=probabilities,
+            decoded_states=states,
+            smoothed_binary=smoothed,
+        )
+        self.assertEqual(output, [base])
+        self.assertEqual(summary["snap"]["rejectedByLongInvariant"], 1)
+
+    def test_hybrid_adds_only_isolated_dual_supported_short_rescue(self) -> None:
+        times, probabilities, states, smoothed = self._hybrid_arrays()
+        candidate = Interval(12.0, 14.0)
+        selected = (times >= candidate.start) & (times < candidate.end)
+        start_index = int(np.argmin(np.abs(times - candidate.start)))
+        end_index = int(np.flatnonzero(times >= candidate.end)[0])
+        probabilities[selected] = [0.05, 0.05, 0.10, 0.80]
+        probabilities[start_index] = [0.02, 0.03, 0.90, 0.05]
+        probabilities[end_index] = [0.90, 0.03, 0.02, 0.05]
+        states = [
+            MultistateState.LIVE if value else MultistateState.DEAD
+            for value in selected
+        ]
+        states[start_index] = MultistateState.SERVE
+        smoothed[selected] = 0.85
+        output, summary = compose_conservative_hybrid(
+            [Interval(2.0, 8.0)],
+            [candidate],
+            mode="short_rescue",
+            times=times,
+            state_probabilities=probabilities,
+            decoded_states=states,
+            smoothed_binary=smoothed,
+        )
+        self.assertEqual(output, [Interval(2.0, 8.0), candidate])
+        self.assertEqual(summary["rescue"]["accepted"], 1)
+
+    def test_short_rescue_rejects_high_binary_flank(self) -> None:
+        times, probabilities, states, smoothed = self._hybrid_arrays()
+        candidate = Interval(12.0, 14.0)
+        selected = (times >= candidate.start) & (times < candidate.end)
+        start_index = int(np.argmin(np.abs(times - candidate.start)))
+        end_index = int(np.flatnonzero(times >= candidate.end)[0])
+        probabilities[selected] = [0.05, 0.05, 0.10, 0.80]
+        probabilities[start_index] = [0.02, 0.03, 0.90, 0.05]
+        probabilities[end_index] = [0.90, 0.03, 0.02, 0.05]
+        states = [
+            MultistateState.LIVE if value else MultistateState.DEAD
+            for value in selected
+        ]
+        states[start_index] = MultistateState.SERVE
+        smoothed[selected] = 0.85
+        smoothed[(times >= 11.0) & (times < 12.0)] = 0.8
+        output, summary = compose_conservative_hybrid(
+            [Interval(2.0, 8.0)],
+            [candidate],
+            mode="short_rescue",
+            times=times,
+            state_probabilities=probabilities,
+            decoded_states=states,
+            smoothed_binary=smoothed,
+        )
+        self.assertEqual(output, [Interval(2.0, 8.0)])
+        self.assertEqual(summary["rescue"]["accepted"], 0)
+
+    def test_inner_selector_keeps_noop_when_fixed_modes_do_not_clear_margin(self) -> None:
+        outcomes = {
+            "ordinaryLong": {
+                "rallies": 10,
+                "strictMatchRecall": 0.8,
+                "anyOverlapRecall": 0.9,
+                "meanCoverage": 0.8,
+            },
+            "shortAtMost3Seconds": {"rallies": 2, "strictMatchRecall": 0.5},
+            "serviceFault": {"rallies": 1, "strictMatchRecall": 0.0},
+        }
+        metrics = {
+            "objective": 0.6,
+            "eventF1": 0.6,
+            "timeIoU": 0.6,
+            "liveTimeRecall": 0.8,
+            "liveTimePrecision": 0.7,
+            "eventPrecision": 0.6,
+            "deadSecondsRetained": 10.0,
+            "startBoundaryMaeSeconds": 1.0,
+            "endBoundaryMaeSeconds": 1.0,
+            "outcomeSlices": outcomes,
+        }
+        report = {
+            "aggregate": metrics,
+            "macroSourceGroup": {
+                "objective": 0.6,
+                "eventF1": 0.6,
+                "timeIoU": 0.6,
+                "liveTimeRecall": 0.8,
+            },
+            "bySourceGroup": {group: metrics for group in ("a", "b", "c")},
+            "operations": [],
+        }
+        reports = {
+            mode: report
+            for mode in (
+                "binary_noop",
+                "boundary_snap",
+                "short_rescue",
+                "snap_and_rescue",
+            )
+        }
+        selected, detail = select_inner_hybrid(reports)
+        self.assertEqual(selected, "binary_noop")
+        self.assertTrue(detail["candidates"]["binary_noop"]["gate"]["eligible"])
+        self.assertFalse(detail["candidates"]["boundary_snap"]["gate"]["eligible"])
 
 
 if __name__ == "__main__":

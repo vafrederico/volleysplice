@@ -9,7 +9,10 @@ from pathlib import Path
 
 from analysis.artifacts import atomic_write_text
 from analysis.config import FeatureConfig
-from analysis.multistate_followup import run_multistate_oof_diagnostics
+from analysis.multistate_followup import (
+    run_conservative_hybrid_study,
+    run_multistate_oof_diagnostics,
+)
 from analysis.pipeline import _prepare_many
 from analysis.schema import load_manifest
 
@@ -47,6 +50,18 @@ def build_parser() -> argparse.ArgumentParser:
     diagnostic.add_argument("--multistate-report", type=Path, required=True)
     diagnostic.add_argument("--oof-cache-output", type=Path, required=True)
     diagnostic.add_argument("--output", type=Path, required=True)
+    hybrid = commands.add_parser(
+        "hybrid-development",
+        help="run the fixed conservative hybrid under full nested source-group OOF",
+    )
+    hybrid.add_argument("--manifest", type=Path, default=default_manifest)
+    hybrid.add_argument(
+        "--feature-cache-dir",
+        type=Path,
+        default=workspace / "features" / "audiovisual-v2",
+    )
+    hybrid.add_argument("--multistate-report", type=Path, required=True)
+    hybrid.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -76,13 +91,21 @@ def main() -> int:
         arguments.feature_cache_dir,
         progress=progress,
     )
-    report = run_multistate_oof_diagnostics(
-        manifest,
-        prepared,
-        multistate_report_path=arguments.multistate_report,
-        cache_output=arguments.oof_cache_output,
-        progress=progress,
-    )
+    if arguments.command == "diagnostics":
+        report = run_multistate_oof_diagnostics(
+            manifest,
+            prepared,
+            multistate_report_path=arguments.multistate_report,
+            cache_output=arguments.oof_cache_output,
+            progress=progress,
+        )
+    else:
+        report = run_conservative_hybrid_study(
+            manifest,
+            prepared,
+            multistate_report_path=arguments.multistate_report,
+            progress=progress,
+        )
     written = atomic_write_text(
         output,
         json.dumps(report, indent=2, allow_nan=False) + "\n",
@@ -92,7 +115,10 @@ def main() -> int:
             {
                 "report": str(written),
                 "kind": report["kind"],
-                "oofCacheIndex": report["oofCacheIndex"],
+                "oofCacheIndex": report.get("oofCacheIndex"),
+                "selectedArchitecture": report.get("promotionDecision", {}).get(
+                    "selectedArchitecture"
+                ),
                 "testLabelsUsed": report["testLabelsUsed"],
             },
             indent=2,

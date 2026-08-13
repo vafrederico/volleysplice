@@ -244,6 +244,23 @@ npm run evaluate:multistate-followup -- diagnostics \
 The command never prepares protected rows. Downstream hybrid and calibration experiments must
 validate the cache index and its per-recording hashes before using these scores.
 
+The conservative hybrid is a separate full nested study. Its four predeclared modes are binary
+no-op, boundary snapping, strict isolated short rescue, and snapping plus rescue. Every mode retains
+all binary proposals; long proposals also have structural overlap/IoU floors. Mode selection uses
+only the three inner OOF source groups inside each outer fold, and the no-op must exactly reproduce
+the frozen binary control:
+
+```bash
+npm run evaluate:multistate-followup -- hybrid-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --output data/reports/multistate-conservative-hybrid-v1-development.json
+```
+
+The protected retrospective stays closed unless paired objective evidence and every live-recall,
+ordinary-long, precision, dead-time, boundary, and short-rescue development guardrail pass.
+
 ## Out-of-fold component-selector study
 
 The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific
