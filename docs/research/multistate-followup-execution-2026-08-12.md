@@ -134,3 +134,42 @@ Artifact:
   `2cb9fb2edcc59d0d04a549c9a6ee116e6a3e2548d682a65e3d574f541ab9e9a1`.
 
 The report pins clean Git commit `3af58f6`; wall time was 190.334 seconds.
+
+## 3. Existing-label emission and duration ablation
+
+Implementation checkpoint: `4c98042 Add nested existing-label multistate ablations`.
+
+The first existing-label study evaluated a fixed 2x2 family: frozen v1 balanced OVR emissions or a
+fold-prior correction, crossed with frozen geometric duration priors or an empirical SETUP plus
+two-geometric LIVE prior. Every prevalence and duration estimate used only its training fold, every
+state-head fingerprint reproduced, and each outer holdout selected a candidate using three inner
+source-group OOF folds under recall, precision, retained-dead-time, event-F1, and outcome-slice
+guardrails. All four fixed configurations were also reported on outer OOF data for diagnostic
+interpretation; those diagnostic rows did not select the nested candidate.
+
+All four outer folds selected the exact v1 no-op. The fixed outer-OOF diagnostic rows were:
+
+| emissions / durations | F1 | time IoU | live recall | live precision | objective | ordinary / short / fault strict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| v1 OVR / geometric | .55499 | .54566 | .78260 | .64316 | .58633 | 147 / 11 / 10 |
+| v1 OVR / empirical + mixture | .54812 | .54063 | .80695 | .62094 | .58470 | 147 / 14 / 11 |
+| prior-corrected OVR / geometric | .57439 | .54688 | .75843 | .66223 | .59375 | 146 / 13 / 12 |
+| prior-corrected OVR / empirical + mixture | .57046 | .54675 | .77102 | .65274 | .59343 | 148 / 13 / 11 |
+
+Prior correction improves precision and event F1, but it suppresses more live time and does not
+preserve ordinary-long performance. The duration arm recovers some live recall and short matches,
+but loses enough precision/F1 to lower objective. Crucially, every one of the 12 inner and four
+outer LIVE mixture fits collapsed to effectively identical components (hazard gaps below
+`2.7e-9`), so this corpus provides no evidence for a bimodal LIVE prior; the duration contrast is
+interpreted as an empirical-SETUP ablation here.
+
+The nested candidate exactly equals v1, paired evidence versus v1 is neutral, and it still fails the
+operational binary live-recall and ordinary-long gates. Binary remains selected and protected test
+remains closed.
+
+Artifact:
+
+- `reports/feature-order-2026-08-12/multistate-existing-label-ablation-v1-development.json`,
+  SHA-256 `f9e2e0a053ebb0fec7fec28c179d7d126a2caadf4af662a55187564af22fe3ff`.
+
+The report pins clean Git commit `4c98042`; wall time was 387.809 seconds.
