@@ -297,6 +297,27 @@ npm run evaluate:multistate-followup -- immediate-result-development \
 This report never opens the reused protected test. A passing development gate authorizes only a
 fresh independent source-group validation; the binary control remains operational meanwhile.
 
+The joint-emission study then holds the v1 graph, geometric duration priors, and fold-frozen
+transition bonus fixed while replacing four independently balanced OVR heads with one normalized
+four-state linear softmax. The primary candidate uses ordinary categorical cross-entropy so the
+training-fold class prior is learned natively; a separately named balanced/prior-corrected arm is
+reported as a secondary diagnostic:
+
+```bash
+npm run evaluate:multistate-followup -- joint-emissions-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --existing-label-report data/reports/multistate-existing-label-ablation-v1-development.json \
+  --immediate-result-report data/reports/multistate-immediate-result-proxy-v1-development.json \
+  --output data/reports/multistate-joint-emissions-v1-development.json
+```
+
+Softmax epoch caps are chosen inside each outer fold from its three inner fits. State confusion,
+multiclass log loss, Brier score, and calibration are held-source diagnostics and do not select a
+candidate. Advancement requires unanimous outer selection plus every v1 and operational-binary
+guardrail, and even then authorizes only a fresh independent source-group assessment.
+
 ## Out-of-fold component-selector study
 
 The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific

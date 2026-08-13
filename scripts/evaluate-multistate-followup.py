@@ -15,6 +15,7 @@ from analysis.multistate_followup import (
 )
 from analysis.multistate_existing_labels import run_existing_label_ablation
 from analysis.multistate_immediate_result import run_immediate_result_study
+from analysis.multistate_joint_emissions import run_joint_emissions_study
 from analysis.pipeline import _prepare_many
 from analysis.schema import load_manifest
 
@@ -89,6 +90,20 @@ def build_parser() -> argparse.ArgumentParser:
     immediate.add_argument("--multistate-report", type=Path, required=True)
     immediate.add_argument("--existing-label-report", type=Path, required=True)
     immediate.add_argument("--output", type=Path, required=True)
+    joint = commands.add_parser(
+        "joint-emissions-development",
+        help="run the nested joint-softmax versus independent-OVR emission study",
+    )
+    joint.add_argument("--manifest", type=Path, default=default_manifest)
+    joint.add_argument(
+        "--feature-cache-dir",
+        type=Path,
+        default=workspace / "features" / "audiovisual-v2",
+    )
+    joint.add_argument("--multistate-report", type=Path, required=True)
+    joint.add_argument("--existing-label-report", type=Path, required=True)
+    joint.add_argument("--immediate-result-report", type=Path, required=True)
+    joint.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -140,12 +155,21 @@ def main() -> int:
             multistate_report_path=arguments.multistate_report,
             progress=progress,
         )
-    else:
+    elif arguments.command == "immediate-result-development":
         report = run_immediate_result_study(
             manifest,
             prepared,
             multistate_report_path=arguments.multistate_report,
             existing_label_report_path=arguments.existing_label_report,
+            progress=progress,
+        )
+    else:
+        report = run_joint_emissions_study(
+            manifest,
+            prepared,
+            multistate_report_path=arguments.multistate_report,
+            existing_label_report_path=arguments.existing_label_report,
+            immediate_result_report_path=arguments.immediate_result_report,
             progress=progress,
         )
     written = atomic_write_text(
