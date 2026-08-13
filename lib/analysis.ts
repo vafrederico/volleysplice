@@ -6,9 +6,17 @@ import type {
   TrainingCorpus,
 } from "./analysis-types.ts";
 import type { Rally } from "./edit-list.ts";
+import type { IgnoredInterval } from "./annotations.ts";
 import { getAnalysesRoot } from "./storage.ts";
 
 const ANALYSIS_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
+
+export function applyIgnoredIntervalRevision(
+  analysis: ReviewAnalysis,
+  ignoredIntervals: IgnoredInterval[],
+): ReviewAnalysis {
+  return { ...analysis, ignoredIntervals };
+}
 
 const MODEL_VARIANT_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "pilot-baseline-v0":
@@ -27,6 +35,11 @@ const MODEL_VARIANT_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isoDate(value: unknown): string | null {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
+  return new Date(value).toISOString();
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -174,6 +187,7 @@ export function parseAnalysis(
     kind: identity.kind,
     method: identity.method,
     modelVersion: identity.modelVersion,
+    addedAt: isoDate(root.createdAt),
     trainingCorpus,
     trainingCorpusLabel: trainingCorpusLabel(trainingCorpus),
     datasetRole: "not-applicable",
@@ -192,6 +206,7 @@ export function parseAnalysis(
       ? analysis.warnings.filter((warning): warning is string => typeof warning === "string")
       : [],
     rallies,
+    ignoredIntervals: [],
   };
 }
 
@@ -229,7 +244,12 @@ export async function loadAnalyses(
         JSON.parse(await fs.readFile(candidate.filename, "utf-8")),
         { trainingCorpus },
       );
-      if (parsed) analyses.push(parsed);
+      if (parsed) {
+        analyses.push({
+          ...parsed,
+          addedAt: parsed.addedAt ?? new Date(candidate.modified).toISOString(),
+        });
+      }
     } catch {
       // Ignore incomplete or malformed local runs.
     }

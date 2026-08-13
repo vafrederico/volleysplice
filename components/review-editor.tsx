@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
@@ -14,6 +14,138 @@ import type {
   TrainingCorpusView,
 } from "@/lib/analysis-types";
 import { buildEditList, formatTime, type Rally } from "@/lib/edit-list";
+import { parseLabelDocument, type IgnoredInterval, type LabelDocument } from "@/lib/annotations";
+import {
+  buildLiveTimeComparisonSegments,
+  buildPaddingSegments,
+  calculateDurationDeltaPercent,
+  calculateF1,
+  calculateLiveTimeMetrics,
+  excludeIgnoredTime,
+  markModelPaddingOrigins,
+  padAndMergeRallies,
+  totalRallySeconds,
+} from "@/lib/timeline-comparison";
+
+const MODEL_VISIBILITY_STORAGE_KEY = "volleycut:model-timeline-visibility:v1";
+const MODEL_VISIBILITY_EVENT = "volleycut:model-timeline-visibility";
+const ACTIVITY_PADDING_STORAGE_KEY = "volleycut:activity-padding:v1";
+const ACTIVITY_PADDING_EVENT = "volleycut:activity-padding";
+const EMPTY_HIDDEN_MODEL_KEYS = new Set<string>();
+const DEFAULT_ACTIVITY_PADDING = { before: 3, after: 2 } as const;
+type ModelFilterBasis = "coreHuman" | "paddedHuman";
+type ModelFilterMetric = "precision" | "recall" | "f1";
+type ModelFilterOperator = "greater" | "less";
+let cachedVisibilityValue: string | null | undefined;
+let cachedHiddenModelKeys = EMPTY_HIDDEN_MODEL_KEYS;
+let fallbackVisibilityValue: string | null = null;
+let cachedPaddingValue: string | null | undefined;
+let cachedActivityPadding: Readonly<{ before: number; after: number }> =
+  DEFAULT_ACTIVITY_PADDING;
+let fallbackPaddingValue: string | null = null;
+
+function hiddenModelSnapshot(): Set<string> {
+  if (typeof window === "undefined") return EMPTY_HIDDEN_MODEL_KEYS;
+  let value: string | null;
+  try {
+    value = window.localStorage.getItem(MODEL_VISIBILITY_STORAGE_KEY);
+  } catch {
+    value = fallbackVisibilityValue;
+  }
+  if (value === cachedVisibilityValue) return cachedHiddenModelKeys;
+  cachedVisibilityValue = value;
+  try {
+    const saved = JSON.parse(value ?? "null") as { hidden?: unknown } | null;
+    cachedHiddenModelKeys = saved && Array.isArray(saved.hidden)
+      ? new Set(saved.hidden.filter((item): item is string => typeof item === "string"))
+      : EMPTY_HIDDEN_MODEL_KEYS;
+  } catch {
+    cachedHiddenModelKeys = EMPTY_HIDDEN_MODEL_KEYS;
+  }
+  return cachedHiddenModelKeys;
+}
+
+function subscribeToModelVisibility(onChange: () => void): () => void {
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === MODEL_VISIBILITY_STORAGE_KEY) {
+      cachedVisibilityValue = undefined;
+      onChange();
+    }
+  };
+  const handleLocalChange = () => onChange();
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(MODEL_VISIBILITY_EVENT, handleLocalChange);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(MODEL_VISIBILITY_EVENT, handleLocalChange);
+  };
+}
+
+function saveModelVisibility(hidden: Set<string>): void {
+  const value = JSON.stringify({ hidden: [...hidden].sort() });
+  fallbackVisibilityValue = value;
+  try {
+    window.localStorage.setItem(MODEL_VISIBILITY_STORAGE_KEY, value);
+  } catch {
+    // The in-memory fallback keeps the toggle working for this tab.
+  }
+  cachedVisibilityValue = undefined;
+  window.dispatchEvent(new Event(MODEL_VISIBILITY_EVENT));
+}
+
+function activityPaddingSnapshot(): Readonly<{ before: number; after: number }> {
+  if (typeof window === "undefined") return DEFAULT_ACTIVITY_PADDING;
+  let value: string | null;
+  try {
+    value = window.localStorage.getItem(ACTIVITY_PADDING_STORAGE_KEY);
+  } catch {
+    value = fallbackPaddingValue;
+  }
+  if (value === cachedPaddingValue) return cachedActivityPadding;
+  cachedPaddingValue = value;
+  try {
+    const saved = JSON.parse(value ?? "null") as { before?: unknown; after?: unknown } | null;
+    cachedActivityPadding = saved &&
+      typeof saved.before === "number" && Number.isFinite(saved.before) &&
+      typeof saved.after === "number" && Number.isFinite(saved.after)
+      ? {
+          before: Math.max(0, Math.min(8, saved.before)),
+          after: Math.max(0, Math.min(8, saved.after)),
+        }
+      : DEFAULT_ACTIVITY_PADDING;
+  } catch {
+    cachedActivityPadding = DEFAULT_ACTIVITY_PADDING;
+  }
+  return cachedActivityPadding;
+}
+
+function subscribeToActivityPadding(onChange: () => void): () => void {
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === ACTIVITY_PADDING_STORAGE_KEY) {
+      cachedPaddingValue = undefined;
+      onChange();
+    }
+  };
+  const handleLocalChange = () => onChange();
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(ACTIVITY_PADDING_EVENT, handleLocalChange);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(ACTIVITY_PADDING_EVENT, handleLocalChange);
+  };
+}
+
+function saveActivityPadding(padding: { before: number; after: number }): void {
+  const value = JSON.stringify(padding);
+  fallbackPaddingValue = value;
+  try {
+    window.localStorage.setItem(ACTIVITY_PADDING_STORAGE_KEY, value);
+  } catch {
+    // The in-memory fallback keeps the sliders working for this tab.
+  }
+  cachedPaddingValue = undefined;
+  window.dispatchEvent(new Event(ACTIVITY_PADDING_EVENT));
+}
 
 const demoRallies: Rally[] = [
   { id: "R01", start: 24, end: 37, confidence: 0.78, included: true },
@@ -30,6 +162,7 @@ const demoAnalysis: ReviewAnalysis = {
   kind: "unknown",
   method: "demo",
   modelVersion: null,
+  addedAt: null,
   trainingCorpus: "reference",
   trainingCorpusLabel: "Reference",
   datasetRole: "not-applicable",
@@ -46,6 +179,7 @@ const demoAnalysis: ReviewAnalysis = {
   cameraStability: 1,
   warnings: ["This is sample data. Run an analyzer to review a real recording."],
   rallies: demoRallies,
+  ignoredIntervals: [],
 };
 
 type ReviewEditorProps = {
@@ -125,6 +259,36 @@ function analysisDescription(kind: AnalysisKind): string {
   return "Review the selected rally suggestions against the shared timeline.";
 }
 
+function analysisSlug(analysis: Pick<ReviewAnalysis, "id" | "recordingId">): string {
+  const recordingSuffix = `--${analysis.recordingId}`;
+  if (analysis.id.endsWith(recordingSuffix)) {
+    return analysis.id.slice(0, -recordingSuffix.length);
+  }
+  return analysis.id;
+}
+
+function modelVisibilityKey(
+  analysis: Pick<ReviewAnalysis, "id" | "recordingId" | "trainingCorpus">,
+): string {
+  return `${analysis.trainingCorpus}:${analysisSlug(analysis)}`;
+}
+
+function metricPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function signedPercent(value: number | null): string | undefined {
+  if (value === null) return undefined;
+  const normalized = Math.abs(value) < 0.05 ? 0 : value;
+  return `${normalized > 0 ? "+" : ""}${normalized.toFixed(1)}% vs padded human`;
+}
+
+function timelineTrackLabel(analysis: ReviewAnalysis): string {
+  return analysis.kind === "model"
+    ? analysis.variantLabel.replace(/^Trained model\s*[·\-–—]\s*/i, "")
+    : analysis.variantLabel;
+}
+
 export function ReviewEditor({
   initialAnalysis,
   analysisOptions,
@@ -138,10 +302,24 @@ export function ReviewEditor({
   const [isPending, startTransition] = useTransition();
   const [rallies, setRallies] = useState(analysis.rallies);
   const [selectedId, setSelectedId] = useState(analysis.rallies[0]?.id ?? "");
-  const [preRoll, setPreRoll] = useState(3);
-  const [postRoll, setPostRoll] = useState(2);
+  const activityPadding = useSyncExternalStore(
+    subscribeToActivityPadding,
+    activityPaddingSnapshot,
+    () => DEFAULT_ACTIVITY_PADDING,
+  );
+  const preRoll = activityPadding.before;
+  const postRoll = activityPadding.after;
   const [playbackTime, setPlaybackTime] = useState(initialTime);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [modelFilterBasis, setModelFilterBasis] = useState<ModelFilterBasis>("coreHuman");
+  const [modelFilterMetric, setModelFilterMetric] = useState<ModelFilterMetric>("f1");
+  const [modelFilterOperator, setModelFilterOperator] = useState<ModelFilterOperator>("greater");
+  const [modelFilterThreshold, setModelFilterThreshold] = useState("");
+  const hiddenModelKeys = useSyncExternalStore(
+    subscribeToModelVisibility,
+    hiddenModelSnapshot,
+    () => EMPTY_HIDDEN_MODEL_KEYS,
+  );
   const videoRef = useRef<HTMLVideoElement>(null);
   const intervals = useMemo(
     () => buildEditList(rallies, preRoll, postRoll, analysis.duration),
@@ -156,28 +334,338 @@ export function ReviewEditor({
   const currentVideo =
     videoOptions.find((video) => video.id === analysis.recordingId) ?? null;
   const analysisIndex = analysisOptions.findIndex((option) => option.id === analysis.id);
-  const tracks = useMemo<TimelineTrack[]>(
+  const modelAnalyses = useMemo(
+    () => comparisonAnalyses.filter((candidate) => candidate.kind === "model"),
+    [comparisonAnalyses],
+  );
+  const humanAnalysis = useMemo(
+    () => comparisonAnalyses.find((candidate) => candidate.kind === "gold") ?? null,
+    [comparisonAnalyses],
+  );
+  const [ignoredOverride, setIgnoredOverride] = useState<{
+    recordingId: string;
+    ranges: IgnoredInterval[];
+  } | null>(null);
+  const ignoredRanges = useMemo(
+    () => {
+      if (ignoredOverride && ignoredOverride.recordingId === humanAnalysis?.recordingId) {
+        return ignoredOverride.ranges;
+      }
+      return humanAnalysis?.ignoredIntervals ?? [];
+    },
+    [humanAnalysis, ignoredOverride],
+  );
+  const [ignoreStart, setIgnoreStart] = useState<number | null>(null);
+  const [ignoreReason, setIgnoreReason] = useState("non-game-content");
+  const [ignoreSaving, setIgnoreSaving] = useState(false);
+  const [ignoreMessage, setIgnoreMessage] = useState<string | null>(null);
+  const [ignoreError, setIgnoreError] = useState<string | null>(null);
+  const visibleComparisonAnalyses = useMemo(
     () =>
-      comparisonAnalyses.map((candidate) => {
-        const trackRallies = candidate.id === analysis.id ? rallies : candidate.rallies;
+      comparisonAnalyses.filter(
+        (candidate) =>
+          candidate.kind !== "model" ||
+          !hiddenModelKeys.has(modelVisibilityKey(candidate)),
+      ),
+    [comparisonAnalyses, hiddenModelKeys],
+  );
+  const humanRallies = useMemo(
+    () => humanAnalysis?.rallies ?? [],
+    [humanAnalysis],
+  );
+  const paddedModelRallies = useMemo(
+    () => new Map(
+      modelAnalyses.map((candidate) => [
+        candidate.id,
+        padAndMergeRallies(
+          candidate.id === analysis.id ? rallies : candidate.rallies,
+          preRoll,
+          postRoll,
+          candidate.duration,
+        ),
+      ]),
+    ),
+    [analysis.id, modelAnalyses, postRoll, preRoll, rallies],
+  );
+  const paddedHumanRallies = useMemo(
+    () => padAndMergeRallies(
+      humanRallies,
+      preRoll,
+      postRoll,
+      analysis.duration,
+    ),
+    [analysis.duration, humanRallies, postRoll, preRoll],
+  );
+  const paddedHumanSeconds = useMemo(
+    () => totalRallySeconds(excludeIgnoredTime(paddedHumanRallies, ignoredRanges)),
+    [ignoredRanges, paddedHumanRallies],
+  );
+  const modelTimelineStats = useMemo(
+    () => new Map(
+      modelAnalyses.map((candidate) => {
+        const modelRallies = paddedModelRallies.get(candidate.id) ?? [];
+        const evaluatedModelRallies = excludeIgnoredTime(modelRallies, ignoredRanges);
+        return [
+          candidate.id,
+          {
+            videoSeconds: totalRallySeconds(evaluatedModelRallies),
+            coreHuman: calculateLiveTimeMetrics(modelRallies, humanRallies, ignoredRanges),
+            paddedHuman: calculateLiveTimeMetrics(modelRallies, paddedHumanRallies, ignoredRanges),
+          },
+        ] as const;
+      }),
+    ),
+    [humanRallies, ignoredRanges, modelAnalyses, paddedHumanRallies, paddedModelRallies],
+  );
+  const modelToggleAnalyses = useMemo(() => {
+    if (modelFilterThreshold.trim() === "") return modelAnalyses;
+    const threshold = Number(modelFilterThreshold);
+    if (!Number.isFinite(threshold)) return modelAnalyses;
+    return modelAnalyses.filter((candidate) => {
+      const stats = modelTimelineStats.get(candidate.id);
+      if (!stats) return false;
+      const value = stats[modelFilterBasis][modelFilterMetric] * 100;
+      return modelFilterOperator === "greater"
+        ? value > threshold
+        : value < threshold;
+    });
+  }, [
+    modelAnalyses,
+    modelFilterBasis,
+    modelFilterMetric,
+    modelFilterOperator,
+    modelFilterThreshold,
+    modelTimelineStats,
+  ]);
+  const tracks = useMemo<TimelineTrack[]>(
+    () => {
+      const comparisonTracks: TimelineTrack[] = visibleComparisonAnalyses.map((candidate) => {
+        const modelCoreRallies = candidate.kind === "model"
+          ? candidate.id === analysis.id ? rallies : candidate.rallies
+          : [];
+        const trackRallies = candidate.kind === "model"
+          ? paddedModelRallies.get(candidate.id) ?? []
+          : candidate.id === analysis.id ? rallies : candidate.rallies;
+        const comparisonSegments = candidate.kind === "model" && humanRallies.length > 0
+          ? markModelPaddingOrigins(
+              buildLiveTimeComparisonSegments(trackRallies, humanRallies, ignoredRanges),
+              modelCoreRallies,
+              preRoll,
+              postRoll,
+              candidate.duration,
+            )
+          : null;
+        const slug = analysisSlug(candidate);
+        const stats = modelTimelineStats.get(candidate.id);
+        const coreMetrics = stats
+          ? `P ${metricPercent(stats.coreHuman.precision)} · R ${metricPercent(stats.coreHuman.recall)} · F1 ${metricPercent(stats.coreHuman.f1)}`
+          : "P — · R — · F1 —";
+        const paddedMetrics = stats
+          ? `P ${metricPercent(stats.paddedHuman.precision)} · R ${metricPercent(stats.paddedHuman.recall)} · F1 ${metricPercent(stats.paddedHuman.f1)}`
+          : "P — · R — · F1 —";
+        const exportDelta = stats
+          ? signedPercent(calculateDurationDeltaPercent(stats.videoSeconds, paddedHumanSeconds))
+          : undefined;
+        const hybridF1 = stats
+          ? metricPercent(calculateF1(stats.paddedHuman.precision, stats.coreHuman.recall))
+          : undefined;
         return {
           id: candidate.id,
-          label: candidate.variantLabel,
-          title: candidate.variantDescription ?? undefined,
-          detail: `${candidate.trainingCorpusLabel} · ${candidate.datasetRoleLabel} · ${trackRallies.length} rallies`,
+          label: timelineTrackLabel(candidate),
+          title: [
+            candidate.variantLabel,
+            candidate.variantDescription,
+            candidate.kind === "model" ? `Slug: ${slug}` : null,
+            candidate.addedAt ? `Added: ${new Date(candidate.addedAt).toLocaleString()}` : null,
+          ].filter(Boolean).join("\n") || undefined,
+          detail: candidate.kind === "model"
+            ? slug
+            : `${candidate.trainingCorpusLabel} · ${candidate.datasetRoleLabel} · ${trackRallies.length} rallies`,
+          summary: candidate.kind === "model"
+            ? {
+                exportTime: stats ? formatTime(stats.videoSeconds) : "—",
+                exportDelta,
+                coreMetrics,
+                paddedMetrics,
+                hybridF1,
+              }
+            : candidate.kind === "gold"
+              ? { exportTime: formatTime(paddedHumanSeconds) }
+            : undefined,
           active: candidate.id === analysis.id,
-          intervals: trackRallies.map((rally) => ({
-            id: rally.id,
-            start: rally.start,
-            end: rally.end,
-            confidence: rally.confidence,
-            tone: tone(candidate.kind, candidate.trainingCorpus),
-            title: `${candidate.variantLabel} · ${rally.id} · ${formatTime(rally.start)}–${formatTime(rally.end)}`,
+          intervals: comparisonSegments
+            ? comparisonSegments.map((segment) => ({
+              id: segment.id,
+              selectionId: segment.predictionId ?? null,
+              start: segment.start,
+              end: segment.end,
+              tone: `model-${segment.kind}` as const,
+              paddingOrigin: segment.paddingOrigin,
+              title: `${candidate.variantLabel} · ${
+                segment.kind === "match"
+                  ? "matches human live time"
+                  : segment.kind === "added"
+                    ? "predicted outside human live time"
+                    : "human live time missed by model"
+              }${segment.paddingOrigin
+                ? ` · ${segment.paddingOrigin === "both" ? "before + after padding" : `${segment.paddingOrigin} padding`}`
+                : " · model core"} · ${formatTime(segment.start)}–${formatTime(segment.end)}`,
+            }))
+            : [
+                ...(
+                  candidate.kind === "gold" || candidate.kind === "sol"
+                    ? buildPaddingSegments(
+                        trackRallies,
+                        preRoll,
+                        postRoll,
+                        candidate.duration,
+                      ).map((segment) => ({
+                        id: `${candidate.kind}-${segment.id}`,
+                        selectionId: null,
+                        start: segment.start,
+                        end: segment.end,
+                        tone: candidate.kind === "gold"
+                          ? "gold-padding" as const
+                          : "sol-padding" as const,
+                        title: `${candidate.variantLabel} · activity padding · ${formatTime(segment.start)}–${formatTime(segment.end)}`,
+                      }))
+                    : []
+                ),
+                ...trackRallies.map((rally) => ({
+                  id: rally.id,
+                  start: rally.start,
+                  end: rally.end,
+                  confidence: rally.confidence,
+                  tone: tone(candidate.kind, candidate.trainingCorpus),
+                  title: `${candidate.variantLabel} · ${rally.id} · ${formatTime(rally.start)}–${formatTime(rally.end)}`,
+                })),
+              ],
+        };
+      });
+      if (ignoredRanges.length > 0) {
+        const ignoredTrack: TimelineTrack = {
+          id: "ignored-evaluation-ranges",
+          label: "Ignored evaluation",
+          detail: `${ignoredRanges.length} excluded ${ignoredRanges.length === 1 ? "range" : "ranges"}`,
+          intervals: ignoredRanges.map((range, index) => ({
+            id: `ignored-${index + 1}`,
+            selectionId: null,
+            start: range.start,
+            end: range.end,
+            tone: "ignored",
+            title: `Ignored · ${range.reason} · ${formatTime(range.start)}–${formatTime(range.end)}`,
           })),
         };
-      }),
-    [analysis.id, comparisonAnalyses, rallies],
+        const goldIndex = comparisonTracks.findIndex((track) => track.id === humanAnalysis?.id);
+        comparisonTracks.splice(goldIndex >= 0 ? goldIndex + 1 : 0, 0, ignoredTrack);
+      }
+      return comparisonTracks;
+    },
+    [
+      analysis.id,
+      humanAnalysis?.id,
+      humanRallies,
+      ignoredRanges,
+      modelTimelineStats,
+      paddedModelRallies,
+      paddedHumanSeconds,
+      postRoll,
+      preRoll,
+      rallies,
+      visibleComparisonAnalyses,
+    ],
   );
+
+  async function mutateIgnoredRanges(
+    mutate: (document: LabelDocument) => IgnoredInterval[],
+    successMessage: string,
+  ) {
+    if (!humanAnalysis) return;
+    setIgnoreSaving(true);
+    setIgnoreError(null);
+    setIgnoreMessage(null);
+    try {
+      const taskUrl = `/api/labeling/tasks/${encodeURIComponent(humanAnalysis.recordingId)}`;
+      const response = await fetch(taskUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error("Could not load the current label document");
+      const document = parseLabelDocument(await response.json());
+      const nextRanges = mutate(document).sort(
+        (left, right) => left.start - right.start || left.end - right.end,
+      );
+      const draft: LabelDocument = {
+        ...document,
+        annotation: {
+          ...document.annotation,
+          status: "in-progress",
+          reviewedAt: null,
+        },
+        ignoredIntervals: nextRanges,
+      };
+      const saveResponse = await fetch(`${taskUrl}/draft`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const result = await saveResponse.json() as { error?: string; savedAt?: string };
+      if (!saveResponse.ok || !result.savedAt) {
+        throw new Error(result.error ?? "The ignored ranges could not be saved");
+      }
+      setIgnoredOverride({
+        recordingId: humanAnalysis.recordingId,
+        ranges: nextRanges,
+      });
+      setIgnoreStart(null);
+      setIgnoreMessage(`${successMessage} Saved ${new Date(result.savedAt).toLocaleTimeString()}.`);
+    } catch (error) {
+      setIgnoreError(error instanceof Error ? error.message : "The ignored ranges could not be saved");
+    } finally {
+      setIgnoreSaving(false);
+    }
+  }
+
+  function finishIgnoredRange() {
+    if (ignoreStart === null) return;
+    const start = Math.min(ignoreStart, playbackTime);
+    const end = Math.max(ignoreStart, playbackTime);
+    if (end - start < 0.1) {
+      setIgnoreError("An ignored range must be at least 0.1 seconds long.");
+      return;
+    }
+    void mutateIgnoredRanges((document) => {
+      const overlaps = (row: { start: number; end: number }) =>
+        row.start < end && row.end > start;
+      if (document.rallies.some(overlaps)) {
+        throw new Error("Ignored ranges cannot overlap a human-labeled rally.");
+      }
+      if (document.hardNegatives.some(overlaps)) {
+        throw new Error("Ignored ranges cannot overlap a hard-negative label.");
+      }
+      if (document.ignoredIntervals.some(overlaps)) {
+        throw new Error("This range overlaps an existing ignored range.");
+      }
+      return [
+        ...document.ignoredIntervals,
+        { start, end, reason: ignoreReason },
+      ];
+    }, `Ignored ${formatTime(start)}–${formatTime(end)} for evaluation.`);
+  }
+
+  function removeIgnoredRange(range: IgnoredInterval) {
+    void mutateIgnoredRanges(
+      (document) => document.ignoredIntervals.filter(
+        (candidate) => candidate.start !== range.start || candidate.end !== range.end,
+      ),
+      `Restored ${formatTime(range.start)}–${formatTime(range.end)} to evaluation.`,
+    );
+  }
+
+  function toggleModelVisibility(candidate: ReviewAnalysis) {
+    const key = modelVisibilityKey(candidate);
+    const next = new Set(hiddenModelKeys);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    saveModelVisibility(next);
+  }
 
   function navigate(
     videoId: string,
@@ -364,6 +852,37 @@ export function ReviewEditor({
       )}
 
       <section className="workspace">
+        <aside>
+          {selected ? (
+            <>
+              <div className="aside-heading"><span>SELECTED RALLY</span><strong>{selected.id}</strong></div>
+              <div className={`confidence ${selected.confidence < 0.7 ? "warn" : ""}`}>
+                <span>{confidenceLabel}</span>
+                <strong>{analysis.kind === "gold" ? "VERIFIED" : `${Math.round(selected.confidence * 100)}%`}</strong>
+              </div>
+              <dl>
+                <div><dt>Suggested start</dt><dd>{formatTime(selected.start)}</dd></div>
+                <div><dt>Suggested end</dt><dd>{formatTime(selected.end)}</dd></div>
+                <div><dt>Core duration</dt><dd>{(selected.end - selected.start).toFixed(1)}s</dd></div>
+                <div><dt>Dataset role</dt><dd>{analysis.datasetRoleLabel}</dd></div>
+                <div><dt>Training corpus</dt><dd>{analysis.trainingCorpusLabel}</dd></div>
+                <div><dt>Method</dt><dd>{analysis.method}</dd></div>
+              </dl>
+              <div className="selected-rally-actions">
+                <button className="include" onClick={() => toggleRally(selected.id)}>
+                  {selected.included ? "✓ Included in export" : "+ Restore to export"}
+                </button>
+                {analysis.courtPreviewUrl && (
+                  <a className="diagnostic-link" href={analysis.courtPreviewUrl} target="_blank">
+                    Open court diagnostic ↗
+                  </a>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state"><span>NO RALLIES FOUND</span><p>This source produced no rally candidates for the selected video.</p></div>
+          )}
+        </aside>
         <div className="viewer">
           <div
             className={`court video-stage ${analysis.videoUrl ? "has-video" : ""}`}
@@ -410,13 +929,204 @@ export function ReviewEditor({
             </div>
           </div>
 
+          {humanAnalysis && (
+            <div className="ignore-range-editor" aria-label="Ignored evaluation ranges">
+              <div className="ignore-range-heading">
+                <div>
+                  <strong>Ignored evaluation ranges</strong>
+                  <span>Excluded from model scoring and export-duration comparisons</span>
+                </div>
+                <span>{ignoredRanges.length} {ignoredRanges.length === 1 ? "range" : "ranges"}</span>
+              </div>
+              <div className="ignore-range-actions">
+                <label>
+                  <span>Reason</span>
+                  <select
+                    value={ignoreReason}
+                    onChange={(event) => setIgnoreReason(event.target.value)}
+                    disabled={ignoreSaving}
+                  >
+                    <option value="partial-rally">Partial rally</option>
+                    <option value="camera-gap">Camera gap</option>
+                    <option value="boundary-ambiguous">Boundary ambiguous</option>
+                    <option value="non-game-content">Non-game content</option>
+                  </select>
+                </label>
+                {ignoreStart === null ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIgnoreStart(playbackTime);
+                      setIgnoreError(null);
+                      setIgnoreMessage(null);
+                    }}
+                    disabled={ignoreSaving}
+                  >
+                    Mark start at {formatTime(playbackTime)}
+                  </button>
+                ) : (
+                  <>
+                    <span className="ignore-range-pending">
+                      Start {formatTime(ignoreStart)} · current {formatTime(playbackTime)}
+                    </span>
+                    <button type="button" onClick={finishIgnoredRange} disabled={ignoreSaving}>
+                      {ignoreSaving ? "Saving…" : "Mark end & save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="quiet"
+                      onClick={() => setIgnoreStart(null)}
+                      disabled={ignoreSaving}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+                <Link href="/label">
+                  Open full label editor ↗
+                </Link>
+              </div>
+              {ignoredRanges.length > 0 && (
+                <div className="ignored-range-list">
+                  {ignoredRanges.map((range) => (
+                    <div key={`${range.start}-${range.end}-${range.reason}`}>
+                      <button
+                        type="button"
+                        className="ignored-range-time"
+                        onClick={() => seekTo(range.start)}
+                      >
+                        {formatTime(range.start)}–{formatTime(range.end)}
+                      </button>
+                      <span>{range.reason.replaceAll("-", " ")}</span>
+                      <button
+                        type="button"
+                        className="ignored-range-delete"
+                        aria-label={`Delete ignored range ${formatTime(range.start)} to ${formatTime(range.end)}`}
+                        onClick={() => removeIgnoredRange(range)}
+                        disabled={ignoreSaving}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {ignoreError && <p className="ignore-range-error">{ignoreError}</p>}
+              {ignoreMessage && <p className="ignore-range-message">{ignoreMessage}</p>}
+            </div>
+          )}
+
           <div className="comparison-heading">
             <div>
               <strong>All analysis tracks</strong>
               <span>Same video clock · vertical line is the current playhead</span>
             </div>
-            <span>{tracks.length} sources</span>
+            <span>
+              {visibleComparisonAnalyses.length} / {comparisonAnalyses.length} sources shown
+              {ignoredRanges.length > 0 ? ` · ${ignoredRanges.length} ignored` : ""}
+            </span>
           </div>
+          {modelAnalyses.length > 0 && (
+            <div className="model-timeline-controls" aria-label="Model timeline visibility">
+              <div className="model-timeline-legend" aria-label="Model comparison legend">
+                <span data-tone="match">Human match</span>
+                <span data-tone="added">Added rally</span>
+                <span data-tone="missed">Missed rally</span>
+                <span data-tone="gold-padding">Human padding</span>
+                <span data-tone="sol-padding">Sol padding</span>
+                <span data-tone="ignored">Ignored evaluation</span>
+                <span data-tone="before-padding">Before padding</span>
+                <span data-tone="after-padding">After padding</span>
+              </div>
+              <div className="model-toggle-filter" aria-label="Filter model toggles">
+                <span>Show toggles where</span>
+                <label>
+                  <span className="sr-only">Human label comparison</span>
+                  <select
+                    aria-label="Human label comparison"
+                    value={modelFilterBasis}
+                    onChange={(event) => setModelFilterBasis(event.target.value as ModelFilterBasis)}
+                  >
+                    <option value="coreHuman">Core human</option>
+                    <option value="paddedHuman">Padded human</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="sr-only">Metric</span>
+                  <select
+                    aria-label="Metric"
+                    value={modelFilterMetric}
+                    onChange={(event) => setModelFilterMetric(event.target.value as ModelFilterMetric)}
+                  >
+                    <option value="precision">Precision</option>
+                    <option value="recall">Recall</option>
+                    <option value="f1">F1</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="sr-only">Comparison operator</span>
+                  <select
+                    className="model-filter-operator"
+                    aria-label="Comparison operator"
+                    value={modelFilterOperator}
+                    onChange={(event) => setModelFilterOperator(event.target.value as ModelFilterOperator)}
+                  >
+                    <option value="greater">&gt;</option>
+                    <option value="less">&lt;</option>
+                  </select>
+                </label>
+                <label className="model-filter-threshold">
+                  <span className="sr-only">Minimum percentage</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    inputMode="decimal"
+                    placeholder="x"
+                    aria-label="Minimum percentage"
+                    value={modelFilterThreshold}
+                    onChange={(event) => setModelFilterThreshold(event.target.value)}
+                  />
+                  <span>%</span>
+                </label>
+                <small>{modelToggleAnalyses.length} / {modelAnalyses.length} models</small>
+                {modelFilterThreshold !== "" && (
+                  <button type="button" onClick={() => setModelFilterThreshold("")}>Clear</button>
+                )}
+              </div>
+              <div className="model-toggles">
+                {modelToggleAnalyses.map((candidate) => {
+                  const slug = analysisSlug(candidate);
+                  const checked = !hiddenModelKeys.has(modelVisibilityKey(candidate));
+                  return (
+                    <label
+                      key={candidate.id}
+                      title={[
+                        candidate.variantLabel,
+                        slug,
+                        candidate.variantDescription,
+                      ].filter(Boolean).join("\n")}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`${checked ? "Hide" : "Show"} model ${slug}`}
+                        checked={checked}
+                        onChange={() => toggleModelVisibility(candidate)}
+                      />
+                      <span className="model-toggle-copy">
+                        <strong>{timelineTrackLabel(candidate)}</strong>
+                        <small>{slug}</small>
+                      </span>
+                    </label>
+                  );
+                })}
+                {modelToggleAnalyses.length === 0 && (
+                  <p className="model-toggle-empty">No models exceed this threshold.</p>
+                )}
+              </div>
+            </div>
+          )}
           <RallyTimeline
             duration={analysis.duration}
             currentTime={playbackTime}
@@ -435,41 +1145,12 @@ export function ReviewEditor({
           />
         </div>
 
-        <aside>
-          {selected ? (
-            <>
-              <div className="aside-heading"><span>SELECTED RALLY</span><strong>{selected.id}</strong></div>
-              <div className={`confidence ${selected.confidence < 0.7 ? "warn" : ""}`}>
-                <span>{confidenceLabel}</span>
-                <strong>{analysis.kind === "gold" ? "VERIFIED" : `${Math.round(selected.confidence * 100)}%`}</strong>
-              </div>
-              <dl>
-                <div><dt>Suggested start</dt><dd>{formatTime(selected.start)}</dd></div>
-                <div><dt>Suggested end</dt><dd>{formatTime(selected.end)}</dd></div>
-                <div><dt>Core duration</dt><dd>{(selected.end - selected.start).toFixed(1)}s</dd></div>
-                <div><dt>Dataset role</dt><dd>{analysis.datasetRoleLabel}</dd></div>
-                <div><dt>Training corpus</dt><dd>{analysis.trainingCorpusLabel}</dd></div>
-                <div><dt>Method</dt><dd>{analysis.method}</dd></div>
-              </dl>
-              <button className="include" onClick={() => toggleRally(selected.id)}>
-                {selected.included ? "✓ Included in export" : "+ Restore to export"}
-              </button>
-              {analysis.courtPreviewUrl && (
-                <a className="diagnostic-link" href={analysis.courtPreviewUrl} target="_blank">
-                  Open court diagnostic ↗
-                </a>
-              )}
-            </>
-          ) : (
-            <div className="empty-state"><span>NO RALLIES FOUND</span><p>This source produced no rally candidates for the selected video.</p></div>
-          )}
-        </aside>
       </section>
 
       <section className="controls">
         <div><p className="eyebrow">EDIT DECISION LIST</p><h2>Give every point<br />room to breathe.</h2></div>
-        <label>Before activity <output>{preRoll}s</output><input type="range" min="0" max="8" value={preRoll} onChange={(event) => setPreRoll(Number(event.target.value))} /></label>
-        <label>After activity <output>{postRoll}s</output><input type="range" min="0" max="8" value={postRoll} onChange={(event) => setPostRoll(Number(event.target.value))} /></label>
+        <label>Before activity <output>{preRoll}s</output><input type="range" min="0" max="8" value={preRoll} onChange={(event) => saveActivityPadding({ ...activityPadding, before: Number(event.target.value) })} /></label>
+        <label>After activity <output>{postRoll}s</output><input type="range" min="0" max="8" value={postRoll} onChange={(event) => saveActivityPadding({ ...activityPadding, after: Number(event.target.value) })} /></label>
         <div className="export"><span>ESTIMATED EXPORT</span><strong>{formatTime(keptSeconds)}</strong><button disabled>Export coming next</button></div>
       </section>
     </main>

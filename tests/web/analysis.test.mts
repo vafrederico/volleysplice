@@ -3,7 +3,11 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadAnalyses, parseAnalysis } from "../../lib/analysis.ts";
+import {
+  applyIgnoredIntervalRevision,
+  loadAnalyses,
+  parseAnalysis,
+} from "../../lib/analysis.ts";
 
 function fixture(id: string, title: string) {
   return {
@@ -74,6 +78,7 @@ test("parseAnalysis accepts trained-model output without a heuristic proxy block
     schemaVersion: 1,
     id: "model-full-percentile-v1--indoor-test-full",
     title: "indoor-test-full",
+    createdAt: "2026-08-12T08:00:00-07:00",
     source: {
       filename: "indoor-test-full.mp4",
       duration: 90,
@@ -91,6 +96,7 @@ test("parseAnalysis accepts trained-model output without a heuristic proxy block
   assert.ok(parsed);
   assert.equal(parsed.kind, "model");
   assert.equal(parsed.modelVersion, "full-percentile-v1");
+  assert.equal(parsed.addedAt, "2026-08-12T15:00:00.000Z");
   assert.equal(parsed.trainingCorpus, "original");
   assert.equal(parsed.trainingCorpusLabel, "Original training");
   assert.equal(parsed.variantLabel, "Trained model · full-percentile-v1");
@@ -98,6 +104,36 @@ test("parseAnalysis accepts trained-model output without a heuristic proxy block
   assert.equal(parsed.recordingId, "indoor-test-full");
   assert.equal(parsed.courtConfidence, 1);
   assert.equal(parsed.rallies.length, 1);
+  assert.deepEqual(parsed.ignoredIntervals, []);
+});
+
+test("a saved ignored-range revision overlays the completed review analysis", () => {
+  const parsed = parseAnalysis({
+    schemaVersion: 1,
+    id: "review-ignore-overlay",
+    source: {
+      filename: "review-ignore-overlay.mp4",
+      duration: 180,
+      width: 960,
+      height: 540,
+    },
+    analysis: {
+      method: "court-motion-temporal-logistic-v0",
+      court: { source: "manual-roi", lines: [] },
+      warnings: [],
+    },
+    rallies: [],
+  });
+  assert.ok(parsed);
+
+  const revised = applyIgnoredIntervalRevision(parsed, [
+    { start: 0, end: 114.134, reason: "non-game-content" },
+  ]);
+
+  assert.deepEqual(revised.ignoredIntervals, [
+    { start: 0, end: 114.134, reason: "non-game-content" },
+  ]);
+  assert.deepEqual(parsed.ignoredIntervals, []);
 });
 
 test("parseAnalysis tags beach-exclusion runs and routes their diagnostics to that corpus", () => {

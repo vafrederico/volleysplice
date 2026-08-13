@@ -118,6 +118,14 @@ Padding is applied only to the hypothetical exported crops. The report preserves
 model intervals, merges overlapping padded crops, and separates train, validation/tuning,
 and held-out test results.
 
+Rally-model iterations are ranked by **Padded P/Core R F1**
+(`F1_padP_coreR`): precision compares the padded model export with equally padded human
+labels, while recall compares that same padded model export with the core human labels.
+See the [model iteration ranking metric](docs/model-ranking-metric.md) for the exact
+interval, aggregation, and split-discipline contract. This is not chronological event F1.
+Every iteration report includes the four symmetric before/after padding cases of
+0, 1, 2, and 3 seconds; the primary rank uses the predeclared target-padding case.
+
 ## Review locally
 
 ```bash
@@ -141,6 +149,7 @@ The review screen provides:
 - Include/exclude decisions.
 - Configurable pre-roll and post-roll.
 - A merged edit decision list, so overlapping padding is counted only once.
+- Per-model core, padded, and Padded P/Core R F1 metrics plus export-duration cost.
 - Explicit warnings for missing audio, fallback court regions, low camera stability, and zero detected rallies.
 
 Generated videos are served only through an allowlisted local media route. Original source recordings are never exposed by that route.

@@ -32,14 +32,14 @@
   margin-left: 6px;
   background: var(--label-ink);
   color: var(--label-acid);
-  font: 500 10px "DM Mono", monospace;
+  font: 500 10px "Atkinson Hyperlegible Mono", monospace;
   letter-spacing: 1px;
 }
 
 .local,
 .eyebrow {
   color: #77796f;
-  font: 500 11px "DM Mono", monospace;
+  font: 500 11px "Atkinson Hyperlegible Mono", monospace;
   letter-spacing: 1.4px;
   text-transform: uppercase;
 }
@@ -119,7 +119,7 @@
   border-radius: 0;
   background: #fff;
   color: var(--label-ink);
-  font: 12px "DM Mono", monospace;
+  font: 12px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .trackletControls input,
@@ -130,7 +130,7 @@
   border-radius: 0;
   background: #fff;
   color: var(--label-ink);
-  font: 11px "DM Mono", monospace;
+  font: 11px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .preparedTask {
@@ -163,14 +163,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 12px "DM Mono", monospace;
+  font: 12px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .message,
 .error {
   margin: 0 4vw 12px;
   padding: 10px 14px;
-  font: 12px "DM Mono", monospace;
+  font: 12px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .message { background: #e5e1d4; }
@@ -270,7 +270,7 @@
   stroke: #10120f;
   stroke-width: 0.7;
   paint-order: stroke;
-  font: 3px "DM Mono", monospace;
+  font: 3px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .trackletTeamA rect,
@@ -299,7 +299,7 @@
 
 .videoEmpty {
   color: #8d9086;
-  font: 13px "DM Mono", monospace;
+  font: 13px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .courtPanel {
@@ -411,7 +411,7 @@
 
 .trackletActions span {
   color: #667477;
-  font: 10px "DM Mono", monospace;
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .trackletRows {
@@ -459,7 +459,7 @@
 
 .trackletObservations span {
   color: #667477;
-  font: 9px "DM Mono", monospace;
+  font: 9px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .trackletEmpty {
@@ -476,7 +476,7 @@
   background: var(--label-ink);
   color: #fff;
   pointer-events: none;
-  font: 13px "DM Mono", monospace;
+  font: 13px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .transport,
@@ -519,7 +519,7 @@
   margin-left: 5px;
   padding: 2px 4px;
   border: 1px solid currentColor;
-  font: 9px "DM Mono", monospace;
+  font: 9px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .timeline {
@@ -599,7 +599,7 @@
 .currentRallyHeading span,
 .currentRallyEvidence {
   color: #62665a;
-  font: 10px "DM Mono", monospace;
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .currentRallyTimes {
@@ -619,7 +619,7 @@
   text-align: left;
   text-decoration: underline;
   text-underline-offset: 3px;
-  font: 11px "DM Mono", monospace;
+  font: 11px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .currentRallyTimes button:last-child { text-align: right; }
@@ -702,7 +702,7 @@
 
 .tableHeading > span {
   color: #77796f;
-  font: 11px "DM Mono", monospace;
+  font: 11px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .rows {
@@ -737,7 +737,7 @@
   padding-inline: 0;
   border: 0;
   text-align: left;
-  font: 11px "DM Mono", monospace;
+  font: 11px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .row .delete,
@@ -807,7 +807,7 @@
   display: grid;
   gap: 5px;
   color: #f4a995;
-  font: 11px "DM Mono", monospace;
+  font: 11px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .issueList strong { color: var(--label-acid); }

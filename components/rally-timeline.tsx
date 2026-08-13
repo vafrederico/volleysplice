@@ -7,9 +7,16 @@ export type TimelineInterval = {
   end: number;
   confidence?: number;
   title?: string;
+  selectionId?: string | null;
+  paddingOrigin?: "before" | "after" | "both";
   tone?:
     | "model"
     | "model-no-beach"
+    | "model-match"
+    | "model-added"
+    | "model-missed"
+    | "gold-padding"
+    | "sol-padding"
     | "heuristic"
     | "sol"
     | "gold"
@@ -22,6 +29,13 @@ export type TimelineTrack = {
   label: string;
   title?: string;
   detail?: string;
+  summary?: {
+    exportTime: string;
+    exportDelta?: string;
+    coreMetrics?: string;
+    paddedMetrics?: string;
+    hybridF1?: string;
+  };
   active?: boolean;
   intervals: TimelineInterval[];
 };
@@ -63,6 +77,7 @@ export function RallyTimeline({
         <div className={styles.tickRail}>
           {ticks.map((tick) => <span key={tick}>{formatTime(tick)}</span>)}
         </div>
+        <span className={styles.summaryHeading}>Output summary</span>
       </div>
       {tracks.map((track) => (
         <div
@@ -99,15 +114,24 @@ export function RallyTimeline({
                     : undefined
                 }
                 data-selected={
-                  track.id === selectedTrackId && interval.id === selectedIntervalId
+                  track.id === selectedTrackId &&
+                  interval.selectionId !== null &&
+                  (interval.selectionId ?? interval.id) === selectedIntervalId
                     ? "true"
                     : undefined
                 }
+                data-padding-origin={interval.paddingOrigin}
                 style={{
                   left: `${timelinePercent(interval.start, duration)}%`,
                   width: `${timelinePercent(interval.end - interval.start, duration)}%`,
                 }}
-                onClick={() => onSeek?.(interval.start, track.id, interval.id)}
+                onClick={() => onSeek?.(
+                  interval.start,
+                  track.id,
+                  interval.selectionId === null
+                    ? undefined
+                    : interval.selectionId ?? interval.id,
+                )}
                 title={interval.title ?? `${interval.id}: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
                 aria-label={`Seek to ${interval.id} at ${formatTime(interval.start)}`}
               />
@@ -129,6 +153,28 @@ export function RallyTimeline({
               style={{ left: `${timelinePercent(currentTime, duration)}%` }}
               aria-hidden="true"
             />
+          </div>
+          <div className={styles.trackSummary}>
+            {track.summary && (
+              <>
+                <small>
+                  <b>Export</b>
+                  <span>
+                    {track.summary.exportTime}
+                    {track.summary.exportDelta && <> · {track.summary.exportDelta}</>}
+                  </span>
+                </small>
+                {track.summary.coreMetrics && (
+                  <small><b>Core P/R/F1</b><span>{track.summary.coreMetrics}</span></small>
+                )}
+                {track.summary.paddedMetrics && (
+                  <small><b>Padded P/R/F1</b><span>{track.summary.paddedMetrics}</span></small>
+                )}
+                {track.summary.hybridF1 && (
+                  <small><b>Padded P/Core R F1</b><span>{track.summary.hybridF1}</span></small>
+                )}
+              </>
+            )}
           </div>
         </div>
       ))}
