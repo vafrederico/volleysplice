@@ -96,3 +96,41 @@ All eight per-recording cache hashes match their index. Provenance records clean
 The protected retrospective split is still unopened. It may be opened only for a candidate whose
 full nested development report passes every predeclared aggregate, paired-source, live-recall,
 ordinary-long, and short/fault gate. Diagnostic oracles are permanently ineligible.
+
+## 2. Conservative binary-preserving hybrid
+
+Implementation checkpoint: `3af58f6 Add nested conservative multistate hybrid`.
+
+The hybrid evaluated exactly four predeclared modes inside every outer fold: binary no-op, bounded
+boundary snapping, strict isolated short rescue, and snapping plus rescue. Every mode structurally
+retains each binary proposal. Snaps are limited to 0.75 seconds and long binary proposals must retain
+at least 90% coverage and .85 IoU; rescues require independent high binary support, confident state
+edges, isolated low-score flanks, and a two-per-recording cap. Each outer fold refit three true inner
+OOF models that excluded the held source; every frozen binary and state-model fingerprint matched.
+
+All four outer folds selected binary no-op. The no-op exactly reproduced the frozen binary control:
+
+| output | F1 | time IoU | live recall | live precision | objective | ordinary strict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| frozen binary control | .52443 | .51310 | .83818 | .56952 | .56809 | 148 |
+| nested conservative hybrid | .52443 | .51310 | .83818 | .56952 | .56809 | 148 |
+
+The non-no-op inner evidence was too small or inconsistent:
+
+- boundary snapping changed 58–102 boundaries per pooled inner validation set, but objective changes
+  ranged only from -.0041 to +.0025 and never cleared the frozen +.01 macro-source gain gate; the SPU
+  outer selection pool also lost ordinary-long strict matches;
+- the strict rescue found no accepted addition in three pools and one addition in the SPU pool,
+  gaining only .0020 objective and not clearing the macro or short-match gates;
+- every selected no-op retained the live-recall and ordinary-long floor, preventing the original
+  multistate candidate's source-specific regressions.
+
+The final paired result is neutral: zero positive, zero negative, and four neutral source groups.
+The hybrid is not promoted and the binary control remains selected. No protected labels were read.
+
+Artifact:
+
+- `reports/feature-order-2026-08-12/multistate-conservative-hybrid-v1-development.json`, SHA-256
+  `2cb9fb2edcc59d0d04a549c9a6ee116e6a3e2548d682a65e3d574f541ab9e9a1`.
+
+The report pins clean Git commit `3af58f6`; wall time was 190.334 seconds.
