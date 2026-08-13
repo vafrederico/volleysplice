@@ -89,6 +89,7 @@ button.trackLabel {
 }
 
 .interval[data-tone="model"] { background: #275fc2; }
+.interval[data-tone="model-no-beach"] { background: #00a47c; }
 .interval[data-tone="heuristic"] { background: #27746f; }
 .interval[data-tone="sol"] { background: #9a5bd4; }
 .interval[data-tone="gold"] { background: #161813; }

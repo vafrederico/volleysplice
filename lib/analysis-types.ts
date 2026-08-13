@@ -4,6 +4,10 @@ export type AnalysisKind = "heuristic" | "model" | "sol" | "gold" | "unknown";
 
 export type DatasetRole = "training" | "validation" | "evaluation" | "not-applicable";
 
+export type TrainingCorpus = "original" | "without-beach" | "reference";
+
+export type TrainingCorpusView = "original" | "without-beach" | "both";
+
 export type CourtLine = {
   x1: number;
   y1: number;
@@ -20,6 +24,8 @@ export type ReviewAnalysis = {
   kind: AnalysisKind;
   method: string;
   modelVersion: string | null;
+  trainingCorpus: TrainingCorpus;
+  trainingCorpusLabel: string;
   datasetRole: DatasetRole;
   datasetRoleLabel: string;
   duration: number;
@@ -44,6 +50,8 @@ export type AnalysisOption = {
   variantDescription: string | null;
   kind: AnalysisKind;
   modelVersion: string | null;
+  trainingCorpus: TrainingCorpus;
+  trainingCorpusLabel: string;
   datasetRole: DatasetRole;
   datasetRoleLabel: string;
   duration: number;

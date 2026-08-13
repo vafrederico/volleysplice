@@ -1,6 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { CourtLine, ReviewAnalysis } from "./analysis-types.ts";
+import type {
+  CourtLine,
+  ReviewAnalysis,
+  TrainingCorpus,
+} from "./analysis-types.ts";
 import type { Rally } from "./edit-list.ts";
 import { getAnalysesRoot } from "./storage.ts";
 
@@ -87,7 +91,21 @@ function analysisIdentity(
   } as const;
 }
 
-export function parseAnalysis(value: unknown): ReviewAnalysis | null {
+type AnalysisLoadOptions = {
+  analysesRoot?: string;
+  trainingCorpus?: Extract<TrainingCorpus, "original" | "without-beach">;
+};
+
+function trainingCorpusLabel(corpus: TrainingCorpus): string {
+  if (corpus === "without-beach") return "Without beach training";
+  if (corpus === "reference") return "Reference";
+  return "Original training";
+}
+
+export function parseAnalysis(
+  value: unknown,
+  options: Pick<AnalysisLoadOptions, "trainingCorpus"> = {},
+): ReviewAnalysis | null {
   const root = record(value);
   if (!root || root.schemaVersion !== 1 || typeof root.id !== "string" || !ANALYSIS_ID.test(root.id)) return null;
   const proxy = record(root.proxy);
@@ -99,6 +117,9 @@ export function parseAnalysis(value: unknown): ReviewAnalysis | null {
   if (!media || !duration || duration <= 0 || !source || !analysis || !court) return null;
   const sourceFilename = typeof source.filename === "string" ? source.filename : "Local video";
   const identity = analysisIdentity(root, analysis, sourceFilename);
+  const trainingCorpus = options.trainingCorpus ?? "original";
+  const mediaCorpusQuery =
+    trainingCorpus === "without-beach" ? "?corpus=without-beach" : "";
   const courtSource = typeof court.source === "string" ? court.source : "unknown";
   const courtConfidence =
     finiteNumber(court.confidence) ?? (courtSource === "manual-roi" ? 1 : 0);
@@ -153,14 +174,16 @@ export function parseAnalysis(value: unknown): ReviewAnalysis | null {
     kind: identity.kind,
     method: identity.method,
     modelVersion: identity.modelVersion,
+    trainingCorpus,
+    trainingCorpusLabel: trainingCorpusLabel(trainingCorpus),
     datasetRole: "not-applicable",
     datasetRoleLabel: "Not applicable",
     duration,
     width: Math.max(1, finiteNumber(media.width) ?? 16),
     height: Math.max(1, finiteNumber(media.height) ?? 9),
     sourceFilename,
-    videoUrl: `/api/media/${root.id}/proxy.mp4`,
-    courtPreviewUrl: `/api/media/${root.id}/court-preview.jpg`,
+    videoUrl: `/api/media/${root.id}/proxy.mp4${mediaCorpusQuery}`,
+    courtPreviewUrl: `/api/media/${root.id}/court-preview.jpg${mediaCorpusQuery}`,
     courtConfidence: Math.max(0, Math.min(1, courtConfidence)),
     courtSource,
     courtLines: lines,
@@ -172,8 +195,11 @@ export function parseAnalysis(value: unknown): ReviewAnalysis | null {
   };
 }
 
-export async function loadAnalyses(): Promise<ReviewAnalysis[]> {
-  const analysesRoot = getAnalysesRoot();
+export async function loadAnalyses(
+  options: AnalysisLoadOptions = {},
+): Promise<ReviewAnalysis[]> {
+  const trainingCorpus = options.trainingCorpus ?? "original";
+  const analysesRoot = options.analysesRoot ?? getAnalysesRoot(trainingCorpus);
   let entries;
   try {
     entries = await fs.readdir(analysesRoot, { withFileTypes: true });
@@ -199,7 +225,10 @@ export async function loadAnalyses(): Promise<ReviewAnalysis[]> {
   for (const candidate of candidates) {
     if (!candidate) continue;
     try {
-      const parsed = parseAnalysis(JSON.parse(await fs.readFile(candidate.filename, "utf-8")));
+      const parsed = parseAnalysis(
+        JSON.parse(await fs.readFile(candidate.filename, "utf-8")),
+        { trainingCorpus },
+      );
       if (parsed) analyses.push(parsed);
     } catch {
       // Ignore incomplete or malformed local runs.

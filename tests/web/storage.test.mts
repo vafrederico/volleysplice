@@ -20,3 +20,14 @@ test("storage honors the server-side configured media root", () => {
   if (previous === undefined) delete process.env.VOLLEYCUT_DATA_ROOT;
   else process.env.VOLLEYCUT_DATA_ROOT = previous;
 });
+
+test("storage supports a separate no-beach analysis root", () => {
+  const previous = process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT;
+  process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT = "/mnt/example/no-beach/analyses";
+  assert.equal(
+    getAnalysesRoot("without-beach"),
+    "/mnt/example/no-beach/analyses",
+  );
+  if (previous === undefined) delete process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT;
+  else process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT = previous;
+});
