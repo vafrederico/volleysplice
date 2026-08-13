@@ -173,3 +173,41 @@ Artifact:
   SHA-256 `f9e2e0a053ebb0fec7fec28c179d7d126a2caadf4af662a55187564af22fe3ff`.
 
 The report pins clean Git commit `4c98042`; wall time was 387.809 seconds.
+
+## 4. Existing-tag immediate-result proxy
+
+Implementation checkpoint: `8a0a32c Add nested immediate-result proxy study`.
+
+This study used existing tags only: one gold-serve anchor per rally was positive exactly for `ace`
+or `service-fault` and negative otherwise. Development support was 76 positives (35 aces and 41
+service faults) and 230 negatives across all four source groups. The learned proxy used a fixed
+17-column, at-most-two-second-lookahead bank; each fold trained it for 60 fixed epochs without using
+held proxy labels for early stopping. Inference used no tag. Instead, the decoder privately split
+LIVE into ordinary and result branches with fold-estimated duration priors; direct SERVE-to-DEAD was
+removed and every event had at least one LIVE sample.
+
+All four outer folds selected v1 no-op. Fixed outer-OOF diagnostics were:
+
+| candidate | F1 | time IoU | live recall | live precision | objective | ordinary / short / ace / fault strict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| v1 no-op | .55499 | .54566 | .78260 | .64316 | .58633 | 147 / 11 / 7 / 10 |
+| constant tag-duration branches | .55782 | .54708 | .78308 | .64480 | .58839 | 147 / 11 / 7 / 10 |
+| learned proxy + tag-duration branches | .55254 | .54431 | .78071 | .64255 | .58430 | 146 / 12 / 6 / 11 |
+
+The duration-only branch removed the one decoded direct SERVE-to-DEAD transition and gained only
+.0021 objective, with no additional strict short, ace, or fault match. The learned proxy failed its
+mechanism gate: outer-OOF log loss was .6419 versus .5658 for the training-fold prevalence baseline;
+AUROC was .5054 and average precision .3013. Log loss was worse in all four source groups. It decoded
+31 result branches but merely traded one ace and ordinary-long strict match for one fault/short
+match. Existing coarse outcome tags therefore do not supply useful observable result evidence on
+this feature bank, although the tag-conditioned duration distinction itself is real.
+
+Binary remains operational. This study predeclared fresh-source validation—not the reused protected
+test—as the only possible next assessment; the development gate failed, so neither was opened.
+
+Artifact:
+
+- `reports/feature-order-2026-08-12/multistate-immediate-result-proxy-v1-development.json`,
+  SHA-256 `53edb324540feda8401359b4f151ad200184373c0c3d2b2c0a4e3bef16ac5182`.
+
+The report pins clean Git commit `8a0a32c`; wall time was 186.485 seconds.
