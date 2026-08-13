@@ -261,6 +261,25 @@ npm run evaluate:multistate-followup -- hybrid-development \
 The protected retrospective stays closed unless paired objective evidence and every live-recall,
 ordinary-long, precision, dead-time, boundary, and short-rescue development guardrail pass.
 
+The first existing-label ablation is another full nested study with a fixed four-candidate Cartesian
+product. It compares the v1 normalized balanced OVR emissions with a fold-prior correction, and the
+v1 geometric durations with an empirical SETUP/two-geometric LIVE prior. No numeric hyperparameter
+is searched, and every state head must reproduce its frozen v1 fingerprint:
+
+```bash
+npm run evaluate:multistate-followup -- existing-label-ablation \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --output data/reports/multistate-existing-label-ablation-v1-development.json
+```
+
+Class prevalence and duration mixtures are estimated only from the corresponding training fold.
+The reference row must exactly reproduce the frozen v1 multistate metrics, and test remains closed
+unless the candidate both improves v1 and passes the original operational-binary promotion gate.
+Inner selection additionally constrains source-macro objective, live recall, precision, retained
+dead time, event F1, and short/fault/ordinary outcome slices.
+
 ## Out-of-fold component-selector study
 
 The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific
