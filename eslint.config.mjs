@@ -5,5 +5,12 @@ import nextTypeScript from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTypeScript,
-  globalIgnores([".next/**", ".venv/**", "data/**", "out/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    ".venv/**",
+    "data/**",
+    "out/**",
+    "public/on-device/opencv.js",
+    "next-env.d.ts",
+  ]),
 ]);

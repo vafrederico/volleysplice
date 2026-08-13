@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "sourceFeatureCacheSha256": "1961e588f16132187fe41d88d13324a6221919fef3d5e6eac84052ca8f9f6426",
+  "sourceAnalysisSha256": "d2698c9d079af66e6fd2b78e7937cfaefdf5e8735c8b31368122fe266ffebfcc",
+  "duration": 868.4666666666667,
+  "rows": 3474,
+  "columns": 104,
+  "timesBytes": 27792,
+  "names": [
+    "luma_mean",
+    "luma_std",
+    "saturation_mean",
+    "saturation_std",
+    "edge_density",
+    "sharpness",
+    "luma_grid_0",
+    "luma_grid_1",
+    "luma_grid_2",
+    "luma_grid_3",
+    "luma_grid_4",
+    "luma_grid_5",
+    "luma_grid_6",
+    "luma_grid_7",
+    "luma_grid_8",
+    "diff_mean",
+    "diff_std",
+    "diff_p90",
+    "diff_active_fraction",
+    "diff_grid_0",
+    "diff_grid_1",
+    "diff_grid_2",
+    "diff_grid_3",
+    "diff_grid_4",
+    "diff_grid_5",
+    "diff_grid_6",
+    "diff_grid_7",
+    "diff_grid_8",
+    "focus_quality",
+    "blur_probability",
+    "dark_fraction",
+    "bright_fraction",
+    "low_texture_fraction",
+    "occlusion_fraction",
+    "visibility_quality",
+    "camera_shift_x",
+    "camera_shift_y",
+    "camera_shift_magnitude",
+    "camera_shift_response",
+    "flow_mean",
+    "flow_p90",
+    "flow_active_fraction",
+    "flow_median_x",
+    "flow_median_y",
+    "flow_grid_0",
+    "flow_grid_1",
+    "flow_grid_2",
+    "flow_grid_3",
+    "flow_grid_4",
+    "flow_grid_5",
+    "flow_grid_6",
+    "flow_grid_7",
+    "flow_grid_8",
+    "player_motion_mean",
+    "player_motion_p90",
+    "player_motion_active_fraction",
+    "player_motion_active_zone_fraction",
+    "player_motion_spatial_entropy",
+    "player_motion_centroid_x",
+    "player_motion_centroid_y",
+    "player_motion_spread_x",
+    "player_motion_spread_y",
+    "player_motion_coherence",
+    "quality_gated_player_motion",
+    "player_motion_grid_0",
+    "player_motion_grid_1",
+    "player_motion_grid_2",
+    "player_motion_grid_3",
+    "player_motion_grid_4",
+    "player_motion_grid_5",
+    "player_motion_grid_6",
+    "player_motion_grid_7",
+    "player_motion_grid_8",
+    "player_motion_onset",
+    "player_motion_collapse",
+    "synchronized_stand_down",
+    "receiving_formation_change_proxy",
+    "audio_available",
+    "audio_rms",
+    "audio_peak",
+    "audio_peak_to_rms",
+    "audio_noise_floor",
+    "audio_snr",
+    "audio_spectral_flux",
+    "audio_rms_novelty",
+    "audio_onset_strength",
+    "audio_contact_like_transient",
+    "audio_onset_cadence",
+    "audio_cadence_collapse",
+    "audio_seconds_since_transient",
+    "audio_noise_removed_broadband",
+    "audio_noise_normalized_flux",
+    "audio_band_80_250_snr",
+    "audio_band_80_250_snr_flux",
+    "audio_band_250_500_snr",
+    "audio_band_250_500_snr_flux",
+    "audio_band_500_1000_snr",
+    "audio_band_500_1000_snr_flux",
+    "audio_band_1000_2000_snr",
+    "audio_band_1000_2000_snr_flux",
+    "audio_band_2000_4000_snr",
+    "audio_band_2000_4000_snr_flux",
+    "audio_band_4000_7800_snr",
+    "audio_band_4000_7800_snr_flux"
+  ],
+  "rallies": [
+    {
+      "id": "R001",
+      "start": 1.25,
+      "end": 3.75,
+      "confidence": 0.85475
+    },
+    {
+      "id": "R002",
+      "start": 24.983,
+      "end": 35.35,
+      "confidence": 0.99908
+    },
+    {
+      "id": "R003",
+      "start": 51.883,
+      "end": 58.117,
+      "confidence": 0.88818
+    },
+    {
+      "id": "R004",
+      "start": 75.983,
+      "end": 77.35,
+      "confidence": 0.99805
+    },
+    {
+      "id": "R005",
+      "start": 88.117,
+      "end": 102.117,
+      "confidence": 0.85409
+    },
+    {
+      "id": "R006",
+      "start": 115.983,
+      "end": 129.117,
+      "confidence": 0.99995
+    },
+    {
+      "id": "R007",
+      "start": 145.383,
+      "end": 155.5,
+      "confidence": 0.94078
+    },
+    {
+      "id": "R008",
+      "start": 173.617,
+      "end": 192.35,
+      "confidence": 0.72489
+    },
+    {
+      "id": "R009",
+      "start": 209.117,
+      "end": 213.617,
+      "confidence": 0.83832
+    },
+    {
+      "id": "R010",
+      "start": 228.383,
+      "end": 233.85,
+      "confidence": 0.86164
+    },
+    {
+      "id": "R011",
+      "start": 243.983,
+      "end": 268.35,
+      "confidence": 0.99988
+    },
+    {
+      "id": "R012",
+      "start": 282.383,
+      "end": 285.5,
+      "confidence": 0.92779
+    },
+    {
+      "id": "R013",
+      "start": 293.383,
+      "end": 311.0,
+      "confidence": 0.93366
+    },
+    {
+      "id": "R014",
+      "start": 324.117,
+      "end": 335.35,
+      "confidence": 0.88803
+    },
+    {
+      "id": "R015",
+      "start": 346.483,
+      "end": 348.5,
+      "confidence": 0.99959
+    },
+    {
+      "id": "R016",
+      "start": 360.117,
+      "end": 365.233,
+      "confidence": 0.91804
+    },
+    {
+      "id": "R017",
+      "start": 384.883,
+      "end": 392.0,
+      "confidence": 0.928
+    },
+    {
+      "id": "R018",
+      "start": 405.117,
+      "end": 410.617,
+      "confidence": 0.87473
+    },
+    {
+      "id": "R019",
+      "start": 427.117,
+      "end": 434.35,
+      "confidence": 0.83026
+    },
+    {
+      "id": "R020",
+      "start": 444.617,
+      "end": 451.617,
+      "confidence": 0.8881
+    },
+    {
+      "id": "R021",
+      "start": 462.117,
+      "end": 476.35,
+      "confidence": 0.93571
+    },
+    {
+      "id": "R022",
+      "start": 492.383,
+      "end": 506.617,
+      "confidence": 0.93189
+    },
+    {
+      "id": "R023",
+      "start": 518.617,
+      "end": 530.117,
+      "confidence": 0.91704
+    },
+    {
+      "id": "R024",
+      "start": 542.25,
+      "end": 546.117,
+      "confidence": 0.99865
+    },
+    {
+      "id": "R025",
+      "start": 555.617,
+      "end": 563.117,
+      "confidence": 0.87145
+    },
+    {
+      "id": "R026",
+      "start": 581.483,
+      "end": 590.5,
+      "confidence": 0.99778
+    },
+    {
+      "id": "R027",
+      "start": 606.617,
+      "end": 624.617,
+      "confidence": 0.84327
+    },
+    {
+      "id": "R028",
+      "start": 642.117,
+      "end": 651.85,
+      "confidence": 0.90626
+    },
+    {
+      "id": "R029",
+      "start": 657.617,
+      "end": 668.117,
+      "confidence": 0.77837
+    },
+    {
+      "id": "R030",
+      "start": 682.883,
+      "end": 691.617,
+      "confidence": 0.89496
+    },
+    {
+      "id": "R031",
+      "start": 703.25,
+      "end": 709.85,
+      "confidence": 0.99931
+    },
+    {
+      "id": "R032",
+      "start": 725.117,
+      "end": 742.117,
+      "confidence": 0.93182
+    },
+    {
+      "id": "R033",
+      "start": 760.25,
+      "end": 762.75,
+      "confidence": 0.99954
+    },
+    {
+      "id": "R034",
+      "start": 773.883,
+      "end": 778.85,
+      "confidence": 0.87683
+    },
+    {
+      "id": "R035",
+      "start": 788.617,
+      "end": 801.117,
+      "confidence": 0.93641
+    },
+    {
+      "id": "R036",
+      "start": 814.117,
+      "end": 819.117,
+      "confidence": 0.85537
+    },
+    {
+      "id": "R037",
+      "start": 829.75,
+      "end": 845.0,
+      "confidence": 0.99797
+    }
+  ]
+}

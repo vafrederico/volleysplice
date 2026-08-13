@@ -1,0 +1,100 @@
+export const FRAME_FEATURE_NAMES = [
+  "luma_mean",
+  "luma_std",
+  "saturation_mean",
+  "saturation_std",
+  "edge_density",
+  "sharpness",
+  ...Array.from({ length: 9 }, (_, index) => `luma_grid_${index}`),
+  "diff_mean",
+  "diff_std",
+  "diff_p90",
+  "diff_active_fraction",
+  ...Array.from({ length: 9 }, (_, index) => `diff_grid_${index}`),
+  "focus_quality",
+  "blur_probability",
+  "dark_fraction",
+  "bright_fraction",
+  "low_texture_fraction",
+  "occlusion_fraction",
+  "visibility_quality",
+  "camera_shift_x",
+  "camera_shift_y",
+  "camera_shift_magnitude",
+  "camera_shift_response",
+  "flow_mean",
+  "flow_p90",
+  "flow_active_fraction",
+  "flow_median_x",
+  "flow_median_y",
+  ...Array.from({ length: 9 }, (_, index) => `flow_grid_${index}`),
+  "player_motion_mean",
+  "player_motion_p90",
+  "player_motion_active_fraction",
+  "player_motion_active_zone_fraction",
+  "player_motion_spatial_entropy",
+  "player_motion_centroid_x",
+  "player_motion_centroid_y",
+  "player_motion_spread_x",
+  "player_motion_spread_y",
+  "player_motion_coherence",
+  "quality_gated_player_motion",
+  ...Array.from({ length: 9 }, (_, index) => `player_motion_grid_${index}`),
+] as const;
+
+export const TEMPORAL_FEATURE_NAMES = [
+  "player_motion_onset",
+  "player_motion_collapse",
+  "synchronized_stand_down",
+  "receiving_formation_change_proxy",
+] as const;
+
+export const AUDIO_FEATURE_NAMES = [
+  "audio_available",
+  "audio_rms",
+  "audio_peak",
+  "audio_peak_to_rms",
+  "audio_noise_floor",
+  "audio_snr",
+  "audio_spectral_flux",
+  "audio_rms_novelty",
+  "audio_onset_strength",
+  "audio_contact_like_transient",
+  "audio_onset_cadence",
+  "audio_cadence_collapse",
+  "audio_seconds_since_transient",
+  "audio_noise_removed_broadband",
+  "audio_noise_normalized_flux",
+  "audio_band_80_250_snr",
+  "audio_band_80_250_snr_flux",
+  "audio_band_250_500_snr",
+  "audio_band_250_500_snr_flux",
+  "audio_band_500_1000_snr",
+  "audio_band_500_1000_snr_flux",
+  "audio_band_1000_2000_snr",
+  "audio_band_1000_2000_snr_flux",
+  "audio_band_2000_4000_snr",
+  "audio_band_2000_4000_snr_flux",
+  "audio_band_4000_7800_snr",
+  "audio_band_4000_7800_snr_flux",
+] as const;
+
+export const BASE_FEATURE_NAMES = [
+  ...FRAME_FEATURE_NAMES,
+  ...TEMPORAL_FEATURE_NAMES,
+  ...AUDIO_FEATURE_NAMES,
+] as const;
+
+export const ABSOLUTE_FEATURE_NAMES = new Set([
+  "audio_available",
+  "focus_quality",
+  "blur_probability",
+  "occlusion_fraction",
+  "visibility_quality",
+  "camera_shift_response",
+]);
+
+export const CONTEXT_OFFSETS_SECONDS = [-2, -1, 0, 1, 2] as const;
+export const ANALYSIS_FPS = 4;
+export const ANALYSIS_WIDTH = 192;
+export const ANALYSIS_HEIGHT = 108;

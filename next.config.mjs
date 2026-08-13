@@ -1,5 +1,7 @@
 import { networkInterfaces } from "node:os";
 
+const PROJECT_DEV_ORIGINS = ["internal.example"];
+
 function localInterfaceOrigins() {
   return Object.values(networkInterfaces())
     .flatMap((addresses) => addresses ?? [])
@@ -17,7 +19,13 @@ function configuredDevOrigins() {
 const nextConfig = {
   // `next dev --hostname 0.0.0.0` otherwise rejects HMR and dev chunks
   // requested through the host's real LAN address. Values are hostnames only.
-  allowedDevOrigins: [...new Set([...localInterfaceOrigins(), ...configuredDevOrigins()])],
+  allowedDevOrigins: [
+    ...new Set([
+      ...PROJECT_DEV_ORIGINS,
+      ...localInterfaceOrigins(),
+      ...configuredDevOrigins(),
+    ]),
+  ],
 };
 
 export default nextConfig;

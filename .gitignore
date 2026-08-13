@@ -27,3 +27,6 @@ __pycache__/
 *.py[cod]
 .DS_Store
 *.tsbuildinfo
+
+# Generated from the pinned OpenCV dependency by npm run browser-assets
+/public/on-device/opencv.js

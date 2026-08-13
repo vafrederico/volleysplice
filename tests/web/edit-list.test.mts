@@ -15,6 +15,23 @@ test("buildEditList sorts and merges overlapping padded intervals", () => {
   assert.deepEqual(intervals[0].rallyIds, ["early", "late"]);
 });
 
+test("buildEditList merges padded intervals that touch exactly", () => {
+  const intervals = buildEditList(
+    [
+      { id: "first", start: 10, end: 12, confidence: 0.8, included: true },
+      { id: "second", start: 16, end: 18, confidence: 0.8, included: true },
+    ],
+    2,
+    2,
+    30,
+  );
+  assert.equal(intervals.length, 1);
+  assert.deepEqual(
+    { start: intervals[0].keptStart, end: intervals[0].keptEnd, ids: intervals[0].rallyIds },
+    { start: 8, end: 20, ids: ["first", "second"] },
+  );
+});
+
 test("buildEditList clamps boundaries and ignores invalid or excluded rallies", () => {
   const intervals = buildEditList([
     { id: "start", start: 1, end: 4, confidence: 0.8, included: true },

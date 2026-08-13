@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "kind": "browser-on-device-prediction",
+    "capturedAt": "2026-08-13T19:21:34Z",
+    "modelId": "model-9c92b8e9333f",
+    "note": "Captured from a full HTTPS Chromium/WebCodecs/OpenCV WASM run over the local training proxy after decoded audio timestamps were applied. These are browser on-device predictions, not Python or server predictions."
+  },
+  "source": {
+    "name": "indoor-source-07.mp4",
+    "size": 240127071,
+    "lastModified": 1786348352000,
+    "info": {
+      "duration": 868.487,
+      "mimeType": "video/mp4",
+      "width": 960,
+      "height": 540,
+      "rotation": 0,
+      "videoCodec": "avc",
+      "videoCodecString": null,
+      "canDecodeVideo": true,
+      "hasAudio": true,
+      "audioCodec": "aac",
+      "sampleRate": 48000,
+      "channels": 2,
+      "canDecodeAudio": true
+    }
+  },
+  "profile": {
+    "id": "indoor-source-07",
+    "label": "Known indoor camera · indoor-source-07",
+    "roi": { "x": 0.04, "y": 0.14, "width": 0.92, "height": 0.84 },
+    "source": "known-recording"
+  },
+  "roi": { "x": 0.04, "y": 0.14, "width": 0.92, "height": 0.84 },
+  "featurePath": "training-proxy",
+  "analysis": {
+    "modelId": "model-9c92b8e9333f",
+    "featurePath": "training-proxy",
+    "intervals": [
+      { "id": "R001", "start": 1.25, "end": 3.75, "confidence": 0.8647370934486389, "included": true },
+      { "id": "R002", "start": 24.983333333333334, "end": 36.233333333333334, "confidence": 0.9993751049041748, "included": true },
+      { "id": "R003", "start": 51.883333333333326, "end": 58.116666666666674, "confidence": 0.8879707455635071, "included": true },
+      { "id": "R004", "start": 75.25, "end": 77.75, "confidence": 0.9963833093643188, "included": true },
+      { "id": "R005", "start": 87.98333333333333, "end": 102, "confidence": 0.9998444318771362, "included": true },
+      { "id": "R006", "start": 115.25, "end": 129.11666666666667, "confidence": 0.9999486804008484, "included": true },
+      { "id": "R007", "start": 145.61666666666665, "end": 155.5, "confidence": 0.949929416179657, "included": true },
+      { "id": "R008", "start": 173.61666666666665, "end": 182.85, "confidence": 0.7819100022315979, "included": true },
+      { "id": "R009", "start": 184.88333333333333, "end": 192.35, "confidence": 0.6608160138130188, "included": true },
+      { "id": "R010", "start": 209.11666666666665, "end": 213.35, "confidence": 0.846302330493927, "included": true },
+      { "id": "R011", "start": 228.38333333333333, "end": 233.85, "confidence": 0.8598787784576416, "included": true },
+      { "id": "R012", "start": 243.98333333333332, "end": 268.1166666666667, "confidence": 0.9997907280921936, "included": true },
+      { "id": "R013", "start": 282.98333333333335, "end": 285.5, "confidence": 0.9996581077575684, "included": true },
+      { "id": "R014", "start": 293.48333333333335, "end": 311.35, "confidence": 0.9998264908790588, "included": true },
+      { "id": "R015", "start": 324.1166666666667, "end": 335.6166666666667, "confidence": 0.8884497284889221, "included": true },
+      { "id": "R016", "start": 346.75, "end": 348.73333333333335, "confidence": 0.9996880888938904, "included": true },
+      { "id": "R017", "start": 360.1166666666667, "end": 365.5, "confidence": 0.9846369028091431, "included": true },
+      { "id": "R018", "start": 384.8833333333333, "end": 392, "confidence": 0.9189465045928955, "included": true },
+      { "id": "R019", "start": 405.1166666666667, "end": 410.85, "confidence": 0.8461944460868835, "included": true },
+      { "id": "R020", "start": 427.1166666666667, "end": 433.85, "confidence": 0.8337010741233826, "included": true },
+      { "id": "R021", "start": 444.6166666666667, "end": 451.6166666666667, "confidence": 0.9006988406181335, "included": true },
+      { "id": "R022", "start": 462.3833333333333, "end": 476.5, "confidence": 0.970924437046051, "included": true },
+      { "id": "R023", "start": 478.48333333333335, "end": 480.98333333333335, "confidence": 0.9065287709236145, "included": true },
+      { "id": "R024", "start": 492.6166666666667, "end": 506.6166666666667, "confidence": 0.9343894124031067, "included": true },
+      { "id": "R025", "start": 518.6166666666667, "end": 530.1166666666667, "confidence": 0.907076895236969, "included": true },
+      { "id": "R026", "start": 542.8833333333333, "end": 546.35, "confidence": 0.7684434056282043, "included": true },
+      { "id": "R027", "start": 555.8833333333333, "end": 563.1166666666667, "confidence": 0.8799059391021729, "included": true },
+      { "id": "R028", "start": 582.1166666666667, "end": 590.7333333333333, "confidence": 0.9156360626220703, "included": true },
+      { "id": "R029", "start": 606.8833333333333, "end": 624.85, "confidence": 0.8503057956695557, "included": true },
+      { "id": "R030", "start": 642.25, "end": 652.1166666666667, "confidence": 0.9996863007545471, "included": true },
+      { "id": "R031", "start": 659.1166666666667, "end": 668.1166666666667, "confidence": 0.8050181269645691, "included": true },
+      { "id": "R032", "start": 683.1166666666667, "end": 691.35, "confidence": 0.8746690154075623, "included": true },
+      { "id": "R033", "start": 703.25, "end": 710.1166666666667, "confidence": 0.9995760321617126, "included": true },
+      { "id": "R034", "start": 725.1166666666667, "end": 742.1166666666667, "confidence": 0.9294662475585938, "included": true },
+      { "id": "R035", "start": 759.75, "end": 762.25, "confidence": 0.9992671012878418, "included": true },
+      { "id": "R036", "start": 773.8833333333333, "end": 779.1166666666667, "confidence": 0.8389716148376465, "included": true },
+      { "id": "R037", "start": 788.6166666666667, "end": 801.35, "confidence": 0.9308210015296936, "included": true },
+      { "id": "R038", "start": 814.1166666666667, "end": 819.35, "confidence": 0.8577879071235657, "included": true },
+      { "id": "R039", "start": 829.9833333333333, "end": 844.35, "confidence": 0.9991810321807861, "included": true },
+      { "id": "R040", "start": 855.25, "end": 858.6166666666667, "confidence": 0.872674822807312, "included": true }
+    ]
+  },
+  "exportDefaults": {
+    "preRoll": 3,
+    "postRoll": 2
+  }
+}
