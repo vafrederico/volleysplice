@@ -172,9 +172,11 @@ workspace. The earlier `v1` report is superseded.
 
 For development experiments, the 45-rally transition target splits into 40 usable train/validation
 rallies and five sealed protected-test rallies. Likewise, 23 of the 25 hard-negative intervals are
-development debt and two are protected debt. The separately frozen transition gate records this
-split at `reports/feature-order-2026-08-12/transition-label-experiment-gate-v1.json` (SHA-256
-`ccc04765e749070d7c645c91a2507bbc4bb96e330868748b165a18b5e2446d25`).
+development debt and two are protected debt. The refreshed candidate-specific gate records this
+split at `reports/feature-order-2026-08-12/transition-label-experiment-gate-v2.json` (SHA-256
+`9afc79561df91bea1952ddb13c7b1fe6f68ef609629f5030674e53ac2f34c557`). All four label-dependent
+candidate readiness flags remain false, so their preflight commands stop before feature or video
+preparation.
 
 ## 6. Frozen higher-resolution embeddings and tracklets
 
@@ -220,10 +222,10 @@ the user observation that the ball features did not work as implemented.
 
 ## Validation status
 
-The final repository suite passes all 373 Python tests and all 39 web tests. The experiment subset
-includes 70 focused tests (six transition, thirteen court, twenty-three multistate, seventeen
-selector, nine high-resolution, and two readiness), plus thirteen annotation tests. TypeScript
-checking, ESLint, Python compilation, and whitespace checks also pass. A LAN-served `/label` page,
+After the complete multistate follow-up sequence, the final repository suite passes all 457
+analysis tests and all 39 web tests. TypeScript checking, ESLint, Python compilation, CLI help, and
+whitespace checks also pass; the committed test modules cover every added experiment runner,
+decoder, labeling schema, readiness gate, and transition-pilot preflight. A LAN-served `/label` page,
 task catalog, draft label, and ranged video endpoint returned 200/200/200/206 respectively in
 headless Chromium with no console or HTTP errors before task load; the deeper interaction pass timed
 out while the official nested run was consuming host memory, so the UI has static and automated
