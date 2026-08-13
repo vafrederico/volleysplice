@@ -347,6 +347,14 @@ def main() -> int:
     )
     parser.add_argument("--output-root", type=Path, default=data_root / "analyses")
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--allow-manifest-mismatch",
+        action="store_true",
+        help=(
+            "allow inference on recordings outside the models' training manifest; "
+            "this is prediction-only and does not relax training/evaluation checks"
+        ),
+    )
     arguments = parser.parse_args()
 
     manifest = load_manifest(arguments.manifest)
@@ -358,6 +366,9 @@ def main() -> int:
         recordings = recordings[: arguments.limit]
     models_root = arguments.models_root.expanduser().resolve()
     output_root = arguments.output_root.expanduser().resolve()
+    validation_manifest_sha256 = (
+        None if arguments.allow_manifest_mismatch else manifest_sha256
+    )
 
     def load(name: str) -> tuple[Path, LogisticModel]:
         path = models_root / name
@@ -372,24 +383,32 @@ def main() -> int:
 
     stack_models = [load(name) for name in STACKED_MODELS]
     _validate_stacked_models(
-        v4, v4_serve, control, stack_models[0][1], manifest_sha256=manifest_sha256
+        v4, v4_serve, control, stack_models[0][1],
+        manifest_sha256=validation_manifest_sha256,
     )
     peak_decoder, _ = validate_peak_models(
-        v4, v4_serve, control, stack_models[1][1], manifest_sha256=manifest_sha256
+        v4, v4_serve, control, stack_models[1][1],
+        manifest_sha256=validation_manifest_sha256,
     )
     v4_dead_models = [load(name) for name in V4_DEAD_BALL_MODELS]
     v4_dead_configs = [
-        validate_dead_ball_triplet(v4, v4_serve, model, manifest_sha256=manifest_sha256)
+        validate_dead_ball_triplet(
+            v4, v4_serve, model, manifest_sha256=validation_manifest_sha256
+        )
         for _, model in v4_dead_models
     ]
     v5_dead_models = [load(name) for name in V5_DEAD_BALL_MODELS]
     v5_dead_configs = [
-        validate_dead_ball_triplet(v5, v5_serve, model, manifest_sha256=manifest_sha256)
+        validate_dead_ball_triplet(
+            v5, v5_serve, model, manifest_sha256=validation_manifest_sha256
+        )
         for _, model in v5_dead_models
     ]
     state_models = [load(name) for name in DEAD_STATE_MODELS]
     state_configs = [
-        validate_dead_state_triplet(v5, v5_serve, model, manifest_sha256=manifest_sha256)
+        validate_dead_state_triplet(
+            v5, v5_serve, model, manifest_sha256=validation_manifest_sha256
+        )
         for _, model in state_models
     ]
 

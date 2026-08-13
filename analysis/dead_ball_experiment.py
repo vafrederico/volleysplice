@@ -563,8 +563,13 @@ def _crossfit_epoch_cap(
     if retained_inputs is None:
         retained_inputs = np.ones(len(rally_model.feature_names), dtype=np.bool_)
     groups = sorted({item.recording.source_group for item in prepared})
-    if len(groups) < 3:
-        raise ManifestError("dead-ball epoch selection requires three training source groups")
+    # The full corpus historically had three source groups because beach was
+    # present.  A beach-excluded retrain has two legitimate source groups
+    # (grass and indoor), which still supports leave-one-group-out selection;
+    # each fold simply trains on the other group.  Keep rejecting a single
+    # group, where there is no held-out-source estimate at all.
+    if len(groups) < 2:
+        raise ManifestError("dead-ball epoch selection requires at least two training source groups")
     summaries: list[dict[str, Any]] = []
     epochs: list[int] = []
     for index, held_out in enumerate(groups, start=1):

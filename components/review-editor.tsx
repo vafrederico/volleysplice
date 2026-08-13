@@ -10,6 +10,8 @@ import type {
   AnalysisOption,
   ReviewAnalysis,
   ReviewVideoOption,
+  TrainingCorpus,
+  TrainingCorpusView,
 } from "@/lib/analysis-types";
 import { buildEditList, formatTime, type Rally } from "@/lib/edit-list";
 
@@ -28,6 +30,8 @@ const demoAnalysis: ReviewAnalysis = {
   kind: "unknown",
   method: "demo",
   modelVersion: null,
+  trainingCorpus: "reference",
+  trainingCorpusLabel: "Reference",
   datasetRole: "not-applicable",
   datasetRoleLabel: "Not applicable",
   duration: 150,
@@ -50,29 +54,58 @@ type ReviewEditorProps = {
   videoOptions: ReviewVideoOption[];
   comparisonAnalyses: ReviewAnalysis[];
   initialTime: number;
+  corpusView: TrainingCorpusView;
 };
 
-function tone(kind: AnalysisKind): "model" | "heuristic" | "sol" | "gold" {
+function tone(
+  kind: AnalysisKind,
+  trainingCorpus: TrainingCorpus,
+): "model" | "model-no-beach" | "heuristic" | "sol" | "gold" {
+  if (kind === "model" && trainingCorpus === "without-beach") {
+    return "model-no-beach";
+  }
   if (kind === "model" || kind === "sol" || kind === "gold") return kind;
   return "heuristic";
 }
 
-function preferredAnalysis(video: ReviewVideoOption): AnalysisOption | undefined {
+function visibleInCorpus(
+  analysis: AnalysisOption,
+  corpus: TrainingCorpusView,
+): boolean {
   return (
-    video.analyses.find(
+    analysis.trainingCorpus === "reference" ||
+    corpus === "both" ||
+    analysis.trainingCorpus === corpus
+  );
+}
+
+function preferredAnalysis(
+  video: ReviewVideoOption,
+  corpus: TrainingCorpusView,
+): AnalysisOption | undefined {
+  const analyses = video.analyses.filter((analysis) =>
+    visibleInCorpus(analysis, corpus),
+  );
+  return (
+    analyses.find(
+      (analysis) =>
+        corpus === "without-beach" &&
+        analysis.id === `model-nb-audiovisual-v2-final--${video.id}`,
+    ) ??
+    analyses.find(
       (analysis) =>
         analysis.id === `model-full-percentile-v1--${video.id}`,
     ) ??
-    video.analyses.find(
+    analyses.find(
       (analysis) =>
         analysis.kind === "model" && analysis.modelVersion === "full-percentile-v1",
     ) ??
-    video.analyses.find((analysis) => analysis.kind === "model") ??
-    video.analyses.find(
+    analyses.find((analysis) => analysis.kind === "model") ??
+    analyses.find(
       (analysis) => analysis.kind === "heuristic" && analysis.id.endsWith("-v2"),
     ) ??
-    video.analyses.find((analysis) => analysis.kind === "heuristic") ??
-    video.analyses[0]
+    analyses.find((analysis) => analysis.kind === "heuristic") ??
+    analyses[0]
   );
 }
 
@@ -98,6 +131,7 @@ export function ReviewEditor({
   videoOptions,
   comparisonAnalyses,
   initialTime,
+  corpusView,
 }: ReviewEditorProps) {
   const analysis = initialAnalysis ?? demoAnalysis;
   const router = useRouter();
@@ -130,14 +164,14 @@ export function ReviewEditor({
           id: candidate.id,
           label: candidate.variantLabel,
           title: candidate.variantDescription ?? undefined,
-          detail: `${candidate.datasetRoleLabel} · ${trackRallies.length} rallies`,
+          detail: `${candidate.trainingCorpusLabel} · ${candidate.datasetRoleLabel} · ${trackRallies.length} rallies`,
           active: candidate.id === analysis.id,
           intervals: trackRallies.map((rally) => ({
             id: rally.id,
             start: rally.start,
             end: rally.end,
             confidence: rally.confidence,
-            tone: tone(candidate.kind),
+            tone: tone(candidate.kind, candidate.trainingCorpus),
             title: `${candidate.variantLabel} · ${rally.id} · ${formatTime(rally.start)}–${formatTime(rally.end)}`,
           })),
         };
@@ -145,16 +179,40 @@ export function ReviewEditor({
     [analysis.id, comparisonAnalyses, rallies],
   );
 
-  function navigate(videoId: string, analysisId: string, time = 0) {
-    const query = new URLSearchParams({ video: videoId, analysis: analysisId });
+  function navigate(
+    videoId: string,
+    analysisId: string,
+    time = 0,
+    corpus = corpusView,
+  ) {
+    const query = new URLSearchParams({
+      video: videoId,
+      analysis: analysisId,
+      corpus,
+    });
     if (time > 0) query.set("time", time.toFixed(3));
     startTransition(() => router.push(`/?${query.toString()}`));
   }
 
   function selectVideo(id: string) {
     const video = videoOptions.find((candidate) => candidate.id === id);
-    const next = video ? preferredAnalysis(video) : undefined;
+    const next = video ? preferredAnalysis(video, corpusView) : undefined;
     if (video && next) navigate(video.id, next.id);
+  }
+
+  function selectCorpus(nextCorpus: TrainingCorpusView) {
+    if (!currentVideo || nextCorpus === corpusView) return;
+    const eligible = currentVideo.analyses.filter((candidate) =>
+      visibleInCorpus(candidate, nextCorpus),
+    );
+    const current = eligible.find((candidate) => candidate.id === analysis.id);
+    const sameVariant = eligible.find(
+      (candidate) =>
+        candidate.modelVersion === analysis.modelVersion &&
+        candidate.variantLabel === analysis.variantLabel,
+    );
+    const next = current ?? sameVariant ?? preferredAnalysis(currentVideo, nextCorpus);
+    if (next) navigate(currentVideo.id, next.id, playbackTime, nextCorpus);
   }
 
   function selectAnalysis(id: string, time = playbackTime) {
@@ -213,6 +271,21 @@ export function ReviewEditor({
           </div>
           <div className="picker-fields">
             <label>
+              <span>Training corpus</span>
+              <select
+                aria-label="Training corpus"
+                value={corpusView}
+                disabled={isPending}
+                onChange={(event) =>
+                  selectCorpus(event.target.value as TrainingCorpusView)
+                }
+              >
+                <option value="original">Original training</option>
+                <option value="without-beach">Without beach</option>
+                <option value="both">Both corpora</option>
+              </select>
+            </label>
+            <label>
               <span>Video</span>
               <select
                 aria-label="Video"
@@ -242,7 +315,7 @@ export function ReviewEditor({
                     value={option.id}
                     title={option.variantDescription ?? undefined}
                   >
-                    {option.variantLabel} · {option.datasetRoleLabel} · {option.rallyCount}
+                    {option.variantLabel} · {option.trainingCorpusLabel} · {option.datasetRoleLabel} · {option.rallyCount}
                   </option>
                 ))}
               </select>
@@ -266,6 +339,9 @@ export function ReviewEditor({
               {analysis.variantLabel}
             </span>
             <span data-role={analysis.datasetRole}>{analysis.datasetRoleLabel}</span>
+            <span data-corpus={analysis.trainingCorpus}>
+              {analysis.trainingCorpusLabel}
+            </span>
           </div>
           <h1>Find the rallies.<br /><em>Compare the evidence.</em></h1>
           <p className="intro">{analysisDescription(analysis.kind)}</p>
@@ -372,6 +448,7 @@ export function ReviewEditor({
                 <div><dt>Suggested end</dt><dd>{formatTime(selected.end)}</dd></div>
                 <div><dt>Core duration</dt><dd>{(selected.end - selected.start).toFixed(1)}s</dd></div>
                 <div><dt>Dataset role</dt><dd>{analysis.datasetRoleLabel}</dd></div>
+                <div><dt>Training corpus</dt><dd>{analysis.trainingCorpusLabel}</dd></div>
                 <div><dt>Method</dt><dd>{analysis.method}</dd></div>
               </dl>
               <button className="include" onClick={() => toggleRally(selected.id)}>

@@ -608,8 +608,11 @@ def _crossfit_epoch_cap(
     progress: Callable[[str], None] | None = None,
 ) -> tuple[int, list[dict[str, Any]]]:
     groups = sorted({item.recording.source_group for item in prepared})
-    if len(groups) < 3:
-        raise ManifestError("dead-state epoch selection requires three training source groups")
+    # The beach-excluded full corpus has two source groups rather than the
+    # historical three.  Two-group leave-one-group-out selection remains
+    # defined; only a one-group training split is insufficient.
+    if len(groups) < 2:
+        raise ManifestError("dead-state epoch selection requires at least two training source groups")
     summaries: list[dict[str, Any]] = []
     epochs: list[int] = []
     for index, held_out in enumerate(groups, start=1):

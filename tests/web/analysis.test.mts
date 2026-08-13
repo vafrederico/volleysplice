@@ -91,11 +91,44 @@ test("parseAnalysis accepts trained-model output without a heuristic proxy block
   assert.ok(parsed);
   assert.equal(parsed.kind, "model");
   assert.equal(parsed.modelVersion, "full-percentile-v1");
+  assert.equal(parsed.trainingCorpus, "original");
+  assert.equal(parsed.trainingCorpusLabel, "Original training");
   assert.equal(parsed.variantLabel, "Trained model · full-percentile-v1");
   assert.match(parsed.variantDescription ?? "", /^Full-corpus iteration v1:/);
   assert.equal(parsed.recordingId, "indoor-test-full");
   assert.equal(parsed.courtConfidence, 1);
   assert.equal(parsed.rallies.length, 1);
+});
+
+test("parseAnalysis tags beach-exclusion runs and routes their diagnostics to that corpus", () => {
+  const parsed = parseAnalysis(
+    {
+      schemaVersion: 1,
+      id: "model-nb-audiovisual-v2-final--indoor-test-full",
+      recordingId: "indoor-test-full",
+      source: {
+        filename: "indoor-test-full.mp4",
+        duration: 90,
+        width: 960,
+        height: 540,
+      },
+      analysis: {
+        method: "court-motion-temporal-logistic-v0",
+        modelVersion: "full-audiovisual-v2-final",
+        court: { source: "manual-roi", lines: [] },
+        warnings: [],
+      },
+      rallies: [],
+    },
+    { trainingCorpus: "without-beach" },
+  );
+  assert.ok(parsed);
+  assert.equal(parsed.trainingCorpus, "without-beach");
+  assert.equal(parsed.trainingCorpusLabel, "Without beach training");
+  assert.equal(
+    parsed.courtPreviewUrl,
+    "/api/media/model-nb-audiovisual-v2-final--indoor-test-full/court-preview.jpg?corpus=without-beach",
+  );
 });
 
 test("parseAnalysis prefers an explicit nonblank variant label", () => {

@@ -17,10 +17,20 @@ type RouteContext = {
   params: Promise<{ analysisId: string; filename: string }>;
 };
 
-async function resolveAsset(context: RouteContext) {
+function requestedCorpus(request: NextRequest): "original" | "without-beach" {
+  return request.nextUrl.searchParams.get("corpus") === "without-beach"
+    ? "without-beach"
+    : "original";
+}
+
+async function resolveAsset(request: NextRequest, context: RouteContext) {
   const { analysisId, filename } = await context.params;
   if (!ANALYSIS_ID.test(analysisId) || !(filename in ASSETS)) return null;
-  const assetPath = path.join(getAnalysesRoot(), analysisId, filename);
+  const assetPath = path.join(
+    getAnalysesRoot(requestedCorpus(request)),
+    analysisId,
+    filename,
+  );
   try {
     const stats = await fs.stat(assetPath);
     return stats.isFile() ? { assetPath, filename, size: stats.size } : null;
@@ -57,14 +67,14 @@ function parseRange(value: string, size: number): { start: number; end: number }
   return { start, end: Math.min(end, size - 1) };
 }
 
-export async function HEAD(_request: NextRequest, context: RouteContext) {
-  const asset = await resolveAsset(context);
+export async function HEAD(request: NextRequest, context: RouteContext) {
+  const asset = await resolveAsset(request, context);
   if (!asset) return new Response(null, { status: 404 });
   return new Response(null, { status: 200, headers: headers(asset.filename, asset.size) });
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const asset = await resolveAsset(context);
+  const asset = await resolveAsset(request, context);
   if (!asset) return new Response("Not found", { status: 404 });
   const requestedRange = request.headers.get("range");
   const responseHeaders = headers(asset.filename, asset.size);

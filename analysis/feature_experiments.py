@@ -128,9 +128,14 @@ def objective(metrics: dict[str, Any]) -> float:
 def build_fold_plan(recordings: Sequence[Recording]) -> tuple[OuterFold, ...]:
     development = [item for item in recordings if item.split in DEVELOPMENT_SPLITS]
     groups = sorted({item.source_group for item in development})
-    if len(groups) < 4:
+    # The original full corpus had four development groups because beach was
+    # included.  The beach-excluded corpus has three (grass, indoor, and the
+    # held-out validation source), which still supports an outer LOGO fold and
+    # a nested inner LOGO fold.  A two-group development set would not leave a
+    # separate group for the inner training fit.
+    if len(groups) < 3:
         raise FeatureExperimentError(
-            "feature experiments require at least four development source groups"
+            "feature experiments require at least three development source groups"
         )
     folds: list[OuterFold] = []
     for held_out in groups:

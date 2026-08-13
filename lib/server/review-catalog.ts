@@ -8,18 +8,30 @@ import type {
   ReviewAnalysis,
   ReviewCatalog,
   ReviewVideoOption,
+  TrainingCorpus,
 } from "@/lib/analysis-types";
 import { parseLabelDocument, type LabelDocument, type RallyLabel } from "@/lib/annotations";
 import type { Rally } from "@/lib/edit-list";
 import { getPreparedLabelingCatalog, type PreparedLabelingTask } from "@/lib/server/labeling-tasks";
 
 const DEFAULT_LABELING_WORKSPACE = "/mnt/freenas/volleycut/labeling-v1-2026-08-09";
+const DEFAULT_NO_BEACH_LABELING_WORKSPACE =
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09-no-beach-2026-08-12";
+const DEFAULT_NO_BEACH_V0_WORKSPACE =
+  "/mnt/freenas/volleycut/v0-2026-08-09-no-beach-2026-08-12";
 
 type ModelTrainingMetadata = {
   trainingRecordingIds: string[];
   validationRecordingIds: string[];
   trainingSourceGroups: string[];
   validationSourceGroups: string[];
+};
+
+type BeachComparisonReport = {
+  inferenceCoverage?: Array<{
+    model?: unknown;
+    rows?: Array<{ analysisPath?: unknown }>;
+  }>;
 };
 
 function labelingWorkspace(): string {
@@ -29,20 +41,87 @@ function labelingWorkspace(): string {
   );
 }
 
+function noBeachLabelingWorkspace(): string {
+  return path.resolve(
+    /* turbopackIgnore: true */
+    process.env.VOLLEYCUT_NO_BEACH_LABELING_WORKSPACE ??
+      DEFAULT_NO_BEACH_LABELING_WORKSPACE,
+  );
+}
+
+function noBeachV0Workspace(): string {
+  return path.resolve(
+    /* turbopackIgnore: true */
+    process.env.VOLLEYCUT_NO_BEACH_V0_WORKSPACE ?? DEFAULT_NO_BEACH_V0_WORKSPACE,
+  );
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
 }
 
+async function noBeachModelVersions(): Promise<Map<string, string>> {
+  try {
+    const report = JSON.parse(
+      await readFile(
+        path.join(
+          noBeachLabelingWorkspace(),
+          "reports",
+          "beach-exclusion-retraining-comparison.json",
+        ),
+        "utf8",
+      ),
+    ) as BeachComparisonReport;
+    const versions = new Map<string, string>();
+    for (const coverage of report.inferenceCoverage ?? []) {
+      if (typeof coverage.model !== "string") continue;
+      for (const row of coverage.rows ?? []) {
+        if (typeof row.analysisPath !== "string") continue;
+        const analysisId = path.basename(path.dirname(row.analysisPath));
+        if (/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(analysisId)) {
+          versions.set(analysisId, coverage.model);
+        }
+      }
+    }
+    return versions;
+  } catch {
+    return new Map();
+  }
+}
+
+function bindNoBeachModelVersion(
+  analysis: ReviewAnalysis,
+  versions: Map<string, string>,
+): ReviewAnalysis {
+  const exactVersion = versions.get(analysis.id);
+  if (!exactVersion || exactVersion === analysis.modelVersion) return analysis;
+  return {
+    ...analysis,
+    modelVersion: exactVersion,
+    variantLabel: `Trained model · ${exactVersion}`,
+    variantDescription: analysis.variantDescription
+      ? `${analysis.variantDescription} Exact beach-exclusion lineage: ${exactVersion}.`
+      : `Beach-exclusion comparison lineage ${exactVersion}.`,
+  };
+}
+
 async function readModelTrainingMetadata(
   modelVersion: string,
+  trainingCorpus: TrainingCorpus,
 ): Promise<ModelTrainingMetadata | null> {
   if (!/^[A-Za-z0-9_-]+$/.test(modelVersion)) return null;
+  const workspace =
+    trainingCorpus === "without-beach"
+      ? modelVersion.startsWith("real-rally-v0")
+        ? noBeachV0Workspace()
+        : noBeachLabelingWorkspace()
+      : labelingWorkspace();
   try {
     const value = JSON.parse(
       await readFile(
-        path.join(labelingWorkspace(), "models", modelVersion, "model.json"),
+        path.join(workspace, "models", modelVersion, "model.json"),
         "utf8",
       ),
     ) as { training?: Record<string, unknown> };
@@ -116,6 +195,8 @@ function labelAnalysis(
       ? "human-verified-serve-contact-to-dead-ball-v1"
       : document.prelabel?.analysisMethod ?? "blind-gpt-5.6-sol-xhigh-audiovisual",
     modelVersion: null,
+    trainingCorpus: "reference",
+    trainingCorpusLabel: "Reference",
     datasetRole: "not-applicable",
     datasetRoleLabel: verified ? "Reference labels" : "Not trained locally",
     duration: document.recording.durationSeconds,
@@ -201,6 +282,8 @@ function toOption(analysis: ReviewAnalysis): AnalysisOption {
     variantDescription: analysis.variantDescription,
     kind: analysis.kind,
     modelVersion: analysis.modelVersion,
+    trainingCorpus: analysis.trainingCorpus,
+    trainingCorpusLabel: analysis.trainingCorpusLabel,
     datasetRole: analysis.datasetRole,
     datasetRoleLabel: analysis.datasetRoleLabel,
     duration: analysis.duration,
@@ -209,21 +292,33 @@ function toOption(analysis: ReviewAnalysis): AnalysisOption {
 }
 
 export async function loadReviewCatalog(): Promise<ReviewCatalog> {
-  const [prepared, generated] = await Promise.all([
+  const [prepared, original, rawWithoutBeach, noBeachVersions] = await Promise.all([
     getPreparedLabelingCatalog(),
     loadAnalyses(),
+    loadAnalyses({ trainingCorpus: "without-beach" }),
+    noBeachModelVersions(),
   ]);
+  const withoutBeach = rawWithoutBeach.map((analysis) =>
+    bindNoBeachModelVersion(analysis, noBeachVersions),
+  );
+  const generated = [...original, ...withoutBeach];
   const tasks = prepared.tasks.filter((task) => task.batch === "full");
-  const modelVersions = new Set(
+  const modelVersions = new Map(
     generated
-      .map((analysis) => analysis.modelVersion)
-      .filter((version): version is string => version !== null),
+      .filter((analysis) => analysis.modelVersion !== null)
+      .map((analysis) => [
+        `${analysis.trainingCorpus}:${analysis.modelVersion}`,
+        analysis,
+      ]),
   );
   const modelMetadata = new Map(
     await Promise.all(
-      [...modelVersions].map(async (version) => [
-        version,
-        await readModelTrainingMetadata(version),
+      [...modelVersions].map(async ([key, analysis]) => [
+        key,
+        await readModelTrainingMetadata(
+          analysis.modelVersion as string,
+          analysis.trainingCorpus,
+        ),
       ] as const),
     ),
   );
@@ -245,7 +340,12 @@ export async function loadReviewCatalog(): Promise<ReviewCatalog> {
         if (analysis.kind !== "model" || !analysis.modelVersion) {
           return clampRunToTask(analysis, task, "not-applicable", "Not applicable");
         }
-        const role = modelDatasetRole(task, modelMetadata.get(analysis.modelVersion) ?? null);
+        const role = modelDatasetRole(
+          task,
+          modelMetadata.get(
+            `${analysis.trainingCorpus}:${analysis.modelVersion}`,
+          ) ?? null,
+        );
         return clampRunToTask(
           analysis,
           task,

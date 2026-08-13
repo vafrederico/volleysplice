@@ -21,7 +21,7 @@ main { min-height:100vh; }
 .analysis-picker > div:first-child strong { font-size:15px; }
 .picker-kicker { color:var(--orange); font:500 9px DM Mono; letter-spacing:1.4px; }
 .analysis-picker label { min-width:0; }
-.picker-fields { display:grid; grid-template-columns:minmax(180px,1fr) minmax(210px,1fr); gap:12px; min-width:0; }
+.picker-fields { display:grid; grid-template-columns:minmax(150px,.7fr) minmax(180px,1fr) minmax(210px,1.25fr); gap:12px; min-width:0; }
 .picker-fields label { display:grid; gap:5px; color:var(--muted); font:9px DM Mono; letter-spacing:1px; text-transform:uppercase; }
 .analysis-picker select { width:100%; min-width:0; padding:11px 38px 11px 12px; border:1px solid #aaa; border-radius:0; background:var(--paper); color:var(--ink); font:500 12px DM Mono; cursor:pointer; text-overflow:ellipsis; }
 .analysis-picker select:focus { outline:3px solid var(--acid); outline-offset:2px; }
@@ -42,6 +42,8 @@ h1 em { color:var(--orange); font-style:normal; }
 .analysis-badges span[data-kind="heuristic"] { background:#dff1ed; color:#15544d; }
 .analysis-badges span[data-kind="sol"] { background:#efe2fb; color:#65328d; }
 .analysis-badges span[data-kind="gold"] { background:var(--ink); color:var(--acid); }
+.analysis-badges span[data-corpus="without-beach"] { background:#dff7ef; color:#086f55; border-color:#00a47c; }
+.analysis-badges span[data-corpus="original"] { background:#edf2ff; color:#174793; border-color:#275fc2; }
 .analysis-badges span[data-role="training"] { border-color:#275fc2; }
 .analysis-badges span[data-role="validation"] { border-color:#d58a00; }
 .analysis-badges span[data-role="evaluation"] { border-color:#4c9654; }

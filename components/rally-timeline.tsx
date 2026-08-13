@@ -7,7 +7,14 @@ export type TimelineInterval = {
   end: number;
   confidence?: number;
   title?: string;
-  tone?: "model" | "heuristic" | "sol" | "gold" | "ignored" | "negative";
+  tone?:
+    | "model"
+    | "model-no-beach"
+    | "heuristic"
+    | "sol"
+    | "gold"
+    | "ignored"
+    | "negative";
 };
 
 export type TimelineTrack = {
