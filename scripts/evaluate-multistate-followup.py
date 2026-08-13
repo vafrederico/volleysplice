@@ -14,6 +14,7 @@ from analysis.multistate_followup import (
     run_multistate_oof_diagnostics,
 )
 from analysis.multistate_existing_labels import run_existing_label_ablation
+from analysis.multistate_edge_evidence_study import run_edge_evidence_study
 from analysis.multistate_immediate_result import run_immediate_result_study
 from analysis.multistate_joint_emissions import run_joint_emissions_study
 from analysis.pipeline import _prepare_many
@@ -104,6 +105,21 @@ def build_parser() -> argparse.ArgumentParser:
     joint.add_argument("--existing-label-report", type=Path, required=True)
     joint.add_argument("--immediate-result-report", type=Path, required=True)
     joint.add_argument("--output", type=Path, required=True)
+    edge = commands.add_parser(
+        "edge-evidence-development",
+        help="run the nested fixed-strength serve/terminal edge-evidence study",
+    )
+    edge.add_argument("--manifest", type=Path, default=default_manifest)
+    edge.add_argument(
+        "--feature-cache-dir",
+        type=Path,
+        default=workspace / "features" / "audiovisual-v2",
+    )
+    edge.add_argument("--multistate-report", type=Path, required=True)
+    edge.add_argument("--existing-label-report", type=Path, required=True)
+    edge.add_argument("--immediate-result-report", type=Path, required=True)
+    edge.add_argument("--joint-emissions-report", type=Path, required=True)
+    edge.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -163,13 +179,23 @@ def main() -> int:
             existing_label_report_path=arguments.existing_label_report,
             progress=progress,
         )
-    else:
+    elif arguments.command == "joint-emissions-development":
         report = run_joint_emissions_study(
             manifest,
             prepared,
             multistate_report_path=arguments.multistate_report,
             existing_label_report_path=arguments.existing_label_report,
             immediate_result_report_path=arguments.immediate_result_report,
+            progress=progress,
+        )
+    else:
+        report = run_edge_evidence_study(
+            manifest,
+            prepared,
+            multistate_report_path=arguments.multistate_report,
+            existing_label_report_path=arguments.existing_label_report,
+            immediate_result_report_path=arguments.immediate_result_report,
+            joint_emissions_report_path=arguments.joint_emissions_report,
             progress=progress,
         )
     written = atomic_write_text(

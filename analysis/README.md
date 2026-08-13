@@ -318,6 +318,30 @@ multiclass log loss, Brier score, and calibration are held-source diagnostics an
 candidate. Advancement requires unanimous outer selection plus every v1 and operational-binary
 guardrail, and even then authorizes only a fresh independent source-group assessment.
 
+The edge-evidence study keeps the prior-corrected OVR/geometric decoder fixed and evaluates the
+complete four-arm family: no evidence, serve-edge only, terminal-edge only, and both. Independent
+balanced specialists map their probabilities to fixed bounded evidence `2p-1` at coefficient one;
+there is no threshold or strength search. Serve evidence affects only `SETUP -> SERVE`, terminal
+evidence affects only `LIVE -> DEAD`, and the combined arm is eligible only when both individual
+arms pass their mechanism gates:
+
+```bash
+npm run evaluate:multistate-followup -- edge-evidence-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --existing-label-report data/reports/multistate-existing-label-ablation-v1-development.json \
+  --immediate-result-report data/reports/multistate-immediate-result-proxy-v1-development.json \
+  --joint-emissions-report data/reports/multistate-joint-emissions-v1-development.json \
+  --output data/reports/multistate-edge-evidence-v1-development.json
+```
+
+The serve target is the established fixed one-second pulse around current rally starts. The
+terminal target is the established two-second live/dead window around rally ends plus a one-second
+pre-serve already-dead negative. Specialists and their epoch caps remain fold-local. Promotion
+also requires start/serve-anchor or endpoint mechanism gains, the common recall/precision/outcome
+guardrails, unanimous outer selection, and the original operational-binary gate.
+
 ## Transition-label experiment gate
 
 The transition-cue pilot has a separate read-only gate that distinguishes the eight development
