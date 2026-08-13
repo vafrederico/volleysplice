@@ -26,6 +26,8 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Future feature experiment backlog — 2026-08-12](./future-feature-experiment-backlog-2026-08-12.md) — prioritized non-ball and ball-dependent feature hypotheses, low-cost annotation additions, experiment order, and leakage guardrails.
 - [Feature experiment order execution — 2026-08-12](./feature-experiment-order-execution-2026-08-12.md) — ordered run ledger, measured gates, immutable artifacts, labeling readiness, and deferred follow-ups.
 - [Multistate follow-up execution — 2026-08-12](./multistate-followup-execution-2026-08-12.md) — OOF diagnostics and oracles, conservative hybrid, existing-label duration, immediate-result, joint-emission and transition-edge studies, plus label-dependent runner gates.
+- [Unsloth rally-window dataset — 2026-08-12](./unsloth-rally-window-dataset-2026-08-12.md) — generated video-conversation JSONL artifact, deterministic 32-second windows, source-group-safe splits, checksums, loading instructions, and dataset limitations.
+- [Model-training execution handoff — 2026-08-12](./model-training-execution-handoff-2026-08-12.md) — implementation-grade native-Windows Unsloth and WSL DINOv2-temporal plans, exact paths, memory gates, folds, artifacts, and completion criteria.
 
 ## Related context
 
