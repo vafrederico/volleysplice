@@ -22,6 +22,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [End-boundary and dead-state audio experiment — 2026-08-12](./end-and-dead-state-audio-experiment-2026-08-12.md) — end-pulse audio ablations, local transition refinement, direct global-dead parity control, and a non-promotion decision.
 - [Minimum ball-presence pilot — 2026-08-11](./minimum-ball-presence-pilot-2026-08-11.md) — completed 2,160-frame human/Sol review, pinned CPU YOLOX-S and tiled comparison, failed source-group detector gates, candidate signal definitions, and the non-promotion decision.
 - [Ball-review model and effort screen — 2026-08-11](./ball-review-effort-screen-2026-08-11.md) — blinded 12-frame Sol/Terra/Luna effort benchmark, corrected similarity analysis, and the Sol-high confirmation decision.
+- [Small multimodal model feasibility and RTX 3080 plan — 2026-08-12](./small-multimodal-model-feasibility-rtx-3080-2026-08-12.md) — 12 GB and Windows/WSL2 fit, small VLM and video-encoder decisions, recommended hybrid architecture, leakage-safe data contract, and a staged single-3080 experiment plan.
 
 ## Related context
 
