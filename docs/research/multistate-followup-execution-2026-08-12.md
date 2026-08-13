@@ -345,6 +345,15 @@ Once labels arrive, freeze a new manifest from train/validation snapshots and re
 only. Mutable draft fields must not be attached to the existing report lineage, and the protected
 recording must not be prepared before a newly frozen development candidate passes its gate.
 
+The prepared `preflight:transition-pilot` command now enforces that contract before any feature
+preparation. It requires a candidate name, the frozen baseline manifest, a fresh development-only
+manifest, its immutable snapshot ledger, and a fresh transition gate. It compares exact development
+IDs and source groups, gated draft hashes, snapshot hashes, video-content identity, and the full
+`rallies`/`hardNegatives`/`ignoredIntervals` payload. Candidate readiness counts only non-null usable
+fields (with boolean `false` retained as a valid verified-immediate-result label). Pure extraction
+helpers expose reaction cues, terminal cues, verified-result targets, and half-open hard-negative
+masks without treating reaction or stand-down timestamps as replacement boundaries.
+
 Artifact:
 
 - `reports/feature-order-2026-08-12/transition-label-experiment-gate-v1.json`, SHA-256

@@ -49,10 +49,13 @@ def _outcome_stratum(rally: dict[str, Any]) -> str:
 
 def _transition_summary(rallies: list[dict[str, Any]]) -> dict[str, Any]:
     field_counts = {
-        field: _coverage(sum(field in rally for rally in rallies), len(rallies))
+        field: _coverage(sum(rally.get(field) is not None for rally in rallies), len(rallies))
         for field in TRANSITION_FIELDS
     }
-    fully_labeled = sum(all(field in rally for field in TRANSITION_FIELDS) for rally in rallies)
+    fully_labeled = sum(
+        all(rally.get(field) is not None for field in TRANSITION_FIELDS)
+        for rally in rallies
+    )
     by_stratum: dict[str, Any] = {}
     strata = sorted({_outcome_stratum(rally) for rally in rallies})
     for stratum in strata:
@@ -60,11 +63,16 @@ def _transition_summary(rallies: list[dict[str, Any]]) -> dict[str, Any]:
         by_stratum[stratum] = {
             "rallies": len(rows),
             "fullyLabeled": _coverage(
-                sum(all(field in rally for field in TRANSITION_FIELDS) for rally in rows),
+                sum(
+                    all(rally.get(field) is not None for field in TRANSITION_FIELDS)
+                    for rally in rows
+                ),
                 len(rows),
             ),
             "fields": {
-                field: _coverage(sum(field in rally for rally in rows), len(rows))
+                field: _coverage(
+                    sum(rally.get(field) is not None for rally in rows), len(rows)
+                )
                 for field in TRANSITION_FIELDS
             },
         }

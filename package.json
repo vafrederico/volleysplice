@@ -26,6 +26,7 @@
     "evaluate:component-selector": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-component-selector.py",
     "report:label-readiness": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/report-label-readiness.py",
     "report:transition-label-gate": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/report-transition-label-gate.py",
+    "preflight:transition-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/preflight-transition-pilot.py",
     "extract:highres-embeddings": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/extract-highres-embeddings.py",
     "evaluate:highres-embeddings": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-highres-embeddings.py",
     "prepare:ball-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/prepare-ball-presence-pilot.py",

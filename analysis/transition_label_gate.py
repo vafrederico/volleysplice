@@ -32,7 +32,26 @@ def _sha256(path: Path) -> str:
 
 
 def _fully_cued(rally: Mapping[str, Any]) -> bool:
-    return all(field in rally for field in TRANSITION_FIELDS)
+    return all(rally.get(field) is not None for field in TRANSITION_FIELDS)
+
+
+def _candidate_usable(rally: Mapping[str, Any], candidate: str) -> bool:
+    fields = {
+        "reaction-supervised-serve-edge": (
+            "receiverReactionTime",
+            "startConfidence",
+        ),
+        "stand-down-supervised-terminal-edge": (
+            "collectiveStandDownTime",
+            "terminalCue",
+            "endObservability",
+            "endConfidence",
+        ),
+        "verified-immediate-result-branch": ("verifiedImmediateResult",),
+    }[candidate]
+    if candidate == "verified-immediate-result-branch":
+        return isinstance(rally.get("verifiedImmediateResult"), bool)
+    return all(rally.get(field) is not None for field in fields)
 
 
 def _stratum(rally: Mapping[str, Any]) -> str:
@@ -91,6 +110,16 @@ def build_transition_label_gate(
                         0,
                         RECOMMENDED_TRANSITION_RALLIES_PER_RECORDING - len(fully),
                     ),
+                    "usableCueRallies": {
+                        candidate: sum(
+                            _candidate_usable(row, candidate) for row in rallies
+                        )
+                        for candidate in (
+                            "reaction-supervised-serve-edge",
+                            "stand-down-supervised-terminal-edge",
+                            "verified-immediate-result-branch",
+                        )
+                    },
                     "fullyCuedByStratum": {
                         stratum: sum(_stratum(row) == stratum for row in fully)
                         for stratum in (
@@ -123,6 +152,33 @@ def build_transition_label_gate(
     )
     development_hard_negative_ready = bool(development) and all(
         row["additionalHardNegativesToThree"] == 0 for row in development
+    )
+    common_ready = not invalid and not duplicates and bool(development)
+    candidate_readiness = {
+        candidate: common_ready
+        and all(
+            row["usableCueRallies"][candidate]
+            >= RECOMMENDED_TRANSITION_RALLIES_PER_RECORDING
+            for row in development
+        )
+        for candidate in (
+            "reaction-supervised-serve-edge",
+            "stand-down-supervised-terminal-edge",
+            "verified-immediate-result-branch",
+        )
+    }
+    present_hard_categories = {
+        category
+        for row in development
+        for category in row["hardNegativeCategories"]
+    }
+    candidate_readiness["hard-negative-dead-state"] = (
+        common_ready
+        and development_hard_negative_ready
+        and all(
+            category in present_hard_categories
+            for category in RECOMMENDED_HARD_NEGATIVE_CATEGORIES
+        )
     )
     return {
         "schemaVersion": 1,
@@ -180,11 +236,9 @@ def build_transition_label_gate(
             development_hard_negative_ready and not invalid and not duplicates
         ),
         "allRegisteredDevelopmentExperimentsReady": (
-            development_ready
-            and development_hard_negative_ready
-            and not invalid
-            and not duplicates
+            all(candidate_readiness.values())
         ),
+        "candidateReadiness": candidate_readiness,
         "recordings": rows,
         "futureExecutionPlan": {
             "manifestLineage": (
@@ -199,7 +253,7 @@ def build_transition_label_gate(
             "registeredCandidates": [
                 {
                     "name": "reaction-supervised-serve-edge",
-                    "ready": development_ready and not invalid and not duplicates,
+                    "ready": candidate_readiness["reaction-supervised-serve-edge"],
                     "targetFields": ["receiverReactionTime", "startConfidence"],
                     "action": (
                         "cross-fit a start specialist and add fixed bounded evidence "
@@ -208,7 +262,7 @@ def build_transition_label_gate(
                 },
                 {
                     "name": "stand-down-supervised-terminal-edge",
-                    "ready": development_ready and not invalid and not duplicates,
+                    "ready": candidate_readiness["stand-down-supervised-terminal-edge"],
                     "targetFields": [
                         "collectiveStandDownTime",
                         "terminalCue",
@@ -222,7 +276,7 @@ def build_transition_label_gate(
                 },
                 {
                     "name": "verified-immediate-result-branch",
-                    "ready": development_ready and not invalid and not duplicates,
+                    "ready": candidate_readiness["verified-immediate-result-branch"],
                     "targetFields": ["verifiedImmediateResult", "terminalCue"],
                     "action": (
                         "replace the coarse ace/fault proxy with verified branch targets"
@@ -231,9 +285,7 @@ def build_transition_label_gate(
                 {
                     "name": "hard-negative-dead-state",
                     "ready": (
-                        development_hard_negative_ready
-                        and not invalid
-                        and not duplicates
+                        candidate_readiness["hard-negative-dead-state"]
                     ),
                     "targetFields": [],
                     "action": (
@@ -261,6 +313,37 @@ def require_transition_development_ready(report: Mapping[str, Any]) -> None:
         raise RuntimeError("protected transition labels are not sealed")
 
 
+def require_transition_candidate_ready(
+    report: Mapping[str, Any],
+    candidate: str,
+    *,
+    expected_development_ids: Iterable[str] | None = None,
+) -> None:
+    if report.get("kind") != TRANSITION_GATE_KIND:
+        raise ValueError("transition readiness report has the wrong kind")
+    readiness = report.get("candidateReadiness")
+    if not isinstance(readiness, Mapping) or candidate not in readiness:
+        raise ValueError(f"unknown transition candidate: {candidate}")
+    if readiness.get(candidate) is not True:
+        raise RuntimeError(f"{candidate} is waiting on development labels")
+    if report.get("invalidDocuments") or report.get("duplicateRecordingIds"):
+        raise RuntimeError("transition readiness report contains invalid or duplicate documents")
+    if report.get("protected", {}).get("sealedForDevelopment") is not True:
+        raise RuntimeError("protected transition labels are not sealed")
+    if expected_development_ids is not None:
+        actual = {
+            str(row["recordingId"])
+            for row in report.get("recordings", [])
+            if isinstance(row, Mapping) and row.get("split") in DEVELOPMENT_SPLITS
+        }
+        expected = {str(value) for value in expected_development_ids}
+        if actual != expected:
+            raise RuntimeError(
+                "transition gate development IDs do not match the frozen baseline "
+                f"(missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)})"
+            )
+
+
 def write_transition_gate(path: str | Path, report: Mapping[str, Any]) -> Path:
     destination = Path(path).expanduser().resolve()
     if destination.exists():
@@ -275,5 +358,6 @@ __all__ = [
     "TRANSITION_GATE_KIND",
     "build_transition_label_gate",
     "require_transition_development_ready",
+    "require_transition_candidate_ready",
     "write_transition_gate",
 ]

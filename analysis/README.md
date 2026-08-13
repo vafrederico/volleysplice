@@ -362,6 +362,25 @@ never required or consumed by a development runner. A future experiment must reb
 new manifest from the completed train/validation snapshots; it must not attach mutable draft fields
 to an earlier frozen report lineage.
 
+After labels are ready, freeze **only** the eight train/validation documents into a new immutable
+snapshot, rebuild a development-only manifest from that snapshot, then run the candidate-specific
+preflight before any feature preparation:
+
+```bash
+npm run preflight:transition-pilot -- \
+  --candidate reaction-supervised-serve-edge \
+  --baseline-manifest data/manifests/full-gold-v1.json \
+  --manifest data/manifests/transition-pilot-development-v1.json \
+  --snapshot-ledger data/labels/transition-pilot-development-v1/snapshot.json \
+  --transition-gate data/reports/transition-label-experiment-gate-v2.json \
+  --output data/reports/transition-pilot-reaction-preflight-v1.json
+```
+
+The preflight requires exact development IDs from the baseline, non-null fields for the selected
+candidate, immutable draft and snapshot hashes, byte-matching snapshot/manifest target payloads,
+and at least two development source groups. It rejects test/challenge rows and does not open the
+protected label document. The same command accepts the other three registered candidate names.
+
 ## Out-of-fold component-selector study
 
 The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific

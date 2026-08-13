@@ -9,6 +9,7 @@ from analysis.transition_label_gate import (
     TRANSITION_GATE_KIND,
     build_transition_label_gate,
     require_transition_development_ready,
+    require_transition_candidate_ready,
     write_transition_gate,
 )
 
@@ -134,8 +135,49 @@ class TransitionLabelGateTests(unittest.TestCase):
 
         self.assertTrue(report["developmentExperimentReady"])
         self.assertTrue(report["developmentHardNegativeExperimentReady"])
-        self.assertTrue(report["allRegisteredDevelopmentExperimentsReady"])
+        # The generic cue and minimum-count gates pass, while the hard-negative
+        # candidate additionally requires all four corpus categories.
+        self.assertFalse(report["allRegisteredDevelopmentExperimentsReady"])
         require_transition_development_ready(report)
+        require_transition_candidate_ready(
+            report,
+            "reaction-supervised-serve-edge",
+            expected_development_ids=("train", "validation"),
+        )
+
+    def test_null_fields_do_not_count_but_false_boolean_does(self) -> None:
+        source = self.write_label("train", split="train", cued=5)
+        payload = json.loads(source.read_text())
+        payload["rallies"][0]["receiverReactionTime"] = None
+        payload["rallies"][1]["verifiedImmediateResult"] = False
+        source.write_text(json.dumps(payload), encoding="utf-8")
+
+        report = build_transition_label_gate([source])
+
+        self.assertEqual(report["recordings"][0]["fullyCuedRallies"], 4)
+        self.assertEqual(
+            report["recordings"][0]["usableCueRallies"][
+                "reaction-supervised-serve-edge"
+            ],
+            4,
+        )
+        self.assertEqual(
+            report["recordings"][0]["usableCueRallies"][
+                "verified-immediate-result-branch"
+            ],
+            5,
+        )
+        self.assertFalse(report["candidateReadiness"]["reaction-supervised-serve-edge"])
+
+    def test_candidate_gate_rejects_ready_subset(self) -> None:
+        source = self.write_label("train", split="train", cued=5)
+        report = build_transition_label_gate([source])
+        with self.assertRaisesRegex(RuntimeError, "do not match"):
+            require_transition_candidate_ready(
+                report,
+                "reaction-supervised-serve-edge",
+                expected_development_ids=("train", "missing"),
+            )
 
     def test_invalid_and_duplicate_documents_prevent_readiness(self) -> None:
         first = self.write_label(
