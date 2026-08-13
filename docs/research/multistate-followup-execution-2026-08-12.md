@@ -212,7 +212,52 @@ Artifact:
 
 The report pins clean Git commit `8a0a32c`; wall time was 186.485 seconds.
 
-## 5. Label-dependent experiment hooks
+## 5. Joint multiclass emissions
+
+Implementation checkpoint: `e9ab26f Add nested joint multistate emissions study`.
+
+This study held the v1 graph, fold-geometric durations, and frozen transition bonus fixed while
+changing only emission training. It compared the independently balanced/row-normalized v1 OVR
+heads with a primary four-state softmax trained by ordinary categorical cross-entropy and a
+separately named balanced softmax with fold-prior restoration. Softmax epoch caps came from the
+three inner source folds inside each outer fold; state calibration and confusion were held-source
+diagnostics and did not select the candidate.
+
+Every outer fold selected the v1 OVR control. The fixed outer-OOF rows were:
+
+| emissions | F1 | time IoU | live recall | live precision | objective | ordinary / short / fault strict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| v1 balanced OVR | .55499 | .54566 | .78260 | .64316 | .58633 | 147 / 11 / 10 |
+| empirical-prior joint softmax | .46835 | .51706 | .71463 | .65160 | .51991 | 136 / 7 / 7 |
+| balanced + prior-corrected joint softmax | .49840 | .50275 | .65554 | .68324 | .52328 | 132 / 15 / 12 |
+
+The empirical model predicted 326 rallies but matched only 148, while the balanced/corrected model
+predicted 320 and matched 156; v1 predicted 285 and matched 164. Both joint variants traded live
+coverage and ordinary-long matches for precision. Their multiclass mechanism diagnostics also did
+not support joint training:
+
+| emissions | state accuracy | multiclass log loss | Brier | SERVE precision / recall / ECE |
+| --- | ---: | ---: | ---: | ---: |
+| v1 balanced OVR | .61245 | 1.30882 | .56838 | .1303 / .4804 / .0848 |
+| empirical-prior joint softmax | .59631 | 2.31551 | .67552 | .0448 / .0752 / .0225 |
+| balanced + prior-corrected joint softmax | .56375 | 3.11203 | .76521 | .1702 / .3399 / .0175 |
+
+The primary joint model nearly eliminated rare SERVE recall; prior-corrected balanced training
+recovered some SERVE detection and short/fault matches but further reduced overall live recall.
+Normalized multiclass output alone therefore did not fix source-transfer calibration on this
+linear feature substrate. Unanimous inner selection retained v1, and v1 still fails the frozen
+operational-binary live-recall and ordinary-long gates. Binary remains selected and test stayed
+closed.
+
+Artifact:
+
+- `reports/feature-order-2026-08-12/multistate-joint-emissions-v1-development.json`, SHA-256
+  `74bdced6882a78e34940b77ba5e7665df57686a20b268286662ae29ccec9d862`.
+
+Wall time was 417.929 seconds. The report pins clean Git commit `be40958` and content-hashes the
+joint implementation, runner, tests, and all three prerequisite reports.
+
+## 6. Label-dependent experiment hooks
 
 Implementation checkpoints:
 
