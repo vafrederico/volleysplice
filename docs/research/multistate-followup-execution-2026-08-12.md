@@ -312,7 +312,8 @@ splits were not prepared.
 Implementation checkpoints:
 
 - `9d843f8 Add multistate transition-edge evidence decoder`;
-- `9e099fb Add transition-label experiment readiness gate`.
+- `9e099fb Add transition-label experiment readiness gate`;
+- `dc7d752 Add fail-closed transition pilot preflight`.
 
 The transition-evidence primitive adds finite evidence only to an explicitly named legal,
 non-self transition at its destination sample. Empty or zero evidence is exactly identical to the
@@ -358,3 +359,23 @@ Artifact:
 
 - `reports/feature-order-2026-08-12/transition-label-experiment-gate-v1.json`, SHA-256
   `ccc04765e749070d7c645c91a2507bbc4bb96e330868748b165a18b5e2446d25`.
+- refreshed candidate-specific gate
+  `reports/feature-order-2026-08-12/transition-label-experiment-gate-v2.json`, SHA-256
+  `9afc79561df91bea1952ddb13c7b1fe6f68ef609629f5030674e53ac2f34c557`.
+
+The refreshed gate preserves the exact debt: 40 development cue labels and 23 development hard
+negatives, with the protected 5 cues and 2 hard negatives sealed. All four candidate-specific
+readiness flags remain false, so the prepared preflight correctly stops before manifest/video or
+feature preparation.
+
+## 8. Final regression validation
+
+After the complete experiment sequence and transition-pilot hook landed:
+
+- `npm test`: 39 web tests and 457 analysis tests passed;
+- `npx tsc --noEmit`: passed;
+- `npm run lint`: passed;
+- the transition-pilot CLI help, Python compilation, and `git diff --check` passed.
+
+The protected test split remained closed throughout all follow-up development studies. No further
+no-label model family was started after the predeclared edge-evidence study.

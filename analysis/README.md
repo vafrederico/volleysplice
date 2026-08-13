@@ -353,7 +353,7 @@ studies without preparing video or model features:
 ```bash
 npm run report:transition-label-gate -- \
   --labels-dir data/labeling-v1-2026-08-09/labels/full \
-  --output data/reports/transition-label-experiment-gate-v1.json
+  --output data/reports/transition-label-experiment-gate-v2.json
 ```
 
 Add `--require-development-ready` in an automated workflow to fail closed until the 40 development
