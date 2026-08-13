@@ -24,7 +24,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Ball-review model and effort screen — 2026-08-11](./ball-review-effort-screen-2026-08-11.md) — blinded 12-frame Sol/Terra/Luna effort benchmark, corrected similarity analysis, and the Sol-high confirmation decision.
 - [Future feature experiment backlog — 2026-08-12](./future-feature-experiment-backlog-2026-08-12.md) — prioritized non-ball and ball-dependent feature hypotheses, low-cost annotation additions, experiment order, and leakage guardrails.
 - [Feature experiment order execution — 2026-08-12](./feature-experiment-order-execution-2026-08-12.md) — ordered run ledger, measured gates, immutable artifacts, labeling readiness, and deferred follow-ups.
-- [Multistate follow-up execution — 2026-08-12](./multistate-followup-execution-2026-08-12.md) — OOF diagnostics and oracles, conservative hybrid, existing-label duration, immediate-result, joint-emission studies, and transition-label runner gates.
+- [Multistate follow-up execution — 2026-08-12](./multistate-followup-execution-2026-08-12.md) — OOF diagnostics and oracles, conservative hybrid, existing-label duration, immediate-result, joint-emission and transition-edge studies, plus label-dependent runner gates.
 
 ## Related context
 

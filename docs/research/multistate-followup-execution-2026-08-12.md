@@ -257,7 +257,57 @@ Artifact:
 Wall time was 417.929 seconds. The report pins clean Git commit `be40958` and content-hashes the
 joint implementation, runner, tests, and all three prerequisite reports.
 
-## 6. Label-dependent experiment hooks
+## 6. Cross-fitted serve and terminal edge evidence
+
+Implementation checkpoints:
+
+- `9d843f8 Add multistate transition-edge evidence decoder`;
+- `243d69a Add nested multistate edge-evidence study`.
+
+This last no-new-label study fixed the best diagnostic substrate from the 2x2 study—fold-prior-
+corrected OVR emissions with geometric v1 durations—and evaluated the complete four-arm family:
+no evidence, serve-edge only, terminal-edge only, and both. The serve and terminal specialists
+were fit independently inside every source fold. Their balanced probabilities were mapped to
+bounded `2p-1` evidence with coefficient one, affecting only `SETUP -> SERVE` or `LIVE -> DEAD` at
+the transition destination sample. No evidence strength, threshold, or composition grid was
+searched.
+
+All four outer folds retained the no-edge control. Fixed outer-OOF diagnostics were:
+
+| arm | F1 | time IoU | live recall | live precision | objective | start / end MAE | ordinary / short / fault strict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| no edge | .57439 | .54688 | .75843 | .66223 | .59375 | .5701 / 1.8699 | 146 / 13 / 12 |
+| serve edge | .57686 | .54882 | .75851 | .66501 | .59569 | .5518 / 1.8625 | 146 / 14 / 13 |
+| terminal edge | .56499 | .54703 | .75761 | .66308 | .58849 | .5841 / 1.8152 | 145 / 11 / 10 |
+| both edges | .55903 | .54866 | .75749 | .66556 | .58569 | .5560 / 1.8086 | 143 / 11 / 10 |
+
+The serve specialist is the only promising mechanism signal in this sequence. It gained one
+matched rally, one strict short match, one strict fault match, 0.0183 seconds start MAE, and raised
+within-0.5-second serve-anchor recall from .4575 to .4739. Its aggregate objective gain was only
+.00195, however, versus the frozen +.01 source-macro requirement. Source objective deltas were
+-.00084 KB, -.00470 Shoreline, +.00902 SPU, and +.00307 Yang: too small and inconsistent to justify
+another selection on these reused sources.
+
+Terminal evidence improved end MAE by .0547 seconds, satisfying its narrow boundary mechanism
+criterion, but lowered objective in every source, lost one ordinary-long, two short, and two fault
+strict matches, and hurt Yang most (-.02260 objective). Combining both mechanisms improved end MAE
+by .0613 seconds but lost three ordinary-long matches and inherited the terminal regressions. The
+combined arm was also ineligible because neither individual arm passed its full gate.
+
+The no-edge control itself is not operational: compared with binary it loses two ordinary-long
+strict matches and 7.97 points of live recall. Thus even the small serve-edge improvement cannot
+open the protected test. Binary remains selected.
+
+Artifact:
+
+- `reports/feature-order-2026-08-12/multistate-edge-evidence-v1-development.json`, SHA-256
+  `761cd3a5f61cda05a06817d666f764d93b87a44a81834ead9d9758e328bad2ff`.
+
+Wall time was 244.885 seconds. The report pins clean Git commit `243d69a`, all prerequisite report
+hashes, both specialist fingerprints and fold-local target counts, and confirms that protected
+splits were not prepared.
+
+## 7. Label-dependent experiment hooks
 
 Implementation checkpoints:
 
