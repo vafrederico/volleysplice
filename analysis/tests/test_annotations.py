@@ -126,6 +126,163 @@ class AnnotationDocumentTests(unittest.TestCase):
         with self.assertRaisesRegex(ManifestError, "strictly ordered"):
             load_label_document(self.labels, require_video=False)
 
+    def test_extended_geometry_transition_and_negative_labels_are_preserved(self) -> None:
+        payload = self.complete_payload()
+        payload["recording"]["courtGeometry"] = {
+            "corners": {
+                "nearLeft": {"x": 0.1, "y": 0.9},
+                "nearRight": {"x": 0.9, "y": 0.9},
+                "farLeft": {"x": 0.35, "y": 0.2},
+                "farRight": {"x": 0.65, "y": 0.2},
+            },
+            "netAnchors": {
+                "left": {"x": 0.25, "y": 0.55},
+                "right": {"x": 0.75, "y": 0.55},
+            },
+            "serviceZoneAnchors": {
+                "near": {"x": 0.5, "y": 0.95},
+                "far": {"x": 0.5, "y": 0.12},
+            },
+        }
+        payload["rallies"][0].update(
+            {
+                "receiverReactionTime": 5.4,
+                "collectiveStandDownTime": 12.4,
+                "terminalCue": "ball-down-or-out",
+                "endObservability": "observable",
+                "startConfidence": 0.9,
+                "endConfidence": 0.8,
+                "verifiedImmediateResult": False,
+                "playerTracklets": [
+                    {
+                        "trackId": "P1",
+                        "window": "serve",
+                        "team": "team-a",
+                        "courtSide": "near",
+                        "observations": [
+                            {
+                                "time": 4.8,
+                                "footpoint": {"x": 0.4, "y": 0.85},
+                                "state": "ready",
+                            },
+                            {
+                                "time": 5.2,
+                                "box": {
+                                    "x": 0.35,
+                                    "y": 0.45,
+                                    "width": 0.1,
+                                    "height": 0.4,
+                                },
+                                "state": "playing",
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+        payload["hardNegatives"] = [
+            {"start": 35.0, "end": 38.0, "category": "walking-ball-retrieval"},
+            {"start": 40.0, "end": 42.0, "category": "celebration-huddle"},
+        ]
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+
+        document = load_label_document(self.labels, require_video=False)
+        self.assertEqual(len(document.court_geometry["corners"]), 4)
+        self.assertEqual(document.rally_transitions[0].terminal_cue, "ball-down-or-out")
+        self.assertFalse(document.rally_transitions[0].verified_immediate_result)
+        self.assertEqual(document.player_tracklets[0].track_id, "P1")
+        self.assertEqual(document.player_tracklets[0].rally_index, 0)
+        self.assertEqual(document.player_tracklets[0].observations[1].state, "playing")
+
+        manifest_path = self.root / "extended.json"
+        manifest = build_manifest_from_labels(
+            [self.labels], manifest_path, name="extended", require_videos=False
+        )
+        row = manifest["recordings"][0]
+        self.assertEqual(row["courtGeometry"], payload["recording"]["courtGeometry"])
+        self.assertEqual(row["rallies"][0]["receiverReactionTime"], 5.4)
+        self.assertEqual(row["rallies"][0]["playerTracklets"][0]["trackId"], "P1")
+        self.assertEqual(row["hardNegatives"][1]["category"], "celebration-huddle")
+
+    def test_player_tracklets_are_optional_but_strictly_anonymous_and_bounded(self) -> None:
+        legacy = self.complete_payload()
+        self.labels.write_text(json.dumps(legacy), encoding="utf-8")
+        self.assertEqual(
+            load_label_document(self.labels, require_video=False).player_tracklets,
+            (),
+        )
+
+        payload = self.complete_payload()
+        payload["rallies"][0]["playerTracklets"] = [
+            {
+                "trackId": "P1",
+                "window": "rally-end",
+                "team": "team-b",
+                "courtSide": "far",
+                "observations": [
+                    {
+                        "time": 11.7,
+                        "footpoint": {"x": 0.6, "y": 0.4},
+                        "state": "stand-down",
+                    },
+                    {
+                        "time": 12.3,
+                        "footpoint": {"x": 0.61, "y": 0.42},
+                    },
+                ],
+                "playerName": "must-not-be-stored",
+            }
+        ]
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "unrecognized fields"):
+            load_label_document(self.labels, require_video=False)
+
+        del payload["rallies"][0]["playerTracklets"][0]["playerName"]
+        payload["rallies"][0]["playerTracklets"][0]["trackId"] = "ALICE"
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "anonymous token"):
+            load_label_document(self.labels, require_video=False)
+
+        payload["rallies"][0]["playerTracklets"][0]["trackId"] = "P1"
+        payload["rallies"][0]["playerTracklets"][0]["observations"][1]["time"] = 16.0
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "inside its boundary window"):
+            load_label_document(self.labels, require_video=False)
+
+        observation = payload["rallies"][0]["playerTracklets"][0]["observations"][1]
+        observation["time"] = 12.3
+        observation["box"] = {"x": 0.9, "y": 0.3, "width": 0.2, "height": 0.4}
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "positive normalized frame box"):
+            load_label_document(self.labels, require_video=False)
+
+    def test_partial_geometry_is_draft_safe_but_not_completion_safe(self) -> None:
+        payload = self.complete_payload()
+        payload["recording"]["courtGeometry"] = {
+            "corners": {"nearLeft": {"x": 0.1, "y": 0.9}}
+        }
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+
+        draft = load_label_document(
+            self.labels, require_complete=False, require_video=False
+        )
+        self.assertEqual(len(draft.court_geometry["corners"]), 1)
+        with self.assertRaisesRegex(ManifestError, "courtGeometry.corners"):
+            load_label_document(self.labels, require_video=False)
+
+    def test_transition_annotations_are_bounded_and_related_to_rally(self) -> None:
+        payload = self.complete_payload()
+        payload["rallies"][0]["receiverReactionTime"] = 11.0
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "within five seconds after rally start"):
+            load_label_document(self.labels, require_video=False)
+
+        payload["rallies"][0]["receiverReactionTime"] = 5.2
+        payload["rallies"][0]["endConfidence"] = 1.1
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "endConfidence must be between"):
+            load_label_document(self.labels, require_video=False)
+
     def test_rejects_overlap_between_rally_and_ignored_time(self) -> None:
         payload = self.complete_payload()
         payload["ignoredIntervals"] = [{"start": 11.5, "end": 13.0, "reason": "ambiguous"}]

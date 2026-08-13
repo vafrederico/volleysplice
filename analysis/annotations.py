@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -35,17 +36,69 @@ HARD_NEGATIVE_CATEGORIES = {
     "adjacent-court",
     "camera-motion",
     "celebration",
+    "celebration-huddle",
     "foreground-crossing",
+    "model-false-positive",
+    "random-dead-control",
     "setup-between-points",
     "timeout",
+    "walking-ball-retrieval",
     "warmup",
     "other",
 }
+TERMINAL_CUES = {
+    "ball-down-or-out",
+    "whistle-or-stoppage",
+    "no-recovery",
+    "unobservable",
+}
+END_OBSERVABILITY_VALUES = {
+    "observable",
+    "partially-observable",
+    "unobservable",
+}
+COURT_CORNER_NAMES = ("nearLeft", "nearRight", "farLeft", "farRight")
+NET_ANCHOR_NAMES = ("left", "right")
+SERVICE_ZONE_ANCHOR_NAMES = ("near", "far")
+PLAYER_TRACKLET_WINDOWS = {"serve", "rally-end"}
+PLAYER_TEAMS = {"team-a", "team-b", "unknown"}
+PLAYER_COURT_SIDES = {"near", "far", "outside", "unknown"}
+PLAYER_STATES = {"ready", "playing", "jumping", "stand-down", "walking"}
 
 
 @dataclass(frozen=True)
 class SideSwitch:
     time: float
+    notes: str | None
+
+
+@dataclass(frozen=True)
+class RallyTransitionAnnotation:
+    receiver_reaction_time: float | None
+    collective_stand_down_time: float | None
+    terminal_cue: str | None
+    end_observability: str | None
+    start_confidence: float | None
+    end_confidence: float | None
+    verified_immediate_result: bool | None
+
+
+@dataclass(frozen=True)
+class PlayerTrackletObservation:
+    time: float
+    footpoint: dict[str, float] | None
+    box: dict[str, float] | None
+    state: str | None
+
+
+@dataclass(frozen=True)
+class PlayerTracklet:
+    rally_index: int
+    track_id: str
+    window: str
+    team: str
+    court_side: str
+    observations: tuple[PlayerTrackletObservation, ...]
     notes: str | None
 
 
@@ -63,6 +116,9 @@ class LabelDocument:
     ignored_intervals: tuple[Interval, ...]
     hard_negatives: tuple[Interval, ...]
     side_switches: tuple[SideSwitch, ...]
+    court_geometry: dict[str, Any] | None
+    rally_transitions: tuple[RallyTransitionAnnotation, ...]
+    player_tracklets: tuple[PlayerTracklet, ...]
     warnings: tuple[str, ...]
 
 
@@ -127,6 +183,350 @@ def _read_side_switches(value: Any, duration: float) -> tuple[SideSwitch, ...]:
         markers.append(SideSwitch(time=marker_time, notes=notes))
         previous_time = marker_time
     return tuple(markers)
+
+
+def _read_normalized_point(value: Any, where: str) -> dict[str, float]:
+    if not isinstance(value, dict):
+        raise ManifestError(f"{where} must be an object")
+    if set(value) != {"x", "y"}:
+        raise ManifestError(f"{where} must contain only x and y")
+    coordinates: dict[str, float] = {}
+    for axis in ("x", "y"):
+        raw = value.get(axis)
+        if (
+            not isinstance(raw, (int, float))
+            or isinstance(raw, bool)
+            or not math.isfinite(float(raw))
+            or not 0 <= float(raw) <= 1
+        ):
+            raise ManifestError(f"{where}.{axis} must be a finite normalized coordinate")
+        coordinates[axis] = float(raw)
+    return coordinates
+
+
+def _read_normalized_box(value: Any, where: str) -> dict[str, float]:
+    if not isinstance(value, dict) or set(value) != {"x", "y", "width", "height"}:
+        raise ManifestError(f"{where} must contain only x, y, width, and height")
+    result: dict[str, float] = {}
+    for field in ("x", "y", "width", "height"):
+        raw = value[field]
+        if (
+            not isinstance(raw, (int, float))
+            or isinstance(raw, bool)
+            or not math.isfinite(float(raw))
+        ):
+            raise ManifestError(f"{where}.{field} must be finite")
+        result[field] = float(raw)
+    if (
+        result["x"] < 0
+        or result["y"] < 0
+        or result["width"] <= 0
+        or result["height"] <= 0
+        or result["x"] + result["width"] > 1
+        or result["y"] + result["height"] > 1
+    ):
+        raise ManifestError(f"{where} must be a positive normalized frame box")
+    return result
+
+
+def _read_player_tracklets(
+    value: Any,
+    rallies: Sequence[Interval],
+    duration: float,
+) -> tuple[PlayerTracklet, ...]:
+    if not isinstance(value, list) or len(value) != len(rallies):
+        raise ManifestError("rallies must remain an array while reading player tracklets")
+    tracklets: list[PlayerTracklet] = []
+    for rally_index, (row, rally) in enumerate(zip(value, rallies, strict=True)):
+        if not isinstance(row, dict):
+            raise ManifestError(f"rallies[{rally_index}] must be an object")
+        raw_tracklets = row.get("playerTracklets", [])
+        if not isinstance(raw_tracklets, list):
+            raise ManifestError(f"rallies[{rally_index}].playerTracklets must be an array")
+        seen_keys: set[tuple[str, str]] = set()
+        for tracklet_index, raw_tracklet in enumerate(raw_tracklets):
+            where = f"rallies[{rally_index}].playerTracklets[{tracklet_index}]"
+            if not isinstance(raw_tracklet, dict):
+                raise ManifestError(f"{where} must be an object")
+            allowed = {"trackId", "window", "team", "courtSide", "observations", "notes"}
+            unknown = set(raw_tracklet) - allowed
+            if unknown:
+                raise ManifestError(f"{where} has unrecognized fields: {sorted(unknown)}")
+            track_id = raw_tracklet.get("trackId")
+            if (
+                not isinstance(track_id, str)
+                or track_id != track_id.strip()
+                or re.fullmatch(r"[A-Z]{0,2}[0-9]{1,3}", track_id) is None
+            ):
+                raise ManifestError(
+                    f"{where}.trackId must be an anonymous token such as P1 or A02"
+                )
+            window = raw_tracklet.get("window")
+            if window not in PLAYER_TRACKLET_WINDOWS:
+                raise ManifestError(
+                    f"{where}.window must be one of {sorted(PLAYER_TRACKLET_WINDOWS)}"
+                )
+            team = raw_tracklet.get("team")
+            if team not in PLAYER_TEAMS:
+                raise ManifestError(f"{where}.team must be one of {sorted(PLAYER_TEAMS)}")
+            court_side = raw_tracklet.get("courtSide")
+            if court_side not in PLAYER_COURT_SIDES:
+                raise ManifestError(
+                    f"{where}.courtSide must be one of {sorted(PLAYER_COURT_SIDES)}"
+                )
+            notes = raw_tracklet.get("notes")
+            if notes is not None and not isinstance(notes, str):
+                raise ManifestError(f"{where}.notes must be a string when present")
+            unique_key = (str(window), track_id)
+            if unique_key in seen_keys:
+                raise ManifestError(
+                    f"{where} duplicates track {track_id!r} in the same boundary window"
+                )
+            seen_keys.add(unique_key)
+            raw_observations = raw_tracklet.get("observations")
+            if not isinstance(raw_observations, list) or not raw_observations:
+                raise ManifestError(
+                    f"{where}.observations must contain at least one labeled frame"
+                )
+            if window == "serve":
+                window_start = max(0.0, rally.start - 2.0)
+                window_end = min(duration, rally.start + 3.0)
+            else:
+                window_start = max(0.0, rally.end - 3.0)
+                window_end = min(duration, rally.end + 2.0)
+            observations: list[PlayerTrackletObservation] = []
+            previous_time = -1.0
+            for observation_index, raw_observation in enumerate(raw_observations):
+                observation_where = f"{where}.observations[{observation_index}]"
+                if not isinstance(raw_observation, dict):
+                    raise ManifestError(f"{observation_where} must be an object")
+                observation_unknown = set(raw_observation) - {
+                    "time",
+                    "footpoint",
+                    "box",
+                    "state",
+                }
+                if observation_unknown:
+                    raise ManifestError(
+                        f"{observation_where} has unrecognized fields: "
+                        f"{sorted(observation_unknown)}"
+                    )
+                observation_time = _optional_finite_number(
+                    raw_observation.get("time"), f"{observation_where}.time"
+                )
+                if (
+                    observation_time is None
+                    or observation_time < window_start
+                    or observation_time > window_end
+                    or observation_time <= previous_time
+                ):
+                    raise ManifestError(
+                        f"{observation_where}.time must be strictly ordered inside "
+                        "its boundary window"
+                    )
+                previous_time = observation_time
+                footpoint = (
+                    _read_normalized_point(
+                        raw_observation["footpoint"], f"{observation_where}.footpoint"
+                    )
+                    if "footpoint" in raw_observation
+                    else None
+                )
+                box = (
+                    _read_normalized_box(
+                        raw_observation["box"], f"{observation_where}.box"
+                    )
+                    if "box" in raw_observation
+                    else None
+                )
+                if footpoint is None and box is None:
+                    raise ManifestError(
+                        f"{observation_where} must contain a footpoint or box"
+                    )
+                state = raw_observation.get("state")
+                if state is not None and state not in PLAYER_STATES:
+                    raise ManifestError(
+                        f"{observation_where}.state must be one of {sorted(PLAYER_STATES)}"
+                    )
+                observations.append(
+                    PlayerTrackletObservation(
+                        time=observation_time,
+                        footpoint=footpoint,
+                        box=box,
+                        state=state,
+                    )
+                )
+            tracklets.append(
+                PlayerTracklet(
+                    rally_index=rally_index,
+                    track_id=track_id,
+                    window=str(window),
+                    team=str(team),
+                    court_side=str(court_side),
+                    observations=tuple(observations),
+                    notes=notes,
+                )
+            )
+    return tuple(tracklets)
+
+
+def _read_point_group(
+    value: Any,
+    where: str,
+    names: tuple[str, ...],
+    *,
+    require_pair: bool,
+) -> dict[str, dict[str, float]]:
+    if not isinstance(value, dict):
+        raise ManifestError(f"{where} must be an object")
+    unknown = set(value) - set(names)
+    if unknown:
+        raise ManifestError(f"{where} has unrecognized anchors: {sorted(unknown)}")
+    points = {
+        name: _read_normalized_point(value[name], f"{where}.{name}")
+        for name in names
+        if name in value
+    }
+    if require_pair and points and len(points) != len(names):
+        raise ManifestError(f"{where} must include both {', '.join(names)} anchors when completed")
+    return points
+
+
+def _read_court_geometry(
+    value: Any,
+    *,
+    require_complete: bool,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ManifestError("recording.courtGeometry must be an object")
+    allowed = {"corners", "netAnchors", "serviceZoneAnchors"}
+    unknown = set(value) - allowed
+    if unknown:
+        raise ManifestError(
+            f"recording.courtGeometry has unrecognized fields: {sorted(unknown)}"
+        )
+    corners = _read_point_group(
+        value.get("corners"),
+        "recording.courtGeometry.corners",
+        COURT_CORNER_NAMES,
+        require_pair=require_complete,
+    )
+    if require_complete and len(corners) != len(COURT_CORNER_NAMES):
+        raise ManifestError(
+            "recording.courtGeometry.corners must include nearLeft, nearRight, "
+            "farLeft, and farRight when completed"
+        )
+    result: dict[str, Any] = {"corners": corners}
+    for field, names in (
+        ("netAnchors", NET_ANCHOR_NAMES),
+        ("serviceZoneAnchors", SERVICE_ZONE_ANCHOR_NAMES),
+    ):
+        if field in value:
+            result[field] = _read_point_group(
+                value[field],
+                f"recording.courtGeometry.{field}",
+                names,
+                require_pair=require_complete,
+            )
+    return result
+
+
+def _optional_finite_number(value: Any, where: str) -> float | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(float(value))
+    ):
+        raise ManifestError(f"{where} must be a finite number when present")
+    return float(value)
+
+
+def _read_rally_transitions(
+    value: Any,
+    rallies: Sequence[Interval],
+    duration: float,
+) -> tuple[RallyTransitionAnnotation, ...]:
+    if not isinstance(value, list) or len(value) != len(rallies):
+        raise ManifestError("rallies must remain an array while reading transition annotations")
+    annotations: list[RallyTransitionAnnotation] = []
+    for index, (row, rally) in enumerate(zip(value, rallies, strict=True)):
+        if not isinstance(row, dict):
+            raise ManifestError(f"rallies[{index}] must be an object")
+        notes = row.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            raise ManifestError(f"rallies[{index}].notes must be a string when present")
+        reaction = _optional_finite_number(
+            row.get("receiverReactionTime"),
+            f"rallies[{index}].receiverReactionTime",
+        )
+        if reaction is not None and not (
+            rally.start <= reaction <= min(rally.end, rally.start + 5.0, duration)
+        ):
+            raise ManifestError(
+                f"rallies[{index}].receiverReactionTime must be within five seconds "
+                "after rally start"
+            )
+        stand_down = _optional_finite_number(
+            row.get("collectiveStandDownTime"),
+            f"rallies[{index}].collectiveStandDownTime",
+        )
+        if stand_down is not None and not (
+            max(rally.start, rally.end - 5.0)
+            <= stand_down
+            <= min(duration, rally.end + 5.0)
+        ):
+            raise ManifestError(
+                f"rallies[{index}].collectiveStandDownTime must be within five seconds "
+                "of rally end"
+            )
+        if reaction is not None and stand_down is not None and reaction > stand_down:
+            raise ManifestError(
+                f"rallies[{index}].receiverReactionTime must not follow "
+                "collectiveStandDownTime"
+            )
+        terminal_cue = row.get("terminalCue")
+        if terminal_cue is not None and terminal_cue not in TERMINAL_CUES:
+            raise ManifestError(
+                f"rallies[{index}].terminalCue must be one of {sorted(TERMINAL_CUES)}"
+            )
+        end_observability = row.get("endObservability")
+        if end_observability is not None and end_observability not in END_OBSERVABILITY_VALUES:
+            raise ManifestError(
+                f"rallies[{index}].endObservability must be one of "
+                f"{sorted(END_OBSERVABILITY_VALUES)}"
+            )
+        confidence_values: dict[str, float | None] = {}
+        for json_field, result_field in (
+            ("startConfidence", "start_confidence"),
+            ("endConfidence", "end_confidence"),
+        ):
+            confidence = _optional_finite_number(
+                row.get(json_field), f"rallies[{index}].{json_field}"
+            )
+            if confidence is not None and not 0 <= confidence <= 1:
+                raise ManifestError(f"rallies[{index}].{json_field} must be between 0 and 1")
+            confidence_values[result_field] = confidence
+        immediate = row.get("verifiedImmediateResult")
+        if immediate is not None and not isinstance(immediate, bool):
+            raise ManifestError(
+                f"rallies[{index}].verifiedImmediateResult must be boolean when present"
+            )
+        annotations.append(
+            RallyTransitionAnnotation(
+                receiver_reaction_time=reaction,
+                collective_stand_down_time=stand_down,
+                terminal_cue=terminal_cue,
+                end_observability=end_observability,
+                start_confidence=confidence_values["start_confidence"],
+                end_confidence=confidence_values["end_confidence"],
+                verified_immediate_result=immediate,
+            )
+        )
+    return tuple(annotations)
 
 
 def load_label_document(
@@ -209,9 +609,15 @@ def load_label_document(
     if not isinstance(capture, dict):
         raise ManifestError("recording.capture must be an object")
     rallies = _read_intervals(payload.get("rallies"), "labels")
+    rally_transitions = _read_rally_transitions(payload.get("rallies"), rallies, duration)
+    player_tracklets = _read_player_tracklets(payload.get("rallies"), rallies, duration)
     ignored = _read_intervals(payload.get("ignoredIntervals", []), "labels", "ignoredIntervals")
     hard_negatives = _read_intervals(payload.get("hardNegatives", []), "labels", "hardNegatives")
     side_switches = _read_side_switches(payload.get("sideSwitches", []), duration)
+    court_geometry = _read_court_geometry(
+        recording.get("courtGeometry"),
+        require_complete=require_complete,
+    )
     _validate_bounds(rallies, duration, "rallies")
     _validate_bounds(ignored, duration, "ignoredIntervals")
     _validate_bounds(hard_negatives, duration, "hardNegatives")
@@ -262,6 +668,9 @@ def load_label_document(
         ignored_intervals=ignored,
         hard_negatives=hard_negatives,
         side_switches=side_switches,
+        court_geometry=court_geometry,
+        rally_transitions=rally_transitions,
+        player_tracklets=player_tracklets,
         warnings=tuple(warnings),
     )
 
@@ -383,6 +792,11 @@ def build_manifest_from_labels(
                 },
                 "capture": recording.get("capture", {}),
                 "roi": recording.get("roi"),
+                **(
+                    {"courtGeometry": recording["courtGeometry"]}
+                    if "courtGeometry" in recording
+                    else {}
+                ),
                 "rallies": document.payload["rallies"],
                 "ignoredIntervals": document.payload.get("ignoredIntervals", []),
                 "hardNegatives": document.payload.get("hardNegatives", []),

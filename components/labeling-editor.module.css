@@ -122,6 +122,17 @@
   font: 12px "DM Mono", monospace;
 }
 
+.trackletControls input,
+.trackletControls select {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #b9b8af;
+  border-radius: 0;
+  background: #fff;
+  color: var(--label-ink);
+  font: 11px "DM Mono", monospace;
+}
+
 .preparedTask {
   grid-column: 1 / -1;
   grid-template-columns: 210px minmax(210px, 0.45fr) minmax(320px, 1fr) auto;
@@ -195,9 +206,266 @@
   display: block;
 }
 
+.videoStage {
+  position: relative;
+  width: 100%;
+}
+
+.courtDrawing,
+.courtClickLayer,
+.trackletDrawing,
+.trackletClickLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.courtDrawing {
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.courtDrawing polyline,
+.courtDrawing line {
+  fill: none;
+  stroke: var(--label-acid);
+  stroke-width: 0.45;
+  vector-effect: non-scaling-stroke;
+}
+
+.courtDrawing circle {
+  fill: var(--label-acid);
+  stroke: #10120f;
+  stroke-width: 0.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.courtDrawing .optionalCourtPoint { fill: var(--label-orange); }
+
+.courtClickLayer {
+  z-index: 3;
+  padding: 0;
+  border: 2px solid var(--label-acid);
+  background: rgb(223 255 53 / 8%);
+  cursor: crosshair;
+}
+
+.trackletDrawing {
+  z-index: 3;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.trackletDrawing rect,
+.trackletDrawing circle {
+  fill: rgb(255 255 255 / 10%);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.trackletDrawing text {
+  fill: #fff;
+  stroke: #10120f;
+  stroke-width: 0.7;
+  paint-order: stroke;
+  font: 3px "DM Mono", monospace;
+}
+
+.trackletTeamA rect,
+.trackletTeamA circle { stroke: var(--label-acid); }
+
+.trackletTeamB rect,
+.trackletTeamB circle { stroke: #ff7d5b; }
+
+.trackletUnknownTeam rect,
+.trackletUnknownTeam circle { stroke: #fff; }
+
+.trackletDrawing .trackletDraftBox {
+  fill: rgb(223 255 53 / 12%);
+  stroke: var(--label-acid);
+  stroke-dasharray: 5 3;
+}
+
+.trackletClickLayer {
+  z-index: 4;
+  padding: 0;
+  border: 2px solid #5be4ff;
+  background: rgb(91 228 255 / 7%);
+  cursor: crosshair;
+  touch-action: none;
+}
+
 .videoEmpty {
   color: #8d9086;
   font: 13px "DM Mono", monospace;
+}
+
+.courtPanel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #b9b8af;
+  background: #f4f8e8;
+}
+
+.courtPanelHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.courtPanelHeading div { display: grid; gap: 3px; }
+
+.courtPanelHeading strong { font-size: 12px; }
+
+.courtPanelHeading span {
+  color: #696c63;
+  font-size: 11px;
+}
+
+.courtPanelHeading button,
+.courtAnchor button,
+.cueTime button {
+  padding: 7px 9px;
+  border: 1px solid var(--label-ink);
+  background: #fff;
+  color: var(--label-ink);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.courtAnchors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.courtAnchor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.courtAnchor button:first-child {
+  overflow: hidden;
+  border-color: #aeb3a0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.courtAnchor button + button {
+  padding-inline: 8px;
+  border-left: 0;
+  color: #9b3822;
+}
+
+.activeCourtAnchor button:first-child {
+  background: var(--label-acid);
+  border-color: var(--label-ink);
+}
+
+.playerTrackletPanel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #91abb1;
+  background: #edfafd;
+}
+
+.playerTrackletPanel .courtPanelHeading > button,
+.trackletActions button,
+.trackletRow button {
+  padding: 7px 9px;
+  border: 1px solid var(--label-ink);
+  background: #fff;
+  color: var(--label-ink);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.trackletControls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.trackletControls label {
+  display: grid;
+  gap: 4px;
+  color: #5e696a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.trackletActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.trackletActions span {
+  color: #667477;
+  font: 10px "DM Mono", monospace;
+}
+
+.trackletRows {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.trackletRow {
+  border-top: 1px solid #b7ced2;
+  padding-top: 7px;
+}
+
+.trackletRowHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trackletRowHeading button:first-child {
+  flex: 1;
+  text-align: left;
+}
+
+.trackletRowHeading .delete { color: #9b3822; }
+
+.trackletObservations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.trackletObservations > div {
+  display: flex;
+  align-items: center;
+  border: 1px solid #b7ced2;
+  background: #fff;
+}
+
+.trackletObservations button {
+  border: 0;
+  padding: 5px 7px;
+}
+
+.trackletObservations span {
+  color: #667477;
+  font: 9px "DM Mono", monospace;
+}
+
+.trackletEmpty {
+  margin: 10px 0 0;
+  color: #667477;
+  font-size: 10px;
 }
 
 .timecode {
@@ -357,6 +625,34 @@
 .currentRallyTimes button:last-child { text-align: right; }
 
 .currentRallyCard label { margin-top: 12px; }
+
+.transitionPanel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #b8c49b;
+}
+
+.transitionPanel > strong { font-size: 12px; }
+
+.transitionPanel > p {
+  margin: 5px 0 10px;
+  color: #62665a;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.cueTime {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.cueTime button { border-left: 0; }
+
+.confidenceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
 
 .currentRallyEvidence {
   margin: 14px 0 0;
@@ -536,6 +832,8 @@
   .row { grid-template-columns: 60px 1fr 20px 1fr 1fr 1fr; }
   .row select { grid-column: 2 / 6; }
   .pointRow { grid-template-columns: 60px 100px minmax(90px, 0.45fr) minmax(160px, 1fr) 70px; }
+  .courtAnchors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trackletControls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 650px) {
@@ -549,6 +847,11 @@
   .transport button,
   .markers button { flex: 1 1 40%; }
   .videoWrap { min-height: 220px; }
+  .courtPanelHeading { align-items: stretch; flex-direction: column; }
+  .courtAnchors { grid-template-columns: 1fr; }
+  .trackletControls { grid-template-columns: 1fr; }
+  .trackletActions,
+  .trackletRowHeading { align-items: stretch; flex-direction: column; }
   .row { grid-template-columns: 55px 1fr 16px 1fr; }
   .row input,
   .row select { grid-column: span 2; }

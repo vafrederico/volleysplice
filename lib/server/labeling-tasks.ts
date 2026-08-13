@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parseLabelDocument, type LabelDocument } from "@/lib/annotations";
+import {
+  endObservabilityValues,
+  hardNegativeCategories,
+  parseLabelDocument,
+  terminalCueValues,
+  type LabelDocument,
+  type NormalizedPoint,
+} from "@/lib/annotations";
 
 const DEFAULT_MEDIA_ROOT = "/mnt/freenas/volleycut";
 const DEFAULT_LABELING_WORKSPACE =
@@ -138,6 +145,22 @@ function intervalsOverlap(
   );
 }
 
+const hardNegativeCategorySet = new Set<string>(hardNegativeCategories);
+const terminalCueSet = new Set<string>(terminalCueValues);
+const endObservabilitySet = new Set<string>(endObservabilityValues);
+
+function isNormalizedPoint(point: NormalizedPoint | undefined): boolean {
+  return (
+    point === undefined ||
+    (Number.isFinite(point.x) &&
+      Number.isFinite(point.y) &&
+      point.x >= 0 &&
+      point.x <= 1 &&
+      point.y >= 0 &&
+      point.y <= 1)
+  );
+}
+
 function validateDraftContent(document: LabelDocument, task: PreparedLabelingTask): void {
   const base = task.document;
   const immutableValues: Array<[unknown, unknown, string]> = [
@@ -166,6 +189,19 @@ function validateDraftContent(document: LabelDocument, task: PreparedLabelingTas
     (annotation.reviewedAt !== null && typeof annotation.reviewedAt !== "string")
   ) {
     throw new LabelingDraftValidationError("annotation metadata is invalid for a draft");
+  }
+  const geometry = document.recording.courtGeometry;
+  if (
+    geometry &&
+    [
+      ...Object.values(geometry.corners),
+      ...Object.values(geometry.netAnchors ?? {}),
+      ...Object.values(geometry.serviceZoneAnchors ?? {}),
+    ].some((point) => !isNormalizedPoint(point))
+  ) {
+    throw new LabelingDraftValidationError(
+      "court geometry anchors must be finite normalized frame points",
+    );
   }
   const game = document.recording.game;
   if (
@@ -211,9 +247,45 @@ function validateDraftContent(document: LabelDocument, task: PreparedLabelingTas
       (row) => !Array.isArray(row.tags) || row.tags.some((tag) => typeof tag !== "string"),
     ) ||
     document.ignoredIntervals.some((row) => typeof row.reason !== "string" || !row.reason) ||
-    document.hardNegatives.some((row) => typeof row.category !== "string" || !row.category)
+    document.hardNegatives.some(
+      (row) =>
+        typeof row.category !== "string" ||
+        !hardNegativeCategorySet.has(row.category),
+    )
   ) {
     throw new LabelingDraftValidationError("interval metadata is invalid");
+  }
+  if (
+    document.rallies.some((row) => {
+      const reaction = row.receiverReactionTime;
+      const standDown = row.collectiveStandDownTime;
+      return (
+        (reaction !== undefined &&
+          (!Number.isFinite(reaction) ||
+            reaction < row.start ||
+            reaction > Math.min(row.end, row.start + 5))) ||
+        (standDown !== undefined &&
+          (!Number.isFinite(standDown) ||
+            standDown < Math.max(row.start, row.end - 5) ||
+            standDown > Math.min(document.recording.durationSeconds, row.end + 5))) ||
+        (reaction !== undefined && standDown !== undefined && reaction > standDown) ||
+        (row.startConfidence !== undefined &&
+          (!Number.isFinite(row.startConfidence) ||
+            row.startConfidence < 0 ||
+            row.startConfidence > 1)) ||
+        (row.endConfidence !== undefined &&
+          (!Number.isFinite(row.endConfidence) ||
+            row.endConfidence < 0 ||
+            row.endConfidence > 1)) ||
+        (row.terminalCue !== undefined && !terminalCueSet.has(row.terminalCue)) ||
+        (row.endObservability !== undefined &&
+          !endObservabilitySet.has(row.endObservability)) ||
+        (row.verifiedImmediateResult !== undefined &&
+          typeof row.verifiedImmediateResult !== "boolean")
+      );
+    })
+  ) {
+    throw new LabelingDraftValidationError("rally transition metadata is invalid");
   }
 }
 

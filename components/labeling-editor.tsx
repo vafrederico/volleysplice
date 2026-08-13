@@ -5,12 +5,24 @@ import Link from "next/link";
 import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
 import {
   downloadLabels,
+  endObservabilityValues,
   formatPreciseTime,
+  hardNegativeCategories,
   parseLabelDocument,
+  playerCourtSideValues,
+  playerStateValues,
+  playerTeamValues,
+  playerTrackletWindowValues,
   roundTime,
+  terminalCueValues,
+  type CourtGeometry,
   type HardNegative,
   type IgnoredInterval,
   type LabelDocument,
+  type NormalizedBox,
+  type NormalizedPoint,
+  type PlayerTracklet,
+  type PlayerTrackletObservation,
   type RallyLabel,
   type SideSwitch,
 } from "@/lib/annotations";
@@ -18,6 +30,62 @@ import styles from "./labeling-editor.module.css";
 
 type IntervalKind = "rally" | "ignored" | "negative";
 type LabelingBatch = "full" | "pilot";
+type TrackletCaptureMode = "footpoint" | "box";
+type TrackletBoxDrag = { start: NormalizedPoint; current: NormalizedPoint };
+type CourtAnchorId =
+  | "nearLeft"
+  | "nearRight"
+  | "farLeft"
+  | "farRight"
+  | "netLeft"
+  | "netRight"
+  | "serviceNear"
+  | "serviceFar";
+
+const courtAnchorSpecs: Array<{ id: CourtAnchorId; label: string; optional: boolean }> = [
+  { id: "nearLeft", label: "Near-left corner", optional: false },
+  { id: "nearRight", label: "Near-right corner", optional: false },
+  { id: "farLeft", label: "Far-left corner", optional: false },
+  { id: "farRight", label: "Far-right corner", optional: false },
+  { id: "netLeft", label: "Net-left", optional: true },
+  { id: "netRight", label: "Net-right", optional: true },
+  { id: "serviceNear", label: "Near service zone", optional: true },
+  { id: "serviceFar", label: "Far service zone", optional: true },
+];
+
+function courtPoint(geometry: CourtGeometry | undefined, id: CourtAnchorId): NormalizedPoint | undefined {
+  if (!geometry) return undefined;
+  if (id === "netLeft") return geometry.netAnchors?.left;
+  if (id === "netRight") return geometry.netAnchors?.right;
+  if (id === "serviceNear") return geometry.serviceZoneAnchors?.near;
+  if (id === "serviceFar") return geometry.serviceZoneAnchors?.far;
+  return geometry.corners[id];
+}
+
+function setCourtPoint(
+  geometry: CourtGeometry | undefined,
+  id: CourtAnchorId,
+  point: NormalizedPoint | undefined,
+): CourtGeometry {
+  const next: CourtGeometry = {
+    corners: { ...(geometry?.corners ?? {}) },
+    ...(geometry?.netAnchors ? { netAnchors: { ...geometry.netAnchors } } : {}),
+    ...(geometry?.serviceZoneAnchors
+      ? { serviceZoneAnchors: { ...geometry.serviceZoneAnchors } }
+      : {}),
+  };
+  if (id === "netLeft" || id === "netRight") {
+    next.netAnchors = { ...(next.netAnchors ?? {}), [id === "netLeft" ? "left" : "right"]: point };
+  } else if (id === "serviceNear" || id === "serviceFar") {
+    next.serviceZoneAnchors = {
+      ...(next.serviceZoneAnchors ?? {}),
+      [id === "serviceNear" ? "near" : "far"]: point,
+    };
+  } else {
+    next.corners = { ...next.corners, [id]: point };
+  }
+  return next;
+}
 
 type PreparedTaskSummary = {
   id: string;
@@ -47,6 +115,43 @@ const emptyBatchSummary: BatchSummary = {
 const editableRallyTags = new Set(["service-fault", "ace", "interrupted-replay"]);
 const playbackResumeKey = "volleycut.labeling.playback.v1";
 const timestampEpsilon = 0.0005;
+const trackletFrameEpsilon = 0.001;
+
+function playerWindowBounds(
+  rally: RallyLabel,
+  window: PlayerTracklet["window"],
+  duration: number,
+): { start: number; end: number } {
+  return window === "serve"
+    ? { start: Math.max(0, rally.start - 2), end: Math.min(duration, rally.start + 3) }
+    : { start: Math.max(0, rally.end - 3), end: Math.min(duration, rally.end + 2) };
+}
+
+function trackletsInsideRallyBounds(
+  tracklets: PlayerTracklet[] | undefined,
+  rally: RallyLabel,
+  duration: number,
+): PlayerTracklet[] | undefined {
+  if (!tracklets) return undefined;
+  const retained = tracklets.flatMap((tracklet) => {
+    const bounds = playerWindowBounds(rally, tracklet.window, duration);
+    const observations = tracklet.observations.filter(
+      (observation) => observation.time >= bounds.start && observation.time <= bounds.end,
+    );
+    return observations.length > 0 ? [{ ...tracklet, observations }] : [];
+  });
+  return retained.length > 0 ? retained : undefined;
+}
+
+function normalizedPointer(
+  event: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>,
+): NormalizedPoint {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+    y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+  };
+}
 
 type PlaybackResume = {
   version: 1;
@@ -89,6 +194,20 @@ function totalSeconds(rows: Array<{ start: number; end: number }>): number {
   return rows.reduce((total, row) => total + row.end - row.start, 0);
 }
 
+function hardNegativeLabel(value: (typeof hardNegativeCategories)[number]): string {
+  const labels: Partial<Record<(typeof hardNegativeCategories)[number], string>> = {
+    "adjacent-court": "Adjacent-court play",
+    "celebration-huddle": "Celebration / huddle",
+    celebration: "Celebration (legacy)",
+    "foreground-crossing": "Foreground crossing",
+    "model-false-positive": "Model false positive",
+    "random-dead-control": "Random dead-time control",
+    "setup-between-points": "Setup between points",
+    "walking-ball-retrieval": "Walking / ball retrieval",
+  };
+  return labels[value] ?? value.replaceAll("-", " ");
+}
+
 export function LabelingEditor() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const preparedRequestRef = useRef<AbortController | null>(null);
@@ -111,6 +230,18 @@ export function LabelingEditor() {
   const [ignoredStart, setIgnoredStart] = useState<number | null>(null);
   const [negativeStart, setNegativeStart] = useState<number | null>(null);
   const [negativeCategory, setNegativeCategory] = useState("foreground-crossing");
+  const [courtAnchor, setCourtAnchor] = useState<CourtAnchorId | null>(null);
+  const [trackletRallyIndex, setTrackletRallyIndex] = useState<number | null>(null);
+  const [trackletWindow, setTrackletWindow] =
+    useState<PlayerTracklet["window"]>("serve");
+  const [trackletId, setTrackletId] = useState("P1");
+  const [trackletTeam, setTrackletTeam] = useState<PlayerTracklet["team"]>("team-a");
+  const [trackletCourtSide, setTrackletCourtSide] =
+    useState<PlayerTracklet["courtSide"]>("near");
+  const [trackletState, setTrackletState] =
+    useState<PlayerTrackletObservation["state"]>("ready");
+  const [trackletCapture, setTrackletCapture] = useState<TrackletCaptureMode | null>(null);
+  const [trackletBoxDrag, setTrackletBoxDrag] = useState<TrackletBoxDrag | null>(null);
   const [message, setMessage] = useState(
     "Choose a prepared full-corpus task, or use the local fallback files.",
   );
@@ -209,6 +340,22 @@ export function LabelingEditor() {
         : previousRallyIndex;
   const sidebarRally =
     labels && sidebarRallyIndex >= 0 ? labels.rallies[sidebarRallyIndex] : null;
+  const activeTrackletRallyIndex =
+    labels && trackletRallyIndex !== null && labels.rallies[trackletRallyIndex]
+      ? trackletRallyIndex
+      : sidebarRallyIndex;
+  const activeTrackletRally =
+    labels && activeTrackletRallyIndex >= 0
+      ? labels.rallies[activeTrackletRallyIndex]
+      : null;
+  const currentPlayerObservations = useMemo(() => {
+    if (!activeTrackletRally) return [];
+    return (activeTrackletRally.playerTracklets ?? []).flatMap((tracklet) =>
+      tracklet.observations
+        .filter((observation) => Math.abs(observation.time - currentTime) <= 0.02)
+        .map((observation) => ({ tracklet, observation })),
+    );
+  }, [activeTrackletRally, currentTime]);
 
   const selectedPreparedSummary = useMemo(
     () => preparedTasks.find((task) => task.id === selectedPreparedTask) ?? null,
@@ -219,6 +366,21 @@ export function LabelingEditor() {
     () => preparedTasks.filter((task) => task.batch === selectedBatch),
     [preparedTasks, selectedBatch],
   );
+
+  const courtPolygon = useMemo(() => {
+    const geometry = labels?.recording.courtGeometry;
+    const points = [
+      geometry?.corners.nearLeft,
+      geometry?.corners.nearRight,
+      geometry?.corners.farRight,
+      geometry?.corners.farLeft,
+    ];
+    return points.every((point) => point !== undefined)
+      ? [...points, points[0]]
+          .map((point) => `${(point?.x ?? 0) * 100},${(point?.y ?? 0) * 100}`)
+          .join(" ")
+      : null;
+  }, [labels?.recording.courtGeometry]);
 
   const completionIssues = useMemo(() => {
     if (!labels) return ["Load a label task"];
@@ -271,6 +433,66 @@ export function LabelingEditor() {
         issues.push("Side-switch points must be in range and strictly ordered");
       }
     });
+    const geometry = labels.recording.courtGeometry;
+    if (geometry) {
+      const missingCorners = ["nearLeft", "nearRight", "farLeft", "farRight"].filter(
+        (id) => !courtPoint(geometry, id as CourtAnchorId),
+      );
+      if (missingCorners.length > 0) issues.push("Finish all four named court corners");
+      if (!!geometry.netAnchors?.left !== !!geometry.netAnchors?.right) {
+        issues.push("Mark both net anchors or clear the partial pair");
+      }
+      if (!!geometry.serviceZoneAnchors?.near !== !!geometry.serviceZoneAnchors?.far) {
+        issues.push("Mark both service-zone anchors or clear the partial pair");
+      }
+    }
+    labels.rallies.forEach((row, index) => {
+      if (
+        row.receiverReactionTime !== undefined &&
+        (row.receiverReactionTime < row.start ||
+          row.receiverReactionTime > Math.min(row.end, row.start + 5))
+      ) {
+        issues.push(`Rally ${index + 1} receiver reaction must be within 5s of its start`);
+      }
+      if (
+        row.collectiveStandDownTime !== undefined &&
+        (row.collectiveStandDownTime < Math.max(row.start, row.end - 5) ||
+          row.collectiveStandDownTime >
+            Math.min(labels.recording.durationSeconds, row.end + 5))
+      ) {
+        issues.push(`Rally ${index + 1} stand-down must be within 5s of its end`);
+      }
+      for (const confidence of [row.startConfidence, row.endConfidence]) {
+        if (confidence !== undefined && (confidence < 0 || confidence > 1)) {
+          issues.push(`Rally ${index + 1} confidence must be between 0 and 1`);
+        }
+      }
+      const seenTracklets = new Set<string>();
+      (row.playerTracklets ?? []).forEach((tracklet) => {
+        const key = `${tracklet.window}:${tracklet.trackId}`;
+        if (seenTracklets.has(key)) {
+          issues.push(`Rally ${index + 1} has duplicate player track ${key}`);
+        }
+        seenTracklets.add(key);
+        const bounds = playerWindowBounds(
+          row,
+          tracklet.window,
+          labels.recording.durationSeconds,
+        );
+        tracklet.observations.forEach((observation, observationIndex) => {
+          if (
+            observation.time < bounds.start ||
+            observation.time > bounds.end ||
+            (observationIndex > 0 &&
+              observation.time <= tracklet.observations[observationIndex - 1].time)
+          ) {
+            issues.push(
+              `Rally ${index + 1} player track ${tracklet.trackId} has an out-of-window or unordered frame`,
+            );
+          }
+        });
+      });
+    });
     return [...new Set(issues)];
   }, [ignoredStart, labels, negativeStart, rallyStart, videoDuration, videoFilename, videoUrl]);
 
@@ -298,6 +520,10 @@ export function LabelingEditor() {
       setRallyStart(null);
       setIgnoredStart(null);
       setNegativeStart(null);
+      setCourtAnchor(null);
+      setTrackletRallyIndex(null);
+      setTrackletCapture(null);
+      setTrackletBoxDrag(null);
       setCurrentTime(0);
       setMessage(
         document.annotation.status === "not-started"
@@ -350,6 +576,10 @@ export function LabelingEditor() {
       setRallyStart(null);
       setIgnoredStart(null);
       setNegativeStart(null);
+      setCourtAnchor(null);
+      setTrackletRallyIndex(null);
+      setTrackletCapture(null);
+      setTrackletBoxDrag(null);
       setLastSavedAt(savedAt);
       if (batch === "full" || batch === "pilot") setSelectedBatch(batch);
       setMessage(
@@ -506,6 +736,192 @@ export function LabelingEditor() {
     else video.pause();
   }
 
+  function selectCourtAnchor(id: CourtAnchorId) {
+    videoRef.current?.pause();
+    setCourtAnchor(id);
+    setMessage(`Court mode: click ${courtAnchorSpecs.find((item) => item.id === id)?.label.toLowerCase()} on the paused frame.`);
+  }
+
+  function updateCourtPoint(id: CourtAnchorId, point: NormalizedPoint | undefined) {
+    if (!labels) return;
+    const courtGeometry = setCourtPoint(labels.recording.courtGeometry, id, point);
+    setLabels(
+      markChanged({
+        ...labels,
+        recording: { ...labels.recording, courtGeometry },
+      }),
+    );
+  }
+
+  function captureCourtPoint(event: React.MouseEvent<HTMLButtonElement>) {
+    if (!labels || !courtAnchor) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const point = {
+      x: Math.round(((event.clientX - bounds.left) / bounds.width) * 1_000_000) / 1_000_000,
+      y: Math.round(((event.clientY - bounds.top) / bounds.height) * 1_000_000) / 1_000_000,
+    };
+    updateCourtPoint(courtAnchor, point);
+    const currentIndex = courtAnchorSpecs.findIndex((item) => item.id === courtAnchor);
+    const next = courtAnchorSpecs
+      .slice(currentIndex + 1)
+      .find((item) => !courtPoint(labels.recording.courtGeometry, item.id));
+    setCourtAnchor(next?.id ?? null);
+    setMessage(
+      next
+        ? `Saved ${courtAnchorSpecs[currentIndex].label}. Click ${next.label.toLowerCase()}, or finish after the four corners.`
+        : "Saved all eight court anchors.",
+    );
+  }
+
+  function startTrackletCapture(mode: TrackletCaptureMode) {
+    if (!labels || !activeTrackletRally || activeTrackletRallyIndex < 0) {
+      setError("Choose a labeled rally before adding anonymous player tracks.");
+      return;
+    }
+    const normalizedId = trackletId.trim();
+    if (!/^[A-Z]{0,2}[0-9]{1,3}$/.test(normalizedId)) {
+      setError("Use an anonymous track token such as P1 or A02—not a name.");
+      return;
+    }
+    setTrackletId(normalizedId);
+    setTrackletRallyIndex(activeTrackletRallyIndex);
+    setCourtAnchor(null);
+    videoRef.current?.pause();
+    setTrackletCapture(mode);
+    setTrackletBoxDrag(null);
+    setError(null);
+    setMessage(
+      mode === "footpoint"
+        ? `Player mode: click ${normalizedId}'s feet at each chosen frame.`
+        : `Player mode: drag a box around ${normalizedId} at each chosen frame.`,
+    );
+  }
+
+  function addPlayerObservation(
+    geometry: Pick<PlayerTrackletObservation, "footpoint" | "box">,
+  ) {
+    if (!labels || !activeTrackletRally || activeTrackletRallyIndex < 0) return;
+    const time = roundTime(videoRef.current?.currentTime ?? currentTime);
+    const bounds = playerWindowBounds(
+      activeTrackletRally,
+      trackletWindow,
+      labels.recording.durationSeconds,
+    );
+    if (time < bounds.start || time > bounds.end) {
+      setError(
+        `${trackletWindow === "serve" ? "Serve" : "Rally-end"} observations for rally ${activeTrackletRallyIndex + 1} must stay between ${formatPreciseTime(bounds.start)} and ${formatPreciseTime(bounds.end)}.`,
+      );
+      return;
+    }
+    const normalizedId = trackletId.trim();
+    const observation: PlayerTrackletObservation = {
+      time,
+      ...geometry,
+      ...(trackletState ? { state: trackletState } : {}),
+    };
+    const tracklets = [...(activeTrackletRally.playerTracklets ?? [])];
+    const trackletIndex = tracklets.findIndex(
+      (tracklet) =>
+        tracklet.window === trackletWindow && tracklet.trackId === normalizedId,
+    );
+    if (trackletIndex >= 0) {
+      const existing = tracklets[trackletIndex];
+      const observationIndex = existing.observations.findIndex(
+        (row) => Math.abs(row.time - time) <= trackletFrameEpsilon,
+      );
+      const observations = [...existing.observations];
+      if (observationIndex >= 0) {
+        observations[observationIndex] = {
+          ...observations[observationIndex],
+          ...observation,
+        };
+      } else {
+        observations.push(observation);
+      }
+      observations.sort((left, right) => left.time - right.time);
+      tracklets[trackletIndex] = {
+        ...existing,
+        team: trackletTeam,
+        courtSide: trackletCourtSide,
+        observations,
+      };
+    } else {
+      tracklets.push({
+        trackId: normalizedId,
+        window: trackletWindow,
+        team: trackletTeam,
+        courtSide: trackletCourtSide,
+        observations: [observation],
+      });
+    }
+    updateRally(activeTrackletRallyIndex, { playerTracklets: tracklets });
+    setError(null);
+    setMessage(
+      `Saved ${normalizedId} at ${formatPreciseTime(time)} for rally ${activeTrackletRallyIndex + 1}'s ${trackletWindow} window.`,
+    );
+  }
+
+  function captureTrackletClick(event: React.MouseEvent<HTMLButtonElement>) {
+    if (trackletCapture !== "footpoint") return;
+    addPlayerObservation({ footpoint: normalizedPointer(event) });
+  }
+
+  function beginTrackletBox(event: React.PointerEvent<HTMLButtonElement>) {
+    if (trackletCapture !== "box") return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = normalizedPointer(event);
+    setTrackletBoxDrag({ start: point, current: point });
+  }
+
+  function moveTrackletBox(event: React.PointerEvent<HTMLButtonElement>) {
+    if (trackletCapture !== "box" || !trackletBoxDrag) return;
+    setTrackletBoxDrag({ ...trackletBoxDrag, current: normalizedPointer(event) });
+  }
+
+  function finishTrackletBox(event: React.PointerEvent<HTMLButtonElement>) {
+    if (trackletCapture !== "box" || !trackletBoxDrag) return;
+    event.preventDefault();
+    const end = normalizedPointer(event);
+    const box: NormalizedBox = {
+      x: Math.min(trackletBoxDrag.start.x, end.x),
+      y: Math.min(trackletBoxDrag.start.y, end.y),
+      width: Math.abs(trackletBoxDrag.start.x - end.x),
+      height: Math.abs(trackletBoxDrag.start.y - end.y),
+    };
+    setTrackletBoxDrag(null);
+    if (box.width < 0.003 || box.height < 0.003) {
+      setError("Drag a visible player box rather than clicking a single point.");
+      return;
+    }
+    addPlayerObservation({ box });
+  }
+
+  function removePlayerTracklet(rallyIndex: number, trackletIndex: number) {
+    const rally = labels?.rallies[rallyIndex];
+    if (!rally) return;
+    const next = (rally.playerTracklets ?? []).filter((_, index) => index !== trackletIndex);
+    updateRally(rallyIndex, { playerTracklets: next.length > 0 ? next : undefined });
+  }
+
+  function removePlayerObservation(
+    rallyIndex: number,
+    trackletIndex: number,
+    observationIndex: number,
+  ) {
+    const rally = labels?.rallies[rallyIndex];
+    const tracklet = rally?.playerTracklets?.[trackletIndex];
+    if (!rally || !tracklet) return;
+    const observations = tracklet.observations.filter((_, index) => index !== observationIndex);
+    if (observations.length === 0) {
+      removePlayerTracklet(rallyIndex, trackletIndex);
+      return;
+    }
+    const tracklets = [...(rally.playerTracklets ?? [])];
+    tracklets[trackletIndex] = { ...tracklet, observations };
+    updateRally(rallyIndex, { playerTracklets: tracklets });
+  }
+
   function beginRally() {
     if (!labels || !videoRef.current) return;
     const time = roundTime(videoRef.current.currentTime);
@@ -569,8 +985,24 @@ export function LabelingEditor() {
       );
       return false;
     }
-    const first: RallyLabel = { ...existing, start, end: split };
-    const remainder: RallyLabel = { ...existing, start: split, end: existing.end };
+    const firstBase: RallyLabel = { ...existing, start, end: split };
+    const remainderBase: RallyLabel = { ...existing, start: split, end: existing.end };
+    const first: RallyLabel = {
+      ...firstBase,
+      playerTracklets: trackletsInsideRallyBounds(
+        existing.playerTracklets,
+        firstBase,
+        labels.recording.durationSeconds,
+      ),
+    };
+    const remainder: RallyLabel = {
+      ...remainderBase,
+      playerTracklets: trackletsInsideRallyBounds(
+        existing.playerTracklets,
+        remainderBase,
+        labels.recording.durationSeconds,
+      ),
+    };
     const rallies = [...otherRallies, first, remainder].sort(
       (left, right) => left.start - right.start,
     );
@@ -721,8 +1153,29 @@ export function LabelingEditor() {
 
   function updateRally(index: number, patch: Partial<RallyLabel>) {
     if (!labels) return;
+    const existing = labels.rallies[index];
+    if (!existing) return;
+    const candidate = { ...existing, ...patch };
+    if (patch.start !== undefined || patch.end !== undefined) {
+      const invalidTracklet = (candidate.playerTracklets ?? []).find((tracklet) => {
+        const bounds = playerWindowBounds(
+          candidate,
+          tracklet.window,
+          labels.recording.durationSeconds,
+        );
+        return tracklet.observations.some(
+          (observation) => observation.time < bounds.start || observation.time > bounds.end,
+        );
+      });
+      if (invalidTracklet) {
+        setError(
+          `Move or delete ${invalidTracklet.trackId}'s ${invalidTracklet.window} observations before changing this boundary.`,
+        );
+        return;
+      }
+    }
     const rallies = labels.rallies.map((row, rowIndex) =>
-      rowIndex === index ? { ...row, ...patch } : row,
+      rowIndex === index ? candidate : row,
     );
     setLabels(markChanged({ ...labels, rallies }));
   }
@@ -905,26 +1358,367 @@ export function LabelingEditor() {
         <div className={styles.videoColumn}>
           <div className={styles.videoWrap}>
             {videoUrl ? (
-              <video
-                key={videoUrl}
-                ref={videoRef}
-                src={videoUrl}
-                controls
-                preload="metadata"
-                onTimeUpdate={(event) => {
-                  setCurrentTime(event.currentTarget.currentTime);
-                  persistPlaybackPosition(event.currentTarget);
-                }}
-                onSeeked={(event) => persistPlaybackPosition(event.currentTarget, true)}
-                onPlay={(event) => persistPlaybackPosition(event.currentTarget, true)}
-                onPause={(event) => persistPlaybackPosition(event.currentTarget, true)}
-                onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget)}
-              />
+              <div className={styles.videoStage}>
+                <video
+                  key={videoUrl}
+                  ref={videoRef}
+                  src={videoUrl}
+                  controls={courtAnchor === null && trackletCapture === null}
+                  preload="metadata"
+                  onTimeUpdate={(event) => {
+                    setCurrentTime(event.currentTarget.currentTime);
+                    persistPlaybackPosition(event.currentTarget);
+                  }}
+                  onSeeked={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                  onPlay={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                  onPause={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                  onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget)}
+                />
+                {labels?.recording.courtGeometry && (
+                  <svg
+                    className={styles.courtDrawing}
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    {courtPolygon && <polyline points={courtPolygon} />}
+                    {labels.recording.courtGeometry.netAnchors?.left &&
+                      labels.recording.courtGeometry.netAnchors?.right && (
+                        <line
+                          x1={labels.recording.courtGeometry.netAnchors.left.x * 100}
+                          y1={labels.recording.courtGeometry.netAnchors.left.y * 100}
+                          x2={labels.recording.courtGeometry.netAnchors.right.x * 100}
+                          y2={labels.recording.courtGeometry.netAnchors.right.y * 100}
+                        />
+                      )}
+                    {courtAnchorSpecs.map((anchor) => {
+                      const point = courtPoint(labels.recording.courtGeometry, anchor.id);
+                      return point ? (
+                        <circle
+                          key={anchor.id}
+                          cx={point.x * 100}
+                          cy={point.y * 100}
+                          r={anchor.optional ? 0.9 : 1.2}
+                          className={anchor.optional ? styles.optionalCourtPoint : undefined}
+                        />
+                      ) : null;
+                    })}
+                  </svg>
+                )}
+                {(currentPlayerObservations.length > 0 || trackletBoxDrag) && (
+                  <svg
+                    className={styles.trackletDrawing}
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    {currentPlayerObservations.map(({ tracklet, observation }) => (
+                      <g
+                        key={`${tracklet.window}-${tracklet.trackId}-${observation.time}`}
+                        className={
+                          tracklet.team === "team-a"
+                            ? styles.trackletTeamA
+                            : tracklet.team === "team-b"
+                              ? styles.trackletTeamB
+                              : styles.trackletUnknownTeam
+                        }
+                      >
+                        {observation.box && (
+                          <rect
+                            x={observation.box.x * 100}
+                            y={observation.box.y * 100}
+                            width={observation.box.width * 100}
+                            height={observation.box.height * 100}
+                          />
+                        )}
+                        {observation.footpoint && (
+                          <circle
+                            cx={observation.footpoint.x * 100}
+                            cy={observation.footpoint.y * 100}
+                            r="1.1"
+                          />
+                        )}
+                        <text
+                          x={(observation.footpoint?.x ?? observation.box?.x ?? 0) * 100}
+                          y={(observation.footpoint?.y ?? observation.box?.y ?? 0) * 100 - 1}
+                        >
+                          {tracklet.trackId}
+                        </text>
+                      </g>
+                    ))}
+                    {trackletBoxDrag && (
+                      <rect
+                        className={styles.trackletDraftBox}
+                        x={Math.min(trackletBoxDrag.start.x, trackletBoxDrag.current.x) * 100}
+                        y={Math.min(trackletBoxDrag.start.y, trackletBoxDrag.current.y) * 100}
+                        width={Math.abs(trackletBoxDrag.start.x - trackletBoxDrag.current.x) * 100}
+                        height={Math.abs(trackletBoxDrag.start.y - trackletBoxDrag.current.y) * 100}
+                      />
+                    )}
+                  </svg>
+                )}
+                {courtAnchor && (
+                  <button
+                    type="button"
+                    className={styles.courtClickLayer}
+                    aria-label={`Click ${courtAnchorSpecs.find((item) => item.id === courtAnchor)?.label}`}
+                    onClick={captureCourtPoint}
+                  />
+                )}
+                {trackletCapture && (
+                  <button
+                    type="button"
+                    className={styles.trackletClickLayer}
+                    aria-label={
+                      trackletCapture === "footpoint"
+                        ? `Click ${trackletId} footpoint`
+                        : `Draw ${trackletId} player box`
+                    }
+                    onClick={captureTrackletClick}
+                    onPointerDown={beginTrackletBox}
+                    onPointerMove={moveTrackletBox}
+                    onPointerUp={finishTrackletBox}
+                    onPointerCancel={() => setTrackletBoxDrag(null)}
+                  />
+                )}
+              </div>
             ) : (
               <div className={styles.videoEmpty}>Select the proxy listed by the task.</div>
             )}
             <div className={styles.timecode}>{formatPreciseTime(currentTime)}</div>
           </div>
+
+          {labels && (
+            <div className={styles.courtPanel}>
+              <div className={styles.courtPanelHeading}>
+                <div>
+                  <strong>Court geometry · 4–8 clicks</strong>
+                  <span>Near is the camera side. Pause on a clear full-court frame.</span>
+                </div>
+                {courtAnchor && (
+                  <button type="button" onClick={() => setCourtAnchor(null)}>Finish court clicks</button>
+                )}
+              </div>
+              <div className={styles.courtAnchors}>
+                {courtAnchorSpecs.map((anchor) => {
+                  const point = courtPoint(labels.recording.courtGeometry, anchor.id);
+                  return (
+                    <div
+                      className={`${styles.courtAnchor} ${courtAnchor === anchor.id ? styles.activeCourtAnchor : ""}`}
+                      key={anchor.id}
+                    >
+                      <button type="button" onClick={() => selectCourtAnchor(anchor.id)}>
+                        {point ? "✓ " : ""}{anchor.label}{anchor.optional ? " · optional" : ""}
+                      </button>
+                      {point && (
+                        <button
+                          type="button"
+                          aria-label={`Clear ${anchor.label}`}
+                          onClick={() => updateCourtPoint(anchor.id, undefined)}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {labels && (
+            <div className={styles.playerTrackletPanel}>
+              <div className={styles.courtPanelHeading}>
+                <div>
+                  <strong>Sparse anonymous player tracks · optional</strong>
+                  <span>Label short serve/end windows only. IDs are temporary within one rally window—never enter names.</span>
+                </div>
+                {trackletCapture && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTrackletCapture(null);
+                      setTrackletBoxDrag(null);
+                    }}
+                  >
+                    Finish player clicks
+                  </button>
+                )}
+              </div>
+              <div className={styles.trackletControls}>
+                <label>
+                  Rally
+                  <select
+                    value={activeTrackletRallyIndex >= 0 ? activeTrackletRallyIndex : ""}
+                    onChange={(event) =>
+                      setTrackletRallyIndex(
+                        event.target.value === "" ? null : Number(event.target.value),
+                      )
+                    }
+                  >
+                    <option value="">Choose…</option>
+                    {labels.rallies.map((rally, index) => (
+                      <option key={`tracklet-rally-${index}`} value={index}>
+                        R{String(index + 1).padStart(3, "0")} · {formatPreciseTime(rally.start)}–{formatPreciseTime(rally.end)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Boundary window
+                  <select
+                    value={trackletWindow}
+                    onChange={(event) =>
+                      setTrackletWindow(event.target.value as PlayerTracklet["window"])
+                    }
+                  >
+                    {playerTrackletWindowValues.map((value) => (
+                      <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Short track ID
+                  <input
+                    value={trackletId}
+                    maxLength={5}
+                    placeholder="P1"
+                    onChange={(event) => setTrackletId(event.target.value.toUpperCase())}
+                  />
+                </label>
+                <label>
+                  Anonymous team
+                  <select
+                    value={trackletTeam}
+                    onChange={(event) =>
+                      setTrackletTeam(event.target.value as PlayerTracklet["team"])
+                    }
+                  >
+                    {playerTeamValues.map((value) => (
+                      <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Court side
+                  <select
+                    value={trackletCourtSide}
+                    onChange={(event) =>
+                      setTrackletCourtSide(event.target.value as PlayerTracklet["courtSide"])
+                    }
+                  >
+                    {playerCourtSideValues.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Coarse state
+                  <select
+                    value={trackletState ?? ""}
+                    onChange={(event) =>
+                      setTrackletState(
+                        (event.target.value || undefined) as PlayerTrackletObservation["state"],
+                      )
+                    }
+                  >
+                    <option value="">Not labeled</option>
+                    {playerStateValues.map((value) => (
+                      <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className={styles.trackletActions}>
+                <button type="button" onClick={() => startTrackletCapture("footpoint")}>
+                  Click footpoints
+                </button>
+                <button type="button" onClick={() => startTrackletCapture("box")}>
+                  Draw boxes
+                </button>
+                <span>
+                  {activeTrackletRally
+                    ? (() => {
+                        const bounds = playerWindowBounds(
+                          activeTrackletRally,
+                          trackletWindow,
+                          labels.recording.durationSeconds,
+                        );
+                        return `${formatPreciseTime(bounds.start)}–${formatPreciseTime(bounds.end)} · seek, then click or drag at 2+ frames`;
+                      })()
+                    : "Choose a rally first"}
+                </span>
+              </div>
+              {activeTrackletRally && (activeTrackletRally.playerTracklets ?? []).length > 0 ? (
+                <div className={styles.trackletRows}>
+                  {(activeTrackletRally.playerTracklets ?? []).map((tracklet, trackletIndex) => (
+                    <div
+                      className={styles.trackletRow}
+                      key={`${tracklet.window}-${tracklet.trackId}`}
+                    >
+                      <div className={styles.trackletRowHeading}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTrackletId(tracklet.trackId);
+                            setTrackletWindow(tracklet.window);
+                            setTrackletTeam(tracklet.team);
+                            setTrackletCourtSide(tracklet.courtSide);
+                            seekTo(tracklet.observations[0].time);
+                          }}
+                        >
+                          {tracklet.trackId} · {tracklet.window} · {tracklet.team} · {tracklet.courtSide}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.delete}
+                          onClick={() =>
+                            removePlayerTracklet(activeTrackletRallyIndex, trackletIndex)
+                          }
+                        >
+                          Delete track
+                        </button>
+                      </div>
+                      <div className={styles.trackletObservations}>
+                        {tracklet.observations.map((observation, observationIndex) => (
+                          <div key={`${tracklet.trackId}-${observation.time}`}>
+                            <button type="button" onClick={() => seekTo(observation.time)}>
+                              {formatPreciseTime(observation.time)}
+                            </button>
+                            <span>
+                              {observation.box && observation.footpoint
+                                ? "box + feet"
+                                : observation.box
+                                  ? "box"
+                                  : "feet"}
+                              {observation.state ? ` · ${observation.state}` : ""}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={`Delete ${tracklet.trackId} observation at ${formatPreciseTime(observation.time)}`}
+                              onClick={() =>
+                                removePlayerObservation(
+                                  activeTrackletRallyIndex,
+                                  trackletIndex,
+                                  observationIndex,
+                                )
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className={styles.trackletEmpty}>
+                  No player tracks for the selected rally. A usable track has at least two frames.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className={styles.transport}>
             <button onClick={() => seek(-1)}>−1s <kbd>←</kbd></button>
@@ -1079,6 +1873,138 @@ export function LabelingEditor() {
                     <option value="interrupted-replay">Interrupted / replayed</option>
                   </select>
                 </label>
+                <div className={styles.transitionPanel}>
+                  <strong>Optional transition cues</strong>
+                  <p>Use absolute video times. Reaction stays within 5s of serve; stand-down stays within 5s of the end.</p>
+                  <label>
+                    Receiver reaction time
+                    <div className={styles.cueTime}>
+                      <input
+                        aria-label="Receiver reaction time"
+                        type="number"
+                        step="0.001"
+                        value={sidebarRally.receiverReactionTime ?? ""}
+                        onChange={(event) =>
+                          updateRally(sidebarRallyIndex, {
+                            receiverReactionTime: event.target.value
+                              ? Number(event.target.value)
+                              : undefined,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateRally(sidebarRallyIndex, {
+                          receiverReactionTime: roundTime(currentTime),
+                        })}
+                      >
+                        Use playhead
+                      </button>
+                    </div>
+                  </label>
+                  <label>
+                    Collective stand-down time
+                    <div className={styles.cueTime}>
+                      <input
+                        aria-label="Collective stand-down time"
+                        type="number"
+                        step="0.001"
+                        value={sidebarRally.collectiveStandDownTime ?? ""}
+                        onChange={(event) =>
+                          updateRally(sidebarRallyIndex, {
+                            collectiveStandDownTime: event.target.value
+                              ? Number(event.target.value)
+                              : undefined,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateRally(sidebarRallyIndex, {
+                          collectiveStandDownTime: roundTime(currentTime),
+                        })}
+                      >
+                        Use playhead
+                      </button>
+                    </div>
+                  </label>
+                  <label>
+                    Terminal cue
+                    <select
+                      value={sidebarRally.terminalCue ?? ""}
+                      onChange={(event) => updateRally(sidebarRallyIndex, {
+                        terminalCue: (event.target.value || undefined) as RallyLabel["terminalCue"],
+                      })}
+                    >
+                      <option value="">Not labeled</option>
+                      {terminalCueValues.map((value) => (
+                        <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    End observability
+                    <select
+                      value={sidebarRally.endObservability ?? ""}
+                      onChange={(event) => updateRally(sidebarRallyIndex, {
+                        endObservability: (event.target.value || undefined) as RallyLabel["endObservability"],
+                      })}
+                    >
+                      <option value="">Not labeled</option>
+                      {endObservabilityValues.map((value) => (
+                        <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className={styles.confidenceGrid}>
+                    <label>
+                      Start confidence
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={sidebarRally.startConfidence ?? ""}
+                        onChange={(event) => updateRally(sidebarRallyIndex, {
+                          startConfidence: event.target.value ? Number(event.target.value) : undefined,
+                        })}
+                      />
+                    </label>
+                    <label>
+                      End confidence
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={sidebarRally.endConfidence ?? ""}
+                        onChange={(event) => updateRally(sidebarRallyIndex, {
+                          endConfidence: event.target.value ? Number(event.target.value) : undefined,
+                        })}
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    Immediate result verified
+                    <select
+                      value={
+                        sidebarRally.verifiedImmediateResult === undefined
+                          ? ""
+                          : sidebarRally.verifiedImmediateResult
+                            ? "yes"
+                            : "no"
+                      }
+                      onChange={(event) => updateRally(sidebarRallyIndex, {
+                        verifiedImmediateResult:
+                          event.target.value === "" ? undefined : event.target.value === "yes",
+                      })}
+                    >
+                      <option value="">Not labeled</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                </div>
                 <label>
                   Rally notes
                   <textarea
@@ -1247,17 +2173,14 @@ export function LabelingEditor() {
 
             <div>
               <div className={styles.tableHeading}><div><p className={styles.eyebrow}>OPTIONAL · 3–5 PER VIDEO</p><h2>Hard negatives</h2></div></div>
-              <p className={styles.help}>Tag confusing dead-time examples; ordinary between-point time is already negative.</p>
+              <p className={styles.help}>
+                Tag 3–5 confusing dead-time examples per video. Prioritize walking/ball retrieval and celebration/huddle, then add model false positives plus random dead-time controls for an unbiased comparison.
+              </p>
               <div className={styles.negativeMarker}>
                 <select value={negativeCategory} onChange={(event) => setNegativeCategory(event.target.value)}>
-                  <option value="foreground-crossing">Foreground crossing</option>
-                  <option value="adjacent-court">Adjacent-court play</option>
-                  <option value="celebration">Celebration</option>
-                  <option value="setup-between-points">Setup between points</option>
-                  <option value="timeout">Timeout</option>
-                  <option value="camera-motion">Camera motion</option>
-                  <option value="warmup">Warmup</option>
-                  <option value="other">Other</option>
+                  {hardNegativeCategories.map((value) => (
+                    <option key={value} value={value}>{hardNegativeLabel(value)}</option>
+                  ))}
                 </select>
                 <button onClick={toggleNegative}>{negativeStart === null ? "Start hard negative" : "Finish hard negative"} <kbd>H</kbd></button>
               </div>
@@ -1265,14 +2188,9 @@ export function LabelingEditor() {
                 <div className={styles.smallRow} key={`negative-row-${index}`}>
                   <button onClick={() => seekTo(row.start)}>{formatPreciseTime(row.start)}–{formatPreciseTime(row.end)}</button>
                   <select value={row.category} onChange={(event) => updateNegative(index, { category: event.target.value })}>
-                    <option value="foreground-crossing">Foreground crossing</option>
-                    <option value="adjacent-court">Adjacent court</option>
-                    <option value="celebration">Celebration</option>
-                    <option value="setup-between-points">Point setup</option>
-                    <option value="timeout">Timeout</option>
-                    <option value="camera-motion">Camera motion</option>
-                    <option value="warmup">Warmup</option>
-                    <option value="other">Other</option>
+                    {hardNegativeCategories.map((value) => (
+                      <option key={value} value={value}>{hardNegativeLabel(value)}</option>
+                    ))}
                   </select>
                   <button className={styles.delete} onClick={() => removeRow("negative", index)}>Delete</button>
                 </div>

@@ -146,6 +146,295 @@ PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py final-test \
 
 The final-test gate verifies the manifest, recording snapshots, feature version/signature, and experiment-code hashes. Importance labels require directionally consistent source-group effects plus compatible mean and median magnitude. They are exploratory evidence, not significance tests.
 
+## Multiscale transition and interaction study
+
+The transition-feature runner reuses the frozen 90-signal audiovisual cache and appends a
+predeclared bank of 0.5/1/2/4/8-second summaries and seven cross-modal interactions exactly once
+per timestamp. Development selection is nested leave-one-`sourceGroup`-out, reports each family
+and individual interaction ablations, and never prepares the protected test split:
+
+```bash
+npm run evaluate:transition-features -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --output data/reports/multiscale-interactions-v1-development.json
+```
+
+The derived bank uses centered windows and is therefore an offline cutting experiment, not a
+streaming model. Only after the development report is frozen can the selected candidate be fit on
+all development rows and checked once against the retrospective regression split:
+
+```bash
+npm run evaluate:transition-features -- retrospective-test \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --development-report data/reports/multiscale-interactions-v1-development.json \
+  --output data/reports/multiscale-interactions-v1-retrospective-test.json \
+  --open-test
+```
+
+## Court-relative feature study
+
+The court-relative runner uses the exact frozen winner from the transition study as its control.
+It derives reflection-invariant, signed fixed-endline, and combined directional summaries from the
+existing rectangle ROI and cached 3×3 motion grids. No environment, player-count, side-switch, or
+annotation fields enter the model:
+
+```bash
+npm run evaluate:court-relative-features -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --step1-development-report data/reports/multiscale-interactions-v1-development.json \
+  --output data/reports/court-relative-v1-development.json
+```
+
+After development selection is frozen, the explicit retrospective regression check is:
+
+```bash
+npm run evaluate:court-relative-features -- retrospective-test \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --development-report data/reports/court-relative-v1-development.json \
+  --output data/reports/court-relative-v1-retrospective-test.json \
+  --open-test
+```
+
+## Serve-anchored multistate study
+
+The multistate runner reconstructs the frozen court-study winner and compares two architectures
+with exactly the same feature rows: an ordinary binary logistic control and four one-vs-rest state
+heads decoded through the legal `DEAD -> SETUP -> SERVE -> LIVE -> DEAD` graph. State-duration
+priors and transition bonuses are fit inside each training fold:
+
+```bash
+npm run evaluate:multistate-features -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --upstream-report data/reports/court-relative-v1-development.json \
+  --output data/reports/multistate-v1-development.json
+```
+
+The retrospective command rejects reduced-inner-fold reports and stays closed unless multistate
+passes every frozen objective, short/fault, ordinary-long, and live-recall development guardrail:
+
+```bash
+npm run evaluate:multistate-features -- retrospective-test \
+  --manifest data/manifests/full-gold-v1.json \
+  --cache-dir data/features/audiovisual-v2 \
+  --development-report data/reports/multistate-v1-development.json \
+  --output data/reports/multistate-v1-retrospective-test.json \
+  --open-test
+```
+
+The follow-up diagnostic command exactly refits each frozen outer-fold state and binary model,
+checks its fingerprint and metrics, and writes reusable development-only OOF scores. It reports
+per-state precision, recall, Brier score, log loss, calibration error, decoded durations, and true
+serves rejected by the constrained path. Its start/end boundary replacements use development
+labels only and are explicitly non-promotable upper bounds:
+
+```bash
+npm run evaluate:multistate-followup -- diagnostics \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --oof-cache-output data/models/multistate-followup-oof-v1 \
+  --output data/reports/multistate-followup-diagnostics-v1.json
+```
+
+The command never prepares protected rows. Downstream hybrid and calibration experiments must
+validate the cache index and its per-recording hashes before using these scores.
+
+The conservative hybrid is a separate full nested study. Its four predeclared modes are binary
+no-op, boundary snapping, strict isolated short rescue, and snapping plus rescue. Every mode retains
+all binary proposals; long proposals also have structural overlap/IoU floors. Mode selection uses
+only the three inner OOF source groups inside each outer fold, and the no-op must exactly reproduce
+the frozen binary control:
+
+```bash
+npm run evaluate:multistate-followup -- hybrid-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --output data/reports/multistate-conservative-hybrid-v1-development.json
+```
+
+The protected retrospective stays closed unless paired objective evidence and every live-recall,
+ordinary-long, precision, dead-time, boundary, and short-rescue development guardrail pass.
+
+The first existing-label ablation is another full nested study with a fixed four-candidate Cartesian
+product. It compares the v1 normalized balanced OVR emissions with a fold-prior correction, and the
+v1 geometric durations with an empirical SETUP/two-geometric LIVE prior. No numeric hyperparameter
+is searched, and every state head must reproduce its frozen v1 fingerprint:
+
+```bash
+npm run evaluate:multistate-followup -- existing-label-ablation \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --output data/reports/multistate-existing-label-ablation-v1-development.json
+```
+
+Class prevalence and duration mixtures are estimated only from the corresponding training fold.
+The reference row must exactly reproduce the frozen v1 multistate metrics, and test remains closed
+unless the candidate both improves v1 and passes the original operational-binary promotion gate.
+Inner selection additionally constrains source-macro objective, live recall, precision, retained
+dead time, event F1, and short/fault/ordinary outcome slices.
+
+The next existing-label study treats current ace/service-fault tags as a weak immediate-result
+proxy. It compares v1 with a private ordinary-LIVE/result-LIVE duration graph, first using only the
+training-fold tag prevalence and then a fixed 17-feature cross-fitted proxy. Tags are targets only,
+the graph never permits a direct SERVE-to-DEAD event, and every candidate interval contains LIVE:
+
+```bash
+npm run evaluate:multistate-followup -- immediate-result-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --existing-label-report data/reports/multistate-existing-label-ablation-v1-development.json \
+  --output data/reports/multistate-immediate-result-proxy-v1-development.json
+```
+
+This report never opens the reused protected test. A passing development gate authorizes only a
+fresh independent source-group validation; the binary control remains operational meanwhile.
+
+The joint-emission study then holds the v1 graph, geometric duration priors, and fold-frozen
+transition bonus fixed while replacing four independently balanced OVR heads with one normalized
+four-state linear softmax. The primary candidate uses ordinary categorical cross-entropy so the
+training-fold class prior is learned natively; a separately named balanced/prior-corrected arm is
+reported as a secondary diagnostic:
+
+```bash
+npm run evaluate:multistate-followup -- joint-emissions-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --existing-label-report data/reports/multistate-existing-label-ablation-v1-development.json \
+  --immediate-result-report data/reports/multistate-immediate-result-proxy-v1-development.json \
+  --output data/reports/multistate-joint-emissions-v1-development.json
+```
+
+Softmax epoch caps are chosen inside each outer fold from its three inner fits. State confusion,
+multiclass log loss, Brier score, and calibration are held-source diagnostics and do not select a
+candidate. Advancement requires unanimous outer selection plus every v1 and operational-binary
+guardrail, and even then authorizes only a fresh independent source-group assessment.
+
+The edge-evidence study keeps the prior-corrected OVR/geometric decoder fixed and evaluates the
+complete four-arm family: no evidence, serve-edge only, terminal-edge only, and both. Independent
+balanced specialists map their probabilities to fixed bounded evidence `2p-1` at coefficient one;
+there is no threshold or strength search. Serve evidence affects only `SETUP -> SERVE`, terminal
+evidence affects only `LIVE -> DEAD`, and the combined arm is eligible only when both individual
+arms pass their mechanism gates:
+
+```bash
+npm run evaluate:multistate-followup -- edge-evidence-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --existing-label-report data/reports/multistate-existing-label-ablation-v1-development.json \
+  --immediate-result-report data/reports/multistate-immediate-result-proxy-v1-development.json \
+  --joint-emissions-report data/reports/multistate-joint-emissions-v1-development.json \
+  --output data/reports/multistate-edge-evidence-v1-development.json
+```
+
+The serve target is the established fixed one-second pulse around current rally starts. The
+terminal target is the established two-second live/dead window around rally ends plus a one-second
+pre-serve already-dead negative. Specialists and their epoch caps remain fold-local. Promotion
+also requires start/serve-anchor or endpoint mechanism gains, the common recall/precision/outcome
+guardrails, unanimous outer selection, and the original operational-binary gate.
+
+## Transition-label experiment gate
+
+The transition-cue pilot has a separate read-only gate that distinguishes the eight development
+recordings from the protected test recording. It validates each draft, content-hashes the label
+files, reports the five-rally-per-recording cue debt and three-hard-negative-per-recording debt,
+and registers the exact future serve-edge, terminal-edge, verified-result, and hard-negative
+studies without preparing video or model features:
+
+```bash
+npm run report:transition-label-gate -- \
+  --labels-dir data/labeling-v1-2026-08-09/labels/full \
+  --output data/reports/transition-label-experiment-gate-v2.json
+```
+
+Add `--require-development-ready` in an automated workflow to fail closed until the 40 development
+pilot rallies are fully cued. The five protected pilot rallies are reported as sealed debt but are
+never required or consumed by a development runner. A future experiment must rebuild and freeze a
+new manifest from the completed train/validation snapshots; it must not attach mutable draft fields
+to an earlier frozen report lineage.
+
+After labels are ready, freeze **only** the eight train/validation documents into a new immutable
+snapshot, rebuild a development-only manifest from that snapshot, then run the candidate-specific
+preflight before any feature preparation:
+
+```bash
+npm run preflight:transition-pilot -- \
+  --candidate reaction-supervised-serve-edge \
+  --baseline-manifest data/manifests/full-gold-v1.json \
+  --manifest data/manifests/transition-pilot-development-v1.json \
+  --snapshot-ledger data/labels/transition-pilot-development-v1/snapshot.json \
+  --transition-gate data/reports/transition-label-experiment-gate-v2.json \
+  --output data/reports/transition-pilot-reaction-preflight-v1.json
+```
+
+The preflight requires exact development IDs from the baseline, non-null fields for the selected
+candidate, immutable draft and snapshot hashes, byte-matching snapshot/manifest target payloads,
+and at least two development source groups. It rejects test/challenge rows and does not open the
+protected label document. The same command accepts the other three registered candidate names.
+
+## Out-of-fold component-selector study
+
+The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific
+models. Template artifacts donate configuration only; their fitted weights are never used for OOF
+predictions. The cache excludes protected rows and records generator provenance for every overlap
+component:
+
+```bash
+npm run evaluate:component-selector -- prepare-oof \
+  --manifest data/manifests/full-gold-v1.json \
+  --output-dir data/models/component-selector-oof-v1
+
+npm run evaluate:component-selector -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --oof-cache data/models/component-selector-oof-v1 \
+  --output data/reports/component-selector-v1-development.json
+```
+
+The trained selector is assessed on a generator-held grass validation source against v4, v5, and
+the exact frozen v4/v5 intersection. This is leakage-safe tuning evidence, not a full nested LOGO
+promotion study; the report predeclares the frozen intersection as the retained policy and does not
+implement a retrospective-test path.
+
+## Frozen high-resolution embedding study
+
+The high-resolution extractor uses an explicitly supplied, SHA-pinned official OpenCV Zoo
+MobileNetV2 ONNX graph. It samples four role-neutral rectangle-ROI crops at one fps, extracts the
+1,280-value penultimate global-average-pool representation, and applies a deterministic 64-value
+projection. It never downloads a model or overwrites a cache:
+
+```bash
+npm run extract:highres-embeddings -- \
+  --manifest data/manifests/full-gold-v1.json \
+  --backbone data/models/image_classification_mobilenetv2_2022apr.onnx \
+  --backbone-sha256 <pinned-sha256> \
+  --cache-dir data/features/highres-mobilenetv2 \
+  --output data/reports/highres-development-extraction.json
+
+npm run evaluate:highres-embeddings -- development \
+  --manifest data/manifests/full-gold-v1.json \
+  --warm-cache-dir data/features/audiovisual-v2 \
+  --highres-cache-dir data/features/highres-mobilenetv2 \
+  --upstream-report data/reports/court-relative-v1-development.json \
+  --backbone data/models/image_classification_mobilenetv2_2022apr.onnx \
+  --backbone-sha256 <pinned-sha256> \
+  --output data/reports/highres-mobilenetv2-v1-development.json
+```
+
+Centered 2/8-second summaries make this an offline-cutter experiment. Protected caches are not
+extracted during development. Only if the candidate passes the full nested paired gate may test be
+extracted with `--splits test --allow-protected-splits`; the retrospective evaluator then requires
+that separate extraction index and `--open-test`. Reports pin the manifest, upstream config,
+backbone, projection, cache hashes, implementation hashes, and OpenCV CPU runtime identity.
+
 ## Experimental serve specialist
 
 The optional serve path trains a second logistic head on narrow windows around rally starts while
