@@ -211,3 +211,46 @@ Artifact:
   SHA-256 `53edb324540feda8401359b4f151ad200184373c0c3d2b2c0a4e3bef16ac5182`.
 
 The report pins clean Git commit `8a0a32c`; wall time was 186.485 seconds.
+
+## 5. Label-dependent experiment hooks
+
+Implementation checkpoints:
+
+- `9d843f8 Add multistate transition-edge evidence decoder`;
+- `9e099fb Add transition-label experiment readiness gate`.
+
+The transition-evidence primitive adds finite evidence only to an explicitly named legal,
+non-self transition at its destination sample. Empty or zero evidence is exactly identical to the
+legacy decoder. This is the frozen mechanism for future receiver-reaction evidence on
+`SETUP -> SERVE` and collective-stand-down evidence on `LIVE -> DEAD`; it does not add a global
+state feature or allow a forbidden edge.
+
+The read-only gate scanned all nine current full-video drafts without mutation or validation
+errors. It separates the eight train/validation recordings from the one protected test recording:
+
+| scope | recordings | fully cued / pilot target | additional hard negatives to three/video |
+| --- | ---: | ---: | ---: |
+| development | 8 | 0 / 40 | 23 |
+| protected test, sealed | 1 | 0 / 5 | 2 |
+
+Consequently the user needs to provide 40 fully cued development rallies and 23 additional
+development hard-negative intervals before those development experiments can run. The separate
+five-rally and two-hard-negative protected debt remains sealed and is not a prerequisite for
+development. Every registered runner is currently fail-closed:
+
+- `reaction-supervised-serve-edge` uses `receiverReactionTime` and `startConfidence`;
+- `stand-down-supervised-terminal-edge` uses stand-down time, terminal cue, end observability, and
+  end confidence;
+- `verified-immediate-result-branch` replaces the failed coarse ace/fault proxy with the verified
+  field; and
+- `hard-negative-dead-state` consumes categorized walking/retrieval, celebration/huddle,
+  model-false-positive, and random-dead intervals.
+
+Once labels arrive, freeze a new manifest from train/validation snapshots and rerun development
+only. Mutable draft fields must not be attached to the existing report lineage, and the protected
+recording must not be prepared before a newly frozen development candidate passes its gate.
+
+Artifact:
+
+- `reports/feature-order-2026-08-12/transition-label-experiment-gate-v1.json`, SHA-256
+  `ccc04765e749070d7c645c91a2507bbc4bb96e330868748b165a18b5e2446d25`.

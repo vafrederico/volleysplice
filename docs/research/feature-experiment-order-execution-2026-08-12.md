@@ -170,6 +170,12 @@ Readiness report:
 `215c1ae7fdd59691c6127d161295dd663687d80d53623c853081a52f52614b95` under the frozen labeling
 workspace. The earlier `v1` report is superseded.
 
+For development experiments, the 45-rally transition target splits into 40 usable train/validation
+rallies and five sealed protected-test rallies. Likewise, 23 of the 25 hard-negative intervals are
+development debt and two are protected debt. The separately frozen transition gate records this
+split at `reports/feature-order-2026-08-12/transition-label-experiment-gate-v1.json` (SHA-256
+`ccc04765e749070d7c645c91a2507bbc4bb96e330868748b165a18b5e2446d25`).
+
 ## 6. Frozen higher-resolution embeddings and tracklets
 
 Development-only extraction is complete for all eight train/validation recordings: 7,981 one-fps
