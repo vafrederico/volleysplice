@@ -280,6 +280,23 @@ unless the candidate both improves v1 and passes the original operational-binary
 Inner selection additionally constrains source-macro objective, live recall, precision, retained
 dead time, event F1, and short/fault/ordinary outcome slices.
 
+The next existing-label study treats current ace/service-fault tags as a weak immediate-result
+proxy. It compares v1 with a private ordinary-LIVE/result-LIVE duration graph, first using only the
+training-fold tag prevalence and then a fixed 17-feature cross-fitted proxy. Tags are targets only,
+the graph never permits a direct SERVE-to-DEAD event, and every candidate interval contains LIVE:
+
+```bash
+npm run evaluate:multistate-followup -- immediate-result-development \
+  --manifest data/manifests/full-gold-v1.json \
+  --feature-cache-dir data/features/audiovisual-v2 \
+  --multistate-report data/reports/multistate-v1-development.json \
+  --existing-label-report data/reports/multistate-existing-label-ablation-v1-development.json \
+  --output data/reports/multistate-immediate-result-proxy-v1-development.json
+```
+
+This report never opens the reused protected test. A passing development gate authorizes only a
+fresh independent source-group validation; the binary control remains operational meanwhile.
+
 ## Out-of-fold component-selector study
 
 The component-selector study regenerates v4/v5 rally and serve candidates with fold-specific

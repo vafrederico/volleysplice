@@ -14,6 +14,7 @@ from analysis.multistate_followup import (
     run_multistate_oof_diagnostics,
 )
 from analysis.multistate_existing_labels import run_existing_label_ablation
+from analysis.multistate_immediate_result import run_immediate_result_study
 from analysis.pipeline import _prepare_many
 from analysis.schema import load_manifest
 
@@ -75,6 +76,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     existing.add_argument("--multistate-report", type=Path, required=True)
     existing.add_argument("--output", type=Path, required=True)
+    immediate = commands.add_parser(
+        "immediate-result-development",
+        help="run the nested existing-tag immediate-result proxy study",
+    )
+    immediate.add_argument("--manifest", type=Path, default=default_manifest)
+    immediate.add_argument(
+        "--feature-cache-dir",
+        type=Path,
+        default=workspace / "features" / "audiovisual-v2",
+    )
+    immediate.add_argument("--multistate-report", type=Path, required=True)
+    immediate.add_argument("--existing-label-report", type=Path, required=True)
+    immediate.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -119,11 +133,19 @@ def main() -> int:
             multistate_report_path=arguments.multistate_report,
             progress=progress,
         )
-    else:
+    elif arguments.command == "existing-label-ablation":
         report = run_existing_label_ablation(
             manifest,
             prepared,
             multistate_report_path=arguments.multistate_report,
+            progress=progress,
+        )
+    else:
+        report = run_immediate_result_study(
+            manifest,
+            prepared,
+            multistate_report_path=arguments.multistate_report,
+            existing_label_report_path=arguments.existing_label_report,
             progress=progress,
         )
     written = atomic_write_text(
