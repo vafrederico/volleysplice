@@ -1,8 +1,9 @@
 import type { IgnoredInterval } from "./annotations.ts";
 import type { Rally } from "./edit-list.ts";
 
-export const CUT_DRAFT_VERSION = 1 as const;
-export const DEFAULT_CUT_PADDING = { before: 3, after: 2 } as const;
+export const CUT_DRAFT_VERSION = 4 as const;
+export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
+export const MAX_CUT_PADDING_SECONDS = 10;
 
 export type CutOrigin = "cached-label" | "manual";
 
@@ -27,6 +28,12 @@ export type CutDraft = {
   recordingId: string;
   sourceRevision: string;
   updatedAt: string;
+  beforePaddingSeconds: number;
+  afterPaddingSeconds: number;
+  pendingManualStart: number | null;
+  pendingIgnoreStart: number | null;
+  ignoreReason: string;
+  cutPreviewEnabled: boolean;
   cuts: EditableCut[];
   ignoredIntervals: IgnoredSourceInterval[];
 };
@@ -83,6 +90,12 @@ export function cutDraftStorageKey(analysisId: string): string {
   return `volleycut:cut-draft:v${CUT_DRAFT_VERSION}:${encodeURIComponent(analysisId)}`;
 }
 
+export function cutDraftStorageKeys(analysisId: string): string[] {
+  return [CUT_DRAFT_VERSION, 3, 2, 1].map(
+    (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
+  );
+}
+
 export function createCutDraft(seed: CutDraftSeed): CutDraft {
   const duration = Math.max(0, seed.duration);
   return {
@@ -91,6 +104,12 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     recordingId: seed.recordingId,
     sourceRevision: cutSourceRevision(seed),
     updatedAt: new Date(0).toISOString(),
+    beforePaddingSeconds: DEFAULT_CUT_PADDING.before,
+    afterPaddingSeconds: DEFAULT_CUT_PADDING.after,
+    pendingManualStart: null,
+    pendingIgnoreStart: null,
+    ignoreReason: "non-game-content",
+    cutPreviewEnabled: false,
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
       coreStart: clamp(rally.start, 0, duration),
@@ -154,13 +173,61 @@ function validIgnoredInterval(
 
 export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null {
   try {
-    const value = JSON.parse(raw) as Partial<CutDraft>;
+    const persisted = JSON.parse(raw) as Partial<CutDraft> & {
+      version?: unknown;
+      paddingSeconds?: unknown;
+    };
+    if (![1, 2, 3, CUT_DRAFT_VERSION].includes(persisted.version as number)) {
+      return null;
+    }
+    const value: Partial<CutDraft> = persisted.version === CUT_DRAFT_VERSION
+      ? persisted
+      : {
+          ...persisted,
+          version: CUT_DRAFT_VERSION,
+          beforePaddingSeconds: persisted.version === 1
+            ? 3
+            : persisted.version === 2
+              ? persisted.paddingSeconds as number
+              : persisted.beforePaddingSeconds,
+          afterPaddingSeconds: persisted.version === 1
+            ? 2
+            : persisted.version === 2
+              ? persisted.paddingSeconds as number
+              : persisted.afterPaddingSeconds,
+          pendingManualStart: null,
+          pendingIgnoreStart: null,
+          ignoreReason: "non-game-content",
+          cutPreviewEnabled: false,
+        };
     if (
       value.version !== CUT_DRAFT_VERSION ||
       value.analysisId !== seed.analysisId ||
       value.recordingId !== seed.recordingId ||
       value.sourceRevision !== cutSourceRevision(seed) ||
       typeof value.updatedAt !== "string" ||
+      !finiteTime(value.beforePaddingSeconds) ||
+      value.beforePaddingSeconds < 0 ||
+      value.beforePaddingSeconds > MAX_CUT_PADDING_SECONDS ||
+      !finiteTime(value.afterPaddingSeconds) ||
+      value.afterPaddingSeconds < 0 ||
+      value.afterPaddingSeconds > MAX_CUT_PADDING_SECONDS ||
+      !(
+        value.pendingManualStart === null ||
+        (finiteTime(value.pendingManualStart) &&
+          value.pendingManualStart >= 0 &&
+          value.pendingManualStart <= seed.duration)
+      ) ||
+      !(
+        value.pendingIgnoreStart === null ||
+        (finiteTime(value.pendingIgnoreStart) &&
+          value.pendingIgnoreStart >= 0 &&
+          value.pendingIgnoreStart <= seed.duration)
+      ) ||
+      typeof value.ignoreReason !== "string" ||
+      value.ignoreReason.length === 0 ||
+      typeof value.cutPreviewEnabled !== "boolean" ||
+      (value.pendingManualStart !== null && value.pendingIgnoreStart !== null) ||
       !Array.isArray(value.cuts) ||
       !Array.isArray(value.ignoredIntervals) ||
       !value.cuts.every((cut) => validCut(cut, seed.duration)) ||
@@ -179,6 +246,34 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
   } catch {
     return null;
   }
+}
+
+export function applyPaddingToCachedCuts(
+  draft: CutDraft,
+  beforePaddingSeconds: number,
+  afterPaddingSeconds: number,
+  duration: number,
+): CutDraft {
+  const before = clamp(beforePaddingSeconds, 0, MAX_CUT_PADDING_SECONDS);
+  const after = clamp(afterPaddingSeconds, 0, MAX_CUT_PADDING_SECONDS);
+  return {
+    ...draft,
+    beforePaddingSeconds: before,
+    afterPaddingSeconds: after,
+    cuts: draft.cuts.map((cut) =>
+      cut.origin === "cached-label"
+        ? {
+            ...cut,
+            keepStart: roundTime(clamp(cut.coreStart - before, 0, duration)),
+            keepEnd: roundTime(clamp(cut.coreEnd + after, 0, duration)),
+          }
+        : cut,
+    ),
+  };
+}
+
+function roundTime(seconds: number): number {
+  return Math.round(seconds * 1000) / 1000;
 }
 
 function mergeIgnoredIntervals(
@@ -240,4 +335,17 @@ export function buildFinalCutIntervals(draft: CutDraft): FinalCutInterval[] {
 
 export function totalFinalCutSeconds(intervals: FinalCutInterval[]): number {
   return intervals.reduce((total, interval) => total + interval.end - interval.start, 0);
+}
+
+export function nextFinalCutTime(
+  intervals: FinalCutInterval[],
+  playbackTime: number,
+): number | null {
+  for (const interval of intervals) {
+    if (playbackTime >= interval.start && playbackTime < interval.end) {
+      return playbackTime;
+    }
+    if (playbackTime < interval.start) return interval.start;
+  }
+  return null;
 }

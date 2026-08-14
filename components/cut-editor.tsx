@@ -16,9 +16,12 @@ import type {
   ReviewVideoOption,
 } from "@/lib/analysis-types";
 import {
+  applyPaddingToCachedCuts,
   buildFinalCutIntervals,
   createCutDraft,
   cutDraftStorageKey,
+  cutDraftStorageKeys,
+  nextFinalCutTime,
   parseCutDraft,
   totalFinalCutSeconds,
   type CutDraft,
@@ -120,36 +123,47 @@ export function CutEditor({
   const [selectedId, setSelectedId] = useState(initialDraft.cuts[0]?.id ?? "");
   const [playbackTime, setPlaybackTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [manualStart, setManualStart] = useState<number | null>(null);
-  const [ignoreStart, setIgnoreStart] = useState<number | null>(null);
-  const [ignoreReason, setIgnoreReason] = useState("non-game-content");
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
+  const manualStart = draft.pendingManualStart;
+  const ignoreStart = draft.pendingIgnoreStart;
+  const ignoreReason = draft.ignoreReason;
+  const cutPreviewEnabled = draft.cutPreviewEnabled;
 
   useEffect(() => {
-    let restored: CutDraft | null = null;
-    try {
-      const raw = window.localStorage.getItem(cutDraftStorageKey(seed.analysisId));
-      restored = raw ? parseCutDraft(raw, seed) : null;
-    } catch {
-      // Privacy-restricted browsers can deny storage; editing still works in memory.
-    }
-    const next = restored ?? initialDraft;
-    setDraft(next);
-    setSelectedId((current) =>
-      next.cuts.some((cut) => cut.id === current) ? current : next.cuts[0]?.id ?? "",
-    );
-    setStorageMessage(restored ? "Restored cached edits on this device" : "New on-device draft");
-    setStorageReady(true);
+    const timer = window.setTimeout(() => {
+      let restored: CutDraft | null = null;
+      try {
+        for (const key of cutDraftStorageKeys(seed.analysisId)) {
+          const raw = window.localStorage.getItem(key);
+          restored = raw ? parseCutDraft(raw, seed) : null;
+          if (restored) break;
+        }
+      } catch {
+        // Privacy-restricted browsers can deny storage; editing still works in memory.
+      }
+      const next = restored ?? initialDraft;
+      setDraft(next);
+      setSelectedId((current) =>
+        next.cuts.some((cut) => cut.id === current) ? current : next.cuts[0]?.id ?? "",
+      );
+      setStorageMessage(
+        restored ? "Restored cached edits on this device" : "New on-device draft",
+      );
+      setStorageReady(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [initialDraft, seed]);
 
   useEffect(() => {
     if (!storageReady) return;
+    let message = "Saved on this device";
     try {
       window.localStorage.setItem(cutDraftStorageKey(seed.analysisId), JSON.stringify(draft));
-      setStorageMessage("Saved on this device");
     } catch {
-      setStorageMessage("Browser storage unavailable · changes live in this tab");
+      message = "Browser storage unavailable · changes live in this tab";
     }
+    const timer = window.setTimeout(() => setStorageMessage(message), 0);
+    return () => window.clearTimeout(timer);
   }, [draft, seed.analysisId, storageReady]);
 
   const sortedCuts = useMemo(
@@ -166,6 +180,13 @@ export function CutEditor({
   const keptSeconds = totalFinalCutSeconds(finalIntervals);
   const includedCount = draft.cuts.filter((cut) => cut.included).length;
   const focus = detailWindow(selected, playbackTime, initialAnalysis.duration);
+  const activeMarkStart = manualStart ?? ignoreStart;
+  const overviewCuts = activeMarkStart === null
+    ? sortedCuts
+    : sortedCuts.filter((cut) => cut.keepEnd >= activeMarkStart);
+  const overviewIgnoredIntervals = activeMarkStart === null
+    ? draft.ignoredIntervals
+    : draft.ignoredIntervals.filter((interval) => interval.end >= activeMarkStart);
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
     setDraft((current) => ({
@@ -197,8 +218,17 @@ export function CutEditor({
     const video = videoRef.current;
     if (!video) return;
     previewEndRef.current = null;
-    if (video.paused) await video.play();
-    else video.pause();
+    if (video.paused) {
+      if (cutPreviewEnabled) {
+        const target = nextFinalCutTime(finalIntervals, video.currentTime)
+          ?? finalIntervals[0]?.start;
+        if (target === undefined) return;
+        if (Math.abs(target - video.currentTime) > 0.01) seekTo(target);
+      }
+      await video.play();
+    } else {
+      video.pause();
+    }
   }
 
   async function previewSelected() {
@@ -271,9 +301,20 @@ export function CutEditor({
     if (!selected) return;
     updateCut(selected.id, (cut) => ({
       ...cut,
-      keepStart: Math.max(0, cut.coreStart - 3),
-      keepEnd: Math.min(initialAnalysis.duration, cut.coreEnd + 2),
+      keepStart: Math.max(0, cut.coreStart - draft.beforePaddingSeconds),
+      keepEnd: Math.min(initialAnalysis.duration, cut.coreEnd + draft.afterPaddingSeconds),
     }));
+  }
+
+  function setGlobalPadding(side: "before" | "after", paddingSeconds: number) {
+    updateDraft((current) => {
+      const before = side === "before" ? paddingSeconds : current.beforePaddingSeconds;
+      const after = side === "after" ? paddingSeconds : current.afterPaddingSeconds;
+      return applyPaddingToCachedCuts(current, before, after, initialAnalysis.duration);
+    });
+    setEditorMessage(
+      `Applied ${paddingSeconds.toFixed(1)} seconds ${side} every cached-label cut.`,
+    );
   }
 
   function toggleSelected() {
@@ -281,10 +322,24 @@ export function CutEditor({
     updateCut(selected.id, (cut) => ({ ...cut, included: !cut.included }));
   }
 
+  function toggleCutPreview(enabled: boolean) {
+    updateDraft((current) => ({ ...current, cutPreviewEnabled: enabled }));
+    previewEndRef.current = null;
+    if (!enabled || !videoRef.current) return;
+    const target = nextFinalCutTime(finalIntervals, videoRef.current.currentTime)
+      ?? finalIntervals[0]?.start;
+    if (target !== undefined && Math.abs(target - videoRef.current.currentTime) > 0.01) {
+      seekTo(target);
+    }
+  }
+
   function markManualBoundary() {
     if (manualStart === null) {
-      setManualStart(playbackTime);
-      setIgnoreStart(null);
+      updateDraft((current) => ({
+        ...current,
+        pendingManualStart: playbackTime,
+        pendingIgnoreStart: null,
+      }));
       setEditorMessage(`Missed cut starts at ${preciseTime(playbackTime)}.`);
       return;
     }
@@ -297,6 +352,7 @@ export function CutEditor({
     const id = nextId("M", draft.cuts.map((cut) => cut.id));
     updateDraft((current) => ({
       ...current,
+      pendingManualStart: null,
       cuts: [
         ...current.cuts,
         {
@@ -311,7 +367,6 @@ export function CutEditor({
         },
       ],
     }));
-    setManualStart(null);
     setSelectedId(id);
     setEditorMessage(`Added ${id} from ${preciseTime(start)} to ${preciseTime(end)}.`);
   }
@@ -329,8 +384,11 @@ export function CutEditor({
 
   function markIgnoredBoundary() {
     if (ignoreStart === null) {
-      setIgnoreStart(playbackTime);
-      setManualStart(null);
+      updateDraft((current) => ({
+        ...current,
+        pendingIgnoreStart: playbackTime,
+        pendingManualStart: null,
+      }));
       setEditorMessage(`Ignored section starts at ${preciseTime(playbackTime)}.`);
       return;
     }
@@ -343,12 +401,12 @@ export function CutEditor({
     const id = nextId("I", draft.ignoredIntervals.map((interval) => interval.id));
     updateDraft((current) => ({
       ...current,
+      pendingIgnoreStart: null,
       ignoredIntervals: [
         ...current.ignoredIntervals,
         { id, start: roundTime(start), end: roundTime(end), reason: ignoreReason },
       ],
     }));
-    setIgnoreStart(null);
     setEditorMessage(`Ignored ${preciseTime(start)} to ${preciseTime(end)}.`);
   }
 
@@ -387,8 +445,6 @@ export function CutEditor({
     }
     setDraft({ ...initialDraft, updatedAt: new Date().toISOString() });
     setSelectedId(initialDraft.cuts[0]?.id ?? "");
-    setManualStart(null);
-    setIgnoreStart(null);
     setEditorMessage("Reset to the cached source labels.");
   }
 
@@ -492,6 +548,18 @@ export function CutEditor({
                 onTimeUpdate={(event) => {
                   const time = event.currentTarget.currentTime;
                   setPlaybackTime(time);
+                  if (cutPreviewEnabled) {
+                    const target = nextFinalCutTime(finalIntervals, time);
+                    if (target === null) {
+                      event.currentTarget.pause();
+                      return;
+                    }
+                    if (Math.abs(target - time) > 0.01) {
+                      event.currentTarget.currentTime = target;
+                      setPlaybackTime(target);
+                      return;
+                    }
+                  }
                   if (previewEndRef.current !== null && time >= previewEndRef.current) {
                     event.currentTarget.pause();
                     previewEndRef.current = null;
@@ -537,7 +605,7 @@ export function CutEditor({
               onPointerDown={overviewSeek}
               aria-label="Whole recording overview"
             >
-              {draft.ignoredIntervals.map((interval) => (
+              {overviewIgnoredIntervals.map((interval) => (
                 <span
                   key={interval.id}
                   className={styles.overviewIgnored}
@@ -547,7 +615,7 @@ export function CutEditor({
                   }}
                 />
               ))}
-              {sortedCuts.map((cut) => (
+              {overviewCuts.map((cut) => (
                 <button
                   type="button"
                   key={cut.id}
@@ -582,6 +650,54 @@ export function CutEditor({
           <strong>{formatTime(keptSeconds)}</strong>
           <p>{includedCount} kept · {draft.cuts.length - includedCount} removed</p>
           <p>{draft.ignoredIntervals.length} ignored source sections</p>
+          <div className={styles.paddingControls}>
+            <div className={styles.paddingControl}>
+              <label htmlFor="cut-padding-before">
+                <span>Before</span>
+                <output>{draft.beforePaddingSeconds.toFixed(1)}s</output>
+              </label>
+              <input
+                id="cut-padding-before"
+                aria-label="Padding before each inferred cut"
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={draft.beforePaddingSeconds}
+                onChange={(event) => setGlobalPadding("before", Number(event.currentTarget.value))}
+              />
+              <div><span>0s</span><span>10s</span></div>
+            </div>
+            <div className={styles.paddingControl}>
+              <label htmlFor="cut-padding-after">
+                <span>After</span>
+                <output>{draft.afterPaddingSeconds.toFixed(1)}s</output>
+              </label>
+              <input
+                id="cut-padding-after"
+                aria-label="Padding after each inferred cut"
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={draft.afterPaddingSeconds}
+                onChange={(event) => setGlobalPadding("after", Number(event.currentTarget.value))}
+              />
+              <div><span>0s</span><span>10s</span></div>
+            </div>
+            <small>Applies to inferred cuts. You can still fine-tune each range afterward.</small>
+          </div>
+          <label className={styles.cutPreviewToggle}>
+            <input
+              type="checkbox"
+              checked={cutPreviewEnabled}
+              onChange={(event) => toggleCutPreview(event.currentTarget.checked)}
+            />
+            <span>
+              <strong>Play final cut only</strong>
+              <small>Skip removed rallies, ignored sections, and every unselected gap.</small>
+            </span>
+          </label>
           <button type="button" onClick={downloadEditList}>Download edit list</button>
           <button type="button" className={styles.quietButton} onClick={resetDraft}>
             Reset cached edits
@@ -634,6 +750,7 @@ export function CutEditor({
               />
               <span
                 className={styles.coreRange}
+                data-included={selected.included || undefined}
                 style={{
                   left: `${timelinePercent(selected.coreStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.coreEnd - selected.coreStart, focus.end - focus.start)}%`,
@@ -736,7 +853,14 @@ export function CutEditor({
             {manualStart === null ? `Mark start · ${preciseTime(playbackTime)}` : `Mark end · ${preciseTime(playbackTime)}`}
           </button>
           {manualStart !== null && (
-            <button type="button" className={styles.quietButton} onClick={() => setManualStart(null)}>
+            <button
+              type="button"
+              className={styles.quietButton}
+              onClick={() => {
+                updateDraft((current) => ({ ...current, pendingManualStart: null }));
+                setEditorMessage(null);
+              }}
+            >
               Cancel
             </button>
           )}
@@ -751,7 +875,10 @@ export function CutEditor({
           <select
             aria-label="Ignored section reason"
             value={ignoreReason}
-            onChange={(event) => setIgnoreReason(event.target.value)}
+            onChange={(event) => updateDraft((current) => ({
+              ...current,
+              ignoreReason: event.target.value,
+            }))}
           >
             <option value="non-game-content">Non-game content</option>
             <option value="camera-gap">Camera gap</option>
@@ -762,7 +889,14 @@ export function CutEditor({
             {ignoreStart === null ? `Mark start · ${preciseTime(playbackTime)}` : `Mark end · ${preciseTime(playbackTime)}`}
           </button>
           {ignoreStart !== null && (
-            <button type="button" className={styles.quietButton} onClick={() => setIgnoreStart(null)}>
+            <button
+              type="button"
+              className={styles.quietButton}
+              onClick={() => {
+                updateDraft((current) => ({ ...current, pendingIgnoreStart: null }));
+                setEditorMessage(null);
+              }}
+            >
               Cancel
             </button>
           )}

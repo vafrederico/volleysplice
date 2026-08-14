@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyPaddingToCachedCuts,
   buildFinalCutIntervals,
   createCutDraft,
   cutSourceRevision,
+  nextFinalCutTime,
   parseCutDraft,
   totalFinalCutSeconds,
   type CutDraftSeed,
@@ -25,6 +27,8 @@ test("createCutDraft seeds clamped per-cut padding from cached labels", () => {
   const draft = createCutDraft(seed);
 
   assert.equal(draft.sourceRevision, cutSourceRevision(seed));
+  assert.equal(draft.beforePaddingSeconds, 2);
+  assert.equal(draft.afterPaddingSeconds, 2);
   assert.deepEqual(
     draft.cuts.map(({ coreStart, coreEnd, keepStart, keepEnd, origin }) => ({
       coreStart,
@@ -35,7 +39,34 @@ test("createCutDraft seeds clamped per-cut padding from cached labels", () => {
     })),
     [
       { coreStart: 1, coreEnd: 4, keepStart: 0, keepEnd: 6, origin: "cached-label" },
-      { coreStart: 20, coreEnd: 30, keepStart: 17, keepEnd: 32, origin: "cached-label" },
+      { coreStart: 20, coreEnd: 30, keepStart: 18, keepEnd: 32, origin: "cached-label" },
+    ],
+  );
+});
+
+test("global before and after padding update cached cuts and leave manual cuts alone", () => {
+  const draft = createCutDraft(seed);
+  draft.cuts.push({
+    id: "M001",
+    coreStart: 40,
+    coreEnd: 45,
+    keepStart: 40,
+    keepEnd: 45,
+    confidence: 1,
+    included: true,
+    origin: "manual",
+  });
+
+  const updated = applyPaddingToCachedCuts(draft, 4.5, 1.5, seed.duration);
+
+  assert.equal(updated.beforePaddingSeconds, 4.5);
+  assert.equal(updated.afterPaddingSeconds, 1.5);
+  assert.deepEqual(
+    updated.cuts.map(({ keepStart, keepEnd }) => ({ keepStart, keepEnd })),
+    [
+      { keepStart: 0, keepEnd: 5.5 },
+      { keepStart: 15.5, keepEnd: 31.5 },
+      { keepStart: 40, keepEnd: 45 },
     ],
   );
 });
@@ -43,6 +74,9 @@ test("createCutDraft seeds clamped per-cut padding from cached labels", () => {
 test("parseCutDraft restores matching drafts and rejects stale source labels", () => {
   const draft = createCutDraft(seed);
   draft.updatedAt = new Date().toISOString();
+  draft.pendingManualStart = 12.5;
+  draft.ignoreReason = "camera-gap";
+  draft.cutPreviewEnabled = true;
 
   assert.deepEqual(parseCutDraft(JSON.stringify(draft), seed), draft);
   assert.equal(
@@ -52,6 +86,25 @@ test("parseCutDraft restores matching drafts and rejects stale source labels", (
     ),
     null,
   );
+});
+
+test("parseCutDraft migrates the original on-device draft without losing edits", () => {
+  const draft = createCutDraft(seed);
+  draft.cuts[0].included = false;
+  const legacy = { ...draft } as Record<string, unknown>;
+  legacy.version = 1;
+  delete legacy.beforePaddingSeconds;
+  delete legacy.afterPaddingSeconds;
+  delete legacy.pendingManualStart;
+  delete legacy.pendingIgnoreStart;
+  delete legacy.ignoreReason;
+  delete legacy.cutPreviewEnabled;
+
+  const migrated = parseCutDraft(JSON.stringify(legacy), seed);
+
+  assert.equal(migrated?.cuts[0].included, false);
+  assert.equal(migrated?.beforePaddingSeconds, 3);
+  assert.equal(migrated?.afterPaddingSeconds, 2);
 });
 
 test("final edit list merges touching cuts and subtracts ignored source time", () => {
@@ -87,4 +140,16 @@ test("final edit list merges touching cuts and subtracts ignored source time", (
     { start: 6, end: 14, cutIds: ["A", "B"] },
   ]);
   assert.equal(totalFinalCutSeconds(intervals), 12);
+});
+
+test("cut preview keeps playable time and jumps gaps to the next interval", () => {
+  const intervals = [
+    { start: 2, end: 5, cutIds: ["A"] },
+    { start: 8, end: 12, cutIds: ["B"] },
+  ];
+
+  assert.equal(nextFinalCutTime(intervals, 0), 2);
+  assert.equal(nextFinalCutTime(intervals, 3), 3);
+  assert.equal(nextFinalCutTime(intervals, 5), 8);
+  assert.equal(nextFinalCutTime(intervals, 20), null);
 });
