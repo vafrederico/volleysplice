@@ -45,6 +45,10 @@ type ExtractedBrowserFeatures = BaseFeatureSequence & {
   performance: FeatureExtractionPerformance;
 };
 
+export type FeatureExtractionOptions = {
+  detailedProfiling?: boolean;
+};
+
 function column(values: Float32Array, rows: number, columns: number, index: number): Float32Array {
   const output = new Float32Array(rows);
   for (let row = 0; row < rows; row += 1) output[row] = values[row * columns + index];
@@ -149,9 +153,12 @@ export async function extractBrowserFeatures(
   roi: NormalizedRoi,
   onProgress?: (progress: AnalysisProgress) => void,
   cacheSource?: LocalFeatureSource,
+  options: FeatureExtractionOptions = {},
 ): Promise<ExtractedBrowserFeatures> {
+  const detailedProfiling = options.detailedProfiling ?? true;
   const videoStartedAt = performance.now();
   const timingTotals: FeatureExtractionPerformance = {
+    profilingEnabled: detailedProfiling,
     sampledFrames: 0,
     generatedFrames: 0,
     generatedVideoSeconds: 0,
@@ -178,11 +185,11 @@ export async function extractBrowserFeatures(
     videoElapsedMs: performance.now() - videoStartedAt,
   });
   const measureCacheIo = async <Value,>(operation: () => Promise<Value>): Promise<Value> => {
-    const startedAt = performance.now();
+    const startedAt = detailedProfiling ? performance.now() : 0;
     try {
       return await operation();
     } finally {
-      timingTotals.cacheIoMs += performance.now() - startedAt;
+      if (detailedProfiling) timingTotals.cacheIoMs += performance.now() - startedAt;
     }
   };
   let cacheKey: string | null = null;
@@ -310,6 +317,7 @@ export async function extractBrowserFeatures(
     };
     const collectTiming = (result: WorkerFeatureResult) => {
       timingTotals.sampledFrames += 1;
+      if (!detailedProfiling) return;
       timingTotals.extractionMs += result.workerElapsedMs;
       timingTotals.canvasDrawMs += result.canvasDrawMs;
       timingTotals.canvasDrawFrames += 1;
@@ -320,7 +328,9 @@ export async function extractBrowserFeatures(
       timingTotals.javascriptMs += result.timing.javascriptMs;
     };
     try {
-      const workerClient = await VisualFeatureWorkerClient.create().catch(() => null);
+      const workerClient = await VisualFeatureWorkerClient.create(detailedProfiling).catch(
+        () => null,
+      );
       if (workerClient) {
         timingTotals.workerActive = true;
         timingTotals.openCvLoadMs += workerClient.openCvLoadMs;
@@ -334,9 +344,11 @@ export async function extractBrowserFeatures(
         const consumeOldest = async () => {
           const pending = pendingFeatures.shift();
           if (!pending) return;
-          const waitStartedAt = performance.now();
+          const waitStartedAt = detailedProfiling ? performance.now() : 0;
           const result = await pending;
-          timingTotals.workerBlockingMs += performance.now() - waitStartedAt;
+          if (detailedProfiling) {
+            timingTotals.workerBlockingMs += performance.now() - waitStartedAt;
+          }
           collectTiming(result);
           timingTotals.workerOverlapMs = Math.max(
             0,
@@ -346,11 +358,13 @@ export async function extractBrowserFeatures(
         };
         try {
           while (true) {
-            const decoderStartedAt = performance.now();
+            const decoderStartedAt = detailedProfiling ? performance.now() : 0;
             const next = await sampleIterator.next();
-            const decoderMs = performance.now() - decoderStartedAt;
-            timingTotals.decoderCanvasMs += decoderMs;
-            timingTotals.decoderWaitMs += decoderMs;
+            if (detailedProfiling) {
+              const decoderMs = performance.now() - decoderStartedAt;
+              timingTotals.decoderCanvasMs += decoderMs;
+              timingTotals.decoderWaitMs += decoderMs;
+            }
             if (next.done) break;
             const sample = next.value;
             if (!sample) continue;
@@ -373,9 +387,11 @@ export async function extractBrowserFeatures(
           await sampleIterator.return(undefined);
         }
       } else {
-        const openCvStartedAt = performance.now();
+        const openCvStartedAt = detailedProfiling ? performance.now() : 0;
         const cv = await loadOpenCv();
-        timingTotals.openCvLoadMs += performance.now() - openCvStartedAt;
+        if (detailedProfiling) {
+          timingTotals.openCvLoadMs += performance.now() - openCvStartedAt;
+        }
         const sink = new CanvasSink(media.videoTrack, {
           crop,
           width: ANALYSIS_WIDTH,
@@ -387,40 +403,53 @@ export async function extractBrowserFeatures(
         const canvasIterator = sink.canvasesAtTimestamps(
           analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
         );
-        const stopCanvasDrawTiming = instrumentCanvasDraw((milliseconds) => {
-          timingTotals.canvasDrawMs += milliseconds;
-          timingTotals.canvasDrawFrames += 1;
-        });
+        const stopCanvasDrawTiming = detailedProfiling
+          ? instrumentCanvasDraw((milliseconds) => {
+              timingTotals.canvasDrawMs += milliseconds;
+              timingTotals.canvasDrawFrames += 1;
+            })
+          : () => undefined;
         let previousGray: import("@techstark/opencv-js").Mat | null = null;
         let pendingNext: ReturnType<typeof canvasIterator.next> | null = null;
         try {
-          let nextRequestedAt = performance.now();
+          let nextRequestedAt = detailedProfiling ? performance.now() : 0;
           pendingNext = canvasIterator.next();
           while (true) {
             const canvasDrawBeforeWait = timingTotals.canvasDrawMs;
-            const waitStartedAt = performance.now();
+            const waitStartedAt = detailedProfiling ? performance.now() : 0;
             const next = await pendingNext;
-            const resolvedAt = performance.now();
-            const blockingMs = resolvedAt - waitStartedAt;
-            const requestSpanMs = resolvedAt - nextRequestedAt;
-            const canvasDrawDuringWaitMs = timingTotals.canvasDrawMs - canvasDrawBeforeWait;
-            timingTotals.decoderCanvasMs += blockingMs;
-            timingTotals.decoderWaitMs += Math.max(0, blockingMs - canvasDrawDuringWaitMs);
-            timingTotals.decoderOverlapMs += Math.max(0, requestSpanMs - blockingMs);
+            if (detailedProfiling) {
+              const resolvedAt = performance.now();
+              const blockingMs = resolvedAt - waitStartedAt;
+              const requestSpanMs = resolvedAt - nextRequestedAt;
+              const canvasDrawDuringWaitMs = timingTotals.canvasDrawMs - canvasDrawBeforeWait;
+              timingTotals.decoderCanvasMs += blockingMs;
+              timingTotals.decoderWaitMs += Math.max(0, blockingMs - canvasDrawDuringWaitMs);
+              timingTotals.decoderOverlapMs += Math.max(0, requestSpanMs - blockingMs);
+            }
             if (next.done) break;
             const wrapped = next.value;
-            nextRequestedAt = performance.now();
+            nextRequestedAt = detailedProfiling ? performance.now() : 0;
             pendingNext = canvasIterator.next();
             if (!wrapped) continue;
-            const extractionStartedAt = performance.now();
-            const result = extractVisualFeatures(cv, wrapped.canvas, previousGray);
-            timingTotals.extractionMs += performance.now() - extractionStartedAt;
+            const extractionStartedAt = detailedProfiling ? performance.now() : 0;
+            const result = extractVisualFeatures(
+              cv,
+              wrapped.canvas,
+              previousGray,
+              detailedProfiling,
+            );
+            if (detailedProfiling) {
+              timingTotals.extractionMs += performance.now() - extractionStartedAt;
+            }
             timingTotals.sampledFrames += 1;
-            timingTotals.canvasReadbackMs += result.timing.canvasReadbackMs;
-            timingTotals.imageOperationsMs += result.timing.imageOperationsMs;
-            timingTotals.phaseCorrelationMs += result.timing.phaseCorrelationMs;
-            timingTotals.opticalFlowMs += result.timing.opticalFlowMs;
-            timingTotals.javascriptMs += result.timing.javascriptMs;
+            if (detailedProfiling) {
+              timingTotals.canvasReadbackMs += result.timing.canvasReadbackMs;
+              timingTotals.imageOperationsMs += result.timing.imageOperationsMs;
+              timingTotals.phaseCorrelationMs += result.timing.phaseCorrelationMs;
+              timingTotals.opticalFlowMs += result.timing.opticalFlowMs;
+              timingTotals.javascriptMs += result.timing.javascriptMs;
+            }
             previousGray?.delete();
             previousGray = result.gray;
             await appendGeneratedFrame(wrapped.timestamp, result.values);
@@ -499,8 +528,9 @@ export async function analyzeOpenedMedia(
   featurePath: OnDeviceAnalysis["featurePath"],
   onProgress?: (progress: AnalysisProgress) => void,
   cacheSource?: LocalFeatureSource,
+  options: FeatureExtractionOptions = {},
 ): Promise<OnDeviceAnalysis> {
-  const sequence = await extractBrowserFeatures(media, roi, onProgress, cacheSource);
+  const sequence = await extractBrowserFeatures(media, roi, onProgress, cacheSource, options);
   onProgress?.({
     stage: "normalizing",
     completed: 0,

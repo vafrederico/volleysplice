@@ -37,6 +37,7 @@ export type AnalysisStage =
   | "complete";
 
 export type FeatureExtractionPerformance = {
+  profilingEnabled: boolean;
   sampledFrames: number;
   generatedFrames: number;
   generatedVideoSeconds: number;

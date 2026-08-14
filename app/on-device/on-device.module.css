@@ -80,6 +80,12 @@
 .diagnostics { margin: 0 -8px 22px; padding: 16px 8px; border-block: 1px solid #c9c7bd; background: #f7f6f0; }
 .diagnostics > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .diagnostics h3 { margin: 4px 0 0; font-size: 14px; letter-spacing: -.02em; }
+.profilingToggle { display: flex; gap: 9px; align-items: flex-start; margin: 12px 0 4px; padding: 10px; border: 1px solid #cfcdc4; background: #eeece4; cursor: pointer; }
+.profilingToggle input { margin-top: 2px; accent-color: var(--local-orange); }
+.profilingToggle span { display: grid; gap: 3px; }
+.profilingToggle strong { font: 500 10px "DM Mono", monospace; }
+.profilingToggle small { color: #686b62; font: 8px/1.45 "DM Mono", monospace; }
+.profilingToggle:has(input:disabled) { opacity: .55; cursor: wait; }
 .diagnosticState { padding: 4px 6px; color: #1e5b38; border: 1px solid #62a57a; background: #e0f5e6; font: 500 8px "DM Mono", monospace; letter-spacing: .8px; }
 .diagnosticState[data-state="checking"] { color: #67450d; border-color: #d59b1f; background: #fff0c9; }
 .diagnosticState[data-state="limited"] { color: #8e4936; border-color: #c98976; background: #ffe1d8; }
@@ -145,8 +151,10 @@
 .exportActions button { flex: 1; padding: 13px; border: 1px solid var(--local-acid); background: var(--local-acid); color: var(--local-ink); cursor: pointer; font-size: 10px; font-weight: 800; }
 .exportActions .secondaryButton { border-color: #6b6e64; background: transparent; color: #fff; }
 .exportActions button:disabled { opacity: .4; cursor: wait; }
-.exportProgress { margin-top: 16px; color: #aeb0a7; font: 9px "DM Mono", monospace; }
-.exportProgress div { height: 6px; margin-top: 7px; background: #44473e; }
+.exportProgress { margin-top: 16px; display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; color: #aeb0a7; font: 9px "DM Mono", monospace; }
+.exportProgress strong { color: var(--local-acid); font-size: 13px; }
+.exportProgress small { grid-column: 1 / -1; color: #aeb0a7; font: 9px "DM Mono", monospace; }
+.exportProgress div { grid-column: 1 / -1; height: 6px; margin-top: 2px; background: #44473e; }
 .exportProgress i { display: block; height: 100%; background: var(--local-acid); }
 
 .footer { margin-top: 72px; padding: 30px 5vw 46px; display: flex; justify-content: space-between; gap: 30px; border-top: 1px solid #c5c3ba; color: #77796f; font: 10px/1.55 "DM Mono", monospace; }

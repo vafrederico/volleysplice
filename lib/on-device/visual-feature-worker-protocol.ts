@@ -8,7 +8,7 @@ export type WorkerCrop = {
 };
 
 export type VisualFeatureWorkerRequest =
-  | { type: "initialize" }
+  | { type: "initialize"; detailedProfiling: boolean }
   | {
       type: "frame";
       id: number;

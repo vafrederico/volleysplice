@@ -220,11 +220,18 @@ export function extractVisualFeatures(
   cv: CvRuntime,
   canvas: HTMLCanvasElement | OffscreenCanvas,
   previousGray: Mat | null,
+  detailedProfiling = true,
 ): VisualFeatureResult {
-  const readbackStartedAt = performance.now();
+  const readbackStartedAt = detailedProfiling ? performance.now() : 0;
   const rgba = cv.imread(canvas as unknown as HTMLCanvasElement);
-  const canvasReadbackMs = performance.now() - readbackStartedAt;
-  return extractVisualFeaturesFromRgba(cv, rgba, previousGray, canvasReadbackMs);
+  const canvasReadbackMs = detailedProfiling ? performance.now() - readbackStartedAt : 0;
+  return extractVisualFeaturesFromRgba(
+    cv,
+    rgba,
+    previousGray,
+    canvasReadbackMs,
+    detailedProfiling,
+  );
 }
 
 export function extractVisualFeaturesFromImageData(
@@ -232,14 +239,16 @@ export function extractVisualFeaturesFromImageData(
   imageData: ImageData,
   previousGray: Mat | null,
   readbackMs: number,
+  detailedProfiling = true,
 ): VisualFeatureResult {
-  const conversionStartedAt = performance.now();
+  const conversionStartedAt = detailedProfiling ? performance.now() : 0;
   const rgba = cv.matFromImageData(imageData);
   return extractVisualFeaturesFromRgba(
     cv,
     rgba,
     previousGray,
-    readbackMs + performance.now() - conversionStartedAt,
+    detailedProfiling ? readbackMs + performance.now() - conversionStartedAt : 0,
+    detailedProfiling,
   );
 }
 
@@ -248,7 +257,9 @@ function extractVisualFeaturesFromRgba(
   rgba: Mat,
   previousGray: Mat | null,
   canvasReadbackMs: number,
+  detailedProfiling: boolean,
 ): VisualFeatureResult {
+  const now = detailedProfiling ? () => performance.now() : () => 0;
   const resized = new cv.Mat();
   const gray = new cv.Mat();
   const rgb = new cv.Mat();
@@ -263,7 +274,7 @@ function extractVisualFeaturesFromRgba(
   let opticalFlowMs = 0;
   let javascriptMs = 0;
   try {
-    const imageOperationsStartedAt = performance.now();
+    const imageOperationsStartedAt = now();
     if (rgba.cols !== ANALYSIS_WIDTH || rgba.rows !== ANALYSIS_HEIGHT) {
       cv.resize(
         rgba,
@@ -283,9 +294,9 @@ function extractVisualFeaturesFromRgba(
     cv.Laplacian(gray, laplacian, cv.CV_32F);
     cv.Sobel(gray, gradientX, cv.CV_32F, 1, 0, 3);
     cv.Sobel(gray, gradientY, cv.CV_32F, 0, 1, 3);
-    imageOperationsMs += performance.now() - imageOperationsStartedAt;
+    imageOperationsMs += now() - imageOperationsStartedAt;
 
-    let javascriptStartedAt = performance.now();
+    let javascriptStartedAt = now();
     const pixels = gray.data;
     const saturation = new Uint8Array(pixels.length);
     for (let index = 0; index < saturation.length; index += 1) {
@@ -365,18 +376,18 @@ function extractVisualFeaturesFromRgba(
     let shiftX = 0;
     let shiftY = 0;
     let shiftResponse = 0;
-    javascriptMs += performance.now() - javascriptStartedAt;
+    javascriptMs += now() - javascriptStartedAt;
     if (previousGray) {
-      const phaseCorrelationStartedAt = performance.now();
+      const phaseCorrelationStartedAt = now();
       try {
         [shiftX, shiftY, shiftResponse] = phaseCorrelate(cv, previousGray, gray);
       } catch {
         // Match the Python extractor's cv2.error fallback: a failed camera-motion
         // estimate should zero these optional channels, not abort the whole match.
       }
-      phaseCorrelationMs += performance.now() - phaseCorrelationStartedAt;
+      phaseCorrelationMs += now() - phaseCorrelationStartedAt;
     }
-    javascriptStartedAt = performance.now();
+    javascriptStartedAt = now();
     const diagonal = Math.hypot(ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
     const cameraShiftMagnitude = Math.hypot(shiftX, shiftY) / diagonal;
     values.push(
@@ -392,9 +403,9 @@ function extractVisualFeaturesFromRgba(
       cameraShiftMagnitude,
       shiftResponse,
     );
-    javascriptMs += performance.now() - javascriptStartedAt;
+    javascriptMs += now() - javascriptStartedAt;
 
-    const opticalFlowStartedAt = performance.now();
+    const opticalFlowStartedAt = now();
     if (previousGray) {
       cv.calcOpticalFlowFarneback(previousGray, gray, flow, 0.5, 2, 13, 2, 5, 1.1, 0);
     } else {
@@ -402,8 +413,8 @@ function extractVisualFeaturesFromRgba(
       zeroFlow.copyTo(flow);
       zeroFlow.delete();
     }
-    opticalFlowMs += performance.now() - opticalFlowStartedAt;
-    javascriptStartedAt = performance.now();
+    opticalFlowMs += now() - opticalFlowStartedAt;
+    javascriptStartedAt = now();
     const magnitude = new Float32Array(pixels.length);
     const flowX = new Float32Array(pixels.length);
     const flowY = new Float32Array(pixels.length);
@@ -497,7 +508,7 @@ function extractVisualFeaturesFromRgba(
         imageOperationsMs,
         phaseCorrelationMs,
         opticalFlowMs,
-        javascriptMs: javascriptMs + performance.now() - javascriptStartedAt,
+        javascriptMs: javascriptMs + now() - javascriptStartedAt,
       },
     };
     return result;

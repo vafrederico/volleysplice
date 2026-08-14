@@ -40,6 +40,7 @@ const workerScope = self as unknown as FeatureWorkerScope;
 let runtimePromise: Promise<CvRuntime> | null = null;
 let previousGray: import("@techstark/opencv-js").Mat | null = null;
 let canvasIsFresh = true;
+let detailedProfiling = true;
 const canvas = new OffscreenCanvas(ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
 const firefox = navigator.userAgent.includes("Firefox");
 const context = (() => {
@@ -77,7 +78,7 @@ function post(response: VisualFeatureWorkerResponse, transfer: Transferable[] = 
 async function processFrame(
   request: Extract<VisualFeatureWorkerRequest, { type: "frame" }>,
 ): Promise<void> {
-  const startedAt = performance.now();
+  const startedAt = detailedProfiling ? performance.now() : 0;
   let sample: VideoSample | null = null;
   try {
     const cv = await loadWorkerOpenCv();
@@ -86,7 +87,7 @@ async function processFrame(
       duration: request.duration,
       rotation: request.rotation,
     });
-    const canvasDrawStartedAt = performance.now();
+    const canvasDrawStartedAt = detailedProfiling ? performance.now() : 0;
     (sample as MipmappedVideoSample)._drawWithFitAndMipmapping(canvas, context, {
       fit: "fill",
       rotation: request.rotation,
@@ -95,11 +96,17 @@ async function processFrame(
       fillBlack: firefox,
     });
     canvasIsFresh = false;
-    const canvasDrawMs = performance.now() - canvasDrawStartedAt;
-    const readbackStartedAt = performance.now();
+    const canvasDrawMs = detailedProfiling ? performance.now() - canvasDrawStartedAt : 0;
+    const readbackStartedAt = detailedProfiling ? performance.now() : 0;
     const imageData = context.getImageData(0, 0, ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
-    const readbackMs = performance.now() - readbackStartedAt;
-    const result = extractVisualFeaturesFromImageData(cv, imageData, previousGray, readbackMs);
+    const readbackMs = detailedProfiling ? performance.now() - readbackStartedAt : 0;
+    const result = extractVisualFeaturesFromImageData(
+      cv,
+      imageData,
+      previousGray,
+      readbackMs,
+      detailedProfiling,
+    );
     previousGray?.delete();
     previousGray = result.gray;
     const values = new Float32Array(result.values);
@@ -111,7 +118,7 @@ async function processFrame(
         values: values.buffer,
         timing: result.timing,
         canvasDrawMs,
-        workerElapsedMs: performance.now() - startedAt,
+        workerElapsedMs: detailedProfiling ? performance.now() - startedAt : 0,
       },
       [values.buffer],
     );
@@ -135,9 +142,13 @@ workerScope.addEventListener("message", (event: MessageEvent<VisualFeatureWorker
   queue = queue.then(async () => {
     try {
       if (request.type === "initialize") {
-        const startedAt = performance.now();
+        detailedProfiling = request.detailedProfiling;
+        const startedAt = detailedProfiling ? performance.now() : 0;
         await loadWorkerOpenCv();
-        post({ type: "ready", openCvLoadMs: performance.now() - startedAt });
+        post({
+          type: "ready",
+          openCvLoadMs: detailedProfiling ? performance.now() - startedAt : 0,
+        });
       } else {
         await processFrame(request);
       }

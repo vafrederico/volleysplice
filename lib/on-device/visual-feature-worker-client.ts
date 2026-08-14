@@ -29,7 +29,7 @@ export class VisualFeatureWorkerClient {
     worker.addEventListener("messageerror", this.handleWorkerError);
   }
 
-  static async create(): Promise<VisualFeatureWorkerClient> {
+  static async create(detailedProfiling: boolean): Promise<VisualFeatureWorkerClient> {
     if (!("Worker" in globalThis) || !("OffscreenCanvas" in globalThis)) {
       throw new Error("Dedicated extraction workers are unavailable.");
     }
@@ -58,7 +58,7 @@ export class VisualFeatureWorkerClient {
         };
         worker.addEventListener("message", handleMessage);
         worker.addEventListener("error", handleError, { once: true });
-        const request: VisualFeatureWorkerRequest = { type: "initialize" };
+        const request: VisualFeatureWorkerRequest = { type: "initialize", detailedProfiling };
         worker.postMessage(request);
       });
       return new VisualFeatureWorkerClient(worker, openCvLoadMs);

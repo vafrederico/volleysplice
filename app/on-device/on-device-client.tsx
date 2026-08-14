@@ -26,6 +26,10 @@ import type {
   OnDeviceMediaInfo,
   RoiProfile,
 } from "@/lib/on-device/types";
+import {
+  holdScreenWakeLock,
+  type WakeLockState,
+} from "@/lib/on-device/wake-lock";
 
 import styles from "./on-device.module.css";
 
@@ -47,15 +51,6 @@ type BrowserCompatibility = {
   jsHeapUsedBytes: number | null;
   jsHeapLimitBytes: number | null;
 };
-
-type WakeLockState =
-  | "idle"
-  | "requesting"
-  | "active"
-  | "paused"
-  | "released"
-  | "unavailable"
-  | "denied";
 
 type SelectedMediaDiagnostics = {
   checking: boolean;
@@ -197,53 +192,6 @@ async function inspectSelectedMedia(
     powerEfficient,
     averageFrameRate,
     averageBitrate,
-  };
-}
-
-async function holdScreenWakeLock(
-  onState: (state: WakeLockState) => void,
-): Promise<() => Promise<void>> {
-  if (!("wakeLock" in navigator)) {
-    onState("unavailable");
-    return async () => undefined;
-  }
-  let stopped = false;
-  let acquired = false;
-  let sentinel: WakeLockSentinel | null = null;
-  const acquire = async () => {
-    if (stopped || document.visibilityState !== "visible" || sentinel) return;
-    onState("requesting");
-    try {
-      sentinel = await navigator.wakeLock.request("screen");
-      if (stopped) {
-        await sentinel.release();
-        sentinel = null;
-        return;
-      }
-      acquired = true;
-      onState("active");
-      sentinel.addEventListener("release", () => {
-        sentinel = null;
-        if (stopped) return;
-        if (document.visibilityState === "visible") void acquire();
-        else onState("paused");
-      }, { once: true });
-    } catch {
-      if (!stopped) onState(document.visibilityState === "visible" ? "denied" : "paused");
-    }
-  };
-  const handleVisibility = () => {
-    if (document.visibilityState === "visible" && !sentinel) void acquire();
-    else if (document.visibilityState !== "visible") onState("paused");
-  };
-  document.addEventListener("visibilitychange", handleVisibility);
-  await acquire();
-  return async () => {
-    stopped = true;
-    document.removeEventListener("visibilitychange", handleVisibility);
-    await sentinel?.release().catch(() => undefined);
-    sentinel = null;
-    if (acquired) onState("released");
   };
 }
 
@@ -438,6 +386,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     EMPTY_MEDIA_DIAGNOSTICS,
   );
   const [analysisElapsedSeconds, setAnalysisElapsedSeconds] = useState<number | null>(null);
+  const [detailedProfiling, setDetailedProfiling] = useState(false);
   const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
   const [featureCacheState, setFeatureCacheState] = useState<
     AnalysisProgress["featureCache"] | null
@@ -465,6 +414,25 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     featurePerformance && featurePerformance.videoElapsedMs > 0
       ? featurePerformance.generatedVideoSeconds / (featurePerformance.videoElapsedMs / 1000)
       : null;
+  const featureEtaSeconds =
+    analysisProgress?.stage === "video" && processingRate && processingRate > 0
+      ? Math.max(0, analysisProgress.total - analysisProgress.completed) / processingRate
+      : null;
+  const exportProcessingRate =
+    exportProgress && exportProgress.elapsedSeconds > 0
+      ? exportProgress.completedSeconds / exportProgress.elapsedSeconds
+      : null;
+  const exportEtaSeconds =
+    exportProgress && exportProcessingRate && exportProcessingRate > 0
+      ? Math.max(0, exportProgress.totalSeconds - exportProgress.completedSeconds) /
+        exportProcessingRate
+      : null;
+  const exportPercent = exportProgress && exportProgress.totalSeconds > 0
+    ? Math.min(
+        100,
+        Math.max(0, (exportProgress.completedSeconds / exportProgress.totalSeconds) * 100),
+      )
+    : 0;
   const extractionOtherMs = featurePerformance
     ? Math.max(
         0,
@@ -616,11 +584,14 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           setAnalysisProgress(progress);
           if (progress.featureCache) setFeatureCacheState(progress.featureCache);
           setAnalysisElapsedSeconds((performance.now() - startedAt) / 1000);
-          setCompatibility((current) => ({ ...current, ...heapSnapshot() }));
+          if (detailedProfiling) {
+            setCompatibility((current) => ({ ...current, ...heapSnapshot() }));
+          }
         },
         file
           ? { name: file.name, size: file.size, lastModified: file.lastModified }
           : undefined,
+        { detailedProfiling },
       );
       setAnalysisElapsedSeconds((performance.now() - startedAt) / 1000);
       setAnalysis(result);
@@ -666,13 +637,19 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     if (!exportFile || !analysis) return;
     setError(null);
     setWorkState("exporting");
-    setExportProgress({ completedSeconds: 0, totalSeconds: keptSeconds, detail: "Preparing original media" });
+    setExportProgress({
+      completedSeconds: 0,
+      totalSeconds: keptSeconds,
+      elapsedSeconds: 0,
+      detail: "Preparing original media",
+    });
     try {
       await exportRawQualityReel(
         exportFile,
         editList.map(({ keptStart, keptEnd }) => ({ start: keptStart, end: keptEnd })),
         setExportProgress,
         info?.duration,
+        setWakeLockState,
       );
       setWorkState("done");
     } catch (cause) {
@@ -919,6 +896,20 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         : "READY"}
                   </span>
                 </header>
+                <label className={styles.profilingToggle}>
+                  <input
+                    type="checkbox"
+                    checked={detailedProfiling}
+                    disabled={busy}
+                    onChange={(event) => setDetailedProfiling(event.target.checked)}
+                  />
+                  <span>
+                    <strong>Detailed performance profiling</strong>
+                    <small>
+                      Off is fastest. Required model-feature calculations still run.
+                    </small>
+                  </span>
+                </label>
                 <dl className={styles.diagnosticList}>
                   <div>
                     <dt>WebCodecs API</dt>
@@ -1019,14 +1010,16 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         : wakeLockState === "requesting"
                           ? "Requesting…"
                           : wakeLockState === "active"
-                            ? "Active during analysis"
+                            ? workState === "exporting"
+                              ? "Active during encoding"
+                              : "Active during analysis"
                             : wakeLockState === "paused"
                               ? "Paused while tab is hidden"
                               : wakeLockState === "released"
-                                ? "Released after analysis"
+                                ? "Released after operation"
                                 : wakeLockState === "denied"
                                   ? "Request denied"
-                                  : "Ready for analysis"}
+                                  : "Ready for analysis and encoding"}
                     </dd>
                   </div>
                   <div>
@@ -1041,7 +1034,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         : `IndexedDB · every ${FEATURE_CACHE_CHUNK_ROWS / ANALYSIS_FPS}s of video`}
                     </dd>
                   </div>
-                  {compatibility.jsHeapUsedBytes !== null && (
+                  {detailedProfiling && compatibility.jsHeapUsedBytes !== null && (
                     <div>
                       <dt>JavaScript heap</dt>
                       <dd>
@@ -1073,9 +1066,21 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                               ).toFixed(1)} frames/s · cache excluded`}
                         </dd>
                       </div>
+                      {analysisProgress?.stage === "video" && (
+                        <div>
+                          <dt>Feature ETA</dt>
+                          <dd>
+                            {featureEtaSeconds === null
+                              ? "Estimating…"
+                              : featureEtaSeconds <= 0
+                                ? "Finishing…"
+                                : `About ${preciseTime(featureEtaSeconds)}`}
+                          </dd>
+                        </div>
+                      )}
                     </>
                   )}
-                  {featurePerformance && (
+                  {featurePerformance?.profilingEnabled && (
                     <>
                       <div className={styles.diagnosticSectionRow}>
                         <dt>Fresh frames profiled</dt>
@@ -1226,7 +1231,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         </dd>
                       </div>
                       <div className={styles.diagnosticSubstage}>
-                        <dt>↳ JavaScript stats</dt>
+                        <dt>↳ Required JS feature calculations</dt>
                         <dd>
                           {timingSummary(
                             featurePerformance.javascriptMs,
@@ -1283,7 +1288,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   Feature checkpoints stay in this browser&apos;s IndexedDB and are keyed to the exact
                   file and crop. After a refresh, choose the same file again to resume. Stage timing
                   and feature speed count only frames generated in the current run; restored frames
-                  are excluded.
+                  are excluded. The profiling switch disables timing and heap probes, not the feature
+                  values required by the trained model.
                 </p>
               </section>
             )}
@@ -1348,7 +1354,17 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           </div>
           <output>{Math.round(percent(analysisProgress))}%</output>
           <div className={styles.progressTrack}><i style={{ width: `${percent(analysisProgress)}%` }} /></div>
-          <p>Keep this tab open. Whole-recording percentile ranks and future context require reaching the end before inference.</p>
+          <p>
+            {analysisProgress.stage === "video"
+              ? `${processingRate ? `${processingRate.toFixed(2)}× real time` : "Measuring speed"} · ${
+                  featureEtaSeconds === null
+                    ? "estimating ETA"
+                    : featureEtaSeconds <= 0
+                      ? "finishing feature generation"
+                      : `about ${preciseTime(featureEtaSeconds)} remaining`
+                }`
+              : "Keep this tab open. Whole-recording percentile ranks and future context require reaching the end before inference."}
+          </p>
         </section>
       )}
 
@@ -1483,7 +1499,21 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
             {exportProgress && workState === "exporting" && (
               <div className={styles.exportProgress}>
                 <span>{exportProgress.detail}</span>
-                <div><i style={{ width: `${exportProgress.totalSeconds ? (exportProgress.completedSeconds / exportProgress.totalSeconds) * 100 : 0}%` }} /></div>
+                <strong>{exportPercent.toFixed(0)}%</strong>
+                <small>
+                  {exportProcessingRate && exportProcessingRate > 0
+                    ? `${exportProcessingRate.toFixed(2)}× real time · ${preciseTime(
+                        exportProgress.elapsedSeconds,
+                      )} elapsed · ${
+                        exportEtaSeconds !== null && exportEtaSeconds > 0
+                          ? `about ${preciseTime(exportEtaSeconds)} remaining`
+                          : exportPercent >= 100
+                            ? "finalizing file"
+                            : "estimating ETA"
+                      }`
+                    : "Measuring encoding speed and ETA…"}
+                </small>
+                <div><i style={{ width: `${exportPercent}%` }} /></div>
               </div>
             )}
           </div>
