@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { getAnalysesRoot, getDataRoot } from "../../lib/storage.ts";
+import {
+  getAnalysesRoot,
+  getDataRoot,
+  getIntakeAnalysesRoot,
+  getIntakeWorkspace,
+} from "../../lib/storage.ts";
 
 test("storage defaults to the repository data directory", () => {
   const previous = process.env.VOLLEYCUT_DATA_ROOT;
@@ -30,4 +35,13 @@ test("storage supports a separate no-beach analysis root", () => {
   );
   if (previous === undefined) delete process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT;
   else process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT = previous;
+});
+
+test("storage supports a supplemental intake workspace", () => {
+  const previous = process.env.VOLLEYCUT_INTAKE_WORKSPACE;
+  process.env.VOLLEYCUT_INTAKE_WORKSPACE = "/mnt/example/intake";
+  assert.equal(getIntakeWorkspace(), "/mnt/example/intake");
+  assert.equal(getIntakeAnalysesRoot(), "/mnt/example/intake/analyses");
+  if (previous === undefined) delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
+  else process.env.VOLLEYCUT_INTAKE_WORKSPACE = previous;
 });

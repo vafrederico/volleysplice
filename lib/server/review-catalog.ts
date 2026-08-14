@@ -12,6 +12,7 @@ import type {
 } from "@/lib/analysis-types";
 import { parseLabelDocument, type LabelDocument, type RallyLabel } from "@/lib/annotations";
 import type { Rally } from "@/lib/edit-list";
+import { getIntakeAnalysesRoot } from "@/lib/storage";
 import {
   getPreparedLabelingCatalog,
   getSavedLabelingDocument,
@@ -311,16 +312,17 @@ function toOption(analysis: ReviewAnalysis): AnalysisOption {
 }
 
 export async function loadReviewCatalog(): Promise<ReviewCatalog> {
-  const [prepared, original, rawWithoutBeach, noBeachVersions] = await Promise.all([
+  const [prepared, original, intake, rawWithoutBeach, noBeachVersions] = await Promise.all([
     getPreparedLabelingCatalog(),
     loadAnalyses(),
+    loadAnalyses({ analysesRoot: getIntakeAnalysesRoot(), assetSource: "intake" }),
     loadAnalyses({ trainingCorpus: "without-beach" }),
     noBeachModelVersions(),
   ]);
   const withoutBeach = rawWithoutBeach.map((analysis) =>
     bindNoBeachModelVersion(analysis, noBeachVersions),
   );
-  const generated = [...original, ...withoutBeach];
+  const generated = [...original, ...intake, ...withoutBeach];
   const tasks = prepared.tasks.filter((task) => task.batch === "full");
   const modelVersions = new Map(
     generated
@@ -348,7 +350,7 @@ export async function loadReviewCatalog(): Promise<ReviewCatalog> {
     const [completedGold, sol, savedLabels] = await Promise.all([
       readLabelAnalysis(
         task,
-        path.join(labelingWorkspace(), "completed", "full-v1", `${task.id}.labels.json`),
+        task.completedPath,
         "gold",
       ),
       readLabelAnalysis(task, task.prelabelPath, "sol"),
