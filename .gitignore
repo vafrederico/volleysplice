@@ -30,3 +30,4 @@ __pycache__/
 
 # Generated from the pinned OpenCV dependency by npm run browser-assets
 /public/on-device/opencv.js
+/public/on-device/opencv-worker.js

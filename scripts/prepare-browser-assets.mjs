@@ -1,4 +1,4 @@
-import { copyFile, mkdir, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,7 @@ const source = resolve(
   "node_modules/@techstark/opencv-js/dist/opencv.js",
 );
 const destination = resolve(repository, "public/on-device/opencv.js");
+const workerDestination = resolve(repository, "public/on-device/opencv-worker.js");
 
 await stat(source).catch(() => {
   throw new Error(
@@ -16,3 +17,12 @@ await stat(source).catch(() => {
 });
 await mkdir(dirname(destination), { recursive: true });
 await copyFile(source, destination);
+const sourceText = await readFile(source, "utf8");
+const workerText = sourceText.replace(
+  "}(this, function () {",
+  "}(globalThis, function () {",
+);
+if (workerText === sourceText) {
+  throw new Error("Could not adapt the pinned OpenCV asset for module workers.");
+}
+await writeFile(workerDestination, workerText);

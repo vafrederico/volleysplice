@@ -224,6 +224,31 @@ export function extractVisualFeatures(
   const readbackStartedAt = performance.now();
   const rgba = cv.imread(canvas as unknown as HTMLCanvasElement);
   const canvasReadbackMs = performance.now() - readbackStartedAt;
+  return extractVisualFeaturesFromRgba(cv, rgba, previousGray, canvasReadbackMs);
+}
+
+export function extractVisualFeaturesFromImageData(
+  cv: CvRuntime,
+  imageData: ImageData,
+  previousGray: Mat | null,
+  readbackMs: number,
+): VisualFeatureResult {
+  const conversionStartedAt = performance.now();
+  const rgba = cv.matFromImageData(imageData);
+  return extractVisualFeaturesFromRgba(
+    cv,
+    rgba,
+    previousGray,
+    readbackMs + performance.now() - conversionStartedAt,
+  );
+}
+
+function extractVisualFeaturesFromRgba(
+  cv: CvRuntime,
+  rgba: Mat,
+  previousGray: Mat | null,
+  canvasReadbackMs: number,
+): VisualFeatureResult {
   const resized = new cv.Mat();
   const gray = new cv.Mat();
   const rgb = new cv.Mat();

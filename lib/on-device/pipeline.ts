@@ -1,4 +1,4 @@
-import { CanvasSink, VideoSample } from "mediabunny";
+import { CanvasSink, VideoSample, VideoSampleSink } from "mediabunny";
 
 import { extractAudioFeatures } from "./audio-features";
 import {
@@ -29,6 +29,10 @@ import type {
   OnDeviceAnalysis,
 } from "./types";
 import { extractVisualFeatures, loadOpenCv } from "./visual-features";
+import {
+  VisualFeatureWorkerClient,
+  type WorkerFeatureResult,
+} from "./visual-feature-worker-client";
 
 const MODEL_URL = "/on-device/model-9c92b8e9333f.json";
 
@@ -158,6 +162,9 @@ export async function extractBrowserFeatures(
     decoderOverlapMs: 0,
     canvasDrawMs: 0,
     canvasDrawFrames: 0,
+    workerActive: false,
+    workerBlockingMs: 0,
+    workerOverlapMs: 0,
     extractionMs: 0,
     canvasReadbackMs: 0,
     imageOperationsMs: 0,
@@ -226,182 +233,215 @@ export async function extractBrowserFeatures(
   const bottom = Math.round((roi.y + roi.height) * media.info.height);
   const times: number[] = Array.from(cachedTimes);
   const rows: Float32Array[] = rowsFromValues(cachedValues, cachedRows);
-  let previousGray: import("@techstark/opencv-js").Mat | null = null;
   let decoded = cachedRows;
   if (!cachedComplete) {
-    const openCvStartedAt = performance.now();
-    const cv = await loadOpenCv();
-    timingTotals.openCvLoadMs += performance.now() - openCvStartedAt;
-    const sink = new CanvasSink(media.videoTrack, {
-      crop: {
-        left,
-        top,
-        width: Math.max(1, right - left),
-        height: Math.max(1, bottom - top),
-      },
-      width: ANALYSIS_WIDTH,
-      height: ANALYSIS_HEIGHT,
-      fit: "fill",
-      poolSize: 1,
-      decoderOptions: { hardwareAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION },
-    });
     const resumeAfter = cachedRows > 0 ? cachedTimes[cachedRows - 1] : -Infinity;
     const warmupStart = Math.max(0, resumeAfter - 1 / ANALYSIS_FPS);
+    const crop = {
+      left,
+      top,
+      width: Math.max(1, right - left),
+      height: Math.max(1, bottom - top),
+    };
     let pendingTimes: number[] = [];
     let pendingRows: Float32Array[] = [];
-    const canvasIterator = sink.canvasesAtTimestamps(
-      analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
-    );
-    const stopCanvasDrawTiming = instrumentCanvasDraw((milliseconds) => {
-      timingTotals.canvasDrawMs += milliseconds;
-      timingTotals.canvasDrawFrames += 1;
-    });
-    let pendingNext: ReturnType<typeof canvasIterator.next> | null = null;
-    try {
-      let nextRequestedAt = performance.now();
-      pendingNext = canvasIterator.next();
-      while (true) {
-        const canvasDrawBeforeWait = timingTotals.canvasDrawMs;
-        const waitStartedAt = performance.now();
-        const next = await pendingNext;
-        const resolvedAt = performance.now();
-        const blockingMs = resolvedAt - waitStartedAt;
-        const requestSpanMs = resolvedAt - nextRequestedAt;
-        const canvasDrawDuringWaitMs = timingTotals.canvasDrawMs - canvasDrawBeforeWait;
-        timingTotals.decoderCanvasMs += blockingMs;
-        timingTotals.decoderWaitMs += Math.max(0, blockingMs - canvasDrawDuringWaitMs);
-        timingTotals.decoderOverlapMs += Math.max(0, requestSpanMs - blockingMs);
-        if (next.done) break;
-        const wrapped = next.value;
-        // CanvasSink uses a one-canvas pool. Starting the next request is safe:
-        // its async continuation cannot redraw that canvas while the synchronous
-        // extractor below owns the current frame, but decoding can proceed in
-        // Chromium's media process in the meantime.
-        nextRequestedAt = performance.now();
-        pendingNext = canvasIterator.next();
-        if (!wrapped) continue;
-        const extractionStartedAt = performance.now();
-        const result = extractVisualFeatures(cv, wrapped.canvas, previousGray);
-        timingTotals.extractionMs += performance.now() - extractionStartedAt;
-        timingTotals.sampledFrames += 1;
-        timingTotals.canvasReadbackMs += result.timing.canvasReadbackMs;
-        timingTotals.imageOperationsMs += result.timing.imageOperationsMs;
-        timingTotals.phaseCorrelationMs += result.timing.phaseCorrelationMs;
-        timingTotals.opticalFlowMs += result.timing.opticalFlowMs;
-        timingTotals.javascriptMs += result.timing.javascriptMs;
-        previousGray?.delete();
-        previousGray = result.gray;
-        if (wrapped.timestamp <= resumeAfter + 1e-9) continue;
-        if (times.length && wrapped.timestamp <= times[times.length - 1] + 1e-9) continue;
-        times.push(wrapped.timestamp);
-        rows.push(result.values);
-        pendingTimes.push(wrapped.timestamp);
-        pendingRows.push(result.values);
-        decoded += 1;
-        timingTotals.generatedFrames += 1;
-        timingTotals.generatedVideoSeconds = timingTotals.generatedFrames / ANALYSIS_FPS;
-        if (cacheKey && cacheEnabled && pendingRows.length >= FEATURE_CACHE_CHUNK_ROWS) {
-          const chunkValues = new Float32Array(
-            pendingRows.length * FRAME_FEATURE_NAMES.length,
-          );
-          pendingRows.forEach((row, index) =>
-            chunkValues.set(row, index * FRAME_FEATURE_NAMES.length),
-          );
-          try {
-            await measureCacheIo(() =>
-              writeVisualFeatureChunk(
-                cacheKey,
-                cacheChunkCount,
-                Float64Array.from(pendingTimes),
-                chunkValues,
-                decoded,
-                false,
-              ),
-            );
-            cacheChunkCount += 1;
-            savedRows = decoded;
-            pendingTimes = [];
-            pendingRows = [];
-          } catch {
-            cacheEnabled = false;
-          }
-        }
-        if (timingTotals.generatedFrames % 8 === 0) {
-          onProgress?.({
-            stage: "video",
-            completed: wrapped.timestamp,
-            total: media.info.duration,
-            detail: cachedRows > 0
-              ? `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} new · ${decoded.toLocaleString()} total frames`
-              : `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} frames`,
-            featureCache: featureCache(),
-            performance: performanceSnapshot(),
-          });
-          await yieldToBrowser();
+    const writePendingRows = async (complete: boolean) => {
+      if (!cacheKey || !cacheEnabled) return;
+      if (pendingRows.length === 0) {
+        if (!complete) return;
+        await measureCacheIo(() =>
+          markVisualFeatureCacheComplete(cacheKey, cacheChunkCount, decoded),
+        );
+        savedRows = decoded;
+        cachedComplete = true;
+        return;
+      }
+      const chunkValues = new Float32Array(
+        pendingRows.length * FRAME_FEATURE_NAMES.length,
+      );
+      pendingRows.forEach((row, index) =>
+        chunkValues.set(row, index * FRAME_FEATURE_NAMES.length),
+      );
+      await measureCacheIo(() =>
+        writeVisualFeatureChunk(
+          cacheKey,
+          cacheChunkCount,
+          Float64Array.from(pendingTimes),
+          chunkValues,
+          decoded,
+          complete,
+        ),
+      );
+      cacheChunkCount += 1;
+      savedRows = decoded;
+      cachedComplete = complete;
+      pendingTimes = [];
+      pendingRows = [];
+    };
+    const appendGeneratedFrame = async (timestamp: number, values: Float32Array) => {
+      if (timestamp <= resumeAfter + 1e-9) return;
+      if (times.length && timestamp <= times[times.length - 1] + 1e-9) return;
+      times.push(timestamp);
+      rows.push(values);
+      pendingTimes.push(timestamp);
+      pendingRows.push(values);
+      decoded += 1;
+      timingTotals.generatedFrames += 1;
+      timingTotals.generatedVideoSeconds = timingTotals.generatedFrames / ANALYSIS_FPS;
+      if (pendingRows.length >= FEATURE_CACHE_CHUNK_ROWS) {
+        try {
+          await writePendingRows(false);
+        } catch {
+          cacheEnabled = false;
         }
       }
-      if (cacheKey && cacheEnabled && pendingRows.length > 0) {
+      if (timingTotals.generatedFrames % 8 !== 0) return;
+      onProgress?.({
+        stage: "video",
+        completed: timestamp,
+        total: media.info.duration,
+        detail: cachedRows > 0
+          ? `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} new · ${decoded.toLocaleString()} total frames`
+          : `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} frames`,
+        featureCache: featureCache(),
+        performance: performanceSnapshot(),
+      });
+      await yieldToBrowser();
+    };
+    const collectTiming = (result: WorkerFeatureResult) => {
+      timingTotals.sampledFrames += 1;
+      timingTotals.extractionMs += result.workerElapsedMs;
+      timingTotals.canvasDrawMs += result.canvasDrawMs;
+      timingTotals.canvasDrawFrames += 1;
+      timingTotals.canvasReadbackMs += result.timing.canvasReadbackMs;
+      timingTotals.imageOperationsMs += result.timing.imageOperationsMs;
+      timingTotals.phaseCorrelationMs += result.timing.phaseCorrelationMs;
+      timingTotals.opticalFlowMs += result.timing.opticalFlowMs;
+      timingTotals.javascriptMs += result.timing.javascriptMs;
+    };
+    try {
+      const workerClient = await VisualFeatureWorkerClient.create().catch(() => null);
+      if (workerClient) {
+        timingTotals.workerActive = true;
+        timingTotals.openCvLoadMs += workerClient.openCvLoadMs;
+        const sink = new VideoSampleSink(media.videoTrack, {
+          hardwareAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION,
+        });
+        const sampleIterator = sink.samplesAtTimestamps(
+          analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
+        );
+        const pendingFeatures: Promise<WorkerFeatureResult>[] = [];
+        const consumeOldest = async () => {
+          const pending = pendingFeatures.shift();
+          if (!pending) return;
+          const waitStartedAt = performance.now();
+          const result = await pending;
+          timingTotals.workerBlockingMs += performance.now() - waitStartedAt;
+          collectTiming(result);
+          timingTotals.workerOverlapMs = Math.max(
+            0,
+            timingTotals.extractionMs - timingTotals.workerBlockingMs,
+          );
+          await appendGeneratedFrame(result.timestamp, new Float32Array(result.values));
+        };
         try {
-          const chunkValues = new Float32Array(
-            pendingRows.length * FRAME_FEATURE_NAMES.length,
-          );
-          pendingRows.forEach((row, index) =>
-            chunkValues.set(row, index * FRAME_FEATURE_NAMES.length),
-          );
-          await measureCacheIo(() =>
-            writeVisualFeatureChunk(
-              cacheKey,
-              cacheChunkCount,
-              Float64Array.from(pendingTimes),
-              chunkValues,
-              decoded,
-              true,
-            ),
-          );
-          cacheChunkCount += 1;
-          savedRows = decoded;
-          cachedComplete = true;
-        } catch {
-          cacheEnabled = false;
+          while (true) {
+            const decoderStartedAt = performance.now();
+            const next = await sampleIterator.next();
+            const decoderMs = performance.now() - decoderStartedAt;
+            timingTotals.decoderCanvasMs += decoderMs;
+            timingTotals.decoderWaitMs += decoderMs;
+            if (next.done) break;
+            const sample = next.value;
+            if (!sample) continue;
+            const frame = sample.toVideoFrame();
+            const metadata = {
+              timestamp: sample.timestamp,
+              duration: sample.duration,
+              rotation: sample.rotation,
+              crop,
+            };
+            sample.close();
+            pendingFeatures.push(workerClient.extract(frame, metadata));
+            if (pendingFeatures.length >= 2) await consumeOldest();
+          }
+          while (pendingFeatures.length > 0) await consumeOldest();
+        } finally {
+          const settling = Promise.allSettled(pendingFeatures);
+          workerClient.dispose();
+          await settling;
+          await sampleIterator.return(undefined);
         }
-      } else if (cacheKey && cacheEnabled) {
+      } else {
+        const openCvStartedAt = performance.now();
+        const cv = await loadOpenCv();
+        timingTotals.openCvLoadMs += performance.now() - openCvStartedAt;
+        const sink = new CanvasSink(media.videoTrack, {
+          crop,
+          width: ANALYSIS_WIDTH,
+          height: ANALYSIS_HEIGHT,
+          fit: "fill",
+          poolSize: 1,
+          decoderOptions: { hardwareAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION },
+        });
+        const canvasIterator = sink.canvasesAtTimestamps(
+          analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
+        );
+        const stopCanvasDrawTiming = instrumentCanvasDraw((milliseconds) => {
+          timingTotals.canvasDrawMs += milliseconds;
+          timingTotals.canvasDrawFrames += 1;
+        });
+        let previousGray: import("@techstark/opencv-js").Mat | null = null;
+        let pendingNext: ReturnType<typeof canvasIterator.next> | null = null;
         try {
-          await measureCacheIo(() =>
-            markVisualFeatureCacheComplete(cacheKey, cacheChunkCount, decoded),
-          );
-          savedRows = decoded;
-          cachedComplete = true;
-        } catch {
-          cacheEnabled = false;
+          let nextRequestedAt = performance.now();
+          pendingNext = canvasIterator.next();
+          while (true) {
+            const canvasDrawBeforeWait = timingTotals.canvasDrawMs;
+            const waitStartedAt = performance.now();
+            const next = await pendingNext;
+            const resolvedAt = performance.now();
+            const blockingMs = resolvedAt - waitStartedAt;
+            const requestSpanMs = resolvedAt - nextRequestedAt;
+            const canvasDrawDuringWaitMs = timingTotals.canvasDrawMs - canvasDrawBeforeWait;
+            timingTotals.decoderCanvasMs += blockingMs;
+            timingTotals.decoderWaitMs += Math.max(0, blockingMs - canvasDrawDuringWaitMs);
+            timingTotals.decoderOverlapMs += Math.max(0, requestSpanMs - blockingMs);
+            if (next.done) break;
+            const wrapped = next.value;
+            nextRequestedAt = performance.now();
+            pendingNext = canvasIterator.next();
+            if (!wrapped) continue;
+            const extractionStartedAt = performance.now();
+            const result = extractVisualFeatures(cv, wrapped.canvas, previousGray);
+            timingTotals.extractionMs += performance.now() - extractionStartedAt;
+            timingTotals.sampledFrames += 1;
+            timingTotals.canvasReadbackMs += result.timing.canvasReadbackMs;
+            timingTotals.imageOperationsMs += result.timing.imageOperationsMs;
+            timingTotals.phaseCorrelationMs += result.timing.phaseCorrelationMs;
+            timingTotals.opticalFlowMs += result.timing.opticalFlowMs;
+            timingTotals.javascriptMs += result.timing.javascriptMs;
+            previousGray?.delete();
+            previousGray = result.gray;
+            await appendGeneratedFrame(wrapped.timestamp, result.values);
+          }
+        } finally {
+          stopCanvasDrawTiming();
+          const pendingResult = pendingNext;
+          const iteratorReturn = canvasIterator.return(undefined);
+          await pendingResult?.catch(() => undefined);
+          await iteratorReturn;
+          previousGray?.delete();
         }
+      }
+      try {
+        await writePendingRows(true);
+      } catch {
+        cacheEnabled = false;
       }
     } catch (error) {
-      if (cacheKey && cacheEnabled && pendingRows.length > 0) {
-        const chunkValues = new Float32Array(
-          pendingRows.length * FRAME_FEATURE_NAMES.length,
-        );
-        pendingRows.forEach((row, index) =>
-          chunkValues.set(row, index * FRAME_FEATURE_NAMES.length),
-        );
-        await measureCacheIo(() =>
-          writeVisualFeatureChunk(
-            cacheKey,
-            cacheChunkCount,
-            Float64Array.from(pendingTimes),
-            chunkValues,
-            decoded,
-            false,
-          ),
-        ).catch(() => undefined);
-      }
+      await writePendingRows(false).catch(() => undefined);
       throw error;
-    } finally {
-      stopCanvasDrawTiming();
-      const pendingResult = pendingNext;
-      const iteratorReturn = canvasIterator.return(undefined);
-      await pendingResult?.catch(() => undefined);
-      await iteratorReturn;
-      previousGray?.delete();
     }
   }
   if (rows.length === 0) throw new Error("The video decoder returned no analysis frames.");

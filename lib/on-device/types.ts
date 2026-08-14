@@ -47,6 +47,9 @@ export type FeatureExtractionPerformance = {
   decoderOverlapMs: number;
   canvasDrawMs: number;
   canvasDrawFrames: number;
+  workerActive: boolean;
+  workerBlockingMs: number;
+  workerOverlapMs: number;
   extractionMs: number;
   canvasReadbackMs: number;
   imageOperationsMs: number;

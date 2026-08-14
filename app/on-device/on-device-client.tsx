@@ -473,16 +473,20 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           featurePerformance.imageOperationsMs -
           featurePerformance.phaseCorrelationMs -
           featurePerformance.opticalFlowMs -
-          featurePerformance.javascriptMs,
+          featurePerformance.javascriptMs -
+          (featurePerformance.workerActive ? featurePerformance.canvasDrawMs : 0),
       )
     : 0;
+  const featureBlockingMs = featurePerformance?.workerActive
+    ? featurePerformance.workerBlockingMs
+    : featurePerformance?.extractionMs ?? 0;
   const videoPipelineOtherMs = featurePerformance
     ? Math.max(
         0,
         featurePerformance.videoElapsedMs -
           featurePerformance.openCvLoadMs -
           featurePerformance.decoderCanvasMs -
-          featurePerformance.extractionMs -
+          featureBlockingMs -
           featurePerformance.cacheIoMs,
       )
     : 0;
@@ -1087,7 +1091,21 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         <dd>{timingDuration(featurePerformance.videoElapsedMs)}</dd>
                       </div>
                       <div>
-                        <dt>Decode + canvas blocking</dt>
+                        <dt>Extraction execution</dt>
+                        <dd data-tone={featurePerformance.workerActive ? "good" : undefined}>
+                          {featurePerformance.sampledFrames === 0
+                            ? "Not used · complete cache"
+                            : featurePerformance.workerActive
+                            ? "Dedicated worker · two-frame queue"
+                            : "Main thread fallback"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>
+                          {featurePerformance.workerActive
+                            ? "Decode blocking"
+                            : "Decode + canvas blocking"}
+                        </dt>
                         <dd>
                           {timingSummary(
                             featurePerformance.decoderCanvasMs,
@@ -1095,7 +1113,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                           )}
                         </dd>
                       </div>
-                      {featurePerformance.canvasDrawFrames > 0 && (
+                      {!featurePerformance.workerActive &&
+                        featurePerformance.canvasDrawFrames > 0 && (
                         <>
                           <div className={styles.diagnosticSubstage}>
                             <dt>↳ Decoder / sample wait</dt>
@@ -1117,7 +1136,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                           </div>
                         </>
                       )}
-                      {featurePerformance.decoderOverlapMs >= 0.5 && (
+                      {!featurePerformance.workerActive &&
+                        featurePerformance.decoderOverlapMs >= 0.5 && (
                         <div className={styles.diagnosticSubstage}>
                           <dt>↳ Decode request overlapped</dt>
                           <dd>
@@ -1129,11 +1149,46 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         </div>
                       )}
                       <div>
-                        <dt>Feature extraction</dt>
+                        <dt>
+                          {featurePerformance.workerActive
+                            ? "Worker feature compute"
+                            : "Feature extraction"}
+                        </dt>
                         <dd>
                           {timingSummary(featurePerformance.extractionMs, featurePerformance)}
                         </dd>
                       </div>
+                      {featurePerformance.workerActive && (
+                        <>
+                          <div className={styles.diagnosticSubstage}>
+                            <dt>↳ Main thread waiting for worker</dt>
+                            <dd>
+                              {timingSummary(
+                                featurePerformance.workerBlockingMs,
+                                featurePerformance,
+                              )}
+                            </dd>
+                          </div>
+                          <div className={styles.diagnosticSubstage}>
+                            <dt>↳ Worker compute overlapped</dt>
+                            <dd>
+                              {timingSummary(
+                                featurePerformance.workerOverlapMs,
+                                featurePerformance,
+                              )} · hidden by decoding
+                            </dd>
+                          </div>
+                          <div className={styles.diagnosticSubstage}>
+                            <dt>↳ Canvas draw</dt>
+                            <dd>
+                              {timingSummary(
+                                featurePerformance.canvasDrawMs,
+                                featurePerformance,
+                              )}
+                            </dd>
+                          </div>
+                        </>
+                      )}
                       <div className={styles.diagnosticSubstage}>
                         <dt>↳ Canvas readback</dt>
                         <dd>
@@ -1222,8 +1277,9 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                 </dl>
                 <p className={styles.pipelineNote}>
                   Video decode requests hardware acceleration, but browsers do not confirm which
-                  decoder they selected. Visual features currently run in OpenCV WASM and model
-                  inference runs on the CPU; WebGPU availability does not accelerate this version.
+                  decoder they selected. When supported, visual features run in OpenCV WASM on a
+                  dedicated worker with a two-frame decode queue; model inference still runs on the
+                  CPU. WebGPU availability does not accelerate this version.
                   Feature checkpoints stay in this browser&apos;s IndexedDB and are keyed to the exact
                   file and crop. After a refresh, choose the same file again to resume. Stage timing
                   and feature speed count only frames generated in the current run; restored frames
