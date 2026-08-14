@@ -1,7 +1,9 @@
-const PROTOCOL = "volleycut-export-v2";
+const PROTOCOL = "volleycut-export-v3";
 const DOWNLOAD_MARKER = "/__volleycut_export_download__/";
 const SESSION_TIMEOUT_MS = 120_000;
 const REATTACH_TIMEOUT_MS = 10_000;
+const MAX_REPLAY_BYTES = 8 * 1024 * 1024;
+const MAX_CONSUMER_ATTEMPTS = 3;
 const sessions = new Map();
 const waitingFetches = new Map();
 
@@ -33,19 +35,113 @@ function errorResponse(message, status = 500) {
   });
 }
 
+function failSession(session, reason) {
+  clearTimeout(session.reattachExpiry);
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  session.failed = error;
+  session.pendingPull?.reject(error);
+  session.pendingPull = null;
+  try {
+    session.controller?.error(error);
+  } catch {
+    // The browser may already have closed the replaced response.
+  }
+  session.port.postMessage({
+    protocol: PROTOCOL,
+    type: "cancel",
+    reason: error.message,
+  });
+  session.port.close();
+  sessions.delete(session.token);
+}
+
+function detachConsumer(session, attempt) {
+  if (attempt !== session.attempt) return;
+  session.pendingPull?.resolve();
+  session.pendingPull = null;
+  session.controller = null;
+  session.claimed = false;
+  session.consumerStarted = false;
+  session.consumerAnnounced = false;
+  session.port.postMessage({
+    protocol: PROTOCOL,
+    type: "consumer-detached",
+    attempt,
+  });
+  clearTimeout(session.reattachExpiry);
+  session.reattachExpiry = setTimeout(() => {
+    failSession(session, "The browser did not reattach the native download.");
+  }, REATTACH_TIMEOUT_MS);
+}
+
+function fulfillPendingPull(session, attempt) {
+  const pending = session.pendingPull;
+  if (
+    !pending ||
+    attempt !== session.attempt ||
+    !session.claimed ||
+    !session.consumerStarted
+  )
+    return;
+
+  if (session.replayable && session.replayIndex < session.replayChunks.length) {
+    const chunk = session.replayChunks[session.replayIndex++];
+    session.pendingPull = null;
+    try {
+      session.controller.enqueue(chunk.slice());
+      pending.resolve();
+    } catch (cause) {
+      pending.reject(cause);
+    }
+    return;
+  }
+
+  session.port.postMessage({ protocol: PROTOCOL, type: "pull", attempt });
+}
+
 function downloadResponse(session) {
-  if (session.claimed)
-    return errorResponse("This export download was already claimed.", 410);
+  if (session.claimed) {
+    if (!session.replayable || session.attempt >= MAX_CONSUMER_ATTEMPTS) {
+      return errorResponse("This export download cannot be replayed.", 409);
+    }
+
+    // WebKit may first consume the iframe navigation and then issue another request after the
+    // user accepts its native download prompt. Replace that probe and replay the bounded prefix.
+    const replacedAttempt = session.attempt;
+    const replacedPull = session.pendingPull;
+    session.pendingPull = null;
+    try {
+      session.controller?.error(
+        new Error("The browser replaced the download consumer."),
+      );
+    } catch {
+      // The native download may close the iframe response before issuing its replacement fetch.
+    }
+    replacedPull?.resolve();
+    session.controller = null;
+    session.claimed = false;
+    session.consumerStarted = false;
+    session.consumerAnnounced = false;
+    session.port.postMessage({
+      protocol: PROTOCOL,
+      type: "consumer-detached",
+      attempt: replacedAttempt,
+    });
+  }
   session.claimed = true;
   clearTimeout(session.expiry);
   clearTimeout(session.reattachExpiry);
   session.attempt += 1;
   session.consumerStarted = false;
   session.consumerAnnounced = false;
+  session.replayIndex = 0;
   const attempt = session.attempt;
 
   const stream = new ReadableStream({
     pull(controller) {
+      if (attempt !== session.attempt) {
+        return;
+      }
       if (session.failed) throw session.failed;
       if (session.pendingPull) return session.pendingPull.promise;
       let resolvePull;
@@ -68,49 +164,28 @@ function downloadResponse(session) {
           attempt,
         });
       } else if (session.consumerStarted) {
-        session.port.postMessage({ protocol: PROTOCOL, type: "pull" });
+        fulfillPendingPull(session, attempt);
       }
       return promise;
     },
     cancel(reason) {
-      if (!session.consumerStarted) {
-        session.pendingPull?.resolve();
-        session.pendingPull = null;
-        session.controller = null;
-        session.claimed = false;
-        session.consumerAnnounced = false;
-        session.port.postMessage({
-          protocol: PROTOCOL,
-          type: "consumer-detached",
-          attempt,
-        });
-        session.reattachExpiry = setTimeout(() => {
-          session.port.postMessage({
-            protocol: PROTOCOL,
-            type: "cancel",
-            reason: "The browser did not reattach the native download.",
-          });
-          session.port.close();
-          sessions.delete(session.token);
-        }, REATTACH_TIMEOUT_MS);
+      if (attempt !== session.attempt) return;
+      if (session.replayable && session.attempt < MAX_CONSUMER_ATTEMPTS) {
+        detachConsumer(session, attempt);
         return;
       }
-      session.port.postMessage({
-        protocol: PROTOCOL,
-        type: "cancel",
-        reason:
-          reason instanceof Error
-            ? reason.message
-            : String(reason || "Download canceled"),
-      });
-      session.port.close();
-      sessions.delete(session.token);
+      failSession(
+        session,
+        reason instanceof Error
+          ? reason
+          : new Error(String(reason || "Download canceled")),
+      );
     },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "application/octet-stream",
+      "Content-Type": "video/mp4",
       "Content-Disposition": contentDisposition(session.fileName),
       "Cache-Control": "no-store, no-transform",
       "X-Content-Type-Options": "nosniff",
@@ -139,6 +214,11 @@ function acceptSession(message, port) {
     attempt: 0,
     consumerStarted: false,
     consumerAnnounced: false,
+    replayChunks: [],
+    replayBytes: 0,
+    replayable: true,
+    replayIndex: 0,
+    closed: false,
   };
   session.expiry = setTimeout(() => {
     sessions.delete(token);
@@ -154,7 +234,7 @@ function acceptSession(message, port) {
 
   port.onmessage = (event) => {
     const incoming = event.data;
-    if (incoming?.protocol !== PROTOCOL) return;
+    if (incoming?.protocol !== PROTOCOL || session.closed) return;
     const pending = session.pendingPull;
     if (incoming.type === "start") {
       if (
@@ -165,31 +245,84 @@ function acceptSession(message, port) {
       )
         return;
       session.consumerStarted = true;
-      port.postMessage({ protocol: PROTOCOL, type: "pull" });
+      fulfillPendingPull(session, session.attempt);
     } else if (incoming.type === "chunk") {
-      if (!pending || !(incoming.buffer instanceof ArrayBuffer)) return;
-      session.pendingPull = null;
-      try {
-        session.controller.enqueue(new Uint8Array(incoming.buffer));
-        pending.resolve();
-      } catch (cause) {
-        pending.reject(cause);
+      if (
+        !(incoming.buffer instanceof ArrayBuffer) ||
+        !Number.isInteger(incoming.attempt) ||
+        incoming.attempt < 1 ||
+        incoming.attempt > session.attempt
+      )
+        return;
+      const chunk = new Uint8Array(incoming.buffer);
+      const canDeliverNow =
+        pending &&
+        session.claimed &&
+        session.consumerStarted &&
+        session.replayIndex === session.replayChunks.length;
+
+      if (
+        session.replayable &&
+        session.replayBytes + chunk.byteLength <= MAX_REPLAY_BYTES
+      ) {
+        // The chunk may have been granted to a consumer just before WebKit replaced it. Retain
+        // it first, then let the current consumer replay bytes in strict file order.
+        session.replayChunks.push(chunk);
+        session.replayBytes += chunk.byteLength;
+        fulfillPendingPull(session, session.attempt);
+      } else if (canDeliverNow) {
+        session.replayable = false;
+        session.replayChunks = [];
+        session.replayBytes = 0;
+        session.replayIndex = 0;
+        session.pendingPull = null;
+        try {
+          session.controller.enqueue(chunk);
+          pending.resolve();
+        } catch (cause) {
+          pending.reject(cause);
+        }
+      } else {
+        failSession(
+          session,
+          "The browser replaced the download after its replay buffer was exhausted.",
+        );
       }
     } else if (incoming.type === "close") {
+      session.closed = true;
       clearTimeout(session.reattachExpiry);
       session.pendingPull = null;
-      session.controller?.close();
-      pending?.resolve();
+      if (!session.claimed || !session.controller) {
+        failSession(
+          session,
+          "The browser detached before the streamed response finished.",
+        );
+        return;
+      }
+      try {
+        session.controller.close();
+        pending?.resolve();
+      } catch (cause) {
+        pending?.reject(cause);
+        failSession(session, cause);
+        return;
+      }
+      port.postMessage({ protocol: PROTOCOL, type: "closed" });
       sessions.delete(token);
       port.close();
     } else if (incoming.type === "error") {
+      session.closed = true;
       clearTimeout(session.reattachExpiry);
       const error = new Error(
         incoming.reason || "The video encoder stopped the export.",
       );
       session.failed = error;
       session.pendingPull = null;
-      session.controller?.error(error);
+      try {
+        session.controller?.error(error);
+      } catch {
+        // The browser may have already closed its response while the encoder was aborting.
+      }
       pending?.reject(error);
       sessions.delete(token);
       port.close();

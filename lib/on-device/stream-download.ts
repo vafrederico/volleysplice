@@ -1,7 +1,9 @@
-const PROTOCOL = "volleycut-export-v2";
+const PROTOCOL = "volleycut-export-v3";
 const CONSUMER_SETTLE_MS = 500;
 const PREPARE_TIMEOUT_MS = 15_000;
 const PULL_TIMEOUT_MS = 60_000;
+const CLOSE_TIMEOUT_MS = 15_000;
+const KEEPALIVE_INTERVAL_MS = 10_000;
 const IFRAME_CLEANUP_MS = 60_000;
 
 type ReadyRegistration = {
@@ -137,16 +139,29 @@ export function startServiceWorkerStreamDownload(
 
   const token = randomToken();
   const channel = new MessageChannel();
-  let pullCredits = 0;
+  const pullCredits: number[] = [];
   let failed: Error | null = null;
   let downloadFrame: HTMLIFrameElement | null = null;
   let consumerSettleTimer: number | null = null;
   let prepareTimer: number | null = null;
+  let keepAliveTimer: number | null = null;
   let pendingPull: {
+    resolve: (attempt: number) => void;
+    reject: (error: Error) => void;
+    timeout: number;
+  } | null = null;
+  let pendingClose: {
     resolve: () => void;
     reject: (error: Error) => void;
     timeout: number;
   } | null = null;
+
+  const clearKeepAlive = () => {
+    if (keepAliveTimer !== null) {
+      window.clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
+  };
 
   const fail = (error: Error) => {
     failed = error;
@@ -157,6 +172,12 @@ export function startServiceWorkerStreamDownload(
       pendingPull.reject(error);
       pendingPull = null;
     }
+    if (pendingClose) {
+      window.clearTimeout(pendingClose.timeout);
+      pendingClose.reject(error);
+      pendingClose = null;
+    }
+    clearKeepAlive();
   };
 
   channel.port1.onmessage = (event: MessageEvent) => {
@@ -205,13 +226,22 @@ export function startServiceWorkerStreamDownload(
         consumerSettleTimer = null;
       }
     } else if (message.type === "pull") {
+      if (!Number.isInteger(message.attempt)) return;
+      const attempt = message.attempt as number;
       if (pendingPull) {
         const waiter = pendingPull;
         pendingPull = null;
         window.clearTimeout(waiter.timeout);
-        waiter.resolve();
+        waiter.resolve(attempt);
       } else {
-        pullCredits += 1;
+        pullCredits.push(attempt);
+      }
+    } else if (message.type === "closed") {
+      if (pendingClose) {
+        const waiter = pendingClose;
+        pendingClose = null;
+        window.clearTimeout(waiter.timeout);
+        waiter.resolve();
       }
     } else if (message.type === "cancel") {
       fail(
@@ -232,11 +262,11 @@ export function startServiceWorkerStreamDownload(
 
   const waitForPull = () => {
     if (failed) return Promise.reject(failed);
-    if (pullCredits > 0) {
-      pullCredits -= 1;
-      return Promise.resolve();
+    const attempt = pullCredits.shift();
+    if (attempt !== undefined) {
+      return Promise.resolve(attempt);
     }
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<number>((resolve, reject) => {
       const timeout = window.setTimeout(() => {
         pendingPull = null;
         const error = new Error(
@@ -251,18 +281,34 @@ export function startServiceWorkerStreamDownload(
 
   const writable = new WritableStream<Uint8Array>({
     async write(chunk) {
-      await waitForPull();
+      const attempt = await waitForPull();
       if (failed) throw failed;
       const buffer = exactTransferBuffer(chunk);
-      channel.port1.postMessage({ protocol: PROTOCOL, type: "chunk", buffer }, [
-        buffer,
-      ]);
+      channel.port1.postMessage(
+        { protocol: PROTOCOL, type: "chunk", attempt, buffer },
+        [buffer],
+      );
     },
-    close() {
+    async close() {
       if (consumerSettleTimer !== null)
         window.clearTimeout(consumerSettleTimer);
       if (prepareTimer !== null) window.clearTimeout(prepareTimer);
+      if (failed) throw failed;
+      const closed = new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          pendingClose = null;
+          const error = new Error(
+            "The browser did not finish the streamed response. Retry compatible export.",
+          );
+          failed = error;
+          clearKeepAlive();
+          reject(error);
+        }, CLOSE_TIMEOUT_MS);
+        pendingClose = { resolve, reject, timeout };
+      });
       channel.port1.postMessage({ protocol: PROTOCOL, type: "close" });
+      await closed;
+      clearKeepAlive();
       channel.port1.close();
       const frame = downloadFrame;
       if (frame) window.setTimeout(() => frame.remove(), IFRAME_CLEANUP_MS);
@@ -271,6 +317,7 @@ export function startServiceWorkerStreamDownload(
       if (consumerSettleTimer !== null)
         window.clearTimeout(consumerSettleTimer);
       if (prepareTimer !== null) window.clearTimeout(prepareTimer);
+      clearKeepAlive();
       channel.port1.postMessage({
         protocol: PROTOCOL,
         type: "error",
@@ -289,6 +336,10 @@ export function startServiceWorkerStreamDownload(
     { protocol: PROTOCOL, type: "prepare", token, fileName },
     [channel.port2],
   );
+  // WebKit may otherwise terminate a long-running generated response between MP4 fragments.
+  keepAliveTimer = window.setInterval(() => {
+    channel.port1.postMessage({ protocol: PROTOCOL, type: "heartbeat" });
+  }, KEEPALIVE_INTERVAL_MS);
 
   return {
     writable,
