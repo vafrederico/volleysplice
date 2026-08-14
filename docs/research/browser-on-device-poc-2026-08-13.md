@@ -24,6 +24,8 @@ The review timeline has two tracks: raw model predictions and the actual padded 
 
 The pinned browser dependencies are Mediabunny 1.53.1, OpenCV.js 4.12.0-release.1, and fft.js 4.0.4. The checked-in model JSON is about 100 KB. OpenCV.js is a generated, ignored browser asset of about 10.9 MB, copied from the pinned package by `npm run browser-assets` before development and production builds.
 
+The checked-in `model-9c92b8e9333f` bundle comes from the beach-excluded retraining workspace, not the same-named model directories in the original workspace. It serializes `full-audiovisual-audio-normalized-v3` as the rally head (`ca004bff50fb…`), `serve-specialist-audio-normalized-v5` as the serve head (`5ff951b60ee8…`), and `dead-state-transition-audio-normalized-v5-no-legacy-final` as the dead-state head (`9c92b8e9333f…`), along with the decoder, composition, and refinement settings used by that stack. The frozen Y9 feature rows come from the canonical feature cache in the original labeling workspace, while the 37 expected intervals come from the corresponding beach-excluded analysis. That split is intentional: it checks the deployed no-beach bundle against a stable real feature sequence.
+
 ## Proxy versus raw source
 
 The canonical indoor fixture has two relevant sources:
@@ -43,7 +45,7 @@ Analysis and export therefore remain deliberately separate. Feature frames never
 
 There is no court polygon, court-line detector, or drawn-court label in this model path. The POC does not draw one.
 
-The training/evaluation manifest did, however, provide one coarse normalized rectangular ROI for each of the seven non-beach recordings. For the canonical indoor source it is `(x=.04, y=.14, width=.92, height=.84)`. The grass sources use similarly broad rectangles. Those rectangles exclude irrelevant frame edges; they do not identify court geometry.
+The labeling manifests do, however, provide one coarse normalized rectangular ROI for each of the nine canonical recordings, and the browser profile lookup recognizes all nine stable proxy IDs. For the canonical indoor source it is `(x=.04, y=.14, width=.92, height=.84)`. The grass sources use similarly broad rectangles; both beach proxies use `(x=.02, y=.12, width=.96, height=.86)`. Those rectangles exclude irrelevant frame edges; they do not identify court geometry. Because the checked-in bundle was retrained without beach footage, beach predictions are out-of-domain comparison results even though their extraction geometry is known.
 
 The UI calls this a “camera crop,” shows an adjustable rectangle, and allows full-frame fallback. Full-frame inference works technically but is a distribution shift from the trained non-beach recordings.
 
@@ -55,7 +57,7 @@ The UI calls this a “camera crop,” shows an adjustable rectangle, and allows
 - Eight additional model/decoder tests cover validation, clipping, hysteresis, bridging, short events, peak/NMS behavior, composition, and refinement.
 - The custom OpenCV.js phase-correlation port was compared with Python OpenCV on a synthetic `(3, -2)` shift and matched to sub-micro-pixel precision with effectively identical response.
 - In the shared desktop browser, pinned OpenCV.js Farneback flow over 192×108 synthetic frame pairs averaged about 2.2 ms per pair across 50 warm iterations. This isolates the dominant feature primitive from media decode and is supportive, not an end-to-end throughput measurement.
-- TypeScript, ESLint, 64 web tests, all 466 Python tests, and the optimized Next.js build pass. `/on-device` and `/on-device-ui` are statically prerendered.
+- TypeScript, ESLint, 74 web tests, all 466 Python tests, and the optimized Next.js build pass. `/on-device`, `/on-device-ui`, and the gated `/on-device-batch` runner are statically prerendered.
 - The supplied HTTPS reverse proxy exposes a secure context. In the shared desktop Chromium instance, `VideoDecoder`, `AudioDecoder`, `VideoEncoder`, `AudioEncoder`, `showSaveFilePicker`, and HMR are available. The live UI reports all four capability badges as ready.
 - Two full 868.5-second, 240 MB canonical proxy runs completed 3,474 browser feature frames and all three model heads without upload. The pre-fix run returned 39 candidates, the timestamp-corrected run returned 40, and the canonical cached-feature path returns 37.
 - Browser/canonical timestamps match bit-for-bit on all 3,474 rows. Visual parity is already high (`diff_mean` correlation 0.99998, `flow_mean` 0.99990, phase response 0.99959). Audio was the dominant drift: for example RMS correlation was 0.675 at zero lag and 0.874 at the next pooled row.
@@ -63,6 +65,33 @@ The UI calls this a “camera crop,” shows an adjustable rectangle, and allows
 - `/on-device-ui` stores the latest 40 browser predictions at their full returned precision. At the 3 s / 2 s defaults they render as 38 merged export sections; changing both controls to 8 seconds immediately collapses them to 12 sections.
 - The exact export path was round-tripped through browser origin-private storage without opening a native save dialog. A 2.5-second proxy interval produced a 2.517-second 960×540 AVC/AAC MP4 (1.44 MB), which the product's own media probe reopened as “Decode Ready.”
 - The raw-master path was validated on the copied 4K60 VP9/Opus segment. Its real on-device prediction (`8.375–19.859`) exported as an 11.499-second 3840×2160 AVC/AAC MP4 (71.2 MB) in about 50 seconds, and the product probe reopened it as “Decode Ready.” This proves a short 4K round trip, not full-match endurance or subjective quality.
+
+## Browser batch comparison completed
+
+The HTTPS desktop runner at `/on-device-batch` completed all nine canonical training-style proxies sequentially in the shared Chromium browser. It range-read and decoded approximately 2.74 GB / 2 h 31 min of source media, ran the unchanged browser feature and inference path, and exported no video. The run saved **410 exact, unpadded prediction ranges**:
+
+| Recording | Environment | Ranges | Core predicted time |
+|---|---|---:|---:|
+| `indoor-source-07` | indoor | 40 | 5:50 |
+| `beach-source-02` | beach, OOD | 25 | 14:18 |
+| `beach-source-01` | beach, OOD | 34 | 8:54 |
+| `grass-source-09` | grass | 46 | 5:57 |
+| `grass-source-01` | grass | 60 | 6:40 |
+| `grass-source-10` | grass | 52 | 5:33 |
+| `grass-source-04` | grass | 55 | 6:05 |
+| `indoor-source-01` | indoor | 42 | 7:18 |
+| `indoor-source-05` | indoor | 56 | 6:58 |
+| **Total** |  | **410** | **67:34** |
+
+The range count is descriptive, not an accuracy score. In particular, the two beach runs are qualitative out-of-distribution probes because beach footage was excluded from training; the unusually long first-beach result should not be read as model validation.
+
+Each result is an append-only ordinary analysis document under `/mnt/freenas/volleycut/labeling-v1-2026-08-09-no-beach-2026-08-12/analyses/model-browser-on-device-9c92b8e9333f--<recording-id>/analysis.json`, with the existing per-recording `court-preview.jpg` copied alongside it. The artifact ID and `Browser on-device · model-9c92b8e9333f` variant label keep these timelines distinct in the comparison UI, while `modelVersion: dead-state-transition-audio-normalized-v5-no-legacy-final` preserves the underlying offline lineage and `analysis.method: browser-on-device-webcodecs-opencv-wasm-v1` identifies the execution path. Each document binds the source metadata and manifest ROI, exact intervals, bundle and component hashes, secure-context/browser provenance, and explicit parity/resampler warnings. Beach documents add an OOD warning.
+
+The final audit found all nine exact recording IDs, 410 sorted/non-overlapping/in-bounds ranges, nine matching court previews, no schema or UI-parser errors, and no partial/staging directories. All nine result URLs returned successfully in the main comparison UI under the “Without beach” corpus. The Y9 URL-sourced run reproduced every start/end boundary in the checked-in 40-range browser cache exactly; repeat-decode confidence differences were small (mean absolute difference `0.000297`, maximum `0.004607`). This is browser-to-browser reproducibility, not parity with the 37-range canonical FFmpeg/OpenCV result.
+
+The batch route is deliberately operational tooling rather than a public upload service. It is disabled unless a high-entropy bearer token and an existing output root are supplied through environment variables. The token remains in the browser URL fragment, requests are same-origin, and a dedicated bearer-protected media route range-serves only the fixed nine proxies. Videos remain server-local, submissions are size/schema/model/source constrained, and persistence uses an atomic directory rename with append-only collision handling. Only ranges, fixed media metadata, and concise provenance cross back to the server.
+
+Before another token-enabled run, the fronting proxy must redact or drop the `Authorization` request header in every access-log path, including rejected 4xx requests. The current development Traefik configuration keeps request headers by default and is not safe for reusable bearer credentials. The completed run used a temporary token and its token-enabled server was stopped afterward; that credential must not be reused.
 
 ## Remaining parity and product gates
 
@@ -116,11 +145,23 @@ npm run dev -- --hostname 0.0.0.0 -p 3001
 
 Open `https://internal.example/on-device` for media operations, or `/on-device-ui` for the no-decode UI fixture. The reverse-proxy hostname is included in `allowedDevOrigins`; additional development hosts can be supplied with the comma-separated `VOLLEYCUT_DEV_ORIGINS` environment variable. Plain HTTP is useful only for inspecting UI and static assets.
 
+The corpus batch writer is off by default. For an explicitly authorized local run, start the server with temporary credentials and the existing no-beach analysis root:
+
+```bash
+export VOLLEYCUT_ON_DEVICE_BATCH_TOKEN='<temporary-high-entropy-token>'
+export VOLLEYCUT_ON_DEVICE_BATCH_OUTPUT_ROOT='/mnt/freenas/volleycut/labeling-v1-2026-08-09-no-beach-2026-08-12/analyses'
+npm run dev -- --hostname 0.0.0.0 -p 3001
+```
+
+Then open `https://internal.example/on-device-batch#token=<temporary-high-entropy-token>`. Completed artifact directories are skipped on resume and are never overwritten. Unset the two variables or stop the temporary server after the run. Results appear automatically in the main comparison UI; for example, the Y9 browser run is selected by `/?video=indoor-source-07&analysis=model-browser-on-device-9c92b8e9333f--indoor-source-07&corpus=without-beach`.
+
+Do not start this mode until the reverse proxy's access-log header policy explicitly redacts or drops `Authorization`; a default “keep” policy can record the bearer on rejected requests.
+
 Regenerate the model and frozen golden fixture with:
 
 ```bash
 python3 scripts/export-browser-model.py \
-  /mnt/freenas/volleycut/labeling-v1-2026-08-09/models \
+  /mnt/freenas/volleycut/labeling-v1-2026-08-09-no-beach-2026-08-12/models \
   public/on-device/model-9c92b8e9333f.json
 
 python3 scripts/export-browser-golden-fixture.py \
@@ -129,4 +170,4 @@ python3 scripts/export-browser-golden-fixture.py \
   tests/fixtures
 ```
 
-Those scripts intentionally point at the canonical local artifacts and should be rerun only when the source model or fixture changes.
+The model export must use the beach-excluded models root shown above to preserve the documented three-head lineage. The fixture export intentionally combines the original canonical Y9 feature cache with the beach-excluded stack's Y9 analysis, and should be rerun only when one of those source artifacts changes.

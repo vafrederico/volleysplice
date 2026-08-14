@@ -15,6 +15,16 @@ const KNOWN_PROFILES: ReadonlyArray<{
   roi: NormalizedRoi;
 }> = [
   {
+    videoId: "beach-source-02",
+    label: "Known beach camera · beach-source-02",
+    roi: { x: 0.02, y: 0.12, width: 0.96, height: 0.86 },
+  },
+  {
+    videoId: "beach-source-01",
+    label: "Known beach camera · beach-source-01",
+    roi: { x: 0.02, y: 0.12, width: 0.96, height: 0.86 },
+  },
+  {
     videoId: "grass-source-04",
     label: "Known grass camera · grass-source-04",
     roi: { x: 0.02, y: 0.22, width: 0.96, height: 0.76 },

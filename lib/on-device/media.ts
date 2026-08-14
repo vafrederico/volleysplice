@@ -2,6 +2,7 @@ import {
   ALL_FORMATS,
   BlobSource,
   Input,
+  UrlSource,
   type InputAudioTrack,
   type InputVideoTrack,
 } from "mediabunny";
@@ -15,19 +16,19 @@ export type OpenedMedia = {
   info: OnDeviceMediaInfo;
 };
 
-export async function openLocalMedia(file: File): Promise<OpenedMedia> {
-  const input = new Input({
-    source: new BlobSource(file, { maxCacheSize: 8 * 1024 * 1024 }),
-    formats: ALL_FORMATS,
-  });
+const MAX_SOURCE_CACHE_SIZE = 8 * 1024 * 1024;
+
+type ProbeMessages = { unreadable: string; noVideo: string };
+
+async function probeMedia(input: Input, messages: ProbeMessages): Promise<OpenedMedia> {
   try {
     if (!(await input.canRead())) {
-      throw new Error("This browser cannot read the selected media container.");
+      throw new Error(messages.unreadable);
     }
 
     const videoTrack = await input.getPrimaryVideoTrack();
     if (!videoTrack) {
-      throw new Error("The selected file has no video track.");
+      throw new Error(messages.noVideo);
     }
     const audioTrack = await input.getPrimaryAudioTrack();
     const [duration, canDecodeVideo, canDecodeAudio] = await Promise.all([
@@ -75,6 +76,32 @@ export async function openLocalMedia(file: File): Promise<OpenedMedia> {
     input.dispose();
     throw error;
   }
+}
+
+export function openLocalMedia(file: File): Promise<OpenedMedia> {
+  return probeMedia(new Input({
+    source: new BlobSource(file, { maxCacheSize: MAX_SOURCE_CACHE_SIZE }),
+    formats: ALL_FORMATS,
+  }), {
+    unreadable: "This browser cannot read the selected media container.",
+    noVideo: "The selected file has no video track.",
+  });
+}
+
+export function openUrlMedia(
+  url: string | URL | Request,
+  requestInit?: Omit<RequestInit, "signal">,
+): Promise<OpenedMedia> {
+  return probeMedia(new Input({
+    source: new UrlSource(url, {
+      maxCacheSize: MAX_SOURCE_CACHE_SIZE,
+      requestInit,
+    }),
+    formats: ALL_FORMATS,
+  }), {
+    unreadable: "This browser cannot read the requested media container.",
+    noVideo: "The requested media has no video track.",
+  });
 }
 
 export function* analysisTimestamps(duration: number, fps: number) {
