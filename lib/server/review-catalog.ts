@@ -87,6 +87,10 @@ async function noBeachModelVersions(): Promise<Map<string, string>> {
         const analysisId = path.basename(path.dirname(row.analysisPath));
         if (/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(analysisId)) {
           versions.set(analysisId, coverage.model);
+          const separator = analysisId.indexOf("--");
+          if (separator > 0) {
+            versions.set(analysisId.slice(0, separator), coverage.model);
+          }
         }
       }
     }
@@ -100,7 +104,10 @@ function bindNoBeachModelVersion(
   analysis: ReviewAnalysis,
   versions: Map<string, string>,
 ): ReviewAnalysis {
-  const exactVersion = versions.get(analysis.id);
+  const separator = analysis.id.indexOf("--");
+  const exactVersion =
+    versions.get(analysis.id) ??
+    (separator > 0 ? versions.get(analysis.id.slice(0, separator)) : undefined);
   if (!exactVersion || exactVersion === analysis.modelVersion) return analysis;
   return {
     ...analysis,
