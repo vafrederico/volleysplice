@@ -10,7 +10,9 @@
     "prebuild": "npm run browser-assets",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
     "analysis:setup": "python3 -m venv .venv && .venv/bin/python -m pip install -r analysis/requirements.txt",
     "fixture:analysis": "bash scripts/create-analysis-fixture.sh",
     "dataset:status": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; python3 scripts/dataset-status.py",
@@ -52,12 +54,11 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.8",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "assemblyscript": "^0.28.8",
-    "eslint": "9.39.2",
-    "eslint-config-next": "16.3.0",
     "typescript": "^5.9.0"
   }
 }
