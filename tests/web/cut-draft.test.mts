@@ -6,6 +6,7 @@ import {
   buildFinalCutIntervals,
   createCutDraft,
   cutSourceRevision,
+  effectiveKeptCutIds,
   nextFinalCutTime,
   parseCutDraft,
   totalFinalCutSeconds,
@@ -127,6 +128,24 @@ test("playback-rate migration preserves the prior session state", () => {
   assert.equal(migrated?.playbackRate, 1);
 });
 
+test("manual missed cuts round-trip through on-device draft storage", () => {
+  const draft = createCutDraft(seed);
+  draft.cuts.push({
+    id: "M001",
+    coreStart: 40,
+    coreEnd: 45,
+    keepStart: 39.5,
+    keepEnd: 46,
+    confidence: 1,
+    included: true,
+    origin: "manual",
+  });
+
+  const restored = parseCutDraft(JSON.stringify(draft), seed);
+
+  assert.deepEqual(restored?.cuts.at(-1), draft.cuts.at(-1));
+});
+
 test("final edit list merges touching cuts and subtracts ignored source time", () => {
   const draft = createCutDraft(seed);
   draft.cuts = [
@@ -156,7 +175,7 @@ test("final edit list merges touching cuts and subtracts ignored source time", (
 
   const intervals = buildFinalCutIntervals(draft);
   assert.deepEqual(intervals, [
-    { start: 0, end: 4, cutIds: ["A", "B"] },
+    { start: 0, end: 4, cutIds: ["A"] },
     { start: 6, end: 14, cutIds: ["A", "B"] },
   ]);
   assert.equal(totalFinalCutSeconds(intervals), 12);
@@ -172,4 +191,21 @@ test("cut preview keeps playable time and jumps gaps to the next interval", () =
   assert.equal(nextFinalCutTime(intervals, 3), 3);
   assert.equal(nextFinalCutTime(intervals, 5), 8);
   assert.equal(nextFinalCutTime(intervals, 20), null);
+});
+
+test("fully ignored rallies contribute neither kept count nor output duration", () => {
+  const draft = createCutDraft(seed);
+  draft.cuts = [
+    { ...draft.cuts[0], id: "A", coreStart: 2, coreEnd: 8, keepStart: 0, keepEnd: 10 },
+    { ...draft.cuts[1], id: "B", coreStart: 12, coreEnd: 16, keepStart: 10, keepEnd: 18 },
+  ];
+  draft.ignoredIntervals = [
+    { id: "I1", start: 10, end: 20, reason: "non-game-content" },
+  ];
+
+  const intervals = buildFinalCutIntervals(draft);
+
+  assert.deepEqual(effectiveKeptCutIds(draft), ["A"]);
+  assert.deepEqual(intervals, [{ start: 0, end: 10, cutIds: ["A"] }]);
+  assert.equal(totalFinalCutSeconds(intervals), 10);
 });

@@ -21,6 +21,7 @@ import {
   createCutDraft,
   cutDraftStorageKey,
   cutDraftStorageKeys,
+  effectiveKeptCutIds,
   nextFinalCutTime,
   parseCutDraft,
   PLAYBACK_RATES,
@@ -183,7 +184,12 @@ export function CutEditor({
     : -1;
   const finalIntervals = useMemo(() => buildFinalCutIntervals(draft), [draft]);
   const keptSeconds = totalFinalCutSeconds(finalIntervals);
-  const includedCount = draft.cuts.filter((cut) => cut.included).length;
+  const effectiveKeptIds = useMemo(() => new Set(effectiveKeptCutIds(draft)), [draft]);
+  const keptCount = effectiveKeptIds.size;
+  const removedCount = draft.cuts.filter((cut) => !cut.included).length;
+  const fullyIgnoredCount = draft.cuts.filter(
+    (cut) => cut.included && !effectiveKeptIds.has(cut.id),
+  ).length;
   const focus = detailWindow(selected, playbackTime, initialAnalysis.duration);
   const activeMarkStart = manualStart ?? ignoreStart;
   const overviewCuts = activeMarkStart === null
@@ -646,6 +652,7 @@ export function CutEditor({
                   className={styles.overviewCut}
                   data-selected={cut.id === selected?.id || undefined}
                   data-included={cut.included || undefined}
+                  data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
                   data-origin={cut.origin}
                   style={{
                     left: `${timelinePercent(cut.keepStart, initialAnalysis.duration)}%`,
@@ -653,7 +660,7 @@ export function CutEditor({
                   }}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={() => selectCut(cut)}
-                  aria-label={`${cut.included ? "Keep" : "Removed"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}`}
+                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}`}
                 />
               ))}
               <span
@@ -672,8 +679,10 @@ export function CutEditor({
         <aside className={styles.summaryCard}>
           <span>FINAL EDIT LIST</span>
           <strong>{formatTime(keptSeconds)}</strong>
-          <p>{includedCount} kept · {draft.cuts.length - includedCount} removed</p>
+          <p>{keptCount} kept · {removedCount} removed</p>
+          {fullyIgnoredCount > 0 && <p>{fullyIgnoredCount} enabled rallies fully ignored</p>}
           <p>{draft.ignoredIntervals.length} ignored source sections</p>
+          <p>Duration includes padding and excludes ignored time</p>
           <div className={styles.paddingControls}>
             <div className={styles.paddingControl}>
               <label htmlFor="cut-padding-before">
@@ -767,6 +776,7 @@ export function CutEditor({
               <span
                 className={styles.keptRange}
                 data-included={selected.included || undefined}
+                data-ignored={selected.included && !effectiveKeptIds.has(selected.id) || undefined}
                 style={{
                   left: `${timelinePercent(selected.keepStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.keepEnd - selected.keepStart, focus.end - focus.start)}%`,
@@ -775,6 +785,7 @@ export function CutEditor({
               <span
                 className={styles.coreRange}
                 data-included={selected.included || undefined}
+                data-ignored={selected.included && !effectiveKeptIds.has(selected.id) || undefined}
                 style={{
                   left: `${timelinePercent(selected.coreStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.coreEnd - selected.coreStart, focus.end - focus.start)}%`,
@@ -955,7 +966,7 @@ export function CutEditor({
       <section className={styles.cutList}>
         <div className={styles.sectionHeading}>
           <div><span>ALL CUTS</span><strong>Cached labels and manual additions</strong></div>
-          <small>{includedCount} / {draft.cuts.length} kept</small>
+          <small>{keptCount} kept · {fullyIgnoredCount} fully ignored</small>
         </div>
         <div className={styles.cutCards}>
           {sortedCuts.map((cut, index) => (
@@ -963,6 +974,7 @@ export function CutEditor({
               key={cut.id}
               data-selected={cut.id === selected?.id || undefined}
               data-included={cut.included || undefined}
+              data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
             >
               <button type="button" className={styles.cutSelect} onClick={() => selectCut(cut)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
@@ -978,7 +990,7 @@ export function CutEditor({
                   included: !current.included,
                 }))}
               >
-                {cut.included ? "Keep" : "Removed"}
+                {!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"}
               </button>
             </article>
           ))}

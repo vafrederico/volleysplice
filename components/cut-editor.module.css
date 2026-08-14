@@ -302,6 +302,17 @@
   background: var(--cut-orange);
 }
 
+.overviewCut[data-ignored="true"] {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(91, 94, 85, .5) 0,
+    rgba(91, 94, 85, .5) 5px,
+    rgba(255, 255, 255, .25) 5px,
+    rgba(255, 255, 255, .25) 10px
+  );
+  opacity: .55;
+}
+
 .overviewCut[data-selected="true"] {
   z-index: 3;
   outline: 3px solid var(--cut-acid);
@@ -310,7 +321,7 @@
 
 .overviewIgnored {
   position: absolute;
-  z-index: 1;
+  z-index: 4;
   inset-block: 0;
   background: repeating-linear-gradient(
     135deg,
@@ -535,6 +546,16 @@
   background: rgba(39, 95, 194, .28);
 }
 
+.keptRange[data-ignored="true"] {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(91, 94, 85, .3) 0,
+    rgba(91, 94, 85, .3) 7px,
+    rgba(255, 255, 255, .18) 7px,
+    rgba(255, 255, 255, .18) 14px
+  );
+}
+
 .coreRange {
   position: absolute;
   z-index: 2;
@@ -557,6 +578,17 @@
 }
 
 .coreRange:not([data-included="true"]) {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(91, 94, 85, .72) 0,
+    rgba(91, 94, 85, .72) 7px,
+    rgba(169, 170, 164, .5) 7px,
+    rgba(169, 170, 164, .5) 14px
+  );
+  opacity: .55;
+}
+
+.coreRange[data-ignored="true"] {
   background: repeating-linear-gradient(
     135deg,
     rgba(91, 94, 85, .72) 0,
@@ -784,6 +816,17 @@
 }
 
 .cutCards article:not([data-included="true"]) {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(169, 170, 164, .2) 0,
+    rgba(169, 170, 164, .2) 8px,
+    rgba(255, 255, 255, .72) 8px,
+    rgba(255, 255, 255, .72) 16px
+  );
+  opacity: .58;
+}
+
+.cutCards article[data-ignored="true"] {
   background: repeating-linear-gradient(
     135deg,
     rgba(169, 170, 164, .2) 0,

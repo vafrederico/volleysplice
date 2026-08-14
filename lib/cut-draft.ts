@@ -302,6 +302,23 @@ function mergeIgnoredIntervals(
     }, []);
 }
 
+export function effectiveKeptCutIds(draft: CutDraft): string[] {
+  const ignored = mergeIgnoredIntervals(draft.ignoredIntervals);
+  return draft.cuts
+    .filter((cut) => cut.included && cut.keepEnd > cut.keepStart)
+    .filter((cut) => {
+      const ignoredSeconds = ignored.reduce((total, interval) => {
+        const overlap = Math.max(
+          0,
+          Math.min(cut.keepEnd, interval.end) - Math.max(cut.keepStart, interval.start),
+        );
+        return total + overlap;
+      }, 0);
+      return cut.keepEnd - cut.keepStart - ignoredSeconds > 0.000_001;
+    })
+    .map((cut) => cut.id);
+}
+
 export function buildFinalCutIntervals(draft: CutDraft): FinalCutInterval[] {
   const merged = draft.cuts
     .filter((cut) => cut.included && cut.keepEnd > cut.keepStart)
@@ -315,10 +332,10 @@ export function buildFinalCutIntervals(draft: CutDraft): FinalCutInterval[] {
         previous.cutIds.push(cut.id);
       }
       return intervals;
-    }, []);
+  }, []);
   const ignored = mergeIgnoredIntervals(draft.ignoredIntervals);
-  return ignored.reduce<FinalCutInterval[]>((remaining, excluded) => {
-    return remaining.flatMap((interval) => {
+  const remaining = ignored.reduce<FinalCutInterval[]>((intervals, excluded) => {
+    return intervals.flatMap((interval) => {
       if (excluded.end <= interval.start || excluded.start >= interval.end) {
         return [interval];
       }
@@ -340,6 +357,16 @@ export function buildFinalCutIntervals(draft: CutDraft): FinalCutInterval[] {
       return pieces;
     });
   }, merged);
+  const cutsById = new Map(draft.cuts.map((cut) => [cut.id, cut]));
+  return remaining.map((interval) => ({
+    ...interval,
+    cutIds: interval.cutIds.filter((id) => {
+      const cut = cutsById.get(id);
+      return Boolean(
+        cut && Math.min(cut.keepEnd, interval.end) - Math.max(cut.keepStart, interval.start) > 0.000_001,
+      );
+    }),
+  }));
 }
 
 export function totalFinalCutSeconds(intervals: FinalCutInterval[]): number {
