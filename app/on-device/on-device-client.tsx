@@ -919,7 +919,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   </span>
                 </label>
                 <fieldset className={styles.decodeExperiment} disabled={busy}>
-                  <legend>Decode experiment</legend>
+                  <legend>Decode settings</legend>
                   <label>
                     <span>Frame access</span>
                     <select
@@ -930,8 +930,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         setAnalysisProgress(null);
                       }}
                     >
-                      <option value="sparse">Sparse timestamps · baseline</option>
-                      <option value="sequential">Sequential pass · experiment</option>
+                      <option value="sequential">Sequential pass · default</option>
+                      <option value="sparse">Sparse timestamps · alternate</option>
                     </select>
                   </label>
                   <label>

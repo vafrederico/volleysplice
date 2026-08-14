@@ -39,7 +39,7 @@ test("visual feature checkpoints do not cross files or crop configurations", () 
   );
 });
 
-test("decode experiments have isolated checkpoints while the baseline key stays stable", () => {
+test("decode experiments have isolated checkpoints while the legacy sparse key stays stable", () => {
   const baseline = visualFeatureCacheKey(source, info, roi);
   assert.equal(
     baseline,

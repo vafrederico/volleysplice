@@ -39,9 +39,11 @@ import {
 
 const MODEL_URL = "/on-device/model-9c92b8e9333f.json";
 
-export const DEFAULT_VIDEO_DECODE_STRATEGY: VideoDecodeStrategy = "sparse";
+export const DEFAULT_VIDEO_DECODE_STRATEGY: VideoDecodeStrategy = "sequential";
 export const VIDEO_DECODER_HARDWARE_ACCELERATION: VideoDecoderAcceleration =
   "prefer-hardware";
+
+const LEGACY_FEATURE_CACHE_DECODE_STRATEGY: VideoDecodeStrategy = "sparse";
 
 type FeatureCacheState = NonNullable<AnalysisProgress["featureCache"]>;
 
@@ -215,7 +217,7 @@ export async function extractBrowserFeatures(
   let cachedValues: Float32Array<ArrayBufferLike> = new Float32Array(0);
   if (cacheSource) {
     const experiment =
-      decodeStrategy === DEFAULT_VIDEO_DECODE_STRATEGY &&
+      decodeStrategy === LEGACY_FEATURE_CACHE_DECODE_STRATEGY &&
       decoderAcceleration === VIDEO_DECODER_HARDWARE_ACCELERATION
         ? undefined
         : { decodeStrategy, decoderAcceleration };
