@@ -965,8 +965,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         setAnalysisProgress(null);
                       }}
                     >
-                      <option value="javascript">JavaScript · baseline</option>
-                      <option value="wasm">Fused WASM · experiment</option>
+                      <option value="wasm">Fused WASM · default</option>
+                      <option value="javascript">JavaScript · alternate</option>
                     </select>
                   </label>
                   <small>
@@ -1411,8 +1411,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   whether avoiding AV1 seek-batch overhead is faster. When supported, visual features
                   run in OpenCV WASM on a dedicated worker with a two-frame decode queue; model
                   inference still runs on the CPU. WebGPU availability does not accelerate this version.
-                  The optional WASM reduction experiment fuses the per-pixel statistics into one
-                  CPU kernel; it does not use the GPU.
+                  The default WASM reduction path fuses the per-pixel statistics into one CPU
+                  kernel; it does not use the GPU. JavaScript remains available for comparison.
                   Feature checkpoints stay in this browser&apos;s IndexedDB and are keyed to the exact
                   file and crop. After a refresh, choose the same file again to resume. Stage timing
                   and feature speed count only frames generated in the current run; restored frames

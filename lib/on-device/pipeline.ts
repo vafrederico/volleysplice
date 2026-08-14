@@ -43,9 +43,10 @@ const MODEL_URL = "/on-device/model-9c92b8e9333f.json";
 export const DEFAULT_VIDEO_DECODE_STRATEGY: VideoDecodeStrategy = "sequential";
 export const VIDEO_DECODER_HARDWARE_ACCELERATION: VideoDecoderAcceleration =
   "prefer-hardware";
-export const DEFAULT_FEATURE_REDUCTION_KERNEL: FeatureReductionKernel = "javascript";
+export const DEFAULT_FEATURE_REDUCTION_KERNEL: FeatureReductionKernel = "wasm";
 
 const LEGACY_FEATURE_CACHE_DECODE_STRATEGY: VideoDecodeStrategy = "sparse";
+const LEGACY_FEATURE_CACHE_REDUCTION_KERNEL: FeatureReductionKernel = "javascript";
 
 type FeatureCacheState = NonNullable<AnalysisProgress["featureCache"]>;
 
@@ -226,7 +227,7 @@ export async function extractBrowserFeatures(
     const experiment =
       decodeStrategy === LEGACY_FEATURE_CACHE_DECODE_STRATEGY &&
       decoderAcceleration === VIDEO_DECODER_HARDWARE_ACCELERATION &&
-      reductionKernel === DEFAULT_FEATURE_REDUCTION_KERNEL
+      reductionKernel === LEGACY_FEATURE_CACHE_REDUCTION_KERNEL
         ? undefined
         : {
             decodeStrategy,
