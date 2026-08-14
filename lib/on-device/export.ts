@@ -38,6 +38,22 @@ type SavePicker = (options: {
   types: Array<{ description: string; accept: Record<string, string[]> }>;
 }) => Promise<SaveFileHandle>;
 
+type ExportDestination = {
+  kind: "direct" | "opfs";
+  createWritable(): Promise<WritableStream<unknown>>;
+  finish(): Promise<PreparedVideoExport | null>;
+  discard(): Promise<void>;
+};
+
+export type PreparedVideoExport = {
+  file: File;
+  fileName: string;
+};
+
+export type PreparedVideoDelivery = "shared" | "downloaded";
+
+const OPFS_EXPORT_NAME = "volleycut-latest-export.mp4";
+
 function safeBaseName(filename: string): string {
   return (
     filename
@@ -47,14 +63,90 @@ function safeBaseName(filename: string): string {
   );
 }
 
-function picker(): SavePicker {
+function picker(): SavePicker | null {
   const candidate = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
-  if (!candidate) {
+  return candidate?.bind(window) ?? null;
+}
+
+export function supportsOpfsExport(): boolean {
+  return typeof navigator !== "undefined" && typeof navigator.storage?.getDirectory === "function";
+}
+
+async function chooseExportDestination(fileName: string): Promise<ExportDestination> {
+  const savePicker = picker();
+  if (savePicker) {
+    // Keep this call before any await so Chromium retains the initiating click's activation.
+    const fileHandle = await savePicker({
+      suggestedName: fileName,
+      types: [{ description: "MP4 video", accept: { "video/mp4": [".mp4"] } }],
+    });
+    return {
+      kind: "direct",
+      createWritable: () => fileHandle.createWritable(),
+      finish: async () => null,
+      discard: async () => undefined,
+    };
+  }
+
+  if (!supportsOpfsExport()) {
     throw new Error(
-      "Direct-to-disk export needs the File System Access API. Use desktop Chrome or Edge.",
+      "Video export needs either direct file access or origin-private file storage in this browser.",
     );
   }
-  return candidate.bind(window);
+
+  const root = await navigator.storage.getDirectory();
+  const fileHandle = await root.getFileHandle(OPFS_EXPORT_NAME, { create: true });
+  if (typeof fileHandle.createWritable !== "function") {
+    await root.removeEntry(OPFS_EXPORT_NAME).catch(() => undefined);
+    throw new Error("This browser can open origin-private storage but cannot write the exported video.");
+  }
+
+  return {
+    kind: "opfs",
+    createWritable: () => fileHandle.createWritable({ keepExistingData: false }),
+    finish: async () => {
+      const storedFile = await fileHandle.getFile();
+      return {
+        // A File made from another Blob remains file-backed; this gives the share sheet a useful name
+        // without copying the completed video into a JavaScript ArrayBuffer.
+        file: new File([storedFile], fileName, {
+          type: "video/mp4",
+          lastModified: storedFile.lastModified,
+        }),
+        fileName,
+      };
+    },
+    discard: () => root.removeEntry(OPFS_EXPORT_NAME).catch(() => undefined),
+  };
+}
+
+function downloadPreparedFile(prepared: PreparedVideoExport): void {
+  const url = URL.createObjectURL(prepared.file);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = prepared.fileName;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function deliverPreparedVideoExport(
+  prepared: PreparedVideoExport,
+): Promise<PreparedVideoDelivery> {
+  const shareData: ShareData = {
+    files: [prepared.file],
+    title: prepared.fileName,
+  };
+  if (
+    typeof navigator.share === "function" &&
+    (typeof navigator.canShare !== "function" || navigator.canShare(shareData))
+  ) {
+    // Do not await anything before this call: Web Share consumes the current tap's activation.
+    await navigator.share(shareData);
+    return "shared";
+  }
+
+  downloadPreparedFile(prepared);
+  return "downloaded";
 }
 
 export async function exportRawQualityReel(
@@ -63,18 +155,23 @@ export async function exportRawQualityReel(
   onProgress?: (progress: ExportProgress) => void,
   expectedTimelineDuration?: number,
   onWakeLockState?: (state: WakeLockState) => void,
-): Promise<void> {
-  // Keep the picker at the top of the user-initiated call so Chromium retains activation.
-  const fileHandle = await picker()({
-    suggestedName: `${safeBaseName(file.name)}-volleycut.mp4`,
-    types: [{ description: "MP4 video", accept: { "video/mp4": [".mp4"] } }],
-  });
-  const media = await openLocalMedia(file);
+): Promise<PreparedVideoExport | null> {
+  const outputName = `${safeBaseName(file.name)}-volleycut.mp4`;
+  // Destination selection stays at the top of the user-initiated call for the desktop picker.
+  const destination = await chooseExportDestination(outputName);
+  let media: Awaited<ReturnType<typeof openLocalMedia>>;
+  try {
+    media = await openLocalMedia(file);
+  } catch (error) {
+    await destination.discard();
+    throw error;
+  }
   if (
     expectedTimelineDuration !== undefined &&
     !timelinesHaveMatchingDuration(media.info.duration, expectedTimelineDuration)
   ) {
     media.input.dispose();
+    await destination.discard();
     throw new Error(
       `The export master is ${media.info.duration.toFixed(2)} s long, but the analyzed file is ${expectedTimelineDuration.toFixed(2)} s. Choose the matching raw master with the same timeline.`,
     );
@@ -82,34 +179,51 @@ export async function exportRawQualityReel(
   const intervals = normalizeExportIntervals(requestedIntervals, media.info.duration);
   if (!intervals.length) {
     media.input.dispose();
+    await destination.discard();
     throw new Error("Select at least one non-empty interval before exporting.");
   }
   const totalSeconds = intervals.reduce((total, interval) => total + interval.end - interval.start, 0);
   const videoQuality = new Quality("very-high");
   const audioQuality = new Quality("high");
-  const [videoSupported, audioSupported] = await Promise.all([
-    canEncodeVideo("avc", {
-      width: media.info.width,
-      height: media.info.height,
-      quality: videoQuality,
-      hardwareAcceleration: "prefer-hardware",
-    }),
-    media.audioTrack
-      ? canEncodeAudio("aac", {
-          numberOfChannels: media.info.channels ?? 2,
-          sampleRate: media.info.sampleRate ?? 48_000,
-          quality: audioQuality,
-        })
-      : Promise.resolve(true),
-  ]);
+  let videoSupported: boolean;
+  let audioSupported: boolean;
+  try {
+    [videoSupported, audioSupported] = await Promise.all([
+      canEncodeVideo("avc", {
+        width: media.info.width,
+        height: media.info.height,
+        quality: videoQuality,
+        hardwareAcceleration: "prefer-hardware",
+      }),
+      media.audioTrack
+        ? canEncodeAudio("aac", {
+            numberOfChannels: media.info.channels ?? 2,
+            sampleRate: media.info.sampleRate ?? 48_000,
+            quality: audioQuality,
+          })
+        : Promise.resolve(true),
+    ]);
+  } catch (error) {
+    media.input.dispose();
+    await destination.discard();
+    throw error;
+  }
   if (!videoSupported || !audioSupported) {
     media.input.dispose();
+    await destination.discard();
     throw new Error(
       `This browser cannot encode the source at ${media.info.width}×${media.info.height} as AVC/AAC.`,
     );
   }
 
-  const writable = await fileHandle.createWritable();
+  let writable: WritableStream<unknown>;
+  try {
+    writable = await destination.createWritable();
+  } catch (error) {
+    media.input.dispose();
+    await destination.discard();
+    throw error;
+  }
   const output = new Output({
     format: new Mp4OutputFormat({ fastStart: false }),
     target: new StreamTarget(writable as WritableStream<StreamTargetChunk>, {
@@ -221,13 +335,26 @@ export async function exportRawQualityReel(
     };
 
     await Promise.all([videoPump(), audioPump()]);
-    reportProgress(totalSeconds, "Finalizing MP4 on disk", true);
+    reportProgress(
+      totalSeconds,
+      destination.kind === "opfs"
+        ? "Finalizing MP4 in private device storage"
+        : "Finalizing MP4 on disk",
+      true,
+    );
     await output.finalize();
-    reportProgress(totalSeconds, "MP4 written from the original file", true);
+    const prepared = await destination.finish();
+    reportProgress(
+      totalSeconds,
+      prepared ? "MP4 ready to share or save" : "MP4 written from the original file",
+      true,
+    );
+    return prepared;
   } catch (error) {
     if (outputStarted && output.state !== "finalized" && output.state !== "canceled") {
       await output.cancel().catch(() => undefined);
     }
+    await destination.discard();
     throw error;
   } finally {
     media.input.dispose();

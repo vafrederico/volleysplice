@@ -100,6 +100,7 @@ export function App() {
   const openedMedia = useRef<OpenedMedia | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const elapsedTimer = useRef<number | null>(null);
+  const resumePreviewAfterSeek = useRef(false);
 
   const webCodecsReady =
     "VideoDecoder" in window && "AudioDecoder" in window && "VideoFrame" in window;
@@ -129,7 +130,7 @@ export function App() {
     if (!webCodecsReady) {
       setError(
         secureContext
-          ? "This browser does not expose the WebCodecs APIs needed for local analysis. Use a current desktop Chrome or Edge release."
+          ? "This browser does not expose the WebCodecs APIs needed for local analysis. Use Safari 26 or a current Chrome or Edge release."
           : "Local analysis requires HTTPS. Deploy this static app over HTTPS, or use localhost during development.",
       );
       setWorkState("error");
@@ -143,6 +144,7 @@ export function App() {
     setAnalysis(null);
     setRoi(COURT_CENTERED_ROI);
     setError(null);
+    resumePreviewAfterSeek.current = false;
     setProgress({
       stage: "opening",
       completed: 0,
@@ -323,7 +325,26 @@ export function App() {
               className={styles.videoStage}
               style={{ aspectRatio: `${info.width} / ${info.height}` }}
             >
-              <video src={previewUrl} controls preload="metadata" playsInline />
+              <video
+                src={previewUrl}
+                controls
+                preload="metadata"
+                playsInline
+                onPlay={() => {
+                  resumePreviewAfterSeek.current = true;
+                }}
+                onPause={(event) => {
+                  if (!event.currentTarget.seeking) resumePreviewAfterSeek.current = false;
+                }}
+                onEnded={() => {
+                  resumePreviewAfterSeek.current = false;
+                }}
+                onSeeked={(event) => {
+                  if (resumePreviewAfterSeek.current) {
+                    void event.currentTarget.play().catch(() => undefined);
+                  }
+                }}
+              />
               <div
                 className={styles.roiBox}
                 style={{
@@ -432,7 +453,7 @@ export function App() {
 
       <footer className={styles.footer}>
         <span>All media, features, predictions, and edit drafts stay in this browser.</span>
-        <span>Desktop Chrome or Edge · HTTPS required outside localhost</span>
+        <span>Chrome, Edge, or Safari 26 · HTTPS required outside localhost</span>
       </footer>
     </main>
   );

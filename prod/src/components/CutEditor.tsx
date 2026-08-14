@@ -23,7 +23,13 @@ import {
   type EditableCut,
 } from "@/lib/cut-draft";
 import { formatTime, timelinePercent } from "@/lib/edit-list";
+import {
+  deliverPreparedVideoExport,
+  supportsOpfsExport,
+  type PreparedVideoExport,
+} from "@/lib/on-device/export-delivery";
 import type { ExportProgress } from "@/lib/on-device/export";
+import { requestPlayingSeek } from "@/lib/on-device/player";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
@@ -120,6 +126,7 @@ export function CutEditor({
   const timelineDragRef = useRef<TimelineDrag | null>(null);
   const suppressTimelineClickUntilRef = useRef(0);
   const previewEndRef = useRef<number | null>(null);
+  const resumeAfterSeekRef = useRef(false);
   const seed = useMemo<CutDraftSeed>(
     () => ({
       analysisId: initialAnalysis.id,
@@ -141,6 +148,7 @@ export function CutEditor({
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [exportState, setExportState] = useState<ExportState>("idle");
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+  const [preparedExport, setPreparedExport] = useState<PreparedVideoExport | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWakeLock, setExportWakeLock] = useState<WakeLockState>("idle");
   const manualStart = draft.pendingManualStart;
@@ -232,8 +240,17 @@ export function CutEditor({
     ? Math.max(0, exportProgress.totalSeconds - exportProgress.completedSeconds) / exportRate
     : null;
   const directDiskSupported = "showSaveFilePicker" in window;
+  const opfsSupported = supportsOpfsExport();
+  const encodingSupported = "VideoEncoder" in window && "AudioEncoder" in window;
+  const localExportSupported = encodingSupported && (directDiskSupported || opfsSupported);
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
+    if (exportState !== "exporting") {
+      setPreparedExport(null);
+      setExportState("idle");
+      setExportProgress(null);
+      setExportError(null);
+    }
     setDraft((current) => ({
       ...mutate(current),
       updatedAt: new Date().toISOString(),
@@ -258,10 +275,18 @@ export function CutEditor({
     updateDraft((current) => ({ ...current, confidenceReviewThreshold: threshold }));
   }
 
-  function seekTo(time: number) {
+  function seekTo(time: number, resumePlayback?: boolean) {
     const clamped = Math.max(0, Math.min(initialAnalysis.duration, time));
     setPlaybackTime(clamped);
-    if (videoRef.current) videoRef.current.currentTime = clamped;
+    const video = videoRef.current;
+    if (!video) return;
+    const shouldResume = resumePlayback ?? !video.paused;
+    if (shouldResume) {
+      resumeAfterSeekRef.current = true;
+      requestPlayingSeek(video, clamped);
+    } else {
+      video.currentTime = clamped;
+    }
   }
 
   function trackPlayback(time: number) {
@@ -288,7 +313,10 @@ export function CutEditor({
         const target = nextFinalCutTime(finalIntervals, video.currentTime)
           ?? finalIntervals[0]?.start;
         if (target === undefined) return;
-        if (Math.abs(target - video.currentTime) > 0.01) seekTo(target);
+        if (Math.abs(target - video.currentTime) > 0.01) {
+          seekTo(target, true);
+          return;
+        }
       }
       await video.play();
     } else {
@@ -296,11 +324,10 @@ export function CutEditor({
     }
   }
 
-  async function previewSelected() {
+  function previewSelected() {
     if (!selected || !videoRef.current) return;
-    seekTo(selected.keepStart);
     previewEndRef.current = selected.keepEnd;
-    await videoRef.current.play();
+    seekTo(selected.keepStart, true);
   }
 
   function setBoundary(id: string, side: BoundarySide, value: number) {
@@ -583,6 +610,10 @@ export function CutEditor({
     } catch {
       // The in-memory reset still succeeds if storage is unavailable.
     }
+    setPreparedExport(null);
+    setExportState("idle");
+    setExportProgress(null);
+    setExportError(null);
     setDraft({ ...initialDraft, updatedAt: new Date().toISOString() });
     setSelectedId(initialDraft.cuts[0]?.id ?? "");
     setEditorMessage("Reset to the inferred model ranges.");
@@ -624,13 +655,14 @@ export function CutEditor({
     });
     try {
       const { exportRawQualityReel } = await import("@/lib/on-device/export");
-      await exportRawQualityReel(
+      const prepared = await exportRawQualityReel(
         sourceFile,
         finalIntervals,
         setExportProgress,
         initialAnalysis.duration,
         setExportWakeLock,
       );
+      setPreparedExport(prepared);
       setExportState("done");
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") {
@@ -640,6 +672,19 @@ export function CutEditor({
       }
       setExportError(cause instanceof Error ? cause.message : String(cause));
       setExportState("error");
+    }
+  }
+
+  async function deliverExport() {
+    if (!preparedExport) return;
+    setExportError(null);
+    try {
+      await deliverPreparedVideoExport(preparedExport);
+      setPreparedExport(null);
+      setExportState("done");
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setExportError(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
@@ -733,11 +778,23 @@ export function CutEditor({
             <button
               type="button"
               className={styles.exportButton}
-              disabled={exportState === "exporting" || finalIntervals.length === 0 || !directDiskSupported}
-              title={directDiskSupported ? undefined : "MP4 export requires desktop Chrome or Edge."}
-              onClick={() => void exportVideo()}
+              disabled={
+                exportState === "exporting" || finalIntervals.length === 0 || !localExportSupported
+              }
+              title={
+                localExportSupported
+                  ? undefined
+                  : "MP4 export requires video/audio WebCodecs encoders and writable local storage."
+              }
+              onClick={() => void (preparedExport ? deliverExport() : exportVideo())}
             >
-              {exportState === "exporting" ? "Encoding MP4…" : "Save MP4 video"}
+              {exportState === "exporting"
+                ? "Encoding MP4…"
+                : preparedExport
+                  ? "Share or save MP4"
+                  : directDiskSupported
+                    ? "Save MP4 video"
+                    : "Create MP4 video"}
             </button>
             <button type="button" className={styles.quietButton} onClick={downloadEditList}>
               Download JSON edit list
@@ -749,10 +806,12 @@ export function CutEditor({
           <div className={styles.exportDetails} aria-live="polite">
             <p>
               Exports the final edit at the original dimensions using a very-high-quality AVC/AAC encode.
-              Video data stays on this device and writes directly to the selected file.
+              Video data stays on this device and writes to a selected file or private browser storage.
             </p>
-            {!directDiskSupported && (
-              <strong>MP4 export requires desktop Chrome or Edge with direct-to-disk access.</strong>
+            {!localExportSupported && (
+              <strong>
+                MP4 export requires video/audio WebCodecs encoders and writable local storage.
+              </strong>
             )}
             {exportProgress && exportState === "exporting" && (
               <div className={styles.exportProgress}>
@@ -783,7 +842,13 @@ export function CutEditor({
                 </small>
               </div>
             )}
-            {exportState === "done" && (
+            {preparedExport && (
+              <strong>
+                Encoding is complete in private device storage. Tap Share or save MP4 to open the
+                iOS share sheet or download the file.
+              </strong>
+            )}
+            {exportState === "done" && !preparedExport && (
               <strong>
                 MP4 export completed
                 {exportProgress ? ` in ${preciseTime(exportProgress.elapsedSeconds)}` : ""}.
@@ -815,7 +880,8 @@ export function CutEditor({
                       return;
                     }
                     if (Math.abs(target - time) > 0.01) {
-                      event.currentTarget.currentTime = target;
+                      resumeAfterSeekRef.current = true;
+                      requestPlayingSeek(event.currentTarget, target);
                       trackPlayback(target);
                       return;
                     }
@@ -825,9 +891,23 @@ export function CutEditor({
                     previewEndRef.current = null;
                   }
                 }}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => setIsPlaying(false)}
+                onPlay={() => {
+                  resumeAfterSeekRef.current = true;
+                  setIsPlaying(true);
+                }}
+                onPause={(event) => {
+                  if (!event.currentTarget.seeking) resumeAfterSeekRef.current = false;
+                  setIsPlaying(false);
+                }}
+                onEnded={() => {
+                  resumeAfterSeekRef.current = false;
+                  setIsPlaying(false);
+                }}
+                onSeeked={(event) => {
+                  if (resumeAfterSeekRef.current) {
+                    void event.currentTarget.play().catch(() => undefined);
+                  }
+                }}
               />
             ) : (
               <div className={styles.noVideo}>Video unavailable</div>

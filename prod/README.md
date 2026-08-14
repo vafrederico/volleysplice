@@ -10,12 +10,13 @@ reductions and FFmpeg-compatible audio resampling run through bundled WebAssembl
 model runs on CPU, feature checkpoints use local IndexedDB, and edit drafts use local
 storage. The editor exports its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
-file. JSON edit-list export is also available. Both analysis and MP4 export show live
-elapsed-time and estimated-time-remaining counters while they run.
+file or origin-private storage before iOS sharing. JSON edit-list export is also available.
+Both analysis and MP4 export show live elapsed-time and estimated-time-remaining counters
+while they run.
 
 ## Run locally
 
-Requirements: Node.js 24 and a current desktop Chrome or Edge browser.
+Requirements: Node.js 24 and a current Chrome or Edge browser, or Safari 26 on iOS/macOS.
 
 ```sh
 npm install
@@ -39,10 +40,11 @@ works at a domain root or a subpath such as GitHub Pages without changing the co
 Do not open `dist/index.html` directly through `file://`; WebCodecs and module workers
 need an HTTP origin.
 
-MP4 export uses the File System Access API to avoid holding a potentially large output
-in memory. It therefore requires desktop Chrome or Edge. Exact boundaries require a
-single AVC/AAC transcode; the output keeps the source display dimensions and uses the
-very-high-quality encoder preset.
+MP4 export uses direct File System Access when available. On iOS it streams the output
+into origin-private file storage without holding the complete video in JavaScript memory,
+then presents a separate Share or Save action so Safari has fresh user activation for its
+native share sheet. Exact boundaries require a single AVC/AAC transcode; the output keeps
+the source display dimensions and uses the very-high-quality encoder preset.
 
 The included `.github/workflows/deploy-pages.yml` is ready when this directory is used
 as a repository root. In a monorepo, copy the workflow to the repository-level

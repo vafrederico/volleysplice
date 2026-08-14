@@ -8,11 +8,15 @@ import { buildEditList, formatTime } from "@/lib/edit-list";
 import { FEATURE_CACHE_CHUNK_ROWS } from "@/lib/on-device/feature-cache";
 import { ANALYSIS_FPS } from "@/lib/on-device/feature-schema";
 import {
+  deliverPreparedVideoExport,
   downloadEditDecisionList,
   exportRawQualityReel,
+  supportsOpfsExport,
   type ExportProgress,
+  type PreparedVideoExport,
 } from "@/lib/on-device/export";
 import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
+import { requestPlayingSeek } from "@/lib/on-device/player";
 import {
   analyzeOpenedMedia,
   DEFAULT_FEATURE_REDUCTION_KERNEL,
@@ -47,6 +51,7 @@ type BrowserCompatibility = {
   decode: boolean;
   encode: boolean;
   directDisk: boolean;
+  opfs: boolean;
   screenWakeLock: boolean;
   mediaCapabilities: boolean;
   webGpu: "checking" | "available" | "unavailable";
@@ -365,6 +370,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const [analysis, setAnalysis] = useState<OnDeviceAnalysis | null>(fixtureAnalysis);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+  const [preparedExport, setPreparedExport] = useState<PreparedVideoExport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewWarning, setPreviewWarning] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -378,6 +384,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     decode: false,
     encode: false,
     directDisk: false,
+    opfs: false,
     screenWakeLock: false,
     mediaCapabilities: false,
     webGpu: "checking",
@@ -407,6 +414,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   >(null);
   const openedMedia = useRef<OpenedMedia | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const resumeAfterSeek = useRef(false);
 
   const busy = workState === "opening" || workState === "analyzing" || workState === "exporting";
   const editList = useMemo(
@@ -487,6 +495,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         decode: "VideoDecoder" in window && "AudioDecoder" in window,
         encode: "VideoEncoder" in window && "AudioEncoder" in window,
         directDisk: "showSaveFilePicker" in window,
+        opfs: supportsOpfsExport(),
         screenWakeLock: "wakeLock" in navigator,
         mediaCapabilities: "mediaCapabilities" in navigator,
         webGpu: diagnosticNavigator.gpu ? "checking" : "unavailable",
@@ -543,6 +552,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     setFixtureActive(false);
     setFile(selected);
     setExportFile(selected);
+    setPreparedExport(null);
     setInfo(null);
     setAnalysis(null);
     setAnalysisElapsedSeconds(null);
@@ -551,6 +561,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     setSelectedId(null);
     setError(null);
     setPreviewWarning(false);
+    resumeAfterSeek.current = false;
     setMediaDiagnostics({ ...EMPTY_MEDIA_DIAGNOSTICS, checking: true });
     setAnalysisProgress({ stage: "opening", completed: 0, total: 1, detail: "Reading container metadata locally" });
     setWorkState("opening");
@@ -585,6 +596,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     if (!openedMedia.current || !info) return;
     setError(null);
     setAnalysis(null);
+    setPreparedExport(null);
     setAnalysisProgress(null);
     setSelectedId(null);
     setWorkState("analyzing");
@@ -632,6 +644,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     id: string,
     patch: Partial<Pick<OnDeviceAnalysis["intervals"][number], "start" | "end" | "included">>,
   ) {
+    setPreparedExport(null);
     setAnalysis((current) =>
       current
         ? {
@@ -645,9 +658,24 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   }
 
   function seek(seconds: number) {
-    if (!videoRef.current) return;
-    videoRef.current.currentTime = seconds;
-    void videoRef.current.play().catch(() => undefined);
+    const video = videoRef.current;
+    if (!video) return;
+    resumeAfterSeek.current = true;
+    // Safari can stall when play() is requested in the same task that changes currentTime.
+    // The seeked handler below resumes only after the decoder has landed on the new position.
+    requestPlayingSeek(video, seconds);
+  }
+
+  async function deliverExport() {
+    if (!preparedExport) return;
+    setError(null);
+    try {
+      await deliverPreparedVideoExport(preparedExport);
+      setPreparedExport(null);
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
   }
 
   async function exportReel() {
@@ -661,13 +689,14 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       detail: "Preparing original media",
     });
     try {
-      await exportRawQualityReel(
+      const prepared = await exportRawQualityReel(
         exportFile,
         editList.map(({ keptStart, keptEnd }) => ({ start: keptStart, end: keptEnd })),
         setExportProgress,
         info?.duration,
         setWakeLockState,
       );
+      setPreparedExport(prepared);
       setWorkState("done");
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") {
@@ -687,7 +716,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           <span data-ok={compatibility.decode}>WebCodecs</span>
           <span data-ok={compatibility.webGpu === "available"}>WebGPU</span>
           <span data-ok={compatibility.encode}>Encode</span>
-          <span data-ok={compatibility.directDisk}>Direct-to-disk</span>
+          <span data-ok={compatibility.directDisk || compatibility.opfs}>Local export</span>
           <span data-ok>Nothing uploaded</span>
         </div>
       </header>
@@ -764,6 +793,21 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   src={previewUrl}
                   controls
                   preload="metadata"
+                  playsInline
+                  onPlay={() => {
+                    resumeAfterSeek.current = true;
+                  }}
+                  onPause={(event) => {
+                    if (!event.currentTarget.seeking) resumeAfterSeek.current = false;
+                  }}
+                  onEnded={() => {
+                    resumeAfterSeek.current = false;
+                  }}
+                  onSeeked={(event) => {
+                    if (resumeAfterSeek.current) {
+                      void event.currentTarget.play().catch(() => undefined);
+                    }
+                  }}
                   onError={() => setPreviewWarning(true)}
                 />
               ) : uiFixtureMode ? (
@@ -1579,8 +1623,14 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           </div>
           <div className={styles.exportControls}>
             <div className={styles.rolls}>
-              <label>Pre-roll <output>{preRoll}s</output><input type="range" min={0} max={8} step={0.5} value={preRoll} onChange={(event) => setPreRoll(Number(event.target.value))} /></label>
-              <label>Post-roll <output>{postRoll}s</output><input type="range" min={0} max={8} step={0.5} value={postRoll} onChange={(event) => setPostRoll(Number(event.target.value))} /></label>
+              <label>Pre-roll <output>{preRoll}s</output><input type="range" min={0} max={8} step={0.5} value={preRoll} onChange={(event) => {
+                setPreRoll(Number(event.target.value));
+                setPreparedExport(null);
+              }} /></label>
+              <label>Post-roll <output>{postRoll}s</output><input type="range" min={0} max={8} step={0.5} value={postRoll} onChange={(event) => {
+                setPostRoll(Number(event.target.value));
+                setPreparedExport(null);
+              }} /></label>
             </div>
             <label className={styles.masterPicker}>
               Use a different raw master
@@ -1588,7 +1638,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                 type="file"
                 accept="video/*,.mkv,.webm,.mov,.mp4"
                 disabled={busy}
-                onChange={(event) => setExportFile(event.target.files?.[0] ?? file)}
+                onChange={(event) => {
+                  setExportFile(event.target.files?.[0] ?? file);
+                  setPreparedExport(null);
+                }}
               />
             </label>
             {exportFile !== file && (
@@ -1601,16 +1654,22 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   busy ||
                   !editList.length ||
                   !compatibility.encode ||
-                  !compatibility.directDisk
+                  (!compatibility.directDisk && !compatibility.opfs)
                 }
                 title={
-                  compatibility.encode && compatibility.directDisk
+                  compatibility.encode && (compatibility.directDisk || compatibility.opfs)
                     ? undefined
-                    : "Original-size export requires WebCodecs encoders and direct-to-disk access."
+                    : "Original-size export requires WebCodecs encoders and writable local storage."
                 }
-                onClick={() => void exportReel()}
+                onClick={() => void (preparedExport ? deliverExport() : exportReel())}
               >
-                {workState === "exporting" ? "Encoding…" : "Save original-size MP4"}
+                {workState === "exporting"
+                  ? "Encoding…"
+                  : preparedExport
+                    ? "Share or save MP4"
+                    : compatibility.directDisk
+                      ? "Save original-size MP4"
+                      : "Create original-size MP4"}
               </button>
               <button
                 type="button"
@@ -1626,6 +1685,12 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                 Download JSON EDL
               </button>
             </div>
+            {preparedExport && (
+              <p className={styles.modeNote} role="status">
+                Encoding is complete in private device storage. Tap Share or save MP4 to open the
+                iOS share sheet or download the file.
+              </p>
+            )}
             {exportProgress && workState === "exporting" && (
               <div className={styles.exportProgress}>
                 <span>{exportProgress.detail}</span>
@@ -1651,7 +1716,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       )}
 
       <footer className={styles.footer}>
-        <p><strong>POC boundary:</strong> Chrome/Edge desktop first. Browser decoding and encoding still depend on the machine&apos;s codec support.</p>
+        <p><strong>POC boundary:</strong> Browser decoding and encoding still depend on the device&apos;s codec support. iOS export uses private browser storage before opening Share or Save.</p>
         <div className={styles.footerLinks}>
           <Link href={uiFixtureMode ? "/on-device" : "/on-device-ui"}>
             {uiFixtureMode ? "Open live pipeline" : "Open cached UI fixture"} →
