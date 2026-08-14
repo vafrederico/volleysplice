@@ -357,6 +357,8 @@
   );
   cursor: pointer;
   opacity: .55;
+  touch-action: pan-y;
+  -webkit-user-drag: none;
 }
 
 .overviewCut[data-included="true"] {

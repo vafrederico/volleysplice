@@ -61,6 +61,7 @@ type TimelineDrag = {
   startY: number;
   moved: boolean;
   seekOnTap: boolean;
+  tapCutId: string | null;
 };
 
 function preciseTime(seconds: number): string {
@@ -120,7 +121,7 @@ export function CutEditor({
   const detailRailRef = useRef<HTMLDivElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
   const timelineDragRef = useRef<TimelineDrag | null>(null);
-  const suppressTimelineClickRef = useRef(false);
+  const suppressTimelineClickUntilRef = useRef(0);
   const previewEndRef = useRef<number | null>(null);
   const seed = useMemo<CutDraftSeed>(
     () => ({
@@ -496,6 +497,10 @@ export function CutEditor({
   ) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     const bounds = event.currentTarget.getBoundingClientRect();
+    const target = event.target instanceof Element ? event.target : null;
+    const tapCutId = target
+      ?.closest<HTMLButtonElement>("[data-overview-cut-id]")
+      ?.dataset.overviewCutId ?? null;
     timelineDragRef.current = {
       pointerId: event.pointerId,
       left: bounds.left,
@@ -506,7 +511,13 @@ export function CutEditor({
       startY: event.clientY,
       moved: false,
       seekOnTap: event.target === event.currentTarget,
+      tapCutId,
     };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Seeking still works in browsers without pointer capture support.
+    }
   }
 
   function moveTimelineSeek(event: ReactPointerEvent<HTMLDivElement>) {
@@ -517,11 +528,6 @@ export function CutEditor({
       const verticalDistance = Math.abs(event.clientY - drag.startY);
       if (horizontalDistance < 4 || verticalDistance > horizontalDistance) return;
       drag.moved = true;
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
-        // Seeking still works if a browser cannot retain pointer capture.
-      }
     }
     event.preventDefault();
     timelineSeekTime(event.clientX, drag);
@@ -532,10 +538,11 @@ export function CutEditor({
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (drag.moved) {
       timelineSeekTime(event.clientX, drag);
-      suppressTimelineClickRef.current = true;
-      window.setTimeout(() => {
-        suppressTimelineClickRef.current = false;
-      }, 0);
+      suppressTimelineClickUntilRef.current = Date.now() + 800;
+    } else if (drag.tapCutId) {
+      suppressTimelineClickUntilRef.current = Date.now() + 800;
+      const tappedCut = draft.cuts.find((cut) => cut.id === drag.tapCutId);
+      if (tappedCut) selectCut(tappedCut);
     } else if (drag.seekOnTap) {
       timelineSeekTime(event.clientX, drag);
     }
@@ -830,10 +837,10 @@ export function CutEditor({
               onPointerCancel={cancelTimelineSeek}
               onLostPointerCapture={cancelTimelineSeek}
               onClickCapture={(event) => {
-                if (!suppressTimelineClickRef.current) return;
+                if (Date.now() > suppressTimelineClickUntilRef.current) return;
                 event.preventDefault();
                 event.stopPropagation();
-                suppressTimelineClickRef.current = false;
+                suppressTimelineClickUntilRef.current = 0;
               }}
               aria-label="Whole recording overview"
             >
@@ -852,6 +859,7 @@ export function CutEditor({
                   type="button"
                   key={cut.id}
                   className={styles.overviewCut}
+                  data-overview-cut-id={cut.id}
                   data-selected={cut.id === selected?.id || undefined}
                   data-included={cut.included || undefined}
                   data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
