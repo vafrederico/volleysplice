@@ -11,6 +11,7 @@ export default defineConfig([
     "data/**",
     "out/**",
     "public/on-device/opencv.js",
+    "public/on-device/opencv-worker.js",
     "next-env.d.ts",
   ]),
 ]);

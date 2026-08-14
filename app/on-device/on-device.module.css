@@ -71,12 +71,40 @@
 .fixtureRolls input { width: 100%; margin-top: 7px; accent-color: var(--local-orange); }
 .timelineSummary { margin: 8px 0 0; color: #77796f; font: 9px/1.5 "DM Mono", monospace; }
 
-.inspector { padding: 24px; }
-.inspector dl { margin: 14px 0 24px; }
+.inspector { display: block; padding: 24px; }
+.inspector dl { display: block; margin: 14px 0 24px; }
 .inspector dl div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #dedcd3; }
 .inspector dt { color: #77796f; font-size: 11px; }
 .inspector dd { margin: 0; text-align: right; font: 10px "DM Mono", monospace; }
 .muted { color: #77796f; font-size: 12px; }
+.diagnostics { margin: 0 -8px 22px; padding: 16px 8px; border-block: 1px solid #c9c7bd; background: #f7f6f0; }
+.diagnostics > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.diagnostics h3 { margin: 4px 0 0; font-size: 14px; letter-spacing: -.02em; }
+.profilingToggle { display: flex; gap: 9px; align-items: flex-start; margin: 12px 0 4px; padding: 10px; border: 1px solid #cfcdc4; background: #eeece4; cursor: pointer; }
+.profilingToggle input { margin-top: 2px; accent-color: var(--local-orange); }
+.profilingToggle span { display: grid; gap: 3px; }
+.profilingToggle strong { font: 500 10px "DM Mono", monospace; }
+.profilingToggle small { color: #686b62; font: 8px/1.45 "DM Mono", monospace; }
+.profilingToggle:has(input:disabled) { opacity: .55; cursor: wait; }
+.decodeExperiment { display: grid; gap: 8px; margin: 8px 0 4px; padding: 10px; border: 1px solid #cfcdc4; }
+.decodeExperiment legend { padding: 0 5px; color: var(--local-orange); font: 500 8px "DM Mono", monospace; letter-spacing: 1px; text-transform: uppercase; }
+.decodeExperiment label { display: grid; grid-template-columns: 34% 1fr; align-items: center; gap: 8px; color: #686b62; font: 9px "DM Mono", monospace; }
+.decodeExperiment select { min-width: 0; width: 100%; padding: 7px; border: 1px solid #aaa; color: var(--local-ink); background: #fff; font: 9px "DM Mono", monospace; }
+.decodeExperiment small { color: #686b62; font: 8px/1.45 "DM Mono", monospace; }
+.decodeExperiment:disabled { opacity: .55; }
+.diagnosticState { padding: 4px 6px; color: #1e5b38; border: 1px solid #62a57a; background: #e0f5e6; font: 500 8px "DM Mono", monospace; letter-spacing: .8px; }
+.diagnosticState[data-state="checking"] { color: #67450d; border-color: #d59b1f; background: #fff0c9; }
+.diagnosticState[data-state="limited"] { color: #8e4936; border-color: #c98976; background: #ffe1d8; }
+.inspector .diagnosticList { margin: 10px 0 12px; }
+.inspector .diagnosticList div { align-items: baseline; padding: 7px 0; }
+.diagnosticList dt { flex: 0 0 43%; }
+.diagnosticList dd { min-width: 0; overflow-wrap: anywhere; }
+.diagnosticList dd[data-tone="good"] { color: #1e5b38; }
+.diagnosticList dd[data-tone="bad"] { color: #8e4936; }
+.inspector .diagnosticList .diagnosticSectionRow { margin-top: 7px; border-top: 2px solid #c9c7bd; }
+.diagnosticSubstage dt { padding-left: 9px; color: #8b8d84; }
+.diagnosticSubstage dd { color: #4f524a; }
+.pipelineNote { margin: 0; padding: 10px; color: #585b52; border-left: 3px solid var(--local-orange); background: #eeece4; font: 9px/1.6 "DM Mono", monospace; }
 .roiPanel { margin: 0 -8px 22px; padding: 13px 8px; border-block: 1px solid #c9c7bd; }
 .roiPanel summary { cursor: pointer; list-style: none; }
 .roiPanel summary span { display: block; color: var(--local-orange); font: 500 9px "DM Mono", monospace; letter-spacing: 1px; text-transform: uppercase; }
@@ -129,8 +157,10 @@
 .exportActions button { flex: 1; padding: 13px; border: 1px solid var(--local-acid); background: var(--local-acid); color: var(--local-ink); cursor: pointer; font-size: 10px; font-weight: 800; }
 .exportActions .secondaryButton { border-color: #6b6e64; background: transparent; color: #fff; }
 .exportActions button:disabled { opacity: .4; cursor: wait; }
-.exportProgress { margin-top: 16px; color: #aeb0a7; font: 9px "DM Mono", monospace; }
-.exportProgress div { height: 6px; margin-top: 7px; background: #44473e; }
+.exportProgress { margin-top: 16px; display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; color: #aeb0a7; font: 9px "DM Mono", monospace; }
+.exportProgress strong { color: var(--local-acid); font-size: 13px; }
+.exportProgress small { grid-column: 1 / -1; color: #aeb0a7; font: 9px "DM Mono", monospace; }
+.exportProgress div { grid-column: 1 / -1; height: 6px; margin-top: 2px; background: #44473e; }
 .exportProgress i { display: block; height: 100%; background: var(--local-acid); }
 
 .footer { margin-top: 72px; padding: 30px 5vw 46px; display: flex; justify-content: space-between; gap: 30px; border-top: 1px solid #c5c3ba; color: #77796f; font: 10px/1.55 "DM Mono", monospace; }

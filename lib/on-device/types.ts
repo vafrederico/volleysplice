@@ -36,11 +36,54 @@ export type AnalysisStage =
   | "inference"
   | "complete";
 
+export type VideoDecodeStrategy = "sparse" | "sequential";
+
+export type VideoDecoderAcceleration = "prefer-hardware" | "no-preference";
+
+export type FeatureReductionKernel = "javascript" | "wasm";
+
+export type FeatureExtractionPerformance = {
+  profilingEnabled: boolean;
+  decodeStrategy: VideoDecodeStrategy;
+  decoderAcceleration: VideoDecoderAcceleration;
+  reductionKernel: FeatureReductionKernel;
+  decodedSourceFrames: number | null;
+  sampledFrames: number;
+  generatedFrames: number;
+  generatedVideoSeconds: number;
+  videoElapsedMs: number;
+  openCvLoadMs: number;
+  reductionKernelLoadMs: number;
+  decoderCanvasMs: number;
+  decoderWaitMs: number;
+  decoderOverlapMs: number;
+  canvasDrawMs: number;
+  canvasDrawFrames: number;
+  workerActive: boolean;
+  workerBlockingMs: number;
+  workerOverlapMs: number;
+  extractionMs: number;
+  canvasReadbackMs: number;
+  imageOperationsMs: number;
+  phaseCorrelationMs: number;
+  opticalFlowMs: number;
+  javascriptMs: number;
+  wasmReductionMs: number;
+  cacheIoMs: number;
+};
+
 export type AnalysisProgress = {
   stage: AnalysisStage;
   completed: number;
   total: number;
   detail: string;
+  featureCache?: {
+    enabled: boolean;
+    complete: boolean;
+    resumedRows: number;
+    savedRows: number;
+  };
+  performance?: FeatureExtractionPerformance;
 };
 
 export type BaseFeatureSequence = {

@@ -19,11 +19,13 @@ import {
   timelinesHaveMatchingDuration,
   type ExportInterval,
 } from "./export-math";
+import { holdScreenWakeLock, type WakeLockState } from "./wake-lock";
 
 export type { ExportInterval } from "./export-math";
 export type ExportProgress = {
   completedSeconds: number;
   totalSeconds: number;
+  elapsedSeconds: number;
   detail: string;
 };
 
@@ -60,6 +62,7 @@ export async function exportRawQualityReel(
   requestedIntervals: readonly ExportInterval[],
   onProgress?: (progress: ExportProgress) => void,
   expectedTimelineDuration?: number,
+  onWakeLockState?: (state: WakeLockState) => void,
 ): Promise<void> {
   // Keep the picker at the top of the user-initiated call so Chromium retains activation.
   const fileHandle = await picker()({
@@ -127,10 +130,26 @@ export async function exportRawQualityReel(
     : null;
   if (audioSource) output.addAudioTrack(audioSource);
 
+  const releaseWakeLock = await holdScreenWakeLock(onWakeLockState ?? (() => undefined));
   let outputStarted = false;
+  let encodingStartedAt = 0;
+  let lastProgressAt = -Infinity;
+  const reportProgress = (completedSeconds: number, detail: string, force = false) => {
+    const now = performance.now();
+    if (!force && now - lastProgressAt < 250) return;
+    lastProgressAt = now;
+    onProgress?.({
+      completedSeconds,
+      totalSeconds,
+      elapsedSeconds: encodingStartedAt > 0 ? (now - encodingStartedAt) / 1000 : 0,
+      detail,
+    });
+  };
   try {
     await output.start();
     outputStarted = true;
+    encodingStartedAt = performance.now();
+    reportProgress(0, `Encoding original ${media.info.width}×${media.info.height} frames`, true);
     const videoPump = async () => {
       const sink = new VideoSampleSink(media.videoTrack, {
         hardwareAcceleration: "prefer-hardware",
@@ -151,11 +170,10 @@ export async function exportRawQualityReel(
               sample.setDuration(timing.duration);
               await videoSource.add(sample, first ? { keyFrame: true } : undefined);
               first = false;
-              onProgress?.({
-                completedSeconds: Math.min(totalSeconds, outputOffset + timing.timestamp),
-                totalSeconds,
-                detail: `Encoding original ${media.info.width}×${media.info.height} frames`,
-              });
+              reportProgress(
+                Math.min(totalSeconds, outputOffset + timing.timestamp + timing.duration),
+                `Encoding original ${media.info.width}×${media.info.height} frames`,
+              );
             } finally {
               sample.close();
             }
@@ -203,12 +221,9 @@ export async function exportRawQualityReel(
     };
 
     await Promise.all([videoPump(), audioPump()]);
+    reportProgress(totalSeconds, "Finalizing MP4 on disk", true);
     await output.finalize();
-    onProgress?.({
-      completedSeconds: totalSeconds,
-      totalSeconds,
-      detail: "MP4 written from the original file",
-    });
+    reportProgress(totalSeconds, "MP4 written from the original file", true);
   } catch (error) {
     if (outputStarted && output.state !== "finalized" && output.state !== "canceled") {
       await output.cancel().catch(() => undefined);
@@ -216,6 +231,7 @@ export async function exportRawQualityReel(
     throw error;
   } finally {
     media.input.dispose();
+    await releaseWakeLock();
   }
 }
 
