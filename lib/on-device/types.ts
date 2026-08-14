@@ -36,8 +36,15 @@ export type AnalysisStage =
   | "inference"
   | "complete";
 
+export type VideoDecodeStrategy = "sparse" | "sequential";
+
+export type VideoDecoderAcceleration = "prefer-hardware" | "no-preference";
+
 export type FeatureExtractionPerformance = {
   profilingEnabled: boolean;
+  decodeStrategy: VideoDecodeStrategy;
+  decoderAcceleration: VideoDecoderAcceleration;
+  decodedSourceFrames: number | null;
   sampledFrames: number;
   generatedFrames: number;
   generatedVideoSeconds: number;

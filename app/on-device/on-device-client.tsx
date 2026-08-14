@@ -15,6 +15,7 @@ import {
 import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
 import {
   analyzeOpenedMedia,
+  DEFAULT_VIDEO_DECODE_STRATEGY,
   VIDEO_DECODER_HARDWARE_ACCELERATION,
 } from "@/lib/on-device/pipeline";
 import { clampRoi, fullFrameRoi, inferRoiProfile } from "@/lib/on-device/roi";
@@ -25,6 +26,8 @@ import type {
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
   RoiProfile,
+  VideoDecoderAcceleration,
+  VideoDecodeStrategy,
 } from "@/lib/on-device/types";
 import {
   holdScreenWakeLock,
@@ -387,6 +390,11 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   );
   const [analysisElapsedSeconds, setAnalysisElapsedSeconds] = useState<number | null>(null);
   const [detailedProfiling, setDetailedProfiling] = useState(false);
+  const [decodeStrategy, setDecodeStrategy] = useState<VideoDecodeStrategy>(
+    DEFAULT_VIDEO_DECODE_STRATEGY,
+  );
+  const [decoderAcceleration, setDecoderAcceleration] =
+    useState<VideoDecoderAcceleration>(VIDEO_DECODER_HARDWARE_ACCELERATION);
   const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
   const [featureCacheState, setFeatureCacheState] = useState<
     AnalysisProgress["featureCache"] | null
@@ -591,7 +599,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         file
           ? { name: file.name, size: file.size, lastModified: file.lastModified }
           : undefined,
-        { detailedProfiling },
+        { detailedProfiling, decodeStrategy, decoderAcceleration },
       );
       setAnalysisElapsedSeconds((performance.now() - startedAt) / 1000);
       setAnalysis(result);
@@ -910,6 +918,40 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                     </small>
                   </span>
                 </label>
+                <fieldset className={styles.decodeExperiment} disabled={busy}>
+                  <legend>Decode experiment</legend>
+                  <label>
+                    <span>Frame access</span>
+                    <select
+                      value={decodeStrategy}
+                      onChange={(event) => {
+                        setDecodeStrategy(event.target.value as VideoDecodeStrategy);
+                        setFeatureCacheState(null);
+                        setAnalysisProgress(null);
+                      }}
+                    >
+                      <option value="sparse">Sparse timestamps · baseline</option>
+                      <option value="sequential">Sequential pass · experiment</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Decoder choice</span>
+                    <select
+                      value={decoderAcceleration}
+                      onChange={(event) => {
+                        setDecoderAcceleration(event.target.value as VideoDecoderAcceleration);
+                        setFeatureCacheState(null);
+                        setAnalysisProgress(null);
+                      }}
+                    >
+                      <option value="prefer-hardware">Prefer hardware</option>
+                      <option value="no-preference">Browser default</option>
+                    </select>
+                  </label>
+                  <small>
+                    Modes keep separate checkpoints. Enable profiling before comparing runs.
+                  </small>
+                </fieldset>
                 <dl className={styles.diagnosticList}>
                   <div>
                     <dt>WebCodecs API</dt>
@@ -940,7 +982,11 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   </div>
                   <div>
                     <dt>Decode preference</dt>
-                    <dd>Prefer hardware</dd>
+                    <dd>
+                      {decoderAcceleration === "prefer-hardware"
+                        ? "Prefer hardware"
+                        : "Browser default"}
+                    </dd>
                   </div>
                   <div>
                     <dt>Power-efficient decode</dt>
@@ -1105,6 +1151,28 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                             : "Main thread fallback"}
                         </dd>
                       </div>
+                      <div>
+                        <dt>Frame access used</dt>
+                        <dd>
+                          {featurePerformance.decodeStrategy === "sequential"
+                            ? "Sequential single pass"
+                            : decodeStrategy === "sequential"
+                              ? "Sparse fallback · worker unavailable"
+                              : "Sparse timestamp batches"}
+                        </dd>
+                      </div>
+                      {featurePerformance.decodedSourceFrames !== null && (
+                        <div>
+                          <dt>Source frames traversed</dt>
+                          <dd>
+                            {featurePerformance.decodedSourceFrames.toLocaleString()} decoded · {Math.max(
+                              0,
+                              featurePerformance.decodedSourceFrames -
+                                featurePerformance.sampledFrames,
+                            ).toLocaleString()} discarded
+                          </dd>
+                        </div>
+                      )}
                       <div>
                         <dt>
                           {featurePerformance.workerActive
@@ -1281,10 +1349,12 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   )}
                 </dl>
                 <p className={styles.pipelineNote}>
-                  Video decode requests hardware acceleration, but browsers do not confirm which
-                  decoder they selected. When supported, visual features run in OpenCV WASM on a
-                  dedicated worker with a two-frame decode queue; model inference still runs on the
-                  CPU. WebGPU availability does not accelerate this version.
+                  The decoder preference is a request; browsers do not confirm which decoder they
+                  selected. Sparse mode asks for the 4 fps analysis frames directly. Sequential mode
+                  traverses the source once and discards frames between analysis timestamps, testing
+                  whether avoiding AV1 seek-batch overhead is faster. When supported, visual features
+                  run in OpenCV WASM on a dedicated worker with a two-frame decode queue; model
+                  inference still runs on the CPU. WebGPU availability does not accelerate this version.
                   Feature checkpoints stay in this browser&apos;s IndexedDB and are keyed to the exact
                   file and crop. After a refresh, choose the same file again to resume. Stage timing
                   and feature speed count only frames generated in the current run; restored frames

@@ -86,6 +86,12 @@
 .profilingToggle strong { font: 500 10px "DM Mono", monospace; }
 .profilingToggle small { color: #686b62; font: 8px/1.45 "DM Mono", monospace; }
 .profilingToggle:has(input:disabled) { opacity: .55; cursor: wait; }
+.decodeExperiment { display: grid; gap: 8px; margin: 8px 0 4px; padding: 10px; border: 1px solid #cfcdc4; }
+.decodeExperiment legend { padding: 0 5px; color: var(--local-orange); font: 500 8px "DM Mono", monospace; letter-spacing: 1px; text-transform: uppercase; }
+.decodeExperiment label { display: grid; grid-template-columns: 34% 1fr; align-items: center; gap: 8px; color: #686b62; font: 9px "DM Mono", monospace; }
+.decodeExperiment select { min-width: 0; width: 100%; padding: 7px; border: 1px solid #aaa; color: var(--local-ink); background: #fff; font: 9px "DM Mono", monospace; }
+.decodeExperiment small { color: #686b62; font: 8px/1.45 "DM Mono", monospace; }
+.decodeExperiment:disabled { opacity: .55; }
 .diagnosticState { padding: 4px 6px; color: #1e5b38; border: 1px solid #62a57a; background: #e0f5e6; font: 500 8px "DM Mono", monospace; letter-spacing: .8px; }
 .diagnosticState[data-state="checking"] { color: #67450d; border-color: #d59b1f; background: #fff0c9; }
 .diagnosticState[data-state="limited"] { color: #8e4936; border-color: #c98976; background: #ffe1d8; }

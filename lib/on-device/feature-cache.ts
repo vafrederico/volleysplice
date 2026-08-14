@@ -1,5 +1,10 @@
 import { ANALYSIS_FPS, FRAME_FEATURE_NAMES } from "./feature-schema.ts";
-import type { NormalizedRoi, OnDeviceMediaInfo } from "./types.ts";
+import type {
+  NormalizedRoi,
+  OnDeviceMediaInfo,
+  VideoDecoderAcceleration,
+  VideoDecodeStrategy,
+} from "./types.ts";
 
 const DATABASE_NAME = "volleycut-on-device-features";
 const DATABASE_VERSION = 1;
@@ -82,6 +87,10 @@ export function visualFeatureCacheKey(
   source: LocalFeatureSource,
   info: OnDeviceMediaInfo,
   roi: NormalizedRoi,
+  experiment?: {
+    decodeStrategy: VideoDecodeStrategy;
+    decoderAcceleration: VideoDecoderAcceleration;
+  },
 ): string {
   let featureSignature = 0x811c9dc5;
   for (const character of FRAME_FEATURE_NAMES.join("|")) {
@@ -95,6 +104,7 @@ export function visualFeatureCacheKey(
     source: [source.name, source.size, source.lastModified],
     media: [info.duration, info.width, info.height, info.rotation, info.videoCodecString],
     roi: [roi.x, roi.y, roi.width, roi.height],
+    ...(experiment ? { experiment } : {}),
   });
 }
 

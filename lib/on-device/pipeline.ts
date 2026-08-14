@@ -21,12 +21,15 @@ import {
 import { contextualizeFeatures, rollingMean } from "./feature-math";
 import { analysisTimestamps, type OpenedMedia } from "./media";
 import { loadOnDeviceModelBundle, runOnDeviceModel } from "./model";
+import { samplesAtTimestampsFromSequentialPass } from "./sequential-samples";
 import type {
   AnalysisProgress,
   BaseFeatureSequence,
   FeatureExtractionPerformance,
   NormalizedRoi,
   OnDeviceAnalysis,
+  VideoDecoderAcceleration,
+  VideoDecodeStrategy,
 } from "./types";
 import { extractVisualFeatures, loadOpenCv } from "./visual-features";
 import {
@@ -36,7 +39,9 @@ import {
 
 const MODEL_URL = "/on-device/model-9c92b8e9333f.json";
 
-export const VIDEO_DECODER_HARDWARE_ACCELERATION = "prefer-hardware" as const;
+export const DEFAULT_VIDEO_DECODE_STRATEGY: VideoDecodeStrategy = "sparse";
+export const VIDEO_DECODER_HARDWARE_ACCELERATION: VideoDecoderAcceleration =
+  "prefer-hardware";
 
 type FeatureCacheState = NonNullable<AnalysisProgress["featureCache"]>;
 
@@ -47,6 +52,8 @@ type ExtractedBrowserFeatures = BaseFeatureSequence & {
 
 export type FeatureExtractionOptions = {
   detailedProfiling?: boolean;
+  decodeStrategy?: VideoDecodeStrategy;
+  decoderAcceleration?: VideoDecoderAcceleration;
 };
 
 function column(values: Float32Array, rows: number, columns: number, index: number): Float32Array {
@@ -156,9 +163,15 @@ export async function extractBrowserFeatures(
   options: FeatureExtractionOptions = {},
 ): Promise<ExtractedBrowserFeatures> {
   const detailedProfiling = options.detailedProfiling ?? true;
+  const decodeStrategy = options.decodeStrategy ?? DEFAULT_VIDEO_DECODE_STRATEGY;
+  const decoderAcceleration =
+    options.decoderAcceleration ?? VIDEO_DECODER_HARDWARE_ACCELERATION;
   const videoStartedAt = performance.now();
   const timingTotals: FeatureExtractionPerformance = {
     profilingEnabled: detailedProfiling,
+    decodeStrategy,
+    decoderAcceleration,
+    decodedSourceFrames: decodeStrategy === "sequential" ? 0 : null,
     sampledFrames: 0,
     generatedFrames: 0,
     generatedVideoSeconds: 0,
@@ -201,7 +214,12 @@ export async function extractBrowserFeatures(
   let cachedTimes: Float64Array<ArrayBufferLike> = new Float64Array(0);
   let cachedValues: Float32Array<ArrayBufferLike> = new Float32Array(0);
   if (cacheSource) {
-    const resolvedCacheKey = visualFeatureCacheKey(cacheSource, media.info, roi);
+    const experiment =
+      decodeStrategy === DEFAULT_VIDEO_DECODE_STRATEGY &&
+      decoderAcceleration === VIDEO_DECODER_HARDWARE_ACCELERATION
+        ? undefined
+        : { decodeStrategy, decoderAcceleration };
+    const resolvedCacheKey = visualFeatureCacheKey(cacheSource, media.info, roi, experiment);
     cacheKey = resolvedCacheKey;
     try {
       const cached = await measureCacheIo(() => readVisualFeatureCache(resolvedCacheKey));
@@ -335,11 +353,17 @@ export async function extractBrowserFeatures(
         timingTotals.workerActive = true;
         timingTotals.openCvLoadMs += workerClient.openCvLoadMs;
         const sink = new VideoSampleSink(media.videoTrack, {
-          hardwareAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION,
+          hardwareAcceleration: decoderAcceleration,
         });
-        const sampleIterator = sink.samplesAtTimestamps(
+        const requestedTimestamps = Array.from(
           analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
         );
+        const sampleIterator = decodeStrategy === "sequential"
+          ? samplesAtTimestampsFromSequentialPass(sink, requestedTimestamps, () => {
+              timingTotals.decodedSourceFrames =
+                (timingTotals.decodedSourceFrames ?? 0) + 1;
+            })
+          : sink.samplesAtTimestamps(requestedTimestamps);
         const pendingFeatures: Promise<WorkerFeatureResult>[] = [];
         const consumeOldest = async () => {
           const pending = pendingFeatures.shift();
@@ -387,6 +411,8 @@ export async function extractBrowserFeatures(
           await sampleIterator.return(undefined);
         }
       } else {
+        timingTotals.decodeStrategy = "sparse";
+        timingTotals.decodedSourceFrames = null;
         const openCvStartedAt = detailedProfiling ? performance.now() : 0;
         const cv = await loadOpenCv();
         if (detailedProfiling) {
@@ -398,7 +424,7 @@ export async function extractBrowserFeatures(
           height: ANALYSIS_HEIGHT,
           fit: "fill",
           poolSize: 1,
-          decoderOptions: { hardwareAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION },
+          decoderOptions: { hardwareAcceleration: decoderAcceleration },
         });
         const canvasIterator = sink.canvasesAtTimestamps(
           analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),

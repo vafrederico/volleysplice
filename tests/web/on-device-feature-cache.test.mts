@@ -38,3 +38,22 @@ test("visual feature checkpoints do not cross files or crop configurations", () 
     visualFeatureCacheKey(source, { ...info, videoCodecString: "avc1.42c01f" }, roi),
   );
 });
+
+test("decode experiments have isolated checkpoints while the baseline key stays stable", () => {
+  const baseline = visualFeatureCacheKey(source, info, roi);
+  assert.equal(
+    baseline,
+    visualFeatureCacheKey(source, info, roi, undefined),
+  );
+  const sequential = visualFeatureCacheKey(source, info, roi, {
+    decodeStrategy: "sequential",
+    decoderAcceleration: "prefer-hardware",
+  });
+  const browserDefault = visualFeatureCacheKey(source, info, roi, {
+    decodeStrategy: "sparse",
+    decoderAcceleration: "no-preference",
+  });
+  assert.notEqual(baseline, sequential);
+  assert.notEqual(baseline, browserDefault);
+  assert.notEqual(sequential, browserDefault);
+});
