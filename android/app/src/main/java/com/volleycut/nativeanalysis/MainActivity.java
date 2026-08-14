@@ -45,6 +45,8 @@ public final class MainActivity extends Activity {
     private static final String EXTRA_AUTO_RUN = "benchmark_auto_run";
     private static final String EXTRA_RUN_ID = "benchmark_run_id";
     private static final String EXTRA_SOURCE_FRAME_LIMIT = "benchmark_source_frame_limit";
+    private static final String EXTRA_CODEC_OPERATING_RATE = "benchmark_codec_operating_rate";
+    private static final String EXTRA_CODEC_PRIORITY = "benchmark_codec_priority";
     private static final String BENCHMARK_RESULT_FILE = "benchmark-result.json";
     private static final int PICK_VIDEO = 10;
     private static final int ORANGE = Color.rgb(239, 91, 53);
@@ -58,6 +60,7 @@ public final class MainActivity extends Activity {
     private boolean automatedRun;
     private String automatedRunId;
     private int sourceFrameLimit = FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
+    private AnalysisTypes.VideoDecoderOptions decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
     private AnalysisTypes.AnalysisResult lastResult;
     private TextView fileLabel;
     private TextView stageLabel;
@@ -213,12 +216,21 @@ public final class MainActivity extends Activity {
                 1_000_000,
                 intent.getIntExtra(EXTRA_SOURCE_FRAME_LIMIT, FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT)
         ));
+        AnalysisTypes.VideoDecoderOptions defaults = AnalysisTypes.VideoDecoderOptions.defaults();
+        int operatingRate = intent.getIntExtra(EXTRA_CODEC_OPERATING_RATE, defaults.operatingRate());
+        int priority = intent.getIntExtra(EXTRA_CODEC_PRIORITY, defaults.priority());
+        decoderOptions = new AnalysisTypes.VideoDecoderOptions(
+                operatingRate > 0 ? operatingRate : -1,
+                priority >= 0 && priority <= 1 ? priority : -1
+        );
         JSONObject running = new JSONObject();
         try {
             running.put("benchmarkStatus", "running");
             running.put("benchmarkRunId", automatedRunId);
             running.put("sourceUri", selectedUri.toString());
             running.put("sourceFrameLimit", sourceFrameLimit);
+            running.put("codecOperatingRate", decoderOptions.operatingRate());
+            running.put("codecPriority", decoderOptions.priority());
         } catch (Exception impossible) {
             throw new IllegalStateException(impossible);
         }
@@ -238,6 +250,7 @@ public final class MainActivity extends Activity {
         automatedRun = false;
         automatedRunId = null;
         sourceFrameLimit = FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
+        decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
         fileLabel.setText(selectedUri.toString());
         analyzeButton.setEnabled(true);
         copyButton.setEnabled(false);
@@ -260,12 +273,14 @@ public final class MainActivity extends Activity {
         boolean writeAutomationOutput = automatedRun;
         String runId = automatedRunId;
         int requestedSourceFrameLimit = sourceFrameLimit;
+        AnalysisTypes.VideoDecoderOptions requestedDecoderOptions = decoderOptions;
         executor.submit(() -> {
             try {
                 AnalysisTypes.AnalysisResult result = new AnalysisEngine(this).analyze(
                         uri,
                         useFullFrame,
                         requestedSourceFrameLimit,
+                        requestedDecoderOptions,
                         cancelled,
                         new AnalysisTypes.ProgressListener() {
                             @Override
@@ -288,6 +303,8 @@ public final class MainActivity extends Activity {
                     JSONObject json = resultJson(result);
                     json.put("benchmarkStatus", "complete");
                     json.put("benchmarkRunId", runId);
+                    json.put("codecOperatingRate", requestedDecoderOptions.operatingRate());
+                    json.put("codecPriority", requestedDecoderOptions.priority());
                     writeAutomationResult(json);
                     Log.i(BENCHMARK_TAG, String.format(Locale.US,
                             "RESULT runId=%s source=%s frames=%d videoMs=%d totalMs=%d",
@@ -336,6 +353,9 @@ public final class MainActivity extends Activity {
                 result.sourceFrameLimitReached() ? " (reached)" : " (short clip)"));
         output.append("Video decoder: ").append(result.videoDecoder())
                 .append(result.hardwareVideoDecoder() ? " (hardware)" : " (software)").append('\n');
+        output.append(String.format(Locale.US,
+                "Codec request: operating rate %d fps · priority %d\n",
+                result.codecOperatingRate(), result.codecPriority()));
         output.append("Audio decoder: ").append(result.audioDecoder()).append('\n');
         output.append("ROI: ").append(result.roi().label()).append('\n');
         output.append(String.format(Locale.US,
@@ -465,6 +485,8 @@ public final class MainActivity extends Activity {
             json.put("sdkInt", Build.VERSION.SDK_INT);
             json.put("videoDecoder", result.videoDecoder());
             json.put("hardwareVideoDecoder", result.hardwareVideoDecoder());
+            json.put("codecOperatingRate", result.codecOperatingRate());
+            json.put("codecPriority", result.codecPriority());
             json.put("audioDecoder", result.audioDecoder());
             json.put("totalMilliseconds", result.totalMilliseconds());
             double videoMilliseconds = result.stageMilliseconds().getOrDefault(

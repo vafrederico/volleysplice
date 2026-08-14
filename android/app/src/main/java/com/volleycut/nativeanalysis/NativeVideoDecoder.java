@@ -39,6 +39,7 @@ final class NativeVideoDecoder {
             AnalysisTypes.Roi roi,
             double[] times,
             int sourceFrameLimit,
+            AnalysisTypes.VideoDecoderOptions decoderOptions,
             AnalysisTypes.ProgressListener progress,
             BooleanSupplier cancelled
     ) throws IOException {
@@ -59,6 +60,12 @@ final class NativeVideoDecoder {
             if (mime == null) throw new IOException("Video track has no MIME type");
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
+            if (decoderOptions.operatingRate() > 0) {
+                format.setInteger(MediaFormat.KEY_OPERATING_RATE, decoderOptions.operatingRate());
+            }
+            if (decoderOptions.priority() >= 0) {
+                format.setInteger(MediaFormat.KEY_PRIORITY, decoderOptions.priority());
+            }
             codec = MediaCodec.createDecoderByType(mime);
             String decoderName = codec.getName();
             boolean hardware = !codec.getCodecInfo().isSoftwareOnly();

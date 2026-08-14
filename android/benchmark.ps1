@@ -3,10 +3,15 @@ param(
     [string]$VideoName = "1080p60.mp4",
     [ValidateRange(1, 1000000)]
     [int]$FrameLimit = 1000,
+    [ValidateRange(-1, 2147483647)]
+    [int]$OperatingRate = 240,
+    [ValidateSet(-1, 0, 1)]
+    [int]$CodecPriority = 1,
     [ValidateRange(1, 100)]
     [int]$Runs = 1,
     [ValidateRange(10, 3600)]
     [int]$TimeoutSeconds = 300,
+    [switch]$SummaryOnly,
     [switch]$SkipBuild,
     [switch]$SkipInstall
 )
@@ -44,6 +49,20 @@ function Get-Median {
     return ($ordered[$upper - 1] + $ordered[$upper]) / 2
 }
 
+function Read-BenchmarkResult {
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $output = & adb exec-out run-as $packageName cat $resultFile 2>$null
+        $readExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedPreference
+    }
+    if ($readExitCode -ne 0 -or -not $output) { return $null }
+    return ($output -join "`n").Trim()
+}
+
+Invoke-Adb -AdbArguments @("start-server") | Out-Null
 $deviceLines = (Invoke-Adb -AdbArguments @("devices")) -split "\r?\n" |
     Where-Object { $_ -match "\sdevice$" }
 if ($deviceLines.Count -ne 1) {
@@ -102,7 +121,9 @@ for ($run = 1; $run -le $Runs; $run++) {
         "-f", "0x1",
         "--ez", "benchmark_auto_run", "true",
         "--es", "benchmark_run_id", $runId,
-        "--ei", "benchmark_source_frame_limit", $FrameLimit.ToString()
+        "--ei", "benchmark_source_frame_limit", $FrameLimit.ToString(),
+        "--ei", "benchmark_codec_operating_rate", $OperatingRate.ToString(),
+        "--ei", "benchmark_codec_priority", $CodecPriority.ToString()
     )
     if ($launchOutput -notmatch "Status: ok") {
         throw "Activity launch did not report success:`n$launchOutput"
@@ -112,15 +133,14 @@ for ($run = 1; $run -le $Runs; $run++) {
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $completed = $false
     while ($timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        $raw = & adb exec-out run-as $packageName cat $resultFile 2>$null
-        if ($LASTEXITCODE -eq 0 -and $raw) {
-            $jsonText = ($raw -join "`n").Trim()
+        $jsonText = Read-BenchmarkResult
+        if ($jsonText) {
             try {
                 $payload = $jsonText | ConvertFrom-Json
                 if ($payload.benchmarkRunId -eq $runId) {
                     if ($payload.benchmarkStatus -eq "complete") {
                         $results += $payload
-                        Write-Output $jsonText
+                        if (-not $SummaryOnly) { Write-Output $jsonText }
                         $completed = $true
                         break
                     }

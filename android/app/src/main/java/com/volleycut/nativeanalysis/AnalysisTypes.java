@@ -8,6 +8,12 @@ import java.util.Map;
 final class AnalysisTypes {
     record Roi(double x, double y, double width, double height, String label) {}
 
+    record VideoDecoderOptions(int operatingRate, int priority) {
+        static VideoDecoderOptions defaults() {
+            return new VideoDecoderOptions(240, 1);
+        }
+    }
+
     record Interval(double start, double end, float confidence) {}
 
     record Serve(double time, float confidence) {}
@@ -63,6 +69,8 @@ final class AnalysisTypes {
             int audioFeatureFrames,
             String videoDecoder,
             boolean hardwareVideoDecoder,
+            int codecOperatingRate,
+            int codecPriority,
             String audioDecoder,
             List<Interval> ranges,
             Map<String, Long> stageMilliseconds,
