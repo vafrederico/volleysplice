@@ -481,6 +481,7 @@ final class NativeVideoDecoder {
         private long lastProgressNanos;
         private double sampleTimestampErrorTotalMs;
         private double sampleTimestampErrorMaxMs;
+        private YuvCropSampler yuvCropSampler;
 
         AsyncDecodeState(
                 MediaExtractor extractor,
@@ -614,7 +615,12 @@ final class NativeVideoDecoder {
             }
             try {
                 operationStarted = System.nanoTime();
-                Mat rgba = imageToAnalysisRgba(image, roi, media.rotation());
+                if (yuvCropSampler == null || !yuvCropSampler.matches(image)) {
+                    yuvCropSampler = new YuvCropSampler(image, roi, media.rotation());
+                    profiler.add("yuv_sampler_setup", System.nanoTime() - operationStarted);
+                    operationStarted = System.nanoTime();
+                }
+                Mat rgba = yuvCropSampler.convert(image);
                 profiler.add("yuv_crop_scale_color", System.nanoTime() - operationStarted);
                 try {
                     operationStarted = System.nanoTime();
@@ -779,6 +785,125 @@ final class NativeVideoDecoder {
         Mat result = new Mat(FeatureSchema.ANALYSIS_HEIGHT, FeatureSchema.ANALYSIS_WIDTH, CvType.CV_8UC4);
         result.put(0, 0, rgba);
         return result;
+    }
+
+    private static final class YuvCropSampler {
+        private static final int PIXEL_COUNT = FeatureSchema.ANALYSIS_WIDTH
+                * FeatureSchema.ANALYSIS_HEIGHT;
+        private static final int[] Y_COMPONENT = new int[256];
+        private static final int[] RED_FROM_V = new int[256];
+        private static final int[] GREEN_FROM_U = new int[256];
+        private static final int[] GREEN_FROM_V = new int[256];
+        private static final int[] BLUE_FROM_U = new int[256];
+
+        static {
+            for (int value = 0; value < 256; value++) {
+                Y_COMPONENT[value] = 298 * Math.max(0, value - 16);
+                int chroma = value - 128;
+                RED_FROM_V[value] = 409 * chroma;
+                GREEN_FROM_U[value] = -100 * chroma;
+                GREEN_FROM_V[value] = -208 * chroma;
+                BLUE_FROM_U[value] = 516 * chroma;
+            }
+        }
+
+        private final Rect crop;
+        private final int yRowStride;
+        private final int yPixelStride;
+        private final int uRowStride;
+        private final int uPixelStride;
+        private final int vRowStride;
+        private final int vPixelStride;
+        private final int[] yOffsets = new int[PIXEL_COUNT];
+        private final int[] uOffsets = new int[PIXEL_COUNT];
+        private final int[] vOffsets = new int[PIXEL_COUNT];
+        private final byte[] rgba = new byte[PIXEL_COUNT * 4];
+
+        YuvCropSampler(Image image, AnalysisTypes.Roi roi, int rotation) {
+            Image.Plane[] planes = image.getPlanes();
+            if (planes.length < 3) {
+                throw new IllegalArgumentException("YUV image has fewer than three planes");
+            }
+            crop = new Rect(image.getCropRect());
+            yRowStride = planes[0].getRowStride();
+            yPixelStride = planes[0].getPixelStride();
+            uRowStride = planes[1].getRowStride();
+            uPixelStride = planes[1].getPixelStride();
+            vRowStride = planes[2].getRowStride();
+            vPixelStride = planes[2].getPixelStride();
+
+            int index = 0;
+            for (int y = 0; y < FeatureSchema.ANALYSIS_HEIGHT; y++) {
+                double displayV = roi.y()
+                        + (y + 0.5) / FeatureSchema.ANALYSIS_HEIGHT * roi.height();
+                for (int x = 0; x < FeatureSchema.ANALYSIS_WIDTH; x++) {
+                    double displayU = roi.x()
+                            + (x + 0.5) / FeatureSchema.ANALYSIS_WIDTH * roi.width();
+                    double sourceU;
+                    double sourceV;
+                    switch (rotation) {
+                        case 90 -> { sourceU = displayV; sourceV = 1 - displayU; }
+                        case 180 -> { sourceU = 1 - displayU; sourceV = 1 - displayV; }
+                        case 270 -> { sourceU = 1 - displayV; sourceV = displayU; }
+                        default -> { sourceU = displayU; sourceV = displayV; }
+                    }
+                    int sourceX = clamp(
+                            crop.left + (int) Math.floor(sourceU * crop.width()),
+                            crop.left, crop.right - 1
+                    );
+                    int sourceY = clamp(
+                            crop.top + (int) Math.floor(sourceV * crop.height()),
+                            crop.top, crop.bottom - 1
+                    );
+                    yOffsets[index] = sourceY * yRowStride + sourceX * yPixelStride;
+                    int chromaX = sourceX / 2;
+                    int chromaY = sourceY / 2;
+                    uOffsets[index] = chromaY * uRowStride + chromaX * uPixelStride;
+                    vOffsets[index] = chromaY * vRowStride + chromaX * vPixelStride;
+                    index++;
+                }
+            }
+        }
+
+        boolean matches(Image image) {
+            Image.Plane[] planes = image.getPlanes();
+            if (planes.length < 3 || !crop.equals(image.getCropRect())) return false;
+            return yRowStride == planes[0].getRowStride()
+                    && yPixelStride == planes[0].getPixelStride()
+                    && uRowStride == planes[1].getRowStride()
+                    && uPixelStride == planes[1].getPixelStride()
+                    && vRowStride == planes[2].getRowStride()
+                    && vPixelStride == planes[2].getPixelStride();
+        }
+
+        Mat convert(Image image) {
+            Image.Plane[] planes = image.getPlanes();
+            ByteBuffer yBuffer = planes[0].getBuffer().duplicate();
+            ByteBuffer uBuffer = planes[1].getBuffer().duplicate();
+            ByteBuffer vBuffer = planes[2].getBuffer().duplicate();
+            int outputIndex = 0;
+            for (int index = 0; index < PIXEL_COUNT; index++) {
+                int yValue = yBuffer.get(yOffsets[index]) & 0xff;
+                int uValue = uBuffer.get(uOffsets[index]) & 0xff;
+                int vValue = vBuffer.get(vOffsets[index]) & 0xff;
+                int yComponent = Y_COMPONENT[yValue];
+                int red = clamp((yComponent + RED_FROM_V[vValue] + 128) >> 8, 0, 255);
+                int green = clamp((yComponent + GREEN_FROM_U[uValue]
+                        + GREEN_FROM_V[vValue] + 128) >> 8, 0, 255);
+                int blue = clamp((yComponent + BLUE_FROM_U[uValue] + 128) >> 8, 0, 255);
+                rgba[outputIndex++] = (byte) red;
+                rgba[outputIndex++] = (byte) green;
+                rgba[outputIndex++] = (byte) blue;
+                rgba[outputIndex++] = (byte) 255;
+            }
+            Mat result = new Mat(
+                    FeatureSchema.ANALYSIS_HEIGHT,
+                    FeatureSchema.ANALYSIS_WIDTH,
+                    CvType.CV_8UC4
+            );
+            result.put(0, 0, rgba);
+            return result;
+        }
     }
 
     static int findTrack(MediaExtractor extractor, String prefix) {

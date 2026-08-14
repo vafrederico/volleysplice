@@ -470,7 +470,7 @@ public final class MainActivity extends Activity {
         JSONObject json = new JSONObject();
         try {
             json.put("schemaVersion", 1);
-            json.put("method", "android-native-mediacodec-async-decodeonly-opencv-v2");
+            json.put("method", "android-native-mediacodec-async-decodeonly-yuvlut-opencv-v3");
             json.put("modelId", "model-9c92b8e9333f");
             json.put("sourceName", result.displayName());
             json.put("duration", result.media().durationSeconds());
@@ -634,7 +634,7 @@ public final class MainActivity extends Activity {
             output.append(String.format(Locale.US,
                     "  Serial codec input callbacks: %.1f%%; OpenCV critical waits: queue %.2f ms, drain %.2f ms.\n",
                     percent(asyncInput, videoWallMilliseconds), workerQueueWait, workerFinishWait));
-            output.append("  Next lead: batch compressed access units; OpenCV remains off the critical path.\n");
+            output.append("  Next lead: reduce per-access-unit codec queue overhead; OpenCV remains off the critical path.\n");
             return;
         }
         double maximum = Math.max(Math.max(codecWait, yuv), Math.max(openCv, demux));
