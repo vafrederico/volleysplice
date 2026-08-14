@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [All-model `F1_padP_coreR` ranking and rally-score export sweep — 2026-08-13](./all-models-f1-padp-corer-score-thresholds-2026-08-13.md) — validation-only ranking of 32 complete model outputs, required 0–3 second padding sensitivity, and inclusive 0.50–0.90 rally-score export filters using the current label-document ignored-range revision.
 - [Beach cutting and VNL-STES reuse decision](./volleyball-cutting-vnl-reuse-decision.md) — availability and licensing, camera compatibility, reusable ideas, reproducibility defects, and the adoption decision.
 - [Source-access log — 2026-08-07](./source-access-2026-08-07.md) — exact artifacts, immutable identifiers, checksums, and access outcomes.
 - [Real-footage v0 evaluation — 2026-08-09](./real-footage-v0-evaluation-2026-08-09.md) — raw-corpus inventory, camera fit, leakage-safe pilot, real metrics, observed failures, and the next model decision.
@@ -30,6 +31,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Unsloth rally-window dataset — 2026-08-12](./unsloth-rally-window-dataset-2026-08-12.md) — generated video-conversation JSONL artifact, deterministic 32-second windows, source-group-safe splits, checksums, loading instructions, and dataset limitations.
 - [Model-training execution handoff — 2026-08-12](./model-training-execution-handoff-2026-08-12.md) — implementation-grade native-Windows Unsloth and WSL DINOv2-temporal plans, exact paths, memory gates, folds, artifacts, and completion criteria.
 - [Offline versus browser on-device padding comparison — 2026-08-13](./browser-on-device-padding-comparison-2026-08-13.md) — 2-second and 3-second event, adjusted-F1, live-time, and full-rally containment results for the canonical offline and browser runtimes.
+- [WSL DINOv2 temporal execution — 2026-08-13](./dinov2-temporal-execution-2026-08-13.md) — Track T implementation, pinned-backbone/GPU qualification, primary and no-beach development studies, selected architecture, promotion gate, and protected-test status.
 
 ## Related context
 

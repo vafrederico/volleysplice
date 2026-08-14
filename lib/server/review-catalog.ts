@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { loadAnalyses } from "@/lib/analysis";
+import { applyIgnoredIntervalRevision, loadAnalyses } from "@/lib/analysis";
 import type {
   AnalysisOption,
   DatasetRole,
@@ -12,7 +12,11 @@ import type {
 } from "@/lib/analysis-types";
 import { parseLabelDocument, type LabelDocument, type RallyLabel } from "@/lib/annotations";
 import type { Rally } from "@/lib/edit-list";
-import { getPreparedLabelingCatalog, type PreparedLabelingTask } from "@/lib/server/labeling-tasks";
+import {
+  getPreparedLabelingCatalog,
+  getSavedLabelingDocument,
+  type PreparedLabelingTask,
+} from "@/lib/server/labeling-tasks";
 
 const DEFAULT_LABELING_WORKSPACE = "/mnt/freenas/volleycut/labeling-v1-2026-08-09";
 const DEFAULT_NO_BEACH_LABELING_WORKSPACE =
@@ -195,6 +199,7 @@ function labelAnalysis(
       ? "human-verified-serve-contact-to-dead-ball-v1"
       : document.prelabel?.analysisMethod ?? "blind-gpt-5.6-sol-xhigh-audiovisual",
     modelVersion: null,
+    addedAt: null,
     trainingCorpus: "reference",
     trainingCorpusLabel: "Reference",
     datasetRole: "not-applicable",
@@ -213,6 +218,7 @@ function labelAnalysis(
       ? []
       : ["Blind Sol candidates were generated before continuous human verification."],
     rallies: labelsToRallies(document.rallies, verified),
+    ignoredIntervals: document.ignoredIntervals,
   };
 }
 
@@ -262,6 +268,13 @@ function clampRunToTask(
         end: Math.max(0, Math.min(duration, rally.end)),
       }))
       .filter((rally) => rally.end > rally.start),
+    ignoredIntervals: analysis.ignoredIntervals
+      .map((interval) => ({
+        ...interval,
+        start: Math.max(0, Math.min(duration, interval.start)),
+        end: Math.max(0, Math.min(duration, interval.end)),
+      }))
+      .filter((interval) => interval.end > interval.start),
   };
 }
 
@@ -273,6 +286,11 @@ function variantRank(analysis: ReviewAnalysis): number {
   return 4;
 }
 
+function addedAtTime(analysis: ReviewAnalysis): number {
+  const value = analysis.addedAt ? Date.parse(analysis.addedAt) : Number.NaN;
+  return Number.isFinite(value) ? value : 0;
+}
+
 function toOption(analysis: ReviewAnalysis): AnalysisOption {
   return {
     id: analysis.id,
@@ -282,6 +300,7 @@ function toOption(analysis: ReviewAnalysis): AnalysisOption {
     variantDescription: analysis.variantDescription,
     kind: analysis.kind,
     modelVersion: analysis.modelVersion,
+    addedAt: analysis.addedAt,
     trainingCorpus: analysis.trainingCorpus,
     trainingCorpusLabel: analysis.trainingCorpusLabel,
     datasetRole: analysis.datasetRole,
@@ -326,14 +345,21 @@ export async function loadReviewCatalog(): Promise<ReviewCatalog> {
   const analyses: ReviewAnalysis[] = [];
   const videos: ReviewVideoOption[] = [];
   for (const task of tasks) {
-    const [gold, sol] = await Promise.all([
+    const [completedGold, sol, savedLabels] = await Promise.all([
       readLabelAnalysis(
         task,
         path.join(labelingWorkspace(), "completed", "full-v1", `${task.id}.labels.json`),
         "gold",
       ),
       readLabelAnalysis(task, task.prelabelPath, "sol"),
+      getSavedLabelingDocument(task),
     ]);
+    const gold = completedGold && savedLabels.source === "draft"
+      ? applyIgnoredIntervalRevision(
+          completedGold,
+          savedLabels.document.ignoredIntervals,
+        )
+      : completedGold;
     const taskAnalyses = generated
       .filter((analysis) => matchesTask(analysis, task))
       .map((analysis) => {
@@ -358,6 +384,10 @@ export async function loadReviewCatalog(): Promise<ReviewCatalog> {
     taskAnalyses.sort((left, right) => {
       const rank = variantRank(left) - variantRank(right);
       if (rank !== 0) return rank;
+      if (left.kind === "model" && right.kind === "model") {
+        const added = addedAtTime(right) - addedAtTime(left);
+        if (added !== 0) return added;
+      }
       return right.variantLabel.localeCompare(left.variantLabel);
     });
     analyses.push(...taskAnalyses);

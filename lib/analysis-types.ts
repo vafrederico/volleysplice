@@ -1,4 +1,5 @@
 import type { Rally } from "@/lib/edit-list";
+import type { IgnoredInterval } from "@/lib/annotations";
 
 export type AnalysisKind = "heuristic" | "model" | "sol" | "gold" | "unknown";
 
@@ -24,6 +25,7 @@ export type ReviewAnalysis = {
   kind: AnalysisKind;
   method: string;
   modelVersion: string | null;
+  addedAt: string | null;
   trainingCorpus: TrainingCorpus;
   trainingCorpusLabel: string;
   datasetRole: DatasetRole;
@@ -40,6 +42,7 @@ export type ReviewAnalysis = {
   cameraStability: number;
   warnings: string[];
   rallies: Rally[];
+  ignoredIntervals: IgnoredInterval[];
 };
 
 export type AnalysisOption = {
@@ -50,6 +53,7 @@ export type AnalysisOption = {
   variantDescription: string | null;
   kind: AnalysisKind;
   modelVersion: string | null;
+  addedAt: string | null;
   trainingCorpus: TrainingCorpus;
   trainingCorpusLabel: string;
   datasetRole: DatasetRole;

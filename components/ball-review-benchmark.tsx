@@ -252,7 +252,7 @@ function AnnotationStage({
                         y={labelY - 1}
                         fill={roleColor}
                         fontSize={9}
-                        fontFamily="DM Mono, monospace"
+                        fontFamily="Atkinson Hyperlegible Mono, monospace"
                       >
                         {layer.short}
                       </text>

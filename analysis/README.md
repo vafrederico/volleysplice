@@ -120,6 +120,18 @@ Feature caches are keyed by source-content SHA-256, ROI, extractor version, and 
 
 Evaluation reports product-relevant interval precision/recall/F1 at IoU 0.5, temporal IoU, live-time recall, dead time retained, exact rally-count rate, and boundary errors. Frame accuracy is intentionally not the primary metric because long dead periods can make it look good while rallies are missed.
 
+For ranking rally-model iterations, the primary ordering metric is **Padded P/Core R F1**
+(`F1_padP_coreR`), not event F1. It combines precision of the padded model export against
+equally padded human labels with recall of that same model export against core human labels.
+Rank the pooled development/validation result descending under identical padding, labels,
+and recording scope; keep the protected test split closed during iteration. The complete
+definition and aggregation rules are in
+[`../docs/model-ranking-metric.md`](../docs/model-ranking-metric.md).
+Every iteration evaluation must report the complete symmetric padding sensitivity sweep:
+`(before, after) = (0, 0), (1, 1), (2, 2), (3, 3)` seconds. Calculate the metric and
+its pooled components independently for all four cases. Use only the predeclared target
+padding for ranking; do not choose a different best-padding case per model.
+
 ## Grouped feature study
 
 The feature-study runner keeps the fixed test split unopened while it performs nested leave-one-`sourceGroup`-out development evaluation. It prepares the audiovisual superset once, then fits full, legacy-only, added-only, and full-minus-family candidates. It also reports grouped circular-shift importance for every family and every base signal, standardized coefficient profiles, the short-event decoder ablation, outcome slices, and 0/1/2/3-second padding sensitivity:
