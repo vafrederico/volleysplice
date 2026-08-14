@@ -29,6 +29,7 @@ test("createCutDraft seeds clamped per-cut padding from cached labels", () => {
   assert.equal(draft.sourceRevision, cutSourceRevision(seed));
   assert.equal(draft.beforePaddingSeconds, 2);
   assert.equal(draft.afterPaddingSeconds, 2);
+  assert.equal(draft.playbackRate, 1);
   assert.deepEqual(
     draft.cuts.map(({ coreStart, coreEnd, keepStart, keepEnd, origin }) => ({
       coreStart,
@@ -77,6 +78,7 @@ test("parseCutDraft restores matching drafts and rejects stale source labels", (
   draft.pendingManualStart = 12.5;
   draft.ignoreReason = "camera-gap";
   draft.cutPreviewEnabled = true;
+  draft.playbackRate = 4;
 
   assert.deepEqual(parseCutDraft(JSON.stringify(draft), seed), draft);
   assert.equal(
@@ -99,12 +101,30 @@ test("parseCutDraft migrates the original on-device draft without losing edits",
   delete legacy.pendingIgnoreStart;
   delete legacy.ignoreReason;
   delete legacy.cutPreviewEnabled;
+  delete legacy.playbackRate;
 
   const migrated = parseCutDraft(JSON.stringify(legacy), seed);
 
   assert.equal(migrated?.cuts[0].included, false);
   assert.equal(migrated?.beforePaddingSeconds, 3);
   assert.equal(migrated?.afterPaddingSeconds, 2);
+  assert.equal(migrated?.playbackRate, 1);
+});
+
+test("playback-rate migration preserves the prior session state", () => {
+  const prior = createCutDraft(seed) as unknown as Record<string, unknown>;
+  prior.version = 4;
+  prior.pendingManualStart = 12.5;
+  prior.ignoreReason = "camera-gap";
+  prior.cutPreviewEnabled = true;
+  delete prior.playbackRate;
+
+  const migrated = parseCutDraft(JSON.stringify(prior), seed);
+
+  assert.equal(migrated?.pendingManualStart, 12.5);
+  assert.equal(migrated?.ignoreReason, "camera-gap");
+  assert.equal(migrated?.cutPreviewEnabled, true);
+  assert.equal(migrated?.playbackRate, 1);
 });
 
 test("final edit list merges touching cuts and subtracts ignored source time", () => {

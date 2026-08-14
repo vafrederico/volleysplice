@@ -1,9 +1,10 @@
 import type { IgnoredInterval } from "./annotations.ts";
 import type { Rally } from "./edit-list.ts";
 
-export const CUT_DRAFT_VERSION = 4 as const;
+export const CUT_DRAFT_VERSION = 5 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const MAX_CUT_PADDING_SECONDS = 10;
+export const PLAYBACK_RATES = [1, 2, 4, 8] as const;
 
 export type CutOrigin = "cached-label" | "manual";
 
@@ -34,6 +35,7 @@ export type CutDraft = {
   pendingIgnoreStart: number | null;
   ignoreReason: string;
   cutPreviewEnabled: boolean;
+  playbackRate: (typeof PLAYBACK_RATES)[number];
   cuts: EditableCut[];
   ignoredIntervals: IgnoredSourceInterval[];
 };
@@ -91,7 +93,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -110,6 +112,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     pendingIgnoreStart: null,
     ignoreReason: "non-game-content",
     cutPreviewEnabled: false,
+    playbackRate: 1,
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
       coreStart: clamp(rally.start, 0, duration),
@@ -177,7 +180,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       version?: unknown;
       paddingSeconds?: unknown;
     };
-    if (![1, 2, 3, CUT_DRAFT_VERSION].includes(persisted.version as number)) {
+    if (![1, 2, 3, 4, CUT_DRAFT_VERSION].includes(persisted.version as number)) {
       return null;
     }
     const value: Partial<CutDraft> = persisted.version === CUT_DRAFT_VERSION
@@ -195,10 +198,15 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
             : persisted.version === 2
               ? persisted.paddingSeconds as number
               : persisted.afterPaddingSeconds,
-          pendingManualStart: null,
-          pendingIgnoreStart: null,
-          ignoreReason: "non-game-content",
-          cutPreviewEnabled: false,
+          pendingManualStart: persisted.version === 4 ? persisted.pendingManualStart : null,
+          pendingIgnoreStart: persisted.version === 4 ? persisted.pendingIgnoreStart : null,
+          ignoreReason: persisted.version === 4
+            ? persisted.ignoreReason
+            : "non-game-content",
+          cutPreviewEnabled: persisted.version === 4
+            ? persisted.cutPreviewEnabled
+            : false,
+          playbackRate: 1,
         };
     if (
       value.version !== CUT_DRAFT_VERSION ||
@@ -227,6 +235,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       typeof value.ignoreReason !== "string" ||
       value.ignoreReason.length === 0 ||
       typeof value.cutPreviewEnabled !== "boolean" ||
+      !PLAYBACK_RATES.includes(value.playbackRate as (typeof PLAYBACK_RATES)[number]) ||
       (value.pendingManualStart !== null && value.pendingIgnoreStart !== null) ||
       !Array.isArray(value.cuts) ||
       !Array.isArray(value.ignoredIntervals) ||

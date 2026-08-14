@@ -23,6 +23,7 @@ import {
   cutDraftStorageKeys,
   nextFinalCutTime,
   parseCutDraft,
+  PLAYBACK_RATES,
   totalFinalCutSeconds,
   type CutDraft,
   type CutDraftSeed,
@@ -166,6 +167,10 @@ export function CutEditor({
     return () => window.clearTimeout(timer);
   }, [draft, seed.analysisId, storageReady]);
 
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = draft.playbackRate;
+  }, [draft.playbackRate]);
+
   const sortedCuts = useMemo(
     () => [...draft.cuts].sort(
       (left, right) => left.keepStart - right.keepStart || left.keepEnd - right.keepEnd,
@@ -200,6 +205,11 @@ export function CutEditor({
       ...current,
       cuts: current.cuts.map((cut) => (cut.id === id ? mutate(cut) : cut)),
     }));
+  }
+
+  function setPlaybackRate(playbackRate: CutDraft["playbackRate"]) {
+    updateDraft((current) => ({ ...current, playbackRate }));
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate;
   }
 
   function seekTo(time: number) {
@@ -591,6 +601,20 @@ export function CutEditor({
             <button type="button" onClick={() => seekTo(playbackTime + 0.1)}>+0.1s</button>
             <button type="button" onClick={() => seekTo(playbackTime + 1)}>+1s</button>
           </div>
+          <label className={styles.playbackRateControl}>
+            <span>Playback speed</span>
+            <select
+              aria-label="Video playback speed"
+              value={draft.playbackRate}
+              onChange={(event) => setPlaybackRate(
+                Number(event.currentTarget.value) as CutDraft["playbackRate"],
+              )}
+            >
+              {PLAYBACK_RATES.map((rate) => (
+                <option key={rate} value={rate}>{rate}x</option>
+              ))}
+            </select>
+          </label>
 
           <section className={styles.overviewSection}>
             <div className={styles.sectionHeading}>

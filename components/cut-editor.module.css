@@ -209,6 +209,27 @@
   background: var(--cut-acid);
 }
 
+.playbackRateControl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 7px;
+  color: var(--cut-muted);
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
+  text-transform: uppercase;
+}
+
+.playbackRateControl select {
+  width: 82px;
+  padding: 0 10px;
+  border: 1px solid var(--cut-ink);
+  border-radius: 0;
+  background: #fff;
+  color: var(--cut-ink);
+  font: 600 12px "Atkinson Hyperlegible Mono", monospace;
+}
+
 .overviewSection {
   margin-top: 18px;
   padding-top: 14px;
