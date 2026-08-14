@@ -35,14 +35,20 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: inherit;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -1px;
   text-decoration: none;
 }
 
-.mode {
+.brand img {
+  width: 145px;
+  height: auto;
+  mix-blend-mode: multiply;
+}
+
+.brand span {
   padding: 5px 7px;
   background: var(--cut-ink);
   color: var(--cut-acid);
@@ -1046,10 +1052,12 @@
 @media (max-width: 620px) {
   .header {
     align-items: flex-start;
+    flex-direction: column;
   }
 
   .storageState {
-    max-width: 150px;
+    max-width: none;
+    text-align: left;
   }
 
   .confidenceReview {

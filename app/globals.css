@@ -9,7 +9,8 @@ select { font:inherit; }
 main { min-height:100vh; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .topbar { height:72px; padding:0 5vw; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #c8c6bd; }
-.brand { color:inherit; text-decoration:none; font-size:21px; font-weight:800; letter-spacing:-1px; }
+.brand { display:inline-flex; align-items:center; gap:8px; color:inherit; text-decoration:none; }
+.brand img { width:145px; height:auto; mix-blend-mode:multiply; }
 .brand span { padding:4px 7px; margin-left:6px; background:var(--ink); color:var(--acid); font:500 10px Atkinson Hyperlegible Mono; letter-spacing:1px; }
 .top-actions { display:flex; align-items:center; gap:22px; }
 .top-actions > a { color:var(--ink); font:500 11px Atkinson Hyperlegible Mono; text-decoration:none; }

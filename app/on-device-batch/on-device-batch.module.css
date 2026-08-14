@@ -11,7 +11,8 @@
 }
 
 .topbar { height: 72px; padding: 0 5vw; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #c5c3ba; }
-.brand { color: inherit; text-decoration: none; font-size: 21px; font-weight: 800; letter-spacing: -1px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
+.brand img { width: 145px; height: auto; mix-blend-mode: multiply; }
 .brand span { margin-left: 6px; padding: 4px 7px; color: var(--batch-acid); background: var(--batch-ink); font: 500 10px "DM Mono", monospace; letter-spacing: 1px; }
 .security { color: #326240; font: 500 9px "DM Mono", monospace; letter-spacing: 1px; }
 

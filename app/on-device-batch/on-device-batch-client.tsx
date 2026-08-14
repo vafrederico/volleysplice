@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Brand } from "@/components/brand";
 import { formatTime } from "@/lib/edit-list";
 import { openUrlMedia, type OpenedMedia } from "@/lib/on-device/media";
 import { analyzeOpenedMedia } from "@/lib/on-device/pipeline";
@@ -365,7 +366,7 @@ export function OnDeviceBatchClient() {
   return (
     <main className={styles.shell}>
       <header className={styles.topbar}>
-        <Link className={styles.brand} href="/">VOLLEYCUT <span>BATCH</span></Link>
+        <Brand className={styles.brand} label="BATCH" priority />
         <div className={styles.security}>TOKEN / FRAGMENT ONLY · HTTPS</div>
       </header>
 

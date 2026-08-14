@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Brand } from "@/components/brand";
 import { buildEditList, formatTime } from "@/lib/edit-list";
 import {
   downloadEditDecisionList,
@@ -348,7 +349,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   return (
     <main className={styles.shell}>
       <header className={styles.topbar}>
-        <Link className={styles.brand} href="/">VOLLEYCUT <span>LOCAL</span></Link>
+        <Brand className={styles.brand} label="LOCAL" priority />
         <div className={styles.statusRow}>
           <span data-ok={compatibility.decode}>Decode</span>
           <span data-ok={compatibility.encode}>Encode</span>

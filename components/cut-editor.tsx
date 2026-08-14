@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
@@ -10,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { Brand } from "@/components/brand";
 import type {
   AnalysisOption,
   ReviewAnalysis,
@@ -610,8 +610,7 @@ export function CutEditor({
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
-          <Link className={styles.brand} href="/">VOLLEYCUT</Link>
-          <span className={styles.mode}>ON-DEVICE CUTS</span>
+          <Brand className={styles.brand} label="ON-DEVICE CUTS" priority />
         </div>
         <span className={styles.storageState} data-ready={storageReady || undefined}>
           <i /> {storageMessage}
