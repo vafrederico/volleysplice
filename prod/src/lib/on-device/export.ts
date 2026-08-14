@@ -1,4 +1,5 @@
 import {
+  AppendOnlyStreamTarget,
   AudioSampleSink,
   AudioSampleSource,
   Mp4OutputFormat,
@@ -24,6 +25,7 @@ import {
   supportsOpfsExport,
   type PreparedVideoExport,
 } from "./export-delivery";
+import { startServiceWorkerStreamDownload } from "./stream-download";
 
 export type { ExportInterval } from "./export-math";
 export type { PreparedVideoExport } from "./export-delivery";
@@ -45,13 +47,14 @@ type SavePicker = (options: {
 }) => Promise<SaveFileHandle>;
 
 type ExportDestination = {
-  kind: "direct" | "opfs";
+  kind: "direct" | "opfs" | "stream";
   createWritable(): Promise<WritableStream<unknown>>;
   finish(): Promise<PreparedVideoExport | null>;
   discard(): Promise<void>;
 };
 
 const OPFS_EXPORT_NAME = "volleycut-latest-export.mp4";
+export type VideoExportMode = "compatible" | "stream-download";
 
 function safeBaseName(filename: string): string {
   return (
@@ -67,7 +70,20 @@ function picker(): SavePicker | null {
   return candidate?.bind(window) ?? null;
 }
 
-async function chooseExportDestination(fileName: string): Promise<ExportDestination> {
+async function chooseExportDestination(
+  fileName: string,
+  mode: VideoExportMode,
+): Promise<ExportDestination> {
+  if (mode === "stream-download") {
+    const download = startServiceWorkerStreamDownload(fileName);
+    return {
+      kind: "stream",
+      createWritable: async () => download.writable,
+      finish: async () => null,
+      discard: () => download.cancel("The video export stopped before completion."),
+    };
+  }
+
   const savePicker = picker();
   if (savePicker) {
     // Keep this call before any await so Chromium retains the initiating click's activation.
@@ -119,9 +135,10 @@ export async function exportRawQualityReel(
   onProgress?: (progress: ExportProgress) => void,
   expectedTimelineDuration?: number,
   onWakeLockState?: (state: WakeLockState) => void,
+  mode: VideoExportMode = "compatible",
 ): Promise<PreparedVideoExport | null> {
   const outputName = `${safeBaseName(file.name)}-volleycut.mp4`;
-  const destination = await chooseExportDestination(outputName);
+  const destination = await chooseExportDestination(outputName, mode);
   let media: Awaited<ReturnType<typeof openLocalMedia>>;
   try {
     media = await openLocalMedia(file);
@@ -189,11 +206,16 @@ export async function exportRawQualityReel(
     throw error;
   }
   const output = new Output({
-    format: new Mp4OutputFormat({ fastStart: false }),
-    target: new StreamTarget(writable as WritableStream<StreamTargetChunk>, {
-      chunked: true,
-      chunkSize: 1024 * 1024,
+    format: new Mp4OutputFormat({
+      fastStart: destination.kind === "stream" ? "fragmented" : false,
     }),
+    target:
+      destination.kind === "stream"
+        ? new AppendOnlyStreamTarget(writable as WritableStream<Uint8Array>)
+        : new StreamTarget(writable as WritableStream<StreamTargetChunk>, {
+            chunked: true,
+            chunkSize: 1024 * 1024,
+          }),
   });
   const videoSource = new VideoSampleSource({
     codec: "avc",
@@ -312,6 +334,8 @@ export async function exportRawQualityReel(
       totalSeconds,
       destination.kind === "opfs"
         ? "Finalizing MP4 in private device storage"
+        : destination.kind === "stream"
+          ? "Sending final MP4 bytes to browser download"
         : "Finalizing MP4 on disk",
       true,
     );
@@ -319,7 +343,11 @@ export async function exportRawQualityReel(
     const prepared = await destination.finish();
     reportProgress(
       totalSeconds,
-      prepared ? "MP4 ready to share or save" : "MP4 saved from the original local video",
+      prepared
+        ? "MP4 ready to share or save"
+        : destination.kind === "stream"
+          ? "MP4 stream handed to browser download"
+          : "MP4 saved from the original local video",
       true,
     );
     return prepared;

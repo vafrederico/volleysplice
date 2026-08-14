@@ -153,6 +153,12 @@
 .rolls output { float: right; color: var(--local-acid); font: 12px "DM Mono", monospace; }
 .rolls input { width: 100%; margin-top: 12px; accent-color: var(--local-acid); }
 .masterPicker { margin-top: 18px; color: var(--local-ink); background: #fff; }
+.streamExportToggle { margin-top: 14px; padding: 11px; display: flex; gap: 10px; align-items: flex-start; border: 1px solid #6b6e64; color: #fff; cursor: pointer; }
+.streamExportToggle input { margin-top: 2px; accent-color: var(--local-acid); }
+.streamExportToggle span { display: grid; gap: 4px; }
+.streamExportToggle strong { color: var(--local-acid); font: 10px "DM Mono", monospace; text-transform: uppercase; }
+.streamExportToggle small { color: #aeb0a7; font: 9px/1.45 "DM Mono", monospace; }
+.streamExportToggle:has(input:disabled) { opacity: .55; cursor: not-allowed; }
 .exportActions { display: flex; gap: 9px; margin-top: 18px; }
 .exportActions button { flex: 1; padding: 13px; border: 1px solid var(--local-acid); background: var(--local-acid); color: var(--local-ink); cursor: pointer; font-size: 10px; font-weight: 800; }
 .exportActions .secondaryButton { border-color: #6b6e64; background: transparent; color: #fff; }

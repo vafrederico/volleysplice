@@ -1,0 +1,136 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import vm from "node:vm";
+
+const rootWorkerPath = new URL("../../public/volleycut-export-sw.js", import.meta.url);
+const prodWorkerPath = new URL("../../prod/public/volleycut-export-sw.js", import.meta.url);
+
+type WorkerHandlers = {
+  message: (event: { data: unknown; ports: MessagePort[] }) => void;
+  fetch: (event: {
+    request: Request;
+    respondWith(response: Promise<Response>): void;
+  }) => void;
+};
+
+async function loadWorker(): Promise<WorkerHandlers> {
+  const source = await readFile(rootWorkerPath, "utf8");
+  const listeners = new Map<string, (event: never) => void>();
+  const workerSelf = {
+    addEventListener(type: string, listener: (event: never) => void) {
+      listeners.set(type, listener);
+    },
+    skipWaiting: async () => undefined,
+    clients: { claim: async () => undefined },
+  };
+  vm.runInNewContext(source, {
+    self: workerSelf,
+    ArrayBuffer,
+    Error,
+    Map,
+    Promise,
+    ReadableStream,
+    Response,
+    URL,
+    Uint8Array,
+    clearTimeout,
+    decodeURIComponent,
+    encodeURIComponent,
+    setTimeout,
+  });
+  return {
+    message: listeners.get("message") as WorkerHandlers["message"],
+    fetch: listeners.get("fetch") as WorkerHandlers["fetch"],
+  };
+}
+
+test("local and production apps ship the same export Service Worker", async () => {
+  const [rootSource, prodSource] = await Promise.all([
+    readFile(rootWorkerPath, "utf8"),
+    readFile(prodWorkerPath, "utf8"),
+  ]);
+  assert.equal(prodSource, rootSource);
+});
+
+test("Service Worker streams transferred chunks with download headers", async () => {
+  const handlers = await loadWorker();
+  const channel = new MessageChannel();
+  const protocol = "volleycut-export-v1";
+  const chunks = [new Uint8Array([0, 1, 2]), new Uint8Array([3, 4])];
+  let nextChunk = 0;
+
+  channel.port1.onmessage = (event) => {
+    if (event.data?.protocol !== protocol || event.data.type !== "pull") return;
+    const chunk = chunks[nextChunk++];
+    if (!chunk) {
+      channel.port1.postMessage({ protocol, type: "close" });
+      return;
+    }
+    const buffer = chunk.slice().buffer;
+    channel.port1.postMessage({ protocol, type: "chunk", buffer }, [buffer]);
+  };
+  channel.port1.start();
+
+  handlers.message({
+    data: {
+      protocol,
+      type: "prepare",
+      token: "test-token",
+      fileName: "match final.mp4",
+    },
+    ports: [channel.port2],
+  });
+
+  let responsePromise: Promise<Response> | null = null;
+  handlers.fetch({
+    request: new Request("https://example.test/__volleycut_export_download__/test-token"),
+    respondWith(response) {
+      responsePromise = response;
+    },
+  });
+  assert.ok(responsePromise);
+  const response = await responsePromise;
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "video/mp4");
+  assert.match(response.headers.get("content-disposition") ?? "", /match final\.mp4/);
+  assert.equal(response.headers.get("cache-control"), "no-store, no-transform");
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  assert.deepEqual([...bytes], [0, 1, 2, 3, 4]);
+  assert.equal(nextChunk, 3, "the worker must pull each chunk and then request EOF");
+  channel.port1.close();
+});
+
+test("a download fetch may race ahead of stream preparation", async () => {
+  const handlers = await loadWorker();
+  const channel = new MessageChannel();
+  const protocol = "volleycut-export-v1";
+  channel.port1.onmessage = (event) => {
+    if (event.data?.protocol === protocol && event.data.type === "pull") {
+      channel.port1.postMessage({ protocol, type: "close" });
+    }
+  };
+  channel.port1.start();
+  let responsePromise: Promise<Response> | null = null;
+  handlers.fetch({
+    request: new Request("https://example.test/__volleycut_export_download__/racing-token"),
+    respondWith(response) {
+      responsePromise = response;
+    },
+  });
+  assert.ok(responsePromise);
+  handlers.message({
+    data: {
+      protocol,
+      type: "prepare",
+      token: "racing-token",
+      fileName: "racing.mp4",
+    },
+    ports: [channel.port2],
+  });
+  const response = await responsePromise;
+  assert.equal(response.status, 200);
+  assert.equal((await response.arrayBuffer()).byteLength, 0);
+  channel.port1.close();
+});
