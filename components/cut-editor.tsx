@@ -661,7 +661,29 @@ export function CutEditor({
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={() => selectCut(cut)}
                   aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}`}
-                />
+                >
+                  <span
+                    className={styles.overviewPadding}
+                    style={{
+                      left: 0,
+                      width: `${timelinePercent(cut.coreStart - cut.keepStart, cut.keepEnd - cut.keepStart)}%`,
+                    }}
+                  />
+                  <span
+                    className={styles.overviewCore}
+                    style={{
+                      left: `${timelinePercent(cut.coreStart - cut.keepStart, cut.keepEnd - cut.keepStart)}%`,
+                      width: `${timelinePercent(cut.coreEnd - cut.coreStart, cut.keepEnd - cut.keepStart)}%`,
+                    }}
+                  />
+                  <span
+                    className={styles.overviewPadding}
+                    style={{
+                      left: `${timelinePercent(cut.coreEnd - cut.keepStart, cut.keepEnd - cut.keepStart)}%`,
+                      width: `${timelinePercent(cut.keepEnd - cut.coreEnd, cut.keepEnd - cut.keepStart)}%`,
+                    }}
+                  />
+                </button>
               ))}
               <span
                 className={styles.playhead}

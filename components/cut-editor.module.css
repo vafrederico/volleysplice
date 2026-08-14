@@ -280,6 +280,7 @@
   height: 36px;
   min-width: 5px;
   min-height: 0;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: repeating-linear-gradient(
@@ -294,11 +295,27 @@
 }
 
 .overviewCut[data-included="true"] {
-  background: var(--cut-blue);
+  background: #b8d8ff;
   opacity: 1;
 }
 
-.overviewCut[data-origin="manual"] {
+.overviewPadding,
+.overviewCore {
+  position: absolute;
+  inset-block: 0;
+  pointer-events: none;
+}
+
+.overviewPadding {
+  background: #b8d8ff;
+}
+
+.overviewCore {
+  min-width: 1px;
+  background: var(--cut-blue);
+}
+
+.overviewCut[data-origin="manual"] .overviewCore {
   background: var(--cut-orange);
 }
 
@@ -311,6 +328,11 @@
     rgba(255, 255, 255, .25) 10px
   );
   opacity: .55;
+}
+
+.overviewCut:not([data-included="true"]) > span,
+.overviewCut[data-ignored="true"] > span {
+  opacity: 0;
 }
 
 .overviewCut[data-selected="true"] {
@@ -543,7 +565,7 @@
 }
 
 .keptRange[data-included="true"] {
-  background: rgba(39, 95, 194, .28);
+  background: rgba(133, 190, 255, .55);
 }
 
 .keptRange[data-ignored="true"] {
