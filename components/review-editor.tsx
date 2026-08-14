@@ -744,6 +744,7 @@ export function ReviewEditor({
       <header className="topbar">
         <a className="brand" href="#">VOLLEYCUT <span>LAB</span></a>
         <div className="top-actions">
+          <Link href="/edit">Open cut editor →</Link>
           <Link href="/label">Open labeling station →</Link>
           <div className="project-state">
             <i /> {initialAnalysis ? `${videoOptions.length} videos ready` : "Demo mode"}
