@@ -80,6 +80,14 @@ def main() -> int:
         "--variant-description", default=FUSION_VARIANT_DESCRIPTION
     )
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--allow-manifest-mismatch",
+        action="store_true",
+        help=(
+            "allow prediction on a manifest outside the frozen decision's training "
+            "manifest; model and decision bindings remain strictly validated"
+        ),
+    )
     arguments = parser.parse_args()
 
     result = infer_dual_serve_fusion_dataset(
@@ -96,6 +104,7 @@ def main() -> int:
         variant_label=arguments.variant_label,
         variant_description=arguments.variant_description,
         limit=arguments.limit,
+        allow_manifest_mismatch=arguments.allow_manifest_mismatch,
         progress=lambda message: print(message, file=sys.stderr, flush=True),
     )
     print(json.dumps(result, indent=2, allow_nan=False))

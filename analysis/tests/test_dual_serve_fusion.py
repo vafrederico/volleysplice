@@ -15,6 +15,7 @@ from analysis.dual_serve_fusion_experiment import (
     _analysis_run_id,
     _check_evaluation_groups,
     _clip_decoded,
+    _prediction_binding_manifest_sha256,
     _validate_decision,
     _validate_existing_fusion_analysis,
     add_only_candidates,
@@ -159,6 +160,12 @@ class DualServeFusionTests(unittest.TestCase):
                     "fusion": {
                         "experiment": EXPERIMENT_ID,
                         "decisionReportSha256": "decision-sha",
+                        "intakeManifestSha256": "intake-sha",
+                        "decisionBindings": {
+                            "manifestSha256": "training-sha",
+                            "models": bindings,
+                        },
+                        "predictionOnlyManifestMismatch": True,
                         "modelBindings": bindings,
                         "boundarySelector": selector.to_dict(),
                         "addOnly": {"selectedPolicy": "disabled"},
@@ -176,6 +183,8 @@ class DualServeFusionTests(unittest.TestCase):
                 source_filename="recording.mp4",
                 content_sha256="video-sha",
                 decision_sha256="decision-sha",
+                intake_manifest_sha256="intake-sha",
+                decision_binding_manifest_sha256="training-sha",
                 model_bindings=bindings,
                 component_versions=versions,
                 selector=selector,
@@ -190,6 +199,8 @@ class DualServeFusionTests(unittest.TestCase):
                     source_filename="recording.mp4",
                     content_sha256="changed-video-sha",
                     decision_sha256="decision-sha",
+                    intake_manifest_sha256="intake-sha",
+                    decision_binding_manifest_sha256="training-sha",
                     model_bindings=bindings,
                     component_versions=versions,
                     selector=selector,
@@ -279,6 +290,33 @@ class DualServeFusionTests(unittest.TestCase):
             _validate_decision(decision, "other", models)
         with self.assertRaisesRegex(ModelError, "different model artifacts"):
             _validate_decision(decision, "manifest", {"changed": True})
+
+    def test_prediction_manifest_mismatch_uses_frozen_decision_binding_only_when_allowed(
+        self,
+    ) -> None:
+        decision = {"manifestSha256": "original-training-manifest"}
+        self.assertEqual(
+            _prediction_binding_manifest_sha256(
+                "new-intake-manifest",
+                decision,
+                allow_manifest_mismatch=False,
+            ),
+            "new-intake-manifest",
+        )
+        self.assertEqual(
+            _prediction_binding_manifest_sha256(
+                "new-intake-manifest",
+                decision,
+                allow_manifest_mismatch=True,
+            ),
+            "original-training-manifest",
+        )
+        with self.assertRaisesRegex(ModelError, "manifest binding is invalid"):
+            _prediction_binding_manifest_sha256(
+                "new-intake-manifest",
+                {},
+                allow_manifest_mismatch=True,
+            )
 
     def test_group_overlap_rejects_leaking_evaluation(self) -> None:
         recording = unittest.mock.Mock(source_group="held-out")
