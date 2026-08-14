@@ -9,6 +9,7 @@ import {
   effectiveKeptCutIds,
   nextFinalCutTime,
   parseCutDraft,
+  playbackFocusCut,
   totalFinalCutSeconds,
   type CutDraftSeed,
 } from "../../lib/cut-draft.ts";
@@ -209,6 +210,18 @@ test("cut preview keeps playable time and jumps gaps to the next interval", () =
   assert.equal(nextFinalCutTime(intervals, 3), 3);
   assert.equal(nextFinalCutTime(intervals, 5), 8);
   assert.equal(nextFinalCutTime(intervals, 20), null);
+});
+
+test("playback focus follows the latest retained range start", () => {
+  const draft = createCutDraft(seed);
+  const [first, second] = draft.cuts;
+
+  assert.equal(playbackFocusCut(draft.cuts, first.keepStart - 0.1), null);
+  assert.equal(playbackFocusCut(draft.cuts, first.keepStart)?.id, first.id);
+  assert.equal(playbackFocusCut(draft.cuts, second.keepStart - 0.1)?.id, first.id);
+  assert.equal(playbackFocusCut(draft.cuts, second.keepStart)?.id, second.id);
+  assert.equal(playbackFocusCut([...draft.cuts].reverse(), second.keepStart)?.id, second.id);
+  assert.equal(playbackFocusCut(draft.cuts, Number.NaN), null);
 });
 
 test("fully ignored rallies contribute neither kept count nor output duration", () => {

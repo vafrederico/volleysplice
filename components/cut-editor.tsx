@@ -24,6 +24,7 @@ import {
   effectiveKeptCutIds,
   nextFinalCutTime,
   parseCutDraft,
+  playbackFocusCut,
   PLAYBACK_RATES,
   totalFinalCutSeconds,
   type CutDraft,
@@ -138,6 +139,7 @@ export function CutEditor({
   const [storageReady, setStorageReady] = useState(false);
   const [storageMessage, setStorageMessage] = useState("Loading on-device draft…");
   const [selectedId, setSelectedId] = useState(initialDraft.cuts[0]?.id ?? "");
+  const [focusLocked, setFocusLocked] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
@@ -250,6 +252,15 @@ export function CutEditor({
     const clamped = Math.max(0, Math.min(initialAnalysis.duration, time));
     setPlaybackTime(clamped);
     if (videoRef.current) videoRef.current.currentTime = clamped;
+  }
+
+  function trackPlayback(time: number) {
+    setPlaybackTime(time);
+    if (focusLocked) return;
+    const reachedCut = playbackFocusCut(sortedCuts, time);
+    if (reachedCut) {
+      setSelectedId((current) => current === reachedCut.id ? current : reachedCut.id);
+    }
   }
 
   function selectCut(cut: EditableCut) {
@@ -732,7 +743,7 @@ export function CutEditor({
                 controls
                 onTimeUpdate={(event) => {
                   const time = event.currentTarget.currentTime;
-                  setPlaybackTime(time);
+                  trackPlayback(time);
                   if (cutPreviewEnabled) {
                     const target = nextFinalCutTime(finalIntervals, time);
                     if (target === null) {
@@ -741,7 +752,7 @@ export function CutEditor({
                     }
                     if (Math.abs(target - time) > 0.01) {
                       event.currentTarget.currentTime = target;
-                      setPlaybackTime(target);
+                      trackPlayback(target);
                       return;
                     }
                   }
@@ -918,21 +929,31 @@ export function CutEditor({
             <span>FOCUSED RANGE</span>
             <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `Cached label · ${Math.round(selected.confidence * 100)}%`}` : "No range selected"}</strong>
           </div>
-          {selected && (
-            <div className={styles.rangeNavigation}>
-              <button type="button" onClick={() => navigateCut(-1)} disabled={selectedIndex <= 0}>
-                Previous
-              </button>
-              <span>{selectedIndex + 1} / {sortedCuts.length}</span>
-              <button
-                type="button"
-                onClick={() => navigateCut(1)}
-                disabled={selectedIndex >= sortedCuts.length - 1}
-              >
-                Next
-              </button>
-            </div>
-          )}
+          <div className={styles.focusHeaderControls}>
+            <label className={styles.focusLock}>
+              <input
+                type="checkbox"
+                checked={focusLocked}
+                onChange={(event) => setFocusLocked(event.currentTarget.checked)}
+              />
+              <span>Lock focus</span>
+            </label>
+            {selected && (
+              <div className={styles.rangeNavigation}>
+                <button type="button" onClick={() => navigateCut(-1)} disabled={selectedIndex <= 0}>
+                  Previous
+                </button>
+                <span>{selectedIndex + 1} / {sortedCuts.length}</span>
+                <button
+                  type="button"
+                  onClick={() => navigateCut(1)}
+                  disabled={selectedIndex >= sortedCuts.length - 1}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {selected ? (

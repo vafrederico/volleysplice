@@ -623,6 +623,35 @@
   background: #fff;
 }
 
+.focusHeaderControls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.focusLock {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font: 600 10px "Atkinson Hyperlegible Mono", monospace;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.focusLock input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--cut-acid);
+}
+
+.focusLock span {
+  color: var(--cut-ink);
+  letter-spacing: .5px;
+}
+
 .rangeNavigation {
   display: flex;
   align-items: center;
@@ -1071,6 +1100,13 @@
   .focusHeader {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .focusHeaderControls {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .rangeNavigation {

@@ -290,6 +290,23 @@ export function applyPaddingToCachedCuts(
   };
 }
 
+export function playbackFocusCut(
+  cuts: readonly EditableCut[],
+  playbackTime: number,
+): EditableCut | null {
+  if (!Number.isFinite(playbackTime)) return null;
+  let reached: EditableCut | null = null;
+  for (const cut of cuts) {
+    if (
+      cut.keepStart <= playbackTime &&
+      (reached === null || cut.keepStart >= reached.keepStart)
+    ) {
+      reached = cut;
+    }
+  }
+  return reached;
+}
+
 function roundTime(seconds: number): number {
   return Math.round(seconds * 1000) / 1000;
 }
