@@ -89,6 +89,12 @@ Each result is an append-only ordinary analysis document under `/mnt/freenas/vol
 
 The final audit found all nine exact recording IDs, 410 sorted/non-overlapping/in-bounds ranges, nine matching court previews, no schema or UI-parser errors, and no partial/staging directories. All nine result URLs returned successfully in the main comparison UI under the “Without beach” corpus. The Y9 URL-sourced run reproduced every start/end boundary in the checked-in 40-range browser cache exactly; repeat-decode confidence differences were small (mean absolute difference `0.000297`, maximum `0.004607`). This is browser-to-browser reproducibility, not parity with the 37-range canonical FFmpeg/OpenCV result.
 
+The [offline-versus-browser padding comparison](./browser-on-device-padding-comparison-2026-08-13.md)
+evaluates those nine results at 2 and 3 seconds on each side. On the retrospective held-out
+recording, browser adjusted F1 is 86.84% versus 88.15% offline at 2 seconds and 88.30% versus
+89.33% at 3 seconds; the browser fully contains one fewer of the 39 expected rallies at both
+settings.
+
 The batch route is deliberately operational tooling rather than a public upload service. It is disabled unless a high-entropy bearer token and an existing output root are supplied through environment variables. The token remains in the browser URL fragment, requests are same-origin, and a dedicated bearer-protected media route range-serves only the fixed nine proxies. Videos remain server-local, submissions are size/schema/model/source constrained, and persistence uses an atomic directory rename with append-only collision handling. Only ranges, fixed media metadata, and concise provenance cross back to the server.
 
 Before another token-enabled run, the fronting proxy must redact or drop the `Authorization` request header in every access-log path, including rejected 4xx requests. The current development Traefik configuration keeps request headers by default and is not safe for reusable bearer credentials. The completed run used a temporary token and its token-enabled server was stopped afterward; that credential must not be reused.
