@@ -477,6 +477,15 @@ def build_parser() -> argparse.ArgumentParser:
     import_prelabels.add_argument("--candidates-dir", required=True, type=Path)
     import_prelabels.add_argument("--tasks-dir", required=True, type=Path)
     import_prelabels.add_argument("--output-dir", required=True, type=Path)
+    import_prelabels.add_argument(
+        "--analysis-method",
+        choices=(
+            "blind-gpt-5.6-sol-high-audiovisual",
+            "blind-gpt-5.6-sol-xhigh-audiovisual",
+        ),
+        default="blind-gpt-5.6-sol-xhigh-audiovisual",
+        help="expected blind-analysis provenance (default: %(default)s)",
+    )
     return parser
 
 
@@ -1119,6 +1128,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                     arguments.candidates_dir,
                     arguments.tasks_dir,
                     arguments.output_dir,
+                    analysis_method=arguments.analysis_method,
                 )
             )
             return 0
