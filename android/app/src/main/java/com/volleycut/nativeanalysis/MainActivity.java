@@ -1,0 +1,572 @@
+package com.volleycut.nativeanalysis;
+
+import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Intent;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.text.method.ScrollingMovementMethod;
+import android.util.Log;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.opencv.android.OpenCVLoader;
+
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+public final class MainActivity extends Activity {
+    private static final String TAG = "VolleyCut";
+    private static final int PICK_VIDEO = 10;
+    private static final int ORANGE = Color.rgb(239, 91, 53);
+    private static final int INK = Color.rgb(32, 32, 30);
+    private static final int PAPER = Color.rgb(247, 244, 238);
+
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean cancelled = new AtomicBoolean();
+    private Uri selectedUri;
+    private AnalysisTypes.AnalysisResult lastResult;
+    private TextView fileLabel;
+    private TextView stageLabel;
+    private TextView performanceText;
+    private TextView resultText;
+    private ProgressBar progressBar;
+    private Button analyzeButton;
+    private Button cancelButton;
+    private Button copyButton;
+    private CheckBox fullFrame;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (!OpenCVLoader.initLocal()) {
+            Toast.makeText(this, "Could not initialize the native OpenCV runtime", Toast.LENGTH_LONG).show();
+        }
+        getWindow().setNavigationBarColor(PAPER);
+        getWindow().setStatusBarColor(PAPER);
+        setContentView(buildUi());
+    }
+
+    private View buildUi() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(PAPER);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(20), dp(20), dp(20), dp(32));
+        scroll.addView(root, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+            int top;
+            int bottom;
+            if (Build.VERSION.SDK_INT >= 30) {
+                top = insets.getInsets(WindowInsets.Type.statusBars()).top;
+                bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            root.setPadding(dp(20), dp(20) + top, dp(20), dp(32) + bottom);
+            return insets;
+        });
+
+        TextView brand = text("VOLLEYCUT", 14, ORANGE);
+        brand.setLetterSpacing(.18f);
+        root.addView(brand);
+        TextView title = text("Native analysis benchmark", 30, INK);
+        title.setPadding(0, dp(8), 0, dp(5));
+        root.addView(title);
+        root.addView(text(
+                "Pixel 10 Pro on Android 17 · target API 36\nNative MediaCodec + native OpenCV · no WebCodecs, JavaScript, or WASM",
+                15, Color.DKGRAY
+        ));
+
+        Button choose = button("Choose video");
+        choose.setOnClickListener(view -> chooseVideo());
+        root.addView(choose, margins(dp(0), dp(22), 0, 0));
+        fileLabel = text("No video selected", 14, Color.DKGRAY);
+        root.addView(fileLabel, margins(0, dp(8), 0, 0));
+
+        fullFrame = new CheckBox(this);
+        fullFrame.setText("Use full frame (distribution-shift diagnostic)");
+        fullFrame.setTextColor(INK);
+        fullFrame.setTextSize(15);
+        root.addView(fullFrame, margins(0, dp(12), 0, 0));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        analyzeButton = button("Run native analysis");
+        analyzeButton.setEnabled(false);
+        analyzeButton.setOnClickListener(view -> runAnalysis());
+        cancelButton = button("Cancel");
+        cancelButton.setEnabled(false);
+        cancelButton.setOnClickListener(view -> cancelled.set(true));
+        actions.addView(analyzeButton, new LinearLayout.LayoutParams(0, dp(52), 1));
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(dp(110), dp(52));
+        cancelParams.setMarginStart(dp(8));
+        actions.addView(cancelButton, cancelParams);
+        root.addView(actions, margins(0, dp(15), 0, 0));
+
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar.setMax(1000);
+        progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(ORANGE));
+        root.addView(progressBar, margins(0, dp(18), 0, 0));
+        stageLabel = text("Ready", 14, Color.DKGRAY);
+        root.addView(stageLabel, margins(0, dp(6), 0, 0));
+
+        performanceText = text("Feature speed will appear after the first sampled frame.", 14, INK);
+        performanceText.setTypeface(android.graphics.Typeface.MONOSPACE);
+        performanceText.setPadding(dp(14), dp(12), dp(14), dp(12));
+        performanceText.setBackgroundColor(Color.rgb(237, 234, 227));
+        root.addView(performanceText, margins(0, dp(10), 0, 0));
+
+        resultText = text(
+                "The result will show native decoder names, per-stage wall time, real-time throughput, and unpadded candidate ranges.",
+                14, INK
+        );
+        resultText.setTextIsSelectable(true);
+        resultText.setMovementMethod(new ScrollingMovementMethod());
+        resultText.setPadding(dp(14), dp(14), dp(14), dp(14));
+        resultText.setBackgroundColor(Color.WHITE);
+        root.addView(resultText, margins(0, dp(18), 0, 0));
+
+        copyButton = button("Copy result JSON");
+        copyButton.setEnabled(false);
+        copyButton.setOnClickListener(view -> copyResult());
+        root.addView(copyButton, margins(0, dp(10), 0, 0));
+
+        TextView caveat = text(
+                "Benchmark note: the video path decodes sequentially through MediaCodec and samples 192×108 YUV frames at 4 Hz. "
+                        + "The model and decoder match the web bundle; Android YUV conversion and native OpenCV may shift feature values, "
+                        + "so compare both wall time and range parity.",
+                13, Color.DKGRAY
+        );
+        caveat.setPadding(0, dp(18), 0, 0);
+        root.addView(caveat);
+        return scroll;
+    }
+
+    private void chooseVideo() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("video/*");
+        startActivityForResult(intent, PICK_VIDEO);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_VIDEO || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        selectedUri = data.getData();
+        try {
+            getContentResolver().takePersistableUriPermission(selectedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException ignored) {}
+        fileLabel.setText(selectedUri.toString());
+        analyzeButton.setEnabled(true);
+        copyButton.setEnabled(false);
+        lastResult = null;
+    }
+
+    private void runAnalysis() {
+        if (selectedUri == null) return;
+        cancelled.set(false);
+        analyzeButton.setEnabled(false);
+        cancelButton.setEnabled(true);
+        copyButton.setEnabled(false);
+        progressBar.setProgress(0);
+        performanceText.setText("Starting native decoder…");
+        resultText.setText("Analysis running…");
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        try { getWindow().setSustainedPerformanceMode(true); } catch (RuntimeException ignored) {}
+        Uri uri = selectedUri;
+        boolean useFullFrame = fullFrame.isChecked();
+        executor.submit(() -> {
+            try {
+                AnalysisTypes.AnalysisResult result = new AnalysisEngine(this).analyze(
+                        uri,
+                        useFullFrame,
+                        cancelled,
+                        new AnalysisTypes.ProgressListener() {
+                            @Override
+                            public void onProgress(String stage, double fraction, String detail) {
+                                runOnUiThread(() -> {
+                                    progressBar.setProgress((int) Math.round(
+                                            Math.max(0, Math.min(1, fraction)) * 1000
+                                    ));
+                                    stageLabel.setText(stage + " · " + detail);
+                                });
+                            }
+
+                            @Override
+                            public void onPerformance(AnalysisTypes.PerformanceStats stats) {
+                                runOnUiThread(() -> showLivePerformance(stats));
+                            }
+                        }
+                );
+                runOnUiThread(() -> showResult(result));
+            } catch (Exception error) {
+                Log.e(TAG, "Native analysis failed", error);
+                runOnUiThread(() -> showError(error));
+            } finally {
+                runOnUiThread(this::finishWorkState);
+            }
+        });
+    }
+
+    private void showResult(AnalysisTypes.AnalysisResult result) {
+        lastResult = result;
+        copyButton.setEnabled(true);
+        progressBar.setProgress(1000);
+        double totalSeconds = result.totalMilliseconds() / 1000.0;
+        double overallRealtime = totalSeconds > 0 ? result.analyzedDurationSeconds() / totalSeconds : 0;
+        double videoSeconds = result.stageMilliseconds().getOrDefault("video_decode_and_features", 0L) / 1000.0;
+        double generatedVideoSeconds = result.sampleRows() / (double) FeatureSchema.ANALYSIS_FPS;
+        double featureFramesPerSecond = videoSeconds > 0 ? result.sampleRows() / videoSeconds : 0;
+        double featureRealtime = videoSeconds > 0 ? generatedVideoSeconds / videoSeconds : 0;
+        double audioSeconds = result.stageMilliseconds().getOrDefault("audio_decode_and_features", 0L) / 1000.0;
+        double audioRealtime = audioSeconds > 0 ? result.analyzedDurationSeconds() / audioSeconds : 0;
+        StringBuilder output = new StringBuilder();
+        output.append(result.displayName()).append('\n');
+        output.append(String.format(Locale.US, "%.2f min · %,d samples · %,d ranges\n\n",
+                result.media().durationSeconds() / 60, result.sampleRows(), result.ranges().size()));
+        output.append(String.format(Locale.US,
+                "Analyzed %.2f s; benchmark cap %,d source frames%s\n\n",
+                result.analyzedDurationSeconds(),
+                result.sourceFrameLimit(),
+                result.sourceFrameLimitReached() ? " (reached)" : " (short clip)"));
+        output.append("Video decoder: ").append(result.videoDecoder())
+                .append(result.hardwareVideoDecoder() ? " (hardware)" : " (software)").append('\n');
+        output.append("Audio decoder: ").append(result.audioDecoder()).append('\n');
+        output.append("ROI: ").append(result.roi().label()).append('\n');
+        output.append(String.format(Locale.US,
+                "Feature speed: %.2f× real time · %.1f frames/s\n",
+                featureRealtime, featureFramesPerSecond));
+        output.append(String.format(Locale.US,
+                "Overall speed: %.2f× real time · %.2f s total\n",
+                overallRealtime, totalSeconds));
+        output.append(String.format(Locale.US,
+                "Audio speed: %.2f× real time\n", audioRealtime));
+        output.append(String.format(Locale.US,
+                "Source frames: %,d decoded · %,d discarded\n",
+                result.decodedSourceFrames(),
+                Math.max(0, result.decodedSourceFrames() - result.sampleRows())));
+        output.append(String.format(Locale.US,
+                "Source decode: %.1f frames/s · sample every %.1f frames\n",
+                videoSeconds > 0 ? result.decodedSourceFrames() / videoSeconds : 0,
+                result.sampleRows() > 0 ? result.decodedSourceFrames() / (double) result.sampleRows() : 0));
+        output.append(String.format(Locale.US,
+                "Audio PCM: %,d source frames · %,d resampled samples · %,d FFT frames\n",
+                result.decodedAudioFrames(), result.resampledAudioSamples(), result.audioFeatureFrames()));
+        output.append(String.format(Locale.US,
+                "Analysis-thread CPU: %.2f s · %.0f%% of wall\n",
+                result.threadCpuMilliseconds() / 1000,
+                result.totalMilliseconds() > 0
+                        ? result.threadCpuMilliseconds() / result.totalMilliseconds() * 100
+                        : 0));
+        output.append(String.format(Locale.US,
+                "Memory: Java %.1f MiB · native %.1f MiB · PSS %.1f MiB · %,d CPUs\n",
+                result.javaHeapUsedBytes() / 1_048_576.0,
+                result.nativeHeapAllocatedBytes() / 1_048_576.0,
+                result.pssKilobytes() / 1024.0,
+                result.availableProcessors()));
+        output.append(String.format(Locale.US,
+                "GC: %,d runs · %.0f ms · thermal %s → %s\n",
+                result.gcCountDelta(), result.gcMillisecondsDelta(),
+                thermalLabel(result.thermalStatusStart()), thermalLabel(result.thermalStatusEnd())));
+        output.append(String.format(Locale.US,
+                "Sample timestamp error: mean %.2f ms · max %.2f ms\n",
+                result.profileMilliseconds().getOrDefault("video/mean_sample_timestamp_error", 0.0),
+                result.profileMilliseconds().getOrDefault("video/max_sample_timestamp_error", 0.0)));
+        for (Map.Entry<String, Long> stage : result.stageMilliseconds().entrySet()) {
+            output.append(String.format(Locale.US, "  %-27s %8.2f s\n", stage.getKey(), stage.getValue() / 1000.0));
+        }
+        appendProfileSection(output, result, "video/", "VIDEO PIPELINE", videoSeconds * 1000);
+        appendProfileSection(output, result, "audio/", "AUDIO PIPELINE", audioSeconds * 1000);
+        appendProfileSection(
+                output, result, "context/", "CONTEXT PIPELINE",
+                result.stageMilliseconds().getOrDefault("contextualize", 0L)
+        );
+        appendProfileSection(
+                output, result, "inference/", "INFERENCE PIPELINE",
+                result.stageMilliseconds().getOrDefault("inference", 0L)
+        );
+        appendOptimizationSignals(output, result, videoSeconds * 1000);
+        output.append("\nUnpadded ranges\n");
+        for (int i = 0; i < result.ranges().size(); i++) {
+            AnalysisTypes.Interval range = result.ranges().get(i);
+            output.append(String.format(Locale.US, "R%03d  %s – %s  %.3f\n",
+                    i + 1, clock(range.start()), clock(range.end()), range.confidence()));
+        }
+        resultText.setText(output.toString());
+        performanceText.setText(String.format(Locale.US,
+                "FEATURE  %6.2f× real time   %7.1f frames/s\nOVERALL  %6.2f× real time   %7.2f s",
+                featureRealtime, featureFramesPerSecond, overallRealtime, totalSeconds));
+        stageLabel.setText("complete · " + result.ranges().size() + " candidate ranges");
+    }
+
+    private void showLivePerformance(AnalysisTypes.PerformanceStats stats) {
+        String eta = Double.isFinite(stats.etaSeconds())
+                ? clock(stats.etaSeconds())
+                : "estimating";
+        performanceText.setText(String.format(Locale.US,
+                "%6.2f× real time   %7.1f frames/s\n"
+                        + "%,d sampled   %,d / %,d source decoded\n"
+                        + "%s elapsed   %s ETA   heap %.0f / %.0f MiB",
+                stats.realtimeRatio(),
+                stats.framesPerSecond(),
+                stats.generatedFrames(),
+                stats.decodedSourceFrames(),
+                FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT,
+                clock(stats.elapsedSeconds()),
+                eta,
+                stats.usedHeapBytes() / 1_048_576.0,
+                stats.maxHeapBytes() / 1_048_576.0));
+    }
+
+    private void showError(Exception error) {
+        String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+        stageLabel.setText(cancelled.get() ? "cancelled" : "error");
+        resultText.setText((cancelled.get() ? "Analysis cancelled." : "Analysis failed.") + "\n\n" + message);
+    }
+
+    private void finishWorkState() {
+        analyzeButton.setEnabled(selectedUri != null);
+        cancelButton.setEnabled(false);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        try { getWindow().setSustainedPerformanceMode(false); } catch (RuntimeException ignored) {}
+    }
+
+    private void copyResult() {
+        if (lastResult == null) return;
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        clipboard.setPrimaryClip(ClipData.newPlainText("VolleyCut native analysis", resultJson(lastResult).toString()));
+        Toast.makeText(this, "Result JSON copied", Toast.LENGTH_SHORT).show();
+    }
+
+    private static JSONObject resultJson(AnalysisTypes.AnalysisResult result) {
+        JSONObject json = new JSONObject();
+        try {
+            json.put("schemaVersion", 1);
+            json.put("method", "android-native-mediacodec-opencv-v1");
+            json.put("modelId", "model-9c92b8e9333f");
+            json.put("sourceName", result.displayName());
+            json.put("duration", result.media().durationSeconds());
+            json.put("analyzedDuration", result.analyzedDurationSeconds());
+            json.put("sourceFrameLimit", result.sourceFrameLimit());
+            json.put("sourceFrameLimitReached", result.sourceFrameLimitReached());
+            json.put("analysisFps", FeatureSchema.ANALYSIS_FPS);
+            json.put("sampleRows", result.sampleRows());
+            json.put("decodedSourceFrames", result.decodedSourceFrames());
+            json.put("decodedAudioFrames", result.decodedAudioFrames());
+            json.put("resampledAudioSamples", result.resampledAudioSamples());
+            json.put("audioFeatureFrames", result.audioFeatureFrames());
+            json.put("device", Build.MANUFACTURER + " " + Build.MODEL);
+            json.put("androidRelease", Build.VERSION.RELEASE);
+            json.put("sdkInt", Build.VERSION.SDK_INT);
+            json.put("videoDecoder", result.videoDecoder());
+            json.put("hardwareVideoDecoder", result.hardwareVideoDecoder());
+            json.put("audioDecoder", result.audioDecoder());
+            json.put("totalMilliseconds", result.totalMilliseconds());
+            double videoMilliseconds = result.stageMilliseconds().getOrDefault(
+                    "video_decode_and_features", 0L
+            );
+            double generatedVideoSeconds = result.sampleRows() / (double) FeatureSchema.ANALYSIS_FPS;
+            json.put("featureFramesPerSecond",
+                    videoMilliseconds > 0 ? result.sampleRows() / (videoMilliseconds / 1000) : 0);
+            json.put("featureRealtimeRatio",
+                    videoMilliseconds > 0 ? generatedVideoSeconds / (videoMilliseconds / 1000) : 0);
+            json.put("overallRealtimeRatio",
+                    result.totalMilliseconds() > 0
+                            ? result.analyzedDurationSeconds() / (result.totalMilliseconds() / 1000.0)
+                            : 0);
+            json.put("analysisThreadCpuMilliseconds", result.threadCpuMilliseconds());
+            json.put("thermalStatusStart", result.thermalStatusStart());
+            json.put("thermalStatusEnd", result.thermalStatusEnd());
+            json.put("gcCountDelta", result.gcCountDelta());
+            json.put("gcMillisecondsDelta", result.gcMillisecondsDelta());
+            json.put("javaHeapUsedBytes", result.javaHeapUsedBytes());
+            json.put("nativeHeapAllocatedBytes", result.nativeHeapAllocatedBytes());
+            json.put("pssKilobytes", result.pssKilobytes());
+            json.put("availableProcessors", result.availableProcessors());
+            JSONObject stage = new JSONObject();
+            for (Map.Entry<String, Long> value : result.stageMilliseconds().entrySet()) stage.put(value.getKey(), value.getValue());
+            json.put("stageMilliseconds", stage);
+            JSONObject profile = new JSONObject();
+            for (Map.Entry<String, Double> value : result.profileMilliseconds().entrySet()) {
+                profile.put(value.getKey(), value.getValue());
+            }
+            json.put("profileMilliseconds", profile);
+            JSONObject roi = new JSONObject();
+            roi.put("x", result.roi().x());
+            roi.put("y", result.roi().y());
+            roi.put("width", result.roi().width());
+            roi.put("height", result.roi().height());
+            roi.put("label", result.roi().label());
+            json.put("roi", roi);
+            JSONArray ranges = new JSONArray();
+            for (AnalysisTypes.Interval range : result.ranges()) {
+                JSONObject item = new JSONObject();
+                item.put("start", range.start());
+                item.put("end", range.end());
+                item.put("confidence", range.confidence());
+                ranges.put(item);
+            }
+            json.put("ranges", ranges);
+        } catch (Exception impossible) {
+            throw new IllegalStateException(impossible);
+        }
+        return json;
+    }
+
+    private static void appendProfileSection(
+            StringBuilder output,
+            AnalysisTypes.AnalysisResult result,
+            String prefix,
+            String title,
+            double wallMilliseconds
+    ) {
+        output.append("\n").append(title).append("\n");
+        for (Map.Entry<String, Double> entry : result.profileMilliseconds().entrySet()) {
+            if (!entry.getKey().startsWith(prefix)) continue;
+            String name = entry.getKey().substring(prefix.length());
+            if (name.equals("mean_sample_timestamp_error")
+                    || name.equals("max_sample_timestamp_error")) continue;
+            int depth = Math.max(0, name.split("/").length - 1);
+            String label = name.substring(name.lastIndexOf('/') + 1).replace('_', ' ');
+            double milliseconds = entry.getValue();
+            double percent = wallMilliseconds > 0 ? milliseconds / wallMilliseconds * 100 : 0;
+            int units = prefix.equals("video/")
+                    ? result.sampleRows()
+                    : prefix.equals("audio/")
+                            ? result.audioFeatureFrames()
+                            : result.sampleRows();
+            double perUnit = units > 0 ? milliseconds / units : 0;
+            output.append("  ").append("  ".repeat(depth));
+            output.append(String.format(Locale.US,
+                    "%-31s %9.2f ms  %5.1f%%  %6.3f ms/unit\n",
+                    label, milliseconds, percent, perUnit));
+        }
+    }
+
+    private static void appendOptimizationSignals(
+            StringBuilder output,
+            AnalysisTypes.AnalysisResult result,
+            double videoWallMilliseconds
+    ) {
+        Map<String, Double> profile = result.profileMilliseconds();
+        double codecWait = profile.getOrDefault("video/codec_input_dequeue", 0.0)
+                + profile.getOrDefault("video/codec_output_dequeue_wait", 0.0);
+        double yuv = profile.getOrDefault("video/yuv_crop_scale_color", 0.0);
+        double openCv = profile.getOrDefault("video/opencv_feature_call", 0.0);
+        double workerQueueWait = profile.getOrDefault("video/feature_queue_backpressure", 0.0);
+        double workerFinishWait = profile.getOrDefault("video/feature_worker_finish_wait", 0.0);
+        double demux = profile.getOrDefault("video/demux_read", 0.0)
+                + profile.getOrDefault("video/demux_advance", 0.0);
+        output.append("\nOPTIMIZATION SIGNALS\n");
+        double maximum = Math.max(Math.max(codecWait, yuv), Math.max(openCv, demux));
+        if (maximum == codecWait) {
+            output.append("  Largest bucket: codec waits. Test asynchronous codec callbacks or a Surface/GPU sampling path.\n");
+        } else if (maximum == yuv) {
+            output.append("  Largest bucket: scalar YUV crop/scale/color. Precomputed coordinates plus JNI/libyuv is the clearest next spike.\n");
+        } else if (maximum == openCv) {
+            output.append("  Largest bucket: OpenCV feature compute. Use its largest nested substage to choose the next kernel optimization.\n");
+        } else {
+            output.append("  Largest bucket: demux. Storage access and extractor batching deserve the next measurement.\n");
+        }
+        output.append(String.format(Locale.US,
+                "  Buckets: codec %.1f%% · YUV %.1f%% · OpenCV %.1f%% · demux %.1f%%\n",
+                percent(codecWait, videoWallMilliseconds), percent(yuv, videoWallMilliseconds),
+                percent(openCv, videoWallMilliseconds), percent(demux, videoWallMilliseconds)));
+        output.append(String.format(Locale.US,
+                "  Parallel OpenCV critical-path waits: queue %.2f ms; final drain %.2f ms\n",
+                workerQueueWait, workerFinishWait));
+        if (result.gcCountDelta() > 0) {
+            output.append(String.format(Locale.US,
+                    "  Allocation pressure: %,d GC runs / %.0f ms; buffer reuse may reduce jitter.\n",
+                    result.gcCountDelta(), result.gcMillisecondsDelta()));
+        }
+        if (result.thermalStatusEnd() > result.thermalStatusStart()) {
+            output.append("  Thermal status increased during the run; compare repeated runs before treating a delta as algorithmic.\n");
+        }
+    }
+
+    private static double percent(double value, double denominator) {
+        return denominator > 0 ? value / denominator * 100 : 0;
+    }
+
+    private static String thermalLabel(int status) {
+        return switch (status) {
+            case 0 -> "none";
+            case 1 -> "light";
+            case 2 -> "moderate";
+            case 3 -> "severe";
+            case 4 -> "critical";
+            case 5 -> "emergency";
+            case 6 -> "shutdown";
+            default -> "unknown";
+        };
+    }
+
+    private TextView text(String value, int sp, int color) {
+        TextView view = new TextView(this);
+        view.setText(value);
+        view.setTextSize(sp);
+        view.setTextColor(color);
+        view.setLineSpacing(0, 1.12f);
+        return view;
+    }
+
+    private Button button(String value) {
+        Button button = new Button(this);
+        button.setText(value);
+        button.setTextSize(14);
+        button.setAllCaps(false);
+        button.setGravity(Gravity.CENTER);
+        return button;
+    }
+
+    private LinearLayout.LayoutParams margins(int left, int top, int right, int bottom) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(left, top, right, bottom);
+        return params;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static String clock(double seconds) {
+        int minutes = (int) Math.floor(Math.max(0, seconds) / 60);
+        double remainder = Math.max(0, seconds) - minutes * 60;
+        return String.format(Locale.US, "%d:%05.2f", minutes, remainder);
+    }
+
+    @Override
+    protected void onDestroy() {
+        cancelled.set(true);
+        executor.shutdownNow();
+        super.onDestroy();
+    }
+}
