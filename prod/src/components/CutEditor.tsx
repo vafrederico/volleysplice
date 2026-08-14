@@ -28,8 +28,12 @@ import {
   supportsOpfsExport,
   type PreparedVideoExport,
 } from "@/lib/on-device/export-delivery";
-import type { ExportProgress } from "@/lib/on-device/export";
+import type { ExportProgress, VideoExportMode } from "@/lib/on-device/export";
 import { requestPlayingSeek } from "@/lib/on-device/player";
+import {
+  prepareServiceWorkerStreamDownload,
+  type StreamDownloadReadiness,
+} from "@/lib/on-device/stream-download";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
@@ -149,6 +153,11 @@ export function CutEditor({
   const [exportState, setExportState] = useState<ExportState>("idle");
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [preparedExport, setPreparedExport] = useState<PreparedVideoExport | null>(null);
+  const [exportMode, setExportMode] = useState<VideoExportMode>("compatible");
+  const [streamDownload, setStreamDownload] = useState<StreamDownloadReadiness>({
+    ready: false,
+    reason: null,
+  });
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWakeLock, setExportWakeLock] = useState<WakeLockState>("idle");
   const manualStart = draft.pendingManualStart;
@@ -197,6 +206,20 @@ export function CutEditor({
     if (videoRef.current) videoRef.current.playbackRate = draft.playbackRate;
   }, [draft.playbackRate]);
 
+  useEffect(() => {
+    let active = true;
+    const workerUrl = new URL(
+      `${import.meta.env.BASE_URL}volleycut-export-sw.js`,
+      window.location.href,
+    ).href;
+    void prepareServiceWorkerStreamDownload(workerUrl).then((readiness) => {
+      if (active) setStreamDownload(readiness);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const sortedCuts = useMemo(
     () => [...draft.cuts].sort(
       (left, right) => left.keepStart - right.keepStart || left.keepEnd - right.keepEnd,
@@ -242,7 +265,10 @@ export function CutEditor({
   const directDiskSupported = "showSaveFilePicker" in window;
   const opfsSupported = supportsOpfsExport();
   const encodingSupported = "VideoEncoder" in window && "AudioEncoder" in window;
-  const localExportSupported = encodingSupported && (directDiskSupported || opfsSupported);
+  const exportStorageReady = exportMode === "stream-download"
+    ? streamDownload.ready
+    : directDiskSupported || opfsSupported;
+  const localExportSupported = encodingSupported && exportStorageReady;
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
     if (exportState !== "exporting") {
@@ -661,6 +687,7 @@ export function CutEditor({
         setExportProgress,
         initialAnalysis.duration,
         setExportWakeLock,
+        exportMode,
       );
       setPreparedExport(prepared);
       setExportState("done");
@@ -774,6 +801,27 @@ export function CutEditor({
               <small>Skip removed rallies, ignored sections, and every unselected gap.</small>
             </span>
           </label>
+          <label className={`${styles.cutPreviewToggle} ${styles.streamExportToggle}`}>
+            <input
+              type="checkbox"
+              checked={exportMode === "stream-download"}
+              disabled={exportState === "exporting" || !streamDownload.ready}
+              onChange={(event) => {
+                setExportMode(event.currentTarget.checked ? "stream-download" : "compatible");
+                setPreparedExport(null);
+                setExportState("idle");
+                setExportProgress(null);
+                setExportError(null);
+              }}
+            />
+            <span>
+              <strong>Experimental direct download</strong>
+              <small>
+                Streams fragmented MP4 through a Service Worker with no OPFS copy. Keep this page
+                open until encoding finishes.
+              </small>
+            </span>
+          </label>
           <div className={styles.summaryActions}>
             <button
               type="button"
@@ -792,6 +840,8 @@ export function CutEditor({
                 ? "Encoding MP4…"
                 : preparedExport
                   ? "Share or save MP4"
+                  : exportMode === "stream-download"
+                    ? "Stream MP4 to Downloads"
                   : directDiskSupported
                     ? "Save MP4 video"
                     : "Create MP4 video"}
@@ -806,8 +856,12 @@ export function CutEditor({
           <div className={styles.exportDetails} aria-live="polite">
             <p>
               Exports the final edit at the original dimensions using a very-high-quality AVC/AAC encode.
-              Video data stays on this device and writes to a selected file or private browser storage.
+              Video data stays on this device. Compatible mode writes to a selected file or private
+              browser storage; experimental mode streams directly to the browser download.
             </p>
+            {!streamDownload.ready && streamDownload.reason && (
+              <strong>Direct-stream test unavailable: {streamDownload.reason}</strong>
+            )}
             {!localExportSupported && (
               <strong>
                 MP4 export requires video/audio WebCodecs encoders and writable local storage.
@@ -850,7 +904,7 @@ export function CutEditor({
             )}
             {exportState === "done" && !preparedExport && (
               <strong>
-                MP4 export completed
+                {exportMode === "stream-download" ? "MP4 stream completed" : "MP4 export completed"}
                 {exportProgress ? ` in ${preciseTime(exportProgress.elapsedSeconds)}` : ""}.
               </strong>
             )}

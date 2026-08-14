@@ -14,9 +14,14 @@ import {
   supportsOpfsExport,
   type ExportProgress,
   type PreparedVideoExport,
+  type VideoExportMode,
 } from "@/lib/on-device/export";
 import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
 import { requestPlayingSeek } from "@/lib/on-device/player";
+import {
+  prepareServiceWorkerStreamDownload,
+  type StreamDownloadReadiness,
+} from "@/lib/on-device/stream-download";
 import {
   analyzeOpenedMedia,
   DEFAULT_FEATURE_REDUCTION_KERNEL,
@@ -371,6 +376,11 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [preparedExport, setPreparedExport] = useState<PreparedVideoExport | null>(null);
+  const [exportMode, setExportMode] = useState<VideoExportMode>("compatible");
+  const [streamDownload, setStreamDownload] = useState<StreamDownloadReadiness>({
+    ready: false,
+    reason: null,
+  });
   const [error, setError] = useState<string | null>(null);
   const [previewWarning, setPreviewWarning] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -455,6 +465,9 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         Math.max(0, (exportProgress.completedSeconds / exportProgress.totalSeconds) * 100),
       )
     : 0;
+  const exportStorageReady = exportMode === "stream-download"
+    ? streamDownload.ready
+    : compatibility.directDisk || compatibility.opfs;
   const extractionOtherMs = featurePerformance
     ? Math.max(
         0,
@@ -527,6 +540,16 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     return () => {
       active = false;
       openedMedia.current?.input.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void prepareServiceWorkerStreamDownload().then((readiness) => {
+      if (active) setStreamDownload(readiness);
+    });
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -695,6 +718,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         setExportProgress,
         info?.duration,
         setWakeLockState,
+        exportMode,
       );
       setPreparedExport(prepared);
       setWorkState("done");
@@ -1647,6 +1671,27 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
             {exportFile !== file && (
               <p className={styles.modeNote}>The alternate master must have the same timeline as the analyzed proxy.</p>
             )}
+            <label className={styles.streamExportToggle}>
+              <input
+                type="checkbox"
+                checked={exportMode === "stream-download"}
+                disabled={busy || !streamDownload.ready}
+                onChange={(event) => {
+                  setExportMode(event.currentTarget.checked ? "stream-download" : "compatible");
+                  setPreparedExport(null);
+                }}
+              />
+              <span>
+                <strong>Experimental direct download</strong>
+                <small>
+                  Streams fragmented MP4 through a Service Worker without an OPFS copy. Keep this
+                  page open until encoding finishes.
+                </small>
+              </span>
+            </label>
+            {!streamDownload.ready && streamDownload.reason && (
+              <p className={styles.modeNote}>Direct-stream test unavailable: {streamDownload.reason}</p>
+            )}
             <div className={styles.exportActions}>
               <button
                 type="button"
@@ -1654,12 +1699,12 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   busy ||
                   !editList.length ||
                   !compatibility.encode ||
-                  (!compatibility.directDisk && !compatibility.opfs)
+                  !exportStorageReady
                 }
                 title={
-                  compatibility.encode && (compatibility.directDisk || compatibility.opfs)
+                  compatibility.encode && exportStorageReady
                     ? undefined
-                    : "Original-size export requires WebCodecs encoders and writable local storage."
+                    : "Original-size export requires WebCodecs and the selected download destination."
                 }
                 onClick={() => void (preparedExport ? deliverExport() : exportReel())}
               >
@@ -1667,6 +1712,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   ? "Encoding…"
                   : preparedExport
                     ? "Share or save MP4"
+                    : exportMode === "stream-download"
+                      ? "Stream MP4 to Downloads"
                     : compatibility.directDisk
                       ? "Save original-size MP4"
                       : "Create original-size MP4"}
@@ -1716,7 +1763,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       )}
 
       <footer className={styles.footer}>
-        <p><strong>POC boundary:</strong> Browser decoding and encoding still depend on the device&apos;s codec support. iOS export uses private browser storage before opening Share or Save.</p>
+        <p><strong>POC boundary:</strong> Browser decoding and encoding still depend on the device&apos;s codec support. Compatible iOS export uses private browser storage; experimental direct export streams while this page remains open.</p>
         <div className={styles.footerLinks}>
           <Link href={uiFixtureMode ? "/on-device" : "/on-device-ui"}>
             {uiFixtureMode ? "Open live pipeline" : "Open cached UI fixture"} →

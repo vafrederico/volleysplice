@@ -590,6 +590,19 @@
   font-family: "Atkinson Hyperlegible Mono", monospace;
 }
 
+.streamExportToggle {
+  border-color: #74796a;
+}
+
+.streamExportToggle strong {
+  color: var(--cut-acid);
+}
+
+.streamExportToggle:has(input:disabled) {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
 .cutPreviewToggle strong {
   color: #fff;
   font-size: 10px;
