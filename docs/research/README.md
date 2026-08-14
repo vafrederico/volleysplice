@@ -30,6 +30,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Unsloth rally-window dataset — 2026-08-12](./unsloth-rally-window-dataset-2026-08-12.md) — generated video-conversation JSONL artifact, deterministic 32-second windows, source-group-safe splits, checksums, loading instructions, and dataset limitations.
 - [Model-training execution handoff — 2026-08-12](./model-training-execution-handoff-2026-08-12.md) — implementation-grade native-Windows Unsloth and WSL DINOv2-temporal plans, exact paths, memory gates, folds, artifacts, and completion criteria.
 - [WSL DINOv2 temporal execution — 2026-08-13](./dinov2-temporal-execution-2026-08-13.md) — Track T implementation, pinned-backbone/GPU qualification, primary and no-beach development studies, selected architecture, promotion gate, and protected-test status.
+- [Mobile browser cut-editor evaluation — 2026-08-13](./mobile-browser-cut-editor-evaluation-2026-08-13.md) — open-source editor and media-engine comparison, mobile interaction constraints, selected source-time overview/detail workflow, and the initial cached-label implementation contract.
 
 ## Related context
 
