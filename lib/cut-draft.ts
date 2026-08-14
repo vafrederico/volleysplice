@@ -1,8 +1,9 @@
 import type { IgnoredInterval } from "./annotations.ts";
 import type { Rally } from "./edit-list.ts";
 
-export const CUT_DRAFT_VERSION = 5 as const;
+export const CUT_DRAFT_VERSION = 6 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
+export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const MAX_CUT_PADDING_SECONDS = 10;
 export const PLAYBACK_RATES = [1, 2, 4, 8] as const;
 
@@ -36,6 +37,7 @@ export type CutDraft = {
   ignoreReason: string;
   cutPreviewEnabled: boolean;
   playbackRate: (typeof PLAYBACK_RATES)[number];
+  confidenceReviewThreshold: number;
   cuts: EditableCut[];
   ignoredIntervals: IgnoredSourceInterval[];
 };
@@ -93,7 +95,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -113,6 +115,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     ignoreReason: "non-game-content",
     cutPreviewEnabled: false,
     playbackRate: 1,
+    confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
       coreStart: clamp(rally.start, 0, duration),
@@ -176,38 +179,41 @@ function validIgnoredInterval(
 
 export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null {
   try {
-    const persisted = JSON.parse(raw) as Partial<CutDraft> & {
+    const persisted = JSON.parse(raw) as Partial<Omit<CutDraft, "version">> & {
       version?: unknown;
       paddingSeconds?: unknown;
     };
-    if (![1, 2, 3, 4, CUT_DRAFT_VERSION].includes(persisted.version as number)) {
+    const persistedVersion = persisted.version;
+    if (
+      typeof persistedVersion !== "number" ||
+      ![1, 2, 3, 4, 5, CUT_DRAFT_VERSION].includes(persistedVersion)
+    ) {
       return null;
     }
-    const value: Partial<CutDraft> = persisted.version === CUT_DRAFT_VERSION
-      ? persisted
-      : {
-          ...persisted,
-          version: CUT_DRAFT_VERSION,
-          beforePaddingSeconds: persisted.version === 1
-            ? 3
-            : persisted.version === 2
-              ? persisted.paddingSeconds as number
-              : persisted.beforePaddingSeconds,
-          afterPaddingSeconds: persisted.version === 1
-            ? 2
-            : persisted.version === 2
-              ? persisted.paddingSeconds as number
-              : persisted.afterPaddingSeconds,
-          pendingManualStart: persisted.version === 4 ? persisted.pendingManualStart : null,
-          pendingIgnoreStart: persisted.version === 4 ? persisted.pendingIgnoreStart : null,
-          ignoreReason: persisted.version === 4
-            ? persisted.ignoreReason
-            : "non-game-content",
-          cutPreviewEnabled: persisted.version === 4
-            ? persisted.cutPreviewEnabled
-            : false,
-          playbackRate: 1,
-        };
+    const value: Partial<CutDraft> = {
+      ...persisted,
+      version: CUT_DRAFT_VERSION,
+      beforePaddingSeconds: persistedVersion === 1
+        ? 3
+        : persistedVersion === 2
+          ? persisted.paddingSeconds as number
+          : persisted.beforePaddingSeconds,
+      afterPaddingSeconds: persistedVersion === 1
+        ? 2
+        : persistedVersion === 2
+          ? persisted.paddingSeconds as number
+          : persisted.afterPaddingSeconds,
+      pendingManualStart: persistedVersion >= 4 ? persisted.pendingManualStart : null,
+      pendingIgnoreStart: persistedVersion >= 4 ? persisted.pendingIgnoreStart : null,
+      ignoreReason: persistedVersion >= 4
+        ? persisted.ignoreReason
+        : "non-game-content",
+      cutPreviewEnabled: persistedVersion >= 4 ? persisted.cutPreviewEnabled : false,
+      playbackRate: persistedVersion >= 5 ? persisted.playbackRate : 1,
+      confidenceReviewThreshold: persistedVersion >= 6
+        ? persisted.confidenceReviewThreshold
+        : DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
+    };
     if (
       value.version !== CUT_DRAFT_VERSION ||
       value.analysisId !== seed.analysisId ||
@@ -236,6 +242,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       value.ignoreReason.length === 0 ||
       typeof value.cutPreviewEnabled !== "boolean" ||
       !PLAYBACK_RATES.includes(value.playbackRate as (typeof PLAYBACK_RATES)[number]) ||
+      !finiteTime(value.confidenceReviewThreshold) ||
+      value.confidenceReviewThreshold < 0 ||
+      value.confidenceReviewThreshold > 1 ||
       (value.pendingManualStart !== null && value.pendingIgnoreStart !== null) ||
       !Array.isArray(value.cuts) ||
       !Array.isArray(value.ignoredIntervals) ||

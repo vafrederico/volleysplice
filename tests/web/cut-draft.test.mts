@@ -31,6 +31,7 @@ test("createCutDraft seeds clamped per-cut padding from cached labels", () => {
   assert.equal(draft.beforePaddingSeconds, 2);
   assert.equal(draft.afterPaddingSeconds, 2);
   assert.equal(draft.playbackRate, 1);
+  assert.equal(draft.confidenceReviewThreshold, 0.7);
   assert.deepEqual(
     draft.cuts.map(({ coreStart, coreEnd, keepStart, keepEnd, origin }) => ({
       coreStart,
@@ -80,6 +81,7 @@ test("parseCutDraft restores matching drafts and rejects stale source labels", (
   draft.ignoreReason = "camera-gap";
   draft.cutPreviewEnabled = true;
   draft.playbackRate = 4;
+  draft.confidenceReviewThreshold = 0.82;
 
   assert.deepEqual(parseCutDraft(JSON.stringify(draft), seed), draft);
   assert.equal(
@@ -103,6 +105,7 @@ test("parseCutDraft migrates the original on-device draft without losing edits",
   delete legacy.ignoreReason;
   delete legacy.cutPreviewEnabled;
   delete legacy.playbackRate;
+  delete legacy.confidenceReviewThreshold;
 
   const migrated = parseCutDraft(JSON.stringify(legacy), seed);
 
@@ -110,6 +113,7 @@ test("parseCutDraft migrates the original on-device draft without losing edits",
   assert.equal(migrated?.beforePaddingSeconds, 3);
   assert.equal(migrated?.afterPaddingSeconds, 2);
   assert.equal(migrated?.playbackRate, 1);
+  assert.equal(migrated?.confidenceReviewThreshold, 0.7);
 });
 
 test("playback-rate migration preserves the prior session state", () => {
@@ -119,6 +123,7 @@ test("playback-rate migration preserves the prior session state", () => {
   prior.ignoreReason = "camera-gap";
   prior.cutPreviewEnabled = true;
   delete prior.playbackRate;
+  delete prior.confidenceReviewThreshold;
 
   const migrated = parseCutDraft(JSON.stringify(prior), seed);
 
@@ -126,6 +131,19 @@ test("playback-rate migration preserves the prior session state", () => {
   assert.equal(migrated?.ignoreReason, "camera-gap");
   assert.equal(migrated?.cutPreviewEnabled, true);
   assert.equal(migrated?.playbackRate, 1);
+  assert.equal(migrated?.confidenceReviewThreshold, 0.7);
+});
+
+test("confidence review migration preserves version five playback settings", () => {
+  const prior = createCutDraft(seed) as unknown as Record<string, unknown>;
+  prior.version = 5;
+  prior.playbackRate = 8;
+  delete prior.confidenceReviewThreshold;
+
+  const migrated = parseCutDraft(JSON.stringify(prior), seed);
+
+  assert.equal(migrated?.playbackRate, 8);
+  assert.equal(migrated?.confidenceReviewThreshold, 0.7);
 });
 
 test("manual missed cuts round-trip through on-device draft storage", () => {

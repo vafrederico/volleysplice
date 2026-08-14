@@ -51,6 +51,18 @@ type BoundaryDrag = {
   windowEnd: number;
 };
 
+type TimelineDrag = {
+  pointerId: number;
+  left: number;
+  width: number;
+  windowStart: number;
+  windowEnd: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  seekOnTap: boolean;
+};
+
 function preciseTime(seconds: number): string {
   const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
   const hours = Math.floor(safe / 3600);
@@ -107,6 +119,8 @@ export function CutEditor({
   const videoRef = useRef<HTMLVideoElement>(null);
   const detailRailRef = useRef<HTMLDivElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
+  const timelineDragRef = useRef<TimelineDrag | null>(null);
+  const suppressTimelineClickRef = useRef(false);
   const previewEndRef = useRef<number | null>(null);
   const seed = useMemo<CutDraftSeed>(
     () => ({
@@ -199,6 +213,12 @@ export function CutEditor({
     ? draft.ignoredIntervals
     : draft.ignoredIntervals.filter((interval) => interval.end >= activeMarkStart);
   const manualCuts = sortedCuts.filter((cut) => cut.origin === "manual");
+  const lowConfidenceCuts = sortedCuts.filter(
+    (cut) => cut.origin === "cached-label" &&
+      cut.included &&
+      effectiveKeptIds.has(cut.id) &&
+      cut.confidence < draft.confidenceReviewThreshold,
+  );
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
     setDraft((current) => ({
@@ -217,6 +237,12 @@ export function CutEditor({
   function setPlaybackRate(playbackRate: CutDraft["playbackRate"]) {
     updateDraft((current) => ({ ...current, playbackRate }));
     if (videoRef.current) videoRef.current.playbackRate = playbackRate;
+  }
+
+  function setConfidenceReviewThreshold(percent: number) {
+    if (!Number.isFinite(percent)) return;
+    const threshold = Math.max(0, Math.min(100, percent)) / 100;
+    updateDraft((current) => ({ ...current, confidenceReviewThreshold: threshold }));
   }
 
   function seekTo(time: number) {
@@ -443,17 +469,83 @@ export function CutEditor({
     selectCut(sortedCuts[index]);
   }
 
-  function overviewSeek(event: ReactPointerEvent<HTMLDivElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
-    seekTo(ratio * initialAnalysis.duration);
+  function reviewNextLowConfidenceCut() {
+    if (lowConfidenceCuts.length === 0) return;
+    const currentIndex = lowConfidenceCuts.findIndex((cut) => cut.id === selected?.id);
+    const next = currentIndex >= 0
+      ? lowConfidenceCuts[(currentIndex + 1) % lowConfidenceCuts.length]
+      : lowConfidenceCuts.find((cut) => cut.keepStart >= playbackTime) ?? lowConfidenceCuts[0];
+    selectCut(next);
+    setEditorMessage(
+      `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`,
+    );
   }
 
-  function detailSeek(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.target !== event.currentTarget) return;
+  function timelineSeekTime(
+    clientX: number,
+    drag: Pick<TimelineDrag, "left" | "width" | "windowStart" | "windowEnd">,
+  ) {
+    const ratio = Math.max(0, Math.min(1, (clientX - drag.left) / drag.width));
+    seekTo(drag.windowStart + ratio * (drag.windowEnd - drag.windowStart));
+  }
+
+  function beginTimelineSeek(
+    event: ReactPointerEvent<HTMLDivElement>,
+    windowStart: number,
+    windowEnd: number,
+  ) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
-    seekTo(focus.start + ratio * (focus.end - focus.start));
+    timelineDragRef.current = {
+      pointerId: event.pointerId,
+      left: bounds.left,
+      width: bounds.width,
+      windowStart,
+      windowEnd,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      seekOnTap: event.target === event.currentTarget,
+    };
+  }
+
+  function moveTimelineSeek(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = timelineDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved) {
+      const horizontalDistance = Math.abs(event.clientX - drag.startX);
+      const verticalDistance = Math.abs(event.clientY - drag.startY);
+      if (horizontalDistance < 4 || verticalDistance > horizontalDistance) return;
+      drag.moved = true;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Seeking still works if a browser cannot retain pointer capture.
+      }
+    }
+    event.preventDefault();
+    timelineSeekTime(event.clientX, drag);
+  }
+
+  function endTimelineSeek(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = timelineDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.moved) {
+      timelineSeekTime(event.clientX, drag);
+      suppressTimelineClickRef.current = true;
+      window.setTimeout(() => {
+        suppressTimelineClickRef.current = false;
+      }, 0);
+    } else if (drag.seekOnTap) {
+      timelineSeekTime(event.clientX, drag);
+    }
+    timelineDragRef.current = null;
+  }
+
+  function cancelTimelineSeek(event: ReactPointerEvent<HTMLDivElement>) {
+    if (timelineDragRef.current?.pointerId === event.pointerId) {
+      timelineDragRef.current = null;
+    }
   }
 
   function resetDraft() {
@@ -553,6 +645,73 @@ export function CutEditor({
       </section>
 
       <section className={styles.editorShell}>
+        <aside className={styles.summaryCard} aria-label="Final edit settings">
+          <div className={styles.summaryStats}>
+            <span>FINAL EDIT LIST</span>
+            <strong>{formatTime(keptSeconds)}</strong>
+            <div>
+              <p>{keptCount} kept · {removedCount} removed</p>
+              {fullyIgnoredCount > 0 && <p>{fullyIgnoredCount} enabled rallies fully ignored</p>}
+              <p>{draft.ignoredIntervals.length} ignored source sections</p>
+              <p>Duration includes padding and excludes ignored time</p>
+            </div>
+          </div>
+          <div className={styles.paddingControls}>
+            <div className={styles.paddingControl}>
+              <label htmlFor="cut-padding-before">
+                <span>Before</span>
+                <output>{draft.beforePaddingSeconds.toFixed(1)}s</output>
+              </label>
+              <input
+                id="cut-padding-before"
+                aria-label="Padding before each inferred cut"
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={draft.beforePaddingSeconds}
+                onChange={(event) => setGlobalPadding("before", Number(event.currentTarget.value))}
+              />
+              <div><span>0s</span><span>10s</span></div>
+            </div>
+            <div className={styles.paddingControl}>
+              <label htmlFor="cut-padding-after">
+                <span>After</span>
+                <output>{draft.afterPaddingSeconds.toFixed(1)}s</output>
+              </label>
+              <input
+                id="cut-padding-after"
+                aria-label="Padding after each inferred cut"
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={draft.afterPaddingSeconds}
+                onChange={(event) => setGlobalPadding("after", Number(event.currentTarget.value))}
+              />
+              <div><span>0s</span><span>10s</span></div>
+            </div>
+            <small>Applies to inferred cuts. You can still fine-tune each range afterward.</small>
+          </div>
+          <label className={styles.cutPreviewToggle}>
+            <input
+              type="checkbox"
+              checked={cutPreviewEnabled}
+              onChange={(event) => toggleCutPreview(event.currentTarget.checked)}
+            />
+            <span>
+              <strong>Play final cut only</strong>
+              <small>Skip removed rallies, ignored sections, and every unselected gap.</small>
+            </span>
+          </label>
+          <div className={styles.summaryActions}>
+            <button type="button" onClick={downloadEditList}>Download edit list</button>
+            <button type="button" className={styles.quietButton} onClick={resetDraft}>
+              Reset cached edits
+            </button>
+          </div>
+        </aside>
+
         <div className={styles.playerColumn}>
           <div
             className={styles.videoStage}
@@ -630,13 +789,52 @@ export function CutEditor({
             <div className={styles.sectionHeading}>
               <div>
                 <span>WHOLE RECORDING</span>
-                <strong>Tap to seek · select a range to refine</strong>
+                <strong>Tap or slide to seek · select a range to refine</strong>
               </div>
               <small>{draft.cuts.length} ranges</small>
             </div>
+            <div className={styles.confidenceReview}>
+              <label htmlFor="confidence-review-threshold">
+                <span>Highlight model confidence below</span>
+                <span className={styles.confidenceInput}>
+                  <input
+                    id="confidence-review-threshold"
+                    aria-label="Highlight model ranges below confidence percent"
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round(draft.confidenceReviewThreshold * 100)}
+                    onChange={(event) => setConfidenceReviewThreshold(
+                      event.currentTarget.valueAsNumber,
+                    )}
+                  />
+                  <span>%</span>
+                </span>
+              </label>
+              <p>{lowConfidenceCuts.length} {lowConfidenceCuts.length === 1 ? "range" : "ranges"} highlighted</p>
+              <button
+                type="button"
+                onClick={reviewNextLowConfidenceCut}
+                disabled={lowConfidenceCuts.length === 0}
+              >
+                Review next
+              </button>
+            </div>
             <div
               className={styles.overviewRail}
-              onPointerDown={overviewSeek}
+              onPointerDown={(event) => beginTimelineSeek(event, 0, initialAnalysis.duration)}
+              onPointerMove={moveTimelineSeek}
+              onPointerUp={endTimelineSeek}
+              onPointerCancel={cancelTimelineSeek}
+              onLostPointerCapture={cancelTimelineSeek}
+              onClickCapture={(event) => {
+                if (!suppressTimelineClickRef.current) return;
+                event.preventDefault();
+                event.stopPropagation();
+                suppressTimelineClickRef.current = false;
+              }}
               aria-label="Whole recording overview"
             >
               {overviewIgnoredIntervals.map((interval) => (
@@ -657,14 +855,17 @@ export function CutEditor({
                   data-selected={cut.id === selected?.id || undefined}
                   data-included={cut.included || undefined}
                   data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
+                  data-low-confidence={
+                    cut.origin === "cached-label" &&
+                    cut.confidence < draft.confidenceReviewThreshold || undefined
+                  }
                   data-origin={cut.origin}
                   style={{
                     left: `${timelinePercent(cut.keepStart, initialAnalysis.duration)}%`,
                     width: `${timelinePercent(cut.keepEnd - cut.keepStart, initialAnalysis.duration)}%`,
                   }}
-                  onPointerDown={(event) => event.stopPropagation()}
                   onClick={() => selectCut(cut)}
-                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}`}
+                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${Math.round(cut.confidence * 100)}% confidence`}
                 >
                   <span
                     className={styles.overviewPadding}
@@ -702,73 +903,13 @@ export function CutEditor({
           </section>
         </div>
 
-        <aside className={styles.summaryCard}>
-          <span>FINAL EDIT LIST</span>
-          <strong>{formatTime(keptSeconds)}</strong>
-          <p>{keptCount} kept · {removedCount} removed</p>
-          {fullyIgnoredCount > 0 && <p>{fullyIgnoredCount} enabled rallies fully ignored</p>}
-          <p>{draft.ignoredIntervals.length} ignored source sections</p>
-          <p>Duration includes padding and excludes ignored time</p>
-          <div className={styles.paddingControls}>
-            <div className={styles.paddingControl}>
-              <label htmlFor="cut-padding-before">
-                <span>Before</span>
-                <output>{draft.beforePaddingSeconds.toFixed(1)}s</output>
-              </label>
-              <input
-                id="cut-padding-before"
-                aria-label="Padding before each inferred cut"
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={draft.beforePaddingSeconds}
-                onChange={(event) => setGlobalPadding("before", Number(event.currentTarget.value))}
-              />
-              <div><span>0s</span><span>10s</span></div>
-            </div>
-            <div className={styles.paddingControl}>
-              <label htmlFor="cut-padding-after">
-                <span>After</span>
-                <output>{draft.afterPaddingSeconds.toFixed(1)}s</output>
-              </label>
-              <input
-                id="cut-padding-after"
-                aria-label="Padding after each inferred cut"
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={draft.afterPaddingSeconds}
-                onChange={(event) => setGlobalPadding("after", Number(event.currentTarget.value))}
-              />
-              <div><span>0s</span><span>10s</span></div>
-            </div>
-            <small>Applies to inferred cuts. You can still fine-tune each range afterward.</small>
-          </div>
-          <label className={styles.cutPreviewToggle}>
-            <input
-              type="checkbox"
-              checked={cutPreviewEnabled}
-              onChange={(event) => toggleCutPreview(event.currentTarget.checked)}
-            />
-            <span>
-              <strong>Play final cut only</strong>
-              <small>Skip removed rallies, ignored sections, and every unselected gap.</small>
-            </span>
-          </label>
-          <button type="button" onClick={downloadEditList}>Download edit list</button>
-          <button type="button" className={styles.quietButton} onClick={resetDraft}>
-            Reset cached edits
-          </button>
-        </aside>
       </section>
 
       <section className={styles.focusEditor} aria-label="Focused range editor">
         <div className={styles.focusHeader}>
           <div>
             <span>FOCUSED RANGE</span>
-            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : "Cached label"}` : "No range selected"}</strong>
+            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `Cached label · ${Math.round(selected.confidence * 100)}%`}` : "No range selected"}</strong>
           </div>
           {selected && (
             <div className={styles.rangeNavigation}>
@@ -797,12 +938,23 @@ export function CutEditor({
             <div
               ref={detailRailRef}
               className={styles.detailRail}
-              onPointerDown={detailSeek}
+              onPointerDown={(event) => {
+                if ((event.target as HTMLElement).closest(`.${styles.boundaryHandle}`)) return;
+                beginTimelineSeek(event, focus.start, focus.end);
+              }}
+              onPointerMove={moveTimelineSeek}
+              onPointerUp={endTimelineSeek}
+              onPointerCancel={cancelTimelineSeek}
+              onLostPointerCapture={cancelTimelineSeek}
             >
               <span
                 className={styles.keptRange}
                 data-included={selected.included || undefined}
                 data-ignored={selected.included && !effectiveKeptIds.has(selected.id) || undefined}
+                data-low-confidence={
+                  selected.origin === "cached-label" &&
+                  selected.confidence < draft.confidenceReviewThreshold || undefined
+                }
                 style={{
                   left: `${timelinePercent(selected.keepStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.keepEnd - selected.keepStart, focus.end - focus.start)}%`,
@@ -812,6 +964,10 @@ export function CutEditor({
                 className={styles.coreRange}
                 data-included={selected.included || undefined}
                 data-ignored={selected.included && !effectiveKeptIds.has(selected.id) || undefined}
+                data-low-confidence={
+                  selected.origin === "cached-label" &&
+                  selected.confidence < draft.confidenceReviewThreshold || undefined
+                }
                 style={{
                   left: `${timelinePercent(selected.coreStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.coreEnd - selected.coreStart, focus.end - focus.start)}%`,
@@ -1029,6 +1185,10 @@ export function CutEditor({
               data-selected={cut.id === selected?.id || undefined}
               data-included={cut.included || undefined}
               data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
+              data-low-confidence={
+                cut.origin === "cached-label" &&
+                cut.confidence < draft.confidenceReviewThreshold || undefined
+              }
             >
               <button type="button" className={styles.cutSelect} onClick={() => selectCut(cut)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>

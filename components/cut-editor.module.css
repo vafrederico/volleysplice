@@ -115,7 +115,7 @@
 .sectionHeading span,
 .focusHeader span,
 .markingCard span,
-.summaryCard > span {
+.summaryStats > span {
   color: var(--cut-orange);
   font: 600 9px "Atkinson Hyperlegible Mono", monospace;
   letter-spacing: 1.2px;
@@ -190,6 +190,7 @@
 .rangeNavigation button,
 .boundaryControls button,
 .markingCard button,
+.confidenceReview button,
 .summaryCard button {
   border: 1px solid var(--cut-ink);
   border-radius: 0;
@@ -200,6 +201,7 @@
 }
 
 .transport button:disabled,
+.confidenceReview button:disabled,
 .rangeNavigation button:disabled {
   cursor: not-allowed;
   opacity: .4;
@@ -236,6 +238,68 @@
   border-top: 1px solid #ceccc3;
 }
 
+.confidenceReview {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid #c5c3ba;
+  background: #eeece4;
+}
+
+.confidenceReview label,
+.confidenceInput {
+  display: flex;
+  align-items: center;
+}
+
+.confidenceReview label {
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--cut-muted);
+  font: 600 9px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+
+.confidenceInput {
+  flex: 0 0 auto;
+  border: 1px solid var(--cut-ink);
+  background: #fff;
+  color: var(--cut-ink);
+}
+
+.confidenceInput input {
+  width: 58px;
+  min-height: 42px;
+  padding: 0 4px 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: 700 13px "Atkinson Hyperlegible Mono", monospace;
+  text-align: right;
+}
+
+.confidenceInput > span {
+  padding-right: 8px;
+  font: 700 12px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.confidenceReview p {
+  margin: 0;
+  color: #a3452e;
+  font: 600 10px "Atkinson Hyperlegible Mono", monospace;
+  white-space: nowrap;
+}
+
+.confidenceReview button {
+  padding: 0 12px;
+  background: #fff;
+  white-space: nowrap;
+}
+
 .sectionHeading,
 .focusHeader {
   display: flex;
@@ -269,8 +333,9 @@
   background:
     repeating-linear-gradient(90deg, #dedcd3 0, #dedcd3 1px, transparent 1px, transparent 10%),
     #f8f7f2;
-  cursor: crosshair;
+  cursor: ew-resize;
   touch-action: pan-y;
+  user-select: none;
 }
 
 .overviewCut {
@@ -297,6 +362,14 @@
 .overviewCut[data-included="true"] {
   background: #b8d8ff;
   opacity: 1;
+}
+
+.overviewCut[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) {
+  box-shadow: inset 0 0 0 3px var(--cut-orange);
+}
+
+.overviewCut[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) .overviewCore {
+  background: var(--cut-orange);
 }
 
 .overviewPadding,
@@ -378,23 +451,40 @@
 .summaryCard {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  align-items: start;
-  gap: 8px;
+  align-items: stretch;
+  gap: 12px;
   padding: 18px;
   border: 1px solid var(--cut-ink);
   background: var(--cut-ink);
   color: #fff;
 }
 
-.summaryCard > strong {
+.summaryStats {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  align-items: end;
+  gap: 4px 14px;
+}
+
+.summaryStats > span {
+  grid-column: 1 / -1;
+}
+
+.summaryStats > strong {
   margin: 2px 0 6px;
   color: var(--cut-acid);
   font-size: clamp(38px, 12vw, 58px);
   letter-spacing: -3px;
 }
 
-.summaryCard p {
+.summaryStats > div {
+  display: grid;
+  align-self: center;
+  gap: 3px;
+}
+
+.summaryStats p {
   margin: 0;
   color: #b7b9af;
   font: 11px "Atkinson Hyperlegible Mono", monospace;
@@ -402,8 +492,12 @@
 
 .paddingControls {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin: 8px 0 2px;
+}
+
+.paddingControls > small {
+  grid-column: 1 / -1;
 }
 
 .paddingControl {
@@ -489,8 +583,13 @@
   line-height: 1.35;
 }
 
+.summaryActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .summaryCard button {
-  margin-top: 8px;
   background: var(--cut-acid);
 }
 
@@ -546,8 +645,9 @@
   background:
     repeating-linear-gradient(90deg, #dfddd4 0, #dfddd4 1px, transparent 1px, transparent 10%),
     #f7f6f1;
-  cursor: crosshair;
+  cursor: ew-resize;
   touch-action: pan-y;
+  user-select: none;
 }
 
 .keptRange {
@@ -567,6 +667,10 @@
 
 .keptRange[data-included="true"] {
   background: rgba(133, 190, 255, .55);
+}
+
+.keptRange[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) {
+  box-shadow: inset 0 0 0 3px rgba(255, 92, 53, .8);
 }
 
 .keptRange[data-ignored="true"] {
@@ -609,6 +713,10 @@
     rgba(169, 170, 164, .5) 14px
   );
   opacity: .55;
+}
+
+.coreRange[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) {
+  background: var(--cut-orange);
 }
 
 .coreRange[data-ignored="true"] {
@@ -848,6 +956,15 @@
   box-shadow: 4px 4px 0 var(--cut-acid);
 }
 
+.cutCards article[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) {
+  border-color: var(--cut-orange);
+  background: #fff0e9;
+}
+
+.cutCards article[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) .cutSelect em {
+  color: #b4391c;
+}
+
 .cutCards article:not([data-included="true"]) {
   background: repeating-linear-gradient(
     135deg,
@@ -933,6 +1050,14 @@
     max-width: 150px;
   }
 
+  .confidenceReview {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .confidenceReview label {
+    grid-column: 1 / -1;
+  }
+
   .focusHeader {
     align-items: flex-start;
     flex-direction: column;
@@ -979,9 +1104,12 @@
     align-items: end;
   }
 
-  .editorShell {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    align-items: stretch;
+  .summaryCard {
+    grid-template-columns: minmax(210px, .75fr) minmax(0, 1.25fr);
+  }
+
+  .summaryActions {
+    align-self: stretch;
   }
 
   .boundaryControls,
@@ -999,6 +1127,18 @@
 }
 
 @media (min-width: 1100px) {
+  .summaryCard {
+    grid-template-columns:
+      minmax(190px, .7fr)
+      minmax(360px, 1.4fr)
+      minmax(230px, .85fr)
+      minmax(150px, .55fr);
+  }
+
+  .summaryActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .editorShell,
   .focusEditor,
   .markingTools,
