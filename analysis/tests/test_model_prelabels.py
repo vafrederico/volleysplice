@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from analysis.cli import build_parser
 from analysis.model_prelabels import materialize_model_prelabels
 from analysis.schema import ManifestError
 
@@ -94,12 +95,66 @@ class ModelPrelabelTests(unittest.TestCase):
         self.assertEqual((second["created"], second["reused"]), (0, 1))
         payload = json.loads((self.output / "match-full.labels.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["annotation"]["status"], "in-progress")
+        self.assertEqual(
+            payload["annotation"]["annotator"],
+            "GPT-5.6 Sol xhigh (unvalidated)",
+        )
         self.assertFalse(payload["annotation"]["continuousVideoReviewed"])
         self.assertEqual(payload["rallies"][0]["start"], 10.04)
         self.assertIn("serve-confidence:high", payload["rallies"][0]["tags"])
         self.assertEqual(
             payload["prelabel"]["analysisMethod"],
             "blind-gpt-5.6-sol-xhigh-audiovisual",
+        )
+
+    def test_materializes_explicit_high_effort_provenance_and_matching_annotator(
+        self,
+    ) -> None:
+        method = "blind-gpt-5.6-sol-high-audiovisual"
+        self.candidate["analysisMethod"] = method
+        self.write_candidate()
+
+        result = materialize_model_prelabels(
+            self.candidates,
+            self.tasks,
+            self.output,
+            analysis_method=method,
+        )
+
+        payload = json.loads(
+            (self.output / "match-full.labels.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(result["analysisMethod"], method)
+        self.assertEqual(payload["prelabel"]["analysisMethod"], method)
+        self.assertEqual(
+            payload["annotation"]["annotator"],
+            "GPT-5.6 Sol high (unvalidated)",
+        )
+
+    def test_rejects_high_effort_candidate_without_explicit_method(self) -> None:
+        self.candidate["analysisMethod"] = "blind-gpt-5.6-sol-high-audiovisual"
+        self.write_candidate()
+
+        with self.assertRaisesRegex(ManifestError, "analysisMethod must be"):
+            materialize_model_prelabels(self.candidates, self.tasks, self.output)
+
+    def test_import_cli_accepts_explicit_high_effort_method(self) -> None:
+        parsed = build_parser().parse_args(
+            [
+                "import-model-prelabels",
+                "--candidates-dir",
+                "candidates",
+                "--tasks-dir",
+                "tasks",
+                "--output-dir",
+                "output",
+                "--analysis-method",
+                "blind-gpt-5.6-sol-high-audiovisual",
+            ]
+        )
+        self.assertEqual(
+            parsed.analysis_method,
+            "blind-gpt-5.6-sol-high-audiovisual",
         )
 
     def test_rejects_overlapping_candidate_rallies(self) -> None:

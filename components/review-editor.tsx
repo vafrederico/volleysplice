@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { Brand } from "@/components/brand";
 import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
 import type {
   AnalysisKind,
@@ -742,9 +743,10 @@ export function ReviewEditor({
   return (
     <main>
       <header className="topbar">
-        <a className="brand" href="#">VOLLEYCUT <span>LAB</span></a>
+        <Brand className="brand" label="LAB" priority />
         <div className="top-actions">
           <Link href="/on-device">Try local browser cut →</Link>
+          <Link href="/edit">Open cut editor →</Link>
           <Link href="/label">Open labeling station →</Link>
           <div className="project-state">
             <i /> {initialAnalysis ? `${videoOptions.length} videos ready` : "Demo mode"}

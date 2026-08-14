@@ -33,6 +33,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 - [Offline versus browser on-device padding comparison — 2026-08-13](./browser-on-device-padding-comparison-2026-08-13.md) — 2-second and 3-second event, adjusted-F1, live-time, and full-rally containment results for the canonical offline and browser runtimes.
 - [Browser libswresample-WASM evaluation — 2026-08-13](./browser-libswresample-wasm-evaluation-2026-08-13.md) — completed three-runtime range-only run, native PCM parity gate, ignored-aware 0–3 second sensitivity, and containment lift decision.
 - [WSL DINOv2 temporal execution — 2026-08-13](./dinov2-temporal-execution-2026-08-13.md) — Track T implementation, pinned-backbone/GPU qualification, primary and no-beach development studies, selected architecture, promotion gate, and protected-test status.
+- [Mobile browser cut-editor evaluation — 2026-08-13](./mobile-browser-cut-editor-evaluation-2026-08-13.md) — open-source editor and media-engine comparison, mobile interaction constraints, selected source-time overview/detail workflow, and the initial cached-label implementation contract.
 
 ## Related context
 

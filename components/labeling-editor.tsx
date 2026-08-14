@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { Brand } from "@/components/brand";
 import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
 import {
   downloadLabels,
@@ -1265,7 +1265,7 @@ export function LabelingEditor() {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <Link href="/" className={styles.brand}>VOLLEYCUT <span>LABEL</span></Link>
+        <Brand className={styles.brand} label="LABEL" priority />
         <div className={styles.local}>Local workspace · no cloud upload</div>
       </header>
 

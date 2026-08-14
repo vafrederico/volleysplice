@@ -13,6 +13,10 @@ from .schema import ManifestError
 
 CONFIDENCE_VALUES = {"high", "medium", "low"}
 METHOD_ID = "blind-gpt-5.6-sol-xhigh-audiovisual"
+METHOD_ANNOTATORS = {
+    "blind-gpt-5.6-sol-high-audiovisual": "GPT-5.6 Sol high (unvalidated)",
+    METHOD_ID: "GPT-5.6 Sol xhigh (unvalidated)",
+}
 
 
 def _read_json(path: Path, description: str) -> dict[str, Any]:
@@ -83,7 +87,14 @@ def materialize_model_prelabels(
     candidates_directory: str | Path,
     tasks_directory: str | Path,
     output_directory: str | Path,
+    *,
+    analysis_method: str = METHOD_ID,
 ) -> dict[str, Any]:
+    if analysis_method not in METHOD_ANNOTATORS:
+        raise ManifestError(
+            "unsupported model prelabel analysisMethod: "
+            f"{analysis_method!r}; expected one of {sorted(METHOD_ANNOTATORS)}"
+        )
     candidates_root = Path(candidates_directory).expanduser().resolve()
     tasks_root = Path(tasks_directory).expanduser().resolve()
     output_root = Path(output_directory).expanduser().resolve()
@@ -109,8 +120,10 @@ def materialize_model_prelabels(
         if recording_id in seen_ids:
             raise ManifestError(f"duplicate candidate recordingId: {recording_id}")
         seen_ids.add(recording_id)
-        if candidate.get("analysisMethod") != METHOD_ID:
-            raise ManifestError(f"{recording_id}: analysisMethod must be {METHOD_ID!r}")
+        if candidate.get("analysisMethod") != analysis_method:
+            raise ManifestError(
+                f"{recording_id}: analysisMethod must be {analysis_method!r}"
+            )
         analyzed_at = candidate.get("analyzedAt")
         if not isinstance(analyzed_at, str) or not analyzed_at.strip():
             raise ManifestError(f"{recording_id}: analyzedAt must be a non-empty string")
@@ -143,7 +156,7 @@ def materialize_model_prelabels(
         payload = deepcopy(task.payload)
         payload["annotation"] = {
             "status": "in-progress",
-            "annotator": "GPT-5.6 Sol xhigh (unvalidated)",
+            "annotator": METHOD_ANNOTATORS[analysis_method],
             "continuousVideoReviewed": False,
             "reviewedAt": None,
             "notes": (
@@ -155,7 +168,7 @@ def materialize_model_prelabels(
         payload["ignoredIntervals"] = []
         payload["hardNegatives"] = []
         payload["prelabel"] = {
-            "analysisMethod": METHOD_ID,
+            "analysisMethod": analysis_method,
             "candidateFile": str(candidate_path),
             "analyzedAt": analyzed_at,
             "ambiguities": ambiguities,
@@ -184,6 +197,8 @@ def materialize_model_prelabels(
         "candidatesDirectory": str(candidates_root),
         "tasksDirectory": str(tasks_root),
         "outputDirectory": str(output_root),
+        "analysisMethod": analysis_method,
+        "annotator": METHOD_ANNOTATORS[analysis_method],
         "created": created,
         "reused": reused,
         "recordings": len(items),

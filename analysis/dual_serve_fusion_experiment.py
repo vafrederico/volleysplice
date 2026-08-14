@@ -763,6 +763,21 @@ def _validate_decision(
     return config
 
 
+def _prediction_binding_manifest_sha256(
+    intake_manifest_sha256: str,
+    decision_payload: dict[str, Any],
+    *,
+    allow_manifest_mismatch: bool,
+) -> str:
+    """Choose the manifest used to validate frozen prediction dependencies."""
+    if not allow_manifest_mismatch:
+        return intake_manifest_sha256
+    decision_manifest_sha256 = decision_payload.get("manifestSha256")
+    if not isinstance(decision_manifest_sha256, str) or not decision_manifest_sha256:
+        raise ModelError("fusion decision manifest binding is invalid")
+    return decision_manifest_sha256
+
+
 def _analysis_run_id(model_version: str, recording_id: str) -> str:
     run_id = f"model-{model_version}--{recording_id}"
     if not SAFE_ANALYSIS_ID.fullmatch(run_id):
@@ -860,6 +875,8 @@ def _fusion_analysis_payload(
     model_bindings: dict[str, Any],
     component_versions: dict[str, str],
     *,
+    intake_manifest_sha256: str,
+    decision_binding_manifest_sha256: str,
     run_id: str,
     variant_label: str,
     variant_description: str,
@@ -899,6 +916,11 @@ def _fusion_analysis_payload(
     warnings.append(
         "experimental frozen v4+v5 fusion: unmatched v5 rallies are not added"
     )
+    if intake_manifest_sha256 != decision_binding_manifest_sha256:
+        warnings.append(
+            "prediction-only intake manifest differs from the frozen validation "
+            "decision manifest"
+        )
     roi_payload = None
     if recording.roi is not None:
         roi_payload = {
@@ -1007,6 +1029,14 @@ def _fusion_analysis_payload(
                 "experiment": EXPERIMENT_ID,
                 "sha256": fusion_digest,
                 "decisionReportSha256": decision_sha256,
+                "intakeManifestSha256": intake_manifest_sha256,
+                "decisionBindings": {
+                    "manifestSha256": decision_binding_manifest_sha256,
+                    "models": model_bindings,
+                },
+                "predictionOnlyManifestMismatch": (
+                    intake_manifest_sha256 != decision_binding_manifest_sha256
+                ),
                 "selectedOn": "validation",
                 "addOnly": {"selectedPolicy": "disabled"},
                 "boundarySelector": selector.to_dict(),
@@ -1088,6 +1118,8 @@ def _validate_existing_fusion_analysis(
     source_filename: str,
     content_sha256: str | None,
     decision_sha256: str,
+    intake_manifest_sha256: str,
+    decision_binding_manifest_sha256: str,
     model_bindings: dict[str, Any],
     component_versions: dict[str, str],
     selector: BoundarySelectorConfig,
@@ -1131,6 +1163,14 @@ def _validate_existing_fusion_analysis(
         == component_versions["v5Serve"]
         and fusion.get("experiment") == EXPERIMENT_ID
         and fusion.get("decisionReportSha256") == decision_sha256
+        and fusion.get("intakeManifestSha256") == intake_manifest_sha256
+        and fusion.get("decisionBindings")
+        == {
+            "manifestSha256": decision_binding_manifest_sha256,
+            "models": model_bindings,
+        }
+        and fusion.get("predictionOnlyManifestMismatch")
+        == (intake_manifest_sha256 != decision_binding_manifest_sha256)
         and fusion.get("modelBindings") == model_bindings
         and fusion.get("boundarySelector") == selector.to_dict()
         and fusion.get("addOnly", {}).get("selectedPolicy") == "disabled"
@@ -1157,6 +1197,7 @@ def infer_dual_serve_fusion_dataset(
     variant_label: str = FUSION_VARIANT_LABEL,
     variant_description: str = FUSION_VARIANT_DESCRIPTION,
     limit: int | None = None,
+    allow_manifest_mismatch: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Materialize the frozen v4+v5 selector as dashboard analysis artifacts."""
@@ -1190,8 +1231,6 @@ def infer_dual_serve_fusion_dataset(
     v4_serve = load_model(model_paths["v4Serve"])
     v5_rally = load_model(model_paths["v5Rally"])
     v5_serve = load_model(model_paths["v5Serve"])
-    _validate_model_pair(v4_rally, v4_serve, manifest_sha256=manifest_sha256)
-    _validate_model_pair(v5_rally, v5_serve, manifest_sha256=manifest_sha256)
     model_bindings = _model_bindings(v4_rally, v4_serve, v5_rally, v5_serve)
     decision_file = Path(decision_path).expanduser().resolve()
     try:
@@ -1200,8 +1239,23 @@ def infer_dual_serve_fusion_dataset(
     except (OSError, json.JSONDecodeError) as error:
         raise ModelError(f"could not read frozen fusion decision: {error}") from error
     decision_sha256 = hashlib.sha256(decision_bytes).hexdigest()
+    decision_binding_manifest_sha256 = _prediction_binding_manifest_sha256(
+        manifest_sha256,
+        decision_payload,
+        allow_manifest_mismatch=allow_manifest_mismatch,
+    )
+    _validate_model_pair(
+        v4_rally,
+        v4_serve,
+        manifest_sha256=decision_binding_manifest_sha256,
+    )
+    _validate_model_pair(
+        v5_rally,
+        v5_serve,
+        manifest_sha256=decision_binding_manifest_sha256,
+    )
     selector = _validate_decision(
-        decision_payload, manifest_sha256, model_bindings
+        decision_payload, decision_binding_manifest_sha256, model_bindings
     )
     component_versions = {
         key: path.name for key, path in model_paths.items()
@@ -1220,6 +1274,8 @@ def infer_dual_serve_fusion_dataset(
                 source_filename=recording.video.name,
                 content_sha256=recording.content_sha256,
                 decision_sha256=decision_sha256,
+                intake_manifest_sha256=manifest_sha256,
+                decision_binding_manifest_sha256=decision_binding_manifest_sha256,
                 model_bindings=model_bindings,
                 component_versions=component_versions,
                 selector=selector,
@@ -1256,6 +1312,8 @@ def infer_dual_serve_fusion_dataset(
             decision_sha256,
             model_bindings,
             component_versions,
+            intake_manifest_sha256=manifest_sha256,
+            decision_binding_manifest_sha256=decision_binding_manifest_sha256,
             run_id=run_id,
             variant_label=variant_label,
             variant_description=variant_description,
@@ -1284,8 +1342,15 @@ def infer_dual_serve_fusion_dataset(
         "experiment": EXPERIMENT_ID,
         "manifest": manifest.name,
         "manifestSha256": manifest_sha256,
+        "intakeManifest": str(Path(manifest_path).expanduser().resolve()),
+        "intakeManifestSha256": manifest_sha256,
+        "allowManifestMismatch": allow_manifest_mismatch,
         "decisionReport": str(decision_file),
         "decisionReportSha256": decision_sha256,
+        "decisionBindings": {
+            "manifestSha256": decision_binding_manifest_sha256,
+            "models": model_bindings,
+        },
         "modelVersion": model_version,
         "recordings": len(rows),
         "created": created,

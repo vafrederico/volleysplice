@@ -20,11 +20,17 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: inherit;
   text-decoration: none;
-  font-size: 21px;
-  font-weight: 800;
-  letter-spacing: -1px;
+}
+
+.brand img {
+  width: 145px;
+  height: auto;
+  mix-blend-mode: multiply;
 }
 
 .brand span {
@@ -837,6 +843,7 @@
 }
 
 @media (max-width: 650px) {
+  .local { display: none; }
   .intro { padding-top: 35px; }
   .intro h1 { letter-spacing: -2px; }
   .loaders { grid-template-columns: 1fr; }
