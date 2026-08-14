@@ -504,6 +504,7 @@
 
 .focusEditor,
 .markingTools,
+.addedCutList,
 .ignoredList,
 .cutList {
   margin: 28px clamp(16px, 4vw, 56px) 0;
@@ -771,18 +772,25 @@
   font: 11px/1.45 "Atkinson Hyperlegible Mono", monospace;
 }
 
+.addedCutList,
 .ignoredList {
   padding: 15px;
   border: 1px solid #aaa;
   background: #e4e3dc;
 }
 
+.addedCutList {
+  background: #efe7df;
+}
+
+.addedCutList > div:last-child,
 .ignoredList > div:last-child {
   display: grid;
   gap: 7px;
   margin-top: 12px;
 }
 
+.addedCutList article,
 .ignoredList article {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -793,6 +801,7 @@
   background: #fff;
 }
 
+.addedCutList article button,
 .ignoredList article button {
   min-height: 36px;
   padding: 0 8px;
@@ -804,10 +813,12 @@
   cursor: pointer;
 }
 
+.addedCutList article button:last-child,
 .ignoredList article button:last-child {
   color: #a51e1e;
 }
 
+.addedCutList article span,
 .ignoredList article span {
   color: var(--cut-muted);
   font: 9px "Atkinson Hyperlegible Mono", monospace;
@@ -936,16 +947,19 @@
     min-height: 44px;
   }
 
+  .addedCutList article,
   .ignoredList article {
     grid-template-columns: 1fr auto;
   }
 
+  .addedCutList article span,
   .ignoredList article span {
     grid-column: 1;
     grid-row: 2;
     padding: 0 8px 7px;
   }
 
+  .addedCutList article button:last-child,
   .ignoredList article button:last-child {
     grid-column: 2;
     grid-row: 1 / span 2;
@@ -988,6 +1002,7 @@
   .editorShell,
   .focusEditor,
   .markingTools,
+  .addedCutList,
   .ignoredList,
   .cutList,
   .editorMessage {

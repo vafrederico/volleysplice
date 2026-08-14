@@ -198,6 +198,7 @@ export function CutEditor({
   const overviewIgnoredIntervals = activeMarkStart === null
     ? draft.ignoredIntervals
     : draft.ignoredIntervals.filter((interval) => interval.end >= activeMarkStart);
+  const manualCuts = sortedCuts.filter((cut) => cut.origin === "manual");
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
     setDraft((current) => ({
@@ -387,15 +388,18 @@ export function CutEditor({
     setEditorMessage(`Added ${id} from ${preciseTime(start)} to ${preciseTime(end)}.`);
   }
 
-  function deleteSelectedManualCut() {
-    if (!selected || selected.origin !== "manual") return;
-    const nextCuts = sortedCuts.filter((cut) => cut.id !== selected.id);
-    const fallback = nextCuts[Math.max(0, selectedIndex - 1)] ?? nextCuts[0] ?? null;
+  function deleteManualCut(id: string) {
+    const deletedIndex = sortedCuts.findIndex((cut) => cut.id === id);
+    const deleted = sortedCuts[deletedIndex];
+    if (!deleted || deleted.origin !== "manual") return;
+    const nextCuts = sortedCuts.filter((cut) => cut.id !== id);
+    const fallback = nextCuts[Math.max(0, deletedIndex - 1)] ?? nextCuts[0] ?? null;
     updateDraft((current) => ({
       ...current,
-      cuts: current.cuts.filter((cut) => cut.id !== selected.id),
+      cuts: current.cuts.filter((cut) => cut.id !== id),
     }));
-    setSelectedId(fallback?.id ?? "");
+    if (selected?.id === id) setSelectedId(fallback?.id ?? "");
+    setEditorMessage(`Removed added cut ${id}.`);
   }
 
   function markIgnoredBoundary() {
@@ -888,7 +892,11 @@ export function CutEditor({
               <button type="button" onClick={previewSelected}>Preview cut</button>
               <button type="button" onClick={resetSelectedPadding}>Reset padding</button>
               {selected.origin === "manual" && (
-                <button type="button" className={styles.dangerButton} onClick={deleteSelectedManualCut}>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={() => deleteManualCut(selected.id)}
+                >
                   Delete manual cut
                 </button>
               )}
@@ -961,6 +969,30 @@ export function CutEditor({
       </section>
 
       {editorMessage && <p className={styles.editorMessage}>{editorMessage}</p>}
+
+      {manualCuts.length > 0 && (
+        <section className={styles.addedCutList}>
+          <div className={styles.sectionHeading}>
+            <div>
+              <span>ADDED MISSED CUTS</span>
+              <strong>Manual ranges saved on this device</strong>
+            </div>
+          </div>
+          <div>
+            {manualCuts.map((cut) => (
+              <article key={cut.id}>
+                <button type="button" onClick={() => selectCut(cut)}>
+                  {preciseTime(cut.keepStart)}–{preciseTime(cut.keepEnd)}
+                </button>
+                <span>{cut.id} · {(cut.keepEnd - cut.keepStart).toFixed(1)}s</span>
+                <button type="button" onClick={() => deleteManualCut(cut.id)}>
+                  Remove
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       {draft.ignoredIntervals.length > 0 && (
         <section className={styles.ignoredList}>
