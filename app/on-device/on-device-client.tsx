@@ -15,6 +15,7 @@ import {
 import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
 import {
   analyzeOpenedMedia,
+  DEFAULT_FEATURE_REDUCTION_KERNEL,
   DEFAULT_VIDEO_DECODE_STRATEGY,
   VIDEO_DECODER_HARDWARE_ACCELERATION,
 } from "@/lib/on-device/pipeline";
@@ -22,6 +23,7 @@ import { clampRoi, fullFrameRoi, inferRoiProfile } from "@/lib/on-device/roi";
 import type {
   AnalysisProgress,
   FeatureExtractionPerformance,
+  FeatureReductionKernel,
   NormalizedRoi,
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
@@ -395,6 +397,9 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   );
   const [decoderAcceleration, setDecoderAcceleration] =
     useState<VideoDecoderAcceleration>(VIDEO_DECODER_HARDWARE_ACCELERATION);
+  const [reductionKernel, setReductionKernel] = useState<FeatureReductionKernel>(
+    DEFAULT_FEATURE_REDUCTION_KERNEL,
+  );
   const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
   const [featureCacheState, setFeatureCacheState] = useState<
     AnalysisProgress["featureCache"] | null
@@ -450,6 +455,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           featurePerformance.phaseCorrelationMs -
           featurePerformance.opticalFlowMs -
           featurePerformance.javascriptMs -
+          featurePerformance.wasmReductionMs -
           (featurePerformance.workerActive ? featurePerformance.canvasDrawMs : 0),
       )
     : 0;
@@ -459,8 +465,9 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const videoPipelineOtherMs = featurePerformance
     ? Math.max(
         0,
-        featurePerformance.videoElapsedMs -
+          featurePerformance.videoElapsedMs -
           featurePerformance.openCvLoadMs -
+          featurePerformance.reductionKernelLoadMs -
           featurePerformance.decoderCanvasMs -
           featureBlockingMs -
           featurePerformance.cacheIoMs,
@@ -599,7 +606,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         file
           ? { name: file.name, size: file.size, lastModified: file.lastModified }
           : undefined,
-        { detailedProfiling, decodeStrategy, decoderAcceleration },
+        { detailedProfiling, decodeStrategy, decoderAcceleration, reductionKernel },
       );
       setAnalysisElapsedSeconds((performance.now() - startedAt) / 1000);
       setAnalysis(result);
@@ -948,6 +955,20 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                       <option value="no-preference">Browser default</option>
                     </select>
                   </label>
+                  <label>
+                    <span>Feature reductions</span>
+                    <select
+                      value={reductionKernel}
+                      onChange={(event) => {
+                        setReductionKernel(event.target.value as FeatureReductionKernel);
+                        setFeatureCacheState(null);
+                        setAnalysisProgress(null);
+                      }}
+                    >
+                      <option value="javascript">JavaScript · baseline</option>
+                      <option value="wasm">Fused WASM · experiment</option>
+                    </select>
+                  </label>
                   <small>
                     Modes keep separate checkpoints. Enable profiling before comparing runs.
                   </small>
@@ -1161,6 +1182,18 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                               : "Sparse timestamp batches"}
                         </dd>
                       </div>
+                      <div>
+                        <dt>Feature reductions</dt>
+                        <dd
+                          data-tone={
+                            featurePerformance.reductionKernel === "wasm" ? "good" : undefined
+                          }
+                        >
+                          {featurePerformance.reductionKernel === "wasm"
+                            ? "Fused WASM kernel"
+                            : "JavaScript typed arrays"}
+                        </dd>
+                      </div>
                       {featurePerformance.decodedSourceFrames !== null && (
                         <div>
                           <dt>Source frames traversed</dt>
@@ -1307,6 +1340,17 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                           )}
                         </dd>
                       </div>
+                      {featurePerformance.reductionKernel === "wasm" && (
+                        <div className={styles.diagnosticSubstage}>
+                          <dt>↳ WASM feature reductions</dt>
+                          <dd>
+                            {timingSummary(
+                              featurePerformance.wasmReductionMs,
+                              featurePerformance,
+                            )}
+                          </dd>
+                        </div>
+                      )}
                       {extractionOtherMs >= 0.5 && (
                         <div className={styles.diagnosticSubstage}>
                           <dt>↳ Allocation + cleanup</dt>
@@ -1323,6 +1367,18 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                           )}
                         </dd>
                       </div>
+                      {featurePerformance.reductionKernel === "wasm" && (
+                        <div>
+                          <dt>Reduction WASM startup</dt>
+                          <dd>
+                            {timingSummary(
+                              featurePerformance.reductionKernelLoadMs,
+                              featurePerformance,
+                              false,
+                            )}
+                          </dd>
+                        </div>
+                      )}
                       <div>
                         <dt>IndexedDB I/O</dt>
                         <dd>
@@ -1355,6 +1411,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   whether avoiding AV1 seek-batch overhead is faster. When supported, visual features
                   run in OpenCV WASM on a dedicated worker with a two-frame decode queue; model
                   inference still runs on the CPU. WebGPU availability does not accelerate this version.
+                  The optional WASM reduction experiment fuses the per-pixel statistics into one
+                  CPU kernel; it does not use the GPU.
                   Feature checkpoints stay in this browser&apos;s IndexedDB and are keyed to the exact
                   file and crop. After a refresh, choose the same file again to resume. Stage timing
                   and feature speed count only frames generated in the current run; restored frames

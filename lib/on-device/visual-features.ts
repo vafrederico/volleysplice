@@ -7,6 +7,7 @@ import {
   mean,
   standardDeviation,
 } from "./feature-math";
+import type { WasmVisualFeatureReducer } from "./visual-feature-reductions-wasm";
 
 type CvRuntime = typeof import("@techstark/opencv-js");
 type CvThenable = {
@@ -213,6 +214,7 @@ export type VisualFeatureResult = {
     phaseCorrelationMs: number;
     opticalFlowMs: number;
     javascriptMs: number;
+    wasmReductionMs: number;
   };
 };
 
@@ -221,6 +223,7 @@ export function extractVisualFeatures(
   canvas: HTMLCanvasElement | OffscreenCanvas,
   previousGray: Mat | null,
   detailedProfiling = true,
+  wasmReducer: WasmVisualFeatureReducer | null = null,
 ): VisualFeatureResult {
   const readbackStartedAt = detailedProfiling ? performance.now() : 0;
   const rgba = cv.imread(canvas as unknown as HTMLCanvasElement);
@@ -231,6 +234,7 @@ export function extractVisualFeatures(
     previousGray,
     canvasReadbackMs,
     detailedProfiling,
+    wasmReducer,
   );
 }
 
@@ -240,6 +244,7 @@ export function extractVisualFeaturesFromImageData(
   previousGray: Mat | null,
   readbackMs: number,
   detailedProfiling = true,
+  wasmReducer: WasmVisualFeatureReducer | null = null,
 ): VisualFeatureResult {
   const conversionStartedAt = detailedProfiling ? performance.now() : 0;
   const rgba = cv.matFromImageData(imageData);
@@ -249,6 +254,7 @@ export function extractVisualFeaturesFromImageData(
     previousGray,
     detailedProfiling ? readbackMs + performance.now() - conversionStartedAt : 0,
     detailedProfiling,
+    wasmReducer,
   );
 }
 
@@ -258,6 +264,7 @@ function extractVisualFeaturesFromRgba(
   previousGray: Mat | null,
   canvasReadbackMs: number,
   detailedProfiling: boolean,
+  wasmReducer: WasmVisualFeatureReducer | null,
 ): VisualFeatureResult {
   const now = detailedProfiling ? () => performance.now() : () => 0;
   const resized = new cv.Mat();
@@ -295,6 +302,57 @@ function extractVisualFeaturesFromRgba(
     cv.Sobel(gray, gradientX, cv.CV_32F, 1, 0, 3);
     cv.Sobel(gray, gradientY, cv.CV_32F, 0, 1, 3);
     imageOperationsMs += now() - imageOperationsStartedAt;
+
+    if (wasmReducer) {
+      let shiftX = 0;
+      let shiftY = 0;
+      let shiftResponse = 0;
+      if (previousGray) {
+        const phaseCorrelationStartedAt = now();
+        try {
+          [shiftX, shiftY, shiftResponse] = phaseCorrelate(cv, previousGray, gray);
+        } catch {
+          // Match the JavaScript and Python feature extractor fallbacks.
+        }
+        phaseCorrelationMs += now() - phaseCorrelationStartedAt;
+      }
+      const opticalFlowStartedAt = now();
+      if (previousGray) {
+        cv.calcOpticalFlowFarneback(previousGray, gray, flow, 0.5, 2, 13, 2, 5, 1.1, 0);
+      } else {
+        const zeroFlow = cv.Mat.zeros(gray.rows, gray.cols, cv.CV_32FC2);
+        zeroFlow.copyTo(flow);
+        zeroFlow.delete();
+      }
+      opticalFlowMs += now() - opticalFlowStartedAt;
+      const wasmStartedAt = now();
+      const values = wasmReducer.reduce({
+        gray: gray.data,
+        hsv: hsv.data,
+        edges: edges.data,
+        laplacian: laplacian.data32F,
+        gradientX: gradientX.data32F,
+        gradientY: gradientY.data32F,
+        previousGray: previousGray?.data ?? null,
+        flow: flow.data32F,
+        shiftX,
+        shiftY,
+        shiftResponse,
+      });
+      const wasmReductionMs = now() - wasmStartedAt;
+      return {
+        values,
+        gray: gray.clone(),
+        timing: {
+          canvasReadbackMs,
+          imageOperationsMs,
+          phaseCorrelationMs,
+          opticalFlowMs,
+          javascriptMs: 0,
+          wasmReductionMs,
+        },
+      };
+    }
 
     let javascriptStartedAt = now();
     const pixels = gray.data;
@@ -509,6 +567,7 @@ function extractVisualFeaturesFromRgba(
         phaseCorrelationMs,
         opticalFlowMs,
         javascriptMs: javascriptMs + now() - javascriptStartedAt,
+        wasmReductionMs: 0,
       },
     };
     return result;

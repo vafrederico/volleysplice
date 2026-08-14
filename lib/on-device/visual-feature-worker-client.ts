@@ -3,6 +3,7 @@ import type {
   VisualFeatureWorkerResponse,
   WorkerCrop,
 } from "./visual-feature-worker-protocol";
+import type { FeatureReductionKernel } from "./types";
 
 export type WorkerFeatureResult = Extract<
   VisualFeatureWorkerResponse,
@@ -16,20 +17,25 @@ type PendingFrame = {
 
 export class VisualFeatureWorkerClient {
   readonly openCvLoadMs: number;
+  readonly reductionKernelLoadMs: number;
   private readonly worker: Worker;
   private readonly pending = new Map<number, PendingFrame>();
   private nextId = 0;
   private stopped = false;
 
-  private constructor(worker: Worker, openCvLoadMs: number) {
+  private constructor(worker: Worker, openCvLoadMs: number, reductionKernelLoadMs: number) {
     this.worker = worker;
     this.openCvLoadMs = openCvLoadMs;
+    this.reductionKernelLoadMs = reductionKernelLoadMs;
     worker.addEventListener("message", this.handleMessage);
     worker.addEventListener("error", this.handleWorkerError);
     worker.addEventListener("messageerror", this.handleWorkerError);
   }
 
-  static async create(detailedProfiling: boolean): Promise<VisualFeatureWorkerClient> {
+  static async create(
+    detailedProfiling: boolean,
+    reductionKernel: FeatureReductionKernel,
+  ): Promise<VisualFeatureWorkerClient> {
     if (!("Worker" in globalThis) || !("OffscreenCanvas" in globalThis)) {
       throw new Error("Dedicated extraction workers are unavailable.");
     }
@@ -38,7 +44,9 @@ export class VisualFeatureWorkerClient {
       name: "volleycut-visual-features",
     });
     try {
-      const openCvLoadMs = await new Promise<number>((resolve, reject) => {
+      const ready = await new Promise<
+        Extract<VisualFeatureWorkerResponse, { type: "ready" }>
+      >((resolve, reject) => {
         const timeout = window.setTimeout(
           () => reject(new Error("The extraction worker did not initialize in time.")),
           30_000,
@@ -48,7 +56,7 @@ export class VisualFeatureWorkerClient {
           window.clearTimeout(timeout);
           worker.removeEventListener("message", handleMessage);
           worker.removeEventListener("error", handleError);
-          if (event.data.type === "ready") resolve(event.data.openCvLoadMs);
+          if (event.data.type === "ready") resolve(event.data);
           else reject(new Error(event.data.message));
         };
         const handleError = () => {
@@ -58,10 +66,18 @@ export class VisualFeatureWorkerClient {
         };
         worker.addEventListener("message", handleMessage);
         worker.addEventListener("error", handleError, { once: true });
-        const request: VisualFeatureWorkerRequest = { type: "initialize", detailedProfiling };
+        const request: VisualFeatureWorkerRequest = {
+          type: "initialize",
+          detailedProfiling,
+          reductionKernel,
+        };
         worker.postMessage(request);
       });
-      return new VisualFeatureWorkerClient(worker, openCvLoadMs);
+      return new VisualFeatureWorkerClient(
+        worker,
+        ready.openCvLoadMs,
+        ready.reductionKernelLoadMs,
+      );
     } catch (error) {
       worker.terminate();
       throw error;

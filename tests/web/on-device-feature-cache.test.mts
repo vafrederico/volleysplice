@@ -53,7 +53,13 @@ test("decode experiments have isolated checkpoints while the legacy sparse key s
     decodeStrategy: "sparse",
     decoderAcceleration: "no-preference",
   });
+  const wasmReductions = visualFeatureCacheKey(source, info, roi, {
+    decodeStrategy: "sequential",
+    decoderAcceleration: "prefer-hardware",
+    reductionKernel: "wasm",
+  });
   assert.notEqual(baseline, sequential);
   assert.notEqual(baseline, browserDefault);
   assert.notEqual(sequential, browserDefault);
+  assert.notEqual(sequential, wasmReductions);
 });

@@ -1,6 +1,7 @@
 import { VideoSample } from "mediabunny";
 
 import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH } from "./feature-schema";
+import { WasmVisualFeatureReducer } from "./visual-feature-reductions-wasm";
 import type {
   VisualFeatureWorkerRequest,
   VisualFeatureWorkerResponse,
@@ -41,6 +42,7 @@ let runtimePromise: Promise<CvRuntime> | null = null;
 let previousGray: import("@techstark/opencv-js").Mat | null = null;
 let canvasIsFresh = true;
 let detailedProfiling = true;
+let wasmReducer: WasmVisualFeatureReducer | null = null;
 const canvas = new OffscreenCanvas(ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
 const firefox = navigator.userAgent.includes("Firefox");
 const context = (() => {
@@ -106,6 +108,7 @@ async function processFrame(
       previousGray,
       readbackMs,
       detailedProfiling,
+      wasmReducer,
     );
     previousGray?.delete();
     previousGray = result.gray;
@@ -145,9 +148,16 @@ workerScope.addEventListener("message", (event: MessageEvent<VisualFeatureWorker
         detailedProfiling = request.detailedProfiling;
         const startedAt = detailedProfiling ? performance.now() : 0;
         await loadWorkerOpenCv();
+        const openCvLoadMs = detailedProfiling ? performance.now() - startedAt : 0;
+        const reductionStartedAt = detailedProfiling ? performance.now() : 0;
+        wasmReducer = request.reductionKernel === "wasm"
+          ? await WasmVisualFeatureReducer.load()
+          : null;
         post({
           type: "ready",
-          openCvLoadMs: detailedProfiling ? performance.now() - startedAt : 0,
+          openCvLoadMs,
+          reductionKernelLoadMs:
+            detailedProfiling ? performance.now() - reductionStartedAt : 0,
         });
       } else {
         await processFrame(request);

@@ -1,5 +1,6 @@
 import { ANALYSIS_FPS, FRAME_FEATURE_NAMES } from "./feature-schema.ts";
 import type {
+  FeatureReductionKernel,
   NormalizedRoi,
   OnDeviceMediaInfo,
   VideoDecoderAcceleration,
@@ -90,6 +91,7 @@ export function visualFeatureCacheKey(
   experiment?: {
     decodeStrategy: VideoDecodeStrategy;
     decoderAcceleration: VideoDecoderAcceleration;
+    reductionKernel?: FeatureReductionKernel;
   },
 ): string {
   let featureSignature = 0x811c9dc5;

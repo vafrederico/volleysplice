@@ -1,4 +1,5 @@
 import type { VisualFeatureResult } from "./visual-features";
+import type { FeatureReductionKernel } from "./types";
 
 export type WorkerCrop = {
   left: number;
@@ -8,7 +9,11 @@ export type WorkerCrop = {
 };
 
 export type VisualFeatureWorkerRequest =
-  | { type: "initialize"; detailedProfiling: boolean }
+  | {
+      type: "initialize";
+      detailedProfiling: boolean;
+      reductionKernel: FeatureReductionKernel;
+    }
   | {
       type: "frame";
       id: number;
@@ -24,6 +29,7 @@ export type VisualFeatureWorkerResponse =
   | {
       type: "ready";
       openCvLoadMs: number;
+      reductionKernelLoadMs: number;
     }
   | {
       type: "result";

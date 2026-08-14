@@ -40,16 +40,20 @@ export type VideoDecodeStrategy = "sparse" | "sequential";
 
 export type VideoDecoderAcceleration = "prefer-hardware" | "no-preference";
 
+export type FeatureReductionKernel = "javascript" | "wasm";
+
 export type FeatureExtractionPerformance = {
   profilingEnabled: boolean;
   decodeStrategy: VideoDecodeStrategy;
   decoderAcceleration: VideoDecoderAcceleration;
+  reductionKernel: FeatureReductionKernel;
   decodedSourceFrames: number | null;
   sampledFrames: number;
   generatedFrames: number;
   generatedVideoSeconds: number;
   videoElapsedMs: number;
   openCvLoadMs: number;
+  reductionKernelLoadMs: number;
   decoderCanvasMs: number;
   decoderWaitMs: number;
   decoderOverlapMs: number;
@@ -64,6 +68,7 @@ export type FeatureExtractionPerformance = {
   phaseCorrelationMs: number;
   opticalFlowMs: number;
   javascriptMs: number;
+  wasmReductionMs: number;
   cacheIoMs: number;
 };
 

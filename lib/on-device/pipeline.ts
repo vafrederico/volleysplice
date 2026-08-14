@@ -25,6 +25,7 @@ import { samplesAtTimestampsFromSequentialPass } from "./sequential-samples";
 import type {
   AnalysisProgress,
   BaseFeatureSequence,
+  FeatureReductionKernel,
   FeatureExtractionPerformance,
   NormalizedRoi,
   OnDeviceAnalysis,
@@ -42,6 +43,7 @@ const MODEL_URL = "/on-device/model-9c92b8e9333f.json";
 export const DEFAULT_VIDEO_DECODE_STRATEGY: VideoDecodeStrategy = "sequential";
 export const VIDEO_DECODER_HARDWARE_ACCELERATION: VideoDecoderAcceleration =
   "prefer-hardware";
+export const DEFAULT_FEATURE_REDUCTION_KERNEL: FeatureReductionKernel = "javascript";
 
 const LEGACY_FEATURE_CACHE_DECODE_STRATEGY: VideoDecodeStrategy = "sparse";
 
@@ -56,6 +58,7 @@ export type FeatureExtractionOptions = {
   detailedProfiling?: boolean;
   decodeStrategy?: VideoDecodeStrategy;
   decoderAcceleration?: VideoDecoderAcceleration;
+  reductionKernel?: FeatureReductionKernel;
 };
 
 function column(values: Float32Array, rows: number, columns: number, index: number): Float32Array {
@@ -168,17 +171,20 @@ export async function extractBrowserFeatures(
   const decodeStrategy = options.decodeStrategy ?? DEFAULT_VIDEO_DECODE_STRATEGY;
   const decoderAcceleration =
     options.decoderAcceleration ?? VIDEO_DECODER_HARDWARE_ACCELERATION;
+  const reductionKernel = options.reductionKernel ?? DEFAULT_FEATURE_REDUCTION_KERNEL;
   const videoStartedAt = performance.now();
   const timingTotals: FeatureExtractionPerformance = {
     profilingEnabled: detailedProfiling,
     decodeStrategy,
     decoderAcceleration,
+    reductionKernel,
     decodedSourceFrames: decodeStrategy === "sequential" ? 0 : null,
     sampledFrames: 0,
     generatedFrames: 0,
     generatedVideoSeconds: 0,
     videoElapsedMs: 0,
     openCvLoadMs: 0,
+    reductionKernelLoadMs: 0,
     decoderCanvasMs: 0,
     decoderWaitMs: 0,
     decoderOverlapMs: 0,
@@ -193,6 +199,7 @@ export async function extractBrowserFeatures(
     phaseCorrelationMs: 0,
     opticalFlowMs: 0,
     javascriptMs: 0,
+    wasmReductionMs: 0,
     cacheIoMs: 0,
   };
   const performanceSnapshot = (): FeatureExtractionPerformance => ({
@@ -218,9 +225,14 @@ export async function extractBrowserFeatures(
   if (cacheSource) {
     const experiment =
       decodeStrategy === LEGACY_FEATURE_CACHE_DECODE_STRATEGY &&
-      decoderAcceleration === VIDEO_DECODER_HARDWARE_ACCELERATION
+      decoderAcceleration === VIDEO_DECODER_HARDWARE_ACCELERATION &&
+      reductionKernel === DEFAULT_FEATURE_REDUCTION_KERNEL
         ? undefined
-        : { decodeStrategy, decoderAcceleration };
+        : {
+            decodeStrategy,
+            decoderAcceleration,
+            ...(reductionKernel === "wasm" ? { reductionKernel } : {}),
+          };
     const resolvedCacheKey = visualFeatureCacheKey(cacheSource, media.info, roi, experiment);
     cacheKey = resolvedCacheKey;
     try {
@@ -346,14 +358,26 @@ export async function extractBrowserFeatures(
       timingTotals.phaseCorrelationMs += result.timing.phaseCorrelationMs;
       timingTotals.opticalFlowMs += result.timing.opticalFlowMs;
       timingTotals.javascriptMs += result.timing.javascriptMs;
+      timingTotals.wasmReductionMs += result.timing.wasmReductionMs;
     };
     try {
-      const workerClient = await VisualFeatureWorkerClient.create(detailedProfiling).catch(
-        () => null,
-      );
+      const workerClient = await VisualFeatureWorkerClient.create(
+        detailedProfiling,
+        reductionKernel,
+      ).catch((error: unknown) => {
+        if (reductionKernel === "wasm") {
+          throw new Error(
+            `The WASM feature reduction experiment could not start: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        return null;
+      });
       if (workerClient) {
         timingTotals.workerActive = true;
         timingTotals.openCvLoadMs += workerClient.openCvLoadMs;
+        timingTotals.reductionKernelLoadMs += workerClient.reductionKernelLoadMs;
         const sink = new VideoSampleSink(media.videoTrack, {
           hardwareAcceleration: decoderAcceleration,
         });
@@ -413,6 +437,7 @@ export async function extractBrowserFeatures(
           await sampleIterator.return(undefined);
         }
       } else {
+        timingTotals.reductionKernel = "javascript";
         timingTotals.decodeStrategy = "sparse";
         timingTotals.decodedSourceFrames = null;
         const openCvStartedAt = detailedProfiling ? performance.now() : 0;
