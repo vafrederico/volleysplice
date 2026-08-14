@@ -29,6 +29,7 @@ final class AnalysisEngine {
     AnalysisTypes.AnalysisResult analyze(
             Uri uri,
             boolean fullFrame,
+            int sourceFrameLimit,
             AtomicBoolean cancelled,
             AnalysisTypes.ProgressListener progress
     ) throws IOException, JSONException {
@@ -56,7 +57,7 @@ final class AnalysisEngine {
 
         stage = System.nanoTime();
         AnalysisTypes.VideoFeatures video = new NativeVideoDecoder(context).decode(
-                uri, media, roi, requestedTimes, progress, cancelled::get
+                uri, media, roi, requestedTimes, sourceFrameLimit, progress, cancelled::get
         );
         double[] times = video.analysisTimes();
         double analyzedDurationSeconds = video.analyzedDurationSeconds();
@@ -116,7 +117,7 @@ final class AnalysisEngine {
                 media,
                 roi,
                 analyzedDurationSeconds,
-                FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT,
+                sourceFrameLimit,
                 video.sourceFrameLimitReached(),
                 times.length,
                 video.decodedSourceFrames(),

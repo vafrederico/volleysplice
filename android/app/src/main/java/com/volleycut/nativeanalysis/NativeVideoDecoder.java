@@ -38,6 +38,7 @@ final class NativeVideoDecoder {
             AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi,
             double[] times,
+            int sourceFrameLimit,
             AnalysisTypes.ProgressListener progress,
             BooleanSupplier cancelled
     ) throws IOException {
@@ -80,7 +81,7 @@ final class NativeVideoDecoder {
             double sampleTimestampErrorMaxMs = 0;
             while (!outputEnded
                     && target < times.length
-                    && decodedSourceFrames < FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT) {
+                    && decodedSourceFrames < sourceFrameLimit) {
                 if (cancelled.getAsBoolean()) throw new InterruptedExceptionAsIo();
                 featureWorker.throwIfFailed();
                 if (!inputEnded) {
@@ -170,13 +171,13 @@ final class NativeVideoDecoder {
                         double sourceFramesPerSecond = decodedSourceFrames
                                 / Math.max(elapsedSeconds, 1e-9);
                         double etaSeconds = sourceFramesPerSecond > 0
-                                ? (FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT - decodedSourceFrames)
+                                ? (sourceFrameLimit - decodedSourceFrames)
                                         / sourceFramesPerSecond
                                 : Double.NaN;
                         Runtime runtime = Runtime.getRuntime();
                         progress.onPerformance(new AnalysisTypes.PerformanceStats(
                                 target,
-                                -1,
+                                sourceFrameLimit,
                                 decodedSourceFrames,
                                 generatedVideoSeconds,
                                 elapsedSeconds,
@@ -189,7 +190,7 @@ final class NativeVideoDecoder {
                         progress.onProgress(
                                 "video",
                                 decodedSourceFrames
-                                        / (double) FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT,
+                                        / (double) sourceFrameLimit,
                                 String.format(Locale.US,
                                         "Native decode + OpenCV · %.2f× real time · %.1f frames/s",
                                         realtimeRatio,
@@ -208,7 +209,7 @@ final class NativeVideoDecoder {
             profiler.add("feature_worker_finish_wait", System.nanoTime() - operationStarted);
             profiler.appendMilliseconds("", featureWorker.performanceMilliseconds());
             boolean sourceFrameLimitReached = decodedSourceFrames
-                    >= FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
+                    >= sourceFrameLimit;
             if (target == 0) {
                 throw new IOException("Video ended after " + target + " of " + times.length + " analysis frames");
             }

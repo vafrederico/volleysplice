@@ -28,6 +28,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.opencv.android.OpenCVLoader;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -36,6 +41,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends Activity {
     private static final String TAG = "VolleyCut";
+    private static final String BENCHMARK_TAG = "VolleyCutBenchmark";
+    private static final String EXTRA_AUTO_RUN = "benchmark_auto_run";
+    private static final String EXTRA_RUN_ID = "benchmark_run_id";
+    private static final String EXTRA_SOURCE_FRAME_LIMIT = "benchmark_source_frame_limit";
+    private static final String BENCHMARK_RESULT_FILE = "benchmark-result.json";
     private static final int PICK_VIDEO = 10;
     private static final int ORANGE = Color.rgb(239, 91, 53);
     private static final int INK = Color.rgb(32, 32, 30);
@@ -43,7 +53,11 @@ public final class MainActivity extends Activity {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean cancelled = new AtomicBoolean();
+    private final AtomicBoolean analysisRunning = new AtomicBoolean();
     private Uri selectedUri;
+    private boolean automatedRun;
+    private String automatedRunId;
+    private int sourceFrameLimit = FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
     private AnalysisTypes.AnalysisResult lastResult;
     private TextView fileLabel;
     private TextView stageLabel;
@@ -64,6 +78,14 @@ public final class MainActivity extends Activity {
         getWindow().setNavigationBarColor(PAPER);
         getWindow().setStatusBarColor(PAPER);
         setContentView(buildUi());
+        handleLaunchIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleLaunchIntent(intent);
     }
 
     private View buildUi() {
@@ -173,6 +195,38 @@ public final class MainActivity extends Activity {
         startActivityForResult(intent, PICK_VIDEO);
     }
 
+    private void handleLaunchIntent(Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        selectedUri = intent.getData();
+        fileLabel.setText(selectedUri.toString());
+        analyzeButton.setEnabled(true);
+        copyButton.setEnabled(false);
+        lastResult = null;
+
+        if (!intent.getBooleanExtra(EXTRA_AUTO_RUN, false)) return;
+        automatedRun = true;
+        automatedRunId = intent.getStringExtra(EXTRA_RUN_ID);
+        if (automatedRunId == null || automatedRunId.isBlank()) {
+            automatedRunId = Long.toUnsignedString(System.nanoTime());
+        }
+        sourceFrameLimit = Math.max(1, Math.min(
+                1_000_000,
+                intent.getIntExtra(EXTRA_SOURCE_FRAME_LIMIT, FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT)
+        ));
+        JSONObject running = new JSONObject();
+        try {
+            running.put("benchmarkStatus", "running");
+            running.put("benchmarkRunId", automatedRunId);
+            running.put("sourceUri", selectedUri.toString());
+            running.put("sourceFrameLimit", sourceFrameLimit);
+        } catch (Exception impossible) {
+            throw new IllegalStateException(impossible);
+        }
+        writeAutomationResult(running);
+        stageLabel.setText("automation · starting " + sourceFrameLimit + " source frames");
+        runAnalysis();
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -181,6 +235,9 @@ public final class MainActivity extends Activity {
         try {
             getContentResolver().takePersistableUriPermission(selectedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (SecurityException ignored) {}
+        automatedRun = false;
+        automatedRunId = null;
+        sourceFrameLimit = FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
         fileLabel.setText(selectedUri.toString());
         analyzeButton.setEnabled(true);
         copyButton.setEnabled(false);
@@ -188,7 +245,7 @@ public final class MainActivity extends Activity {
     }
 
     private void runAnalysis() {
-        if (selectedUri == null) return;
+        if (selectedUri == null || !analysisRunning.compareAndSet(false, true)) return;
         cancelled.set(false);
         analyzeButton.setEnabled(false);
         cancelButton.setEnabled(true);
@@ -200,11 +257,15 @@ public final class MainActivity extends Activity {
         try { getWindow().setSustainedPerformanceMode(true); } catch (RuntimeException ignored) {}
         Uri uri = selectedUri;
         boolean useFullFrame = fullFrame.isChecked();
+        boolean writeAutomationOutput = automatedRun;
+        String runId = automatedRunId;
+        int requestedSourceFrameLimit = sourceFrameLimit;
         executor.submit(() -> {
             try {
                 AnalysisTypes.AnalysisResult result = new AnalysisEngine(this).analyze(
                         uri,
                         useFullFrame,
+                        requestedSourceFrameLimit,
                         cancelled,
                         new AnalysisTypes.ProgressListener() {
                             @Override
@@ -223,12 +284,31 @@ public final class MainActivity extends Activity {
                             }
                         }
                 );
+                if (writeAutomationOutput) {
+                    JSONObject json = resultJson(result);
+                    json.put("benchmarkStatus", "complete");
+                    json.put("benchmarkRunId", runId);
+                    writeAutomationResult(json);
+                    Log.i(BENCHMARK_TAG, String.format(Locale.US,
+                            "RESULT runId=%s source=%s frames=%d videoMs=%d totalMs=%d",
+                            runId, result.displayName(), result.decodedSourceFrames(),
+                            result.stageMilliseconds().getOrDefault("video_decode_and_features", 0L),
+                            result.totalMilliseconds()));
+                }
                 runOnUiThread(() -> showResult(result));
             } catch (Exception error) {
                 Log.e(TAG, "Native analysis failed", error);
+                if (writeAutomationOutput) writeAutomationError(runId, error);
                 runOnUiThread(() -> showError(error));
             } finally {
-                runOnUiThread(this::finishWorkState);
+                analysisRunning.set(false);
+                runOnUiThread(() -> {
+                    if (writeAutomationOutput && runId != null && runId.equals(automatedRunId)) {
+                        automatedRun = false;
+                        automatedRunId = null;
+                    }
+                    finishWorkState();
+                });
             }
         });
     }
@@ -336,7 +416,7 @@ public final class MainActivity extends Activity {
                 stats.framesPerSecond(),
                 stats.generatedFrames(),
                 stats.decodedSourceFrames(),
-                FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT,
+                stats.totalFrames(),
                 clock(stats.elapsedSeconds()),
                 eta,
                 stats.usedHeapBytes() / 1_048_576.0,
@@ -436,6 +516,42 @@ public final class MainActivity extends Activity {
             throw new IllegalStateException(impossible);
         }
         return json;
+    }
+
+    private void writeAutomationError(String runId, Exception error) {
+        JSONObject json = new JSONObject();
+        try {
+            json.put("benchmarkStatus", cancelled.get() ? "cancelled" : "failed");
+            json.put("benchmarkRunId", runId);
+            json.put("errorType", error.getClass().getName());
+            json.put("errorMessage", error.getMessage() == null ? "" : error.getMessage());
+        } catch (Exception impossible) {
+            throw new IllegalStateException(impossible);
+        }
+        writeAutomationResult(json);
+        Log.e(BENCHMARK_TAG, "ERROR runId=" + runId + " message=" + error.getMessage());
+    }
+
+    private void writeAutomationResult(JSONObject json) {
+        File target = getFileStreamPath(BENCHMARK_RESULT_FILE);
+        File temporary = getFileStreamPath(BENCHMARK_RESULT_FILE + ".tmp");
+        try {
+            Files.write(temporary.toPath(), json.toString().getBytes(StandardCharsets.UTF_8));
+            try {
+                Files.move(
+                        temporary.toPath(), target.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE
+                );
+            } catch (IOException atomicMoveUnsupported) {
+                Files.move(
+                        temporary.toPath(), target.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            }
+        } catch (IOException error) {
+            Log.e(BENCHMARK_TAG, "Could not write automation result", error);
+        }
     }
 
     private static void appendProfileSection(

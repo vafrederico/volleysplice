@@ -49,6 +49,17 @@ SDK 36 is the default, so no Gradle property overrides are needed. The app still
 4. During video analysis, watch the live sampled frames/second, feature real-time ratio, elapsed time, ETA, decoded source-frame count, and Java heap use.
 5. Record the final feature speed, overall real-time multiplier, audio speed, decoder names, stage times, and range count. **Copy result JSON** copies those values and exact unpadded ranges.
 
+### Automated adb benchmark
+
+The debug build accepts an explicit MediaStore URI and can start analysis immediately. The runner builds, installs, keeps the connected phone awake, finds the named video in MediaStore, launches it with a temporary read grant, and polls the app's private result file through `run-as`:
+
+```powershell
+cd android
+.\benchmark.bat -VideoName "1080p60.mp4" -FrameLimit 1000 -Runs 3
+```
+
+Use `-SkipBuild` or `-SkipInstall` while iterating. Every successful run prints the complete result JSON to the pipeline and a median summary to the console. The app writes `benchmarkStatus`, a unique `benchmarkRunId`, and either the normal result payload or structured failure details, so a stale result cannot be mistaken for the current run. `-FrameLimit` can extend a measurement when a 1,000-frame sample is too noisy.
+
 The feature speed matches the web POC definition: `generatedFrames / 4 Hz / videoFeatureWallSeconds` for the real-time ratio, and `generatedFrames / videoFeatureWallSeconds` for frames/second. The overall ratio additionally includes audio extraction, contextualization, and inference.
 
 The completed report includes a hierarchical profiling breakdown. Parent and child rows intentionally overlap and should not be added together. Video decode/YUV conversion and ordered OpenCV extraction run concurrently, connected by a two-sample bounded queue. The report records queue backpressure and final worker-drain time, which are the portions of OpenCV work that remain on the critical path. It also covers codec input/output waits, demux reads, YUV crop/scale/color conversion, OpenCV filters/readback/phase correlation/Farneback flow/reductions, audio PCM conversion/resampling/FFT/pooling, percentile ranking/context gathering, and every inference/decoder phase. Per-unit time, wall-time percentage, total analysis CPU across both video threads, GC time, Java/native/PSS memory, sampling timestamp error, and thermal status are included. The app also identifies the largest exclusive video bucket as an optimization lead; the copied JSON retains all raw millisecond totals under `profileMilliseconds`.
