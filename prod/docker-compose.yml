@@ -1,0 +1,25 @@
+name: volleycut-prod
+
+services:
+  web:
+    image: volleycut-prod:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - websecure
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.volleycut-prod.loadbalancer.server.port=8080
+      - traefik.http.middlewares.volleycut-prod-compress.compress=true
+      - traefik.http.routers.volleycutexternal.rule=Host(`volleycut.vafrederico.com`)
+      - traefik.http.routers.volleycutexternal.entrypoints=websecure
+      - traefik.http.routers.volleycutexternal.service=volleycut-prod
+      - traefik.http.routers.volleycutexternal.priority=10
+      - traefik.http.routers.volleycutexternal.tls.certresolver=letsencrypt
+      - traefik.http.routers.volleycutexternal.middlewares=volleycut-prod-compress
+
+networks:
+  websecure:
+    external: true
