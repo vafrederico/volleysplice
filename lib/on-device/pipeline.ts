@@ -1,6 +1,14 @@
-import { CanvasSink } from "mediabunny";
+import { CanvasSink, VideoSample } from "mediabunny";
 
 import { extractAudioFeatures } from "./audio-features";
+import {
+  FEATURE_CACHE_CHUNK_ROWS,
+  markVisualFeatureCacheComplete,
+  readVisualFeatureCache,
+  type LocalFeatureSource,
+  visualFeatureCacheKey,
+  writeVisualFeatureChunk,
+} from "./feature-cache";
 import {
   ANALYSIS_FPS,
   ANALYSIS_HEIGHT,
@@ -16,12 +24,22 @@ import { loadOnDeviceModelBundle, runOnDeviceModel } from "./model";
 import type {
   AnalysisProgress,
   BaseFeatureSequence,
+  FeatureExtractionPerformance,
   NormalizedRoi,
   OnDeviceAnalysis,
 } from "./types";
 import { extractVisualFeatures, loadOpenCv } from "./visual-features";
 
 const MODEL_URL = "/on-device/model-9c92b8e9333f.json";
+
+export const VIDEO_DECODER_HARDWARE_ACCELERATION = "prefer-hardware" as const;
+
+type FeatureCacheState = NonNullable<AnalysisProgress["featureCache"]>;
+
+type ExtractedBrowserFeatures = BaseFeatureSequence & {
+  featureCache: FeatureCacheState;
+  performance: FeatureExtractionPerformance;
+};
 
 function column(values: Float32Array, rows: number, columns: number, index: number): Float32Array {
   const output = new Float32Array(rows);
@@ -80,59 +98,311 @@ function yieldToBrowser(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+type InstrumentedVideoSample = VideoSample & {
+  _drawWithFitAndMipmapping?: (...args: unknown[]) => void;
+};
+
+function instrumentCanvasDraw(onDraw: (milliseconds: number) => void): () => void {
+  // CanvasSink intentionally combines sample retrieval and rendering in one
+  // await. Mediabunny's pinned runtime has no public timing hook, so wrap its
+  // synchronous draw boundary while profiling and restore it after the run.
+  const prototype = VideoSample.prototype as InstrumentedVideoSample;
+  const original = prototype._drawWithFitAndMipmapping;
+  if (typeof original !== "function") return () => undefined;
+  const instrumented = function (this: VideoSample, ...args: unknown[]) {
+    const startedAt = performance.now();
+    try {
+      Reflect.apply(original, this, args);
+    } finally {
+      onDraw(performance.now() - startedAt);
+    }
+  };
+  prototype._drawWithFitAndMipmapping = instrumented;
+  return () => {
+    if (prototype._drawWithFitAndMipmapping === instrumented) {
+      prototype._drawWithFitAndMipmapping = original;
+    }
+  };
+}
+
+function* analysisTimestampsFrom(duration: number, fps: number, start: number) {
+  for (const timestamp of analysisTimestamps(duration, fps)) {
+    if (timestamp + 1e-9 >= start) yield timestamp;
+  }
+}
+
+function rowsFromValues(values: Float32Array, rows: number): Float32Array[] {
+  return Array.from({ length: rows }, (_, row) =>
+    values.slice(
+      row * FRAME_FEATURE_NAMES.length,
+      (row + 1) * FRAME_FEATURE_NAMES.length,
+    ),
+  );
+}
+
 export async function extractBrowserFeatures(
   media: OpenedMedia,
   roi: NormalizedRoi,
   onProgress?: (progress: AnalysisProgress) => void,
-): Promise<BaseFeatureSequence> {
-  onProgress?.({ stage: "video", completed: 0, total: media.info.duration, detail: "Loading OpenCV WASM" });
-  const cv = await loadOpenCv();
+  cacheSource?: LocalFeatureSource,
+): Promise<ExtractedBrowserFeatures> {
+  const videoStartedAt = performance.now();
+  const timingTotals: FeatureExtractionPerformance = {
+    sampledFrames: 0,
+    generatedFrames: 0,
+    generatedVideoSeconds: 0,
+    videoElapsedMs: 0,
+    openCvLoadMs: 0,
+    decoderCanvasMs: 0,
+    decoderWaitMs: 0,
+    decoderOverlapMs: 0,
+    canvasDrawMs: 0,
+    canvasDrawFrames: 0,
+    extractionMs: 0,
+    canvasReadbackMs: 0,
+    imageOperationsMs: 0,
+    phaseCorrelationMs: 0,
+    opticalFlowMs: 0,
+    javascriptMs: 0,
+    cacheIoMs: 0,
+  };
+  const performanceSnapshot = (): FeatureExtractionPerformance => ({
+    ...timingTotals,
+    videoElapsedMs: performance.now() - videoStartedAt,
+  });
+  const measureCacheIo = async <Value,>(operation: () => Promise<Value>): Promise<Value> => {
+    const startedAt = performance.now();
+    try {
+      return await operation();
+    } finally {
+      timingTotals.cacheIoMs += performance.now() - startedAt;
+    }
+  };
+  let cacheKey: string | null = null;
+  let cacheEnabled = false;
+  let cachedRows = 0;
+  let savedRows = 0;
+  let cacheChunkCount = 0;
+  let cachedComplete = false;
+  let cachedTimes: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  let cachedValues: Float32Array<ArrayBufferLike> = new Float32Array(0);
+  if (cacheSource) {
+    const resolvedCacheKey = visualFeatureCacheKey(cacheSource, media.info, roi);
+    cacheKey = resolvedCacheKey;
+    try {
+      const cached = await measureCacheIo(() => readVisualFeatureCache(resolvedCacheKey));
+      cacheEnabled = true;
+      if (cached) {
+        cachedRows = cached.rows;
+        savedRows = cached.rows;
+        cacheChunkCount = cached.chunkCount;
+        cachedComplete = cached.complete;
+        cachedTimes = cached.times;
+        cachedValues = cached.values;
+      }
+    } catch {
+      cacheEnabled = false;
+    }
+  }
+  const featureCache = (): FeatureCacheState => ({
+    enabled: cacheEnabled,
+    complete: cachedComplete,
+    resumedRows: cachedRows,
+    savedRows,
+  });
+  onProgress?.({
+    stage: "video",
+    completed: cachedRows > 0 ? cachedTimes[cachedRows - 1] ?? 0 : 0,
+    total: media.info.duration,
+    detail: cachedRows > 0
+      ? `Restored ${cachedRows.toLocaleString()} locally saved frames`
+      : "Loading OpenCV WASM",
+    featureCache: featureCache(),
+    performance: performanceSnapshot(),
+  });
   const left = Math.round(roi.x * media.info.width);
   const top = Math.round(roi.y * media.info.height);
   const right = Math.round((roi.x + roi.width) * media.info.width);
   const bottom = Math.round((roi.y + roi.height) * media.info.height);
-  const sink = new CanvasSink(media.videoTrack, {
-    crop: {
-      left,
-      top,
-      width: Math.max(1, right - left),
-      height: Math.max(1, bottom - top),
-    },
-    width: ANALYSIS_WIDTH,
-    height: ANALYSIS_HEIGHT,
-    fit: "fill",
-    poolSize: 1,
-    decoderOptions: { hardwareAcceleration: "prefer-hardware" },
-  });
-
-  const times: number[] = [];
-  const rows: Float32Array[] = [];
+  const times: number[] = Array.from(cachedTimes);
+  const rows: Float32Array[] = rowsFromValues(cachedValues, cachedRows);
   let previousGray: import("@techstark/opencv-js").Mat | null = null;
-  let decoded = 0;
-  try {
-    for await (const wrapped of sink.canvasesAtTimestamps(
-      analysisTimestamps(media.info.duration, ANALYSIS_FPS),
-    )) {
-      if (!wrapped) continue;
-      if (times.length && wrapped.timestamp <= times[times.length - 1] + 1e-9) continue;
-      const result = extractVisualFeatures(cv, wrapped.canvas, previousGray);
-      previousGray?.delete();
-      previousGray = result.gray;
-      times.push(wrapped.timestamp);
-      rows.push(result.values);
-      decoded += 1;
-      if (decoded % 8 === 0) {
-        onProgress?.({
-          stage: "video",
-          completed: wrapped.timestamp,
-          total: media.info.duration,
-          detail: `Measuring motion · ${decoded.toLocaleString()} frames`,
-        });
-        await yieldToBrowser();
+  let decoded = cachedRows;
+  if (!cachedComplete) {
+    const openCvStartedAt = performance.now();
+    const cv = await loadOpenCv();
+    timingTotals.openCvLoadMs += performance.now() - openCvStartedAt;
+    const sink = new CanvasSink(media.videoTrack, {
+      crop: {
+        left,
+        top,
+        width: Math.max(1, right - left),
+        height: Math.max(1, bottom - top),
+      },
+      width: ANALYSIS_WIDTH,
+      height: ANALYSIS_HEIGHT,
+      fit: "fill",
+      poolSize: 1,
+      decoderOptions: { hardwareAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION },
+    });
+    const resumeAfter = cachedRows > 0 ? cachedTimes[cachedRows - 1] : -Infinity;
+    const warmupStart = Math.max(0, resumeAfter - 1 / ANALYSIS_FPS);
+    let pendingTimes: number[] = [];
+    let pendingRows: Float32Array[] = [];
+    const canvasIterator = sink.canvasesAtTimestamps(
+      analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
+    );
+    const stopCanvasDrawTiming = instrumentCanvasDraw((milliseconds) => {
+      timingTotals.canvasDrawMs += milliseconds;
+      timingTotals.canvasDrawFrames += 1;
+    });
+    let pendingNext: ReturnType<typeof canvasIterator.next> | null = null;
+    try {
+      let nextRequestedAt = performance.now();
+      pendingNext = canvasIterator.next();
+      while (true) {
+        const canvasDrawBeforeWait = timingTotals.canvasDrawMs;
+        const waitStartedAt = performance.now();
+        const next = await pendingNext;
+        const resolvedAt = performance.now();
+        const blockingMs = resolvedAt - waitStartedAt;
+        const requestSpanMs = resolvedAt - nextRequestedAt;
+        const canvasDrawDuringWaitMs = timingTotals.canvasDrawMs - canvasDrawBeforeWait;
+        timingTotals.decoderCanvasMs += blockingMs;
+        timingTotals.decoderWaitMs += Math.max(0, blockingMs - canvasDrawDuringWaitMs);
+        timingTotals.decoderOverlapMs += Math.max(0, requestSpanMs - blockingMs);
+        if (next.done) break;
+        const wrapped = next.value;
+        // CanvasSink uses a one-canvas pool. Starting the next request is safe:
+        // its async continuation cannot redraw that canvas while the synchronous
+        // extractor below owns the current frame, but decoding can proceed in
+        // Chromium's media process in the meantime.
+        nextRequestedAt = performance.now();
+        pendingNext = canvasIterator.next();
+        if (!wrapped) continue;
+        const extractionStartedAt = performance.now();
+        const result = extractVisualFeatures(cv, wrapped.canvas, previousGray);
+        timingTotals.extractionMs += performance.now() - extractionStartedAt;
+        timingTotals.sampledFrames += 1;
+        timingTotals.canvasReadbackMs += result.timing.canvasReadbackMs;
+        timingTotals.imageOperationsMs += result.timing.imageOperationsMs;
+        timingTotals.phaseCorrelationMs += result.timing.phaseCorrelationMs;
+        timingTotals.opticalFlowMs += result.timing.opticalFlowMs;
+        timingTotals.javascriptMs += result.timing.javascriptMs;
+        previousGray?.delete();
+        previousGray = result.gray;
+        if (wrapped.timestamp <= resumeAfter + 1e-9) continue;
+        if (times.length && wrapped.timestamp <= times[times.length - 1] + 1e-9) continue;
+        times.push(wrapped.timestamp);
+        rows.push(result.values);
+        pendingTimes.push(wrapped.timestamp);
+        pendingRows.push(result.values);
+        decoded += 1;
+        timingTotals.generatedFrames += 1;
+        timingTotals.generatedVideoSeconds = timingTotals.generatedFrames / ANALYSIS_FPS;
+        if (cacheKey && cacheEnabled && pendingRows.length >= FEATURE_CACHE_CHUNK_ROWS) {
+          const chunkValues = new Float32Array(
+            pendingRows.length * FRAME_FEATURE_NAMES.length,
+          );
+          pendingRows.forEach((row, index) =>
+            chunkValues.set(row, index * FRAME_FEATURE_NAMES.length),
+          );
+          try {
+            await measureCacheIo(() =>
+              writeVisualFeatureChunk(
+                cacheKey,
+                cacheChunkCount,
+                Float64Array.from(pendingTimes),
+                chunkValues,
+                decoded,
+                false,
+              ),
+            );
+            cacheChunkCount += 1;
+            savedRows = decoded;
+            pendingTimes = [];
+            pendingRows = [];
+          } catch {
+            cacheEnabled = false;
+          }
+        }
+        if (timingTotals.generatedFrames % 8 === 0) {
+          onProgress?.({
+            stage: "video",
+            completed: wrapped.timestamp,
+            total: media.info.duration,
+            detail: cachedRows > 0
+              ? `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} new · ${decoded.toLocaleString()} total frames`
+              : `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} frames`,
+            featureCache: featureCache(),
+            performance: performanceSnapshot(),
+          });
+          await yieldToBrowser();
+        }
       }
+      if (cacheKey && cacheEnabled && pendingRows.length > 0) {
+        try {
+          const chunkValues = new Float32Array(
+            pendingRows.length * FRAME_FEATURE_NAMES.length,
+          );
+          pendingRows.forEach((row, index) =>
+            chunkValues.set(row, index * FRAME_FEATURE_NAMES.length),
+          );
+          await measureCacheIo(() =>
+            writeVisualFeatureChunk(
+              cacheKey,
+              cacheChunkCount,
+              Float64Array.from(pendingTimes),
+              chunkValues,
+              decoded,
+              true,
+            ),
+          );
+          cacheChunkCount += 1;
+          savedRows = decoded;
+          cachedComplete = true;
+        } catch {
+          cacheEnabled = false;
+        }
+      } else if (cacheKey && cacheEnabled) {
+        try {
+          await measureCacheIo(() =>
+            markVisualFeatureCacheComplete(cacheKey, cacheChunkCount, decoded),
+          );
+          savedRows = decoded;
+          cachedComplete = true;
+        } catch {
+          cacheEnabled = false;
+        }
+      }
+    } catch (error) {
+      if (cacheKey && cacheEnabled && pendingRows.length > 0) {
+        const chunkValues = new Float32Array(
+          pendingRows.length * FRAME_FEATURE_NAMES.length,
+        );
+        pendingRows.forEach((row, index) =>
+          chunkValues.set(row, index * FRAME_FEATURE_NAMES.length),
+        );
+        await measureCacheIo(() =>
+          writeVisualFeatureChunk(
+            cacheKey,
+            cacheChunkCount,
+            Float64Array.from(pendingTimes),
+            chunkValues,
+            decoded,
+            false,
+          ),
+        ).catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      stopCanvasDrawTiming();
+      const pendingResult = pendingNext;
+      const iteratorReturn = canvasIterator.return(undefined);
+      await pendingResult?.catch(() => undefined);
+      await iteratorReturn;
+      previousGray?.delete();
     }
-  } finally {
-    previousGray?.delete();
   }
   if (rows.length === 0) throw new Error("The video decoder returned no analysis frames.");
 
@@ -140,11 +410,18 @@ export async function extractBrowserFeatures(
   const visual = new Float32Array(rows.length * FRAME_FEATURE_NAMES.length);
   rows.forEach((row, index) => visual.set(row, index * FRAME_FEATURE_NAMES.length));
   const temporal = temporalVisualFeatures(visual, rows.length);
+  const finalPerformance = performanceSnapshot();
   const audio = await extractAudioFeatures(
     media.audioTrack,
     timeValues,
     media.info.duration,
-    onProgress,
+    onProgress
+      ? (progress) => onProgress({
+          ...progress,
+          featureCache: featureCache(),
+          performance: finalPerformance,
+        })
+      : undefined,
   );
   const base = new Float32Array(rows.length * BASE_FEATURE_NAMES.length);
   for (let row = 0; row < rows.length; row += 1) {
@@ -171,6 +448,8 @@ export async function extractBrowserFeatures(
     rows: rows.length,
     columns: BASE_FEATURE_NAMES.length,
     names: BASE_FEATURE_NAMES,
+    featureCache: featureCache(),
+    performance: finalPerformance,
   };
 }
 
@@ -179,13 +458,16 @@ export async function analyzeOpenedMedia(
   roi: NormalizedRoi,
   featurePath: OnDeviceAnalysis["featurePath"],
   onProgress?: (progress: AnalysisProgress) => void,
+  cacheSource?: LocalFeatureSource,
 ): Promise<OnDeviceAnalysis> {
-  const sequence = await extractBrowserFeatures(media, roi, onProgress);
+  const sequence = await extractBrowserFeatures(media, roi, onProgress, cacheSource);
   onProgress?.({
     stage: "normalizing",
     completed: 0,
     total: sequence.rows,
     detail: "Ranking whole-recording features and adding temporal context",
+    featureCache: sequence.featureCache,
+    performance: sequence.performance,
   });
   await yieldToBrowser();
   const contextual = contextualizeFeatures(sequence.times, sequence.values, sequence.names);
@@ -204,6 +486,8 @@ export async function analyzeOpenedMedia(
     completed: sequence.rows,
     total: sequence.rows,
     detail: "Running rally, serve, and dead-state heads on CPU",
+    featureCache: sequence.featureCache,
+    performance: sequence.performance,
   });
   const inference = runOnDeviceModel(
     bundle,
@@ -217,6 +501,8 @@ export async function analyzeOpenedMedia(
     completed: media.info.duration,
     total: media.info.duration,
     detail: `${intervals.length} candidate rallies ready for review`,
+    featureCache: sequence.featureCache,
+    performance: sequence.performance,
   });
   return {
     modelId: "model-9c92b8e9333f",

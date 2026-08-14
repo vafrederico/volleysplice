@@ -36,11 +36,38 @@ export type AnalysisStage =
   | "inference"
   | "complete";
 
+export type FeatureExtractionPerformance = {
+  sampledFrames: number;
+  generatedFrames: number;
+  generatedVideoSeconds: number;
+  videoElapsedMs: number;
+  openCvLoadMs: number;
+  decoderCanvasMs: number;
+  decoderWaitMs: number;
+  decoderOverlapMs: number;
+  canvasDrawMs: number;
+  canvasDrawFrames: number;
+  extractionMs: number;
+  canvasReadbackMs: number;
+  imageOperationsMs: number;
+  phaseCorrelationMs: number;
+  opticalFlowMs: number;
+  javascriptMs: number;
+  cacheIoMs: number;
+};
+
 export type AnalysisProgress = {
   stage: AnalysisStage;
   completed: number;
   total: number;
   detail: string;
+  featureCache?: {
+    enabled: boolean;
+    complete: boolean;
+    resumedRows: number;
+    savedRows: number;
+  };
+  performance?: FeatureExtractionPerformance;
 };
 
 export type BaseFeatureSequence = {

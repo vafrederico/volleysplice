@@ -1,7 +1,12 @@
 import type { Mat } from "@techstark/opencv-js";
 
 import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, FRAME_FEATURE_NAMES } from "./feature-schema";
-import { mean, quantile, standardDeviation } from "./feature-math";
+import {
+  finiteQuantile,
+  finiteQuantileInPlace,
+  mean,
+  standardDeviation,
+} from "./feature-math";
 
 type CvRuntime = typeof import("@techstark/opencv-js");
 type CvThenable = {
@@ -202,6 +207,13 @@ export function phaseCorrelate(
 export type VisualFeatureResult = {
   values: Float32Array;
   gray: Mat;
+  timing: {
+    canvasReadbackMs: number;
+    imageOperationsMs: number;
+    phaseCorrelationMs: number;
+    opticalFlowMs: number;
+    javascriptMs: number;
+  };
 };
 
 export function extractVisualFeatures(
@@ -209,7 +221,9 @@ export function extractVisualFeatures(
   canvas: HTMLCanvasElement | OffscreenCanvas,
   previousGray: Mat | null,
 ): VisualFeatureResult {
+  const readbackStartedAt = performance.now();
   const rgba = cv.imread(canvas as unknown as HTMLCanvasElement);
+  const canvasReadbackMs = performance.now() - readbackStartedAt;
   const resized = new cv.Mat();
   const gray = new cv.Mat();
   const rgb = new cv.Mat();
@@ -219,7 +233,12 @@ export function extractVisualFeatures(
   const gradientX = new cv.Mat();
   const gradientY = new cv.Mat();
   const flow = new cv.Mat();
+  let imageOperationsMs = 0;
+  let phaseCorrelationMs = 0;
+  let opticalFlowMs = 0;
+  let javascriptMs = 0;
   try {
+    const imageOperationsStartedAt = performance.now();
     if (rgba.cols !== ANALYSIS_WIDTH || rgba.rows !== ANALYSIS_HEIGHT) {
       cv.resize(
         rgba,
@@ -239,7 +258,9 @@ export function extractVisualFeatures(
     cv.Laplacian(gray, laplacian, cv.CV_32F);
     cv.Sobel(gray, gradientX, cv.CV_32F, 1, 0, 3);
     cv.Sobel(gray, gradientY, cv.CV_32F, 0, 1, 3);
+    imageOperationsMs += performance.now() - imageOperationsStartedAt;
 
+    let javascriptStartedAt = performance.now();
     const pixels = gray.data;
     const saturation = new Uint8Array(pixels.length);
     for (let index = 0; index < saturation.length; index += 1) {
@@ -269,12 +290,16 @@ export function extractVisualFeatures(
     }
     let activeDifference = 0;
     for (const value of difference) if (value >= 18) activeDifference += 1;
+    const differenceMean = mean(difference);
+    const differenceStd = standardDeviation(difference, differenceMean);
+    const differenceGrid = gridMeans(difference, gray.cols, gray.rows);
+    const differenceP90 = finiteQuantileInPlace(difference, 0.9);
     values.push(
-      mean(difference) / 255,
-      standardDeviation(difference) / 255,
-      quantile(difference, 0.9) / 255,
+      differenceMean / 255,
+      differenceStd / 255,
+      differenceP90 / 255,
       activeDifference / difference.length,
-      ...gridMeans(difference, gray.cols, gray.rows).map((value) => value / 255),
+      ...differenceGrid.map((value) => value / 255),
     );
 
     const focusQuality = laplacianVariance / (laplacianVariance + 100);
@@ -315,14 +340,18 @@ export function extractVisualFeatures(
     let shiftX = 0;
     let shiftY = 0;
     let shiftResponse = 0;
+    javascriptMs += performance.now() - javascriptStartedAt;
     if (previousGray) {
+      const phaseCorrelationStartedAt = performance.now();
       try {
         [shiftX, shiftY, shiftResponse] = phaseCorrelate(cv, previousGray, gray);
       } catch {
         // Match the Python extractor's cv2.error fallback: a failed camera-motion
         // estimate should zero these optional channels, not abort the whole match.
       }
+      phaseCorrelationMs += performance.now() - phaseCorrelationStartedAt;
     }
+    javascriptStartedAt = performance.now();
     const diagonal = Math.hypot(ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
     const cameraShiftMagnitude = Math.hypot(shiftX, shiftY) / diagonal;
     values.push(
@@ -338,7 +367,9 @@ export function extractVisualFeatures(
       cameraShiftMagnitude,
       shiftResponse,
     );
+    javascriptMs += performance.now() - javascriptStartedAt;
 
+    const opticalFlowStartedAt = performance.now();
     if (previousGray) {
       cv.calcOpticalFlowFarneback(previousGray, gray, flow, 0.5, 2, 13, 2, 5, 1.1, 0);
     } else {
@@ -346,6 +377,8 @@ export function extractVisualFeatures(
       zeroFlow.copyTo(flow);
       zeroFlow.delete();
     }
+    opticalFlowMs += performance.now() - opticalFlowStartedAt;
+    javascriptStartedAt = performance.now();
     const magnitude = new Float32Array(pixels.length);
     const flowX = new Float32Array(pixels.length);
     const flowY = new Float32Array(pixels.length);
@@ -358,17 +391,20 @@ export function extractVisualFeatures(
       magnitude[index] = Math.hypot(x, y);
       if (magnitude[index] >= 1) activeFlow += 1;
     }
+    const magnitudeMean = mean(magnitude);
+    const magnitudeGrid = gridMeans(magnitude, gray.cols, gray.rows);
+    const magnitudeP90 = finiteQuantileInPlace(magnitude, 0.9);
+    const medianX = finiteQuantile(flowX, 0.5);
+    const medianY = finiteQuantile(flowY, 0.5);
     values.push(
-      mean(magnitude) / diagonal,
-      quantile(magnitude, 0.9) / diagonal,
+      magnitudeMean / diagonal,
+      magnitudeP90 / diagonal,
       activeFlow / magnitude.length,
-      quantile(flowX, 0.5) / ANALYSIS_WIDTH,
-      quantile(flowY, 0.5) / ANALYSIS_HEIGHT,
-      ...gridMeans(magnitude, gray.cols, gray.rows).map((value) => value / diagonal),
+      medianX / ANALYSIS_WIDTH,
+      medianY / ANALYSIS_HEIGHT,
+      ...magnitudeGrid.map((value) => value / diagonal),
     );
 
-    const medianX = quantile(flowX, 0.5);
-    const medianY = quantile(flowY, 0.5);
     const residualMagnitude = new Float32Array(pixels.length);
     let activeResidual = 0;
     let activeVectorX = 0;
@@ -409,9 +445,10 @@ export function extractVisualFeatures(
     const residualMean = mean(residualMagnitude) / diagonal;
     let activeZones = 0;
     for (const value of residualGridPixels) if (value >= 0.75) activeZones += 1;
+    const residualP90 = finiteQuantileInPlace(residualMagnitude, 0.9);
     values.push(
       residualMean,
-      quantile(residualMagnitude, 0.9) / diagonal,
+      residualP90 / diagonal,
       activeResidual / residualMagnitude.length,
       activeZones / residualGridPixels.length,
       entropy,
@@ -427,7 +464,18 @@ export function extractVisualFeatures(
     if (values.length !== FRAME_FEATURE_NAMES.length) {
       throw new Error(`Visual feature signature mismatch: ${values.length}.`);
     }
-    return { values: Float32Array.from(values), gray: gray.clone() };
+    const result = {
+      values: Float32Array.from(values),
+      gray: gray.clone(),
+      timing: {
+        canvasReadbackMs,
+        imageOperationsMs,
+        phaseCorrelationMs,
+        opticalFlowMs,
+        javascriptMs: javascriptMs + performance.now() - javascriptStartedAt,
+      },
+    };
+    return result;
   } finally {
     rgba.delete();
     resized.delete();

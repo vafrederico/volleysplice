@@ -5,16 +5,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Brand } from "@/components/brand";
 import { buildEditList, formatTime } from "@/lib/edit-list";
+import { FEATURE_CACHE_CHUNK_ROWS } from "@/lib/on-device/feature-cache";
+import { ANALYSIS_FPS } from "@/lib/on-device/feature-schema";
 import {
   downloadEditDecisionList,
   exportRawQualityReel,
   type ExportProgress,
 } from "@/lib/on-device/export";
 import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
-import { analyzeOpenedMedia } from "@/lib/on-device/pipeline";
+import {
+  analyzeOpenedMedia,
+  VIDEO_DECODER_HARDWARE_ACCELERATION,
+} from "@/lib/on-device/pipeline";
 import { clampRoi, fullFrameRoi, inferRoiProfile } from "@/lib/on-device/roi";
 import type {
   AnalysisProgress,
+  FeatureExtractionPerformance,
   NormalizedRoi,
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
@@ -31,7 +37,215 @@ type BrowserCompatibility = {
   decode: boolean;
   encode: boolean;
   directDisk: boolean;
+  screenWakeLock: boolean;
+  mediaCapabilities: boolean;
+  webGpu: "checking" | "available" | "unavailable";
+  gpuName: string | null;
+  gpuSource: "WebGPU" | "WebGL" | null;
+  logicalProcessors: number | null;
+  deviceMemoryGb: number | null;
+  jsHeapUsedBytes: number | null;
+  jsHeapLimitBytes: number | null;
 };
+
+type WakeLockState =
+  | "idle"
+  | "requesting"
+  | "active"
+  | "paused"
+  | "released"
+  | "unavailable"
+  | "denied";
+
+type SelectedMediaDiagnostics = {
+  checking: boolean;
+  codec: string | null;
+  webCodecsSupported: boolean | null;
+  smooth: boolean | null;
+  powerEfficient: boolean | null;
+  averageFrameRate: number | null;
+  averageBitrate: number | null;
+};
+
+type GpuAdapterInfoLike = {
+  vendor?: string;
+  architecture?: string;
+  device?: string;
+  description?: string;
+};
+
+type GpuAdapterLike = {
+  info?: GpuAdapterInfoLike;
+  requestAdapterInfo?: () => Promise<GpuAdapterInfoLike>;
+};
+
+type NavigatorWithDiagnostics = Navigator & {
+  deviceMemory?: number;
+  gpu?: {
+    requestAdapter(options?: { powerPreference?: "low-power" | "high-performance" }): Promise<GpuAdapterLike | null>;
+  };
+};
+
+type PerformanceWithMemory = Performance & {
+  memory?: {
+    usedJSHeapSize: number;
+    jsHeapSizeLimit: number;
+  };
+};
+
+const EMPTY_MEDIA_DIAGNOSTICS: SelectedMediaDiagnostics = {
+  checking: false,
+  codec: null,
+  webCodecsSupported: null,
+  smooth: null,
+  powerEfficient: null,
+  averageFrameRate: null,
+  averageBitrate: null,
+};
+
+function gpuName(info: GpuAdapterInfoLike | undefined): string | null {
+  if (!info) return null;
+  const description = info.description?.trim();
+  if (description) return description;
+  const parts = [info.vendor, info.architecture, info.device]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? [...new Set(parts)].join(" · ") : null;
+}
+
+function webGlRenderer(): string | null {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+  if (!context) return null;
+  const extension = context.getExtension("WEBGL_debug_renderer_info");
+  if (!extension) return null;
+  const renderer = context.getParameter(extension.UNMASKED_RENDERER_WEBGL);
+  return typeof renderer === "string" && renderer.trim() ? renderer.trim() : null;
+}
+
+function heapSnapshot(): Pick<
+  BrowserCompatibility,
+  "jsHeapUsedBytes" | "jsHeapLimitBytes"
+> {
+  const memory = (performance as PerformanceWithMemory).memory;
+  return {
+    jsHeapUsedBytes: memory?.usedJSHeapSize ?? null,
+    jsHeapLimitBytes: memory?.jsHeapSizeLimit ?? null,
+  };
+}
+
+function videoContentType(mimeType: string, codec: string): string {
+  const container = mimeType.split(";", 1)[0]?.trim() || "video/mp4";
+  return `${container}; codecs="${codec.replaceAll('"', "")}"`;
+}
+
+async function inspectSelectedMedia(
+  media: OpenedMedia,
+  fileSize: number,
+): Promise<SelectedMediaDiagnostics> {
+  const [decoderConfig, packetStats] = await Promise.all([
+    media.videoTrack.getDecoderConfig().catch(() => null),
+    media.videoTrack.computePacketStats(120).catch(() => null),
+  ]);
+  const codec = decoderConfig?.codec ?? media.info.videoCodecString;
+  let webCodecsSupported: boolean | null = null;
+  if (codec && "VideoDecoder" in window) {
+    try {
+      const support = await VideoDecoder.isConfigSupported({
+        ...decoderConfig,
+        codec,
+        codedWidth: decoderConfig?.codedWidth ?? media.info.width,
+        codedHeight: decoderConfig?.codedHeight ?? media.info.height,
+        hardwareAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION,
+      });
+      webCodecsSupported = support.supported ?? false;
+    } catch {
+      webCodecsSupported = false;
+    }
+  }
+
+  const averageFrameRate = packetStats?.averagePacketRate ?? null;
+  const averageBitrate =
+    packetStats?.averageBitrate ??
+    (media.info.duration > 0 ? (fileSize * 8) / media.info.duration : null);
+  let smooth: boolean | null = null;
+  let powerEfficient: boolean | null = null;
+  if (codec && "mediaCapabilities" in navigator) {
+    try {
+      const capability = await navigator.mediaCapabilities.decodingInfo({
+        type: "file",
+        video: {
+          contentType: videoContentType(media.info.mimeType, codec),
+          width: media.info.width,
+          height: media.info.height,
+          bitrate: Math.max(1, Math.round(averageBitrate ?? 5_000_000)),
+          framerate: Math.max(1, averageFrameRate ?? 30),
+        },
+      });
+      smooth = capability.supported ? capability.smooth : false;
+      powerEfficient = capability.supported ? capability.powerEfficient : false;
+    } catch {
+      // Browsers may expose MediaCapabilities but reject a particular container/codec pair.
+    }
+  }
+
+  return {
+    checking: false,
+    codec,
+    webCodecsSupported,
+    smooth,
+    powerEfficient,
+    averageFrameRate,
+    averageBitrate,
+  };
+}
+
+async function holdScreenWakeLock(
+  onState: (state: WakeLockState) => void,
+): Promise<() => Promise<void>> {
+  if (!("wakeLock" in navigator)) {
+    onState("unavailable");
+    return async () => undefined;
+  }
+  let stopped = false;
+  let acquired = false;
+  let sentinel: WakeLockSentinel | null = null;
+  const acquire = async () => {
+    if (stopped || document.visibilityState !== "visible" || sentinel) return;
+    onState("requesting");
+    try {
+      sentinel = await navigator.wakeLock.request("screen");
+      if (stopped) {
+        await sentinel.release();
+        sentinel = null;
+        return;
+      }
+      acquired = true;
+      onState("active");
+      sentinel.addEventListener("release", () => {
+        sentinel = null;
+        if (stopped) return;
+        if (document.visibilityState === "visible") void acquire();
+        else onState("paused");
+      }, { once: true });
+    } catch {
+      if (!stopped) onState(document.visibilityState === "visible" ? "denied" : "paused");
+    }
+  };
+  const handleVisibility = () => {
+    if (document.visibilityState === "visible" && !sentinel) void acquire();
+    else if (document.visibilityState !== "visible") onState("paused");
+  };
+  document.addEventListener("visibilitychange", handleVisibility);
+  await acquire();
+  return async () => {
+    stopped = true;
+    document.removeEventListener("visibilitychange", handleVisibility);
+    await sentinel?.release().catch(() => undefined);
+    sentinel = null;
+    if (acquired) onState("released");
+  };
+}
 
 export type OnDeviceUiFixture = {
   schemaVersion: 1;
@@ -72,6 +286,12 @@ function compactBytes(bytes: number): string {
   return `${value.toFixed(unit < 2 ? 0 : 1)} ${units[unit]}`;
 }
 
+function compactBitrate(bitsPerSecond: number): string {
+  if (bitsPerSecond >= 1_000_000) return `${(bitsPerSecond / 1_000_000).toFixed(1)} Mbps`;
+  if (bitsPerSecond >= 1_000) return `${Math.round(bitsPerSecond / 1_000)} Kbps`;
+  return `${Math.round(bitsPerSecond)} bps`;
+}
+
 function percent(progress: AnalysisProgress | null): number {
   if (!progress || progress.total <= 0) return 0;
   return Math.min(100, Math.max(0, (progress.completed / progress.total) * 100));
@@ -82,6 +302,26 @@ function preciseTime(seconds: number): string {
   const minutes = Math.floor(Math.max(0, seconds) / 60);
   const remainder = Math.max(0, seconds) - minutes * 60;
   return `${minutes}:${remainder.toFixed(2).padStart(5, "0")}`;
+}
+
+function timingDuration(milliseconds: number): string {
+  if (milliseconds < 1000) return `${milliseconds.toFixed(milliseconds < 10 ? 1 : 0)} ms`;
+  return preciseTime(milliseconds / 1000);
+}
+
+function timingSummary(
+  milliseconds: number,
+  profile: FeatureExtractionPerformance,
+  includePerFrame = true,
+): string {
+  const parts = [timingDuration(milliseconds)];
+  if (includePerFrame && profile.sampledFrames > 0) {
+    parts.push(`${(milliseconds / profile.sampledFrames).toFixed(1)} ms/frame`);
+  }
+  if (profile.videoElapsedMs > 0) {
+    parts.push(`${((milliseconds / profile.videoElapsedMs) * 100).toFixed(0)}%`);
+  }
+  return parts.join(" · ");
 }
 
 function RoiControls({
@@ -184,7 +424,24 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     decode: false,
     encode: false,
     directDisk: false,
+    screenWakeLock: false,
+    mediaCapabilities: false,
+    webGpu: "checking",
+    gpuName: null,
+    gpuSource: null,
+    logicalProcessors: null,
+    deviceMemoryGb: null,
+    jsHeapUsedBytes: null,
+    jsHeapLimitBytes: null,
   });
+  const [mediaDiagnostics, setMediaDiagnostics] = useState<SelectedMediaDiagnostics>(
+    EMPTY_MEDIA_DIAGNOSTICS,
+  );
+  const [analysisElapsedSeconds, setAnalysisElapsedSeconds] = useState<number | null>(null);
+  const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
+  const [featureCacheState, setFeatureCacheState] = useState<
+    AnalysisProgress["featureCache"] | null
+  >(null);
   const openedMedia = useRef<OpenedMedia | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -203,18 +460,72 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const uiFixtureMode = fixture !== null && fixtureActive;
   const displayedFileSize = uiFixtureMode ? (fixture?.source.size ?? 0) : (file?.size ?? 0);
   const sourceName = file?.name ?? (uiFixtureMode ? fixture?.source.name : null);
+  const featurePerformance = analysisProgress?.performance ?? null;
+  const processingRate =
+    featurePerformance && featurePerformance.videoElapsedMs > 0
+      ? featurePerformance.generatedVideoSeconds / (featurePerformance.videoElapsedMs / 1000)
+      : null;
+  const extractionOtherMs = featurePerformance
+    ? Math.max(
+        0,
+        featurePerformance.extractionMs -
+          featurePerformance.canvasReadbackMs -
+          featurePerformance.imageOperationsMs -
+          featurePerformance.phaseCorrelationMs -
+          featurePerformance.opticalFlowMs -
+          featurePerformance.javascriptMs,
+      )
+    : 0;
+  const videoPipelineOtherMs = featurePerformance
+    ? Math.max(
+        0,
+        featurePerformance.videoElapsedMs -
+          featurePerformance.openCvLoadMs -
+          featurePerformance.decoderCanvasMs -
+          featurePerformance.extractionMs -
+          featurePerformance.cacheIoMs,
+      )
+    : 0;
 
   useEffect(() => {
     let active = true;
-    queueMicrotask(() => {
+    queueMicrotask(async () => {
       if (!active) return;
+      const diagnosticNavigator = navigator as NavigatorWithDiagnostics;
+      const fallbackRenderer = webGlRenderer();
       setCompatibility({
         checked: true,
         secureContext: window.isSecureContext,
         decode: "VideoDecoder" in window && "AudioDecoder" in window,
         encode: "VideoEncoder" in window && "AudioEncoder" in window,
         directDisk: "showSaveFilePicker" in window,
+        screenWakeLock: "wakeLock" in navigator,
+        mediaCapabilities: "mediaCapabilities" in navigator,
+        webGpu: diagnosticNavigator.gpu ? "checking" : "unavailable",
+        gpuName: fallbackRenderer,
+        gpuSource: fallbackRenderer ? "WebGL" : null,
+        logicalProcessors: navigator.hardwareConcurrency || null,
+        deviceMemoryGb: diagnosticNavigator.deviceMemory ?? null,
+        ...heapSnapshot(),
       });
+      if (!diagnosticNavigator.gpu) return;
+      try {
+        const adapter = await diagnosticNavigator.gpu.requestAdapter();
+        if (!active) return;
+        const info = adapter
+          ? adapter.info ?? (await adapter.requestAdapterInfo?.().catch(() => undefined))
+          : undefined;
+        setCompatibility((current) => ({
+          ...current,
+          webGpu: adapter ? "available" : "unavailable",
+          gpuName: gpuName(info) ?? current.gpuName,
+          gpuSource: gpuName(info) ? "WebGPU" : current.gpuSource,
+        }));
+      } catch {
+        if (active) {
+          setCompatibility((current) => ({ ...current, webGpu: "unavailable" }));
+        }
+      }
     });
     return () => {
       active = false;
@@ -246,9 +557,13 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     setExportFile(selected);
     setInfo(null);
     setAnalysis(null);
+    setAnalysisElapsedSeconds(null);
+    setFeatureCacheState(null);
+    setWakeLockState("idle");
     setSelectedId(null);
     setError(null);
     setPreviewWarning(false);
+    setMediaDiagnostics({ ...EMPTY_MEDIA_DIAGNOSTICS, checking: true });
     setAnalysisProgress({ stage: "opening", completed: 0, total: 1, detail: "Reading container metadata locally" });
     setWorkState("opening");
     const nextProfile = inferRoiProfile(selected.name);
@@ -267,8 +582,12 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       );
       setWorkState("ready");
       setAnalysisProgress(null);
+      void inspectSelectedMedia(opened, selected.size)
+        .then(setMediaDiagnostics)
+        .catch(() => setMediaDiagnostics(EMPTY_MEDIA_DIAGNOSTICS));
     } catch (cause) {
       setHasOpenedMedia(false);
+      setMediaDiagnostics(EMPTY_MEDIA_DIAGNOSTICS);
       setError(cause instanceof Error ? cause.message : String(cause));
       setWorkState("error");
     }
@@ -278,21 +597,37 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     if (!openedMedia.current || !info) return;
     setError(null);
     setAnalysis(null);
+    setAnalysisProgress(null);
     setSelectedId(null);
     setWorkState("analyzing");
+    const startedAt = performance.now();
+    setAnalysisElapsedSeconds(0);
+    const releaseWakeLock = await holdScreenWakeLock(setWakeLockState);
     try {
       const result = await analyzeOpenedMedia(
         openedMedia.current,
         roi,
         featurePath,
-        setAnalysisProgress,
+        (progress) => {
+          setAnalysisProgress(progress);
+          if (progress.featureCache) setFeatureCacheState(progress.featureCache);
+          setAnalysisElapsedSeconds((performance.now() - startedAt) / 1000);
+          setCompatibility((current) => ({ ...current, ...heapSnapshot() }));
+        },
+        file
+          ? { name: file.name, size: file.size, lastModified: file.lastModified }
+          : undefined,
       );
+      setAnalysisElapsedSeconds((performance.now() - startedAt) / 1000);
       setAnalysis(result);
       setSelectedId(result.intervals[0]?.id ?? null);
       setWorkState("done");
     } catch (cause) {
+      setAnalysisElapsedSeconds((performance.now() - startedAt) / 1000);
       setError(cause instanceof Error ? cause.message : String(cause));
       setWorkState("error");
+    } finally {
+      await releaseWakeLock();
     }
   }
 
@@ -351,7 +686,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       <header className={styles.topbar}>
         <Brand className={styles.brand} label="LOCAL" priority />
         <div className={styles.statusRow}>
-          <span data-ok={compatibility.decode}>Decode</span>
+          <span data-ok={compatibility.decode}>WebCodecs</span>
+          <span data-ok={compatibility.webGpu === "available"}>WebGPU</span>
           <span data-ok={compatibility.encode}>Encode</span>
           <span data-ok={compatibility.directDisk}>Direct-to-disk</span>
           <span data-ok>Nothing uploaded</span>
@@ -553,6 +889,347 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
               </dl>
             ) : (
               <p className={styles.muted}>Reading metadata…</p>
+            )}
+
+            {info && (
+              <section className={styles.diagnostics} aria-labelledby="device-path-title">
+                <header>
+                  <div>
+                    <p className={styles.step}>PERFORMANCE DIAGNOSTICS</p>
+                    <h3 id="device-path-title">This video on this device</h3>
+                  </div>
+                  <span
+                    className={styles.diagnosticState}
+                    data-state={
+                      mediaDiagnostics.checking
+                        ? "checking"
+                        : mediaDiagnostics.webCodecsSupported === false
+                          ? "limited"
+                          : "ready"
+                    }
+                  >
+                    {mediaDiagnostics.checking
+                      ? "CHECKING"
+                      : mediaDiagnostics.webCodecsSupported === false
+                        ? "LIMITED"
+                        : "READY"}
+                  </span>
+                </header>
+                <dl className={styles.diagnosticList}>
+                  <div>
+                    <dt>WebCodecs API</dt>
+                    <dd data-tone={compatibility.decode ? "good" : "bad"}>
+                      {compatibility.decode ? "Available" : "Unavailable"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Selected codec</dt>
+                    <dd>
+                      {mediaDiagnostics.checking
+                        ? "Checking…"
+                        : mediaDiagnostics.codec ?? info.videoCodecString ?? info.videoCodec}
+                      {mediaDiagnostics.webCodecsSupported !== null &&
+                        ` · ${mediaDiagnostics.webCodecsSupported ? "supported" : "unsupported"}`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Source load</dt>
+                    <dd>
+                      {mediaDiagnostics.averageFrameRate
+                        ? `${mediaDiagnostics.averageFrameRate.toFixed(1)} fps`
+                        : "Frame rate unknown"}
+                      {mediaDiagnostics.averageBitrate
+                        ? ` · ${compactBitrate(mediaDiagnostics.averageBitrate)}`
+                        : ""}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Decode preference</dt>
+                    <dd>Prefer hardware</dd>
+                  </div>
+                  <div>
+                    <dt>Power-efficient decode</dt>
+                    <dd>
+                      {mediaDiagnostics.powerEfficient === null
+                        ? compatibility.mediaCapabilities
+                          ? "Not reported"
+                          : "API unavailable"
+                        : mediaDiagnostics.powerEfficient
+                          ? "Reported"
+                          : "Not reported"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Smooth decode</dt>
+                    <dd>
+                      {mediaDiagnostics.smooth === null
+                        ? "Not reported"
+                        : mediaDiagnostics.smooth
+                          ? "Reported"
+                          : "Not reported"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>WebGPU</dt>
+                    <dd data-tone={compatibility.webGpu === "available" ? "good" : undefined}>
+                      {compatibility.webGpu === "checking"
+                        ? "Checking…"
+                        : compatibility.webGpu === "available"
+                          ? "Available · not used yet"
+                          : "Unavailable"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>GPU adapter</dt>
+                    <dd title={compatibility.gpuName ?? undefined}>
+                      {compatibility.gpuName
+                        ? `${compatibility.gpuName}${compatibility.gpuSource ? ` · ${compatibility.gpuSource}` : ""}`
+                        : "Identity hidden"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>CPU capacity</dt>
+                    <dd>
+                      {compatibility.logicalProcessors
+                        ? `${compatibility.logicalProcessors} logical processors`
+                        : "Not reported"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Device memory</dt>
+                    <dd>
+                      {compatibility.deviceMemoryGb
+                        ? `About ${compatibility.deviceMemoryGb} GB`
+                        : "Not exposed"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>CPU / GPU usage</dt>
+                    <dd>Not exposed by browsers</dd>
+                  </div>
+                  <div>
+                    <dt>Screen wake lock</dt>
+                    <dd data-tone={wakeLockState === "active" ? "good" : undefined}>
+                      {!compatibility.screenWakeLock || wakeLockState === "unavailable"
+                        ? "Unavailable"
+                        : wakeLockState === "requesting"
+                          ? "Requesting…"
+                          : wakeLockState === "active"
+                            ? "Active during analysis"
+                            : wakeLockState === "paused"
+                              ? "Paused while tab is hidden"
+                              : wakeLockState === "released"
+                                ? "Released after analysis"
+                                : wakeLockState === "denied"
+                                  ? "Request denied"
+                                  : "Ready for analysis"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Feature resume</dt>
+                    <dd data-tone={featureCacheState?.enabled ? "good" : undefined}>
+                      {featureCacheState
+                        ? featureCacheState.enabled
+                          ? featureCacheState.resumedRows > 0
+                            ? `Resumed ${featureCacheState.resumedRows.toLocaleString()} · ${featureCacheState.savedRows.toLocaleString()} saved`
+                            : `${featureCacheState.savedRows.toLocaleString()} frames saved`
+                          : "IndexedDB unavailable"
+                        : `IndexedDB · every ${FEATURE_CACHE_CHUNK_ROWS / ANALYSIS_FPS}s of video`}
+                    </dd>
+                  </div>
+                  {compatibility.jsHeapUsedBytes !== null && (
+                    <div>
+                      <dt>JavaScript heap</dt>
+                      <dd>
+                        {compactBytes(compatibility.jsHeapUsedBytes)}
+                        {compatibility.jsHeapLimitBytes
+                          ? ` / ${compactBytes(compatibility.jsHeapLimitBytes)}`
+                          : ""}
+                      </dd>
+                    </div>
+                  )}
+                  {analysisElapsedSeconds !== null && (
+                    <>
+                      <div>
+                        <dt>Analysis elapsed</dt>
+                        <dd>{preciseTime(analysisElapsedSeconds)}</dd>
+                      </div>
+                      <div>
+                        <dt>Feature speed</dt>
+                        <dd>
+                          {featurePerformance?.generatedFrames === 0 &&
+                          featureCacheState?.resumedRows
+                            ? featureCacheState.complete
+                              ? "Cache hit · no new frames timed"
+                              : "Waiting for first new frame · cache excluded"
+                            : processingRate === null
+                            ? "Starting…"
+                            : `${processingRate.toFixed(2)}× real time · ${(
+                                processingRate * ANALYSIS_FPS
+                              ).toFixed(1)} frames/s · cache excluded`}
+                        </dd>
+                      </div>
+                    </>
+                  )}
+                  {featurePerformance && (
+                    <>
+                      <div className={styles.diagnosticSectionRow}>
+                        <dt>Fresh frames profiled</dt>
+                        <dd>
+                          {featurePerformance.generatedFrames.toLocaleString()} generated
+                          {featurePerformance.sampledFrames !== featurePerformance.generatedFrames
+                            ? ` · ${featurePerformance.sampledFrames.toLocaleString()} incl. warm-up`
+                            : ""}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Video feature wall time</dt>
+                        <dd>{timingDuration(featurePerformance.videoElapsedMs)}</dd>
+                      </div>
+                      <div>
+                        <dt>Decode + canvas blocking</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.decoderCanvasMs,
+                            featurePerformance,
+                          )}
+                        </dd>
+                      </div>
+                      {featurePerformance.canvasDrawFrames > 0 && (
+                        <>
+                          <div className={styles.diagnosticSubstage}>
+                            <dt>↳ Decoder / sample wait</dt>
+                            <dd>
+                              {timingSummary(
+                                featurePerformance.decoderWaitMs,
+                                featurePerformance,
+                              )}
+                            </dd>
+                          </div>
+                          <div className={styles.diagnosticSubstage}>
+                            <dt>↳ Canvas draw</dt>
+                            <dd>
+                              {timingSummary(
+                                featurePerformance.canvasDrawMs,
+                                featurePerformance,
+                              )}
+                            </dd>
+                          </div>
+                        </>
+                      )}
+                      {featurePerformance.decoderOverlapMs >= 0.5 && (
+                        <div className={styles.diagnosticSubstage}>
+                          <dt>↳ Decode request overlapped</dt>
+                          <dd>
+                            {timingSummary(
+                              featurePerformance.decoderOverlapMs,
+                              featurePerformance,
+                            )} · hidden by other work
+                          </dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt>Feature extraction</dt>
+                        <dd>
+                          {timingSummary(featurePerformance.extractionMs, featurePerformance)}
+                        </dd>
+                      </div>
+                      <div className={styles.diagnosticSubstage}>
+                        <dt>↳ Canvas readback</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.canvasReadbackMs,
+                            featurePerformance,
+                          )}
+                        </dd>
+                      </div>
+                      <div className={styles.diagnosticSubstage}>
+                        <dt>↳ Image filters</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.imageOperationsMs,
+                            featurePerformance,
+                          )}
+                        </dd>
+                      </div>
+                      <div className={styles.diagnosticSubstage}>
+                        <dt>↳ Phase correlation</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.phaseCorrelationMs,
+                            featurePerformance,
+                          )}
+                        </dd>
+                      </div>
+                      <div className={styles.diagnosticSubstage}>
+                        <dt>↳ Optical flow</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.opticalFlowMs,
+                            featurePerformance,
+                          )}
+                        </dd>
+                      </div>
+                      <div className={styles.diagnosticSubstage}>
+                        <dt>↳ JavaScript stats</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.javascriptMs,
+                            featurePerformance,
+                          )}
+                        </dd>
+                      </div>
+                      {extractionOtherMs >= 0.5 && (
+                        <div className={styles.diagnosticSubstage}>
+                          <dt>↳ Allocation + cleanup</dt>
+                          <dd>{timingSummary(extractionOtherMs, featurePerformance)}</dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt>OpenCV startup</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.openCvLoadMs,
+                            featurePerformance,
+                            false,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>IndexedDB I/O</dt>
+                        <dd>
+                          {timingSummary(
+                            featurePerformance.cacheIoMs,
+                            featurePerformance,
+                            false,
+                          )} · excluded from frames
+                        </dd>
+                      </div>
+                      {videoPipelineOtherMs >= 0.5 && (
+                        <div>
+                          <dt>Pipeline overhead</dt>
+                          <dd>
+                            {timingSummary(
+                              videoPipelineOtherMs,
+                              featurePerformance,
+                              false,
+                            )}
+                          </dd>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </dl>
+                <p className={styles.pipelineNote}>
+                  Video decode requests hardware acceleration, but browsers do not confirm which
+                  decoder they selected. Visual features currently run in OpenCV WASM and model
+                  inference runs on the CPU; WebGPU availability does not accelerate this version.
+                  Feature checkpoints stay in this browser&apos;s IndexedDB and are keyed to the exact
+                  file and crop. After a refresh, choose the same file again to resume. Stage timing
+                  and feature speed count only frames generated in the current run; restored frames
+                  are excluded.
+                </p>
+              </section>
             )}
 
             <RoiControls

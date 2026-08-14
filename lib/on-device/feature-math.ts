@@ -30,6 +30,52 @@ export function quantile(values: ArrayLike<number>, percentile: number): number 
   return sorted[lower] * (1 - weight) + sorted[upper] * weight;
 }
 
+function selectFiniteKth(values: Float32Array, target: number): number {
+  let left = 0;
+  let right = values.length - 1;
+  while (left < right) {
+    const pivot = values[(left + right) >>> 1];
+    let lower = left;
+    let upper = right;
+    while (lower <= upper) {
+      while (values[lower] < pivot) lower += 1;
+      while (values[upper] > pivot) upper -= 1;
+      if (lower <= upper) {
+        const temporary = values[lower];
+        values[lower] = values[upper];
+        values[upper] = temporary;
+        lower += 1;
+        upper -= 1;
+      }
+    }
+    if (target <= upper) right = upper;
+    else if (target >= lower) left = lower;
+    else return values[target];
+  }
+  return values[target];
+}
+
+/**
+ * Linear-interpolated quantile for finite Float32 feature buffers. The input is
+ * partitioned in place so the per-frame extractor can avoid a full-array copy
+ * and O(n log n) sort for buffers it no longer needs in pixel order.
+ */
+export function finiteQuantileInPlace(values: Float32Array, percentile: number): number {
+  if (values.length === 0) return 0;
+  const position = (values.length - 1) * Math.min(1, Math.max(0, percentile));
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  const weight = position - lower;
+  const lowerValue = selectFiniteKth(values, lower);
+  const upperValue = upper === lower ? lowerValue : selectFiniteKth(values, upper);
+  return lowerValue * (1 - weight) + upperValue * weight;
+}
+
+/** Same selection algorithm as finiteQuantileInPlace, while preserving input order. */
+export function finiteQuantile(values: Float32Array, percentile: number): number {
+  return finiteQuantileInPlace(values.slice(), percentile);
+}
+
 export function rollingMean(
   values: ArrayLike<number>,
   windowSamples: number,
