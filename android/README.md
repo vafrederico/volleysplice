@@ -4,7 +4,8 @@ This folder contains a native Android port of the on-device analysis path. It is
 
 ```text
 video URI
-  -> MediaExtractor + MediaCodec video decode
+  -> MediaExtractor presentation-order sample plan
+  -> asynchronous MediaCodec decode with unsampled inputs marked decode-only
   -> 192x108 ROI samples at 4 Hz
   -> bounded FIFO worker for native OpenCV visual features
   -> zeroed audio-unavailable features (audio decode temporarily skipped)
@@ -45,7 +46,7 @@ SDK 36 is the default, so no Gradle property overrides are needed. The app still
 
 1. Tap **Choose video** and select a local proxy or original master through Android's system picker.
 2. Leave **Use full frame** off for the canonical recordings. The app recognizes the same nine filename profiles as the web POC and otherwise uses the same indoor default ROI.
-3. Tap **Run native analysis**. The benchmark stops after 1,000 decoded source video frames (about 16.7 seconds at 60 FPS), and bounds inference and ranges to the same measured media window. Audio decode/DSP is temporarily skipped so this experiment isolates the video pipeline. Shorter clips run to completion. The app keeps the display awake and requests sustained-performance mode for the duration of the run.
+3. Tap **Run native analysis**. The benchmark stops after 1,000 presentation-order source video frames (about 16.7 seconds at 60 FPS), and bounds inference and ranges to the same measured media window. It decodes reference frames normally but uses Android's decode-only flag to avoid materializing unsampled output images. Audio decode/DSP is temporarily skipped so this experiment isolates the video pipeline. Shorter clips run to completion. The app keeps the display awake and requests sustained-performance mode for the duration of the run.
 4. During video analysis, watch the live sampled frames/second, feature real-time ratio, elapsed time, ETA, decoded source-frame count, and Java heap use.
 5. Record the final feature speed, overall real-time multiplier, audio speed, decoder names, stage times, and range count. **Copy result JSON** copies those values and exact unpadded ranges.
 
@@ -62,9 +63,11 @@ Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppre
 
 The 240 FPS operating-rate request was retained after a 5,000-frame 1080p60 A/B reduced median video-stage time from 29,102.5 ms to 19,749.0 ms (32.1%) with identical sampled timestamps and candidate ranges. Android uses this value for codec resource planning; it does not change source timestamps or the 4 Hz sampling schedule.
 
+Asynchronous decode-only output was then retained after reducing the same 5,000-frame median from 19,749.0 ms to 14,683.5 ms (25.6% further, 49.5% versus the unhinted baseline). It produced only 334 output images for 5,000 decoded source frames. The 1080p and 4K checks retained identical analyzed durations, sample timestamps, ranges, and confidences; three warm 4K60 runs had a 5,884 ms median for 1,000 frames.
+
 The feature speed matches the web POC definition: `generatedFrames / 4 Hz / videoFeatureWallSeconds` for the real-time ratio, and `generatedFrames / videoFeatureWallSeconds` for frames/second. The overall ratio additionally includes audio extraction, contextualization, and inference.
 
-The completed report includes a hierarchical profiling breakdown. Parent and child rows intentionally overlap and should not be added together. Video decode/YUV conversion and ordered OpenCV extraction run concurrently, connected by a two-sample bounded queue. The report records queue backpressure and final worker-drain time, which are the portions of OpenCV work that remain on the critical path. It also covers codec input/output waits, demux reads, YUV crop/scale/color conversion, OpenCV filters/readback/phase correlation/Farneback flow/reductions, audio PCM conversion/resampling/FFT/pooling, percentile ranking/context gathering, and every inference/decoder phase. Per-unit time, wall-time percentage, total analysis CPU across both video threads, GC time, Java/native/PSS memory, sampling timestamp error, and thermal status are included. The app also identifies the largest exclusive video bucket as an optimization lead; the copied JSON retains all raw millisecond totals under `profileMilliseconds`.
+The completed report includes a hierarchical profiling breakdown. Parent and child rows intentionally overlap and should not be added together. Asynchronous video callbacks/YUV conversion and ordered OpenCV extraction run concurrently, connected by a two-sample bounded queue. The report records decode-only inputs, actual decoder outputs, queue backpressure, and final worker-drain time. It also covers the presentation-order planning scan, codec input/output callbacks, demux reads, YUV crop/scale/color conversion, OpenCV filters/readback/phase correlation/Farneback flow/reductions, percentile ranking/context gathering, and every inference/decoder phase. Per-unit time, wall-time percentage, total analysis CPU, GC time, Java/native/PSS memory, sampling timestamp error, and thermal status are included. The copied JSON retains all raw millisecond totals under `profileMilliseconds`.
 
 For a useful WebCodecs-versus-native comparison, use the same physical source file, ROI, model bundle, charging state, and cold/warm-run policy. Run at least three times after one warm-up at a similar starting temperature. Android may select different codec implementations after thermal throttling, so keep the reported decoder name with every result.
 
@@ -75,7 +78,7 @@ The JVM golden test reads the repository's frozen 3,474 x 104 Y9 base-feature fi
 The media front end is deliberately a native-distribution experiment, not a claim of feature parity:
 
 - Android supplies decoder YUV planes; the app converts those directly into the 192x108 analysis image. That color conversion and resize are not byte-identical to browser canvas or FFmpeg/OpenCV `INTER_AREA`.
-- Video is decoded sequentially and the first decoded frame at or after each 4 Hz target is sampled. Web and offline frame-selection boundaries can differ by one source frame.
+- Video is decoded in one pass and the first presentation-order frame at or after each 4 Hz target is sampled. Web and offline frame-selection boundaries can differ by one source frame.
 - Audio uses Android's decoded PCM and the existing linear 16 kHz resampling/DSP math. It does not embed FFmpeg `libswresample`.
 - Native OpenCV implements phase correlation and Farneback flow. The algorithm settings and 73-channel schema match the web path, but native SIMD and float reductions can produce small numerical differences.
 
@@ -83,7 +86,7 @@ Those differences are why the app reports both performance and final ranges. If 
 
 ## Important files
 
-- `app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java`: sequential hardware decode and 4 Hz YUV sampling
+- `app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java`: asynchronous decode-only planning and 4 Hz YUV sampling
 - `app/src/main/java/com/volleycut/nativeanalysis/VisualFeatureExtractor.java`: native OpenCV visual features
 - `app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java`: platform audio decode
 - `app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java`: resampling, FFT, and audio feature schema

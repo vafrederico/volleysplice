@@ -123,6 +123,8 @@ final class AnalysisEngine {
                 video.sourceFrameLimitReached(),
                 times.length,
                 video.decodedSourceFrames(),
+                video.decodeOnlySourceFrames(),
+                video.decoderOutputFrames(),
                 audio.decodedPcmFrames(),
                 audio.resampledOutputSamples(),
                 audio.audioFeatureFrames(),

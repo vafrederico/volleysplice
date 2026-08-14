@@ -97,7 +97,8 @@ $mediaRows = Invoke-Adb -AdbArguments @(
     "--projection", "_id:_display_name"
 )
 $matchingRows = @(($mediaRows -split "\r?\n") | Where-Object {
-    $_ -like "*_display_name=$VideoName*"
+    $parts = $_ -split "_display_name=", 2
+    $parts.Count -eq 2 -and $parts[1] -eq $VideoName
 })
 if ($matchingRows.Count -eq 0) {
     throw "MediaStore has no video named '$VideoName'."

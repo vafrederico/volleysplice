@@ -181,7 +181,7 @@ public final class MainActivity extends Activity {
         root.addView(copyButton, margins(0, dp(10), 0, 0));
 
         TextView caveat = text(
-                "Benchmark note: the video path decodes sequentially through MediaCodec and samples 192×108 YUV frames at 4 Hz. "
+                "Benchmark note: MediaCodec decodes the source in one asynchronous pass and only exposes the 192×108 YUV frames needed at 4 Hz. "
                         + "The model and decoder match the web bundle; Android YUV conversion and native OpenCV may shift feature values, "
                         + "so compare both wall time and range parity.",
                 13, Color.DKGRAY
@@ -371,6 +371,9 @@ public final class MainActivity extends Activity {
                 result.decodedSourceFrames(),
                 Math.max(0, result.decodedSourceFrames() - result.sampleRows())));
         output.append(String.format(Locale.US,
+                "Decoder suppression: %,d decode-only inputs · %,d output frames\n",
+                result.decodeOnlySourceFrames(), result.decoderOutputFrames()));
+        output.append(String.format(Locale.US,
                 "Source decode: %.1f frames/s · sample every %.1f frames\n",
                 videoSeconds > 0 ? result.decodedSourceFrames() / videoSeconds : 0,
                 result.sampleRows() > 0 ? result.decodedSourceFrames() / (double) result.sampleRows() : 0));
@@ -467,7 +470,7 @@ public final class MainActivity extends Activity {
         JSONObject json = new JSONObject();
         try {
             json.put("schemaVersion", 1);
-            json.put("method", "android-native-mediacodec-opencv-v1");
+            json.put("method", "android-native-mediacodec-async-decodeonly-opencv-v2");
             json.put("modelId", "model-9c92b8e9333f");
             json.put("sourceName", result.displayName());
             json.put("duration", result.media().durationSeconds());
@@ -477,6 +480,8 @@ public final class MainActivity extends Activity {
             json.put("analysisFps", FeatureSchema.ANALYSIS_FPS);
             json.put("sampleRows", result.sampleRows());
             json.put("decodedSourceFrames", result.decodedSourceFrames());
+            json.put("decodeOnlySourceFrames", result.decodeOnlySourceFrames());
+            json.put("decoderOutputFrames", result.decoderOutputFrames());
             json.put("decodedAudioFrames", result.decodedAudioFrames());
             json.put("resampledAudioSamples", result.resampledAudioSamples());
             json.put("audioFeatureFrames", result.audioFeatureFrames());
@@ -621,6 +626,17 @@ public final class MainActivity extends Activity {
         double demux = profile.getOrDefault("video/demux_read", 0.0)
                 + profile.getOrDefault("video/demux_advance", 0.0);
         output.append("\nOPTIMIZATION SIGNALS\n");
+        if (result.decodeOnlySourceFrames() > 0) {
+            double asyncInput = profile.getOrDefault("video/codec_input_callback", 0.0);
+            output.append(String.format(Locale.US,
+                    "  Async decode-only: %,d inputs suppressed; %,d decoder outputs produced.\n",
+                    result.decodeOnlySourceFrames(), result.decoderOutputFrames()));
+            output.append(String.format(Locale.US,
+                    "  Serial codec input callbacks: %.1f%%; OpenCV critical waits: queue %.2f ms, drain %.2f ms.\n",
+                    percent(asyncInput, videoWallMilliseconds), workerQueueWait, workerFinishWait));
+            output.append("  Next lead: batch compressed access units; OpenCV remains off the critical path.\n");
+            return;
+        }
         double maximum = Math.max(Math.max(codecWait, yuv), Math.max(openCv, demux));
         if (maximum == codecWait) {
             output.append("  Largest bucket: codec waits. Test asynchronous codec callbacks or a Surface/GPU sampling path.\n");
