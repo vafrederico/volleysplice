@@ -6,6 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTime } from "@/lib/edit-list";
 import { openUrlMedia, type OpenedMedia } from "@/lib/on-device/media";
 import { analyzeOpenedMedia } from "@/lib/on-device/pipeline";
+import {
+  isOnDeviceRuntimeVariant,
+  type OnDeviceRuntimeVariant,
+} from "@/lib/on-device/runtime-variants";
 import type {
   AnalysisProgress,
   NormalizedRoi,
@@ -34,6 +38,7 @@ type BatchCatalog = {
   schemaVersion: 1;
   modelId: string;
   featurePath: "training-proxy";
+  runtimeVariant: OnDeviceRuntimeVariant;
   videos: BatchVideo[];
 };
 
@@ -88,12 +93,17 @@ function isRoi(value: unknown): value is NormalizedRoi {
   );
 }
 
-function parseCatalog(value: unknown): BatchCatalog {
+function parseCatalog(
+  value: unknown,
+  expectedRuntimeVariant: OnDeviceRuntimeVariant,
+): BatchCatalog {
   if (
     !isRecord(value) ||
     value.schemaVersion !== 1 ||
     typeof value.modelId !== "string" ||
     value.featurePath !== "training-proxy" ||
+    !isOnDeviceRuntimeVariant(value.runtimeVariant) ||
+    value.runtimeVariant !== expectedRuntimeVariant ||
     !Array.isArray(value.videos)
   ) {
     throw new Error("The batch catalog has an unexpected format.");
@@ -133,13 +143,20 @@ async function responseError(response: Response): Promise<string> {
   return `Request failed with status ${response.status}.`;
 }
 
-async function fetchCatalog(token: string): Promise<BatchCatalog> {
-  const response = await fetch(BATCH_URL, {
+function batchUrl(runtimeVariant: OnDeviceRuntimeVariant): string {
+  return `${BATCH_URL}?variant=${encodeURIComponent(runtimeVariant)}`;
+}
+
+async function fetchCatalog(
+  token: string,
+  runtimeVariant: OnDeviceRuntimeVariant,
+): Promise<BatchCatalog> {
+  const response = await fetch(batchUrl(runtimeVariant), {
     headers: authorization(token),
     cache: "no-store",
   });
   if (!response.ok) throw new Error(await responseError(response));
-  return parseCatalog(await response.json());
+  return parseCatalog(await response.json(), runtimeVariant);
 }
 
 function sameOriginMediaUrl(value: string): URL {
@@ -165,7 +182,11 @@ function markCompleted(catalog: BatchCatalog, recordingId: string): BatchCatalog
   };
 }
 
-export function OnDeviceBatchClient() {
+export function OnDeviceBatchClient({
+  runtimeVariant,
+}: {
+  runtimeVariant: OnDeviceRuntimeVariant | null;
+}) {
   const [catalog, setCatalog] = useState<BatchCatalog | null>(null);
   const [phase, setPhase] = useState<BatchPhase>("loading");
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -214,6 +235,7 @@ export function OnDeviceBatchClient() {
             media,
             video.roi,
             "training-proxy",
+            workingCatalog.runtimeVariant,
             (next) => setProgress(next),
           );
           if (analysis.modelId !== workingCatalog.modelId) {
@@ -227,7 +249,7 @@ export function OnDeviceBatchClient() {
             total: 1,
             detail: `Saving ${analysis.intervals.length} exact prediction ranges`,
           });
-          const response = await fetch(BATCH_URL, {
+          const response = await fetch(batchUrl(workingCatalog.runtimeVariant), {
             method: "POST",
             headers: {
               ...authorization(token),
@@ -238,6 +260,7 @@ export function OnDeviceBatchClient() {
               recordingId: video.id,
               modelId: analysis.modelId,
               featurePath: analysis.featurePath,
+              runtimeVariant: workingCatalog.runtimeVariant,
               media: media.info satisfies OnDeviceMediaInfo,
               intervals: analysis.intervals,
               provenance: {
@@ -251,7 +274,7 @@ export function OnDeviceBatchClient() {
             throw new Error(await responseError(response));
           }
           if (response.status === 409) {
-            const refreshed = await fetchCatalog(token);
+            const refreshed = await fetchCatalog(token, workingCatalog.runtimeVariant);
             const completedAfterConflict = refreshed.videos.some(
               (candidate) => candidate.id === video.id && candidate.completed,
             );
@@ -285,24 +308,33 @@ export function OnDeviceBatchClient() {
 
   const refreshAndResume = useCallback(async () => {
     const token = tokenRef.current;
-    if (!token || runningRef.current) return;
+    if (!token || !runtimeVariant || runningRef.current) return;
     setFailure(null);
     setPhase("loading");
     try {
-      const fresh = await fetchCatalog(token);
+      const fresh = await fetchCatalog(token, runtimeVariant);
       setCatalog(fresh);
       await runBatch(fresh);
     } catch (error) {
       setFailure({ recordingId: null, message: message(error) });
       setPhase("error");
     }
-  }, [runBatch]);
+  }, [runBatch, runtimeVariant]);
 
   useEffect(() => {
     let active = true;
     void (async () => {
       await Promise.resolve();
       if (!active) return;
+      if (!runtimeVariant) {
+        setFailure({
+          recordingId: null,
+          message:
+            "Unknown or repeated runtime variant. Use linear-v1 or libswresample-wasm-v1.",
+        });
+        setPhase("blocked");
+        return;
+      }
       const token = tokenFromFragment();
       if (!token) {
         setFailure({
@@ -328,7 +360,7 @@ export function OnDeviceBatchClient() {
       tokenRef.current = token;
       setCanResume(true);
       try {
-        const loaded = await fetchCatalog(token);
+        const loaded = await fetchCatalog(token, runtimeVariant);
         if (!active) return;
         setCatalog(loaded);
         setPhase("ready");
@@ -341,7 +373,7 @@ export function OnDeviceBatchClient() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [runtimeVariant]);
 
   useEffect(() => {
     if (!catalog || phase !== "ready" || autoStartedRef.current) return;
@@ -398,7 +430,11 @@ export function OnDeviceBatchClient() {
         </div>
         <div>
           <span>MODEL</span>
-          <strong>{catalog?.modelId ?? "Waiting for authorized catalog"}</strong>
+          <strong>
+            {catalog
+              ? `${catalog.modelId} · ${catalog.runtimeVariant}`
+              : runtimeVariant ?? "Invalid runtime variant"}
+          </strong>
         </div>
         <div className={styles.count}>
           <span>VIDEOS SAVED</span>

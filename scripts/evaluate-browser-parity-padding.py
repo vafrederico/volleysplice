@@ -25,11 +25,26 @@ from analysis.metrics import (
 from analysis.schema import Interval, Recording, load_manifest
 
 
-VARIANTS = {
+BASE_VARIANTS = {
     "offline": "model-9c92b8e9333f",
     "browserOnDevice": "model-browser-on-device-9c92b8e9333f",
 }
+LIBSWRESAMPLE_WASM_VARIANT = "browserOnDeviceLibswresampleWasm"
+LIBSWRESAMPLE_WASM_PREFIX = (
+    "model-browser-on-device-libswresample-wasm-9c92b8e9333f"
+)
+REQUIRED_PADDING_SECONDS = (0.0, 1.0, 2.0, 3.0)
+LIFT_PADDING_SECONDS = (2.0, 3.0)
 MODEL_SHA256 = "9c92b8e9333f6247336639409acbe063da68dea4cc74735c7b2a8791f8dda2a7"
+MODEL_BUNDLE_SHA256 = (
+    "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d"
+)
+LIBSWRESAMPLE_WASM_SHA256 = (
+    "c7ed95ed8b6f5e11ea9e86262214b978bd145a6ec1f648dd56616af298449f90"
+)
+LIBSWRESAMPLE_GLUE_SHA256 = (
+    "022782d1e08e483d8c67de30f68177eff5904998c410df028f26e342c793ae48"
+)
 MODEL_VERSION = "dead-state-transition-audio-normalized-v5-no-legacy-final"
 MODEL_COMPONENTS = {
     "full-audiovisual-audio-normalized-v3": (
@@ -141,6 +156,12 @@ def load_predictions(
         components[version] = digest.lower()
     if components != MODEL_COMPONENTS:
         raise ValueError(f"analysis references the wrong model components in {path}")
+    model_bundle_sha256 = analysis.get("modelBundleSha256")
+    if model_bundle_sha256 is not None and model_bundle_sha256 != MODEL_BUNDLE_SHA256:
+        raise ValueError(f"analysis references the wrong browser model bundle in {path}")
+    runtime_provenance = analysis.get("provenance")
+    if runtime_provenance is not None and not isinstance(runtime_provenance, dict):
+        raise ValueError(f"analysis runtime provenance is invalid in {path}")
     source_sha256 = source.get("contentSha256")
     if (
         not isinstance(source_sha256, str)
@@ -157,12 +178,22 @@ def load_predictions(
         "modelSha256": model_sha256,
         "modelVersion": analysis.get("modelVersion"),
         "modelComponents": components,
-        "modelBundleSha256": analysis.get("modelBundleSha256"),
+        "modelBundleSha256": model_bundle_sha256,
         "sourceContentSha256": source_sha256.lower(),
         "sourceFilename": source.get("filename"),
         "sourceDuration": duration,
         "method": analysis.get("method"),
         "variantLabel": analysis.get("variantLabel"),
+        "runtimeVariant": (
+            runtime_provenance.get("runtimeVariant")
+            if isinstance(runtime_provenance, dict)
+            else None
+        ),
+        "audioResampler": (
+            runtime_provenance.get("audioResampler")
+            if isinstance(runtime_provenance, dict)
+            else None
+        ),
         "includedRallies": len(predictions),
         "excludedRallies": excluded,
     }
@@ -176,6 +207,31 @@ def interval_duration(intervals: tuple[Interval, ...]) -> float:
     return sum(item.end - item.start for item in intervals)
 
 
+def _ratio(numerator: float, denominator: float) -> float:
+    return numerator / denominator if denominator > 0 else 0.0
+
+
+def _adjusted_metrics(row: dict[str, Any]) -> dict[str, float]:
+    padded_precision = _ratio(
+        float(row["paddedPrecisionIntersectionSeconds"]),
+        float(row["paddedModelExportSeconds"]),
+    )
+    core_recall = _ratio(
+        float(row["coreRecallIntersectionSeconds"]),
+        float(row["coreHumanSeconds"]),
+    )
+    model_seconds = float(row["paddedModelExportSeconds"])
+    human_seconds = float(row["paddedHumanExportSeconds"])
+    return {
+        "P_pad": padded_precision,
+        "R_core": core_recall,
+        "F1_padP_coreR": harmonic_mean(padded_precision, core_recall),
+        "paddedModelExportSeconds": model_seconds,
+        "paddedHumanExportSeconds": human_seconds,
+        "exportDurationDifferenceSeconds": model_seconds - human_seconds,
+    }
+
+
 def evaluate_scope(
     recordings: list[RecordingIntervals],
     paddings: list[float],
@@ -186,6 +242,11 @@ def evaluate_scope(
     }
     results: dict[str, Any] = {}
     for padding in paddings:
+        adjusted = adjusted_rows[padding]
+        adjusted_by_id = {
+            str(row["id"]): _adjusted_metrics(row)
+            for row in adjusted["recordings"]
+        }
         per_recording: list[dict[str, Any]] = []
         contained_total = 0
         actual_export_sections = 0
@@ -212,12 +273,23 @@ def evaluate_scope(
             per_recording.append(
                 {
                     "id": recording.id,
+                    "eventMetricsAtIou05": {
+                        "truePositives": event["matchedRallies"],
+                        "evaluablePredictedFragments": event["predictedRallies"],
+                        "expectedCoreRallies": event["trueRallies"],
+                        "precision": event["eventPrecision"],
+                        "recall": event["eventRecall"],
+                        "F1": event["eventF1"],
+                    },
+                    "adjustedMetrics": adjusted_by_id[recording.id],
                     "expectedCoreRallies": len(truth),
                     "fullyContainedCoreRallies": fully_contained,
                     "eventTruePositivesAtIou05": event["matchedRallies"],
+                    "inputPredictionCount": len(recording.predictions),
                     "actualMergedExportSections": len(actual_export),
                     "actualPaddedExportSeconds": interval_duration(actual_export),
                     "evaluableExportFragments": len(export),
+                    "evaluablePaddedModelSeconds": interval_duration(export),
                 }
             )
         aggregate = aggregate_evaluations(
@@ -236,7 +308,6 @@ def evaluate_scope(
                 for item in recordings
             ]
         )
-        adjusted = adjusted_rows[padding]
         live_precision = float(aggregate["liveTimePrecision"])
         live_recall = float(aggregate["liveTimeRecall"])
         results[f"pad-{padding:g}s"] = {
@@ -258,6 +329,15 @@ def evaluate_scope(
                 "P_pad": adjusted["P_pad"],
                 "R_core": adjusted["R_core"],
                 "F1_padP_coreR": adjusted["F1_padP_coreR"],
+                "paddedModelExportSeconds": adjusted[
+                    "paddedModelExportSeconds"
+                ],
+                "paddedHumanExportSeconds": adjusted[
+                    "paddedHumanExportSeconds"
+                ],
+                "exportDurationDifferenceSeconds": adjusted[
+                    "exportDurationDifferenceSeconds"
+                ],
             },
             "fullyContainedCoreRallies": contained_total,
             "expectedCoreRallies": aggregate["trueRallies"],
@@ -267,9 +347,187 @@ def evaluate_scope(
             "evaluableExportFragments": aggregate["predictedRallies"],
             "evaluablePaddedModelSeconds": adjusted["paddedModelExportSeconds"],
             "evaluablePaddedHumanSeconds": adjusted["paddedHumanExportSeconds"],
+            "evaluableExportDurationDifferenceSeconds": adjusted[
+                "exportDurationDifferenceSeconds"
+            ],
+            "cropCounts": {
+                "inputPredictionRanges": adjusted["inputCropCount"],
+                "actualMergedExportSections": actual_export_sections,
+                "evaluableExportFragments": aggregate["predictedRallies"],
+            },
             "perRecording": per_recording,
         }
     return results
+
+
+def _point_lift(candidate: float, reference: float) -> float:
+    return 100.0 * (candidate - reference)
+
+
+def _aggregate_lift(
+    candidate: dict[str, Any], reference: dict[str, Any]
+) -> dict[str, float | int]:
+    if candidate["expectedCoreRallies"] != reference["expectedCoreRallies"]:
+        raise ValueError("cannot compare variants with different expected rally counts")
+    candidate_adjusted = candidate["adjustedMetrics"]
+    reference_adjusted = reference["adjustedMetrics"]
+    candidate_event = candidate["eventMetricsAtIou05"]
+    reference_event = reference["eventMetricsAtIou05"]
+    return {
+        "P_padPoints": _point_lift(
+            float(candidate_adjusted["P_pad"]),
+            float(reference_adjusted["P_pad"]),
+        ),
+        "R_corePoints": _point_lift(
+            float(candidate_adjusted["R_core"]),
+            float(reference_adjusted["R_core"]),
+        ),
+        "F1_padP_coreRPoints": _point_lift(
+            float(candidate_adjusted["F1_padP_coreR"]),
+            float(reference_adjusted["F1_padP_coreR"]),
+        ),
+        "eventPrecisionPoints": _point_lift(
+            float(candidate_event["precision"]),
+            float(reference_event["precision"]),
+        ),
+        "eventRecallPoints": _point_lift(
+            float(candidate_event["recall"]),
+            float(reference_event["recall"]),
+        ),
+        "eventF1Points": _point_lift(
+            float(candidate_event["F1"]),
+            float(reference_event["F1"]),
+        ),
+        "eventTruePositives": int(candidate_event["truePositives"])
+        - int(reference_event["truePositives"]),
+        "fullyContainedCoreRallies": int(
+            candidate["fullyContainedCoreRallies"]
+        )
+        - int(reference["fullyContainedCoreRallies"]),
+        "inputPredictionRanges": int(candidate["inputPredictionCount"])
+        - int(reference["inputPredictionCount"]),
+        "actualMergedExportSections": int(
+            candidate["actualMergedExportSections"]
+        )
+        - int(reference["actualMergedExportSections"]),
+        "evaluableExportFragments": int(candidate["evaluableExportFragments"])
+        - int(reference["evaluableExportFragments"]),
+        "actualPaddedExportSeconds": float(
+            candidate["actualPaddedExportSeconds"]
+        )
+        - float(reference["actualPaddedExportSeconds"]),
+        "evaluablePaddedModelSeconds": float(
+            candidate_adjusted["paddedModelExportSeconds"]
+        )
+        - float(reference_adjusted["paddedModelExportSeconds"]),
+        "exportDurationDifferenceSeconds": float(
+            candidate_adjusted["exportDurationDifferenceSeconds"]
+        )
+        - float(reference_adjusted["exportDurationDifferenceSeconds"]),
+    }
+
+
+def _recording_lift(
+    candidate: dict[str, Any], reference: dict[str, Any]
+) -> dict[str, float | int]:
+    if (
+        candidate["id"] != reference["id"]
+        or candidate["expectedCoreRallies"] != reference["expectedCoreRallies"]
+    ):
+        raise ValueError("cannot compare mismatched per-recording rows")
+    return _aggregate_lift(candidate, reference)
+
+
+def build_lift_summaries(
+    variant_reports: dict[str, Any],
+    *,
+    candidate_variant: str,
+    reference_variants: tuple[str, ...],
+) -> dict[str, Any]:
+    """Summarize SWR lifts at product-relevant padding without ranking test data."""
+    if candidate_variant not in variant_reports:
+        raise ValueError(f"candidate variant is missing: {candidate_variant}")
+    for variant in reference_variants:
+        if variant not in variant_reports:
+            raise ValueError(f"reference variant is missing: {variant}")
+    candidate_scopes = variant_reports[candidate_variant]
+    by_scope: dict[str, Any] = {}
+    for scope_name, candidate_scope in candidate_scopes.items():
+        scope_result: dict[str, Any] = {}
+        for padding in LIFT_PADDING_SECONDS:
+            padding_key = f"pad-{padding:g}s"
+            if padding_key not in candidate_scope:
+                raise ValueError(f"candidate report is missing {padding_key}")
+            candidate = candidate_scope[padding_key]
+            candidate_recordings = {
+                row["id"]: row for row in candidate["perRecording"]
+            }
+            reference_rows: dict[str, Any] = {}
+            per_recording = {
+                recording_id: {
+                    "id": recording_id,
+                    "expectedCoreRallies": row["expectedCoreRallies"],
+                    "candidateFullyContainedCoreRallies": row[
+                        "fullyContainedCoreRallies"
+                    ],
+                    "versus": {},
+                }
+                for recording_id, row in candidate_recordings.items()
+            }
+            for reference_variant in reference_variants:
+                try:
+                    reference = variant_reports[reference_variant][scope_name][
+                        padding_key
+                    ]
+                except KeyError as error:
+                    raise ValueError(
+                        f"reference report {reference_variant} is missing "
+                        f"{scope_name}/{padding_key}"
+                    ) from error
+                reference_rows[reference_variant] = _aggregate_lift(
+                    candidate, reference
+                )
+                reference_recordings = {
+                    row["id"]: row for row in reference["perRecording"]
+                }
+                if candidate_recordings.keys() != reference_recordings.keys():
+                    raise ValueError(
+                        "candidate and reference per-recording sets differ for "
+                        f"{scope_name}/{padding_key}"
+                    )
+                for recording_id, row in candidate_recordings.items():
+                    per_recording[recording_id]["versus"][reference_variant] = (
+                        _recording_lift(
+                            row,
+                            reference_recordings[recording_id],
+                        )
+                    )
+            scope_result[padding_key] = {
+                "paddingSecondsBeforeAndAfter": padding,
+                "candidate": {
+                    "fullyContainedCoreRallies": candidate[
+                        "fullyContainedCoreRallies"
+                    ],
+                    "expectedCoreRallies": candidate["expectedCoreRallies"],
+                    "adjustedMetrics": candidate["adjustedMetrics"],
+                    "eventMetricsAtIou05": candidate["eventMetricsAtIou05"],
+                    "cropCounts": candidate["cropCounts"],
+                },
+                "versus": reference_rows,
+                "perRecording": list(per_recording.values()),
+            }
+        by_scope[scope_name] = scope_result
+    return {
+        "candidateVariant": candidate_variant,
+        "referenceVariants": list(reference_variants),
+        "paddingSecondsBeforeAndAfter": list(LIFT_PADDING_SECONDS),
+        "interpretation": (
+            "Point fields are candidate minus reference in percentage points; "
+            "count and duration fields are candidate minus reference in their "
+            "named units. Protected-test rows are descriptive guardrails only."
+        ),
+        "byScope": by_scope,
+    }
 
 
 def main() -> int:
@@ -279,7 +537,10 @@ def main() -> int:
     model_workspace = data_root / "labeling-v1-2026-08-09-no-beach-2026-08-12"
     analyses_root = model_workspace / "analyses"
     parser = argparse.ArgumentParser(
-        description="Compare offline and browser model-9c92 export padding."
+        description=(
+            "Compare offline, browser-linear, and optionally browser-libswresample "
+            "model-9c92 export padding."
+        )
     )
     parser.add_argument(
         "--manifest",
@@ -297,16 +558,59 @@ def main() -> int:
         default=gold_workspace / "labels/full",
     )
     parser.add_argument("--analyses-root", type=Path, default=analyses_root)
-    parser.add_argument("--padding-seconds", type=float, nargs="+", default=[2, 3])
+    parser.add_argument(
+        "--padding-seconds",
+        type=float,
+        nargs="+",
+        default=None,
+        help=(
+            "Padding sweep. The SWR experiment requires exactly 0 1 2 3; "
+            "legacy two-runtime reproduction defaults to 2 3."
+        ),
+    )
+    parser.add_argument(
+        "--include-libswresample-wasm",
+        action="store_true",
+        help=(
+            "Include ranges produced by the browser libswresample-WASM runtime "
+            "and emit its pad-2s/pad-3s lifts."
+        ),
+    )
+    parser.add_argument(
+        "--libswresample-wasm-prefix",
+        default=LIBSWRESAMPLE_WASM_PREFIX,
+        help="Analysis artifact prefix for the libswresample-WASM runtime.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     destination = args.output.expanduser().resolve()
     if destination.exists():
         raise ValueError(f"refusing to overwrite existing report: {destination}")
-    paddings = sorted(set(float(value) for value in args.padding_seconds))
+    requested_paddings = args.padding_seconds
+    if requested_paddings is None:
+        requested_paddings = (
+            list(REQUIRED_PADDING_SECONDS)
+            if args.include_libswresample_wasm
+            else [2.0, 3.0]
+        )
+    paddings = sorted(set(float(value) for value in requested_paddings))
     if not paddings or paddings[0] < 0:
         raise ValueError("padding values must be non-negative")
+    if (
+        args.include_libswresample_wasm
+        and tuple(paddings) != REQUIRED_PADDING_SECONDS
+    ):
+        raise ValueError(
+            "the libswresample-WASM comparison requires padding values "
+            "0, 1, 2, and 3 seconds"
+        )
+    variants = dict(BASE_VARIANTS)
+    if args.include_libswresample_wasm:
+        prefix = args.libswresample_wasm_prefix.strip()
+        if not prefix:
+            raise ValueError("libswresample-WASM artifact prefix cannot be empty")
+        variants[LIBSWRESAMPLE_WASM_VARIANT] = prefix
     manifest_path = args.manifest.expanduser().resolve()
     model_manifest_path = args.model_manifest.expanduser().resolve()
     labels_root = args.labels_root.expanduser().resolve()
@@ -366,7 +670,7 @@ def main() -> int:
     }
     variant_reports: dict[str, Any] = {}
     analysis_provenance: dict[str, dict[str, Any]] = {}
-    for variant_label, prefix in VARIANTS.items():
+    for variant_label, prefix in variants.items():
         loaded: dict[str, RecordingIntervals] = {}
         provenance: dict[str, Any] = {}
         for recording in manifest.recordings:
@@ -377,6 +681,16 @@ def main() -> int:
                 analysis_id,
                 recording.id,
             )
+            if variant_label == LIBSWRESAMPLE_WASM_VARIANT and (
+                metadata["method"]
+                != "browser-on-device-webcodecs-opencv-libswresample-wasm-v1"
+                or metadata["runtimeVariant"] != "libswresample-wasm-v1"
+                or metadata["audioResampler"] != "ffmpeg-libswresample-wasm"
+                or metadata["modelBundleSha256"] != MODEL_BUNDLE_SHA256
+            ):
+                raise ValueError(
+                    f"libswresample-WASM provenance is invalid in {path}"
+                )
             if recording.rallies and recording.rallies[-1].end > duration + 1e-6:
                 raise ValueError(
                     f"gold labels exceed inference duration for {recording.id}"
@@ -401,17 +715,22 @@ def main() -> int:
     for recording in manifest.recordings:
         source_hashes = {
             analysis_provenance[variant][recording.id]["sourceContentSha256"]
-            for variant in VARIANTS
+            for variant in variants
         }
         if len(source_hashes) != 1:
             raise ValueError(
                 f"runtime variants reference different source media for {recording.id}"
             )
 
+    subject = (
+        "offline-versus-browser-audio-resampler-model-9c92b8e9333f"
+        if args.include_libswresample_wasm
+        else "offline-versus-browser-on-device-model-9c92b8e9333f"
+    )
     report = {
         "schemaVersion": 1,
         "createdAt": datetime.now(UTC).isoformat(),
-        "subject": "offline-versus-browser-on-device-model-9c92b8e9333f",
+        "subject": subject,
         "expectedModelSha256": MODEL_SHA256,
         "expectedModelVersion": MODEL_VERSION,
         "expectedModelComponents": MODEL_COMPONENTS,
@@ -471,6 +790,9 @@ def main() -> int:
         },
         "paddingPolicy": {
             "symmetricSecondsBeforeAndAfter": paddings,
+            "declaredTargetSecondsBeforeAndAfter": 3.0,
+            "secondarySensitivitySecondsBeforeAndAfter": 2.0,
+            "selectionScope": "validation2",
             "clipToVideoBounds": True,
             "mergeTouchingOrOverlappingRanges": True,
             "subtractIgnoredIntervals": True,
@@ -493,11 +815,47 @@ def main() -> int:
                 "regression check and was not used to choose this model or padding."
             ),
             (
-                "The browser path uses a non-parity linear audio resampler and "
-                "currently differs from canonical FFmpeg/OpenCV feature extraction."
+                "The existing browser reference uses a non-parity linear audio "
+                "resampler and differs from canonical FFmpeg/OpenCV extraction."
             ),
         ],
     }
+    if args.include_libswresample_wasm:
+        wasm_path = (
+            repository_root
+            / "vendor/libswresample-wasm/dist/libswresample.wasm"
+        )
+        glue_path = (
+            repository_root
+            / "vendor/libswresample-wasm/dist/libswresample.mjs"
+        )
+        if sha256_file(wasm_path) != LIBSWRESAMPLE_WASM_SHA256:
+            raise ValueError("checked-in libswresample WASM has the wrong SHA-256")
+        if sha256_file(glue_path) != LIBSWRESAMPLE_GLUE_SHA256:
+            raise ValueError("checked-in libswresample loader has the wrong SHA-256")
+        report["runtimeAssets"] = {
+            "libswresampleWasm": {
+                "version": "FFmpeg 7.1.5 / libswresample 5.3.100",
+                "path": str(wasm_path),
+                "fileSha256": LIBSWRESAMPLE_WASM_SHA256,
+            },
+            "libswresampleLoader": {
+                "path": str(glue_path),
+                "fileSha256": LIBSWRESAMPLE_GLUE_SHA256,
+            },
+        }
+        report["liftSummaries"] = build_lift_summaries(
+            variant_reports,
+            candidate_variant=LIBSWRESAMPLE_WASM_VARIANT,
+            reference_variants=("browserOnDevice", "offline"),
+        )
+        report["caveats"].append(
+            (
+                "The libswresample-WASM run changes only the browser audio resampling "
+                "path; remaining browser-versus-offline visual extraction differences "
+                "are still present."
+            )
+        )
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("x", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, allow_nan=False)

@@ -40,6 +40,7 @@
     "evaluate:labels": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-labels.py",
     "test:analysis": ".venv/bin/python -m unittest discover -s analysis/tests -v",
     "test:web": "node --experimental-strip-types --test tests/web/*.test.mts",
+    "validate:libswresample-wasm": "node scripts/validate-libswresample-wasm.mjs",
     "test": "npm run test:web && npm run test:analysis"
   },
   "dependencies": {

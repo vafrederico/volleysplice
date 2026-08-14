@@ -11,6 +11,10 @@ import {
 import { GET as getBatchMediaRoute } from "../../app/api/on-device-batch/media/[id]/route.ts";
 import { parseAnalysis } from "../../lib/analysis.ts";
 import {
+  DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+  type OnDeviceRuntimeVariant,
+} from "../../lib/on-device/runtime-variants.ts";
+import {
   assertOnDeviceBatchAuthorized,
   buildOnDeviceBatchCatalog,
   configuredOnDeviceBatchOutputRoot,
@@ -23,6 +27,8 @@ import {
   OnDeviceBatchConfigurationError,
   OnDeviceBatchConflictError,
   OnDeviceBatchValidationError,
+  onDeviceBatchAnalysisId,
+  onDeviceRuntimeVariantFromRequest,
   persistOnDeviceBatchAnalysis,
   readPersistedOnDeviceBatchAnalysis,
   type OnDeviceBatchSubmission,
@@ -43,7 +49,11 @@ type SavedArtifact = {
     modelVersion: string;
     variantLabel: string;
     modelBundleSha256: string;
-    provenance: { inferenceLocation: string };
+    provenance: {
+      inferenceLocation: string;
+      runtimeVariant: string;
+      audioResampler: string;
+    };
     warnings: string[];
   };
   rallies: unknown[];
@@ -74,11 +84,16 @@ function taskFor(id: string, duration = 100): OnDeviceBatchTask {
   } as OnDeviceBatchTask;
 }
 
-function validBody(recordingId: string, duration = 100): unknown {
+function validBody(
+  recordingId: string,
+  duration = 100,
+  runtimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+): unknown {
   return {
     recordingId,
     modelId: ON_DEVICE_BATCH_MODEL_ID,
     featurePath: ON_DEVICE_BATCH_FEATURE_PATH,
+    runtimeVariant,
     media: {
       duration: duration + 0.02,
       mimeType: "video/mp4",
@@ -142,6 +157,36 @@ test("batch authorization requires the configured bearer token exactly", () => {
   }
 });
 
+test("runtime variant query defaults to linear and rejects unknown or repeated values", () => {
+  assert.equal(
+    onDeviceRuntimeVariantFromRequest(
+      new Request("https://example.test/api/on-device-batch"),
+    ),
+    "linear-v1",
+  );
+  assert.equal(
+    onDeviceRuntimeVariantFromRequest(
+      new Request(
+        "https://example.test/api/on-device-batch?variant=libswresample-wasm-v1",
+      ),
+    ),
+    "libswresample-wasm-v1",
+  );
+  for (const query of [
+    "?variant=unknown",
+    "?variant=linear-v1&variant=libswresample-wasm-v1",
+    "?variant=",
+  ]) {
+    assert.throws(
+      () =>
+        onDeviceRuntimeVariantFromRequest(
+          new Request(`https://example.test/api/on-device-batch${query}`),
+        ),
+      OnDeviceBatchValidationError,
+    );
+  }
+});
+
 test("route rejects unauthorized, non-JSON, malformed, and oversized requests", async () => {
   const previous = process.env[TOKEN_ENV];
   process.env[TOKEN_ENV] = "route-token";
@@ -155,6 +200,24 @@ test("route rejects unauthorized, non-JSON, malformed, and oversized requests", 
     assert.deepEqual(await unauthorized.json(), { error: "Unauthorized" });
     assert.equal(unauthorized.headers.get("www-authenticate"), "Bearer");
     assert.equal(unauthorized.headers.get("cache-control"), "private, no-store");
+
+    const unknownGetVariant = await getBatchRoute(
+      new Request("https://example.test/api/on-device-batch?variant=unknown", {
+        headers: { Authorization: "Bearer route-token" },
+      }),
+    );
+    assert.equal(unknownGetVariant.status, 400);
+    assert.deepEqual(await unknownGetVariant.json(), {
+      error: "variant must be linear-v1 or libswresample-wasm-v1",
+    });
+
+    const unknownPostVariant = await postBatchRoute(
+      new Request("https://example.test/api/on-device-batch?variant=unknown", {
+        method: "POST",
+        headers: { Authorization: "Bearer route-token" },
+      }),
+    );
+    assert.equal(unknownPostVariant.status, 400);
 
     for (const origin of [undefined, "https://attacker.test"] as const) {
       const headers: Record<string, string> = {
@@ -294,6 +357,7 @@ test("catalog exposes only fixed media metadata and completion state", async () 
     assert.equal(catalog.schemaVersion, 1);
     assert.equal(catalog.modelId, ON_DEVICE_BATCH_MODEL_ID);
     assert.equal(catalog.featurePath, "training-proxy");
+    assert.equal(catalog.runtimeVariant, "linear-v1");
     assert.deepEqual(catalog.videos.map(({ id }) => id), [...ON_DEVICE_BATCH_RECORDING_IDS]);
     assert.equal(catalog.videos.find(({ id }) => id === completedId)?.completed, true);
     assert.equal(catalog.videos.filter(({ completed }) => completed).length, 1);
@@ -314,6 +378,17 @@ test("catalog exposes only fixed media metadata and completion state", async () 
       catalog.videos[0].mediaUrl,
       `/api/on-device-batch/media/${encodeURIComponent(ON_DEVICE_BATCH_RECORDING_IDS[0])}`,
     );
+    assert.equal(
+      onDeviceBatchAnalysisId(completedId, "libswresample-wasm-v1"),
+      `model-browser-on-device-libswresample-wasm-9c92b8e9333f--${completedId}`,
+    );
+    const resampledCatalog = await buildOnDeviceBatchCatalog(
+      ON_DEVICE_BATCH_RECORDING_IDS.map((id) => taskFor(id)),
+      outputRoot,
+      "libswresample-wasm-v1",
+    );
+    assert.equal(resampledCatalog.runtimeVariant, "libswresample-wasm-v1");
+    assert.equal(resampledCatalog.videos.filter(({ completed }) => completed).length, 0);
     await assert.rejects(
       buildOnDeviceBatchCatalog(
         ON_DEVICE_BATCH_RECORDING_IDS.slice(1).map((id) => taskFor(id)),
@@ -332,6 +407,7 @@ test("submission validation accepts only the fixed browser model and proxy media
   assert.equal(submission.recordingId, task.id);
   assert.equal(submission.modelId, ON_DEVICE_BATCH_MODEL_ID);
   assert.equal(submission.featurePath, "training-proxy");
+  assert.equal(submission.runtimeVariant, "linear-v1");
   assert.equal(submission.media.duration, 100.02);
   assert.deepEqual(submission.intervals.map(({ id }) => id), ["R001", "R002"]);
 
@@ -349,6 +425,7 @@ test("submission validation accepts only the fixed browser model and proxy media
   const invalidBodies = [
     { ...validBody(task.id) as Record<string, unknown>, modelId: "another-model" },
     { ...validBody(task.id) as Record<string, unknown>, featurePath: "raw-virtual-proxy" },
+    { ...validBody(task.id) as Record<string, unknown>, runtimeVariant: "unknown-v1" },
     {
       ...validBody(task.id) as Record<string, unknown>,
       media: {
@@ -396,6 +473,24 @@ test("submission validation accepts only the fixed browser model and proxy media
       OnDeviceBatchValidationError,
     );
   }
+
+  assert.throws(
+    () =>
+      validateOnDeviceBatchSubmission(
+        validBody(task.id),
+        task,
+        "libswresample-wasm-v1",
+      ),
+    OnDeviceBatchValidationError,
+  );
+  assert.equal(
+    validateOnDeviceBatchSubmission(
+      validBody(task.id, 100, "libswresample-wasm-v1"),
+      task,
+      "libswresample-wasm-v1",
+    ).runtimeVariant,
+    "libswresample-wasm-v1",
+  );
 });
 
 test("persistence creates one ordinary no-beach analysis atomically and append-only", async () => {
@@ -432,6 +527,11 @@ test("persistence creates one ordinary no-beach analysis atomically and append-o
     assert.equal(artifact.analysis.variantLabel, "Browser on-device · model-9c92b8e9333f");
     assert.equal(artifact.analysis.modelBundleSha256, ON_DEVICE_BATCH_BUNDLE_SHA256);
     assert.equal(artifact.analysis.provenance.inferenceLocation, "browser");
+    assert.equal(artifact.analysis.provenance.runtimeVariant, "linear-v1");
+    assert.equal(
+      artifact.analysis.provenance.audioResampler,
+      "deterministic-linear-48khz-to-16khz",
+    );
     assert.match(artifact.analysis.warnings.join(" "), /resampler/);
     assert.equal(artifact.rallies.length, 2);
     assert.equal(
@@ -462,6 +562,56 @@ test("persistence creates one ordinary no-beach analysis atomically and append-o
     assert.deepEqual(
       (await fs.readdir(outputRoot)).filter((name) => name.includes(".staging-")),
       [],
+    );
+  } finally {
+    await fs.rm(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("libswresample persistence uses a distinct append-only artifact identity", async () => {
+  const outputRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), "volleycut-browser-libswresample-save-"),
+  );
+  const task = taskFor("indoor-source-07");
+  const runtimeVariant = "libswresample-wasm-v1";
+  const submission = validateOnDeviceBatchSubmission(
+    validBody(task.id, 100, runtimeVariant),
+    task,
+    runtimeVariant,
+  );
+  try {
+    const result = await persistOnDeviceBatchAnalysis(
+      task,
+      submission,
+      outputRoot,
+      "2026-08-13T20:02:00.000Z",
+    );
+    assert.equal(
+      result.analysisId,
+      `model-browser-on-device-libswresample-wasm-9c92b8e9333f--${task.id}`,
+    );
+    const artifact = await readPersistedOnDeviceBatchAnalysis(
+      outputRoot,
+      task.id,
+      runtimeVariant,
+    ) as SavedArtifact;
+    assert.equal(
+      artifact.analysis.method,
+      "browser-on-device-webcodecs-opencv-libswresample-wasm-v1",
+    );
+    assert.equal(
+      artifact.analysis.variantLabel,
+      "Browser on-device · libswresample WASM · model-9c92b8e9333f",
+    );
+    assert.equal(artifact.analysis.provenance.runtimeVariant, runtimeVariant);
+    assert.equal(
+      artifact.analysis.provenance.audioResampler,
+      "ffmpeg-libswresample-wasm",
+    );
+    assert.match(artifact.analysis.warnings.join(" "), /libswresample WASM/);
+    await assert.rejects(
+      readPersistedOnDeviceBatchAnalysis(outputRoot, task.id),
+      { code: "ENOENT" },
     );
   } finally {
     await fs.rm(outputRoot, { recursive: true, force: true });

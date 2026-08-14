@@ -5,6 +5,7 @@ import { AudioSample } from "mediabunny";
 import {
   AudioAccumulator,
   planTimestampedAudioChunk,
+  type StreamingAudioResampler,
 } from "../../lib/on-device/audio-features.ts";
 
 const SAMPLE_RATE = 16_000;
@@ -95,4 +96,47 @@ test("the accumulator discards overlap before resampling", () => {
   assert.equal(features.rms.length, 2);
   approximately(features.rms[0], QUANTIZED_ONE);
   approximately(features.rms[1], 0.5 / Math.sqrt(2));
+});
+
+test("timestamp repair happens before planar WASM resampling", () => {
+  class CapturingResampler implements StreamingAudioResampler {
+    readonly inputs: number[][][] = [];
+    closed = false;
+
+    configure(): void {}
+
+    push(planes: readonly Float32Array[]): Int16Array {
+      this.inputs.push(planes.map((plane) => Array.from(plane)));
+      return new Int16Array(0);
+    }
+
+    flush(): Int16Array {
+      return new Int16Array(0);
+    }
+
+    close(): void {
+      this.closed = true;
+    }
+  }
+
+  const resampler = new CapturingResampler();
+  const accumulator = new AudioAccumulator(resampler);
+  accumulator.pushPlanar(
+    [Float32Array.from([1, 2, 3, 4, 5, 6, 7, 8]), Float32Array.from([8, 7, 6, 5, 4, 3, 2, 1])],
+    -0.5,
+    8,
+  );
+  accumulator.pushPlanar(
+    [Float32Array.from([9, 10]), Float32Array.from([11, 12])],
+    0.75,
+    8,
+  );
+  accumulator.finish();
+
+  assert.deepEqual(resampler.inputs, [
+    [[5, 6, 7, 8], [4, 3, 2, 1]],
+    [[0, 0], [0, 0]],
+    [[9, 10], [11, 12]],
+  ]);
+  assert.equal(resampler.closed, true);
 });

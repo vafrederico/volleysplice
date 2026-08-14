@@ -5,6 +5,7 @@ import {
   OnDeviceBatchConfigurationError,
   OnDeviceBatchConflictError,
   OnDeviceBatchValidationError,
+  onDeviceRuntimeVariantFromRequest,
   saveOnDeviceBatchSubmission,
 } from "../../../lib/server/on-device-batch.ts";
 
@@ -76,7 +77,10 @@ function errorResponse(error: unknown): Response {
 export async function GET(request: Request) {
   try {
     assertOnDeviceBatchAuthorized(request);
-    return Response.json(await getOnDeviceBatchCatalog(), { headers: responseHeaders() });
+    const runtimeVariant = onDeviceRuntimeVariantFromRequest(request);
+    return Response.json(await getOnDeviceBatchCatalog(runtimeVariant), {
+      headers: responseHeaders(),
+    });
   } catch (error) {
     return errorResponse(error);
   }
@@ -85,6 +89,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     assertOnDeviceBatchAuthorized(request);
+    const runtimeVariant = onDeviceRuntimeVariantFromRequest(request);
     const origin = request.headers.get("origin");
     if (origin === null || origin !== requestPublicOrigin(request)) {
       return Response.json(
@@ -119,7 +124,7 @@ export async function POST(request: Request) {
     } catch {
       throw new OnDeviceBatchValidationError("Request body must be valid JSON");
     }
-    const saved = await saveOnDeviceBatchSubmission(body);
+    const saved = await saveOnDeviceBatchSubmission(body, runtimeVariant);
     return Response.json(
       { created: true, ...saved },
       { status: 201, headers: responseHeaders() },

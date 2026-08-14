@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { parseOnDeviceRuntimeVariantQueryValue } from "@/lib/on-device/runtime-variants";
+
 import { OnDeviceBatchClient } from "./on-device-batch-client";
 
 export const metadata: Metadata = {
@@ -8,6 +10,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function OnDeviceBatchPage() {
-  return <OnDeviceBatchClient />;
+export default async function OnDeviceBatchPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ variant?: string | string[] }>;
+}) {
+  const requested = (await searchParams).variant;
+  return (
+    <OnDeviceBatchClient
+      runtimeVariant={parseOnDeviceRuntimeVariantQueryValue(requested)}
+    />
+  );
 }

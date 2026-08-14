@@ -13,6 +13,10 @@ import {
 import { contextualizeFeatures, rollingMean } from "./feature-math";
 import { analysisTimestamps, type OpenedMedia } from "./media";
 import { loadOnDeviceModelBundle, runOnDeviceModel } from "./model";
+import {
+  DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+  type OnDeviceRuntimeVariant,
+} from "./runtime-variants";
 import type {
   AnalysisProgress,
   BaseFeatureSequence,
@@ -83,6 +87,7 @@ function yieldToBrowser(): Promise<void> {
 export async function extractBrowserFeatures(
   media: OpenedMedia,
   roi: NormalizedRoi,
+  runtimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
   onProgress?: (progress: AnalysisProgress) => void,
 ): Promise<BaseFeatureSequence> {
   onProgress?.({ stage: "video", completed: 0, total: media.info.duration, detail: "Loading OpenCV WASM" });
@@ -144,6 +149,7 @@ export async function extractBrowserFeatures(
     media.audioTrack,
     timeValues,
     media.info.duration,
+    runtimeVariant,
     onProgress,
   );
   const base = new Float32Array(rows.length * BASE_FEATURE_NAMES.length);
@@ -178,10 +184,19 @@ export async function analyzeOpenedMedia(
   media: OpenedMedia,
   roi: NormalizedRoi,
   featurePath: OnDeviceAnalysis["featurePath"],
+  runtimeVariantOrProgress:
+    | OnDeviceRuntimeVariant
+    | ((progress: AnalysisProgress) => void) = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
   onProgress?: (progress: AnalysisProgress) => void,
 ): Promise<OnDeviceAnalysis> {
-  const sequence = await extractBrowserFeatures(media, roi, onProgress);
-  onProgress?.({
+  const runtimeVariant =
+    typeof runtimeVariantOrProgress === "string"
+      ? runtimeVariantOrProgress
+      : DEFAULT_ON_DEVICE_RUNTIME_VARIANT;
+  const progress =
+    typeof runtimeVariantOrProgress === "function" ? runtimeVariantOrProgress : onProgress;
+  const sequence = await extractBrowserFeatures(media, roi, runtimeVariant, progress);
+  progress?.({
     stage: "normalizing",
     completed: 0,
     total: sequence.rows,
@@ -199,7 +214,7 @@ export async function analyzeOpenedMedia(
   ) {
     throw new Error("Extracted feature signature does not match model-9c92b8e9333f.");
   }
-  onProgress?.({
+  progress?.({
     stage: "inference",
     completed: sequence.rows,
     total: sequence.rows,
@@ -212,7 +227,7 @@ export async function analyzeOpenedMedia(
     media.info.duration,
   );
   const intervals = inference.rallies.map((rally) => ({ ...rally }));
-  onProgress?.({
+  progress?.({
     stage: "complete",
     completed: media.info.duration,
     total: media.info.duration,

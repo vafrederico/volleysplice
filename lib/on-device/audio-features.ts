@@ -3,6 +3,8 @@ import { AudioSampleSink, type AudioSample, type InputAudioTrack } from "mediabu
 
 import { ANALYSIS_FPS, AUDIO_FEATURE_NAMES } from "./feature-schema.ts";
 import { mean, percentileRanks, quantile, rollingMean } from "./feature-math.ts";
+import { LibswresampleWasmResampler } from "./libswresample-wasm.ts";
+import type { OnDeviceRuntimeVariant } from "./runtime-variants.ts";
 import type { AnalysisProgress } from "./types.ts";
 
 const TARGET_SAMPLE_RATE = 16_000;
@@ -23,6 +25,13 @@ type AudioFrameFeatures = {
   peak: number[];
   spectralFlux: number[];
   bandPower: number[][];
+};
+
+export type StreamingAudioResampler = {
+  configure(inputSampleRate: number, inputChannels: number): void;
+  push(planes: readonly Float32Array[]): Int16Array;
+  flush(): Int16Array;
+  close(): void;
 };
 
 export type TimestampedAudioChunkPlan = {
@@ -124,6 +133,7 @@ function rollingPercentile(values: Float32Array, window: number, percentile: num
 }
 
 export class AudioAccumulator {
+  private readonly wasmResampler: StreamingAudioResampler | null;
   private readonly fft = new FFT(FFT_SIZE);
   private readonly window = Float32Array.from(
     { length: FRAME_SAMPLES },
@@ -150,7 +160,22 @@ export class AudioAccumulator {
     bandPower: BAND_BOUNDS.map(() => []),
   };
 
+  constructor(wasmResampler: StreamingAudioResampler | null = null) {
+    this.wasmResampler = wasmResampler;
+  }
+
   push(sample: AudioSample): void {
+    if (this.wasmResampler) {
+      const planes: Float32Array[] = [];
+      for (let channel = 0; channel < sample.numberOfChannels; channel += 1) {
+        const allocation = sample.allocationSize({ format: "f32-planar", planeIndex: channel });
+        const plane = new Float32Array(allocation / Float32Array.BYTES_PER_ELEMENT);
+        sample.copyTo(plane, { format: "f32-planar", planeIndex: channel });
+        planes.push(plane);
+      }
+      this.pushPlanar(planes, sample.timestamp, sample.sampleRate);
+      return;
+    }
     const allocation = sample.allocationSize({ format: "f32", planeIndex: 0 });
     const interleaved = new Float32Array(allocation / Float32Array.BYTES_PER_ELEMENT);
     sample.copyTo(interleaved, { format: "f32", planeIndex: 0 });
@@ -166,6 +191,10 @@ export class AudioAccumulator {
   }
 
   pushMono(mono: Float32Array, timestamp: number, sampleRate: number): void {
+    if (this.wasmResampler) {
+      this.pushPlanar([mono], timestamp, sampleRate);
+      return;
+    }
     if (this.sourceRate && this.sourceRate !== sampleRate) {
       throw new Error("Audio sample rate changed within the source track.");
     }
@@ -182,7 +211,45 @@ export class AudioAccumulator {
     this.nextSourceFrame = plan.nextFrame;
   }
 
+  pushPlanar(planes: readonly Float32Array[], timestamp: number, sampleRate: number): void {
+    if (!this.wasmResampler) {
+      throw new Error("Planar audio input requires the libswresample WASM runtime.");
+    }
+    if (planes.length < 1 || planes.length > 2) {
+      throw new Error("The libswresample experiment supports mono or stereo audio.");
+    }
+    const frameCount = planes[0].length;
+    if (planes.some((plane) => plane.length !== frameCount)) {
+      throw new Error("Decoded audio planes have different frame counts.");
+    }
+    if (this.sourceRate && this.sourceRate !== sampleRate) {
+      throw new Error("Audio sample rate changed within the source track.");
+    }
+    this.sourceRate = sampleRate;
+    this.wasmResampler.configure(sampleRate, planes.length);
+    const plan = planTimestampedAudioChunk(
+      timestamp,
+      frameCount,
+      sampleRate,
+      this.nextSourceFrame,
+    );
+    if (plan.gapFrames > 0) this.appendPlanarSilence(plan.gapFrames, planes.length);
+    if (plan.appendFrames > 0) {
+      this.pushResampled(
+        this.wasmResampler.push(planes.map((plane) => plane.subarray(plan.trimFrames))),
+      );
+    }
+    this.nextSourceFrame = plan.nextFrame;
+  }
+
   finish(): AudioFrameFeatures {
+    if (this.wasmResampler) {
+      try {
+        this.pushResampled(this.wasmResampler.flush());
+      } finally {
+        this.wasmResampler.close();
+      }
+    }
     if (this.sourceBuffer.length) {
       while (this.sourcePosition < this.sourceBuffer.length) {
         this.pushOutput(this.sourceBuffer[Math.min(this.sourceBuffer.length - 1, Math.floor(this.sourcePosition))]);
@@ -195,6 +262,10 @@ export class AudioAccumulator {
       this.outputFrame = [];
     }
     return this.features;
+  }
+
+  dispose(): void {
+    this.wasmResampler?.close();
   }
 
   private appendSource(mono: Float32Array): void {
@@ -227,6 +298,26 @@ export class AudioAccumulator {
       this.appendSource(length === block.length ? block : block.subarray(0, length));
       remaining -= length;
     }
+  }
+
+  private appendPlanarSilence(frameCount: number, channels: number): void {
+    if (!this.wasmResampler) return;
+    const blockFrames = Math.min(frameCount, Math.max(1, Math.round(this.sourceRate)));
+    const block = Array.from({ length: channels }, () => new Float32Array(blockFrames));
+    let remaining = frameCount;
+    while (remaining > 0) {
+      const length = Math.min(remaining, blockFrames);
+      this.pushResampled(
+        this.wasmResampler.push(
+          length === blockFrames ? block : block.map((plane) => plane.subarray(0, length)),
+        ),
+      );
+      remaining -= length;
+    }
+  }
+
+  private pushResampled(samples: Int16Array): void {
+    for (const sample of samples) this.pushOutput(sample / 32768);
   }
 
   private pushOutput(value: number): void {
@@ -371,29 +462,48 @@ export async function extractAudioFeatures(
   audioTrack: InputAudioTrack | null,
   times: Float64Array,
   duration: number,
+  runtimeVariant: OnDeviceRuntimeVariant = "linear-v1",
   onProgress?: (progress: AnalysisProgress) => void,
 ): Promise<Float32Array> {
   const columns = AUDIO_FEATURE_NAMES.length;
   const output = new Float32Array(times.length * columns);
   if (!audioTrack || !(await audioTrack.canDecode())) return output;
 
-  const accumulator = new AudioAccumulator();
+  const accumulator = new AudioAccumulator(
+    runtimeVariant === "libswresample-wasm-v1"
+      ? await LibswresampleWasmResampler.create()
+      : null,
+  );
   const sink = new AudioSampleSink(audioTrack);
   let lastProgress = -1;
-  for await (const sample of sink.samples()) {
-    try {
-      accumulator.push(sample);
-      const progress = Math.min(duration, Math.max(0, sample.timestamp + sample.duration));
-      const rounded = Math.floor(progress);
-      if (rounded !== lastProgress) {
-        lastProgress = rounded;
-        onProgress?.({ stage: "audio", completed: progress, total: duration, detail: "Decoding audio at 16 kHz" });
+  let frames: AudioFrameFeatures;
+  try {
+    for await (const sample of sink.samples()) {
+      try {
+        accumulator.push(sample);
+        const progress = Math.min(duration, Math.max(0, sample.timestamp + sample.duration));
+        const rounded = Math.floor(progress);
+        if (rounded !== lastProgress) {
+          lastProgress = rounded;
+          onProgress?.({
+            stage: "audio",
+            completed: progress,
+            total: duration,
+            detail:
+              runtimeVariant === "libswresample-wasm-v1"
+                ? "Decoding audio through libswresample WASM"
+                : "Decoding audio at 16 kHz",
+          });
+        }
+      } finally {
+        sample.close();
       }
-    } finally {
-      sample.close();
     }
+    frames = accumulator.finish();
+  } catch (error) {
+    accumulator.dispose();
+    throw error;
   }
-  const frames = accumulator.finish();
   if (frames.rms.length === 0) return output;
   const sources = buildFrameFeatureSources(frames);
   const audioTimes = Float64Array.from(

@@ -2,6 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 import { copyFile, lstat, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+  isOnDeviceRuntimeVariant,
+  type OnDeviceRuntimeVariant,
+} from "../on-device/runtime-variants.ts";
 import type { PreparedLabelingTask } from "./labeling-tasks.ts";
 
 export const ON_DEVICE_BATCH_MODEL_ID = "model-9c92b8e9333f";
@@ -15,6 +20,44 @@ const TOKEN_ENV = "VOLLEYCUT_ON_DEVICE_BATCH_TOKEN";
 const OUTPUT_ROOT_ENV = "VOLLEYCUT_ON_DEVICE_BATCH_OUTPUT_ROOT";
 const MAX_INTERVALS = 1_000;
 const DURATION_TOLERANCE_SECONDS = 0.1;
+
+const RUNTIME_VARIANT_CONFIG = {
+  "linear-v1": {
+    analysisIdPrefix: "model-browser-on-device-9c92b8e9333f--",
+    method: "browser-on-device-webcodecs-opencv-wasm-v1",
+    variantLabel: "Browser on-device · model-9c92b8e9333f",
+    variantDescription:
+      "Browser-native WebCodecs, OpenCV WASM, and CPU inference over the fixed training proxy; media-feature parity remains unvalidated.",
+    audioResampler: "deterministic-linear-48khz-to-16khz",
+    warning:
+      "The browser uses a deterministic linear 48 kHz to 16 kHz audio resampler that does not match FFmpeg/libswresample; this comparison run is experimental.",
+    titleSuffix: "browser on-device",
+  },
+  "libswresample-wasm-v1": {
+    analysisIdPrefix:
+      "model-browser-on-device-libswresample-wasm-9c92b8e9333f--",
+    method: "browser-on-device-webcodecs-opencv-libswresample-wasm-v1",
+    variantLabel:
+      "Browser on-device · libswresample WASM · model-9c92b8e9333f",
+    variantDescription:
+      "Browser-native WebCodecs, OpenCV WASM, FFmpeg libswresample WASM audio conversion, and CPU inference over the fixed training proxy; end-to-end parity remains under evaluation.",
+    audioResampler: "ffmpeg-libswresample-wasm",
+    warning:
+      "The browser uses the experimental FFmpeg/libswresample WASM path for 48 kHz to 16 kHz audio; exact end-to-end feature and interval parity remains under evaluation.",
+    titleSuffix: "browser on-device · libswresample WASM",
+  },
+} as const satisfies Record<
+  OnDeviceRuntimeVariant,
+  {
+    analysisIdPrefix: string;
+    method: string;
+    variantLabel: string;
+    variantDescription: string;
+    audioResampler: string;
+    warning: string;
+    titleSuffix: string;
+  }
+>;
 
 const MODEL_PARTS = {
   rally: {
@@ -80,6 +123,7 @@ export type OnDeviceBatchSubmission = {
   recordingId: string;
   modelId: typeof ON_DEVICE_BATCH_MODEL_ID;
   featurePath: typeof ON_DEVICE_BATCH_FEATURE_PATH;
+  runtimeVariant: OnDeviceRuntimeVariant;
   media: BrowserMedia;
   intervals: BrowserInterval[];
   provenance: {
@@ -127,8 +171,22 @@ function finite(value: unknown, field: string): number {
   return value;
 }
 
-function analysisId(recordingId: string): string {
-  return `model-browser-on-device-9c92b8e9333f--${recordingId}`;
+export function onDeviceBatchAnalysisId(
+  recordingId: string,
+  runtimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+): string {
+  return `${RUNTIME_VARIANT_CONFIG[runtimeVariant].analysisIdPrefix}${recordingId}`;
+}
+
+export function onDeviceRuntimeVariantFromRequest(request: Request): OnDeviceRuntimeVariant {
+  const variants = new URL(request.url).searchParams.getAll("variant");
+  if (variants.length === 0) return DEFAULT_ON_DEVICE_RUNTIME_VARIANT;
+  if (variants.length !== 1 || !isOnDeviceRuntimeVariant(variants[0])) {
+    throw new OnDeviceBatchValidationError(
+      "variant must be linear-v1 or libswresample-wasm-v1",
+    );
+  }
+  return variants[0];
 }
 
 function configuredToken(): string {
@@ -183,9 +241,17 @@ function fixedTasks(tasks: readonly BatchTask[]): BatchTask[] {
   return ON_DEVICE_BATCH_RECORDING_IDS.map((id) => full.get(id)!);
 }
 
-async function isCompleted(outputRoot: string, recordingId: string): Promise<boolean> {
+async function isCompleted(
+  outputRoot: string,
+  recordingId: string,
+  runtimeVariant: OnDeviceRuntimeVariant,
+): Promise<boolean> {
   try {
-    return (await stat(path.join(outputRoot, analysisId(recordingId), "analysis.json"))).isFile();
+    return (
+      await stat(
+        path.join(outputRoot, onDeviceBatchAnalysisId(recordingId, runtimeVariant), "analysis.json"),
+      )
+    ).isFile();
   } catch {
     return false;
   }
@@ -194,10 +260,12 @@ async function isCompleted(outputRoot: string, recordingId: string): Promise<boo
 export async function buildOnDeviceBatchCatalog(
   tasks: readonly BatchTask[],
   outputRoot: string,
+  runtimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
 ): Promise<{
   schemaVersion: 1;
   modelId: typeof ON_DEVICE_BATCH_MODEL_ID;
   featurePath: typeof ON_DEVICE_BATCH_FEATURE_PATH;
+  runtimeVariant: OnDeviceRuntimeVariant;
   videos: OnDeviceBatchVideo[];
 }> {
   const videos = await Promise.all(
@@ -225,7 +293,7 @@ export async function buildOnDeviceBatchCatalog(
         size: task.proxySize,
         roi: { ...recording.roi },
         mediaUrl: `/api/on-device-batch/media/${encodeURIComponent(task.id)}`,
-        completed: await isCompleted(outputRoot, task.id),
+        completed: await isCompleted(outputRoot, task.id, runtimeVariant),
       };
     }),
   );
@@ -233,17 +301,20 @@ export async function buildOnDeviceBatchCatalog(
     schemaVersion: 1,
     modelId: ON_DEVICE_BATCH_MODEL_ID,
     featurePath: ON_DEVICE_BATCH_FEATURE_PATH,
+    runtimeVariant,
     videos,
   };
 }
 
-export async function getOnDeviceBatchCatalog() {
+export async function getOnDeviceBatchCatalog(
+  runtimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+) {
   const { getPreparedLabelingCatalog } = await import("./labeling-tasks.ts");
   const [catalog, outputRoot] = await Promise.all([
     getPreparedLabelingCatalog(),
     configuredOnDeviceBatchOutputRoot(),
   ]);
-  return buildOnDeviceBatchCatalog(catalog.tasks, outputRoot);
+  return buildOnDeviceBatchCatalog(catalog.tasks, outputRoot, runtimeVariant);
 }
 
 function validateMedia(value: unknown, task: BatchTask): BrowserMedia {
@@ -333,12 +404,21 @@ function validateIntervals(value: unknown, duration: number): BrowserInterval[] 
 export function validateOnDeviceBatchSubmission(
   value: unknown,
   task: BatchTask,
+  expectedRuntimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
 ): OnDeviceBatchSubmission {
   const body = object(value);
   if (!body) throw new OnDeviceBatchValidationError("request body must be an object");
   exactKeys(
     body,
-    ["recordingId", "modelId", "featurePath", "media", "intervals", "provenance"],
+    [
+      "recordingId",
+      "modelId",
+      "featurePath",
+      "runtimeVariant",
+      "media",
+      "intervals",
+      "provenance",
+    ],
     "request body",
   );
   if (body.recordingId !== task.id || !recordingIds.has(task.id)) {
@@ -349,6 +429,16 @@ export function validateOnDeviceBatchSubmission(
   }
   if (body.featurePath !== ON_DEVICE_BATCH_FEATURE_PATH) {
     throw new OnDeviceBatchValidationError("featurePath must be training-proxy");
+  }
+  if (!isOnDeviceRuntimeVariant(body.runtimeVariant)) {
+    throw new OnDeviceBatchValidationError(
+      "runtimeVariant must be linear-v1 or libswresample-wasm-v1",
+    );
+  }
+  if (body.runtimeVariant !== expectedRuntimeVariant) {
+    throw new OnDeviceBatchValidationError(
+      "runtimeVariant does not match the requested batch variant",
+    );
   }
   const media = validateMedia(body.media, task);
   const intervals = validateIntervals(body.intervals, media.duration);
@@ -377,6 +467,7 @@ export function validateOnDeviceBatchSubmission(
     recordingId: task.id,
     modelId: ON_DEVICE_BATCH_MODEL_ID,
     featurePath: ON_DEVICE_BATCH_FEATURE_PATH,
+    runtimeVariant: expectedRuntimeVariant,
     media,
     intervals,
     provenance: {
@@ -389,18 +480,19 @@ export function validateOnDeviceBatchSubmission(
 
 function buildArtifact(task: BatchTask, submission: OnDeviceBatchSubmission, createdAt: string) {
   const recording = task.document.recording;
+  const runtime = RUNTIME_VARIANT_CONFIG[submission.runtimeVariant];
   const warnings = [
     "Browser/WebCodecs feature extraction has not been validated for exact interval parity with the canonical FFmpeg/OpenCV feature path.",
-    "The browser uses a deterministic linear 48 kHz to 16 kHz audio resampler that does not match FFmpeg/libswresample; this comparison run is experimental.",
+    runtime.warning,
   ];
   if (recording.environment === "beach") {
     warnings.push("Beach footage was excluded from this model's training corpus; these predictions are qualitative and out of distribution.");
   }
   return {
     schemaVersion: 1,
-    id: analysisId(task.id),
+    id: onDeviceBatchAnalysisId(task.id, submission.runtimeVariant),
     recordingId: task.id,
-    title: `${task.id} — browser on-device`,
+    title: `${task.id} — ${runtime.titleSuffix}`,
     createdAt,
     source: {
       filename: recording.videoFilename,
@@ -415,12 +507,11 @@ function buildArtifact(task: BatchTask, submission: OnDeviceBatchSubmission, cre
       audioCodec: submission.media.audioCodec,
     },
     analysis: {
-      method: "browser-on-device-webcodecs-opencv-wasm-v1",
+      method: runtime.method,
       modelVersion: ON_DEVICE_BATCH_MODEL_VERSION,
       modelSha256: MODEL_PARTS.deadState.sha256,
-      variantLabel: "Browser on-device · model-9c92b8e9333f",
-      variantDescription:
-        "Browser-native WebCodecs, OpenCV WASM, and CPU inference over the fixed training proxy; media-feature parity remains unvalidated.",
+      variantLabel: runtime.variantLabel,
+      variantDescription: runtime.variantDescription,
       producer: "volleycut-browser-on-device/0.1.0",
       analysisFps: 4,
       featureVersion: "audiovisual-noise-normalized-audio-v3",
@@ -435,6 +526,8 @@ function buildArtifact(task: BatchTask, submission: OnDeviceBatchSubmission, cre
         serverReceivedAt: createdAt,
         inferenceLocation: "browser",
         mediaSource: "fixed-training-proxy",
+        runtimeVariant: submission.runtimeVariant,
+        audioResampler: runtime.audioResampler,
       },
       warnings,
       cameraStability: recording.capture.stationary === true ? 1 : 0,
@@ -455,7 +548,7 @@ export async function persistOnDeviceBatchAnalysis(
   outputRoot: string,
   createdAt = new Date().toISOString(),
 ): Promise<{ analysisId: string; recordingId: string; rallyCount: number }> {
-  const id = analysisId(task.id);
+  const id = onDeviceBatchAnalysisId(task.id, submission.runtimeVariant);
   const destination = path.join(outputRoot, id);
   const staging = await mkdtemp(path.join(outputRoot, `.${id}.staging-`));
   try {
@@ -519,7 +612,10 @@ export async function persistOnDeviceBatchAnalysis(
   }
 }
 
-export async function saveOnDeviceBatchSubmission(value: unknown) {
+export async function saveOnDeviceBatchSubmission(
+  value: unknown,
+  runtimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+) {
   const recordingId = object(value)?.recordingId;
   if (typeof recordingId !== "string" || !recordingIds.has(recordingId)) {
     throw new OnDeviceBatchValidationError("recordingId is not in the fixed batch");
@@ -530,15 +626,19 @@ export async function saveOnDeviceBatchSubmission(value: unknown) {
     configuredOnDeviceBatchOutputRoot(),
   ]);
   const task = fixedTasks(catalog.tasks).find((candidate) => candidate.id === recordingId)!;
-  const submission = validateOnDeviceBatchSubmission(value, task);
+  const submission = validateOnDeviceBatchSubmission(value, task, runtimeVariant);
   return persistOnDeviceBatchAnalysis(task, submission, outputRoot);
 }
 
 export async function readPersistedOnDeviceBatchAnalysis(
   outputRoot: string,
   recordingId: string,
+  runtimeVariant: OnDeviceRuntimeVariant = DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
 ): Promise<unknown> {
   return JSON.parse(
-    await readFile(path.join(outputRoot, analysisId(recordingId), "analysis.json"), "utf8"),
+    await readFile(
+      path.join(outputRoot, onDeviceBatchAnalysisId(recordingId, runtimeVariant), "analysis.json"),
+      "utf8",
+    ),
   ) as unknown;
 }

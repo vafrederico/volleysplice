@@ -6,7 +6,7 @@
 
 The implemented `/on-device` POC keeps the selected media in the browser, derives features locally, runs the rally/serve/dead-state stack locally, provides interval review and JSON EDL export, and reopens the original master for a direct-to-disk MP4 export. No upload endpoint is involved. `/on-device-ui` loads a small checked-in prediction cache captured from an actual browser on-device run, so review and timeline work does not repeatedly decode the fixture video.
 
-This proves exact parity from the canonical cached 104-wide features through final intervals. Two full HTTPS browser runs also completed over the canonical 240 MB proxy. The original extraction produced **39 candidates versus the canonical 37**. Channel-by-channel diagnostics isolated a concrete error: the original browser audio accumulator ignored AAC priming timestamps and shifted the 50 ms feature windows. After correcting timestamp placement, the repeated run produced **40 candidates**, confirming that the remaining unfiltered-resampler drift is independently material. Browser canvas color/resize also differs from FFmpeg/OpenCV. The production decision therefore remains “browser-feasible, media parity still gated.”
+This proves exact parity from the canonical cached 104-wide features through final intervals. Two initial HTTPS browser runs over the canonical 240 MB proxy produced 39 and then 40 candidates versus the canonical 37: the first exposed ignored AAC priming timestamps, while the second isolated the remaining unfiltered-resampler drift. A third run using the pinned FFmpeg 7.1.5 `libswresample` WASM experiment produced **37 candidates** and an all-nine total of **396**, matching offline counts while retaining different boundaries. Browser canvas color/resize still differs from FFmpeg/OpenCV. The production decision therefore remains “browser-feasible, materially closer with SWR, exact media parity still gated.”
 
 ## What was built
 
@@ -15,7 +15,7 @@ The browser path is:
 1. `File` is opened through Mediabunny's `BlobSource`, with an 8 MiB read cache. The file is range-read lazily and is not copied to application storage.
 2. `CanvasSink` decodes selected video frames and applies the normalized camera ROI before producing transient 192×108 canvases at a requested 4 Hz cadence.
 3. OpenCV.js computes the static, difference, camera-quality, Farneback-flow, and residual-motion channels on CPU. OpenCV.js does not expose `phaseCorrelate`, so the POC includes a DFT/cross-power port.
-4. `AudioSampleSink` decodes audio locally. The POC downmixes, linearly resamples to 16 kHz, quantizes to signed-16-bit-equivalent samples, and computes the same 50 ms FFT/band feature schema.
+4. `AudioSampleSink` decodes audio locally. The default POC downmixes and linearly resamples to 16 kHz. The explicit `libswresample-wasm-v1` experiment instead streams stereo planar Float32 through FFmpeg 7.1.5 SWR for rematrixing, filtered conversion, S16 quantization, and end flush. Both then compute the same 50 ms FFT/band feature schema.
 5. The 104 base channels are whole-recording percentile-ranked, except for the six absolute channels, and expanded at -2, -1, 0, +1, and +2 seconds into the exact 520-column model signature.
 6. Rally, serve, and dead-state logistic heads run with FP32 arrays on the CPU. The original decoder, serve composition, and dead-state refinement rules then produce reviewable intervals.
 7. Export uses the selected raw master, rejects a duration-mismatched alternate master, decodes only kept ranges, and writes an AVC/AAC MP4 to a `FileSystemWritableFileStream` through Mediabunny's chunked `StreamTarget`.
@@ -62,6 +62,7 @@ The UI calls this a “camera crop,” shows an adjustable rectangle, and allows
 - Two full 868.5-second, 240 MB canonical proxy runs completed 3,474 browser feature frames and all three model heads without upload. The pre-fix run returned 39 candidates, the timestamp-corrected run returned 40, and the canonical cached-feature path returns 37.
 - Browser/canonical timestamps match bit-for-bit on all 3,474 rows. Visual parity is already high (`diff_mean` correlation 0.99998, `flow_mean` 0.99990, phase response 0.99959). Audio was the dominant drift: for example RMS correlation was 0.675 at zero lag and 0.874 at the next pooled row.
 - The canonical AAC stream begins at -14.333 ms with 688 skip samples. The browser previously concatenated that priming packet at logical zero; the accumulator now uses decoded timestamps, trims negative priming, zero-fills gaps, and removes overlaps before resampling. Focused tests cover each case. The 40-result rerun shows that this necessary correction is not sufficient without filtered resampling.
+- The 228 KiB `libswresample` WASM module produces the same deterministic output length as native FFmpeg, is invariant to chunk boundaries, and differs from the native SIMD output in only 4/16,046 probe samples, each by one S16 LSB. Its real Y9 run returned the canonical count of 37.
 - `/on-device-ui` stores the latest 40 browser predictions at their full returned precision. At the 3 s / 2 s defaults they render as 38 merged export sections; changing both controls to 8 seconds immediately collapses them to 12 sections.
 - The exact export path was round-tripped through browser origin-private storage without opening a native save dialog. A 2.5-second proxy interval produced a 2.517-second 960×540 AVC/AAC MP4 (1.44 MB), which the product's own media probe reopened as “Decode Ready.”
 - The raw-master path was validated on the copied 4K60 VP9/Opus segment. Its real on-device prediction (`8.375–19.859`) exported as an 11.499-second 3840×2160 AVC/AAC MP4 (71.2 MB) in about 50 seconds, and the product probe reopened it as “Decode Ready.” This proves a short 4K round trip, not full-match endurance or subjective quality.
@@ -95,16 +96,23 @@ recording, browser adjusted F1 is 86.84% versus 88.15% offline at 2 seconds and 
 89.33% at 3 seconds; the browser fully contains one fewer of the 39 expected rallies at both
 settings.
 
+The follow-up [libswresample-WASM evaluation](./browser-libswresample-wasm-evaluation-2026-08-13.md)
+completed another range-only all-nine run under a distinct append-only artifact prefix. It
+produced 396 ranges. On validation, SWR tied linear containment at 68/76 with 2 seconds and
+72/76 with 3 seconds while improving `F1_padP_coreR` to 77.43% and 80.29%. Across the seven
+in-domain recordings it recovered one and two fully contained rallies, respectively, and
+raised adjusted F1 to 87.70% and 89.09%.
+
 The batch route is deliberately operational tooling rather than a public upload service. It is disabled unless a high-entropy bearer token and an existing output root are supplied through environment variables. The token remains in the browser URL fragment, requests are same-origin, and a dedicated bearer-protected media route range-serves only the fixed nine proxies. Videos remain server-local, submissions are size/schema/model/source constrained, and persistence uses an atomic directory rename with append-only collision handling. Only ranges, fixed media metadata, and concise provenance cross back to the server.
 
 Before another token-enabled run, the fronting proxy must redact or drop the `Authorization` request header in every access-log path, including rejected 4xx requests. The current development Traefik configuration keeps request headers by default and is not safe for reusable bearer credentials. The completed run used a temporary token and its token-enabled server was stopped afterward; that credential must not be reused.
 
 ## Remaining parity and product gates
 
-The secure-context proxy run and base-channel comparison are complete. The remaining gates are:
+The secure-context proxy run, base-channel comparison, and filtered-resampler experiment are complete. The remaining gates are:
 
-1. Replace the unfiltered resampler and repeat the per-channel/probability comparison. Accept feature/probability tolerances deliberately; matching only the interval count can hide threshold coincidences.
-2. For existing-model parity, use a small libswresample/FFmpeg WASM audio path. The cleaner product alternative is a deterministic filtered browser resampler followed by retraining/calibration on browser-native features. `OfflineAudioContext` is not a cross-browser parity guarantee.
+1. Capture the full WebCodecs+SWR PCM/features and repeat the per-channel/probability comparison; equal interval counts alone can hide threshold coincidences.
+2. Decide whether to keep the offline-trained model with explicit browser tolerances or retrain/calibrate on the exact browser-native feature implementation. `OfflineAudioContext` is not a cross-browser parity guarantee.
 3. Analyze the 4K raw master and compare its intervals with proxy mode. This measures the direct-raw distribution shift.
 4. Extend the successful single-interval 4K round trip to several disjoint intervals and the full master; verify A/V synchronization, first/last-frame boundaries, absence of frame overlap, endurance, and visual quality.
 5. Replace duration-only proxy-to-master matching with a content/timeline fingerprint or an explicit sync confirmation; unrelated footage of similar duration currently passes the guard.
@@ -114,7 +122,7 @@ The secure-context proxy run and base-channel comparison are complete. The remai
 The known feature differences are:
 
 - Mediabunny's canvas renderer performs browser scaling/color conversion rather than OpenCV `INTER_AREA` on the decoded 960×540 BGR frame.
-- The POC's deterministic linear 16 kHz resampler is unfiltered for the canonical 48→16 kHz ratio and does not match FFmpeg/libswresample.
+- The default linear runtime remains unfiltered. The experimental SWR runtime removes that difference but still begins with browser-decoded PCM, which may differ from FFmpeg's decoder output.
 - WebCodecs uses real presentation timestamps; the reference OpenCV reader derives timestamps from constant frame index/FPS.
 - OpenCV.js is single-threaded in the pinned package. This is adequate for the POC's 192×108, 4 Hz workload but leaves performance on the table.
 
