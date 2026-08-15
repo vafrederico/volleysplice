@@ -5,20 +5,20 @@ import android.net.Uri;
 import java.util.List;
 import java.util.Map;
 
-final class AnalysisTypes {
-    record Roi(double x, double y, double width, double height, String label) {}
+public final class AnalysisTypes {
+    public record Roi(double x, double y, double width, double height, String label) {}
 
-    record VideoDecoderOptions(int operatingRate, int priority) {
+    public record VideoDecoderOptions(int operatingRate, int priority) {
         static VideoDecoderOptions defaults() {
             return new VideoDecoderOptions(240, 1);
         }
     }
 
-    record Interval(double start, double end, float confidence) {}
+    public record Interval(double start, double end, float confidence) {}
 
-    record Serve(double time, float confidence) {}
+    public record Serve(double time, float confidence) {}
 
-    record MediaInfo(
+    public record MediaInfo(
             double durationSeconds,
             int width,
             int height,
@@ -27,7 +27,7 @@ final class AnalysisTypes {
             String audioMime
     ) {}
 
-    record VideoFeatures(
+    public record VideoFeatures(
             float[] values,
             double[] analysisTimes,
             double analyzedDurationSeconds,
@@ -43,7 +43,7 @@ final class AnalysisTypes {
             Map<String, Double> profileMilliseconds
     ) {}
 
-    record PerformanceStats(
+    public record PerformanceStats(
             int generatedFrames,
             int totalFrames,
             int decodedSourceFrames,
@@ -56,7 +56,7 @@ final class AnalysisTypes {
             long maxHeapBytes
     ) {}
 
-    record AnalysisResult(
+    public record AnalysisResult(
             Uri source,
             String displayName,
             MediaInfo media,
@@ -92,7 +92,7 @@ final class AnalysisTypes {
             NativeFeatureCache.CacheStats featureCache
     ) {}
 
-    interface ProgressListener {
+    public interface ProgressListener {
         void onProgress(String stage, double fraction, String detail);
 
         default void onPerformance(PerformanceStats stats) {}

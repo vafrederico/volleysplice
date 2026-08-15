@@ -8,4 +8,9 @@
         <item name="android:colorAccent">#EF5B35</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+
+    <style name="Theme.VolleyCut.Starting" parent="Theme.VolleyCut">
+        <item name="android:windowBackground">@drawable/splash_screen</item>
+        <item name="android:windowDisablePreview">false</item>
+    </style>
 </resources>

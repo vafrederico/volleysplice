@@ -107,7 +107,7 @@ final class NativeVideoDecoder {
             codecThread = new HandlerThread("VolleyCut-MediaCodec");
             codecThread.start();
             AsyncDecodeState state = new AsyncDecodeState(
-                    extractor, samplePlan, media, roi, times, sourceFrameLimit,
+                    extractor, samplePlan, media, roi, times,
                     progress, cancelled, profiler, featureWorker, decoderName,
                     System.nanoTime(), resumeStartRow, cached.rows(), materializedPresentationUs
             );
@@ -410,7 +410,9 @@ final class NativeVideoDecoder {
         extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         int scanLimit = sourceFrameLimit > Integer.MAX_VALUE - SAMPLE_PLAN_REORDER_LOOKAHEAD
                 ? Integer.MAX_VALUE : sourceFrameLimit + SAMPLE_PLAN_REORDER_LOOKAHEAD;
-        ArrayList<Long> presentationTimes = new ArrayList<>(scanLimit);
+        // Full-file mode uses Integer.MAX_VALUE as its logical limit. Do not use
+        // that sentinel as an eager ArrayList allocation for variable-frame-rate media.
+        ArrayList<Long> presentationTimes = new ArrayList<>(Math.min(scanLimit, 65_536));
         while (presentationTimes.size() < scanLimit) {
             long presentationUs = extractor.getSampleTime();
             if (presentationUs < 0) break;
@@ -597,7 +599,6 @@ final class NativeVideoDecoder {
         private final AnalysisTypes.MediaInfo media;
         private final AnalysisTypes.Roi roi;
         private final double[] times;
-        private final int sourceFrameLimit;
         private final AnalysisTypes.ProgressListener progress;
         private final BooleanSupplier cancelled;
         private final NanoProfiler profiler;
@@ -625,7 +626,6 @@ final class NativeVideoDecoder {
                 AnalysisTypes.MediaInfo media,
                 AnalysisTypes.Roi roi,
                 double[] times,
-                int sourceFrameLimit,
                 AnalysisTypes.ProgressListener progress,
                 BooleanSupplier cancelled,
                 NanoProfiler profiler,
@@ -641,7 +641,6 @@ final class NativeVideoDecoder {
             this.media = media;
             this.roi = roi;
             this.times = times;
-            this.sourceFrameLimit = sourceFrameLimit;
             this.progress = progress;
             this.cancelled = cancelled;
             this.profiler = profiler;
@@ -794,14 +793,15 @@ final class NativeVideoDecoder {
             double generatedVideoSeconds = target / (double) FeatureSchema.ANALYSIS_FPS;
             double realtimeRatio = generatedVideoSeconds / Math.max(elapsedSeconds, 1e-9);
             int decodedEquivalent = samplePlan.sourceFramesAtOrBefore(presentationUs);
+            int totalSourceFrames = samplePlan.sourceFrameCount();
             double sourceFramesPerSecond = decodedEquivalent / Math.max(elapsedSeconds, 1e-9);
             double etaSeconds = sourceFramesPerSecond > 0
-                    ? (sourceFrameLimit - decodedEquivalent) / sourceFramesPerSecond
+                    ? Math.max(0, totalSourceFrames - decodedEquivalent) / sourceFramesPerSecond
                     : Double.NaN;
             Runtime runtime = Runtime.getRuntime();
             progress.onPerformance(new AnalysisTypes.PerformanceStats(
                     target,
-                    sourceFrameLimit,
+                    totalSourceFrames,
                     decodedEquivalent,
                     generatedVideoSeconds,
                     elapsedSeconds,
@@ -813,7 +813,7 @@ final class NativeVideoDecoder {
             ));
             progress.onProgress(
                     "video",
-                    decodedEquivalent / (double) sourceFrameLimit,
+                    totalSourceFrames > 0 ? decodedEquivalent / (double) totalSourceFrames : 1.0,
                     String.format(Locale.US,
                             "Async decode + OpenCV | %.2fx real time | %.1f frames/s",
                             realtimeRatio,
