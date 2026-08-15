@@ -26,6 +26,8 @@ test("desktop Safari on macOS is unsupported", () => {
     isMacSafariBrowser(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+      "MacIntel",
+      0,
     ),
     true,
   );
@@ -60,6 +62,15 @@ test("Safari on iPhone and iPad is not classified as Mac Safari", () => {
     isMacSafariBrowser(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) " +
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1",
+    ),
+    false,
+  );
+  assert.equal(
+    isMacSafariBrowser(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+      "MacIntel",
+      5,
     ),
     false,
   );
