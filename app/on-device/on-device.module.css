@@ -154,6 +154,7 @@
 .rolls input { width: 100%; margin-top: 12px; accent-color: var(--local-acid); }
 .masterPicker { margin-top: 18px; color: var(--local-ink); background: #fff; }
 .streamExportToggle { margin-top: 14px; padding: 11px; display: flex; gap: 10px; align-items: flex-start; border: 1px solid #6b6e64; color: #fff; cursor: pointer; }
+.streamExportStatus { cursor: default; }
 .streamExportToggle input { margin-top: 2px; accent-color: var(--local-acid); }
 .streamExportToggle span { display: grid; gap: 4px; }
 .streamExportToggle strong { color: var(--local-acid); font: 10px "DM Mono", monospace; text-transform: uppercase; }

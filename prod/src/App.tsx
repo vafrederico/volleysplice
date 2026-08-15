@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { CutEditor } from "@/components/CutEditor";
-import { isMacSafariBrowser } from "@/lib/on-device/browser-support";
+import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
 import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
   analyzeOpenedMedia,
@@ -103,9 +103,9 @@ export function App() {
   const elapsedTimer = useRef<number | null>(null);
   const resumePreviewAfterSeek = useRef(false);
 
-  const macSafariUnsupported = isMacSafariBrowser();
+  const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
-    !macSafariUnsupported &&
+    !safariUnsupported &&
     "VideoDecoder" in window && "AudioDecoder" in window && "VideoFrame" in window;
   const secureContext = window.isSecureContext;
   const busy = workState === "opening" || workState === "analyzing";
@@ -130,8 +130,8 @@ export function App() {
 
   async function chooseFile(selected: File | null) {
     if (!selected) return;
-    if (macSafariUnsupported) {
-      setError("Safari on Mac is not supported. Open VolleyCut in Google Chrome instead.");
+    if (safariUnsupported) {
+      setError("Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.");
       setWorkState("error");
       return;
     }
@@ -177,8 +177,8 @@ export function App() {
 
   async function runAnalysis() {
     if (!openedMedia.current || !file || !info || !previewUrl) return;
-    if (macSafariUnsupported) {
-      setError("Safari on Mac is not supported. Open VolleyCut in Google Chrome instead.");
+    if (safariUnsupported) {
+      setError("Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.");
       setWorkState("error");
       return;
     }
@@ -302,12 +302,12 @@ export function App() {
         </div>
       </section>
 
-      {macSafariUnsupported && (
+      {safariUnsupported && (
         <p className={styles.notice} role="status">
-          <strong>Safari on Mac is not supported.</strong> Feature extraction is unreliable in Safari. Open VolleyCut in the latest Google Chrome on this Mac instead.
+          <strong>Safari is not supported.</strong> Feature extraction is unreliable in Safari on macOS and iOS. Open VolleyCut in the latest Google Chrome instead.
         </p>
       )}
-      {!macSafariUnsupported && !secureContext && (
+      {!safariUnsupported && !secureContext && (
         <p className={styles.notice}>
           This page is not in a secure context. The interface is available, but local
           media analysis needs HTTPS or localhost.
@@ -325,12 +325,12 @@ export function App() {
               : "MP4, WebM, MOV, MKV, and other browser-decodable containers are supported."}
           </p>
         </div>
-        <label className={styles.fileButton} data-disabled={busy || macSafariUnsupported || undefined}>
+        <label className={styles.fileButton} data-disabled={busy || safariUnsupported || undefined}>
           {file ? "Choose another" : "Choose video"}
           <input
             type="file"
             accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
-            disabled={busy || macSafariUnsupported}
+            disabled={busy || safariUnsupported}
             onChange={(event) => void chooseFile(event.currentTarget.files?.[0] ?? null)}
           />
         </label>
@@ -422,7 +422,7 @@ export function App() {
               className={styles.analyzeButton}
               type="button"
               onClick={() => void runAnalysis()}
-              disabled={busy || macSafariUnsupported}
+              disabled={busy || safariUnsupported}
             >
               {workState === "analyzing" ? "Analyzing on this device…" : "Generate cuts locally"}
             </button>

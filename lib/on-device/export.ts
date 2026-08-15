@@ -53,7 +53,7 @@ export type PreparedVideoExport = {
 };
 
 export type PreparedVideoDelivery = "shared" | "downloaded";
-export type VideoExportMode = "compatible" | "stream-download";
+export type VideoExportMode = "compatible" | "opfs" | "stream-download";
 
 const OPFS_EXPORT_NAME = "volleycut-latest-export.mp4";
 
@@ -91,7 +91,7 @@ async function chooseExportDestination(
     };
   }
 
-  const savePicker = picker();
+  const savePicker = mode === "compatible" ? picker() : null;
   if (savePicker) {
     // Keep this call before any await so Chromium retains the initiating click's activation.
     const fileHandle = await savePicker({

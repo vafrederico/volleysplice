@@ -594,6 +594,10 @@
   border-color: #74796a;
 }
 
+.streamExportStatus {
+  cursor: default;
+}
+
 .streamExportToggle strong {
   color: var(--cut-acid);
 }
