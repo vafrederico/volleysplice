@@ -88,7 +88,8 @@ final class AnalysisTypes {
             long nativeHeapAllocatedBytes,
             long pssKilobytes,
             int availableProcessors,
-            long totalMilliseconds
+            long totalMilliseconds,
+            NativeFeatureCache.CacheStats featureCache
     ) {}
 
     interface ProgressListener {

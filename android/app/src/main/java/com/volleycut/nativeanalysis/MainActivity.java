@@ -47,6 +47,7 @@ public final class MainActivity extends Activity {
     private static final String EXTRA_SOURCE_FRAME_LIMIT = "benchmark_source_frame_limit";
     private static final String EXTRA_CODEC_OPERATING_RATE = "benchmark_codec_operating_rate";
     private static final String EXTRA_CODEC_PRIORITY = "benchmark_codec_priority";
+    private static final String EXTRA_FEATURE_CACHE_MODE = "benchmark_feature_cache_mode";
     private static final String BENCHMARK_RESULT_FILE = "benchmark-result.json";
     private static final int PICK_VIDEO = 10;
     private static final int ORANGE = Color.rgb(239, 91, 53);
@@ -61,6 +62,7 @@ public final class MainActivity extends Activity {
     private String automatedRunId;
     private int sourceFrameLimit = FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
     private AnalysisTypes.VideoDecoderOptions decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
+    private NativeFeatureCache.Mode cacheMode = NativeFeatureCache.Mode.USE;
     private AnalysisTypes.AnalysisResult lastResult;
     private TextView fileLabel;
     private TextView stageLabel;
@@ -70,7 +72,11 @@ public final class MainActivity extends Activity {
     private Button analyzeButton;
     private Button cancelButton;
     private Button copyButton;
+    private Button clearCacheButton;
     private CheckBox fullFrame;
+    private CheckBox limitSourceFrames;
+    private CheckBox useFeatureCache;
+    private TextView cacheLabel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -137,6 +143,33 @@ public final class MainActivity extends Activity {
         fullFrame.setTextColor(INK);
         fullFrame.setTextSize(15);
         root.addView(fullFrame, margins(0, dp(12), 0, 0));
+
+        limitSourceFrames = new CheckBox(this);
+        limitSourceFrames.setText("Stop after 1,000 source frames (benchmark)");
+        limitSourceFrames.setTextColor(INK);
+        limitSourceFrames.setTextSize(15);
+        limitSourceFrames.setChecked(true);
+        root.addView(limitSourceFrames, margins(0, dp(4), 0, 0));
+
+        useFeatureCache = new CheckBox(this);
+        useFeatureCache.setText("Reuse saved video + audio features");
+        useFeatureCache.setTextColor(INK);
+        useFeatureCache.setTextSize(15);
+        useFeatureCache.setChecked(true);
+        root.addView(useFeatureCache, margins(0, dp(4), 0, 0));
+
+        LinearLayout cacheActions = new LinearLayout(this);
+        cacheActions.setOrientation(LinearLayout.HORIZONTAL);
+        cacheLabel = text(cacheSizeLabel(), 13, Color.DKGRAY);
+        cacheActions.addView(cacheLabel, new LinearLayout.LayoutParams(0, dp(48), 1));
+        clearCacheButton = button("Clear cache");
+        clearCacheButton.setOnClickListener(view -> {
+            NativeFeatureCache.clearAll(this);
+            cacheLabel.setText(cacheSizeLabel());
+            Toast.makeText(this, "Saved features cleared", Toast.LENGTH_SHORT).show();
+        });
+        cacheActions.addView(clearCacheButton, new LinearLayout.LayoutParams(dp(130), dp(48)));
+        root.addView(cacheActions, margins(0, dp(2), 0, 0));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -216,6 +249,7 @@ public final class MainActivity extends Activity {
                 1_000_000,
                 intent.getIntExtra(EXTRA_SOURCE_FRAME_LIMIT, FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT)
         ));
+        limitSourceFrames.setChecked(sourceFrameLimit == FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT);
         AnalysisTypes.VideoDecoderOptions defaults = AnalysisTypes.VideoDecoderOptions.defaults();
         int operatingRate = intent.getIntExtra(EXTRA_CODEC_OPERATING_RATE, defaults.operatingRate());
         int priority = intent.getIntExtra(EXTRA_CODEC_PRIORITY, defaults.priority());
@@ -223,6 +257,10 @@ public final class MainActivity extends Activity {
                 operatingRate > 0 ? operatingRate : -1,
                 priority >= 0 && priority <= 1 ? priority : -1
         );
+        cacheMode = NativeFeatureCache.Mode.fromWireName(
+                intent.getStringExtra(EXTRA_FEATURE_CACHE_MODE)
+        );
+        useFeatureCache.setChecked(cacheMode != NativeFeatureCache.Mode.BYPASS);
         JSONObject running = new JSONObject();
         try {
             running.put("benchmarkStatus", "running");
@@ -231,6 +269,7 @@ public final class MainActivity extends Activity {
             running.put("sourceFrameLimit", sourceFrameLimit);
             running.put("codecOperatingRate", decoderOptions.operatingRate());
             running.put("codecPriority", decoderOptions.priority());
+            running.put("featureCacheMode", cacheMode.wireName());
         } catch (Exception impossible) {
             throw new IllegalStateException(impossible);
         }
@@ -250,7 +289,10 @@ public final class MainActivity extends Activity {
         automatedRun = false;
         automatedRunId = null;
         sourceFrameLimit = FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
+        limitSourceFrames.setChecked(true);
         decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
+        cacheMode = NativeFeatureCache.Mode.USE;
+        useFeatureCache.setChecked(true);
         fileLabel.setText(selectedUri.toString());
         analyzeButton.setEnabled(true);
         copyButton.setEnabled(false);
@@ -262,6 +304,7 @@ public final class MainActivity extends Activity {
         cancelled.set(false);
         analyzeButton.setEnabled(false);
         cancelButton.setEnabled(true);
+        clearCacheButton.setEnabled(false);
         copyButton.setEnabled(false);
         progressBar.setProgress(0);
         performanceText.setText("Starting native decoder…");
@@ -272,8 +315,17 @@ public final class MainActivity extends Activity {
         boolean useFullFrame = fullFrame.isChecked();
         boolean writeAutomationOutput = automatedRun;
         String runId = automatedRunId;
-        int requestedSourceFrameLimit = sourceFrameLimit;
+        int requestedSourceFrameLimit = automatedRun
+                ? sourceFrameLimit
+                : (limitSourceFrames.isChecked()
+                        ? FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT
+                        : 1_000_000);
         AnalysisTypes.VideoDecoderOptions requestedDecoderOptions = decoderOptions;
+        NativeFeatureCache.Mode requestedCacheMode = automatedRun
+                ? cacheMode
+                : (useFeatureCache.isChecked()
+                        ? NativeFeatureCache.Mode.USE
+                        : NativeFeatureCache.Mode.BYPASS);
         executor.submit(() -> {
             try {
                 AnalysisTypes.AnalysisResult result = new AnalysisEngine(this).analyze(
@@ -281,6 +333,7 @@ public final class MainActivity extends Activity {
                         useFullFrame,
                         requestedSourceFrameLimit,
                         requestedDecoderOptions,
+                        requestedCacheMode,
                         cancelled,
                         new AnalysisTypes.ProgressListener() {
                             @Override
@@ -305,6 +358,7 @@ public final class MainActivity extends Activity {
                     json.put("benchmarkRunId", runId);
                     json.put("codecOperatingRate", requestedDecoderOptions.operatingRate());
                     json.put("codecPriority", requestedDecoderOptions.priority());
+                    json.put("featureCacheMode", requestedCacheMode.wireName());
                     writeAutomationResult(json);
                     Log.i(BENCHMARK_TAG, String.format(Locale.US,
                             "RESULT runId=%s source=%s frames=%d videoMs=%d totalMs=%d",
@@ -357,6 +411,16 @@ public final class MainActivity extends Activity {
                 "Codec request: operating rate %d fps · priority %d\n",
                 result.codecOperatingRate(), result.codecPriority()));
         output.append("Audio decoder: ").append(result.audioDecoder()).append('\n');
+        NativeFeatureCache.CacheStats cache = result.featureCache();
+        output.append(String.format(Locale.US,
+                "Feature cache: %s · video %s · audio %s · context %s · resumed %,d rows · %.1f MiB\n",
+                cache.mode(), cache.visualHit() ? "hit" : "miss",
+                cache.audioHit() ? "hit" : "miss", cache.contextHit() ? "hit" : "miss",
+                cache.resumedVisualRows(),
+                cache.bytes() / 1_048_576.0));
+        if (!cache.failure().isBlank()) {
+            output.append("Cache warning: ").append(cache.failure()).append('\n');
+        }
         output.append("ROI: ").append(result.roi().label()).append('\n');
         output.append(String.format(Locale.US,
                 "Feature speed: %.2f× real time · %.1f frames/s\n",
@@ -455,6 +519,8 @@ public final class MainActivity extends Activity {
     private void finishWorkState() {
         analyzeButton.setEnabled(selectedUri != null);
         cancelButton.setEnabled(false);
+        clearCacheButton.setEnabled(true);
+        cacheLabel.setText(cacheSizeLabel());
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try { getWindow().setSustainedPerformanceMode(false); } catch (RuntimeException ignored) {}
     }
@@ -470,7 +536,7 @@ public final class MainActivity extends Activity {
         JSONObject json = new JSONObject();
         try {
             json.put("schemaVersion", 1);
-            json.put("method", "android-native-mediacodec-cfr-decodeonly-yuvlut-opencv-v4");
+            json.put("method", "android-native-mediacodec-av-cache-opencv-v5");
             json.put("modelId", "model-9c92b8e9333f");
             json.put("sourceName", result.displayName());
             json.put("duration", result.media().durationSeconds());
@@ -493,6 +559,19 @@ public final class MainActivity extends Activity {
             json.put("codecOperatingRate", result.codecOperatingRate());
             json.put("codecPriority", result.codecPriority());
             json.put("audioDecoder", result.audioDecoder());
+            NativeFeatureCache.CacheStats cache = result.featureCache();
+            JSONObject cacheJson = new JSONObject();
+            cacheJson.put("mode", cache.mode());
+            cacheJson.put("key", cache.key());
+            cacheJson.put("visualHit", cache.visualHit());
+            cacheJson.put("audioHit", cache.audioHit());
+            cacheJson.put("contextHit", cache.contextHit());
+            cacheJson.put("resumedVisualRows", cache.resumedVisualRows());
+            cacheJson.put("savedVisualRows", cache.savedVisualRows());
+            cacheJson.put("complete", cache.complete());
+            cacheJson.put("bytes", cache.bytes());
+            cacheJson.put("failure", cache.failure());
+            json.put("featureCache", cacheJson);
             json.put("totalMilliseconds", result.totalMilliseconds());
             double videoMilliseconds = result.stageMilliseconds().getOrDefault(
                     "video_decode_and_features", 0L
@@ -697,6 +776,14 @@ public final class MainActivity extends Activity {
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
         return button;
+    }
+
+    private String cacheSizeLabel() {
+        return String.format(
+                Locale.US,
+                "Saved features: %.1f MiB",
+                NativeFeatureCache.totalBytes(this) / 1_048_576.0
+        );
     }
 
     private LinearLayout.LayoutParams margins(int left, int top, int right, int bottom) {

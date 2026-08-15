@@ -8,7 +8,7 @@ video URI
   -> asynchronous MediaCodec decode with unsampled inputs marked decode-only
   -> 192x108 ROI samples at 4 Hz
   -> bounded FIFO worker for native OpenCV visual features
-  -> zeroed audio-unavailable features (audio decode temporarily skipped)
+  -> MediaCodec audio decode + native resampling/FFT features
   -> 104 base features
   -> whole-recording percentile ranks and +/-2 s context (520 columns)
   -> model-9c92b8e9333f rally, serve, and dead-state heads
@@ -45,8 +45,8 @@ SDK 36 is the default, so no Gradle property overrides are needed. The app still
 ## Run a benchmark
 
 1. Tap **Choose video** and select a local proxy or original master through Android's system picker.
-2. Leave **Use full frame** off for the canonical recordings. The app recognizes the same nine filename profiles as the web POC and otherwise uses the same indoor default ROI.
-3. Tap **Run native analysis**. The benchmark stops after 1,000 presentation-order source video frames (about 16.7 seconds at 60 FPS), and bounds inference and ranges to the same measured media window. It decodes reference frames normally but uses Android's decode-only flag to avoid materializing unsampled output images. Audio decode/DSP is temporarily skipped so this experiment isolates the video pipeline. Shorter clips run to completion. The app keeps the display awake and requests sustained-performance mode for the duration of the run.
+2. Leave **Use full frame** off for the canonical recordings. The app recognizes the same nine filename profiles as the web POC and otherwise uses the same indoor default ROI. Leave the 1,000-frame limit checked for performance experiments; uncheck it for full-recording inference.
+3. Leave **Reuse saved video + audio features** checked for normal work, or uncheck it to bypass cache reads and writes. **Clear cache** removes all saved matrices. Tap **Run native analysis**. The default benchmark stops after 1,000 presentation-order source video frames (about 16.7 seconds at 60 FPS), and bounds video, audio, inference, and ranges to the same measured media window. It decodes reference frames normally but uses Android's decode-only flag to avoid materializing unsampled output images. Shorter clips run to completion. The app keeps the display awake and requests sustained-performance mode for the duration of the run.
 4. During video analysis, watch the live sampled frames/second, feature real-time ratio, elapsed time, ETA, decoded source-frame count, and Java heap use.
 5. Record the final feature speed, overall real-time multiplier, audio speed, decoder names, stage times, and range count. **Copy result JSON** copies those values and exact unpadded ranges.
 
@@ -59,7 +59,7 @@ cd android
 .\benchmark.bat -VideoName "1080p60.mp4" -FrameLimit 1000 -Runs 3
 ```
 
-Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppress the full JSON lines. Every successful run contributes to the median summary. The app writes `benchmarkStatus`, a unique `benchmarkRunId`, and either the normal result payload or structured failure details, so a stale result cannot be mistaken for the current run. `-FrameLimit` can extend a measurement when a 1,000-frame sample is too noisy. The production configuration requests a 240 FPS codec operating rate at best-effort priority; pass `-OperatingRate -1 -CodecPriority -1` for the unhinted control.
+Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppress the full JSON lines. Every successful run contributes to the median summary. The app writes `benchmarkStatus`, a unique `benchmarkRunId`, and either the normal result payload or structured failure details, so a stale result cannot be mistaken for the current run. `-FrameLimit` can extend a measurement when a 1,000-frame sample is too noisy. Use `-CacheMode Use`, `Bypass`, or `Refresh` to reuse, ignore, or replace the matching feature entry. The production configuration requests a 240 FPS codec operating rate at best-effort priority; pass `-OperatingRate -1 -CodecPriority -1` for the unhinted control.
 
 The 240 FPS operating-rate request was retained after a 5,000-frame 1080p60 A/B reduced median video-stage time from 29,102.5 ms to 19,749.0 ms (32.1%) with identical sampled timestamps and candidate ranges. Android uses this value for codec resource planning; it does not change source timestamps or the 4 Hz sampling schedule.
 
@@ -67,9 +67,11 @@ Asynchronous decode-only output was then retained after reducing the same 5,000-
 
 The YUV crop/scale/color sampler now precomputes source-plane offsets and exact integer conversion lookup tables. A 5,000-frame 1080p60 check fell from 14,683.5 ms to 13,429.5 ms (8.5%) with identical ranges and confidences. The 1,000-frame median fell from 3,026 ms to 2,837 ms (6.2%). The decoder-bound 4K60 case improved more modestly, from 5,884 ms to 5,797 ms (1.5%). Batched compressed input was rejected: although it reduced codec calls, the Pixel decoder produced different visual features and ranges.
 
+Raw visual features are checkpointed to app-private storage every 16 analysis rows. An interrupted run resumes by decoding one cached sample as temporal warm-up and then appending new rows. Completed visual chunks are compacted into one file, and the audio and contextual matrices are saved as well. Later model runs therefore skip both decoders and whole-recording contextualization. Cache identity includes source metadata, media geometry/codecs, ROI, feature schemas, analysis rate, and source-frame limit.
+
 Strict constant-frame-rate inputs now avoid the full timestamp planning scan after a 128-access-unit probe verifies that the declared frame rate predicts presentation timestamps exactly and measures the stream's reorder depth. VFR and inconsistent inputs retain the scan-based path. This reduced the 5,000-frame 1080p60 median from 13,429.5 ms to 13,002 ms (3.2%) with identical analyzed duration, ranges, and confidences. The 1,000-frame 4K60 median improved from 5,797 ms to 5,673 ms (2.1%).
 
-The feature speed matches the web POC definition: `generatedFrames / 4 Hz / videoFeatureWallSeconds` for the real-time ratio, and `generatedFrames / videoFeatureWallSeconds` for frames/second. The overall ratio additionally includes audio extraction, contextualization, and inference.
+The feature speed matches the web POC definition: `generatedFrames / 4 Hz / videoFeatureWallSeconds` for the real-time ratio, and `generatedFrames / videoFeatureWallSeconds` for frames/second. The overall ratio additionally includes audio extraction, contextualization, and inference. Cache-hit runs report cache state explicitly; their decoder throughput fields describe saved work rather than a new decode benchmark.
 
 The completed report includes a hierarchical profiling breakdown. Parent and child rows intentionally overlap and should not be added together. Asynchronous video callbacks/YUV conversion and ordered OpenCV extraction run concurrently, connected by a two-sample bounded queue. The report records decode-only inputs, actual decoder outputs, queue backpressure, and final worker-drain time. It also covers the presentation-order planning scan, codec input/output callbacks, demux reads, YUV crop/scale/color conversion, OpenCV filters/readback/phase correlation/Farneback flow/reductions, percentile ranking/context gathering, and every inference/decoder phase. Per-unit time, wall-time percentage, total analysis CPU, GC time, Java/native/PSS memory, sampling timestamp error, and thermal status are included. The copied JSON retains all raw millisecond totals under `profileMilliseconds`.
 
@@ -88,11 +90,14 @@ The media front end is deliberately a native-distribution experiment, not a clai
 
 Those differences are why the app reports both performance and final ranges. If the native path is materially faster, the next step is to capture its base features for channel-by-channel comparison and then calibrate/retrain against the Android feature distribution rather than assuming browser/offline thresholds transfer perfectly.
 
+The first full audiovisual run and its interval-level comparison against the stored browser results are recorded in [`FULL_INFERENCE_PARITY.md`](FULL_INFERENCE_PARITY.md).
+
 ## Important files
 
 - `app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java`: asynchronous decode-only planning and 4 Hz YUV sampling
 - `app/src/main/java/com/volleycut/nativeanalysis/VisualFeatureExtractor.java`: native OpenCV visual features
 - `app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java`: platform audio decode
 - `app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java`: resampling, FFT, and audio feature schema
+- `app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java`: restart-safe visual checkpoints and completed audio matrices
 - `app/src/main/java/com/volleycut/nativeanalysis/ModelRunner.java`: exact three-head inference and range decoding
 - `app/src/test/java/com/volleycut/nativeanalysis/GoldenModelTest.java`: frozen-feature model parity test

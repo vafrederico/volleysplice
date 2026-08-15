@@ -48,6 +48,8 @@ final class NativeVideoDecoder {
             double[] times,
             int sourceFrameLimit,
             AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.LoadedVisual cached,
+            NativeFeatureCache.VisualWriter cacheWriter,
             AnalysisTypes.ProgressListener progress,
             BooleanSupplier cancelled
     ) throws IOException {
@@ -77,6 +79,9 @@ final class NativeVideoDecoder {
             if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
                 throw new IOException("Video has no decodable frames in the benchmark window");
             }
+            if (cached.rows() > samplePlan.sampleCount()) {
+                throw new IOException("Cached visual feature rows exceed the sample plan");
+            }
             extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
 
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
@@ -91,13 +96,20 @@ final class NativeVideoDecoder {
             String decoderName = codec.getName();
             boolean hardware = codec.getCodecInfo().isHardwareAccelerated();
             float[] output = new float[times.length * FeatureSchema.FRAME.size()];
-            featureWorker = new FeatureWorker(output);
+            if (cached.rows() > 0) {
+                System.arraycopy(cached.values(), 0, output, 0, cached.values().length);
+            }
+            int resumeStartRow = cached.rows() == 0 ? 0 : cached.rows() - 1;
+            Set<Long> materializedPresentationUs = activeSamplePresentationUs(
+                    samplePlan.sortedPresentationUs(), times, resumeStartRow
+            );
+            featureWorker = new FeatureWorker(output, times, cacheWriter);
             codecThread = new HandlerThread("VolleyCut-MediaCodec");
             codecThread.start();
             AsyncDecodeState state = new AsyncDecodeState(
                     extractor, samplePlan, media, roi, times, sourceFrameLimit,
                     progress, cancelled, profiler, featureWorker, decoderName,
-                    System.nanoTime()
+                    System.nanoTime(), resumeStartRow, cached.rows(), materializedPresentationUs
             );
             codec.setCallback(state, new Handler(codecThread.getLooper()));
             codec.configure(format, null, null, 0);
@@ -447,6 +459,23 @@ final class NativeVideoDecoder {
         );
     }
 
+    private static Set<Long> activeSamplePresentationUs(
+            long[] sortedPresentationUs,
+            double[] times,
+            int firstTarget
+    ) {
+        HashSet<Long> active = new HashSet<>();
+        int target = 0;
+        for (long presentationUs : sortedPresentationUs) {
+            if (target >= times.length) break;
+            if (presentationUs + 1_000 >= Math.round(times[target] * 1_000_000)) {
+                if (target >= firstTarget) active.add(presentationUs);
+                target++;
+            }
+        }
+        return Set.copyOf(active);
+    }
+
     private static SamplePlan buildCfrSamplePlan(
             MediaExtractor extractor,
             MediaFormat format,
@@ -575,6 +604,8 @@ final class NativeVideoDecoder {
         private final FeatureWorker featureWorker;
         private final String decoderName;
         private final long videoStartedNanos;
+        private final int resumedRows;
+        private final Set<Long> materializedPresentationUs;
         private final CountDownLatch completion = new CountDownLatch(1);
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
 
@@ -600,7 +631,10 @@ final class NativeVideoDecoder {
                 NanoProfiler profiler,
                 FeatureWorker featureWorker,
                 String decoderName,
-                long videoStartedNanos
+                long videoStartedNanos,
+                int firstTarget,
+                int resumedRows,
+                Set<Long> materializedPresentationUs
         ) {
             this.extractor = extractor;
             this.samplePlan = samplePlan;
@@ -614,6 +648,9 @@ final class NativeVideoDecoder {
             this.featureWorker = featureWorker;
             this.decoderName = decoderName;
             this.videoStartedNanos = videoStartedNanos;
+            this.target = firstTarget;
+            this.resumedRows = resumedRows;
+            this.materializedPresentationUs = materializedPresentationUs;
         }
 
         @Override
@@ -648,7 +685,7 @@ final class NativeVideoDecoder {
                     inputEnded = true;
                     return;
                 }
-                if (!samplePlan.sampledPresentationUs().contains(sampleTime)) {
+                if (!materializedPresentationUs.contains(sampleTime)) {
                     sampleFlags |= MediaCodec.BUFFER_FLAG_DECODE_ONLY;
                     decodeOnlySourceFrames++;
                 }
@@ -729,7 +766,7 @@ final class NativeVideoDecoder {
                 profiler.add("yuv_crop_scale_color", System.nanoTime() - operationStarted);
                 try {
                     operationStarted = System.nanoTime();
-                    featureWorker.submit(target, rgba, cancelled);
+                    featureWorker.submit(target, rgba, target >= resumedRows, cancelled);
                     profiler.add("feature_queue_backpressure", System.nanoTime() - operationStarted);
                     rgba = null;
                 } finally {
@@ -1025,9 +1062,11 @@ final class NativeVideoDecoder {
 
     private static final class FeatureWorker implements AutoCloseable {
         private static final int QUEUE_CAPACITY = 2;
-        private static final SampleTask FINISH = new SampleTask(-1, null);
+        private static final SampleTask FINISH = new SampleTask(-1, null, false);
 
         private final float[] output;
+        private final double[] times;
+        private final NativeFeatureCache.VisualWriter cacheWriter;
         private final ArrayBlockingQueue<SampleTask> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
         private final NanoProfiler profiler = new NanoProfiler();
@@ -1039,13 +1078,32 @@ final class NativeVideoDecoder {
         private volatile boolean closeRequested;
 
         FeatureWorker(float[] output) {
+            this(output, null, null);
+        }
+
+        FeatureWorker(
+                float[] output,
+                double[] times,
+                NativeFeatureCache.VisualWriter cacheWriter
+        ) {
             this.output = output;
+            this.times = times;
+            this.cacheWriter = cacheWriter;
             thread = new Thread(this::run, "VolleyCut-OpenCV");
             thread.start();
         }
 
         void submit(int rowIndex, Mat rgba, BooleanSupplier cancelled) throws IOException {
-            SampleTask task = new SampleTask(rowIndex, rgba);
+            submit(rowIndex, rgba, true, cancelled);
+        }
+
+        void submit(
+                int rowIndex,
+                Mat rgba,
+                boolean storeResult,
+                BooleanSupplier cancelled
+        ) throws IOException {
+            SampleTask task = new SampleTask(rowIndex, rgba, storeResult);
             try {
                 while (true) {
                     throwIfFailed();
@@ -1098,12 +1156,17 @@ final class NativeVideoDecoder {
                         long operationStarted = System.nanoTime();
                         float[] row = extractor.extract(task.rgba());
                         profiler.add("opencv_feature_call", System.nanoTime() - operationStarted);
-                        operationStarted = System.nanoTime();
-                        System.arraycopy(
-                                row, 0, output,
-                                task.rowIndex() * FeatureSchema.FRAME.size(), row.length
-                        );
-                        profiler.add("feature_matrix_copy", System.nanoTime() - operationStarted);
+                        if (task.storeResult()) {
+                            operationStarted = System.nanoTime();
+                            System.arraycopy(
+                                    row, 0, output,
+                                    task.rowIndex() * FeatureSchema.FRAME.size(), row.length
+                            );
+                            profiler.add("feature_matrix_copy", System.nanoTime() - operationStarted);
+                            if (cacheWriter != null) {
+                                cacheWriter.append(task.rowIndex(), times[task.rowIndex()], row);
+                            }
+                        }
                     } finally {
                         task.release();
                     }
@@ -1136,7 +1199,7 @@ final class NativeVideoDecoder {
         }
     }
 
-    private record SampleTask(int rowIndex, Mat rgba) {
+    private record SampleTask(int rowIndex, Mat rgba, boolean storeResult) {
         void release() {
             if (rgba != null) rgba.release();
         }

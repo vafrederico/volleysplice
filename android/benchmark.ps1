@@ -7,6 +7,8 @@ param(
     [int]$OperatingRate = 240,
     [ValidateSet(-1, 0, 1)]
     [int]$CodecPriority = 1,
+    [ValidateSet("Use", "Bypass", "Refresh")]
+    [string]$CacheMode = "Use",
     [ValidateRange(1, 100)]
     [int]$Runs = 1,
     [ValidateRange(10, 3600)]
@@ -124,7 +126,8 @@ for ($run = 1; $run -le $Runs; $run++) {
         "--es", "benchmark_run_id", $runId,
         "--ei", "benchmark_source_frame_limit", $FrameLimit.ToString(),
         "--ei", "benchmark_codec_operating_rate", $OperatingRate.ToString(),
-        "--ei", "benchmark_codec_priority", $CodecPriority.ToString()
+        "--ei", "benchmark_codec_priority", $CodecPriority.ToString(),
+        "--es", "benchmark_feature_cache_mode", $CacheMode.ToLowerInvariant()
     )
     if ($launchOutput -notmatch "Status: ok") {
         throw "Activity launch did not report success:`n$launchOutput"

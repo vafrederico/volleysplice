@@ -141,7 +141,7 @@ final class AudioFeatureExtractor {
             pushOutput(Math.max(-32768, Math.min(32767, quantized)) / 32768f);
             sourcePosition += step;
         }
-        int consumed = (int) Math.floor(sourcePosition);
+        int consumed = Math.min(sourceBuffer.length, (int) Math.floor(sourcePosition));
         if (consumed > 0) {
             sourceBuffer = Arrays.copyOfRange(sourceBuffer, consumed, sourceBuffer.length);
             sourcePosition -= consumed;
