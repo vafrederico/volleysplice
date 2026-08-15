@@ -111,7 +111,7 @@ class ProjectAnalysisService : Service() {
         val cancelled = AtomicBoolean(false)
         synchronized(this) { activeCancellation = cancelled }
         NativeProjectStore.updateStatus(this, projectId, ProjectStatus.ANALYZING)
-        broadcast(projectId, ProjectStatus.ANALYZING, 0.0, "opening", "Preparing full video + audio inference")
+        broadcast(projectId, ProjectStatus.ANALYZING, 0.0, "opening", "Preparing game-window video + audio inference")
         updateNotification(0, "Analyzing ${project.source.name}", true)
         try {
             val result = AnalysisEngine(this).analyze(
@@ -120,6 +120,7 @@ class ProjectAnalysisService : Service() {
                 FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
                 AnalysisTypes.VideoDecoderOptions.defaults(),
                 NativeFeatureCache.Mode.fromWireName(project.cacheMode),
+                project.analysisWindow,
                 cancelled,
                 object : AnalysisTypes.ProgressListener {
                     override fun onProgress(stage: String, fraction: Double, detail: String) {
@@ -139,7 +140,7 @@ class ProjectAnalysisService : Service() {
                     ProductionEnsemble.isDisagreement(it.agreement())
                 }
                 val detail = "${result.ranges().size} merged ranges · $disagreements to validate · features cached"
-                Log.i(TAG, resultLog(projectId, result).toString())
+                Log.i(TAG, resultLog(projectId, project.analysisWindow, result).toString())
                 broadcast(projectId, ProjectStatus.READY, 1.0, "complete", detail)
                 updateNotification(100, "Ready: ${project.source.name}", false)
             }
@@ -162,12 +163,17 @@ class ProjectAnalysisService : Service() {
         }
     }
 
-    private fun resultLog(projectId: String, result: AnalysisTypes.AnalysisResult) = JSONObject().apply {
+    private fun resultLog(
+        projectId: String,
+        analysisWindow: AnalysisTypes.AnalysisWindow,
+        result: AnalysisTypes.AnalysisResult,
+    ) = JSONObject().apply {
         put("schemaVersion", 1)
         put("method", "android-project-inference-ensemble-v2")
         put("projectId", projectId)
         put("modelId", FeatureSchema.MODEL_ID)
         put("sourceName", result.displayName())
+        put("analysisWindow", JSONArray(listOf(analysisWindow.start(), analysisWindow.end())))
         put("totalMilliseconds", result.totalMilliseconds())
         put("sampleRows", result.sampleRows())
         put("decodedSourceFrames", result.decodedSourceFrames())

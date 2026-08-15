@@ -10,13 +10,15 @@ video URI
   -> bounded FIFO worker for native OpenCV visual features
   -> MediaCodec audio decode + native resampling/FFT features
   -> 104 base features
-  -> whole-recording percentile ranks and +/-2 s context (520 columns)
+  -> game-window percentile ranks and +/-2 s context (520 columns)
   -> all-labels-v2 and previous-production rally/serve/dead-state stacks
   -> overlap-union-disagreement-v1 production ensemble
   -> unpadded candidates with model-agreement provenance + stage timings
 ```
 
 No media is uploaded. The app has no network permission. It does not use a WebView, WebCodecs, JavaScript, or WASM.
+
+In the production project flow, choose a recording and use the local preview to mark the game start and game end before queueing inference. Only globally aligned 4 Hz samples inside that window generate visual, audio, or contextual features. The bounds are part of the project and feature-cache identity, and the editor overview, playback, padding, manual marks, edit list, and export are constrained to the same window. Existing full-video projects and caches keep their legacy identity.
 
 ## Target device and SDK
 
@@ -49,7 +51,7 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
 
 - global before/after output padding for inferred ranges;
 - configurable joining of positive gaps shorter than 0-10 seconds (3 seconds by default), retained in preview and export;
-- a whole-recording timeline and a focused range timeline with draggable handles;
+- a game-window timeline and a focused range timeline with draggable handles;
 - exact source seeking, 1x/2x/4x/8x playback, and final-cut-only preview;
 - keep/remove review, mandatory single-model disagreement review, confidence review, 0.1/1 second nudges, and per-range reset;
 - manual missed cuts and ignored source sections;
@@ -85,7 +87,7 @@ Asynchronous decode-only output was then retained after reducing the same 5,000-
 
 The YUV crop/scale/color sampler now precomputes source-plane offsets and exact integer conversion lookup tables. A 5,000-frame 1080p60 check fell from 14,683.5 ms to 13,429.5 ms (8.5%) with identical ranges and confidences. The 1,000-frame median fell from 3,026 ms to 2,837 ms (6.2%). The decoder-bound 4K60 case improved more modestly, from 5,884 ms to 5,797 ms (1.5%). Batched compressed input was rejected: although it reduced codec calls, the Pixel decoder produced different visual features and ranges.
 
-Raw visual features are checkpointed to app-private storage every 16 analysis rows. An interrupted run resumes by decoding one cached sample as temporal warm-up and then appending new rows. Completed visual chunks are compacted into one file, and the audio and contextual matrices are saved as well. Later model runs therefore skip both decoders and whole-recording contextualization. Cache identity includes source metadata, media geometry/codecs, ROI, feature schemas, analysis rate, and source-frame limit.
+Raw visual features are checkpointed to app-private storage every 16 analysis rows. An interrupted run resumes by decoding one cached sample as temporal warm-up and then appending new rows. Completed visual chunks are compacted into one file, and the audio and contextual matrices are saved as well. Later model runs therefore skip both decoders and game-window contextualization. Cache identity includes source metadata, media geometry/codecs, ROI, feature schemas, analysis rate, source-frame limit, and any non-default game window.
 
 Strict constant-frame-rate inputs now avoid the full timestamp planning scan after a 128-access-unit probe verifies that the declared frame rate predicts presentation timestamps exactly and measures the stream's reorder depth. VFR and inconsistent inputs retain the scan-based path. This reduced the 5,000-frame 1080p60 median from 13,429.5 ms to 13,002 ms (3.2%) with identical analyzed duration, ranges, and confidences. The 1,000-frame 4K60 median improved from 5,797 ms to 5,673 ms (2.1%).
 

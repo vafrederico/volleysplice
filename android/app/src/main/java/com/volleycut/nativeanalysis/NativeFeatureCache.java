@@ -122,12 +122,13 @@ final class NativeFeatureCache {
             AnalysisTypes.Roi roi,
             int sourceFrameLimit,
             int maximumRows,
+            AnalysisTypes.AnalysisWindow analysisWindow,
             Mode mode
     ) {
         this.mode = mode;
         this.maximumRows = maximumRows;
         cacheRoot = new File(context.getFilesDir(), CACHE_VERSION);
-        key = buildKey(context, uri, displayName, media, roi, sourceFrameLimit);
+        key = buildKey(context, uri, displayName, media, roi, sourceFrameLimit, analysisWindow);
         entryDirectory = new File(cacheRoot, key);
         if (mode == Mode.BYPASS) return;
         if (mode == Mode.REFRESH) deleteRecursively(entryDirectory);
@@ -142,11 +143,12 @@ final class NativeFeatureCache {
             AnalysisTypes.Roi roi,
             int sourceFrameLimit,
             int maximumRows,
+            AnalysisTypes.AnalysisWindow analysisWindow,
             Mode mode
     ) {
         return new NativeFeatureCache(
                 context.getApplicationContext(), uri, displayName, media, roi,
-                sourceFrameLimit, maximumRows, mode
+                sourceFrameLimit, maximumRows, analysisWindow, mode
         );
     }
 
@@ -370,10 +372,12 @@ final class NativeFeatureCache {
             String displayName,
             AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi,
-            int sourceFrameLimit
+            int sourceFrameLimit,
+            AnalysisTypes.AnalysisWindow analysisWindow
     ) {
         String key = buildKey(
-                context.getApplicationContext(), uri, displayName, media, roi, sourceFrameLimit
+                context.getApplicationContext(), uri, displayName, media, roi, sourceFrameLimit,
+                analysisWindow
         );
         deleteRecursively(new File(new File(context.getFilesDir(), CACHE_VERSION), key));
     }
@@ -635,7 +639,8 @@ final class NativeFeatureCache {
             String displayName,
             AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi,
-            int sourceFrameLimit
+            int sourceFrameLimit,
+            AnalysisTypes.AnalysisWindow requestedWindow
     ) {
         long sourceSize = -1;
         long sourceModified = -1;
@@ -650,6 +655,9 @@ final class NativeFeatureCache {
                 }
             }
         } catch (RuntimeException ignored) {}
+        AnalysisTypes.AnalysisWindow analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
+                requestedWindow, media.durationSeconds()
+        );
         String identity = String.join("\n",
                 CACHE_VERSION,
                 "visual-extractor=opencv-v1-yuv-lut",
@@ -669,7 +677,8 @@ final class NativeFeatureCache {
                 "audioMime=" + media.audioMime(),
                 "roi=" + roi.x() + "," + roi.y() + "," + roi.width() + "," + roi.height(),
                 "sourceFrameLimit=" + sourceFrameLimit
-        );
+        ) + (analysisWindow.isFull(media.durationSeconds()) ? "" :
+                "\nanalysisWindow=" + analysisWindow.start() + "," + analysisWindow.end());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(identity.getBytes(StandardCharsets.UTF_8));

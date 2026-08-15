@@ -34,6 +34,7 @@ internal data class NativeProject(
     val id: String,
     val source: ProjectSource,
     val media: AnalysisTypes.MediaInfo,
+    val analysisWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
     val roi: AnalysisTypes.Roi,
     val status: ProjectStatus,
     val ranges: List<SeedRange> = emptyList(),
@@ -52,6 +53,8 @@ internal data class NativeProject(
             height = media.height(),
             rotation = media.rotation(),
             ranges = ranges,
+            gameStartMs = secondsToMs(analysisWindow.start()),
+            gameEndMs = secondsToMs(analysisWindow.end()),
         )
     } else null
 }
@@ -152,6 +155,7 @@ internal object NativeProjectStore {
             project.media,
             project.roi,
             FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
+            project.analysisWindow,
         )
         val target = projectFile(context, project.id)
         if (target.exists() && !target.delete()) Log.w(TAG, "Could not delete ${target.name}")
@@ -193,12 +197,19 @@ internal object NativeProjectStore {
         )
     }
 
-    fun newQueued(source: ProjectSource, media: AnalysisTypes.MediaInfo, roi: AnalysisTypes.Roi): NativeProject {
+    fun newQueued(
+        source: ProjectSource,
+        media: AnalysisTypes.MediaInfo,
+        roi: AnalysisTypes.Roi,
+        requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
+    ): NativeProject {
         val now = System.currentTimeMillis()
+        val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, media.durationSeconds())
         return NativeProject(
-            id = projectId(source, media.durationSeconds()),
+            id = projectId(source, media.durationSeconds(), analysisWindow),
             source = source,
             media = media,
+            analysisWindow = analysisWindow,
             roi = roi,
             status = ProjectStatus.QUEUED,
             createdAtMs = now,
@@ -208,14 +219,15 @@ internal object NativeProjectStore {
 
     fun findMatching(context: Context, candidate: NativeProject): NativeProject? =
         get(context, candidate.id) ?: list(context).firstOrNull { existing ->
-            existing.source.uri == candidate.source.uri || (
+            sameWindow(existing.analysisWindow, candidate.analysisWindow) && (
+                existing.source.uri == candidate.source.uri || (
                 existing.source.name == candidate.source.name &&
                     existing.source.size >= 0 && existing.source.size == candidate.source.size &&
                     sameModifiedSecond(existing.source.lastModified, candidate.source.lastModified) &&
                     kotlin.math.abs(
                         existing.media.durationSeconds() - candidate.media.durationSeconds()
                     ) < .001
-                )
+                ))
         }
 
     fun fromResult(context: Context, result: AnalysisTypes.AnalysisResult): NativeProject {
@@ -254,10 +266,15 @@ internal object NativeProjectStore {
             )
         }
         val now = System.currentTimeMillis()
+        val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
+            AnalysisTypes.AnalysisWindow(seed.gameStartMs / 1_000.0, seed.gameEndMs / 1_000.0),
+            media.durationSeconds(),
+        )
         return NativeProject(
-            id = projectId(source, media.durationSeconds()),
+            id = projectId(source, media.durationSeconds(), analysisWindow),
             source = source,
             media = media,
+            analysisWindow = analysisWindow,
             roi = AnalysisEngine.inferRoi(seed.displayName),
             status = ProjectStatus.READY,
             ranges = seed.ranges,
@@ -277,13 +294,20 @@ internal object NativeProjectStore {
         }.getOrDefault(project)
     }
 
-    internal fun projectId(source: ProjectSource, durationSeconds: Double): String {
+    internal fun projectId(
+        source: ProjectSource,
+        durationSeconds: Double,
+        requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(durationSeconds),
+    ): String {
+        val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, durationSeconds)
         val identity = listOf(
             source.name,
             source.size.toString(),
             normalizedModified(source.lastModified).toString(),
             durationSeconds.toString(),
-        ).joinToString("\u0000")
+        ).joinToString("\u0000") + if (analysisWindow.isFull(durationSeconds)) "" else {
+            "\u0000${analysisWindow.start()}\u0000${analysisWindow.end()}"
+        }
         var hash = 0x811c9dc5u
         identity.forEach { character ->
             hash = (hash xor character.code.toUInt()) * 0x01000193u
@@ -308,6 +332,10 @@ internal object NativeProjectStore {
             put("rotation", project.media.rotation())
             put("videoMime", project.media.videoMime())
             put("audioMime", project.media.audioMime())
+        })
+        put("analysisWindow", JSONObject().apply {
+            put("start", project.analysisWindow.start())
+            put("end", project.analysisWindow.end())
         })
         put("roi", JSONObject().apply {
             put("x", project.roi.x())
@@ -338,6 +366,13 @@ internal object NativeProjectStore {
         val mediaJson = json.getJSONObject("media")
         val roiJson = json.getJSONObject("roi")
         val rangesJson = json.optJSONArray("ranges") ?: JSONArray()
+        val requestedWindow = json.optJSONObject("analysisWindow")?.let {
+            AnalysisTypes.AnalysisWindow(it.optDouble("start"), it.optDouble("end"))
+        }
+        val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
+            requestedWindow,
+            mediaJson.getDouble("durationSeconds"),
+        )
         val project = NativeProject(
             id = json.getString("id"),
             source = ProjectSource(
@@ -355,6 +390,7 @@ internal object NativeProjectStore {
                 mediaJson.optString("videoMime"),
                 mediaJson.optString("audioMime"),
             ),
+            analysisWindow = analysisWindow,
             roi = AnalysisTypes.Roi(
                 roiJson.getDouble("x"),
                 roiJson.getDouble("y"),
@@ -382,6 +418,8 @@ internal object NativeProjectStore {
         )
         return project.takeIf {
             it.id.isNotBlank() && it.source.uri.isNotBlank() && it.media.durationSeconds() > 0 &&
+                it.analysisWindow.end() - it.analysisWindow.start() >=
+                    AnalysisTypes.MIN_ANALYSIS_WINDOW_SECONDS &&
                 it.ranges.all { range ->
                     range.startMs >= 0 && range.endMs > range.startMs &&
                         range.endMs <= (it.media.durationSeconds() * 1_000.0).toLong() &&
@@ -392,12 +430,18 @@ internal object NativeProjectStore {
     }
 
     internal fun normalizeStored(project: NativeProject): NativeProject {
-        val staleInference = project.modelId != FeatureSchema.MODEL_ID ||
-            (project.status == ProjectStatus.READY && project.ranges.any {
+        val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
+            project.analysisWindow,
+            project.media.durationSeconds(),
+        )
+        val normalized = if (analysisWindow == project.analysisWindow) project
+            else project.copy(analysisWindow = analysisWindow)
+        val staleInference = normalized.modelId != FeatureSchema.MODEL_ID ||
+            (normalized.status == ProjectStatus.READY && normalized.ranges.any {
                 !ProductionEnsemble.isValidAgreement(it.agreement)
             })
-        if (!staleInference) return project
-        return project.copy(
+        if (!staleInference) return normalized
+        return normalized.copy(
             status = ProjectStatus.QUEUED,
             ranges = emptyList(),
             modelId = FeatureSchema.MODEL_ID,
@@ -413,6 +457,12 @@ internal object NativeProjectStore {
 
     private fun sameModifiedSecond(left: Long, right: Long): Boolean =
         left < 0 || right < 0 || normalizedModified(left) == normalizedModified(right)
+
+    private fun sameWindow(
+        left: AnalysisTypes.AnalysisWindow,
+        right: AnalysisTypes.AnalysisWindow,
+    ): Boolean = kotlin.math.abs(left.start() - right.start()) < 1e-9 &&
+        kotlin.math.abs(left.end() - right.end()) < 1e-9
 
     private fun projectFile(context: Context, id: String) =
         File(directory(context), "${id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.json")

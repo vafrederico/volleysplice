@@ -134,10 +134,10 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             draft.playbackRate in setOf(1f, 2f, 4f, 8f) &&
             draft.confidenceReviewThreshold in 0f..1f &&
             draft.cuts.all { cut ->
-                cut.keepStartMs in 0..cut.coreStartMs &&
+                cut.keepStartMs in seed.gameStartMs..cut.coreStartMs &&
                     cut.coreStartMs < cut.coreEndMs &&
                     cut.coreEndMs <= cut.keepEndMs &&
-                    cut.keepEndMs <= seed.durationMs &&
+                    cut.keepEndMs <= seed.gameEndMs &&
                     (cut.agreement == null || ProductionEnsemble.isValidAgreement(cut.agreement))
             } &&
             draft.ignoredIntervals.all { it.startMs in 0 until it.endMs && it.endMs <= seed.durationMs }

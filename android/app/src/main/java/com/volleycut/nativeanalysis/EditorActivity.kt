@@ -150,6 +150,8 @@ class EditorActivity : ComponentActivity() {
                     agreements?.getOrNull(it)?.takeIf(String::isNotBlank),
                 )
             },
+            gameStartMs = intent.getLongExtra(EXTRA_GAME_START_MS, 0),
+            gameEndMs = intent.getLongExtra(EXTRA_GAME_END_MS, durationMs),
         )
     }
 
@@ -164,6 +166,8 @@ class EditorActivity : ComponentActivity() {
         private const val EXTRA_RANGE_ENDS = "editor_range_ends"
         private const val EXTRA_RANGE_CONFIDENCE = "editor_range_confidence"
         private const val EXTRA_RANGE_AGREEMENTS = "editor_range_agreements"
+        private const val EXTRA_GAME_START_MS = "editor_game_start_ms"
+        private const val EXTRA_GAME_END_MS = "editor_game_end_ms"
 
         @JvmStatic
         fun createIntent(context: Context, result: AnalysisTypes.AnalysisResult): Intent {
@@ -196,6 +200,8 @@ class EditorActivity : ComponentActivity() {
                 putExtra(EXTRA_RANGE_ENDS, seed.ranges.map { it.endMs }.toLongArray())
                 putExtra(EXTRA_RANGE_CONFIDENCE, seed.ranges.map { it.confidence }.toFloatArray())
                 putExtra(EXTRA_RANGE_AGREEMENTS, seed.ranges.map { it.agreement.orEmpty() }.toTypedArray())
+                putExtra(EXTRA_GAME_START_MS, seed.gameStartMs)
+                putExtra(EXTRA_GAME_END_MS, seed.gameEndMs)
             }
     }
 }
@@ -255,7 +261,13 @@ private data class ExportUiState(
     val metrics: String? = null,
 )
 
-private data class SourceSelection(val uri: Uri, val displayName: String)
+private data class SourceSelection(
+    val uri: Uri,
+    val displayName: String,
+    val source: ProjectSource? = null,
+    val media: AnalysisTypes.MediaInfo? = null,
+    val roi: AnalysisTypes.Roi? = null,
+)
 
 private data class InferenceUiState(
     val projectId: String? = null,
@@ -307,6 +319,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var useCache by remember { mutableStateOf(true) }
     var cacheBytes by remember { mutableLongStateOf(NativeFeatureCache.totalBytes(context)) }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
+    var gameStartMs by remember { mutableLongStateOf(0L) }
+    var gameEndMs by remember { mutableLongStateOf(0L) }
 
     fun reloadProjects(
         preferredId: String? = selectedProjectId,
@@ -337,7 +351,41 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 )
             }
             selectedSource = SourceSelection(uri, sourceDisplayName(context, uri))
-            inference = InferenceUiState(detail = "Ready to create and queue this project")
+            gameStartMs = 0
+            gameEndMs = 0
+            preparingSource = true
+            inference = InferenceUiState(stage = "opening", detail = "Reading recording metadata")
+            scope.launch {
+                try {
+                    val prepared = withContext(Dispatchers.IO) {
+                        val engine = AnalysisEngine(context)
+                        val media = engine.probe(uri)
+                        val source = NativeProjectStore.source(
+                            context,
+                            uri,
+                            sourceDisplayName(context, uri),
+                        )
+                        SourceSelection(
+                            uri = uri,
+                            displayName = source.name,
+                            source = source,
+                            media = media,
+                            roi = AnalysisEngine.inferRoi(source.name),
+                        )
+                    }
+                    selectedSource = prepared
+                    gameStartMs = 0
+                    gameEndMs = secondsToMs(checkNotNull(prepared.media).durationSeconds())
+                    inference = InferenceUiState(detail = "Mark the game start and end, then queue inference")
+                } catch (error: Exception) {
+                    inference = InferenceUiState(
+                        stage = "failed",
+                        error = error.message ?: error.javaClass.simpleName,
+                    )
+                } finally {
+                    preparingSource = false
+                }
+            }
         }
     }
     val notificationPermission = rememberLauncherForActivityResult(
@@ -346,7 +394,11 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
 
     fun queueSelectedSource() {
         val selected = selectedSource ?: return
-        if (preparingSource) return
+        if (preparingSource || selected.media == null || selected.source == null || selected.roi == null) return
+        if (gameEndMs - gameStartMs < 1_000) {
+            inference = InferenceUiState(error = "Mark at least one second of game footage")
+            return
+        }
         preparingSource = true
         inference = InferenceUiState(
             stage = "opening",
@@ -354,13 +406,16 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         )
         scope.launch {
             try {
-                val prepared = withContext(Dispatchers.IO) {
-                    val engine = AnalysisEngine(context)
-                    val media = engine.probe(selected.uri)
-                    val source = NativeProjectStore.source(context, selected.uri, selected.displayName)
-                    Triple(source, media, AnalysisEngine.inferRoi(source.name))
-                }
-                val candidate = NativeProjectStore.newQueued(prepared.first, prepared.second, prepared.third)
+                val analysisWindow = AnalysisTypes.AnalysisWindow(
+                    gameStartMs / 1_000.0,
+                    gameEndMs / 1_000.0,
+                )
+                val candidate = NativeProjectStore.newQueued(
+                    selected.source,
+                    selected.media,
+                    selected.roi,
+                    analysisWindow,
+                )
                 val existing = NativeProjectStore.findMatching(context, candidate)
                 val reusable = useCache && existing?.status == ProjectStatus.READY &&
                     existing.modelId == FeatureSchema.MODEL_ID
@@ -403,7 +458,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         projectId = queued.id,
                         running = true,
                         stage = "queued",
-                        detail = "Waiting for full video + audio inference",
+                        detail = "Waiting for game-window video + audio inference",
                     )
                     reloadProjects(queued.id)
                     if (Build.VERSION.SDK_INT >= 33 &&
@@ -524,6 +579,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 selectedProjectId = null
                 NativeProjectStore.setSelectedId(context, null)
                 selectedSource = null
+                gameStartMs = 0
+                gameEndMs = 0
                 inference = InferenceUiState(detail = "Choose a recording for the new project")
             },
             onDelete = { selectedProject?.let { confirmDelete = it } },
@@ -539,8 +596,23 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 useCache = useCache,
                 cacheBytes = cacheBytes,
                 queueCount = queueCount,
+                gameStartMs = gameStartMs,
+                gameEndMs = gameEndMs,
                 onSelect = { sourcePicker.launch(arrayOf("video/*")) },
                 onQueue = ::queueSelectedSource,
+                onGameStart = { requested ->
+                    gameStartMs = requested.coerceIn(0, (gameEndMs - 1_000).coerceAtLeast(0))
+                },
+                onGameEnd = { requested ->
+                    val duration = selectedSource?.media?.durationSeconds()?.let(::secondsToMs) ?: 0
+                    gameEndMs = if (duration >= gameStartMs + 1_000) {
+                        requested.coerceIn(gameStartMs + 1_000, duration)
+                    } else duration
+                },
+                onFullVideo = {
+                    gameStartMs = 0
+                    gameEndMs = selectedSource?.media?.durationSeconds()?.let(::secondsToMs) ?: 0
+                },
                 onUseCache = { useCache = it },
                 onClearCache = {
                     NativeFeatureCache.clearAll(context)
@@ -566,7 +638,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         projectId = queued.id,
                         running = true,
                         stage = "queued",
-                        detail = "Waiting for full video + audio inference",
+                        detail = "Waiting for game-window video + audio inference",
                     )
                     reloadProjects(queued.id)
                     ProjectAnalysisService.enqueue(context, queued.id)
@@ -744,8 +816,13 @@ private fun NewProjectCard(
     useCache: Boolean,
     cacheBytes: Long,
     queueCount: Int,
+    gameStartMs: Long,
+    gameEndMs: Long,
     onSelect: () -> Unit,
     onQueue: () -> Unit,
+    onGameStart: (Long) -> Unit,
+    onGameEnd: (Long) -> Unit,
+    onFullVideo: () -> Unit,
     onUseCache: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onBenchmark: () -> Unit,
@@ -765,9 +842,23 @@ private fun NewProjectCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedButton(enabled = !preparing, onClick = onSelect) { Text("Choose video") }
-            Button(enabled = selected != null && !preparing, onClick = onQueue) {
+            Button(
+                enabled = selected?.media != null && !preparing && gameEndMs - gameStartMs >= 1_000,
+                onClick = onQueue,
+            ) {
                 Text(if (preparing) "Creating…" else "Create & queue")
             }
+        }
+        if (selected?.media != null) {
+            GameWindowPicker(
+                selected = selected,
+                gameStartMs = gameStartMs,
+                gameEndMs = gameEndMs,
+                enabled = !preparing,
+                onGameStart = onGameStart,
+                onGameEnd = onGameEnd,
+                onFullVideo = onFullVideo,
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -801,6 +892,109 @@ private fun NewProjectCard(
             TextButton(enabled = !preparing, onClick = onBenchmark) { Text("Benchmark tools") }
         }
     }
+}
+
+@OptIn(markerClass = [UnstableApi::class])
+@Composable
+private fun GameWindowPicker(
+    selected: SourceSelection,
+    gameStartMs: Long,
+    gameEndMs: Long,
+    enabled: Boolean,
+    onGameStart: (Long) -> Unit,
+    onGameEnd: (Long) -> Unit,
+    onFullVideo: () -> Unit,
+) {
+    val context = LocalContext.current
+    val durationMs = secondsToMs(checkNotNull(selected.media).durationSeconds())
+    var playheadMs by remember(selected.uri) { mutableLongStateOf(0L) }
+    var playing by remember(selected.uri) { mutableStateOf(false) }
+    val player = remember(selected.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setSeekParameters(SeekParameters.EXACT)
+            setMediaItem(MediaItem.fromUri(selected.uri))
+            prepare()
+        }
+    }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    LaunchedEffect(player) {
+        while (true) {
+            playheadMs = player.currentPosition.coerceIn(0, durationMs)
+            delay(50)
+        }
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = Color.Black)) {
+        ContentFrame(
+            player = player,
+            modifier = Modifier.fillMaxWidth().height(176.dp),
+            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+        )
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SmallButton(if (playing) "Pause" else "Play", enabled = enabled) {
+            if (player.isPlaying) player.pause() else player.play()
+        }
+        SmallButton("−10s", enabled = enabled) {
+            player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+        }
+        SmallButton("+10s", enabled = enabled) {
+            player.seekTo((player.currentPosition + 10_000).coerceAtMost(durationMs))
+        }
+        Text(
+            "${preciseTime(playheadMs)} / ${preciseTime(durationMs)}",
+            modifier = Modifier.padding(start = 8.dp),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+        )
+    }
+    Slider(
+        value = if (durationMs > 0) playheadMs.toFloat() else 0f,
+        onValueChange = {
+            playheadMs = it.toLong()
+            player.seekTo(playheadMs)
+        },
+        valueRange = 0f..durationMs.coerceAtLeast(1).toFloat(),
+        enabled = enabled,
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("ANALYSIS WINDOW", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("Mark game start & end", fontWeight = FontWeight.Bold)
+            Text(
+                "Only this range generates features and appears on the editor overview.",
+                color = Muted,
+                fontSize = 12.sp,
+            )
+        }
+        TextButton(enabled = enabled, onClick = onFullVideo) { Text("Use full video") }
+    }
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(enabled = enabled, onClick = { onGameStart(playheadMs) }) {
+            Text("Set start · ${preciseTime(gameStartMs)}")
+        }
+        OutlinedButton(enabled = enabled, onClick = { onGameEnd(playheadMs) }) {
+            Text("Set end · ${preciseTime(gameEndMs)}")
+        }
+    }
+    val analyzedMs = (gameEndMs - gameStartMs).coerceAtLeast(0)
+    Text(
+        "${compactTime(analyzedMs)} analyzed · ${compactTime(durationMs - analyzedMs)} skipped",
+        color = Green,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+    )
 }
 
 @Composable
@@ -838,7 +1032,7 @@ private fun EditorScreen(
     var draft by remember { mutableStateOf(initialDraft) }
     var selectedId by remember { mutableStateOf(initialDraft.cuts.firstOrNull()?.id.orEmpty()) }
     var focusLocked by remember { mutableStateOf(false) }
-    var playbackPositionMs by remember { mutableLongStateOf(0L) }
+    var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
     var isPlaying by remember { mutableStateOf(false) }
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
     var message by remember {
@@ -852,6 +1046,7 @@ private fun EditorScreen(
             setSeekParameters(SeekParameters.EXACT)
             setMediaItem(MediaItem.fromUri(seed.sourceUri))
             prepare()
+            seekTo(seed.gameStartMs)
         }
     }
     val sortedCuts = draft.cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
@@ -868,7 +1063,16 @@ private fun EditorScreen(
     val totalFinalMs = EditorMath.totalFinalMs(finalIntervals)
     val removedCount = draft.cuts.count { !it.included }
     val ignoredCutCount = draft.cuts.count { it.included && it.id !in effectiveIds }
-    val detailWindow = EditorMath.detailWindow(selected, playbackPositionMs, seed.durationMs)
+    val visibleIgnoredIntervals = draft.ignoredIntervals.filter {
+        it.endMs > seed.gameStartMs && it.startMs < seed.gameEndMs
+    }
+    val detailWindow = EditorMath.detailWindow(
+        selected,
+        playbackPositionMs,
+        seed.durationMs,
+        seed.gameStartMs,
+        seed.gameEndMs,
+    )
 
     fun updateDraft(mutate: (EditorDraft) -> EditorDraft) {
         draft = mutate(draft).copy(updatedAtMs = System.currentTimeMillis())
@@ -881,7 +1085,7 @@ private fun EditorScreen(
     }
 
     fun seekTo(positionMs: Long) {
-        val target = positionMs.coerceIn(0, seed.durationMs)
+        val target = positionMs.coerceIn(seed.gameStartMs, seed.gameEndMs)
         playbackPositionMs = target
         player.seekTo(target)
     }
@@ -891,16 +1095,16 @@ private fun EditorScreen(
         updateCut(cut.id) { current ->
             if (current.origin == CutOrigin.MANUAL) {
                 if (side == "start") {
-                    val start = valueMs.coerceIn(0, current.keepEndMs - MIN_MARK_MS)
+                    val start = valueMs.coerceIn(seed.gameStartMs, current.keepEndMs - MIN_MARK_MS)
                     current.copy(coreStartMs = start, keepStartMs = start)
                 } else {
-                    val end = valueMs.coerceIn(current.keepStartMs + MIN_MARK_MS, seed.durationMs)
+                    val end = valueMs.coerceIn(current.keepStartMs + MIN_MARK_MS, seed.gameEndMs)
                     current.copy(coreEndMs = end, keepEndMs = end)
                 }
             } else if (side == "start") {
-                current.copy(keepStartMs = valueMs.coerceIn(0, current.coreStartMs))
+                current.copy(keepStartMs = valueMs.coerceIn(seed.gameStartMs, current.coreStartMs))
             } else {
-                current.copy(keepEndMs = valueMs.coerceIn(current.coreEndMs, seed.durationMs))
+                current.copy(keepEndMs = valueMs.coerceIn(current.coreEndMs, seed.gameEndMs))
             }
         }
     }
@@ -1000,6 +1204,18 @@ private fun EditorScreen(
         while (true) {
             delay(33)
             val position = player.currentPosition.coerceAtLeast(0)
+            if (position < seed.gameStartMs) {
+                player.seekTo(seed.gameStartMs)
+                playbackPositionMs = seed.gameStartMs
+                continue
+            }
+            if (position >= seed.gameEndMs) {
+                player.pause()
+                if (position != seed.gameEndMs) player.seekTo(seed.gameEndMs)
+                playbackPositionMs = seed.gameEndMs
+                previewEndMs = null
+                continue
+            }
             playbackPositionMs = position
             if (!focusLocked) {
                 EditorMath.playbackFocusCut(sortedCuts, position)?.let { reached ->
@@ -1074,10 +1290,16 @@ private fun EditorScreen(
 
             SectionCard("OUTPUT", "Padding and retained short gaps") {
                 PaddingControl("Before", draft.beforePaddingMs) { before ->
-                    updateDraft { EditorMath.applyPadding(it, before, it.afterPaddingMs, seed.durationMs) }
+                    updateDraft { EditorMath.applyPadding(
+                        it, before, it.afterPaddingMs, seed.durationMs,
+                        seed.gameStartMs, seed.gameEndMs,
+                    ) }
                 }
                 PaddingControl("After", draft.afterPaddingMs) { after ->
-                    updateDraft { EditorMath.applyPadding(it, it.beforePaddingMs, after, seed.durationMs) }
+                    updateDraft { EditorMath.applyPadding(
+                        it, it.beforePaddingMs, after, seed.durationMs,
+                        seed.gameStartMs, seed.gameEndMs,
+                    ) }
                 }
                 PaddingControl("Join gaps under", draft.joinGapMs) { joinGap ->
                     updateDraft { it.copy(joinGapMs = joinGap.coerceIn(0, MAX_JOIN_GAP_MS)) }
@@ -1117,11 +1339,12 @@ private fun EditorScreen(
             PlayerControls(
                 playing = isPlaying,
                 positionMs = playbackPositionMs,
-                durationMs = seed.durationMs,
+                durationMs = seed.gameEndMs,
                 playbackRate = draft.playbackRate,
                 onToggle = {
                     previewEndMs = null
                     if (player.isPlaying) player.pause() else {
+                        if (player.currentPosition >= seed.gameEndMs) seekTo(seed.gameStartMs)
                         if (draft.finalPreviewEnabled) {
                             EditorMath.nextFinalTime(finalIntervals, player.currentPosition)
                                 ?.let { if (it != player.currentPosition) seekTo(it) }
@@ -1133,7 +1356,7 @@ private fun EditorScreen(
                 onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
             )
 
-            SectionCard("WHOLE RECORDING", "Tap a range · gray = joined gap", compact = true) {
+            SectionCard("GAME WINDOW", "Tap a range · gray = joined gap", compact = true) {
                 ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, disagreementCount, compact = true, onChange = { threshold ->
                     updateDraft { it.copy(confidenceReviewThreshold = threshold) }
                 }, onReviewNext = {
@@ -1149,11 +1372,11 @@ private fun EditorScreen(
                     }
                 })
                 WholeTimeline(
-                    windowStartMs = 0,
-                    windowEndMs = seed.durationMs / 2,
+                    windowStartMs = seed.gameStartMs,
+                    windowEndMs = (seed.gameStartMs + seed.gameEndMs) / 2,
                     cuts = sortedCuts,
                     joinedGaps = joinedGaps,
-                    ignored = draft.ignoredIntervals,
+                    ignored = visibleIgnoredIntervals,
                     selectedId = selected?.id,
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
@@ -1163,13 +1386,17 @@ private fun EditorScreen(
                         seekTo(time)
                     },
                 )
-                TimelineLabels(0, seed.durationMs / 4, seed.durationMs / 2)
+                TimelineLabels(
+                    seed.gameStartMs,
+                    (seed.gameStartMs * 3 + seed.gameEndMs) / 4,
+                    (seed.gameStartMs + seed.gameEndMs) / 2,
+                )
                 WholeTimeline(
-                    windowStartMs = seed.durationMs / 2,
-                    windowEndMs = seed.durationMs,
+                    windowStartMs = (seed.gameStartMs + seed.gameEndMs) / 2,
+                    windowEndMs = seed.gameEndMs,
                     cuts = sortedCuts,
                     joinedGaps = joinedGaps,
-                    ignored = draft.ignoredIntervals,
+                    ignored = visibleIgnoredIntervals,
                     selectedId = selected?.id,
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
@@ -1179,7 +1406,11 @@ private fun EditorScreen(
                         seekTo(time)
                     },
                 )
-                TimelineLabels(seed.durationMs / 2, seed.durationMs * 3 / 4, seed.durationMs)
+                TimelineLabels(
+                    (seed.gameStartMs + seed.gameEndMs) / 2,
+                    (seed.gameStartMs + seed.gameEndMs * 3) / 4,
+                    seed.gameEndMs,
+                )
             }
 
             SectionCard(
@@ -1236,8 +1467,10 @@ private fun EditorScreen(
                         if (selected.origin == CutOrigin.INFERRED) {
                             OutlinedButton(onClick = {
                                 updateCut(selected.id) { cut -> cut.copy(
-                                    keepStartMs = (cut.coreStartMs - draft.beforePaddingMs).coerceAtLeast(0),
-                                    keepEndMs = (cut.coreEndMs + draft.afterPaddingMs).coerceAtMost(seed.durationMs),
+                                    keepStartMs = (cut.coreStartMs - draft.beforePaddingMs)
+                                        .coerceAtLeast(seed.gameStartMs),
+                                    keepEndMs = (cut.coreEndMs + draft.afterPaddingMs)
+                                        .coerceAtMost(seed.gameEndMs),
                                 ) }
                             }) { Text("Reset padding") }
                         }
@@ -1269,9 +1502,9 @@ private fun EditorScreen(
                 }
             }
 
-            if (draft.ignoredIntervals.isNotEmpty()) {
+            if (visibleIgnoredIntervals.isNotEmpty()) {
                 SectionCard("IGNORED SOURCE", "Removed from the derived edit list") {
-                    draft.ignoredIntervals.sortedBy { it.startMs }.forEach { interval ->
+                    visibleIgnoredIntervals.sortedBy { it.startMs }.forEach { interval ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { seekTo(interval.startMs) }) {
                                 Text("${preciseTime(interval.startMs)}–${preciseTime(interval.endMs)}")
@@ -1777,6 +2010,8 @@ private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<F
         put("sourceName", seed.displayName)
         put("sourceUri", seed.sourceUri)
         put("sourceDuration", seed.durationMs / 1_000.0)
+        put("gameStartSeconds", seed.gameStartMs / 1_000.0)
+        put("gameEndSeconds", seed.gameEndMs / 1_000.0)
         put("sourceRevision", seed.sourceRevision)
         put("beforePaddingSeconds", draft.beforePaddingMs / 1_000.0)
         put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)

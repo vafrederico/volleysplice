@@ -35,6 +35,22 @@ final class AnalysisEngine {
             AtomicBoolean cancelled,
             AnalysisTypes.ProgressListener progress
     ) throws IOException, JSONException {
+        return analyze(
+                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, null,
+                cancelled, progress
+        );
+    }
+
+    AnalysisTypes.AnalysisResult analyze(
+            Uri uri,
+            boolean fullFrame,
+            int sourceFrameLimit,
+            AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.Mode cacheMode,
+            AnalysisTypes.AnalysisWindow requestedWindow,
+            AtomicBoolean cancelled,
+            AnalysisTypes.ProgressListener progress
+    ) throws IOException, JSONException {
         long totalStarted = System.nanoTime();
         long threadCpuStarted = Debug.threadCpuTimeNanos();
         long gcCountStart = runtimeStat("art.gc.gc-count");
@@ -50,10 +66,19 @@ final class AnalysisEngine {
         AnalysisTypes.Roi roi = fullFrame
                 ? new AnalysisTypes.Roi(0, 0, 1, 1, "Full frame")
                 : inferRoi(displayName);
-        double[] requestedTimes = analysisTimes(media.durationSeconds());
+        AnalysisTypes.AnalysisWindow analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
+                requestedWindow, media.durationSeconds()
+        );
+        if (analysisWindow.end() - analysisWindow.start()
+                < AnalysisTypes.MIN_ANALYSIS_WINDOW_SECONDS) {
+            throw new IOException("The marked game must be at least one second long");
+        }
+        double[] requestedTimes = analysisTimes(
+                media.durationSeconds(), analysisWindow.start(), analysisWindow.end()
+        );
         NativeFeatureCache cache = NativeFeatureCache.open(
                 context, uri, displayName, media, roi, sourceFrameLimit,
-                requestedTimes.length, cacheMode
+                requestedTimes.length, analysisWindow, cacheMode
         );
         timings.put("open", elapsedMs(stage));
         progress.onProgress("opening", 1, String.format(Locale.US,
@@ -95,7 +120,9 @@ final class AnalysisEngine {
         }
         profile.put("cache/visual_write", visualWriter.writeMilliseconds());
         double[] times = video.analysisTimes();
-        double analyzedDurationSeconds = video.analyzedDurationSeconds();
+        double analyzedDurationSeconds = Math.min(
+                analysisWindow.end(), video.analyzedDurationSeconds()
+        );
         timings.put("video_decode_and_features", elapsedMs(stage));
         appendProfile(profile, "video/", video.profileMilliseconds());
         profile.put("video/thread_cpu", video.threadCpuMilliseconds());
@@ -115,7 +142,7 @@ final class AnalysisEngine {
         } else {
             audio = new NativeAudioDecoder(context).decode(
                     uri,
-                    analyzedDurationSeconds,
+                    new AnalysisTypes.AnalysisWindow(analysisWindow.start(), analyzedDurationSeconds),
                     times,
                     progress,
                     cancelled::get
@@ -140,7 +167,7 @@ final class AnalysisEngine {
             operation = System.nanoTime();
             float[] base = combine(video.values(), temporal, audio.features(), times.length);
             profile.put("context/base_matrix_combine", elapsedMilliseconds(operation));
-            progress.onProgress("normalizing", 0, "Whole-recording percentile ranks + ±2 s context");
+            progress.onProgress("normalizing", 0, "Game-window percentile ranks + ±2 s context");
             FeatureMath.ContextResult contextResult = FeatureMath.contextualizeProfiled(
                     times, base, FeatureSchema.BASE
             );
@@ -178,7 +205,12 @@ final class AnalysisEngine {
         operation = System.nanoTime();
         List<AnalysisTypes.Interval> ranges = ProductionEnsemble.merge(
                 allLabelsResult.intervals(), previousResult.intervals()
-        );
+        ).stream().map(interval -> new AnalysisTypes.Interval(
+                Math.max(analysisWindow.start(), interval.start()),
+                Math.min(analyzedDurationSeconds, interval.end()),
+                interval.confidence(),
+                interval.agreement()
+        )).filter(interval -> interval.end() > interval.start()).toList();
         profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
         timings.put("inference", elapsedMs(stage));
         long total = elapsedMs(totalStarted);
@@ -286,13 +318,21 @@ final class AnalysisEngine {
         return uri.getLastPathSegment() == null ? "selected-video" : uri.getLastPathSegment();
     }
 
-    private static double[] analysisTimes(double duration) {
-        int capacity = Math.max(1, (int) Math.ceil(duration * FeatureSchema.ANALYSIS_FPS));
+    static double[] analysisTimes(double duration, double start, double end) {
+        double safeEnd = Math.min(duration, end);
+        int firstIndex = Math.max(
+                0,
+                (int) Math.ceil(start * FeatureSchema.ANALYSIS_FPS - 1e-9)
+        );
+        int capacity = Math.max(
+                1,
+                (int) Math.ceil((safeEnd - start) * FeatureSchema.ANALYSIS_FPS) + 1
+        );
         double[] provisional = new double[capacity];
         int count = 0;
-        for (int index = 0; index < capacity; index++) {
+        for (int index = firstIndex; count < capacity; index++) {
             double timestamp = index / (double) FeatureSchema.ANALYSIS_FPS;
-            if (timestamp >= duration) break;
+            if (timestamp >= safeEnd - 1e-9) break;
             provisional[count++] = timestamp;
         }
         return java.util.Arrays.copyOf(provisional, count);

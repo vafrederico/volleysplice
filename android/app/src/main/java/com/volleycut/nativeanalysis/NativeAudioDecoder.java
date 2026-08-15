@@ -34,7 +34,7 @@ final class NativeAudioDecoder {
 
     Result decode(
             Uri uri,
-            double duration,
+            AnalysisTypes.AnalysisWindow analysisWindow,
             double[] analysisTimes,
             AnalysisTypes.ProgressListener progress,
             BooleanSupplier cancelled
@@ -44,7 +44,9 @@ final class NativeAudioDecoder {
         NanoProfiler profiler = new NanoProfiler();
         MediaExtractor extractor = new MediaExtractor();
         MediaCodec codec = null;
-        long durationUs = Math.max(1, Math.round(duration * 1_000_000));
+        double analysisDuration = analysisWindow.end() - analysisWindow.start();
+        long startUs = Math.max(0, Math.round(analysisWindow.start() * 1_000_000));
+        long endUs = Math.max(startUs + 1, Math.round(analysisWindow.end() * 1_000_000));
         try {
             long setupStarted = System.nanoTime();
             extractor.setDataSource(context, uri, null);
@@ -56,6 +58,7 @@ final class NativeAudioDecoder {
                     Map.of()
             );
             extractor.selectTrack(track);
+            extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             MediaFormat inputFormat = extractor.getTrackFormat(track);
             String mime = inputFormat.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Audio track has no MIME type");
@@ -85,7 +88,7 @@ final class NativeAudioDecoder {
                         if (input == null) throw new IOException("Audio decoder returned no input buffer");
                         operationStarted = System.nanoTime();
                         long nextSampleTime = extractor.getSampleTime();
-                        int sampleSize = nextSampleTime == -1 || nextSampleTime >= durationUs
+                        int sampleSize = nextSampleTime == -1 || nextSampleTime >= endUs
                                 ? -1
                                 : extractor.readSampleData(input, 0);
                         long sampleTime = sampleSize < 0 ? 0 : extractor.getSampleTime();
@@ -120,12 +123,12 @@ final class NativeAudioDecoder {
                     continue;
                 }
                 if (outputIndex < 0) continue;
-                if (info.size > 0 && info.presentationTimeUs < durationUs) {
+                if (info.size > 0 && info.presentationTimeUs < endUs) {
                     operationStarted = System.nanoTime();
                     ByteBuffer buffer = codec.getOutputBuffer(outputIndex);
                     if (buffer == null) throw new IOException("Audio decoder returned no output buffer");
                     float[] mono = pcmToMono(buffer, info.offset, info.size, channels, encoding);
-                    long remainingUs = durationUs - info.presentationTimeUs;
+                    long remainingUs = endUs - info.presentationTimeUs;
                     int framesToKeep = (int) Math.min(
                             mono.length,
                             Math.max(0, (remainingUs * sampleRate + 999_999) / 1_000_000)
@@ -136,12 +139,19 @@ final class NativeAudioDecoder {
                     profiler.add("pcm_copy_and_downmix", System.nanoTime() - operationStarted);
                     decodedPcmFrames += mono.length;
                     operationStarted = System.nanoTime();
-                    accumulator.push(mono, info.presentationTimeUs / 1_000_000.0, sampleRate);
+                    accumulator.push(
+                            mono,
+                            info.presentationTimeUs / 1_000_000.0 - analysisWindow.start(),
+                            sampleRate
+                    );
                     profiler.add("accumulator_push", System.nanoTime() - operationStarted);
-                    long second = Math.max(0, info.presentationTimeUs / 1_000_000);
+                    long second = Math.max(
+                            0,
+                            (info.presentationTimeUs - startUs) / 1_000_000
+                    );
                     if (second != lastReportedSecond) {
                         lastReportedSecond = second;
-                        progress.onProgress("audio", Math.min(1, second / duration),
+                        progress.onProgress("audio", Math.min(1, second / analysisDuration),
                                 "Native audio decode + 16 kHz DSP · " + second + " s");
                     }
                 }
@@ -151,7 +161,11 @@ final class NativeAudioDecoder {
                 profiler.add("codec_output_release", System.nanoTime() - operationStarted);
             }
             long finishStarted = System.nanoTime();
-            float[] features = accumulator.finishAndPool(analysisTimes);
+            double[] relativeTimes = new double[analysisTimes.length];
+            for (int index = 0; index < analysisTimes.length; index++) {
+                relativeTimes[index] = analysisTimes[index] - analysisWindow.start();
+            }
+            float[] features = accumulator.finishAndPool(relativeTimes);
             profiler.add("dsp_finish_and_pool_call", System.nanoTime() - finishStarted);
             profiler.appendMilliseconds("dsp/", accumulator.performanceMilliseconds());
             profiler.add("audio_pipeline_wall", System.nanoTime() - pipelineStartedNanos);

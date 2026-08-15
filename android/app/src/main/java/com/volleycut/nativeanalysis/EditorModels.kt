@@ -23,11 +23,16 @@ internal data class EditorSeed(
     val height: Int,
     val rotation: Int,
     val ranges: List<SeedRange>,
+    val gameStartMs: Long = 0,
+    val gameEndMs: Long = durationMs,
 ) {
     val sourceRevision: String by lazy {
         val canonical = buildString {
             append(sourceUri).append('|').append(displayName).append('|').append(durationMs).append('|')
             append(width).append('x').append(height).append('@').append(rotation).append('|')
+            if (gameStartMs != 0L || gameEndMs != durationMs) {
+                append("window=").append(gameStartMs).append(':').append(gameEndMs).append('|')
+            }
             ranges.forEach {
                 append(it.startMs).append(':').append(it.endMs).append(':').append(it.confidence)
                     .append(':').append(it.agreement).append(';')
@@ -98,21 +103,29 @@ internal object EditorMath {
         sourceRevision = seed.sourceRevision,
         updatedAtMs = 0,
         cuts = seed.ranges.mapNotNull { range ->
-            val coreStart = range.startMs.coerceIn(0, seed.durationMs)
-            val coreEnd = range.endMs.coerceIn(0, seed.durationMs)
+            val coreStart = range.startMs.coerceIn(seed.gameStartMs, seed.gameEndMs)
+            val coreEnd = range.endMs.coerceIn(seed.gameStartMs, seed.gameEndMs)
             if (coreEnd <= coreStart) return@mapNotNull null
             EditableCut(
                 id = "",
                 coreStartMs = coreStart,
                 coreEndMs = coreEnd,
-                keepStartMs = (coreStart - DEFAULT_BEFORE_PADDING_MS).coerceAtLeast(0),
-                keepEndMs = (coreEnd + DEFAULT_AFTER_PADDING_MS).coerceAtMost(seed.durationMs),
+                keepStartMs = (coreStart - DEFAULT_BEFORE_PADDING_MS).coerceAtLeast(seed.gameStartMs),
+                keepEndMs = (coreEnd + DEFAULT_AFTER_PADDING_MS).coerceAtMost(seed.gameEndMs),
                 confidence = range.confidence.coerceIn(0f, 1f),
                 included = true,
                 origin = CutOrigin.INFERRED,
                 agreement = range.agreement,
             )
         }.mapIndexed { index, cut -> cut.copy(id = "R${(index + 1).toString().padStart(3, '0')}") },
+        ignoredIntervals = buildList {
+            if (seed.gameStartMs > 0) {
+                add(IgnoredSourceInterval("G001", 0, seed.gameStartMs, "outside-game-window"))
+            }
+            if (seed.gameEndMs < seed.durationMs) {
+                add(IgnoredSourceInterval("G002", seed.gameEndMs, seed.durationMs, "outside-game-window"))
+            }
+        },
     )
 
     fun applyPadding(
@@ -120,6 +133,8 @@ internal object EditorMath {
         beforeMs: Long,
         afterMs: Long,
         durationMs: Long,
+        minimumMs: Long = 0,
+        maximumMs: Long = durationMs,
     ): EditorDraft {
         val before = beforeMs.coerceIn(0, MAX_PADDING_MS)
         val after = afterMs.coerceIn(0, MAX_PADDING_MS)
@@ -128,8 +143,8 @@ internal object EditorMath {
             afterPaddingMs = after,
             cuts = draft.cuts.map { cut ->
                 if (cut.origin == CutOrigin.MANUAL) cut else cut.copy(
-                    keepStartMs = (cut.coreStartMs - before).coerceAtLeast(0),
-                    keepEndMs = (cut.coreEndMs + after).coerceAtMost(durationMs),
+                    keepStartMs = (cut.coreStartMs - before).coerceAtLeast(minimumMs),
+                    keepEndMs = (cut.coreEndMs + after).coerceAtMost(maximumMs),
                 )
             },
         )
@@ -219,15 +234,22 @@ internal object EditorMath {
     fun playbackFocusCut(cuts: List<EditableCut>, positionMs: Long): EditableCut? =
         cuts.filter { it.keepStartMs <= positionMs }.maxByOrNull { it.keepStartMs }
 
-    fun detailWindow(cut: EditableCut?, positionMs: Long, durationMs: Long): DetailWindow {
-        val minimumSpan = min(24_000L, if (durationMs > 0) durationMs else 24_000L)
+    fun detailWindow(
+        cut: EditableCut?,
+        positionMs: Long,
+        durationMs: Long,
+        minimumMs: Long = 0,
+        maximumMs: Long = durationMs,
+    ): DetailWindow {
+        val windowDuration = (maximumMs - minimumMs).coerceAtLeast(0)
+        val minimumSpan = min(24_000L, if (windowDuration > 0) windowDuration else 24_000L)
         val center = cut?.let { (it.keepStartMs + it.keepEndMs) / 2 } ?: positionMs
         val contentSpan = cut?.let { it.keepEndMs - it.keepStartMs + 10_000L } ?: minimumSpan
-        val span = min(if (durationMs > 0) durationMs else minimumSpan, max(minimumSpan, contentSpan))
-        var start = max(0, center - span / 2)
-        var end = min(durationMs, start + span)
-        start = max(0, end - span)
-        if (end <= start) end = (start + 1).coerceAtMost(durationMs.coerceAtLeast(1))
+        val span = min(if (windowDuration > 0) windowDuration else minimumSpan, max(minimumSpan, contentSpan))
+        var start = max(minimumMs, center - span / 2)
+        var end = min(maximumMs, start + span)
+        start = max(minimumMs, end - span)
+        if (end <= start) end = (start + 1).coerceAtMost(maximumMs.coerceAtLeast(minimumMs + 1))
         return DetailWindow(start, end)
     }
 

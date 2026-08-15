@@ -37,6 +37,24 @@ class NativeProjectStoreTest {
     }
 
     @Test
+    fun projectIdIncludesNonDefaultGameWindowButPreservesFullVideoIdentity() {
+        val legacyFull = NativeProjectStore.projectId(source, 1_105.817)
+        val explicitFull = NativeProjectStore.projectId(
+            source,
+            1_105.817,
+            AnalysisTypes.AnalysisWindow(0.0, 1_105.817),
+        )
+        val markedWindow = NativeProjectStore.projectId(
+            source,
+            1_105.817,
+            AnalysisTypes.AnalysisWindow(42.5, 1_000.0),
+        )
+
+        assertEquals(legacyFull, explicitFull)
+        assertNotEquals(legacyFull, markedWindow)
+    }
+
+    @Test
     fun readyProjectRoundTripsFinalizedInference() {
         val project = NativeProject(
             id = NativeProjectStore.projectId(source, 12.5),
@@ -59,6 +77,49 @@ class NativeProjectStoreTest {
         assertNotNull(restored)
         assertEquals(project, restored)
         assertEquals(project.ranges, restored?.editorSeed()?.ranges)
+    }
+
+    @Test
+    fun markedGameWindowRoundTripsAndSeedsEditorBounds() {
+        val media = AnalysisTypes.MediaInfo(120.0, 1920, 1080, 0, "video/avc", "audio/mp4a-latm")
+        val project = NativeProject(
+            id = NativeProjectStore.projectId(
+                source,
+                media.durationSeconds(),
+                AnalysisTypes.AnalysisWindow(10.0, 100.0),
+            ),
+            source = source,
+            media = media,
+            analysisWindow = AnalysisTypes.AnalysisWindow(10.0, 100.0),
+            roi = AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default"),
+            status = ProjectStatus.READY,
+            ranges = listOf(SeedRange(20_000, 30_000, .9f, ProductionEnsemble.BOTH_MODELS)),
+            createdAtMs = 100,
+            updatedAtMs = 200,
+        )
+
+        val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(project)))
+        assertEquals(project.analysisWindow, restored.analysisWindow)
+        assertEquals(10_000L, restored.editorSeed()?.gameStartMs)
+        assertEquals(100_000L, restored.editorSeed()?.gameEndMs)
+    }
+
+    @Test
+    fun legacyProjectWithoutWindowDefaultsToFullVideo() {
+        val project = NativeProject(
+            id = NativeProjectStore.projectId(source, 12.5),
+            source = source,
+            media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"),
+            roi = AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default"),
+            status = ProjectStatus.QUEUED,
+            createdAtMs = 100,
+            updatedAtMs = 200,
+        )
+        val legacyJson = NativeProjectStore.encode(project).apply { remove("analysisWindow") }
+
+        val restored = requireNotNull(NativeProjectStore.decode(legacyJson))
+        assertEquals(AnalysisTypes.AnalysisWindow(0.0, 12.5), restored.analysisWindow)
+        assertEquals(project.id, restored.id)
     }
 
     @Test

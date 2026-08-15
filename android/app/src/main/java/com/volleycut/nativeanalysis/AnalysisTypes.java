@@ -6,6 +6,31 @@ import java.util.List;
 import java.util.Map;
 
 public final class AnalysisTypes {
+    public static final double MIN_ANALYSIS_WINDOW_SECONDS = 1.0;
+
+    public record AnalysisWindow(double start, double end) {
+        static AnalysisWindow full(double duration) {
+            return new AnalysisWindow(0, Math.max(0, duration));
+        }
+
+        static AnalysisWindow normalize(AnalysisWindow requested, double duration) {
+            double safeDuration = Double.isFinite(duration) ? Math.max(0, duration) : 0;
+            if (requested == null || !Double.isFinite(requested.start())
+                    || !Double.isFinite(requested.end())) {
+                return full(safeDuration);
+            }
+            double start = Math.max(0, Math.min(safeDuration, requested.start()));
+            double end = Math.max(start, Math.min(safeDuration, requested.end()));
+            return new AnalysisWindow(start, end);
+        }
+
+        boolean isFull(double duration) {
+            AnalysisWindow normalized = normalize(this, duration);
+            return normalized.start() <= 1e-9
+                    && Math.abs(normalized.end() - duration) <= 1e-9;
+        }
+    }
+
     public record Roi(double x, double y, double width, double height, String label) {}
 
     public record VideoDecoderOptions(int operatingRate, int priority) {

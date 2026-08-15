@@ -28,6 +28,8 @@ internal object EditorProjectStore {
                 put("width", seed.width)
                 put("height", seed.height)
                 put("rotation", seed.rotation)
+                put("gameStartMs", seed.gameStartMs)
+                put("gameEndMs", seed.gameEndMs)
                 put("ranges", JSONArray().apply {
                     seed.ranges.forEach { range ->
                         put(JSONObject().apply {
@@ -77,9 +79,14 @@ internal object EditorProjectStore {
             height = json.optInt("height"),
             rotation = json.optInt("rotation"),
             ranges = ranges,
+            gameStartMs = json.optLong("gameStartMs", 0),
+            gameEndMs = json.optLong("gameEndMs", durationMs),
         ).takeIf { seed ->
-            seed.durationMs > 0 && seed.sourceUri.isNotBlank() && seed.ranges.all {
-                it.startMs >= 0 && it.endMs > it.startMs && it.endMs <= seed.durationMs &&
+            seed.durationMs > 0 && seed.sourceUri.isNotBlank() &&
+                seed.gameStartMs >= 0 && seed.gameEndMs <= seed.durationMs &&
+                seed.gameEndMs - seed.gameStartMs >= 1_000 && seed.ranges.all {
+                it.startMs >= seed.gameStartMs && it.endMs > it.startMs &&
+                    it.endMs <= seed.gameEndMs &&
                     it.confidence in 0f..1f &&
                     (it.agreement == null || ProductionEnsemble.isValidAgreement(it.agreement))
             }

@@ -118,6 +118,32 @@ class EditorMathTest {
     }
 
     @Test
+    fun markedGameWindowClampsPaddingAndIgnoresOutsideSource() {
+        val seed = EditorSeed(
+            sourceUri = "content://fixture/video",
+            displayName = "fixture.mp4",
+            durationMs = 20_000,
+            width = 1_920,
+            height = 1_080,
+            rotation = 0,
+            ranges = listOf(SeedRange(5_500, 14_500, .8f)),
+            gameStartMs = 5_000,
+            gameEndMs = 15_000,
+        )
+
+        val draft = EditorMath.newDraft(seed)
+        assertEquals(5_000, draft.cuts.single().keepStartMs)
+        assertEquals(15_000, draft.cuts.single().keepEndMs)
+        assertEquals(
+            listOf(
+                IgnoredSourceInterval("G001", 0, 5_000, "outside-game-window"),
+                IgnoredSourceInterval("G002", 15_000, 20_000, "outside-game-window"),
+            ),
+            draft.ignoredIntervals,
+        )
+    }
+
+    @Test
     fun finalIntervalsJoinOnlyPositiveGapsStrictlyBelowThreshold() {
         val first = cut("R001", 0, 5_000)
         val second = cut("R002", 7_500, 10_000)
