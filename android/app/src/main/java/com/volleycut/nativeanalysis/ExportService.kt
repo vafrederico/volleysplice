@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.OptIn
@@ -42,10 +43,14 @@ class ExportService : Service() {
     private var destination: Uri? = null
     private var sourceName = "video"
     private var outputWriteMode = "uninitialized"
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        wakeLock = getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:video-export")
+            .apply { setReferenceCounted(false) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,6 +78,7 @@ class ExportService : Service() {
         intervalCount = intervals.size
         startedAtMs = SystemClock.elapsedRealtime()
         startForegroundCompat(notification(0, "Preparing export", true))
+        if (wakeLock?.isHeld != true) wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
         broadcast("running", 0, "Preparing hardware encoder", null)
         runCatching { startTransformer(source, sourceDurationMs, intervals) }
             .onFailure { error ->
@@ -204,6 +210,7 @@ class ExportService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         if (status == "complete") manager.notify(NOTIFICATION_ID, notification(100, detail, false))
         else if (status == "failed") manager.notify(NOTIFICATION_ID, notification(0, detail, false))
+        releaseWakeLock()
         stopForeground(STOP_FOREGROUND_DETACH)
         stopSelf()
     }
@@ -315,7 +322,12 @@ class ExportService : Service() {
         temporaryFile?.delete()
         transformer = null
         if (abandonedExport) deleteIncompleteDestination()
+        releaseWakeLock()
         super.onDestroy()
+    }
+
+    private fun releaseWakeLock() {
+        if (wakeLock?.isHeld == true) wakeLock?.release()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -324,6 +336,7 @@ class ExportService : Service() {
         private const val TAG = "VolleyCutExport"
         private const val CHANNEL_ID = "volleycut_exports"
         private const val NOTIFICATION_ID = 401
+        private const val WAKE_LOCK_TIMEOUT_MS = 12 * 60 * 60 * 1_000L
         const val ACTION_PROGRESS = "com.volleycut.nativeanalysis.EXPORT_PROGRESS"
         const val ACTION_CANCEL = "com.volleycut.nativeanalysis.CANCEL_EXPORT"
         const val EXTRA_SOURCE_URI = "export_source_uri"
