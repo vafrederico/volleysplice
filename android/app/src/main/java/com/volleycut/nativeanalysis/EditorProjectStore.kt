@@ -34,6 +34,7 @@ internal object EditorProjectStore {
                             put("startMs", range.startMs)
                             put("endMs", range.endMs)
                             put("confidence", range.confidence.toDouble())
+                            put("agreement", range.agreement ?: JSONObject.NULL)
                         })
                     }
                 })
@@ -64,6 +65,7 @@ internal object EditorProjectStore {
                     startMs = range.getLong("startMs"),
                     endMs = range.getLong("endMs"),
                     confidence = range.getDouble("confidence").toFloat(),
+                    agreement = if (range.isNull("agreement")) null else range.optString("agreement"),
                 ))
             }
         }
@@ -77,7 +79,9 @@ internal object EditorProjectStore {
             ranges = ranges,
         ).takeIf { seed ->
             seed.durationMs > 0 && seed.sourceUri.isNotBlank() && seed.ranges.all {
-                it.startMs >= 0 && it.endMs > it.startMs && it.endMs <= seed.durationMs && it.confidence in 0f..1f
+                it.startMs >= 0 && it.endMs > it.startMs && it.endMs <= seed.durationMs &&
+                    it.confidence in 0f..1f &&
+                    (it.agreement == null || ProductionEnsemble.isValidAgreement(it.agreement))
             }
         }
     }.onFailure { Log.w(TAG, "Could not restore editor project", it) }.getOrNull()

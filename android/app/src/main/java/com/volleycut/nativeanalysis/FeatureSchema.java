@@ -7,12 +7,24 @@ import java.util.List;
 import java.util.Set;
 
 final class FeatureSchema {
-    static final String MODEL_ID = "model-9c92b8e9333f";
+    static final String ALL_LABELS_V2_MODEL_ID = "model-1ca43e38eefc";
+    static final String PREVIOUS_PRODUCTION_MODEL_ID = "model-9c92b8e9333f";
+    static final String ALL_LABELS_V2_BUNDLE_SHA256 =
+            "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f";
+    static final String PREVIOUS_PRODUCTION_BUNDLE_SHA256 =
+            "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d";
+    static final String ENSEMBLE_ALGORITHM_VERSION = "overlap-union-disagreement-v1";
+    static final String MODEL_ID = "ensemble-" + ENSEMBLE_ALGORITHM_VERSION + "-"
+            + ALL_LABELS_V2_BUNDLE_SHA256 + "-" + PREVIOUS_PRODUCTION_BUNDLE_SHA256;
     static final int ANALYSIS_FPS = 4;
     static final int ANALYSIS_WIDTH = 192;
     static final int ANALYSIS_HEIGHT = 108;
     static final int BENCHMARK_SOURCE_FRAME_LIMIT = 1_000;
     static final int FULL_SOURCE_FRAME_LIMIT = Integer.MAX_VALUE;
+
+    static String modelAsset(String modelId) {
+        return modelId + ".json";
+    }
 
     static final List<String> FRAME = buildFrameNames();
     static final List<String> TEMPORAL = List.of(

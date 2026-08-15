@@ -14,7 +14,11 @@ public final class AnalysisTypes {
         }
     }
 
-    public record Interval(double start, double end, float confidence) {}
+    public record Interval(double start, double end, float confidence, String agreement) {
+        public Interval(double start, double end, float confidence) {
+            this(start, end, confidence, null);
+        }
+    }
 
     public record Serve(double time, float confidence) {}
 

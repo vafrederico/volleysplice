@@ -70,7 +70,7 @@ internal object NativeProjectStore {
         return directory.listFiles { file -> file.extension == "json" }
             .orEmpty()
             .mapNotNull { file ->
-                runCatching { decode(JSONObject(file.readText())) }
+                runCatching { decode(JSONObject(file.readText()))?.let(::normalizeStored) }
                     .onFailure { Log.w(TAG, "Could not read ${file.name}", it) }
                     .getOrNull()
             }
@@ -80,7 +80,7 @@ internal object NativeProjectStore {
     @Synchronized
     fun get(context: Context, id: String): NativeProject? = runCatching {
         val target = projectFile(context, id)
-        if (!target.isFile) null else decode(JSONObject(target.readText()))
+        if (!target.isFile) null else decode(JSONObject(target.readText()))?.let(::normalizeStored)
     }.onFailure { Log.w(TAG, "Could not read project $id", it) }.getOrNull()
 
     @Synchronized
@@ -129,6 +129,7 @@ internal object NativeProjectStore {
                     startMs = (it.start() * 1_000.0).toLong(),
                     endMs = (it.end() * 1_000.0).toLong(),
                     confidence = it.confidence(),
+                    agreement = it.agreement(),
                 )
             },
             modelId = FeatureSchema.MODEL_ID,
@@ -227,7 +228,12 @@ internal object NativeProjectStore {
             roi = result.roi(),
             status = ProjectStatus.READY,
             ranges = result.ranges().map {
-                SeedRange((it.start() * 1_000).toLong(), (it.end() * 1_000).toLong(), it.confidence())
+                SeedRange(
+                    (it.start() * 1_000).toLong(),
+                    (it.end() * 1_000).toLong(),
+                    it.confidence(),
+                    it.agreement(),
+                )
             },
             createdAtMs = now,
             updatedAtMs = now,
@@ -321,6 +327,7 @@ internal object NativeProjectStore {
                 put("startMs", range.startMs)
                 put("endMs", range.endMs)
                 put("confidence", range.confidence.toDouble())
+                put("agreement", range.agreement ?: JSONObject.NULL)
             }) }
         })
     }
@@ -363,10 +370,11 @@ internal object NativeProjectStore {
                         range.getLong("startMs"),
                         range.getLong("endMs"),
                         range.getDouble("confidence").toFloat(),
+                        if (range.isNull("agreement")) null else range.optString("agreement"),
                     ))
                 }
             },
-            modelId = json.optString("modelId", FeatureSchema.MODEL_ID),
+            modelId = json.optString("modelId"),
             cacheMode = json.optString("cacheMode", NativeFeatureCache.Mode.USE.wireName()),
             error = if (json.isNull("error")) null else json.optString("error"),
             createdAtMs = json.getLong("createdAtMs"),
@@ -377,9 +385,25 @@ internal object NativeProjectStore {
                 it.ranges.all { range ->
                     range.startMs >= 0 && range.endMs > range.startMs &&
                         range.endMs <= (it.media.durationSeconds() * 1_000.0).toLong() &&
-                        range.confidence in 0f..1f
+                        range.confidence in 0f..1f &&
+                        (range.agreement == null || ProductionEnsemble.isValidAgreement(range.agreement))
                 }
         }
+    }
+
+    internal fun normalizeStored(project: NativeProject): NativeProject {
+        val staleInference = project.modelId != FeatureSchema.MODEL_ID ||
+            (project.status == ProjectStatus.READY && project.ranges.any {
+                !ProductionEnsemble.isValidAgreement(it.agreement)
+            })
+        if (!staleInference) return project
+        return project.copy(
+            status = ProjectStatus.QUEUED,
+            ranges = emptyList(),
+            modelId = FeatureSchema.MODEL_ID,
+            error = "Production model ensemble changed; cached features will be reused.",
+            updatedAtMs = System.currentTimeMillis(),
+        )
     }
 
     private fun directory(context: Context) = File(context.filesDir, DIRECTORY)

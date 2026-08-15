@@ -2,6 +2,7 @@ package com.volleycut.nativeanalysis
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,6 +97,70 @@ class EditorMathTest {
         )
 
         assertFalse(seed(.7f).sourceRevision == seed(.8f).sourceRevision)
+    }
+
+    @Test
+    fun sourceRevisionChangesWhenModelAgreementChanges() {
+        fun seed(agreement: String) = EditorSeed(
+            sourceUri = "content://fixture/video",
+            displayName = "fixture.mp4",
+            durationMs = 10_000,
+            width = 1_920,
+            height = 1_080,
+            rotation = 0,
+            ranges = listOf(SeedRange(2_000, 3_000, .8f, agreement)),
+        )
+
+        assertNotEquals(
+            seed(ProductionEnsemble.BOTH_MODELS).sourceRevision,
+            seed(ProductionEnsemble.ALL_LABELS_V2_ONLY).sourceRevision,
+        )
+    }
+
+    @Test
+    fun finalIntervalsJoinOnlyPositiveGapsStrictlyBelowThreshold() {
+        val first = cut("R001", 0, 5_000)
+        val second = cut("R002", 7_500, 10_000)
+        val draft = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            cuts = listOf(first, second),
+        )
+
+        assertEquals(
+            listOf(FinalCutInterval(
+                0,
+                10_000,
+                listOf("R001", "R002"),
+                listOf(JoinedGap(5_000, 7_500)),
+            )),
+            EditorMath.finalIntervals(draft),
+        )
+        assertEquals(2, EditorMath.finalIntervals(
+            draft.copy(cuts = listOf(first, second.copy(
+                coreStartMs = 8_000,
+                keepStartMs = 8_000,
+            ))),
+        ).size)
+        assertEquals(2, EditorMath.finalIntervals(draft.copy(joinGapMs = 0)).size)
+    }
+
+    @Test
+    fun ignoredTimeSplitsJoinedOutputAndClipsItsGapMarkers() {
+        val draft = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            cuts = listOf(cut("R001", 0, 5_000), cut("R002", 7_500, 10_000)),
+            ignoredIntervals = listOf(IgnoredSourceInterval("I001", 6_000, 7_000, "break")),
+        )
+
+        assertEquals(
+            listOf(
+                FinalCutInterval(0, 6_000, listOf("R001"), listOf(JoinedGap(5_000, 6_000))),
+                FinalCutInterval(7_000, 10_000, listOf("R002"), listOf(JoinedGap(7_000, 7_500))),
+            ),
+            EditorMath.finalIntervals(draft),
+        )
     }
 
     private fun cut(

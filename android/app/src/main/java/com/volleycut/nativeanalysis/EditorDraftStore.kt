@@ -45,6 +45,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         put("updatedAtMs", draft.updatedAtMs)
         put("beforePaddingMs", draft.beforePaddingMs)
         put("afterPaddingMs", draft.afterPaddingMs)
+        put("joinGapMs", draft.joinGapMs)
         put("pendingManualStartMs", draft.pendingManualStartMs ?: JSONObject.NULL)
         put("pendingIgnoreStartMs", draft.pendingIgnoreStartMs ?: JSONObject.NULL)
         put("ignoreReason", draft.ignoreReason)
@@ -61,6 +62,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
                 put("confidence", cut.confidence.toDouble())
                 put("included", cut.included)
                 put("origin", cut.origin.name)
+                put("agreement", cut.agreement ?: JSONObject.NULL)
             }) }
         })
         put("ignoredIntervals", JSONArray().apply {
@@ -74,7 +76,8 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
     }
 
     private fun decode(json: JSONObject): EditorDraft? {
-        if (json.optInt("version") != EDITOR_DRAFT_VERSION) return null
+        val persistedVersion = json.optInt("version")
+        if (persistedVersion !in 1..EDITOR_DRAFT_VERSION) return null
         val cutsJson = json.optJSONArray("cuts") ?: return null
         val cuts = buildList {
             for (index in 0 until cutsJson.length()) {
@@ -88,6 +91,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
                     confidence = item.getDouble("confidence").toFloat(),
                     included = item.getBoolean("included"),
                     origin = CutOrigin.valueOf(item.getString("origin")),
+                    agreement = item.optNullableString("agreement"),
                 ))
             }
         }
@@ -108,6 +112,9 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             updatedAtMs = json.optLong("updatedAtMs"),
             beforePaddingMs = json.optLong("beforePaddingMs", DEFAULT_BEFORE_PADDING_MS),
             afterPaddingMs = json.optLong("afterPaddingMs", DEFAULT_AFTER_PADDING_MS),
+            joinGapMs = if (persistedVersion >= 2) {
+                json.optLong("joinGapMs", DEFAULT_JOIN_GAP_MS)
+            } else DEFAULT_JOIN_GAP_MS,
             pendingManualStartMs = json.optNullableLong("pendingManualStartMs"),
             pendingIgnoreStartMs = json.optNullableLong("pendingIgnoreStartMs"),
             ignoreReason = json.optString("ignoreReason", "non-game-content"),
@@ -123,18 +130,23 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
     private fun validate(draft: EditorDraft): Boolean =
         draft.beforePaddingMs in 0..MAX_PADDING_MS &&
             draft.afterPaddingMs in 0..MAX_PADDING_MS &&
+            draft.joinGapMs in 0..MAX_JOIN_GAP_MS &&
             draft.playbackRate in setOf(1f, 2f, 4f, 8f) &&
             draft.confidenceReviewThreshold in 0f..1f &&
             draft.cuts.all { cut ->
                 cut.keepStartMs in 0..cut.coreStartMs &&
                     cut.coreStartMs < cut.coreEndMs &&
                     cut.coreEndMs <= cut.keepEndMs &&
-                    cut.keepEndMs <= seed.durationMs
+                    cut.keepEndMs <= seed.durationMs &&
+                    (cut.agreement == null || ProductionEnsemble.isValidAgreement(cut.agreement))
             } &&
             draft.ignoredIntervals.all { it.startMs in 0 until it.endMs && it.endMs <= seed.durationMs }
 
     private fun JSONObject.optNullableLong(key: String): Long? =
         if (!has(key) || isNull(key)) null else getLong(key)
+
+    private fun JSONObject.optNullableString(key: String): String? =
+        if (!has(key) || isNull(key)) null else getString(key)
 
     companion object { private const val TAG = "VolleyCutEditor" }
 }

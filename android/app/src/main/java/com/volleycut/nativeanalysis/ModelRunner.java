@@ -61,8 +61,8 @@ final class ModelRunner {
 
     private final Bundle bundle;
 
-    ModelRunner(Context context) throws IOException, JSONException {
-        try (InputStream input = context.getAssets().open("model-9c92b8e9333f.json")) {
+    ModelRunner(Context context, String modelId) throws IOException, JSONException {
+        try (InputStream input = context.getAssets().open(FeatureSchema.modelAsset(modelId))) {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] chunk = new byte[8192];
             int count;

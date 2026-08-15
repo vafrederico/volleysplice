@@ -135,7 +135,10 @@ class ProjectAnalysisService : Service() {
             )
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
                 NativeProjectStore.complete(this, projectId, result)
-                val detail = "${result.ranges().size} inferred ranges · video + audio cached"
+                val disagreements = result.ranges().count {
+                    ProductionEnsemble.isDisagreement(it.agreement())
+                }
+                val detail = "${result.ranges().size} merged ranges · $disagreements to validate · features cached"
                 Log.i(TAG, resultLog(projectId, result).toString())
                 broadcast(projectId, ProjectStatus.READY, 1.0, "complete", detail)
                 updateNotification(100, "Ready: ${project.source.name}", false)
@@ -161,7 +164,7 @@ class ProjectAnalysisService : Service() {
 
     private fun resultLog(projectId: String, result: AnalysisTypes.AnalysisResult) = JSONObject().apply {
         put("schemaVersion", 1)
-        put("method", "android-project-inference-v1")
+        put("method", "android-project-inference-ensemble-v2")
         put("projectId", projectId)
         put("modelId", FeatureSchema.MODEL_ID)
         put("sourceName", result.displayName())
@@ -183,6 +186,7 @@ class ProjectAnalysisService : Service() {
                 put("start", range.start())
                 put("end", range.end())
                 put("confidence", range.confidence().toDouble())
+                put("agreement", range.agreement())
             }) }
         })
     }

@@ -44,7 +44,12 @@ class NativeProjectStoreTest {
             media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"),
             roi = AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default"),
             status = ProjectStatus.READY,
-            ranges = listOf(SeedRange(1_000, 4_500, .82f)),
+            ranges = listOf(SeedRange(
+                1_000,
+                4_500,
+                .82f,
+                ProductionEnsemble.BOTH_MODELS,
+            )),
             createdAtMs = 100,
             updatedAtMs = 200,
         )
@@ -54,5 +59,45 @@ class NativeProjectStoreTest {
         assertNotNull(restored)
         assertEquals(project, restored)
         assertEquals(project.ranges, restored?.editorSeed()?.ranges)
+    }
+
+    @Test
+    fun staleSingleModelInferenceIsQueuedWithoutDiscardingFeatureIdentity() {
+        val project = NativeProject(
+            id = NativeProjectStore.projectId(source, 12.5),
+            source = source,
+            media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"),
+            roi = AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default"),
+            status = ProjectStatus.READY,
+            ranges = listOf(SeedRange(1_000, 4_500, .82f)),
+            modelId = FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID,
+            createdAtMs = 100,
+            updatedAtMs = 200,
+        )
+
+        val normalized = NativeProjectStore.normalizeStored(project)
+
+        assertEquals(ProjectStatus.QUEUED, normalized.status)
+        assertEquals(FeatureSchema.MODEL_ID, normalized.modelId)
+        assertEquals(emptyList<SeedRange>(), normalized.ranges)
+        assertEquals(project.id, normalized.id)
+        assertEquals(project.source, normalized.source)
+        assertEquals(project.roi, normalized.roi)
+    }
+
+    @Test
+    fun currentEnsembleWithoutAgreementProvenanceIsQueued() {
+        val project = NativeProject(
+            id = NativeProjectStore.projectId(source, 12.5),
+            source = source,
+            media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"),
+            roi = AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default"),
+            status = ProjectStatus.READY,
+            ranges = listOf(SeedRange(1_000, 4_500, .49f)),
+            createdAtMs = 100,
+            updatedAtMs = 200,
+        )
+
+        assertEquals(ProjectStatus.QUEUED, NativeProjectStore.normalizeStored(project).status)
     }
 }

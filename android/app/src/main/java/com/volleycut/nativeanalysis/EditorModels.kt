@@ -5,10 +5,12 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
-internal const val EDITOR_DRAFT_VERSION = 1
+internal const val EDITOR_DRAFT_VERSION = 2
 internal const val DEFAULT_BEFORE_PADDING_MS = 2_000L
 internal const val DEFAULT_AFTER_PADDING_MS = 2_000L
+internal const val DEFAULT_JOIN_GAP_MS = 3_000L
 internal const val MAX_PADDING_MS = 10_000L
+internal const val MAX_JOIN_GAP_MS = 10_000L
 internal const val MIN_MARK_MS = 100L
 
 internal enum class CutOrigin { INFERRED, MANUAL }
@@ -27,7 +29,8 @@ internal data class EditorSeed(
             append(sourceUri).append('|').append(displayName).append('|').append(durationMs).append('|')
             append(width).append('x').append(height).append('@').append(rotation).append('|')
             ranges.forEach {
-                append(it.startMs).append(':').append(it.endMs).append(':').append(it.confidence).append(';')
+                append(it.startMs).append(':').append(it.endMs).append(':').append(it.confidence)
+                    .append(':').append(it.agreement).append(';')
             }
         }
         MessageDigest.getInstance("SHA-256")
@@ -40,6 +43,7 @@ internal data class SeedRange(
     val startMs: Long,
     val endMs: Long,
     val confidence: Float,
+    val agreement: String? = null,
 )
 
 internal data class EditableCut(
@@ -51,6 +55,7 @@ internal data class EditableCut(
     val confidence: Float,
     val included: Boolean,
     val origin: CutOrigin,
+    val agreement: String? = null,
 )
 
 internal data class IgnoredSourceInterval(
@@ -66,6 +71,7 @@ internal data class EditorDraft(
     val updatedAtMs: Long,
     val beforePaddingMs: Long = DEFAULT_BEFORE_PADDING_MS,
     val afterPaddingMs: Long = DEFAULT_AFTER_PADDING_MS,
+    val joinGapMs: Long = DEFAULT_JOIN_GAP_MS,
     val pendingManualStartMs: Long? = null,
     val pendingIgnoreStartMs: Long? = null,
     val ignoreReason: String = "non-game-content",
@@ -76,10 +82,13 @@ internal data class EditorDraft(
     val ignoredIntervals: List<IgnoredSourceInterval> = emptyList(),
 )
 
+internal data class JoinedGap(val startMs: Long, val endMs: Long)
+
 internal data class FinalCutInterval(
     val startMs: Long,
     val endMs: Long,
     val cutIds: List<String>,
+    val joinedGaps: List<JoinedGap> = emptyList(),
 )
 
 internal data class DetailWindow(val startMs: Long, val endMs: Long)
@@ -101,6 +110,7 @@ internal object EditorMath {
                 confidence = range.confidence.coerceIn(0f, 1f),
                 included = true,
                 origin = CutOrigin.INFERRED,
+                agreement = range.agreement,
             )
         }.mapIndexed { index, cut -> cut.copy(id = "R${(index + 1).toString().padStart(3, '0')}") },
     )
@@ -126,18 +136,23 @@ internal object EditorMath {
     }
 
     fun finalIntervals(draft: EditorDraft): List<FinalCutInterval> {
+        val joinGapMs = draft.joinGapMs.coerceIn(0, MAX_JOIN_GAP_MS)
         val merged = mutableListOf<FinalCutInterval>()
         draft.cuts.asSequence()
             .filter { it.included && it.keepEndMs > it.keepStartMs }
             .sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
             .forEach { cut ->
                 val previous = merged.lastOrNull()
-                if (previous == null || cut.keepStartMs > previous.endMs) {
+                val gap = previous?.let { cut.keepStartMs - it.endMs } ?: Long.MAX_VALUE
+                if (previous == null || (gap > 0 && gap >= joinGapMs)) {
                     merged += FinalCutInterval(cut.keepStartMs, cut.keepEndMs, listOf(cut.id))
                 } else {
                     merged[merged.lastIndex] = previous.copy(
                         endMs = max(previous.endMs, cut.keepEndMs),
                         cutIds = previous.cutIds + cut.id,
+                        joinedGaps = if (gap > 0) {
+                            previous.joinedGaps + JoinedGap(previous.endMs, cut.keepStartMs)
+                        } else previous.joinedGaps,
                     )
                 }
             }
@@ -161,11 +176,18 @@ internal object EditorMath {
         }
         val byId = draft.cuts.associateBy { it.id }
         return remaining.map { interval ->
-            interval.copy(cutIds = interval.cutIds.filter { id ->
-                byId[id]?.let { cut ->
-                    min(cut.keepEndMs, interval.endMs) - max(cut.keepStartMs, interval.startMs) > 0
-                } == true
-            })
+            interval.copy(
+                cutIds = interval.cutIds.filter { id ->
+                    byId[id]?.let { cut ->
+                        min(cut.keepEndMs, interval.endMs) - max(cut.keepStartMs, interval.startMs) > 0
+                    } == true
+                },
+                joinedGaps = interval.joinedGaps.mapNotNull { gap ->
+                    val start = max(interval.startMs, gap.startMs)
+                    val end = min(interval.endMs, gap.endMs)
+                    if (end > start) JoinedGap(start, end) else null
+                },
+            )
         }
     }
 

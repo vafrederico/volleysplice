@@ -1,6 +1,11 @@
-# Full native A/V inference validation
+# Historical single-model native A/V inference validation
 
 Validation date: 2026-08-14
+
+This report predates the production two-model ensemble. It remains the validation
+record for the previous-production model and native feature/cache path; current app
+inference also runs all-labels v2, unions overlapping detections, and flags
+single-model candidates with reduced review confidence.
 
 ## Scope
 

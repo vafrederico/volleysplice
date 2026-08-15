@@ -157,15 +157,29 @@ final class AnalysisEngine {
         timings.put("contextualize", elapsedMs(stage));
 
         stage = System.nanoTime();
-        progress.onProgress("inference", 0, "Three FP32 logistic heads + rally decoders");
+        progress.onProgress("inference", 0, "Running all-labels v2 model stack on CPU");
         long operation = System.nanoTime();
-        ModelRunner modelRunner = new ModelRunner(context);
-        profile.put("inference/model_asset_parse", elapsedMilliseconds(operation));
-        ModelRunner.RunResult modelResult = modelRunner.runProfiled(
+        ModelRunner allLabelsRunner = new ModelRunner(context, FeatureSchema.ALL_LABELS_V2_MODEL_ID);
+        profile.put("inference/all_labels_v2_model_asset_parse", elapsedMilliseconds(operation));
+        ModelRunner.RunResult allLabelsResult = allLabelsRunner.runProfiled(
                 times, contextual, analyzedDurationSeconds
         );
-        List<AnalysisTypes.Interval> ranges = modelResult.intervals();
-        appendProfile(profile, "inference/", modelResult.profileMilliseconds());
+        appendProfile(profile, "inference/all_labels_v2/", allLabelsResult.profileMilliseconds());
+        progress.onProgress("inference", .5, "Running previous production model stack on CPU");
+        operation = System.nanoTime();
+        ModelRunner previousRunner = new ModelRunner(
+                context, FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID
+        );
+        profile.put("inference/previous_production_model_asset_parse", elapsedMilliseconds(operation));
+        ModelRunner.RunResult previousResult = previousRunner.runProfiled(
+                times, contextual, analyzedDurationSeconds
+        );
+        appendProfile(profile, "inference/previous_production/", previousResult.profileMilliseconds());
+        operation = System.nanoTime();
+        List<AnalysisTypes.Interval> ranges = ProductionEnsemble.merge(
+                allLabelsResult.intervals(), previousResult.intervals()
+        );
+        profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
         timings.put("inference", elapsedMs(stage));
         long total = elapsedMs(totalStarted);
         double threadCpuMilliseconds = (Debug.threadCpuTimeNanos() - threadCpuStarted) / 1_000_000.0
@@ -175,7 +189,7 @@ final class AnalysisEngine {
         long gcCountDelta = Math.max(0, runtimeStat("art.gc.gc-count") - gcCountStart);
         double gcMillisecondsDelta = Math.max(0, runtimeStat("art.gc.gc-time") - gcTimeStart);
         Runtime runtime = Runtime.getRuntime();
-        progress.onProgress("complete", 1, ranges.size() + " candidate ranges");
+        progress.onProgress("complete", 1, ranges.size() + " merged candidate ranges");
         return new AnalysisTypes.AnalysisResult(
                 uri,
                 displayName,

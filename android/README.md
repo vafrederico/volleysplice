@@ -11,8 +11,9 @@ video URI
   -> MediaCodec audio decode + native resampling/FFT features
   -> 104 base features
   -> whole-recording percentile ranks and +/-2 s context (520 columns)
-  -> model-9c92b8e9333f rally, serve, and dead-state heads
-  -> unpadded candidate ranges + stage timings
+  -> all-labels-v2 and previous-production rally/serve/dead-state stacks
+  -> overlap-union-disagreement-v1 production ensemble
+  -> unpadded candidates with model-agreement provenance + stage timings
 ```
 
 No media is uploaded. The app has no network permission. It does not use a WebView, WebCodecs, JavaScript, or WASM.
@@ -47,9 +48,10 @@ SDK 37 is the default, so no Gradle property overrides are needed. Install the A
 Run full inference, then tap **Open native cut editor**. The editor uses the unpadded inferred ranges as its immutable cores and provides:
 
 - global before/after output padding for inferred ranges;
+- configurable joining of positive gaps shorter than 0-10 seconds (3 seconds by default), retained in preview and export;
 - a whole-recording timeline and a focused range timeline with draggable handles;
 - exact source seeking, 1x/2x/4x/8x playback, and final-cut-only preview;
-- keep/remove review, low-confidence review, 0.1/1 second nudges, and per-range reset;
+- keep/remove review, mandatory single-model disagreement review, confidence review, 0.1/1 second nudges, and per-range reset;
 - manual missed cuts and ignored source sections;
 - atomic, versioned draft persistence and a **Resume native cut editor** entry after process restart;
 - edit-list JSON output and an exact-boundary MP4 export with progress, cancellation, and encoder telemetry.
@@ -95,7 +97,7 @@ For a useful WebCodecs-versus-native comparison, use the same physical source fi
 
 ## What is parity-tested
 
-The JVM golden test reads the repository's frozen 3,474 x 104 Y9 base-feature fixture, performs the Android port's ranking/contextualization and inference, and reproduces all 37 canonical ranges (including confidence tolerance). This isolates and validates the code after feature extraction.
+The JVM golden test reads the repository's frozen 3,474 x 104 Y9 base-feature fixture, performs the Android port's ranking/contextualization and all-labels-v2 inference, and reproduces all 42 canonical ranges (including confidence tolerance). Separate tests verify both bundled model hashes and the exact production overlap/union/confidence contract. This isolates and validates the code after feature extraction.
 
 The media front end is deliberately a native-distribution experiment, not a claim of feature parity:
 
@@ -115,7 +117,8 @@ The first full audiovisual run and its interval-level comparison against the sto
 - `app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java`: platform audio decode
 - `app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java`: resampling, FFT, and audio feature schema
 - `app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java`: restart-safe visual checkpoints and completed audio matrices
-- `app/src/main/java/com/volleycut/nativeanalysis/ModelRunner.java`: exact three-head inference and range decoding
+- `app/src/main/java/com/volleycut/nativeanalysis/ModelRunner.java`: exact three-head inference and range decoding for either bundled model
+- `app/src/main/java/com/volleycut/nativeanalysis/ProductionEnsemble.java`: production overlap union and disagreement-confidence policy
 - `app/src/main/java/com/volleycut/nativeanalysis/EditorActivity.kt`: native player, recording/focused timelines, and editing controls
 - `app/src/main/java/com/volleycut/nativeanalysis/EditorModels.kt`: final-range interval algebra and editor state
 - `app/src/main/java/com/volleycut/nativeanalysis/EditorDraftStore.kt`: restart-safe edit persistence

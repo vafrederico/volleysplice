@@ -135,6 +135,7 @@ class EditorActivity : ComponentActivity() {
         val starts = intent.getLongArrayExtra(EXTRA_RANGE_STARTS) ?: longArrayOf()
         val ends = intent.getLongArrayExtra(EXTRA_RANGE_ENDS) ?: longArrayOf()
         val confidence = intent.getFloatArrayExtra(EXTRA_RANGE_CONFIDENCE) ?: floatArrayOf()
+        val agreements = intent.getStringArrayExtra(EXTRA_RANGE_AGREEMENTS)
         if (durationMs <= 0 || starts.size != ends.size || starts.size != confidence.size) return null
         return EditorSeed(
             sourceUri = sourceUri,
@@ -143,7 +144,12 @@ class EditorActivity : ComponentActivity() {
             width = intent.getIntExtra(EXTRA_WIDTH, 0),
             height = intent.getIntExtra(EXTRA_HEIGHT, 0),
             rotation = intent.getIntExtra(EXTRA_ROTATION, 0),
-            ranges = starts.indices.map { SeedRange(starts[it], ends[it], confidence[it]) },
+            ranges = starts.indices.map {
+                SeedRange(
+                    starts[it], ends[it], confidence[it],
+                    agreements?.getOrNull(it)?.takeIf(String::isNotBlank),
+                )
+            },
         )
     }
 
@@ -157,6 +163,7 @@ class EditorActivity : ComponentActivity() {
         private const val EXTRA_RANGE_STARTS = "editor_range_starts"
         private const val EXTRA_RANGE_ENDS = "editor_range_ends"
         private const val EXTRA_RANGE_CONFIDENCE = "editor_range_confidence"
+        private const val EXTRA_RANGE_AGREEMENTS = "editor_range_agreements"
 
         @JvmStatic
         fun createIntent(context: Context, result: AnalysisTypes.AnalysisResult): Intent {
@@ -188,6 +195,7 @@ class EditorActivity : ComponentActivity() {
                 putExtra(EXTRA_RANGE_STARTS, seed.ranges.map { it.startMs }.toLongArray())
                 putExtra(EXTRA_RANGE_ENDS, seed.ranges.map { it.endMs }.toLongArray())
                 putExtra(EXTRA_RANGE_CONFIDENCE, seed.ranges.map { it.confidence }.toFloatArray())
+                putExtra(EXTRA_RANGE_AGREEMENTS, seed.ranges.map { it.agreement.orEmpty() }.toTypedArray())
             }
     }
 }
@@ -200,7 +208,7 @@ private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorS
     height = result.media().height(),
     rotation = result.media().rotation(),
     ranges = result.ranges().map {
-        SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence())
+        SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence(), it.agreement())
     },
 )
 
@@ -213,6 +221,16 @@ private val Muted = Color(0xFF77736C)
 private val Rail = Color(0xFFE4E0D7)
 private val Danger = Color(0xFFB3261E)
 private val Warning = Color(0xFFE8A317)
+
+private fun EditableCut.isModelDisagreement(): Boolean =
+    ProductionEnsemble.isDisagreement(agreement)
+
+private fun EditableCut.modelAgreementLabel(): String = when (agreement) {
+    ProductionEnsemble.BOTH_MODELS -> "Both models agree"
+    ProductionEnsemble.ALL_LABELS_V2_ONLY -> "Check · all-labels v2 only"
+    ProductionEnsemble.PREVIOUS_PRODUCTION_ONLY -> "Check · previous model only"
+    else -> "Model prediction"
+}
 
 @Composable
 private fun VolleyCutTheme(content: @Composable () -> Unit) {
@@ -674,7 +692,7 @@ private fun ProjectInferenceCard(
         Text(
             when (project.status) {
                 ProjectStatus.QUEUED -> "Queued behind any active project"
-                ProjectStatus.ANALYZING -> "Generating video and audio features in the background"
+                ProjectStatus.ANALYZING -> "Generating shared features and running both production models"
                 ProjectStatus.ERROR -> "Inference stopped with an error"
                 ProjectStatus.READY -> "Inference ready"
             },
@@ -755,7 +773,7 @@ private fun NewProjectCard(
             Column(Modifier.weight(1f)) {
                 Text("Reuse generated features", fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (useCache) "Completed inference opens without running anything"
+                    if (useCache) "Current ensemble inference opens without running anything"
                     else "Regenerate this source's features for an experiment",
                     fontSize = 12.sp,
                     color = Muted,
@@ -763,6 +781,11 @@ private fun NewProjectCard(
             }
             Switch(enabled = !preparing, checked = useCache, onCheckedChange = onUseCache)
         }
+        Text(
+            "Both models share the feature cache. Overlaps merge; one-model ranges are flagged for validation.",
+            fontSize = 11.sp,
+            color = Muted,
+        )
         if (preparing || state.stage.isNotBlank()) {
             val stageText = state.stage.ifBlank { "analysis" }.uppercase(Locale.US)
             Text("$stageText · ${state.detail}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
@@ -838,8 +861,10 @@ private fun EditorScreen(
     val effectiveIds = EditorMath.effectiveKeptIds(draft)
     val lowConfidence = sortedCuts.filter {
         it.origin == CutOrigin.INFERRED && it.included && it.id in effectiveIds &&
-            it.confidence < draft.confidenceReviewThreshold
+            (it.isModelDisagreement() || it.confidence < draft.confidenceReviewThreshold)
     }
+    val disagreementCount = lowConfidence.count(EditableCut::isModelDisagreement)
+    val joinedGaps = finalIntervals.flatMap { it.joinedGaps }
     val totalFinalMs = EditorMath.totalFinalMs(finalIntervals)
     val removedCount = draft.cuts.count { !it.included }
     val ignoredCutCount = draft.cuts.count { it.included && it.id !in effectiveIds }
@@ -1047,17 +1072,27 @@ private fun EditorScreen(
                 ),
             )
 
-            SectionCard("OUTPUT PADDING", "Applied to inferred ranges only") {
+            SectionCard("OUTPUT", "Padding and retained short gaps") {
                 PaddingControl("Before", draft.beforePaddingMs) { before ->
                     updateDraft { EditorMath.applyPadding(it, before, it.afterPaddingMs, seed.durationMs) }
                 }
                 PaddingControl("After", draft.afterPaddingMs) { after ->
                     updateDraft { EditorMath.applyPadding(it, it.beforePaddingMs, after, seed.durationMs) }
                 }
+                PaddingControl("Join gaps under", draft.joinGapMs) { joinGap ->
+                    updateDraft { it.copy(joinGapMs = joinGap.coerceIn(0, MAX_JOIN_GAP_MS)) }
+                    message = if (joinGap == 0L) "Short-gap joining disabled"
+                    else "Keeping export gaps shorter than ${String.format(Locale.US, "%.1f", joinGap / 1_000.0)} seconds"
+                }
+                Text(
+                    "Padding applies to inferred ranges. Gray gaps shorter than this setting remain in preview and export.",
+                    fontSize = 11.sp,
+                    color = Muted,
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Play final cut only", fontWeight = FontWeight.SemiBold)
-                        Text("Skip removed, ignored, and unselected time", fontSize = 12.sp, color = Muted)
+                        Text("Skip removed, ignored, and gaps at or above the join setting", fontSize = 12.sp, color = Muted)
                     }
                     Switch(
                         checked = draft.finalPreviewEnabled,
@@ -1098,8 +1133,8 @@ private fun EditorScreen(
                 onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
             )
 
-            SectionCard("WHOLE RECORDING", "Tap a range · drag to scrub", compact = true) {
-                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, compact = true, onChange = { threshold ->
+            SectionCard("WHOLE RECORDING", "Tap a range · gray = joined gap", compact = true) {
+                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, disagreementCount, compact = true, onChange = { threshold ->
                     updateDraft { it.copy(confidenceReviewThreshold = threshold) }
                 }, onReviewNext = {
                     if (lowConfidence.isNotEmpty()) {
@@ -1108,13 +1143,16 @@ private fun EditorScreen(
                         else lowConfidence.firstOrNull { it.keepStartMs >= playbackPositionMs } ?: lowConfidence.first()
                         selectedId = next.id
                         seekTo(next.keepStartMs)
-                        message = "${next.id} has ${(next.confidence * 100).roundToInt()}% confidence"
+                        message = if (next.isModelDisagreement()) {
+                            "${next.id} was detected by only one model; validate or disable it"
+                        } else "${next.id} has ${(next.confidence * 100).roundToInt()}% confidence"
                     }
                 })
                 WholeTimeline(
                     windowStartMs = 0,
                     windowEndMs = seed.durationMs / 2,
                     cuts = sortedCuts,
+                    joinedGaps = joinedGaps,
                     ignored = draft.ignoredIntervals,
                     selectedId = selected?.id,
                     effectiveIds = effectiveIds,
@@ -1130,6 +1168,7 @@ private fun EditorScreen(
                     windowStartMs = seed.durationMs / 2,
                     windowEndMs = seed.durationMs,
                     cuts = sortedCuts,
+                    joinedGaps = joinedGaps,
                     ignored = draft.ignoredIntervals,
                     selectedId = selected?.id,
                     effectiveIds = effectiveIds,
@@ -1145,7 +1184,9 @@ private fun EditorScreen(
 
             SectionCard(
                 "FOCUSED RANGE",
-                selected?.let { "${it.id} · ${if (it.origin == CutOrigin.MANUAL) "Manual" else "${(it.confidence * 100).roundToInt()}% confidence"}" }
+                selected?.let {
+                    "${it.id} · ${if (it.origin == CutOrigin.MANUAL) "Manual" else "${it.modelAgreementLabel()} · ${(it.confidence * 100).roundToInt()}% review confidence"}"
+                }
                     ?: "No range selected",
                 compact = true,
             ) {
@@ -1173,7 +1214,8 @@ private fun EditorScreen(
                         window = detailWindow,
                         playheadMs = playbackPositionMs,
                         effective = selected.id in effectiveIds,
-                        lowConfidence = selected.confidence < draft.confidenceReviewThreshold,
+                        lowConfidence = selected.isModelDisagreement() ||
+                            selected.confidence < draft.confidenceReviewThreshold,
                         onSeek = ::seekTo,
                         onStartChange = { setBoundary("start", it) },
                         onEndChange = { setBoundary("end", it) },
@@ -1265,9 +1307,13 @@ private fun EditorScreen(
                             Text("${preciseTime(cut.keepStartMs)}–${preciseTime(cut.keepEndMs)}", fontSize = 12.sp, color = Muted)
                         }
                         Text(
-                            if (cut.origin == CutOrigin.MANUAL) "MANUAL" else "${(cut.confidence * 100).roundToInt()}%",
+                            if (cut.origin == CutOrigin.MANUAL) "MANUAL"
+                            else if (cut.isModelDisagreement()) "CHECK"
+                            else "${(cut.confidence * 100).roundToInt()}%",
                             fontSize = 12.sp,
-                            color = if (cut.confidence < draft.confidenceReviewThreshold) Warning else Muted,
+                            color = if (cut.isModelDisagreement() ||
+                                cut.confidence < draft.confidenceReviewThreshold
+                            ) Warning else Muted,
                         )
                         TextButton(onClick = { updateCut(cut.id) { it.copy(included = !it.included) } }) {
                             Text(state, color = if (state == "Keep") Green else Danger)
@@ -1401,13 +1447,14 @@ private fun PaddingControl(label: String, valueMs: Long, onChange: (Long) -> Uni
 private fun ConfidenceControl(
     value: Float,
     count: Int,
+    disagreementCount: Int,
     compact: Boolean = false,
     onChange: (Float) -> Unit,
     onReviewNext: () -> Unit,
 ) {
     if (compact) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Low <${(value * 100).roundToInt()}%", fontSize = 11.sp)
+            Text("$disagreementCount checks · <${(value * 100).roundToInt()}%", fontSize = 11.sp)
             Slider(
                 value = value,
                 onValueChange = onChange,
@@ -1420,8 +1467,8 @@ private fun ConfidenceControl(
     } else {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Highlight below ${(value * 100).roundToInt()}%", Modifier.weight(1f), fontSize = 13.sp)
-                Text("$count ranges", color = Muted, fontSize = 12.sp)
+                Text("Review disagreements and confidence below ${(value * 100).roundToInt()}%", Modifier.weight(1f), fontSize = 13.sp)
+                Text("$disagreementCount disagreements · $count ranges", color = Muted, fontSize = 12.sp)
                 TextButton(enabled = count > 0, onClick = onReviewNext) { Text("Review next") }
             }
             Slider(value = value, onValueChange = onChange, valueRange = 0f..1f, steps = 99)
@@ -1434,6 +1481,7 @@ private fun WholeTimeline(
     windowStartMs: Long,
     windowEndMs: Long,
     cuts: List<EditableCut>,
+    joinedGaps: List<JoinedGap>,
     ignored: List<IgnoredSourceInterval>,
     selectedId: String?,
     effectiveIds: Set<String>,
@@ -1476,13 +1524,27 @@ private fun WholeTimeline(
                 val width = max(1f, xAt(clippedEnd) - x)
                 drawRect(Danger.copy(alpha = .26f), Offset(x, 0f), Size(width, size.height))
             }
+            joinedGaps.forEach { gap ->
+                val clippedStart = max(gap.startMs, windowStartMs)
+                val clippedEnd = min(gap.endMs, windowEndMs)
+                if (clippedEnd <= clippedStart) return@forEach
+                val x = xAt(clippedStart)
+                val width = max(1f, xAt(clippedEnd) - x)
+                drawRoundRect(
+                    Color(0xFFBBB8B1),
+                    Offset(x, 16f),
+                    Size(width, size.height - 32f),
+                    CornerRadius(4f),
+                )
+            }
             cuts.forEach { cut ->
                 val clippedStart = max(cut.keepStartMs, windowStartMs)
                 val clippedEnd = min(cut.keepEndMs, windowEndMs)
                 if (clippedEnd <= clippedStart) return@forEach
                 val x = xAt(clippedStart)
                 val width = max(2f, xAt(clippedEnd) - x)
-                val low = cut.origin == CutOrigin.INFERRED && cut.confidence < confidenceThreshold
+                val low = cut.origin == CutOrigin.INFERRED &&
+                    (cut.isModelDisagreement() || cut.confidence < confidenceThreshold)
                 val color = when {
                     !cut.included -> Muted.copy(alpha = .55f)
                     cut.id !in effectiveIds -> Danger.copy(alpha = .65f)
@@ -1495,7 +1557,16 @@ private fun WholeTimeline(
                 if (clippedCoreEnd > clippedCoreStart) {
                     val coreX = xAt(clippedCoreStart)
                     val coreWidth = max(1f, xAt(clippedCoreEnd) - coreX)
-                    drawRoundRect(if (cut.included) Green else Muted, Offset(coreX, 24f), Size(coreWidth, size.height - 48f), CornerRadius(4f))
+                    drawRoundRect(
+                        when {
+                            !cut.included -> Muted
+                            low -> Orange
+                            else -> Green
+                        },
+                        Offset(coreX, 24f),
+                        Size(coreWidth, size.height - 48f),
+                        CornerRadius(4f),
+                    )
                 }
                 if (cut.id == selectedId) {
                     drawRoundRect(Orange, Offset(x, 13f), Size(width, size.height - 26f), CornerRadius(7f), style = Stroke(4f))
@@ -1551,7 +1622,11 @@ private fun FocusTimeline(
                 CornerRadius(8f),
             )
             drawRoundRect(
-                if (cut.included) Green else Muted,
+                when {
+                    !cut.included -> Muted
+                    lowConfidence -> Orange
+                    else -> Green
+                },
                 Offset(xAt(cut.coreStartMs), 33f),
                 Size(max(2f, xAt(cut.coreEndMs) - xAt(cut.coreStartMs)), size.height - 66f),
                 CornerRadius(5f),
@@ -1698,19 +1773,26 @@ private fun SmallButton(label: String, enabled: Boolean = true, onClick: () -> U
 private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<FinalCutInterval>) =
     JSONObject().apply {
         put("schemaVersion", 1)
-        put("method", "android-native-editor-v1")
+        put("method", "android-editor-v2")
         put("sourceName", seed.displayName)
         put("sourceUri", seed.sourceUri)
         put("sourceDuration", seed.durationMs / 1_000.0)
         put("sourceRevision", seed.sourceRevision)
         put("beforePaddingSeconds", draft.beforePaddingMs / 1_000.0)
         put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)
+        put("joinGapSeconds", draft.joinGapMs / 1_000.0)
         put("outputDuration", EditorMath.totalFinalMs(intervals) / 1_000.0)
         put("ranges", JSONArray().apply {
             intervals.forEach { range -> put(JSONObject().apply {
                 put("start", range.startMs / 1_000.0)
                 put("end", range.endMs / 1_000.0)
                 put("cutIds", JSONArray(range.cutIds))
+                if (range.joinedGaps.isNotEmpty()) put("joinedGaps", JSONArray().apply {
+                    range.joinedGaps.forEach { gap -> put(JSONObject().apply {
+                        put("start", gap.startMs / 1_000.0)
+                        put("end", gap.endMs / 1_000.0)
+                    }) }
+                })
             }) }
         })
         put("cuts", JSONArray().apply {
@@ -1723,6 +1805,7 @@ private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<F
                 put("confidence", cut.confidence.toDouble())
                 put("included", cut.included)
                 put("origin", cut.origin.name.lowercase())
+                put("agreement", cut.agreement ?: JSONObject.NULL)
             }) }
         })
         put("ignoredIntervals", JSONArray().apply {

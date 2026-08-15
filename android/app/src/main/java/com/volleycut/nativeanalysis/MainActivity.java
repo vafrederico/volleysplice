@@ -502,8 +502,9 @@ public final class MainActivity extends Activity {
         output.append("\nUnpadded ranges\n");
         for (int i = 0; i < result.ranges().size(); i++) {
             AnalysisTypes.Interval range = result.ranges().get(i);
-            output.append(String.format(Locale.US, "R%03d  %s – %s  %.3f\n",
-                    i + 1, clock(range.start()), clock(range.end()), range.confidence()));
+            output.append(String.format(Locale.US, "R%03d  %s – %s  %.3f  %s\n",
+                    i + 1, clock(range.start()), clock(range.end()), range.confidence(),
+                    range.agreement() == null ? "single-model" : range.agreement()));
         }
         resultText.setText(output.toString());
         performanceText.setText(String.format(Locale.US,
@@ -557,8 +558,8 @@ public final class MainActivity extends Activity {
         JSONObject json = new JSONObject();
         try {
             json.put("schemaVersion", 1);
-            json.put("method", "android-native-mediacodec-av-cache-opencv-v5");
-            json.put("modelId", "model-9c92b8e9333f");
+            json.put("method", "android-mediacodec-av-cache-opencv-ensemble-v6");
+            json.put("modelId", FeatureSchema.MODEL_ID);
             json.put("sourceName", result.displayName());
             json.put("duration", result.media().durationSeconds());
             json.put("analyzedDuration", result.analyzedDurationSeconds());
@@ -636,6 +637,7 @@ public final class MainActivity extends Activity {
                 item.put("start", range.start());
                 item.put("end", range.end());
                 item.put("confidence", range.confidence());
+                item.put("agreement", range.agreement());
                 ranges.put(item);
             }
             json.put("ranges", ranges);

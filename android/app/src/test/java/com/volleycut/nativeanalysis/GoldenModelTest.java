@@ -13,12 +13,14 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 public final class GoldenModelTest {
     @Test
-    public void canonicalFeaturesReproduceAllThirtySevenRanges() throws Exception {
+    public void canonicalFeaturesReproduceAllFortyTwoAllLabelsV2Ranges() throws Exception {
         Path repository = findRepositoryRoot();
         JSONObject metadata = new JSONObject(new String(Files.readAllBytes(
                 repository.resolve("tests/fixtures/on-device-y9-golden.json")
@@ -44,13 +46,13 @@ public final class GoldenModelTest {
 
         float[] contextual = FeatureMath.contextualize(times, base, FeatureSchema.BASE);
         JSONObject model = new JSONObject(new String(Files.readAllBytes(
-                repository.resolve("public/on-device/model-9c92b8e9333f.json")
+                repository.resolve("public/on-device/model-1ca43e38eefc.json")
         ), StandardCharsets.UTF_8));
         List<AnalysisTypes.Interval> actual = new ModelRunner(model).run(
                 times, contextual, metadata.getDouble("duration")
         );
         JSONArray expected = metadata.getJSONArray("rallies");
-        assertEquals(37, actual.size());
+        assertEquals(42, actual.size());
         assertEquals(expected.length(), actual.size());
         for (int index = 0; index < actual.size(); index++) {
             JSONObject range = expected.getJSONObject(index);
@@ -58,6 +60,21 @@ public final class GoldenModelTest {
             assertEquals(range.getDouble("end"), actual.get(index).end(), 0.00051);
             assertEquals(range.getDouble("confidence"), actual.get(index).confidence(), 2e-5);
         }
+
+        JSONObject previousModel = new JSONObject(new String(Files.readAllBytes(
+                repository.resolve("public/on-device/model-9c92b8e9333f.json")
+        ), StandardCharsets.UTF_8));
+        List<AnalysisTypes.Interval> previous = new ModelRunner(previousModel).run(
+                times, contextual, metadata.getDouble("duration")
+        );
+        List<AnalysisTypes.Interval> ensemble = ProductionEnsemble.merge(actual, previous);
+        assertTrue(ensemble.stream().anyMatch(range ->
+                ProductionEnsemble.BOTH_MODELS.equals(range.agreement())));
+        assertTrue(ensemble.stream().anyMatch(range ->
+                ProductionEnsemble.isDisagreement(range.agreement())));
+        assertTrue(ensemble.stream()
+                .filter(range -> ProductionEnsemble.isDisagreement(range.agreement()))
+                .allMatch(range -> range.confidence() < 0.5f));
     }
 
     @Test
@@ -67,6 +84,31 @@ public final class GoldenModelTest {
         float[] magnitude = new Radix2Fft(1024).magnitudes(impulse);
         assertEquals(513, magnitude.length);
         for (float value : magnitude) assertEquals(1, value, 1e-6);
+    }
+
+    @Test
+    public void bothAndroidModelAssetsMatchTheVersionedEnsembleIdentity() throws Exception {
+        Path assets = findRepositoryRoot().resolve("android/app/src/main/assets");
+        assertAsset(
+                assets.resolve(FeatureSchema.modelAsset(FeatureSchema.ALL_LABELS_V2_MODEL_ID)),
+                FeatureSchema.ALL_LABELS_V2_BUNDLE_SHA256
+        );
+        assertAsset(
+                assets.resolve(FeatureSchema.modelAsset(FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID)),
+                FeatureSchema.PREVIOUS_PRODUCTION_BUNDLE_SHA256
+        );
+        assertTrue(FeatureSchema.MODEL_ID.contains(FeatureSchema.ENSEMBLE_ALGORITHM_VERSION));
+        assertTrue(FeatureSchema.MODEL_ID.contains(FeatureSchema.ALL_LABELS_V2_BUNDLE_SHA256));
+        assertTrue(FeatureSchema.MODEL_ID.contains(FeatureSchema.PREVIOUS_PRODUCTION_BUNDLE_SHA256));
+    }
+
+    private static void assertAsset(Path asset, String expectedSha256) throws Exception {
+        byte[] contents = Files.readAllBytes(asset);
+        assertEquals(
+                expectedSha256,
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(contents))
+        );
+        new ModelRunner(new JSONObject(new String(contents, StandardCharsets.UTF_8)));
     }
 
     private static List<String> jsonStrings(JSONArray array) throws Exception {
