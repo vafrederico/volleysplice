@@ -765,6 +765,10 @@
   margin: 70px 4vw 0;
 }
 
+.supplementalTools {
+  margin: 58px 4vw 0;
+}
+
 .tableHeading {
   display: flex;
   justify-content: space-between;
