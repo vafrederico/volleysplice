@@ -450,6 +450,15 @@ export function CutEditor({
     );
   }
 
+  function setJoinGapSeconds(seconds: number) {
+    if (!Number.isFinite(seconds)) return;
+    updateDraft((current) => ({
+      ...current,
+      joinGapSeconds: Math.max(0, Math.min(10, seconds)),
+    }));
+    setEditorMessage(`Joining final export gaps shorter than ${seconds.toFixed(1)} seconds.`);
+  }
+
   function toggleSelected() {
     if (!selected) return;
     updateCut(selected.id, (cut) => ({ ...cut, included: !cut.included }));
@@ -800,7 +809,7 @@ export function CutEditor({
               <p>{keptCount} kept · {removedCount} removed</p>
               {fullyIgnoredCount > 0 && <p>{fullyIgnoredCount} enabled rallies fully ignored</p>}
               <p>{draft.ignoredIntervals.length} ignored source sections</p>
-              <p>Duration includes padding and excludes ignored time</p>
+              <p>Duration includes padding and joined short gaps; ignored time is excluded</p>
             </div>
           </div>
           <div className={styles.paddingControls}>
@@ -838,7 +847,24 @@ export function CutEditor({
               />
               <div><span>0s</span><span>10s</span></div>
             </div>
-            <small>Applies to inferred cuts. You can still fine-tune each range afterward.</small>
+            <div className={styles.paddingControl}>
+              <label htmlFor="cut-join-gap">
+                <span>Join gaps under</span>
+                <output>{draft.joinGapSeconds.toFixed(1)}s</output>
+              </label>
+              <input
+                id="cut-join-gap"
+                aria-label="Join final export gaps shorter than"
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={draft.joinGapSeconds}
+                onChange={(event) => setJoinGapSeconds(Number(event.currentTarget.value))}
+              />
+              <div><span>Off</span><span>10s</span></div>
+            </div>
+            <small>Padding applies to inferred cuts. Light gray gaps are retained when they are shorter than the join setting.</small>
           </div>
           <label className={styles.cutPreviewToggle}>
             <input
@@ -848,7 +874,7 @@ export function CutEditor({
             />
             <span>
               <strong>Play final cut only</strong>
-              <small>Skip removed rallies, ignored sections, and every unselected gap.</small>
+              <small>Skip removed rallies, ignored sections, and unselected gaps at or above the join setting.</small>
             </span>
           </label>
           {chromeOnIos && (
@@ -1049,7 +1075,7 @@ export function CutEditor({
                 <span>WHOLE RECORDING</span>
                 <strong>Tap or slide to seek · select a range to refine</strong>
               </div>
-              <small>{draft.cuts.length} ranges</small>
+              <small>{draft.cuts.length} ranges · light gray = joined gap</small>
             </div>
             <div className={styles.confidenceReview}>
               <label htmlFor="confidence-review-threshold">
@@ -1149,6 +1175,21 @@ export function CutEditor({
                   />
                 </button>
               ))}
+              {finalIntervals.flatMap((interval, intervalIndex) =>
+                (interval.joinedGaps ?? [])
+                  .filter((gap) => activeMarkStart === null || gap.end >= activeMarkStart)
+                  .map((gap, gapIndex) => (
+                    <span
+                      key={`joined-gap-${intervalIndex + 1}-${gapIndex + 1}`}
+                      className={styles.overviewJoinedGap}
+                      style={{
+                        left: `${timelinePercent(gap.start, initialAnalysis.duration)}%`,
+                        width: `${timelinePercent(gap.end - gap.start, initialAnalysis.duration)}%`,
+                      }}
+                      title={`Retained short gap · ${preciseTime(gap.start)} to ${preciseTime(gap.end)}`}
+                    />
+                  )),
+              )}
               <span
                 className={styles.playhead}
                 style={{ left: `${timelinePercent(playbackTime, initialAnalysis.duration)}%` }}

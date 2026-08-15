@@ -18,6 +18,9 @@ a project also deletes its cached features, inference, and edit draft. The edito
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
 file or origin-private storage before iOS sharing. JSON edit-list export is also available.
+Padded ranges separated by less than the configurable join-gap threshold are exported as
+one continuous section. The default is 3 seconds, a gap of exactly 3 seconds remains a
+cut, and retained join gaps are shown in light gray on the overview rail.
 Both analysis and MP4 export show live elapsed-time and estimated-time-remaining counters
 while they run.
 

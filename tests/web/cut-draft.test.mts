@@ -31,6 +31,7 @@ test("createCutDraft seeds clamped per-cut padding from cached labels", () => {
   assert.equal(draft.sourceRevision, cutSourceRevision(seed));
   assert.equal(draft.beforePaddingSeconds, 2);
   assert.equal(draft.afterPaddingSeconds, 2);
+  assert.equal(draft.joinGapSeconds, 3);
   assert.equal(draft.playbackRate, 1);
   assert.equal(draft.confidenceReviewThreshold, 0.7);
   assert.deepEqual(
@@ -113,6 +114,7 @@ test("parseCutDraft migrates the original on-device draft without losing edits",
   assert.equal(migrated?.cuts[0].included, false);
   assert.equal(migrated?.beforePaddingSeconds, 3);
   assert.equal(migrated?.afterPaddingSeconds, 2);
+  assert.equal(migrated?.joinGapSeconds, 3);
   assert.equal(migrated?.playbackRate, 1);
   assert.equal(migrated?.confidenceReviewThreshold, 0.7);
 });
@@ -145,6 +147,16 @@ test("confidence review migration preserves version five playback settings", () 
 
   assert.equal(migrated?.playbackRate, 8);
   assert.equal(migrated?.confidenceReviewThreshold, 0.7);
+});
+
+test("short-gap migration gives version six drafts the canonical default", () => {
+  const prior = createCutDraft(seed) as unknown as Record<string, unknown>;
+  prior.version = 6;
+  delete prior.joinGapSeconds;
+
+  const migrated = parseCutDraft(JSON.stringify(prior), seed);
+
+  assert.equal(migrated?.joinGapSeconds, 3);
 });
 
 test("manual missed cuts round-trip through on-device draft storage", () => {
@@ -198,6 +210,34 @@ test("final edit list merges touching cuts and subtracts ignored source time", (
     { start: 6, end: 14, cutIds: ["A", "B"] },
   ]);
   assert.equal(totalFinalCutSeconds(intervals), 12);
+});
+
+test("final edit list retains and identifies only gaps strictly below the join setting", () => {
+  const draft = createCutDraft(seed);
+  draft.ignoredIntervals = [];
+  draft.cuts = [
+    { ...draft.cuts[0], id: "A", coreStart: 0, coreEnd: 5, keepStart: 0, keepEnd: 5 },
+    { ...draft.cuts[1], id: "B", coreStart: 7.5, coreEnd: 10, keepStart: 7.5, keepEnd: 10 },
+  ];
+
+  assert.deepEqual(buildFinalCutIntervals(draft), [{
+    start: 0,
+    end: 10,
+    cutIds: ["A", "B"],
+    joinedGaps: [{ start: 5, end: 7.5 }],
+  }]);
+
+  draft.cuts[1].coreStart = 8;
+  draft.cuts[1].keepStart = 8;
+  assert.deepEqual(buildFinalCutIntervals(draft), [
+    { start: 0, end: 5, cutIds: ["A"] },
+    { start: 8, end: 10, cutIds: ["B"] },
+  ]);
+
+  draft.joinGapSeconds = 0;
+  draft.cuts[1].coreStart = 7.5;
+  draft.cuts[1].keepStart = 7.5;
+  assert.equal(buildFinalCutIntervals(draft).length, 2);
 });
 
 test("cut preview keeps playable time and jumps gaps to the next interval", () => {

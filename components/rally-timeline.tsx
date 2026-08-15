@@ -40,6 +40,7 @@ export type TimelineTrack = {
   active?: boolean;
   intervals: TimelineInterval[];
   exportIntervals?: TimelineInterval[];
+  joinedGapIntervals?: TimelineInterval[];
   missingHumanIntervals?: TimelineInterval[];
 };
 
@@ -169,6 +170,20 @@ export function RallyTimeline({
                     onClick={() => onSeek?.(interval.start, track.id)}
                     title={interval.title ?? `Exported: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
                     aria-label={`Seek to exported segment at ${formatTime(interval.start)}`}
+                  />
+                ))}
+                {track.joinedGapIntervals?.map((interval) => (
+                  <button
+                    type="button"
+                    key={interval.id}
+                    className={`${styles.exportInterval} ${styles.joinedGapInterval}`}
+                    style={{
+                      left: `${timelinePercent(interval.start, duration)}%`,
+                      width: `${timelinePercent(interval.end - interval.start, duration)}%`,
+                    }}
+                    onClick={() => onSeek?.(interval.start, track.id)}
+                    title={interval.title ?? `Joined short gap: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
+                    aria-label={`Seek to joined short gap at ${formatTime(interval.start)}`}
                   />
                 ))}
                 {track.missingHumanIntervals?.map((interval) => (

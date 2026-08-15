@@ -531,6 +531,56 @@
   font: 9px "Atkinson Hyperlegible Mono", monospace;
 }
 
+.comparisonRailControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px 18px;
+  margin: 14px 0 8px;
+  color: #77796f;
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.comparisonRailLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.comparisonRailLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.comparisonRailLegend span::before {
+  width: 20px;
+  height: 5px;
+  background: #161813;
+  content: "";
+}
+
+.comparisonRailLegend span[data-tone="joined-gap"]::before { background: #aaa9a2; }
+.comparisonRailLegend span[data-tone="missing"]::before { background: #d81717; }
+
+.comparisonRailControls > label {
+  display: grid;
+  grid-template-columns: auto auto minmax(110px, 170px);
+  align-items: center;
+  gap: 7px;
+}
+
+.comparisonRailControls output {
+  color: #161813;
+  font-weight: 700;
+}
+
+.comparisonRailControls input {
+  width: 100%;
+  accent-color: #ff5c35;
+}
+
 .timeline {
   position: relative;
   height: 32px;

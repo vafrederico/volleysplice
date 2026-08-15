@@ -1,10 +1,12 @@
 import type { IgnoredInterval } from "./product-analysis.ts";
 import type { Rally } from "./edit-list.ts";
 
-export const CUT_DRAFT_VERSION = 6 as const;
+export const CUT_DRAFT_VERSION = 7 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
+export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const MAX_CUT_PADDING_SECONDS = 10;
+export const MAX_JOIN_GAP_SECONDS = 10;
 export const PLAYBACK_RATES = [1, 2, 4, 8] as const;
 
 export type CutOrigin = "cached-label" | "manual";
@@ -32,6 +34,7 @@ export type CutDraft = {
   updatedAt: string;
   beforePaddingSeconds: number;
   afterPaddingSeconds: number;
+  joinGapSeconds: number;
   pendingManualStart: number | null;
   pendingIgnoreStart: number | null;
   ignoreReason: string;
@@ -46,6 +49,7 @@ export type FinalCutInterval = {
   start: number;
   end: number;
   cutIds: string[];
+  joinedGaps?: Array<{ start: number; end: number }>;
 };
 
 export type CutDraftSeed = {
@@ -95,7 +99,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -110,6 +114,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     updatedAt: new Date(0).toISOString(),
     beforePaddingSeconds: DEFAULT_CUT_PADDING.before,
     afterPaddingSeconds: DEFAULT_CUT_PADDING.after,
+    joinGapSeconds: DEFAULT_JOIN_GAP_SECONDS,
     pendingManualStart: null,
     pendingIgnoreStart: null,
     ignoreReason: "non-game-content",
@@ -186,7 +191,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, CUT_DRAFT_VERSION].includes(persistedVersion)
+      ![1, 2, 3, 4, 5, 6, CUT_DRAFT_VERSION].includes(persistedVersion)
     ) {
       return null;
     }
@@ -203,6 +208,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         : persistedVersion === 2
           ? persisted.paddingSeconds as number
           : persisted.afterPaddingSeconds,
+      joinGapSeconds: persistedVersion >= 7
+        ? persisted.joinGapSeconds
+        : DEFAULT_JOIN_GAP_SECONDS,
       pendingManualStart: persistedVersion >= 4 ? persisted.pendingManualStart : null,
       pendingIgnoreStart: persistedVersion >= 4 ? persisted.pendingIgnoreStart : null,
       ignoreReason: persistedVersion >= 4
@@ -226,6 +234,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       !finiteTime(value.afterPaddingSeconds) ||
       value.afterPaddingSeconds < 0 ||
       value.afterPaddingSeconds > MAX_CUT_PADDING_SECONDS ||
+      !finiteTime(value.joinGapSeconds) ||
+      value.joinGapSeconds < 0 ||
+      value.joinGapSeconds > MAX_JOIN_GAP_SECONDS ||
       !(
         value.pendingManualStart === null ||
         (finiteTime(value.pendingManualStart) &&
@@ -346,14 +357,22 @@ export function effectiveKeptCutIds(draft: CutDraft): string[] {
 }
 
 export function buildFinalCutIntervals(draft: CutDraft): FinalCutInterval[] {
+  const joinGap = clamp(draft.joinGapSeconds, 0, MAX_JOIN_GAP_SECONDS);
   const merged = draft.cuts
     .filter((cut) => cut.included && cut.keepEnd > cut.keepStart)
     .sort((left, right) => left.keepStart - right.keepStart || left.keepEnd - right.keepEnd)
     .reduce<FinalCutInterval[]>((intervals, cut) => {
       const previous = intervals.at(-1);
-      if (!previous || cut.keepStart > previous.end) {
+      const gap = previous ? cut.keepStart - previous.end : Number.POSITIVE_INFINITY;
+      if (!previous || (gap > 0 && gap >= joinGap)) {
         intervals.push({ start: cut.keepStart, end: cut.keepEnd, cutIds: [cut.id] });
       } else {
+        if (gap > 0) {
+          previous.joinedGaps = [
+            ...(previous.joinedGaps ?? []),
+            { start: previous.end, end: cut.keepStart },
+          ];
+        }
         previous.end = Math.max(previous.end, cut.keepEnd);
         previous.cutIds.push(cut.id);
       }
@@ -384,15 +403,25 @@ export function buildFinalCutIntervals(draft: CutDraft): FinalCutInterval[] {
     });
   }, merged);
   const cutsById = new Map(draft.cuts.map((cut) => [cut.id, cut]));
-  return remaining.map((interval) => ({
-    ...interval,
-    cutIds: interval.cutIds.filter((id) => {
-      const cut = cutsById.get(id);
-      return Boolean(
-        cut && Math.min(cut.keepEnd, interval.end) - Math.max(cut.keepStart, interval.start) > 0.000_001,
-      );
-    }),
-  }));
+  return remaining.map((interval) => {
+    const { joinedGaps: sourceJoinedGaps, ...baseInterval } = interval;
+    const joinedGaps = sourceJoinedGaps
+      ?.map((gap) => ({
+        start: Math.max(interval.start, gap.start),
+        end: Math.min(interval.end, gap.end),
+      }))
+      .filter((gap) => gap.end > gap.start);
+    return {
+      ...baseInterval,
+      ...(joinedGaps?.length ? { joinedGaps } : {}),
+      cutIds: interval.cutIds.filter((id) => {
+        const cut = cutsById.get(id);
+        return Boolean(
+          cut && Math.min(cut.keepEnd, interval.end) - Math.max(cut.keepStart, interval.start) > 0.000_001,
+        );
+      }),
+    };
+  });
 }
 
 export function totalFinalCutSeconds(intervals: FinalCutInterval[]): number {

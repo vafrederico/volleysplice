@@ -19,7 +19,65 @@ class CropEvaluationTests(unittest.TestCase):
             duration=10,
             padding_seconds=1,
         )
-        self.assertEqual(result, (Interval(0, 7), Interval(8, 10)))
+        self.assertEqual(result, (Interval(0, 10),))
+
+    def test_short_gap_join_is_strict_at_the_configured_threshold(self) -> None:
+        joined = pad_and_merge_intervals(
+            (Interval(1, 2), Interval(4.999, 6)),
+            duration=20,
+            padding_seconds=0,
+            join_gap_seconds=3,
+        )
+        exact = pad_and_merge_intervals(
+            (Interval(1, 2), Interval(5, 6)),
+            duration=20,
+            padding_seconds=0,
+            join_gap_seconds=3,
+        )
+        disabled = pad_and_merge_intervals(
+            (Interval(1, 2), Interval(4.999, 6)),
+            duration=20,
+            padding_seconds=0,
+            join_gap_seconds=0,
+        )
+
+        self.assertEqual(joined, (Interval(1, 6),))
+        self.assertEqual(exact, (Interval(1, 2), Interval(5, 6)))
+        self.assertEqual(disabled, (Interval(1, 2), Interval(4.999, 6)))
+
+    def test_ranking_metric_counts_joined_gap_as_export_time(self) -> None:
+        recordings = (
+            RecordingIntervals(
+                id="sample",
+                split="validation",
+                duration=10,
+                truth=(Interval(0, 1),),
+                predictions=(Interval(0, 1), Interval(3, 4)),
+            ),
+        )
+
+        row = evaluate_f1_pad_p_core_r(recordings, (0,), join_gap_seconds=3)[0]
+        self.assertEqual(row["joinGapSeconds"], 3)
+        self.assertEqual(row["paddedModelExportSeconds"], 4)
+        self.assertAlmostEqual(row["P_pad"], 0.25)
+        self.assertAlmostEqual(row["R_core"], 1.0)
+        self.assertAlmostEqual(row["F1_padP_coreR"], 0.4)
+
+    def test_ignored_time_splits_a_join_without_rejoining_the_fragments(self) -> None:
+        recordings = (
+            RecordingIntervals(
+                id="sample",
+                split="validation",
+                duration=10,
+                truth=(Interval(0, 1), Interval(3, 4)),
+                predictions=(Interval(0, 1), Interval(3, 4)),
+                ignored_intervals=(Interval(1.5, 2.5),),
+            ),
+        )
+
+        row = evaluate_f1_pad_p_core_r(recordings, (0,), join_gap_seconds=3)[0]
+        self.assertEqual(row["paddedModelExportSeconds"], 3)
+        self.assertEqual(row["paddedHumanExportSeconds"], 3)
 
     def test_sweep_reports_recall_and_retained_time_tradeoff(self) -> None:
         recordings = (

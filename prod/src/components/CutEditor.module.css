@@ -476,6 +476,16 @@
   pointer-events: none;
 }
 
+.overviewJoinedGap {
+  position: absolute;
+  z-index: 3;
+  top: 16px;
+  height: 36px;
+  min-width: 2px;
+  background: #aaa9a2;
+  pointer-events: none;
+}
+
 .playhead,
 .detailPlayhead {
   position: absolute;
@@ -540,7 +550,7 @@
 
 .paddingControls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 

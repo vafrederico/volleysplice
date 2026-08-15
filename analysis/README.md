@@ -127,6 +127,9 @@ Rank the pooled development/validation result descending under identical padding
 and recording scope; keep the protected test split closed during iteration. The complete
 definition and aggregation rules are in
 [`../docs/model-ranking-metric.md`](../docs/model-ranking-metric.md).
+After padding, join positive gaps strictly shorter than the configured short-gap threshold
+(3 seconds by default) in both model and padded-human exports. Count the retained gap as
+export time, report the threshold in the artifact, and never rejoin across ignored time.
 Every iteration evaluation must report the complete symmetric padding sensitivity sweep:
 `(before, after) = (0, 0), (1, 1), (2, 2), (3, 3)` seconds. Calculate the metric and
 its pooled components independently for all four cases. Use only the predeclared target

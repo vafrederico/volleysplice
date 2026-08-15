@@ -157,9 +157,13 @@ class OutcomeSliceTests(unittest.TestCase):
             [0.0, 1.0, 2.0, 3.0],
         )
         self.assertEqual([row["inputCropCount"] for row in rows], [3, 3, 3, 3])
-        self.assertEqual([row["outputCropCount"] for row in rows], [3, 3, 3, 2])
-        self.assertEqual([row["cropMergeRate"] for row in rows[:3]], [0.0, 0.0, 0.0])
-        self.assertAlmostEqual(rows[3]["cropMergeRate"], 1 / 3)
+        self.assertEqual([row["outputCropCount"] for row in rows], [3, 3, 2, 2])
+        for actual, expected in zip(
+            [row["cropMergeRate"] for row in rows],
+            (0.0, 0.0, 1 / 3, 1 / 3),
+            strict=True,
+        ):
+            self.assertAlmostEqual(actual, expected)
 
         outcomes = [row["aggregate"]["outcomeSlices"] for row in rows]
         self.assertEqual(

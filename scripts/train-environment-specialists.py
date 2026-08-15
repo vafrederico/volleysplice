@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Refit the production three-head architecture for environment experiments.
+"""Refit the production three-head architecture for environment experiments v2.
 
 The experiment deliberately freezes the production feature extractor, model shapes,
 epoch caps, decoder, serve composition, and dead-state refinement.  It trains on
-explicit recording allowlists so the new indoor labels remain evaluation-only and
-the remaining intake grass recordings remain available for a later evaluation.
+explicit recording allowlists.  The Turkey Tourney, Forest Ridge, and YMCA KOB indoor
+recordings are v2 training additions for the all-label and indoor-only variants; SPU
+Match 1 Set 2 and the reserved grass recordings remain evaluation-only.
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ from analysis.serve import (
 from analysis.version import __version__
 
 
-EXPERIMENT_ID = "environment-specialists-v1"
+EXPERIMENT_ID = "environment-specialists-v2"
 PRODUCTION_MODEL_ID = "model-9c92b8e9333f"
 PRODUCTION_HEADS = {
     "rally": "full-audiovisual-audio-normalized-v3",
@@ -69,19 +70,29 @@ LATEST_GRASS_TRAIN_IDS = (
     "grass-source-03",
     "grass-source-05",
 )
-INDOOR_EVALUATION_IDS = (
+LATEST_INDOOR_TRAIN_IDS = (
+    "indoor-source-06",
     "indoor-source-04",
+    "indoor-source-08",
+)
+INDOOR_EVALUATION_IDS = (
     "indoor-source-03",
 )
+LABEL_DOCUMENT_OVERRIDES = {
+    "indoor-source-08": Path(
+        "/mnt/freenas/volleycut/intake-2026-08-13/completed/full-v1/"
+        "indoor-source-08.labels.json"
+    ),
+}
 FUTURE_GRASS_EVALUATION_IDS = (
     "grass-source-02",
     "grass-source-06",
     "grass-source-08",
 )
 VARIANT_LABELS = {
-    "all-labels": "All labels + latest grass",
+    "all-labels": "All labels + latest grass v2",
     "grass-only": "Grass specialist",
-    "indoor-only": "Indoor specialist",
+    "indoor-only": "Indoor specialist v2",
 }
 HARD_NEGATIVE_MULTIPLIER = 4
 
@@ -210,17 +221,30 @@ def prepare_manifests(
         if item.environment == "indoor" and item.split == "train"
     ]
 
-    latest_rows: list[dict[str, Any]] = []
+    latest_grass_rows: list[dict[str, Any]] = []
+    latest_indoor_rows: list[dict[str, Any]] = []
     evaluation_rows: list[dict[str, Any]] = []
     label_provenance: list[dict[str, Any]] = []
-    for recording_id in (*LATEST_GRASS_TRAIN_IDS, *INDOOR_EVALUATION_IDS):
+    for recording_id in (
+        *LATEST_GRASS_TRAIN_IDS,
+        *LATEST_INDOOR_TRAIN_IDS,
+        *INDOOR_EVALUATION_IDS,
+    ):
+        training_id = recording_id in {
+            *LATEST_GRASS_TRAIN_IDS,
+            *LATEST_INDOOR_TRAIN_IDS,
+        }
         row, provenance = _label_row(
-            labels_root / f"{recording_id}.labels.json",
-            split=("train" if recording_id in LATEST_GRASS_TRAIN_IDS else "challenge"),
+            LABEL_DOCUMENT_OVERRIDES.get(
+                recording_id, labels_root / f"{recording_id}.labels.json"
+            ),
+            split=("train" if training_id else "challenge"),
         )
         label_provenance.append(provenance)
         if recording_id in LATEST_GRASS_TRAIN_IDS:
-            latest_rows.append(row)
+            latest_grass_rows.append(row)
+        elif recording_id in LATEST_INDOOR_TRAIN_IDS:
+            latest_indoor_rows.append(row)
         else:
             evaluation_rows.append(row)
 
@@ -232,14 +256,16 @@ def prepare_manifests(
     variants = {
         "all-labels": [
             *(_recording_row(item, split="train") for item in historical_development),
-            *latest_rows,
+            *latest_grass_rows,
+            *latest_indoor_rows,
         ],
         "grass-only": [
             *(_recording_row(item, split="train") for item in historical_grass),
-            *latest_rows,
+            *latest_grass_rows,
         ],
         "indoor-only": [
             *(_recording_row(item, split="train") for item in historical_indoor),
+            *latest_indoor_rows,
         ],
     }
     paths: dict[str, Path] = {}
@@ -254,7 +280,10 @@ def prepare_manifests(
                 source_documents=[
                     row
                     for row in label_provenance
-                    if row["recordingId"] in LATEST_GRASS_TRAIN_IDS
+                    if row["recordingId"] in {
+                        *(LATEST_GRASS_TRAIN_IDS if variant != "indoor-only" else ()),
+                        *(LATEST_INDOOR_TRAIN_IDS if variant != "grass-only" else ()),
+                    }
                 ],
             ),
         )
@@ -298,6 +327,7 @@ def prepare_manifests(
             "experiment": EXPERIMENT_ID,
             "createdAt": datetime.now(UTC).isoformat(),
             "latestGrassTrainingOnly": list(LATEST_GRASS_TRAIN_IDS),
+            "latestIndoorTrainingOnly": list(LATEST_INDOOR_TRAIN_IDS),
             "indoorEvaluationOnly": list(INDOOR_EVALUATION_IDS),
             "futureGrassEvaluationOnly": list(FUTURE_GRASS_EVALUATION_IDS),
             "hardNegativeMultiplier": HARD_NEGATIVE_MULTIPLIER,
@@ -880,11 +910,19 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="leave already populated model/video analyses untouched",
     )
+    parser.add_argument(
+        "--variant",
+        action="append",
+        dest="variants",
+        choices=tuple(VARIANT_LABELS),
+        help="train or infer only this variant; repeat for multiple variants",
+    )
     return parser
 
 
 def main() -> int:
     args = _parser().parse_args()
+    selected_variants = tuple(dict.fromkeys(args.variants or VARIANT_LABELS))
     destination = args.destination.expanduser().resolve()
     cache = destination / "features" / "audiovisual-audio-normalized-v3"
     if not args.skip_prepare and not args.infer_only:
@@ -926,13 +964,13 @@ def main() -> int:
                 args.analysis_output_root.expanduser().resolve(),
                 skip_existing=args.skip_existing_analyses,
             )
-            for variant in VARIANT_LABELS
+            for variant in selected_variants
         }
         print(json.dumps({"manifest": str(inference_manifest), "created": created}, indent=2))
         return 0
 
     bundles: dict[str, Any] = {}
-    for variant in VARIANT_LABELS:
+    for variant in selected_variants:
         print(f"Training {variant}", flush=True)
         bundles[variant] = train_variant(
             variant,
@@ -956,12 +994,14 @@ def main() -> int:
         "configurationSha256": _json_hash(
             {
                 "latestGrassTraining": LATEST_GRASS_TRAIN_IDS,
+                "latestIndoorTraining": LATEST_INDOOR_TRAIN_IDS,
                 "indoorEvaluation": INDOOR_EVALUATION_IDS,
                 "futureGrassEvaluation": FUTURE_GRASS_EVALUATION_IDS,
                 "hardNegativeMultiplier": HARD_NEGATIVE_MULTIPLIER,
             }
         ),
         "bundles": bundles,
+        "trainedVariants": list(selected_variants),
     }
     _write_new_json(destination / "experiment.json", summary)
     print(json.dumps(summary, indent=2))

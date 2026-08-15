@@ -16,7 +16,9 @@ For each recording, let:
 - `M` be the model's core predicted rally intervals.
 - `H` be the core human-label intervals.
 - `M+` be `M` after applying the configured before/after activity padding,
-  clipping to the video bounds, and merging overlapping or touching ranges.
+  clipping to the video bounds, merging overlapping or touching ranges, and joining
+  consecutive ranges whose positive gap is strictly less than the configured short-gap
+  threshold `G`.
 - `H+` be `H` after applying the **same** padding, clipping, and merging rules.
 - `|X|` be the union duration of interval set `X`, in seconds.
 
@@ -25,6 +27,12 @@ Before measuring any duration or intersection, subtract the label document's
 model output there is neither a true positive nor a false positive, and ignored
 seconds do not contribute to export-duration comparisons. Do not reinterpret
 ignored time as dead-time negatives.
+
+`G` defaults to **3 seconds**. The gap itself becomes retained export time when joined.
+A gap of exactly `G` is not joined. Apply `G` identically to `M+` and `H+`, record it in
+every evaluation artifact, and hold it fixed across a model comparison. Subtract ignored
+time only after padding and short-gap joining; never rejoin the fragments produced by an
+ignored interval.
 
 The score uses padded-label precision and core-label recall:
 
@@ -85,12 +93,14 @@ decision and must not be selected per model or from protected-test performance.
   Keep the protected held-out test split closed until the predeclared final gate.
 - Use identical recording/source-group scope, gold-label revision, before/after
   padding, video-bound clipping, and interval-merging semantics for every model in
-  a comparison.
+  a comparison, including the same short-gap join threshold (canonical default: 3
+  seconds, with only gaps strictly below the threshold joined).
 - Use the exact same `ignoredIntervals` revision for every model and subtract those
   ranges before calculating metric numerators, denominators, or export duration.
 - Report `P_pad`, `R_core`, `F1_padP_coreR`, padded model export duration, and
-  padded human export duration together. The component values explain whether a
-  rank change came from footage cost or core coverage.
+  padded human export duration together, along with the short-gap join threshold.
+  The component values explain whether a rank change came from footage cost or core
+  coverage.
 - Always report those values for `pad-0s`, `pad-1s`, `pad-2s`, and `pad-3s`, where
   the named duration is applied equally before and after every model and human
   interval. Rank by the predeclared target-padding case; never cherry-pick the best

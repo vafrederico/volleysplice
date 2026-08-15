@@ -1,4 +1,4 @@
-import { buildEditList, type Rally } from "./edit-list.ts";
+import { buildEditList, type JoinedGap, type Rally } from "./edit-list.ts";
 
 export type RallyComparison = {
   matchedPredictionIds: Set<string>;
@@ -22,6 +22,7 @@ export type LiveTimeComparisonSegment = {
 
 export type PaddedRally = Rally & {
   rallyIds: string[];
+  joinedGaps: JoinedGap[];
 };
 
 export function calculateF1(precision: number, recall: number): number {
@@ -35,8 +36,15 @@ export function padAndMergeRallies(
   beforeSeconds: number,
   afterSeconds: number,
   duration: number,
+  joinGapSeconds?: number,
 ): PaddedRally[] {
-  return buildEditList(rallies, beforeSeconds, afterSeconds, duration).map(
+  return buildEditList(
+    rallies,
+    beforeSeconds,
+    afterSeconds,
+    duration,
+    joinGapSeconds,
+  ).map(
     (interval) => ({
       id: interval.rallyIds[0],
       start: interval.keptStart,
@@ -44,6 +52,7 @@ export function padAndMergeRallies(
       confidence: interval.confidence,
       included: true,
       rallyIds: interval.rallyIds,
+      joinedGaps: interval.joinedGaps,
     }),
   );
 }
@@ -325,6 +334,7 @@ export function buildPaddingSegments(
     beforeSeconds,
     afterSeconds,
     duration,
+    0,
   );
   return buildLiveTimeComparisonSegments(padded, rallies).filter(
     (segment) => segment.kind === "added",

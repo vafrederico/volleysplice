@@ -148,6 +148,11 @@ button.trackLabel {
   background: #d81717;
 }
 
+.joinedGapInterval {
+  z-index: 1;
+  background: #aaa9a2;
+}
+
 .interval[data-tone="model"] { background: #275fc2; }
 .interval[data-tone="model-no-beach"] { background: #00a47c; }
 .interval[data-tone="model-match"] { background: #3f8f4a; }

@@ -36,7 +36,8 @@ test("cached predictions produce merged padded export sections", () => {
     fixture.exportDefaults.postRoll,
     fixture.source.info.duration,
   );
-  assert.equal(sections.length, 38);
+  assert.equal(sections.length, 36);
+  assert.equal(sections.reduce((total, section) => total + section.joinedGaps.length, 0), 2);
   const splitRallySection = sections.find((section) => section.rallyIds.includes("R008"));
   assert.deepEqual(splitRallySection?.rallyIds, ["R008", "R009"]);
 
@@ -46,5 +47,5 @@ test("cached predictions produce merged padded export sections", () => {
     8,
     fixture.source.info.duration,
   );
-  assert.equal(widePadding.length, 12);
+  assert.equal(widePadding.length, 4);
 });

@@ -26,7 +26,11 @@ import {
   type RallyLabel,
   type SideSwitch,
 } from "@/lib/annotations";
-import type { Rally } from "@/lib/edit-list";
+import {
+  DEFAULT_JOIN_GAP_SECONDS,
+  MAX_JOIN_GAP_SECONDS,
+  type Rally,
+} from "@/lib/edit-list";
 import {
   buildLiveTimeComparisonSegments,
   calculateF1,
@@ -112,7 +116,7 @@ type PreparedTaskSummary = {
   durationSeconds: number;
   originalFilename: string;
   videoFilename: string;
-  documentSource: "draft" | "production-model" | "prelabel" | "task";
+  documentSource: "draft" | "completed" | "production-model" | "prelabel" | "task";
   savedAt: string | null;
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
@@ -133,6 +137,8 @@ const playbackResumeKey = "volleycut.labeling.playback.v1";
 const timestampEpsilon = 0.0005;
 const trackletFrameEpsilon = 0.001;
 const comparisonPaddingCases = [2, 3] as const;
+const activityPaddingStorageKey = "volleycut:activity-padding:v1";
+const activityPaddingEvent = "volleycut:activity-padding";
 
 function metricPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -281,6 +287,55 @@ export function LabelingEditor() {
     "Choose a prepared full-corpus task, or use the local fallback files.",
   );
   const [error, setError] = useState<string | null>(null);
+  const [joinGapSeconds, setJoinGapSeconds] = useState(DEFAULT_JOIN_GAP_SECONDS);
+
+  useEffect(() => {
+    const syncJoinGap = () => {
+      try {
+        const raw = window.localStorage.getItem(activityPaddingStorageKey);
+        if (!raw) return;
+        const value = JSON.parse(raw) as { joinGap?: unknown } | null;
+        if (typeof value?.joinGap === "number" && Number.isFinite(value.joinGap)) {
+          setJoinGapSeconds(Math.max(0, Math.min(MAX_JOIN_GAP_SECONDS, value.joinGap)));
+        }
+      } catch {
+        // Storage can be unavailable or contain a legacy value without joinGap.
+      }
+    };
+    syncJoinGap();
+    window.addEventListener("storage", syncJoinGap);
+    window.addEventListener(activityPaddingEvent, syncJoinGap);
+    return () => {
+      window.removeEventListener("storage", syncJoinGap);
+      window.removeEventListener(activityPaddingEvent, syncJoinGap);
+    };
+  }, []);
+
+  function updateJoinGapSeconds(seconds: number) {
+    if (!Number.isFinite(seconds)) return;
+    const next = Math.max(0, Math.min(MAX_JOIN_GAP_SECONDS, seconds));
+    setJoinGapSeconds(next);
+    try {
+      const raw = window.localStorage.getItem(activityPaddingStorageKey);
+      const parsed = raw ? JSON.parse(raw) as unknown : null;
+      const persisted = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+      const before = typeof persisted.before === "number" && Number.isFinite(persisted.before)
+        ? persisted.before
+        : 3;
+      const after = typeof persisted.after === "number" && Number.isFinite(persisted.after)
+        ? persisted.after
+        : 2;
+      window.localStorage.setItem(
+        activityPaddingStorageKey,
+        JSON.stringify({ before, after, joinGap: next }),
+      );
+      window.dispatchEvent(new Event(activityPaddingEvent));
+    } catch {
+      // The in-memory setting still works when browser storage is unavailable.
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -447,12 +502,14 @@ export function LabelingEditor() {
           paddingSeconds,
           paddingSeconds,
           duration,
+          joinGapSeconds,
         );
         const paddedHuman = padAndMergeRallies(
           humanCore,
           paddingSeconds,
           paddingSeconds,
           duration,
+          joinGapSeconds,
         );
         const paddedHumanMetrics = calculateLiveTimeMetrics(
           paddedModel,
@@ -466,6 +523,13 @@ export function LabelingEditor() {
         );
         const precision = paddedHumanMetrics.precision;
         const recall = coreHumanMetrics.recall;
+        const segments = markModelPaddingOrigins(
+          buildLiveTimeComparisonSegments(paddedModel, humanCore, ignored),
+          modelCore,
+          paddingSeconds,
+          paddingSeconds,
+          duration,
+        );
         return {
           reference,
           paddingSeconds,
@@ -473,17 +537,24 @@ export function LabelingEditor() {
           recall,
           f1: calculateF1(precision, recall),
           exportSeconds: totalRallySeconds(excludeIgnoredTime(paddedModel, ignored)),
-          segments: markModelPaddingOrigins(
-            buildLiveTimeComparisonSegments(paddedModel, humanCore, ignored),
-            modelCore,
-            paddingSeconds,
-            paddingSeconds,
-            duration,
+          exportRallies: excludeIgnoredTime(paddedModel, ignored),
+          joinedGapRallies: excludeIgnoredTime(
+            paddedModel.flatMap((rally, rallyIndex) =>
+              rally.joinedGaps.map((gap, gapIndex) => ({
+                id: `${reference.modelId}-${paddingSeconds}s-gap-${rallyIndex + 1}-${gapIndex + 1}`,
+                start: gap.start,
+                end: gap.end,
+                confidence: 1,
+                included: true,
+              }))),
+            ignored,
           ),
+          missingHumanSegments: segments.filter((segment) => segment.kind === "missed"),
+          segments,
         };
       });
     });
-  }, [experimentReferences, labels, productionReference]);
+  }, [experimentReferences, joinGapSeconds, labels, productionReference]);
 
   const completionIssues = useMemo(() => {
     if (!labels) return ["Load a label task"];
@@ -736,6 +807,8 @@ export function LabelingEditor() {
       setMessage(
         documentSource === "draft"
           ? `Resumed the NAS draft for ${document.recording.id} with ${document.rallies.length} rallies.`
+          : documentSource === "completed"
+            ? `Loaded the completed human labels for ${document.recording.id} with ${document.rallies.length} rallies. Any new save creates an editable NAS draft without changing the completed source.`
           : documentSource === "production-model"
             ? `Loaded ${document.rallies.length} editable predictions from the production model for ${document.recording.id}. Sol is shown below as a read-only reference.`
           : documentSource === "prelabel"
@@ -1493,6 +1566,8 @@ export function LabelingEditor() {
               ? "Production model · editable labels"
               : selectedPreparedSummary?.documentSource === "prelabel"
               ? `Unvalidated GPT-5.6 Sol prelabel · ${labels?.prelabel?.ambiguities.length ?? 0} ambiguities`
+              : selectedPreparedSummary?.documentSource === "completed"
+                ? "Completed human labels · editable copy"
               : selectedPreparedSummary?.documentSource === "draft"
                 ? labels?.prelabel?.candidateFile.startsWith("model-")
                   ? "Human-saved NAS draft · started from production model"
@@ -1693,7 +1768,29 @@ export function LabelingEditor() {
           </div>
 
           {labels && (
-            <RallyTimeline
+            <>
+              <div className={styles.comparisonRailControls}>
+                <div className={styles.comparisonRailLegend} aria-label="Final export rail legend">
+                  <span data-tone="export">Final padded export</span>
+                  <span data-tone="joined-gap">Joined short gap</span>
+                  <span data-tone="missing">Missed human core</span>
+                </div>
+                <label htmlFor="label-join-gap">
+                  Join gaps under
+                  <output>{joinGapSeconds.toFixed(1)}s</output>
+                  <input
+                    id="label-join-gap"
+                    aria-label="Join evaluation and export gaps shorter than"
+                    type="range"
+                    min="0"
+                    max={MAX_JOIN_GAP_SECONDS}
+                    step="0.5"
+                    value={joinGapSeconds}
+                    onChange={(event) => updateJoinGapSeconds(Number(event.currentTarget.value))}
+                  />
+                </label>
+              </div>
+              <RallyTimeline
               duration={labels.recording.durationSeconds}
               currentTime={currentTime}
               tracks={[
@@ -1715,13 +1812,31 @@ export function LabelingEditor() {
                 ...referenceComparisons.map((comparison) => ({
                   id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s`,
                   label: `${comparison.reference.baseline ? "Previous production" : comparison.reference.modelLabel} · ${comparison.paddingSeconds}s`,
-                  detail: `${comparison.reference.modelId} · ${comparison.reference.rallies.length} core rallies · merged ${comparison.paddingSeconds}s pad`,
-                  title: `${comparison.reference.modelLabel}. ${comparison.reference.description ?? "Read-only model inference"} Compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Overlapping padded ranges are merged before scoring.`,
+                  detail: `${comparison.reference.modelId} · ${comparison.reference.rallies.length} core rallies · ${comparison.paddingSeconds}s pad · < ${joinGapSeconds}s joins`,
+                  title: `${comparison.reference.modelLabel}. ${comparison.reference.description ?? "Read-only model inference"} Compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Padded ranges with gaps strictly under ${joinGapSeconds} seconds are joined before scoring and export measurement.`,
                   summary: {
                     exportTime: formatPreciseTime(comparison.exportSeconds),
                     metricsLabel: `${comparison.paddingSeconds}s P_pad/R_core/F1`,
                     coreMetrics: `P ${metricPercent(comparison.precision)} · R ${metricPercent(comparison.recall)} · F1 ${metricPercent(comparison.f1)}`,
                   },
+                  exportIntervals: comparison.exportRallies.map((rally, index) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-export-${index + 1}`,
+                    start: rally.start,
+                    end: rally.end,
+                    title: `${comparison.reference.modelLabel} · final ${comparison.paddingSeconds}s padded export · ${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}`,
+                  })),
+                  joinedGapIntervals: comparison.joinedGapRallies.map((gap, index) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-visible-gap-${index + 1}`,
+                    start: gap.start,
+                    end: gap.end,
+                    title: `${comparison.reference.modelLabel} · retained gap under ${joinGapSeconds}s · ${formatPreciseTime(gap.start)}–${formatPreciseTime(gap.end)}`,
+                  })),
+                  missingHumanIntervals: comparison.missingHumanSegments.map((segment, index) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-missing-human-${index + 1}`,
+                    start: segment.start,
+                    end: segment.end,
+                    title: `${comparison.reference.modelLabel} · missed unpadded human rally time · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
+                  })),
                   intervals: comparison.segments.map((segment) => ({
                     id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-${segment.id}`,
                     selectionId: null,
@@ -1796,6 +1911,7 @@ export function LabelingEditor() {
               onSeek={(time) => seekTo(time)}
               ariaLabel="Editable rally labels with read-only model and Sol references"
             />
+            </>
           )}
         </div>
 
