@@ -1,0 +1,251 @@
+.page {
+  --ink: #11130f;
+  --paper: #f3f0e7;
+  --acid: #dfff35;
+  --orange: #ff5c35;
+  min-height: 100vh;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 84% 9%, rgba(223, 255, 53, .4), transparent 18rem),
+    var(--paper);
+}
+
+.header {
+  min-height: 72px;
+  padding: 12px 5vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid #c5c3ba;
+}
+
+.brand { display: inline-flex; align-items: center; gap: 12px; }
+.brand img { width: 145px; height: auto; mix-blend-mode: multiply; }
+.brand span {
+  padding: 5px 7px;
+  color: var(--acid);
+  background: var(--ink);
+  font: 600 9px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 1px;
+}
+
+.capabilities { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.capabilities span {
+  padding: 6px 8px;
+  color: #8e4936;
+  border: 1px solid #c98976;
+  font: 600 9px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+}
+.capabilities span[data-ok="true"] {
+  color: #1e5b38;
+  border-color: #62a57a;
+  background: #e0f5e6;
+}
+
+.hero { padding: 76px 5vw 54px; }
+.hero > p:first-child,
+.importCard > div > p:first-child,
+.inspector > p:first-child,
+.progressCard p {
+  margin: 0;
+  color: #71736a;
+  font: 600 10px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 1.4px;
+}
+.hero h1 {
+  max-width: 1020px;
+  margin: 14px 0 22px;
+  font-size: clamp(52px, 8vw, 112px);
+  line-height: .87;
+  letter-spacing: -.075em;
+}
+.hero h1 em { color: var(--orange); font-style: normal; }
+.lede { max-width: 760px; color: #585b52; font-size: 16px; line-height: 1.75; }
+.pipeline { display: flex; align-items: center; gap: 13px; margin-top: 40px; overflow-x: auto; }
+.pipeline span {
+  min-width: max-content;
+  padding: 11px 14px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  font: 600 10px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  text-transform: uppercase;
+}
+.pipeline b { margin-right: 8px; color: var(--orange); }
+.pipeline i { font-style: normal; }
+
+.notice, .error {
+  margin: 0 5vw 22px;
+  padding: 14px 17px;
+  font: 500 12px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+.notice { color: #67450d; border-left: 5px solid #d59b1f; background: #fff0c9; }
+.error { color: #7b2a17; border-left: 5px solid var(--orange); background: #ffe1d8; }
+
+.importCard {
+  margin: 0 5vw 28px;
+  padding: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 30px;
+  align-items: center;
+  border: 1px solid var(--ink);
+  background: #fff;
+  box-shadow: 7px 7px 0 var(--ink);
+}
+.importCard h2, .inspector h2 { margin: 7px 0 9px; font-size: clamp(24px, 3vw, 42px); letter-spacing: -.045em; overflow-wrap: anywhere; }
+.importCard > div > p:last-child { margin: 0; color: #66685f; line-height: 1.6; }
+.fileButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 14px 18px;
+  color: #fff;
+  background: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+.fileButton input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.fileButton[data-disabled="true"] { opacity: .45; cursor: wait; }
+
+.workspace {
+  margin: 0 5vw 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  box-shadow: 9px 9px 0 var(--ink);
+}
+.viewer { min-width: 0; padding: 20px; border-right: 1px solid var(--ink); }
+.videoStage { position: relative; width: 100%; max-height: 68vh; overflow: hidden; background: #090a08; }
+.videoStage video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.roiBox { position: absolute; z-index: 2; pointer-events: none; border: 2px solid var(--acid); }
+.roiBox span {
+  position: absolute;
+  top: -24px;
+  left: -2px;
+  padding: 4px 6px;
+  color: var(--ink);
+  background: var(--acid);
+  font: 600 8px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 1px;
+}
+
+.inspector { padding: 24px; }
+.inspector h2 { font-size: 25px; }
+.inspector dl { margin: 18px 0; }
+.inspector dl div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #dedcd3; }
+.inspector dt { color: #77796f; font-size: 11px; }
+.inspector dd { margin: 0; text-align: right; font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+.cropHelp, .runtimeNote { color: #686b62; font: 500 9px/1.6 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.presetButtons { display: flex; gap: 7px; margin: 14px 0; }
+.presetButtons button { flex: 1; min-height: 38px; border: 1px solid #aaa; background: #fff; cursor: pointer; font-size: 10px; }
+.roiGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.roiGrid label span { display: flex; justify-content: space-between; color: #77796f; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.roiGrid input { width: 100%; margin-top: 8px; accent-color: var(--orange); }
+.analyzeButton { width: 100%; min-height: 48px; margin-top: 19px; padding: 13px; border: 0; color: var(--ink); background: var(--acid); cursor: pointer; font-size: 12px; font-weight: 800; }
+.analyzeButton:disabled { color: #8b8d84; background: #dddcd4; cursor: wait; }
+.runtimeNote { display: block; margin-top: 12px; }
+
+.progressCard {
+  margin: 0 5vw 30px;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 30px;
+  border: 1px solid var(--ink);
+  color: #fff;
+  background: #171914;
+}
+.progressCard strong { display: block; margin-top: 7px; }
+.progressCard output { color: var(--acid); font: 32px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.progressTrack { grid-column: 1 / -1; height: 8px; background: #44473e; }
+.progressTrack i { display: block; height: 100%; background: var(--acid); transition: width .2s linear; }
+.progressTiming {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.progressTiming > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #44473e;
+  background: #20221d;
+}
+.progressTiming span {
+  color: #a9aba2;
+  font: 600 9px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.progressTiming strong { margin: 0; color: var(--acid); font: 700 17px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.progressCard > p { grid-column: 1 / -1; color: #a9aba2; line-height: 1.5; }
+
+.projectPanel {
+  max-width: 920px;
+  margin: 64px auto 30px;
+  padding: clamp(24px, 5vw, 52px);
+  border: 1px solid var(--ink);
+  background: #fff;
+  box-shadow: 9px 9px 0 var(--ink);
+}
+.projectPanel > p:first-child {
+  margin: 0;
+  color: var(--orange);
+  font: 700 10px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 1.2px;
+}
+.projectPanel h1 {
+  margin: 10px 0 7px;
+  overflow-wrap: anywhere;
+  font-size: clamp(34px, 6vw, 68px);
+  line-height: .95;
+  letter-spacing: -.055em;
+}
+.projectPanel code { display: inline-block; padding: 5px 7px; color: #42582a; background: #f0f8c8; font-size: 10px; }
+.projectPanel > p:last-of-type { max-width: 700px; margin: 22px 0; color: #5f6259; line-height: 1.65; }
+.projectPanel .fileButton { margin-right: 9px; }
+.newProjectButton {
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.footer {
+  margin-top: 70px;
+  padding: 30px 5vw 44px;
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  border-top: 1px solid #c5c3ba;
+  color: #77796f;
+  font: 500 10px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+@media (max-width: 900px) {
+  .capabilities span:not(:last-child) { display: none; }
+  .importCard, .workspace { grid-template-columns: 1fr; }
+  .viewer { border-right: 0; border-bottom: 1px solid var(--ink); }
+  .footer { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 560px) {
+  .header { align-items: flex-start; }
+  .brand img { width: 118px; }
+  .hero { padding-top: 52px; }
+  .hero h1 { letter-spacing: -.055em; }
+  .importCard, .workspace { margin-inline: 18px; }
+  .projectPanel { margin: 36px 18px 24px; }
+  .roiGrid { grid-template-columns: 1fr; }
+}

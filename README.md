@@ -180,7 +180,7 @@ npm run build
 
 The tests cover analysis catalog loading, interval merging and clamping, timeline formatting, synthetic activity segmentation, signal normalization, and detected/fallback court regions. The generated fixture provides a codec-level smoke test for the full pipeline.
 
-Open `/label` for the local gold-label workstation. Its batch-aware selector loads full-corpus or pilot tasks, streams their exact NAS proxies, displays ready/saved progress, and resumes atomically saved drafts; local file pickers remain available as a fallback. It supports precise rally/ignored/hard-negative intervals and exports resumable or completed labels. See [`docs/labeling-guide.md`](docs/labeling-guide.md).
+Open `/label` for the local gold-label workstation. Its batch-aware selector loads full-corpus or pilot tasks, streams their exact NAS proxies, seeds fresh full-corpus tasks from the production model, shows blind Sol labels on a separate read-only reference timeline, displays ready/saved progress, and resumes atomically saved drafts; local file pickers remain available as a fallback. It supports precise rally/ignored/hard-negative intervals and exports resumable or completed labels. See [`docs/labeling-guide.md`](docs/labeling-guide.md).
 
 ## Rally-analysis baseline
 

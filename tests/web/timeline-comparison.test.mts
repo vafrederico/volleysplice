@@ -185,6 +185,24 @@ test("activity padding merges model rallies before live-time coloring", () => {
   assert.deepEqual(padded[0].rallyIds, ["P1", "P2"]);
 });
 
+test("symmetric 2s and 3s model padding counts overlapping exports once", () => {
+  const predictions = [rally("P1", 10, 20), rally("P2", 23, 30)];
+
+  const twoSeconds = padAndMergeRallies(predictions, 2, 2, 60);
+  assert.deepEqual(
+    twoSeconds.map(({ start, end, rallyIds }) => ({ start, end, rallyIds })),
+    [{ start: 8, end: 32, rallyIds: ["P1", "P2"] }],
+  );
+  assert.equal(totalRallySeconds(twoSeconds), 24);
+
+  const threeSeconds = padAndMergeRallies(predictions, 3, 3, 60);
+  assert.deepEqual(
+    threeSeconds.map(({ start, end, rallyIds }) => ({ start, end, rallyIds })),
+    [{ start: 7, end: 33, rallyIds: ["P1", "P2"] }],
+  );
+  assert.equal(totalRallySeconds(threeSeconds), 26);
+});
+
 test("reference padding excludes opaque core intervals", () => {
   const padding = buildPaddingSegments(
     [rally("H1", 10, 20), rally("H2", 30, 40)],

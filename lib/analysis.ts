@@ -107,6 +107,7 @@ function analysisIdentity(
 type AnalysisLoadOptions = {
   analysesRoot?: string;
   trainingCorpus?: Extract<TrainingCorpus, "original" | "without-beach">;
+  assetSource?: "default" | "intake";
 };
 
 function trainingCorpusLabel(corpus: TrainingCorpus): string {
@@ -117,7 +118,7 @@ function trainingCorpusLabel(corpus: TrainingCorpus): string {
 
 export function parseAnalysis(
   value: unknown,
-  options: Pick<AnalysisLoadOptions, "trainingCorpus"> = {},
+  options: Pick<AnalysisLoadOptions, "trainingCorpus" | "assetSource"> = {},
 ): ReviewAnalysis | null {
   const root = record(value);
   if (!root || root.schemaVersion !== 1 || typeof root.id !== "string" || !ANALYSIS_ID.test(root.id)) return null;
@@ -131,8 +132,10 @@ export function parseAnalysis(
   const sourceFilename = typeof source.filename === "string" ? source.filename : "Local video";
   const identity = analysisIdentity(root, analysis, sourceFilename);
   const trainingCorpus = options.trainingCorpus ?? "original";
-  const mediaCorpusQuery =
-    trainingCorpus === "without-beach" ? "?corpus=without-beach" : "";
+  const mediaQuery = new URLSearchParams();
+  if (trainingCorpus === "without-beach") mediaQuery.set("corpus", "without-beach");
+  if (options.assetSource === "intake") mediaQuery.set("source", "intake");
+  const mediaAssetQuery = mediaQuery.size > 0 ? `?${mediaQuery.toString()}` : "";
   const courtSource = typeof court.source === "string" ? court.source : "unknown";
   const courtConfidence =
     finiteNumber(court.confidence) ?? (courtSource === "manual-roi" ? 1 : 0);
@@ -196,8 +199,8 @@ export function parseAnalysis(
     width: Math.max(1, finiteNumber(media.width) ?? 16),
     height: Math.max(1, finiteNumber(media.height) ?? 9),
     sourceFilename,
-    videoUrl: `/api/media/${root.id}/proxy.mp4${mediaCorpusQuery}`,
-    courtPreviewUrl: `/api/media/${root.id}/court-preview.jpg${mediaCorpusQuery}`,
+    videoUrl: `/api/media/${root.id}/proxy.mp4${mediaAssetQuery}`,
+    courtPreviewUrl: `/api/media/${root.id}/court-preview.jpg${mediaAssetQuery}`,
     courtConfidence: Math.max(0, Math.min(1, courtConfidence)),
     courtSource,
     courtLines: lines,
@@ -242,7 +245,7 @@ export async function loadAnalyses(
     try {
       const parsed = parseAnalysis(
         JSON.parse(await fs.readFile(candidate.filename, "utf-8")),
-        { trainingCorpus },
+        { trainingCorpus, assetSource: options.assetSource },
       );
       if (parsed) {
         analyses.push({

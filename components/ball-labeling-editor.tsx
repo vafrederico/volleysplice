@@ -502,6 +502,7 @@ export function BallLabelingEditor() {
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The initial catalog load deliberately runs once; subsequent progress updates are local.
   useEffect(() => {
     const controller = new AbortController();
     async function loadCatalog() {
@@ -527,8 +528,6 @@ export function BallLabelingEditor() {
     }
     void loadCatalog();
     return () => controller.abort();
-    // The initial catalog load deliberately runs once; subsequent progress updates are local.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1217,8 +1216,7 @@ export function BallLabelingEditor() {
                   width: `${zoom * 100}%`,
                 }}
               >
-                {/* The native image preserves the exact SHA-pinned PNG pixels used for annotation. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {/* biome-ignore lint/performance/noImgElement: The native image preserves the exact SHA-pinned PNG pixels used for annotation. */}
                 <img
                   key={currentFrame.id}
                   src={frameImageUrl(task.immutable.recording.id, currentFrame.id)}

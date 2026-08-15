@@ -32,6 +32,7 @@ export type TimelineTrack = {
   summary?: {
     exportTime: string;
     exportDelta?: string;
+    metricsLabel?: string;
     coreMetrics?: string;
     paddedMetrics?: string;
     hybridF1?: string;
@@ -165,7 +166,10 @@ export function RallyTimeline({
                   </span>
                 </small>
                 {track.summary.coreMetrics && (
-                  <small><b>Core P/R/F1</b><span>{track.summary.coreMetrics}</span></small>
+                  <small>
+                    <b>{track.summary.metricsLabel ?? "Core P/R/F1"}</b>
+                    <span>{track.summary.coreMetrics}</span>
+                  </small>
                 )}
                 {track.summary.paddedMetrics && (
                   <small><b>Padded P/R/F1</b><span>{track.summary.paddedMetrics}</span></small>

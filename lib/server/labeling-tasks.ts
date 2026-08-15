@@ -10,6 +10,12 @@ import {
   type LabelDocument,
   type NormalizedPoint,
 } from "@/lib/annotations";
+import {
+  buildProductionLabelSeed,
+  type ProductionLabelSeed,
+} from "@/lib/production-label-seed";
+import { PRODUCTION_MODEL_ID } from "@/lib/production-model";
+import { getAnalysesRoot, getIntakeWorkspace } from "@/lib/storage";
 
 const DEFAULT_MEDIA_ROOT = "/mnt/freenas/volleycut";
 const DEFAULT_LABELING_WORKSPACE =
@@ -56,6 +62,10 @@ type LabelingTaskEntry = {
   priority: number;
   taskPath: string;
   proxyPath: string;
+  workspaceRoot: string;
+  draftPath: string;
+  prelabelPath: string;
+  completedPath: string;
 };
 
 export type PreparedLabelingTask = {
@@ -63,8 +73,10 @@ export type PreparedLabelingTask = {
   batch: LabelingBatch;
   priority: number;
   document: LabelDocument;
+  workspaceRoot: string;
   draftPath: string;
   prelabelPath: string;
+  completedPath: string;
   originalFilename: string;
   taskPath: string;
   proxyPath: string;
@@ -81,8 +93,17 @@ export class LabelingDraftValidationError extends Error {}
 
 export type SavedLabelingDocument = {
   document: LabelDocument;
-  source: "draft" | "prelabel" | "task";
+  source: "draft" | "production-model" | "prelabel" | "task";
   savedAt: string | null;
+};
+
+export type SolReferenceLabels = {
+  rallies: LabelDocument["rallies"];
+};
+
+export type ProductionReferenceLabels = SolReferenceLabels & {
+  modelId: string;
+  modelLabel: string;
 };
 
 function isWithin(parent: string, candidate: string): boolean {
@@ -323,12 +344,37 @@ async function readPilotEntries(): Promise<LabelingTaskEntry[]> {
         mediaRoot,
         "pilot proxy",
       ),
+      workspaceRoot: labelingWorkspace,
+      draftPath: path.join(
+        labelingWorkspace,
+        "labels",
+        "pilot",
+        `${taskIdFromPath(taskPath)}.labels.json`,
+      ),
+      prelabelPath: path.join(
+        labelingWorkspace,
+        "prelabels",
+        "sol-xhigh",
+        `${taskIdFromPath(taskPath)}.labels.json`,
+      ),
+      completedPath: path.join(
+        labelingWorkspace,
+        "completed",
+        "pilot-v1",
+        `${taskIdFromPath(taskPath)}.labels.json`,
+      ),
     };
   });
 }
 
-async function readFullEntries(): Promise<LabelingTaskEntry[]> {
-  const raw = JSON.parse(await readFile(fullPlanPath, "utf8")) as unknown;
+type FullWorkspace = {
+  root: string;
+  planPath: string;
+  prelabelsDirectory: string;
+};
+
+async function readFullEntries(workspace: FullWorkspace): Promise<LabelingTaskEntry[]> {
+  const raw = JSON.parse(await readFile(workspace.planPath, "utf8")) as unknown;
   if (
     typeof raw !== "object" ||
     raw === null ||
@@ -353,24 +399,50 @@ async function readFullEntries(): Promise<LabelingTaskEntry[]> {
       batch: "full",
       priority: index + 1,
       taskPath: resolveRestrictedPath(
-        labelingWorkspace,
+        workspace.root,
         path.join("tasks", "full", `${row.id}.labels.json`),
-        labelingWorkspace,
+        workspace.root,
         "full task",
       ),
       proxyPath: resolveRestrictedPath(
-        labelingWorkspace,
+        workspace.root,
         path.join("proxies", row.environment, proxyFilename),
         mediaRoot,
         "full proxy",
+      ),
+      workspaceRoot: workspace.root,
+      draftPath: path.join(workspace.root, "labels", "full", `${row.id}.labels.json`),
+      prelabelPath: path.join(workspace.prelabelsDirectory, `${row.id}.labels.json`),
+      completedPath: path.join(
+        workspace.root,
+        "completed",
+        "full-v1",
+        `${row.id}.labels.json`,
       ),
     };
   });
 }
 
 async function readAllEntries(): Promise<LabelingTaskEntry[]> {
-  const [pilot, full] = await Promise.all([readPilotEntries(), readFullEntries()]);
-  const entries = [...full, ...pilot];
+  const intakeWorkspace = getIntakeWorkspace();
+  const intakePlanPath = path.join(intakeWorkspace, "manifests", "intake-plan.json");
+  const [pilot, full, intakePlanExists] = await Promise.all([
+    readPilotEntries(),
+    readFullEntries({
+      root: labelingWorkspace,
+      planPath: fullPlanPath,
+      prelabelsDirectory: path.join(labelingWorkspace, "prelabels", "sol-xhigh"),
+    }),
+    isFile(intakePlanPath),
+  ]);
+  const intake = intakePlanExists
+    ? await readFullEntries({
+        root: intakeWorkspace,
+        planPath: intakePlanPath,
+        prelabelsDirectory: path.join(intakeWorkspace, "blind-sol", "prelabels"),
+      })
+    : [];
+  const entries = [...full, ...intake, ...pilot];
   const ids = new Set<string>();
   for (const entry of entries) {
     if (ids.has(entry.id)) throw new Error(`duplicate prepared task id: ${entry.id}`);
@@ -424,18 +496,10 @@ async function loadEntry(entry: LabelingTaskEntry): Promise<PreparedLabelingTask
     batch: entry.batch,
     priority: entry.priority,
     document,
-    draftPath: path.join(
-      labelingWorkspace,
-      "labels",
-      entry.batch,
-      `${document.recording.id}.labels.json`,
-    ),
-    prelabelPath: path.join(
-      labelingWorkspace,
-      "prelabels",
-      "sol-xhigh",
-      `${document.recording.id}.labels.json`,
-    ),
+    workspaceRoot: entry.workspaceRoot,
+    draftPath: entry.draftPath,
+    prelabelPath: entry.prelabelPath,
+    completedPath: entry.completedPath,
     originalFilename,
     taskPath: entry.taskPath,
     proxyPath: entry.proxyPath,
@@ -513,6 +577,11 @@ export async function getSavedLabelingDocument(
     if (!isMissingFile(error)) throw error;
   }
   if (task.batch === "full") {
+    const seed = await loadProductionLabelSeed(task);
+    if (seed) {
+      validateDraftContent(seed.document, task);
+      return { document: seed.document, source: "production-model", savedAt: null };
+    }
     try {
       const document = parseLabelDocument(
         JSON.parse(await readFile(task.prelabelPath, "utf8")) as unknown,
@@ -524,6 +593,56 @@ export async function getSavedLabelingDocument(
     }
   }
   return { document: task.document, source: "task", savedAt: null };
+}
+
+async function loadProductionLabelSeed(
+  task: PreparedLabelingTask,
+): Promise<ProductionLabelSeed | null> {
+  if (task.batch !== "full") return null;
+  try {
+    const productionAnalysisPath = path.join(
+      getAnalysesRoot("without-beach"),
+      `${PRODUCTION_MODEL_ID}--${task.id}`,
+      "analysis.json",
+    );
+    return buildProductionLabelSeed(
+      task.document,
+      JSON.parse(await readFile(productionAnalysisPath, "utf8")) as unknown,
+      PRODUCTION_MODEL_ID,
+    );
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
+}
+
+export async function getProductionReferenceLabels(
+  task: PreparedLabelingTask,
+): Promise<ProductionReferenceLabels | null> {
+  const seed = await loadProductionLabelSeed(task);
+  return seed
+    ? {
+        modelId: seed.modelId,
+        modelLabel: seed.modelLabel,
+        rallies: seed.document.rallies,
+      }
+    : null;
+}
+
+export async function getSolReferenceLabels(
+  task: PreparedLabelingTask,
+): Promise<SolReferenceLabels | null> {
+  if (task.batch !== "full") return null;
+  try {
+    const document = parseLabelDocument(
+      JSON.parse(await readFile(task.prelabelPath, "utf8")) as unknown,
+    );
+    validateDraftContent(document, task);
+    return { rallies: document.rallies };
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
 }
 
 export async function saveLabelingDraft(
@@ -540,7 +659,7 @@ export async function saveLabelingDraft(
   }
   validateDraftContent(document, task);
   const draftDirectory = path.dirname(task.draftPath);
-  if (!isWithin(labelingWorkspace, task.draftPath)) {
+  if (!isWithin(task.workspaceRoot, task.draftPath)) {
     throw new Error("draft destination is outside the labeling workspace");
   }
   await mkdir(draftDirectory, { recursive: true });

@@ -2,7 +2,7 @@ import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { NextRequest } from "next/server";
-import { getAnalysesRoot } from "@/lib/storage";
+import { getAnalysesRoot, getIntakeAnalysesRoot } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +26,12 @@ function requestedCorpus(request: NextRequest): "original" | "without-beach" {
 async function resolveAsset(request: NextRequest, context: RouteContext) {
   const { analysisId, filename } = await context.params;
   if (!ANALYSIS_ID.test(analysisId) || !(filename in ASSETS)) return null;
+  const analysesRoot =
+    request.nextUrl.searchParams.get("source") === "intake"
+      ? getIntakeAnalysesRoot()
+      : getAnalysesRoot(requestedCorpus(request));
   const assetPath = path.join(
-    getAnalysesRoot(requestedCorpus(request)),
+    analysesRoot,
     analysisId,
     filename,
   );
