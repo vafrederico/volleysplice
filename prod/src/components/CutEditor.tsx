@@ -99,17 +99,19 @@ function nextId(prefix: string, ids: string[]): string {
 function detailWindow(
   cut: EditableCut | null,
   playbackTime: number,
-  duration: number,
+  minimum: number,
+  maximum: number,
 ): { start: number; end: number } {
+  const duration = Math.max(0, maximum - minimum);
   const minimumSpan = Math.min(24, duration || 24);
   const center = cut
     ? (cut.keepStart + cut.keepEnd) / 2
     : playbackTime;
   const contentSpan = cut ? cut.keepEnd - cut.keepStart + 10 : minimumSpan;
   const span = Math.min(duration || minimumSpan, Math.max(minimumSpan, contentSpan));
-  let start = Math.max(0, center - span / 2);
-  let end = Math.min(duration, start + span);
-  start = Math.max(0, end - span);
+  let start = Math.max(minimum, center - span / 2);
+  let end = Math.min(maximum, start + span);
+  start = Math.max(minimum, end - span);
   if (end <= start) end = start + 1;
   return { start, end };
 }
@@ -139,6 +141,9 @@ export function CutEditor({
   sourceError,
   onAttachSource,
 }: CutEditorProps) {
+  const analysisStart = initialAnalysis.analysisWindow.start;
+  const analysisEnd = initialAnalysis.analysisWindow.end;
+  const analysisDuration = analysisEnd - analysisStart;
   const videoRef = useRef<HTMLVideoElement>(null);
   const detailRailRef = useRef<HTMLDivElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
@@ -151,10 +156,12 @@ export function CutEditor({
       analysisId: initialAnalysis.id,
       recordingId: initialAnalysis.recordingId,
       duration: initialAnalysis.duration,
+      analysisStart,
+      analysisEnd,
       rallies: initialAnalysis.rallies,
       ignoredIntervals: initialAnalysis.ignoredIntervals,
     }),
-    [initialAnalysis],
+    [initialAnalysis, analysisStart, analysisEnd],
   );
   const initialDraft = useMemo(() => createCutDraft(seed), [seed]);
   const [draft, setDraft] = useState<CutDraft>(initialDraft);
@@ -162,7 +169,7 @@ export function CutEditor({
   const [storageMessage, setStorageMessage] = useState("Loading on-device draft…");
   const [selectedId, setSelectedId] = useState(initialDraft.cuts[0]?.id ?? "");
   const [focusLocked, setFocusLocked] = useState(false);
-  const [playbackTime, setPlaybackTime] = useState(0);
+  const [playbackTime, setPlaybackTime] = useState(analysisStart);
   const [isPlaying, setIsPlaying] = useState(false);
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [exportState, setExportState] = useState<ExportState>("idle");
@@ -263,14 +270,17 @@ export function CutEditor({
   const fullyIgnoredCount = draft.cuts.filter(
     (cut) => cut.included && !effectiveKeptIds.has(cut.id),
   ).length;
-  const focus = detailWindow(selected, playbackTime, initialAnalysis.duration);
+  const focus = detailWindow(selected, playbackTime, analysisStart, analysisEnd);
   const activeMarkStart = manualStart ?? ignoreStart;
   const overviewCuts = activeMarkStart === null
     ? sortedCuts
     : sortedCuts.filter((cut) => cut.keepEnd >= activeMarkStart);
+  const visibleIgnoredIntervals = draft.ignoredIntervals.filter(
+    (interval) => interval.end > analysisStart && interval.start < analysisEnd,
+  );
   const overviewIgnoredIntervals = activeMarkStart === null
-    ? draft.ignoredIntervals
-    : draft.ignoredIntervals.filter((interval) => interval.end >= activeMarkStart);
+    ? visibleIgnoredIntervals
+    : visibleIgnoredIntervals.filter((interval) => interval.end >= activeMarkStart);
   const manualCuts = sortedCuts.filter((cut) => cut.origin === "manual");
   const lowConfidenceCuts = sortedCuts.filter(
     (cut) => cut.origin === "cached-label" &&
@@ -331,7 +341,7 @@ export function CutEditor({
   }
 
   function seekTo(time: number, resumePlayback?: boolean) {
-    const clamped = Math.max(0, Math.min(initialAnalysis.duration, time));
+    const clamped = Math.max(analysisStart, Math.min(analysisEnd, time));
     setPlaybackTime(clamped);
     const video = videoRef.current;
     if (!video) return;
@@ -390,13 +400,15 @@ export function CutEditor({
       if (side === "start") {
         return {
           ...cut,
-          keepStart: roundTime(Math.max(0, Math.min(cut.coreStart, value))),
+          keepStart: roundTime(
+            Math.max(analysisStart, Math.min(cut.coreStart, value)),
+          ),
         };
       }
       return {
         ...cut,
         keepEnd: roundTime(
-          Math.max(cut.coreEnd, Math.min(initialAnalysis.duration, value)),
+          Math.max(cut.coreEnd, Math.min(analysisEnd, value)),
         ),
       };
     });
@@ -448,8 +460,14 @@ export function CutEditor({
     if (!selected) return;
     updateCut(selected.id, (cut) => ({
       ...cut,
-      keepStart: Math.max(0, cut.coreStart - draft.beforePaddingSeconds),
-      keepEnd: Math.min(initialAnalysis.duration, cut.coreEnd + draft.afterPaddingSeconds),
+      keepStart: Math.max(
+        analysisStart,
+        cut.coreStart - draft.beforePaddingSeconds,
+      ),
+      keepEnd: Math.min(
+        analysisEnd,
+        cut.coreEnd + draft.afterPaddingSeconds,
+      ),
     }));
   }
 
@@ -457,7 +475,14 @@ export function CutEditor({
     updateDraft((current) => {
       const before = side === "before" ? paddingSeconds : current.beforePaddingSeconds;
       const after = side === "after" ? paddingSeconds : current.afterPaddingSeconds;
-      return applyPaddingToCachedCuts(current, before, after, initialAnalysis.duration);
+      return applyPaddingToCachedCuts(
+        current,
+        before,
+        after,
+        initialAnalysis.duration,
+        analysisStart,
+        analysisEnd,
+      );
     });
     setEditorMessage(
       `Applied ${paddingSeconds.toFixed(1)} seconds ${side} every model-predicted cut.`,
@@ -693,6 +718,8 @@ export function CutEditor({
         recordingId: initialAnalysis.recordingId,
         filename: initialAnalysis.sourceFilename,
         durationSeconds: initialAnalysis.duration,
+        gameStartSeconds: analysisStart,
+        gameEndSeconds: analysisEnd,
       },
       generatedAt: new Date().toISOString(),
       cuts: draft.cuts,
@@ -1009,8 +1036,25 @@ export function CutEditor({
                 preload="metadata"
                 playsInline
                 controls
+                onLoadedMetadata={(event) => {
+                  event.currentTarget.currentTime = analysisStart;
+                  setPlaybackTime(analysisStart);
+                }}
                 onTimeUpdate={(event) => {
                   const time = event.currentTarget.currentTime;
+                  if (time < analysisStart - 0.01) {
+                    seekTo(analysisStart, !event.currentTarget.paused);
+                    return;
+                  }
+                  if (time >= analysisEnd - 0.01) {
+                    event.currentTarget.pause();
+                    if (Math.abs(time - analysisEnd) > 0.001) {
+                      event.currentTarget.currentTime = analysisEnd;
+                    }
+                    previewEndRef.current = null;
+                    trackPlayback(analysisEnd);
+                    return;
+                  }
                   trackPlayback(time);
                   if (cutPreviewEnabled) {
                     const target = nextFinalCutTime(finalIntervals, time);
@@ -1052,7 +1096,7 @@ export function CutEditor({
               <div className={styles.noVideo}>Video unavailable</div>
             )}
             <div className={styles.timecode}>
-              {preciseTime(playbackTime)} <span>/ {formatTime(initialAnalysis.duration)}</span>
+              {preciseTime(playbackTime)} <span>/ game ends {preciseTime(analysisEnd)}</span>
             </div>
           </div>
 
@@ -1088,10 +1132,12 @@ export function CutEditor({
           <section className={styles.overviewSection}>
             <div className={styles.sectionHeading}>
               <div>
-                <span>WHOLE RECORDING</span>
+                <span>GAME WINDOW</span>
                 <strong>Tap or slide to seek · select a range to refine</strong>
               </div>
-              <small>{draft.cuts.length} ranges · light gray = joined gap</small>
+              <small>
+                {preciseTime(analysisStart)}–{preciseTime(analysisEnd)} · {draft.cuts.length} ranges · light gray = joined gap
+              </small>
             </div>
             <div className={styles.confidenceReview}>
               <label htmlFor="confidence-review-threshold">
@@ -1124,7 +1170,9 @@ export function CutEditor({
             </div>
             <div
               className={styles.overviewRail}
-              onPointerDown={(event) => beginTimelineSeek(event, 0, initialAnalysis.duration)}
+              onPointerDown={(event) =>
+                beginTimelineSeek(event, analysisStart, analysisEnd)
+              }
               onPointerMove={moveTimelineSeek}
               onPointerUp={endTimelineSeek}
               onPointerCancel={cancelTimelineSeek}
@@ -1135,15 +1183,16 @@ export function CutEditor({
                 event.stopPropagation();
                 suppressTimelineClickUntilRef.current = 0;
               }}
-              aria-label="Whole recording overview"
+              role="group"
+              aria-label="Marked game overview"
             >
               {overviewIgnoredIntervals.map((interval) => (
                 <span
                   key={interval.id}
                   className={styles.overviewIgnored}
                   style={{
-                    left: `${timelinePercent(interval.start, initialAnalysis.duration)}%`,
-                    width: `${timelinePercent(interval.end - interval.start, initialAnalysis.duration)}%`,
+                    left: `${timelinePercent(interval.start - analysisStart, analysisDuration)}%`,
+                    width: `${timelinePercent(interval.end - interval.start, analysisDuration)}%`,
                   }}
                 />
               ))}
@@ -1164,8 +1213,8 @@ export function CutEditor({
                   data-disagreement={isModelDisagreement(cut) || undefined}
                   data-origin={cut.origin}
                   style={{
-                    left: `${timelinePercent(cut.keepStart, initialAnalysis.duration)}%`,
-                    width: `${timelinePercent(cut.keepEnd - cut.keepStart, initialAnalysis.duration)}%`,
+                    left: `${timelinePercent(cut.keepStart - analysisStart, analysisDuration)}%`,
+                    width: `${timelinePercent(cut.keepEnd - cut.keepStart, analysisDuration)}%`,
                   }}
                   onClick={() => selectCut(cut)}
                   aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}, ${Math.round(cut.confidence * 100)}% review confidence`}
@@ -1193,16 +1242,16 @@ export function CutEditor({
                   />
                 </button>
               ))}
-              {finalIntervals.flatMap((interval, intervalIndex) =>
+              {finalIntervals.flatMap((interval) =>
                 (interval.joinedGaps ?? [])
                   .filter((gap) => activeMarkStart === null || gap.end >= activeMarkStart)
-                  .map((gap, gapIndex) => (
+                  .map((gap) => (
                     <span
-                      key={`joined-gap-${intervalIndex + 1}-${gapIndex + 1}`}
+                      key={`joined-gap-${gap.start}-${gap.end}-${interval.cutIds.join("-")}`}
                       className={styles.overviewJoinedGap}
                       style={{
-                        left: `${timelinePercent(gap.start, initialAnalysis.duration)}%`,
-                        width: `${timelinePercent(gap.end - gap.start, initialAnalysis.duration)}%`,
+                        left: `${timelinePercent(gap.start - analysisStart, analysisDuration)}%`,
+                        width: `${timelinePercent(gap.end - gap.start, analysisDuration)}%`,
                       }}
                       title={`Retained short gap · ${preciseTime(gap.start)} to ${preciseTime(gap.end)}`}
                     />
@@ -1210,13 +1259,15 @@ export function CutEditor({
               )}
               <span
                 className={styles.playhead}
-                style={{ left: `${timelinePercent(playbackTime, initialAnalysis.duration)}%` }}
+                style={{
+                  left: `${timelinePercent(playbackTime - analysisStart, analysisDuration)}%`,
+                }}
               />
             </div>
             <div className={styles.overviewTimes}>
-              <span>0:00</span>
-              <span>{formatTime(initialAnalysis.duration / 2)}</span>
-              <span>{formatTime(initialAnalysis.duration)}</span>
+              <span>{formatTime(analysisStart)}</span>
+              <span>{formatTime((analysisStart + analysisEnd) / 2)}</span>
+              <span>{formatTime(analysisEnd)}</span>
             </div>
           </section>
         </div>

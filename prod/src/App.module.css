@@ -143,6 +143,37 @@
 .inspector dt { color: #77796f; font-size: 11px; }
 .inspector dd { margin: 0; text-align: right; font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
 .cropHelp, .runtimeNote { color: #686b62; font: 500 9px/1.6 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.gameWindow {
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid #b8b6ad;
+  background: #f8f7f1;
+}
+.gameWindowHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.gameWindowHeading div { display: grid; gap: 4px; }
+.gameWindowHeading span {
+  color: var(--orange);
+  font: 700 8px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 1px;
+}
+.gameWindowHeading strong { font-size: 13px; }
+.gameWindowHeading button,
+.gameBoundaryGrid button {
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+.gameWindow > p { margin: 10px 0 13px; color: #686b62; font: 500 9px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.gameBoundaryGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.gameBoundaryGrid label { display: grid; gap: 6px; min-width: 0; }
+.gameBoundaryGrid label > span { color: #77796f; font: 700 8px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.gameBoundaryGrid input { width: 100%; min-width: 0; box-sizing: border-box; padding: 8px; border: 1px solid #aaa; background: #fff; font: 10px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.gameBoundaryGrid output { font: 700 12px ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.gameWindowSummary { display: block; margin-top: 12px; color: #42582a; font: 700 9px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .presetButtons { display: flex; gap: 7px; margin: 14px 0; }
 .presetButtons button { flex: 1; min-height: 38px; border: 1px solid #aaa; background: #fff; cursor: pointer; font-size: 10px; }
 .roiGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
@@ -248,4 +279,5 @@
   .importCard, .workspace { margin-inline: 18px; }
   .projectPanel { margin: 36px 18px 24px; }
   .roiGrid { grid-template-columns: 1fr; }
+  .gameBoundaryGrid { grid-template-columns: 1fr; }
 }

@@ -1,4 +1,5 @@
 import type { Rally } from "./edit-list";
+import type { AnalysisWindow } from "./on-device/analysis-window";
 
 export type IgnoredInterval = {
   start: number;
@@ -13,6 +14,7 @@ export type ProductAnalysis = {
   kind: "model";
   modelId: string;
   duration: number;
+  analysisWindow: AnalysisWindow;
   width: number;
   height: number;
   sourceFilename: string;

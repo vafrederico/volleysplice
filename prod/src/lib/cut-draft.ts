@@ -57,9 +57,18 @@ export type CutDraftSeed = {
   analysisId: string;
   recordingId: string;
   duration: number;
+  analysisStart?: number;
+  analysisEnd?: number;
   rallies: Rally[];
   ignoredIntervals: IgnoredInterval[];
 };
+
+function seedAnalysisBounds(seed: CutDraftSeed): { start: number; end: number } {
+  const duration = Math.max(0, seed.duration);
+  const start = clamp(seed.analysisStart ?? 0, 0, duration);
+  const end = clamp(seed.analysisEnd ?? duration, start, duration);
+  return { start, end };
+}
 
 function finiteTime(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -79,8 +88,12 @@ function hashText(value: string): string {
 }
 
 export function cutSourceRevision(seed: CutDraftSeed): string {
+  const bounds = seedAnalysisBounds(seed);
   const source = JSON.stringify({
     duration: Number(seed.duration.toFixed(3)),
+    ...(bounds.start > 0 || bounds.end < seed.duration
+      ? { analysisWindow: [Number(bounds.start.toFixed(3)), Number(bounds.end.toFixed(3))] }
+      : {}),
     rallies: seed.rallies.map((rally) => [
       rally.id,
       Number(rally.start.toFixed(3)),
@@ -108,6 +121,7 @@ export function cutDraftStorageKeys(analysisId: string): string[] {
 
 export function createCutDraft(seed: CutDraftSeed): CutDraft {
   const duration = Math.max(0, seed.duration);
+  const bounds = seedAnalysisBounds(seed);
   return {
     version: CUT_DRAFT_VERSION,
     analysisId: seed.analysisId,
@@ -125,10 +139,18 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
-      coreStart: clamp(rally.start, 0, duration),
-      coreEnd: clamp(rally.end, 0, duration),
-      keepStart: clamp(rally.start - DEFAULT_CUT_PADDING.before, 0, duration),
-      keepEnd: clamp(rally.end + DEFAULT_CUT_PADDING.after, 0, duration),
+      coreStart: clamp(rally.start, bounds.start, bounds.end),
+      coreEnd: clamp(rally.end, bounds.start, bounds.end),
+      keepStart: clamp(
+        rally.start - DEFAULT_CUT_PADDING.before,
+        bounds.start,
+        bounds.end,
+      ),
+      keepEnd: clamp(
+        rally.end + DEFAULT_CUT_PADDING.after,
+        bounds.start,
+        bounds.end,
+      ),
       confidence: clamp(rally.confidence, 0, 1),
       included: rally.included,
       origin: "cached-label",
@@ -143,7 +165,11 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
   };
 }
 
-function validCut(value: unknown, duration: number): value is EditableCut {
+function validCut(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): value is EditableCut {
   if (!value || typeof value !== "object") return false;
   const cut = value as Partial<EditableCut>;
   return (
@@ -160,11 +186,11 @@ function validCut(value: unknown, duration: number): value is EditableCut {
       cut.agreement === "both-models" ||
       cut.agreement === "all-labels-v2-only" ||
       cut.agreement === "previous-production-only") &&
-    cut.keepStart >= 0 &&
+    cut.keepStart >= minimum &&
     cut.keepStart <= cut.coreStart &&
     cut.coreStart < cut.coreEnd &&
     cut.coreEnd <= cut.keepEnd &&
-    cut.keepEnd <= duration &&
+    cut.keepEnd <= maximum &&
     cut.confidence >= 0 &&
     cut.confidence <= 1
   );
@@ -191,6 +217,7 @@ function validIgnoredInterval(
 
 export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null {
   try {
+    const bounds = seedAnalysisBounds(seed);
     const persisted = JSON.parse(raw) as Partial<Omit<CutDraft, "version">> & {
       version?: unknown;
       paddingSeconds?: unknown;
@@ -247,14 +274,14 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       !(
         value.pendingManualStart === null ||
         (finiteTime(value.pendingManualStart) &&
-          value.pendingManualStart >= 0 &&
-          value.pendingManualStart <= seed.duration)
+          value.pendingManualStart >= bounds.start &&
+          value.pendingManualStart <= bounds.end)
       ) ||
       !(
         value.pendingIgnoreStart === null ||
         (finiteTime(value.pendingIgnoreStart) &&
-          value.pendingIgnoreStart >= 0 &&
-          value.pendingIgnoreStart <= seed.duration)
+          value.pendingIgnoreStart >= bounds.start &&
+          value.pendingIgnoreStart <= bounds.end)
       ) ||
       typeof value.ignoreReason !== "string" ||
       value.ignoreReason.length === 0 ||
@@ -266,7 +293,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       (value.pendingManualStart !== null && value.pendingIgnoreStart !== null) ||
       !Array.isArray(value.cuts) ||
       !Array.isArray(value.ignoredIntervals) ||
-      !value.cuts.every((cut) => validCut(cut, seed.duration)) ||
+      !value.cuts.every((cut) => validCut(cut, bounds.start, bounds.end)) ||
       !value.ignoredIntervals.every((interval) =>
         validIgnoredInterval(interval, seed.duration),
       )
@@ -289,6 +316,8 @@ export function applyPaddingToCachedCuts(
   beforePaddingSeconds: number,
   afterPaddingSeconds: number,
   duration: number,
+  analysisStart = 0,
+  analysisEnd = duration,
 ): CutDraft {
   const before = clamp(beforePaddingSeconds, 0, MAX_CUT_PADDING_SECONDS);
   const after = clamp(afterPaddingSeconds, 0, MAX_CUT_PADDING_SECONDS);
@@ -300,8 +329,12 @@ export function applyPaddingToCachedCuts(
       cut.origin === "cached-label"
         ? {
             ...cut,
-            keepStart: roundTime(clamp(cut.coreStart - before, 0, duration)),
-            keepEnd: roundTime(clamp(cut.coreEnd + after, 0, duration)),
+            keepStart: roundTime(
+              clamp(cut.coreStart - before, analysisStart, analysisEnd),
+            ),
+            keepEnd: roundTime(
+              clamp(cut.coreEnd + after, analysisStart, analysisEnd),
+            ),
           }
         : cut,
     ),

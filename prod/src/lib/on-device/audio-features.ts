@@ -2,6 +2,7 @@ import FFT from "fft.js";
 import { AudioSampleSink, type AudioSample, type InputAudioTrack } from "mediabunny";
 
 import { ANALYSIS_FPS, AUDIO_FEATURE_NAMES } from "./feature-schema.ts";
+import type { AnalysisWindow } from "./analysis-window.ts";
 import { mean, percentileRanks, quantile, rollingMean } from "./feature-math.ts";
 import { LibswresampleWasmResampler } from "./libswresample-wasm.ts";
 import type { OnDeviceRuntimeVariant } from "./runtime-variants.ts";
@@ -164,7 +165,7 @@ export class AudioAccumulator {
     this.wasmResampler = wasmResampler;
   }
 
-  push(sample: AudioSample): void {
+  push(sample: AudioSample, timestampOffset = 0): void {
     if (this.wasmResampler) {
       const planes: Float32Array[] = [];
       for (let channel = 0; channel < sample.numberOfChannels; channel += 1) {
@@ -173,7 +174,11 @@ export class AudioAccumulator {
         sample.copyTo(plane, { format: "f32-planar", planeIndex: channel });
         planes.push(plane);
       }
-      this.pushPlanar(planes, sample.timestamp, sample.sampleRate);
+      this.pushPlanar(
+        planes,
+        sample.timestamp + timestampOffset,
+        sample.sampleRate,
+      );
       return;
     }
     const allocation = sample.allocationSize({ format: "f32", planeIndex: 0 });
@@ -187,7 +192,7 @@ export class AudioAccumulator {
       }
       mono[frame] = total / sample.numberOfChannels;
     }
-    this.pushMono(mono, sample.timestamp, sample.sampleRate);
+    this.pushMono(mono, sample.timestamp + timestampOffset, sample.sampleRate);
   }
 
   pushMono(mono: Float32Array, timestamp: number, sampleRate: number): void {
@@ -461,7 +466,7 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
 export async function extractAudioFeatures(
   audioTrack: InputAudioTrack | null,
   times: Float64Array,
-  duration: number,
+  analysisWindow: AnalysisWindow,
   runtimeVariant: OnDeviceRuntimeVariant = "linear-v1",
   onProgress?: (progress: AnalysisProgress) => void,
 ): Promise<Float32Array> {
@@ -475,20 +480,25 @@ export async function extractAudioFeatures(
       : null,
   );
   const sink = new AudioSampleSink(audioTrack);
+  const analysisDuration = analysisWindow.end - analysisWindow.start;
   let lastProgress = -1;
   let frames: AudioFrameFeatures;
   try {
-    for await (const sample of sink.samples()) {
+    for await (const sample of sink.samples(analysisWindow.start)) {
       try {
-        accumulator.push(sample);
-        const progress = Math.min(duration, Math.max(0, sample.timestamp + sample.duration));
+        if (sample.timestamp >= analysisWindow.end) break;
+        accumulator.push(sample, -analysisWindow.start);
+        const progress = Math.min(
+          analysisDuration,
+          Math.max(0, sample.timestamp + sample.duration - analysisWindow.start),
+        );
         const rounded = Math.floor(progress);
         if (rounded !== lastProgress) {
           lastProgress = rounded;
           onProgress?.({
             stage: "audio",
             completed: progress,
-            total: duration,
+            total: analysisDuration,
             detail:
               runtimeVariant === "libswresample-wasm-v1"
                 ? "Decoding audio through libswresample WASM"
@@ -508,7 +518,7 @@ export async function extractAudioFeatures(
   const sources = buildFrameFeatureSources(frames);
   const audioTimes = Float64Array.from(
     { length: frames.rms.length },
-    (_, index) => (index + 0.5) * FRAME_SECONDS,
+    (_, index) => analysisWindow.start + (index + 0.5) * FRAME_SECONDS,
   );
   const halfWidth = 0.5 / ANALYSIS_FPS;
   const meanPooled = new Set([

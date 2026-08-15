@@ -5,6 +5,13 @@ video loading, audiovisual feature extraction, rally inference, and the cut edit
 one UI. It has no API routes, server database, media catalog, mounted-media paths, or
 upload behavior.
 
+Before queueing inference, the user can seek the local preview and mark the game start
+and end. The marked source-time window becomes part of the project and feature-cache
+identity. Video and audio decoding only generate features inside that window, inference
+is clipped to it, editor padding cannot cross it, and the editor overview shows the game
+window instead of unused pre-game or post-game footage. Existing saved projects without
+explicit bounds migrate to the full source duration.
+
 The selected video stays in the browser. Each inference request creates a durable local
 project, and the top-bar project selector returns to completed inputs without rerunning
 the model. Multiple projects can be queued: one generates features at a time while any

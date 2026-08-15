@@ -3,6 +3,12 @@ import type {
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
 } from "./on-device/types.ts";
+import {
+  fullAnalysisWindow,
+  isFullAnalysisWindow,
+  normalizeAnalysisWindow,
+  type AnalysisWindow,
+} from "./on-device/analysis-window.ts";
 import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
 
 const DATABASE_NAME = "volleycut-projects";
@@ -30,6 +36,7 @@ export type VolleyCutProject = {
   id: string;
   source: ProjectSource;
   info: OnDeviceMediaInfo;
+  analysisWindow: AnalysisWindow;
   roi: NormalizedRoi;
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
@@ -96,9 +103,14 @@ export function projectSource(file: File): ProjectSource {
 export function projectId(
   source: ProjectSource,
   info: OnDeviceMediaInfo,
+  requestedWindow: AnalysisWindow = fullAnalysisWindow(info.duration),
 ): string {
+  const analysisWindow = normalizeAnalysisWindow(requestedWindow, info.duration);
+  const windowIdentity = isFullAnalysisWindow(analysisWindow, info.duration)
+    ? ""
+    : `\u0000${analysisWindow.start}\u0000${analysisWindow.end}`;
   return `project-${hashText(
-    `${source.name}\u0000${source.size}\u0000${source.lastModified}\u0000${info.duration}`,
+    `${source.name}\u0000${source.size}\u0000${source.lastModified}\u0000${info.duration}${windowIdentity}`,
   )}`;
 }
 
@@ -155,6 +167,18 @@ function validRoi(value: unknown): value is NormalizedRoi {
   );
 }
 
+function validAnalysisWindow(value: unknown, duration: number): value is AnalysisWindow {
+  if (!value || typeof value !== "object") return false;
+  const window = value as Partial<AnalysisWindow>;
+  return (
+    finite(window.start) &&
+    finite(window.end) &&
+    window.start >= 0 &&
+    window.start < window.end &&
+    window.end <= duration + 0.000_001
+  );
+}
+
 function validAnalysis(value: unknown): value is OnDeviceAnalysis {
   if (!value || typeof value !== "object") return false;
   const analysis = value as Partial<OnDeviceAnalysis>;
@@ -203,6 +227,8 @@ function validProject(value: unknown): value is VolleyCutProject {
     finite(project.source?.lastModified) &&
     typeof project.source?.type === "string" &&
     validInfo(project.info) &&
+    (project.analysisWindow === undefined ||
+      validAnalysisWindow(project.analysisWindow, project.info.duration)) &&
     validRoi(project.roi) &&
     typeof project.status === "string" &&
     statuses.includes(project.status as ProjectStatus) &&
@@ -217,27 +243,36 @@ function validProject(value: unknown): value is VolleyCutProject {
 export function normalizeStoredProject(
   project: VolleyCutProject,
 ): VolleyCutProject {
+  const analysisWindow = normalizeAnalysisWindow(
+    project.analysisWindow,
+    project.info.duration,
+  );
+  const normalizedProject = project.analysisWindow &&
+      project.analysisWindow.start === analysisWindow.start &&
+      project.analysisWindow.end === analysisWindow.end
+    ? project
+    : { ...project, analysisWindow };
   if (
-    project.analysis &&
-    (project.analysis.modelId !== PRODUCTION_ENSEMBLE_MODEL_ID ||
-      project.analysis.intervals.some((interval) => !interval.agreement))
+    normalizedProject.analysis &&
+    (normalizedProject.analysis.modelId !== PRODUCTION_ENSEMBLE_MODEL_ID ||
+      normalizedProject.analysis.intervals.some((interval) => !interval.agreement))
   ) {
     return {
-      ...project,
+      ...normalizedProject,
       status: "waiting",
       analysis: null,
       error:
         "The production model ensemble changed. Reconnect the source to run current inference; compatible cached features will be reused.",
     };
   }
-  if (project.status === "queued" || project.status === "analyzing") {
+  if (normalizedProject.status === "queued" || normalizedProject.status === "analyzing") {
     return {
-      ...project,
+      ...normalizedProject,
       status: "waiting",
       error: "Reconnect the source file to resume local inference.",
     };
   }
-  return project;
+  return normalizedProject;
 }
 
 export async function listProjects(): Promise<VolleyCutProject[]> {

@@ -1,4 +1,9 @@
 import { ANALYSIS_FPS, AUDIO_FEATURE_NAMES, FRAME_FEATURE_NAMES } from "./feature-schema.ts";
+import {
+  isFullAnalysisWindow,
+  normalizeAnalysisWindow,
+  type AnalysisWindow,
+} from "./analysis-window.ts";
 import type { OnDeviceRuntimeVariant } from "./runtime-variants.ts";
 import type {
   FeatureReductionKernel,
@@ -138,12 +143,14 @@ export function visualFeatureCacheKey(
     decoderAcceleration: VideoDecoderAcceleration;
     reductionKernel?: FeatureReductionKernel;
   },
+  requestedWindow?: AnalysisWindow,
 ): string {
   let featureSignature = 0x811c9dc5;
   for (const character of FRAME_FEATURE_NAMES.join("|")) {
     featureSignature ^= character.charCodeAt(0);
     featureSignature = Math.imul(featureSignature, 0x01000193) >>> 0;
   }
+  const analysisWindow = normalizeAnalysisWindow(requestedWindow, info.duration);
   return JSON.stringify({
     schema: 1,
     featureSchema: featureSignature.toString(16),
@@ -151,6 +158,9 @@ export function visualFeatureCacheKey(
     source: [source.name, source.size, source.lastModified],
     media: [info.duration, info.width, info.height, info.rotation, info.videoCodecString],
     roi: [roi.x, roi.y, roi.width, roi.height],
+    ...(isFullAnalysisWindow(analysisWindow, info.duration)
+      ? {}
+      : { analysisWindow: [analysisWindow.start, analysisWindow.end] }),
     ...(experiment ? { experiment } : {}),
   });
 }
