@@ -167,6 +167,35 @@ test("parseAnalysis tags beach-exclusion runs and routes their diagnostics to th
   );
 });
 
+test("parseAnalysis routes supplemental intake diagnostics to the intake asset root", () => {
+  const parsed = parseAnalysis(
+    {
+      schemaVersion: 1,
+      id: "model-intake-v1--indoor-test-full",
+      recordingId: "indoor-test-full",
+      source: {
+        filename: "indoor-test-full.mp4",
+        duration: 90,
+        width: 960,
+        height: 540,
+      },
+      analysis: {
+        method: "court-motion-temporal-logistic-v0",
+        modelVersion: "intake-v1",
+        court: { source: "manual-roi", lines: [] },
+        warnings: [],
+      },
+      rallies: [],
+    },
+    { assetSource: "intake" },
+  );
+  assert.ok(parsed);
+  assert.equal(
+    parsed.courtPreviewUrl,
+    "/api/media/model-intake-v1--indoor-test-full/court-preview.jpg?source=intake",
+  );
+});
+
 test("parseAnalysis prefers an explicit nonblank variant label", () => {
   const parsed = parseAnalysis({
     schemaVersion: 1,

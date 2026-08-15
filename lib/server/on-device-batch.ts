@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { copyFile, lstat, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { PRODUCTION_MODEL_ID } from "../production-model.ts";
 import {
   DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
   isOnDeviceRuntimeVariant,
@@ -9,7 +10,7 @@ import {
 } from "../on-device/runtime-variants.ts";
 import type { PreparedLabelingTask } from "./labeling-tasks.ts";
 
-export const ON_DEVICE_BATCH_MODEL_ID = "model-9c92b8e9333f";
+export const ON_DEVICE_BATCH_MODEL_ID = PRODUCTION_MODEL_ID;
 export const ON_DEVICE_BATCH_FEATURE_PATH = "training-proxy";
 export const ON_DEVICE_BATCH_MODEL_VERSION =
   "dead-state-transition-audio-normalized-v5-no-legacy-final";

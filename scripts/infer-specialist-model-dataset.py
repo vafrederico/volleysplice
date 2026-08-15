@@ -73,6 +73,22 @@ DEAD_STATE_MODELS = (
 )
 
 
+def _existing_preview(output_root: Path, recording_id: str) -> Path | None:
+    for run_version in (
+        "full-percentile-v1",
+        "nb-full-percentile",
+        "nb-pilot-baseline",
+    ):
+        candidate = (
+            output_root
+            / f"model-{run_version}--{recording_id}"
+            / "court-preview.jpg"
+        )
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            return candidate
+    return None
+
+
 ITERATIONS: dict[str, tuple[str, str]] = {
     STACKED_MODELS[0]: (
         "Stacked rally · continuous serve probability",
@@ -270,13 +286,9 @@ def _write_analysis(
     os.close(descriptor)
     temporary = Path(temporary_name)
     temporary.unlink()
-    reference_preview = (
-        output_root
-        / f"model-full-percentile-v1--{recording.id}"
-        / "court-preview.jpg"
-    )
+    reference_preview = _existing_preview(output_root, recording.id)
     try:
-        if reference_preview.is_file():
+        if reference_preview is not None:
             shutil.copyfile(reference_preview, temporary)
         else:
             write_preview(recording.video, temporary, recording.roi)

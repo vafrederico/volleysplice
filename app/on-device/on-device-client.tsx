@@ -5,22 +5,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Brand } from "@/components/brand";
 import { buildEditList, formatTime } from "@/lib/edit-list";
+import {
+  isChromeOnIosBrowser,
+  isUnsupportedSafariBrowser,
+} from "@/lib/on-device/browser-support";
+import {
+  deliverPreparedVideoExport,
+  downloadEditDecisionList,
+  type ExportProgress,
+  exportRawQualityReel,
+  type PreparedVideoExport,
+  supportsOpfsExport,
+  type VideoExportMode,
+} from "@/lib/on-device/export";
 import { FEATURE_CACHE_CHUNK_ROWS } from "@/lib/on-device/feature-cache";
 import { ANALYSIS_FPS } from "@/lib/on-device/feature-schema";
-import {
-  downloadEditDecisionList,
-  exportRawQualityReel,
-  type ExportProgress,
-} from "@/lib/on-device/export";
-import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
+import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
   analyzeOpenedMedia,
   DEFAULT_FEATURE_REDUCTION_KERNEL,
   DEFAULT_VIDEO_DECODE_STRATEGY,
   VIDEO_DECODER_HARDWARE_ACCELERATION,
 } from "@/lib/on-device/pipeline";
-import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
+import { requestPlayingSeek } from "@/lib/on-device/player";
 import { clampRoi, fullFrameRoi, inferRoiProfile } from "@/lib/on-device/roi";
+import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
+import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type {
   AnalysisProgress,
   FeatureExtractionPerformance,
@@ -43,10 +53,13 @@ type WorkState = "empty" | "opening" | "ready" | "analyzing" | "exporting" | "do
 
 type BrowserCompatibility = {
   checked: boolean;
+  chromeOnIos: boolean;
+  safariUnsupported: boolean;
   secureContext: boolean;
   decode: boolean;
   encode: boolean;
   directDisk: boolean;
+  opfs: boolean;
   screenWakeLock: boolean;
   mediaCapabilities: boolean;
   webGpu: "checking" | "available" | "unavailable";
@@ -365,6 +378,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const [analysis, setAnalysis] = useState<OnDeviceAnalysis | null>(fixtureAnalysis);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+  const [preparedExport, setPreparedExport] = useState<PreparedVideoExport | null>(null);
+  const [exportMode, setExportMode] = useState<VideoExportMode>("compatible");
+  const [streamFallbackReason, setStreamFallbackReason] = useState<string | null>(null);
+  const [streamDownloadReady, setStreamDownloadReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewWarning, setPreviewWarning] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -374,10 +391,13 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const [postRoll, setPostRoll] = useState(fixture?.exportDefaults.postRoll ?? 2);
   const [compatibility, setCompatibility] = useState<BrowserCompatibility>({
     checked: false,
+    chromeOnIos: false,
+    safariUnsupported: false,
     secureContext: false,
     decode: false,
     encode: false,
     directDisk: false,
+    opfs: false,
     screenWakeLock: false,
     mediaCapabilities: false,
     webGpu: "checking",
@@ -407,8 +427,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   >(null);
   const openedMedia = useRef<OpenedMedia | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const resumeAfterSeek = useRef(false);
 
   const busy = workState === "opening" || workState === "analyzing" || workState === "exporting";
+  const analysisSupported = compatibility.decode && !compatibility.safariUnsupported;
   const editList = useMemo(
     () =>
       analysis && info
@@ -447,6 +469,11 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         Math.max(0, (exportProgress.completedSeconds / exportProgress.totalSeconds) * 100),
       )
     : 0;
+  const exportStorageReady = exportMode === "stream-download"
+    ? streamDownloadReady
+    : exportMode === "opfs"
+      ? compatibility.opfs
+      : compatibility.directDisk || compatibility.opfs;
   const extractionOtherMs = featurePerformance
     ? Math.max(
         0,
@@ -481,12 +508,17 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       if (!active) return;
       const diagnosticNavigator = navigator as NavigatorWithDiagnostics;
       const fallbackRenderer = webGlRenderer();
+      const chromeOnIos = isChromeOnIosBrowser();
+      const safariUnsupported = isUnsupportedSafariBrowser();
       setCompatibility({
         checked: true,
+        chromeOnIos,
+        safariUnsupported,
         secureContext: window.isSecureContext,
         decode: "VideoDecoder" in window && "AudioDecoder" in window,
         encode: "VideoEncoder" in window && "AudioEncoder" in window,
         directDisk: "showSaveFilePicker" in window,
+        opfs: supportsOpfsExport(),
         screenWakeLock: "wakeLock" in navigator,
         mediaCapabilities: "mediaCapabilities" in navigator,
         webGpu: diagnosticNavigator.gpu ? "checking" : "unavailable",
@@ -522,6 +554,26 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   }, []);
 
   useEffect(() => {
+    const chromeOnIos = isChromeOnIosBrowser();
+    if (!chromeOnIos) return;
+    let active = true;
+    void prepareServiceWorkerStreamDownload().then((readiness) => {
+      if (!active) return;
+      setStreamDownloadReady(readiness.ready);
+      if (readiness.ready) {
+        setExportMode("stream-download");
+        setStreamFallbackReason(null);
+      } else {
+        setExportMode("opfs");
+        setStreamFallbackReason(readiness.reason ?? "Direct download is unavailable.");
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
@@ -529,6 +581,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
 
   async function chooseFile(selected: File | null) {
     if (!selected) return;
+    if (isUnsupportedSafariBrowser()) {
+      setError("Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.");
+      return;
+    }
     if (!compatibility.decode) {
       setError(
         compatibility.secureContext
@@ -543,6 +599,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     setFixtureActive(false);
     setFile(selected);
     setExportFile(selected);
+    setPreparedExport(null);
     setInfo(null);
     setAnalysis(null);
     setAnalysisElapsedSeconds(null);
@@ -551,6 +608,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     setSelectedId(null);
     setError(null);
     setPreviewWarning(false);
+    resumeAfterSeek.current = false;
     setMediaDiagnostics({ ...EMPTY_MEDIA_DIAGNOSTICS, checking: true });
     setAnalysisProgress({ stage: "opening", completed: 0, total: 1, detail: "Reading container metadata locally" });
     setWorkState("opening");
@@ -585,6 +643,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     if (!openedMedia.current || !info) return;
     setError(null);
     setAnalysis(null);
+    setPreparedExport(null);
     setAnalysisProgress(null);
     setSelectedId(null);
     setWorkState("analyzing");
@@ -632,6 +691,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
     id: string,
     patch: Partial<Pick<OnDeviceAnalysis["intervals"][number], "start" | "end" | "included">>,
   ) {
+    setPreparedExport(null);
     setAnalysis((current) =>
       current
         ? {
@@ -645,13 +705,34 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   }
 
   function seek(seconds: number) {
-    if (!videoRef.current) return;
-    videoRef.current.currentTime = seconds;
-    void videoRef.current.play().catch(() => undefined);
+    const video = videoRef.current;
+    if (!video) return;
+    resumeAfterSeek.current = true;
+    // Safari can stall when play() is requested in the same task that changes currentTime.
+    // The seeked handler below resumes only after the decoder has landed on the new position.
+    requestPlayingSeek(video, seconds);
+  }
+
+  async function deliverExport() {
+    if (!preparedExport) return;
+    setError(null);
+    try {
+      await deliverPreparedVideoExport(preparedExport);
+      setPreparedExport(null);
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
   }
 
   async function exportReel() {
     if (!exportFile || !analysis) return;
+    const exportIntervals = editList.map(({ keptStart, keptEnd }) => ({
+      start: keptStart,
+      end: keptEnd,
+    }));
+    const requestedMode = exportMode;
+    let directStreamFailure: string | null = null;
     setError(null);
     setWorkState("exporting");
     setExportProgress({
@@ -661,20 +742,51 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       detail: "Preparing original media",
     });
     try {
-      await exportRawQualityReel(
-        exportFile,
-        editList.map(({ keptStart, keptEnd }) => ({ start: keptStart, end: keptEnd })),
-        setExportProgress,
-        info?.duration,
-        setWakeLockState,
-      );
+      const runExport = (mode: VideoExportMode) =>
+        exportRawQualityReel(
+          exportFile,
+          exportIntervals,
+          setExportProgress,
+          info?.duration,
+          setWakeLockState,
+          mode,
+        );
+      let prepared: PreparedVideoExport | null;
+      try {
+        prepared = await runExport(requestedMode);
+      } catch (cause) {
+        if (
+          !compatibility.chromeOnIos ||
+          requestedMode !== "stream-download" ||
+          !compatibility.opfs ||
+          (cause instanceof DOMException && cause.name === "AbortError")
+        ) {
+          throw cause;
+        }
+        directStreamFailure = cause instanceof Error ? cause.message : String(cause);
+        setExportMode("opfs");
+        setStreamFallbackReason(directStreamFailure);
+        setExportProgress({
+          completedSeconds: 0,
+          totalSeconds: keptSeconds,
+          elapsedSeconds: 0,
+          detail: "Direct download failed; retrying in private device storage",
+        });
+        prepared = await runExport("opfs");
+      }
+      setPreparedExport(prepared);
       setWorkState("done");
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") {
         setWorkState("done");
         return;
       }
-      setError(cause instanceof Error ? cause.message : String(cause));
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setError(
+        directStreamFailure
+          ? `Direct download failed (${directStreamFailure}). The private-storage fallback also failed: ${message}`
+          : message,
+      );
       setWorkState("error");
     }
   }
@@ -684,10 +796,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       <header className={styles.topbar}>
         <Brand className={styles.brand} label="LOCAL" priority />
         <div className={styles.statusRow}>
-          <span data-ok={compatibility.decode}>WebCodecs</span>
+          <span data-ok={analysisSupported}>WebCodecs</span>
           <span data-ok={compatibility.webGpu === "available"}>WebGPU</span>
           <span data-ok={compatibility.encode}>Encode</span>
-          <span data-ok={compatibility.directDisk}>Direct-to-disk</span>
+          <span data-ok={compatibility.directDisk || compatibility.opfs}>Local export</span>
           <span data-ok>Nothing uploaded</span>
         </div>
       </header>
@@ -716,10 +828,13 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         </div>
       </section>
 
-      {compatibility.checked && (!compatibility.secureContext || !compatibility.decode) && (
+      {compatibility.checked &&
+        (compatibility.safariUnsupported || !compatibility.secureContext || !compatibility.decode) && (
         <div className={styles.compatibilityNotice} role="status">
-          <strong>Browser media processing is unavailable on this origin.</strong>{" "}
-          {!compatibility.secureContext
+          <strong>{compatibility.safariUnsupported ? "Safari is not supported." : "Browser media processing is unavailable on this origin."}</strong>{" "}
+          {compatibility.safariUnsupported
+            ? "Feature extraction is unreliable in Safari on macOS and iOS. Open VolleyCut in the latest Google Chrome instead."
+            : !compatibility.secureContext
             ? "WebCodecs is restricted on plain HTTP. Deploy this web app over HTTPS to analyze local files; the files still remain on-device."
             : "Use a current desktop Chrome or Edge build with WebCodecs enabled."}
         </div>
@@ -737,13 +852,13 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         </div>
         <label
           className={styles.fileButton}
-          data-disabled={busy || (compatibility.checked && !compatibility.decode)}
+          data-disabled={busy || (compatibility.checked && !analysisSupported)}
         >
           {sourceName ? "Choose another file" : "Open local video"}
           <input
             type="file"
             accept="video/*,.mkv,.webm,.mov,.mp4"
-            disabled={busy || (compatibility.checked && !compatibility.decode)}
+            disabled={busy || (compatibility.checked && !analysisSupported)}
             onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
           />
         </label>
@@ -764,6 +879,21 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   src={previewUrl}
                   controls
                   preload="metadata"
+                  playsInline
+                  onPlay={() => {
+                    resumeAfterSeek.current = true;
+                  }}
+                  onPause={(event) => {
+                    if (!event.currentTarget.seeking) resumeAfterSeek.current = false;
+                  }}
+                  onEnded={() => {
+                    resumeAfterSeek.current = false;
+                  }}
+                  onSeeked={(event) => {
+                    if (resumeAfterSeek.current) {
+                      void event.currentTarget.play().catch(() => undefined);
+                    }
+                  }}
                   onError={() => setPreviewWarning(true)}
                 />
               ) : uiFixtureMode ? (
@@ -1461,7 +1591,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
             <button
               className={styles.analyzeButton}
               type="button"
-              disabled={!hasOpenedMedia || !info || busy || !info.canDecodeVideo || !compatibility.decode}
+              disabled={!hasOpenedMedia || !info || busy || !info.canDecodeVideo || !analysisSupported}
               onClick={() => void runAnalysis()}
             >
               {workState === "analyzing"
@@ -1579,8 +1709,14 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           </div>
           <div className={styles.exportControls}>
             <div className={styles.rolls}>
-              <label>Pre-roll <output>{preRoll}s</output><input type="range" min={0} max={8} step={0.5} value={preRoll} onChange={(event) => setPreRoll(Number(event.target.value))} /></label>
-              <label>Post-roll <output>{postRoll}s</output><input type="range" min={0} max={8} step={0.5} value={postRoll} onChange={(event) => setPostRoll(Number(event.target.value))} /></label>
+              <label>Pre-roll <output>{preRoll}s</output><input type="range" min={0} max={8} step={0.5} value={preRoll} onChange={(event) => {
+                setPreRoll(Number(event.target.value));
+                setPreparedExport(null);
+              }} /></label>
+              <label>Post-roll <output>{postRoll}s</output><input type="range" min={0} max={8} step={0.5} value={postRoll} onChange={(event) => {
+                setPostRoll(Number(event.target.value));
+                setPreparedExport(null);
+              }} /></label>
             </div>
             <label className={styles.masterPicker}>
               Use a different raw master
@@ -1588,11 +1724,30 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                 type="file"
                 accept="video/*,.mkv,.webm,.mov,.mp4"
                 disabled={busy}
-                onChange={(event) => setExportFile(event.target.files?.[0] ?? file)}
+                onChange={(event) => {
+                  setExportFile(event.target.files?.[0] ?? file);
+                  setPreparedExport(null);
+                }}
               />
             </label>
             {exportFile !== file && (
               <p className={styles.modeNote}>The alternate master must have the same timeline as the analyzed proxy.</p>
+            )}
+            {compatibility.chromeOnIos && (
+              <div className={styles.streamExportStatus}>
+                <span>
+                  <strong>
+                    {exportMode === "stream-download"
+                      ? "Direct download enabled"
+                      : "Private-storage fallback enabled"}
+                  </strong>
+                  <small>
+                    {streamFallbackReason
+                      ? `The Service Worker download failed or was unavailable (${streamFallbackReason}). This export will use OPFS, then offer Share or save.`
+                      : "Chrome on iOS streams directly to Downloads by default. If that fails, VolleyCut automatically retries once using OPFS."}
+                  </small>
+                </span>
+              </div>
             )}
             <div className={styles.exportActions}>
               <button
@@ -1601,16 +1756,24 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   busy ||
                   !editList.length ||
                   !compatibility.encode ||
-                  !compatibility.directDisk
+                  !exportStorageReady
                 }
                 title={
-                  compatibility.encode && compatibility.directDisk
+                  compatibility.encode && exportStorageReady
                     ? undefined
-                    : "Original-size export requires WebCodecs encoders and direct-to-disk access."
+                    : "Original-size export requires WebCodecs and the selected download destination."
                 }
-                onClick={() => void exportReel()}
+                onClick={() => void (preparedExport ? deliverExport() : exportReel())}
               >
-                {workState === "exporting" ? "Encoding…" : "Save original-size MP4"}
+                {workState === "exporting"
+                  ? "Encoding…"
+                  : preparedExport
+                    ? "Share or save MP4"
+                    : exportMode === "stream-download"
+                      ? "Stream MP4 to Downloads"
+                    : compatibility.directDisk
+                      ? "Save original-size MP4"
+                      : "Create original-size MP4"}
               </button>
               <button
                 type="button"
@@ -1626,6 +1789,12 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                 Download JSON EDL
               </button>
             </div>
+            {preparedExport && (
+              <p className={styles.modeNote} role="status">
+                Encoding is complete in private device storage. Tap Share or save MP4 to open the
+                iOS share sheet or download the file.
+              </p>
+            )}
             {exportProgress && workState === "exporting" && (
               <div className={styles.exportProgress}>
                 <span>{exportProgress.detail}</span>
@@ -1651,7 +1820,12 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       )}
 
       <footer className={styles.footer}>
-        <p><strong>POC boundary:</strong> Chrome/Edge desktop first. Browser decoding and encoding still depend on the machine&apos;s codec support.</p>
+        <p>
+          <strong>POC boundary:</strong> Browser decoding and encoding still depend on the
+          device&apos;s codec support. {compatibility.chromeOnIos
+            ? "Chrome on iOS streams exports directly by default and retries with private browser storage only if streaming fails."
+            : "Desktop and Android exports use the standard native file or private browser storage path."}
+        </p>
         <div className={styles.footerLinks}>
           <Link href={uiFixtureMode ? "/on-device" : "/on-device-ui"}>
             {uiFixtureMode ? "Open live pipeline" : "Open cached UI fixture"} →

@@ -1,0 +1,283 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      "!!.next",
+      "!!.venv",
+      "!!build",
+      "!!data",
+      "!!out",
+      "!!prod/dist",
+      "!!prod/public/runtime",
+      "!!public/on-device/libswresample",
+      "!!public/on-device/opencv.js",
+      "!!public/on-device/opencv-worker.js",
+      "!!vendor/libswresample-wasm/dist",
+      "!next-env.d.ts"
+    ],
+    "ignoreUnknown": true
+  },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "complexity": {
+        "noBannedTypes": "error",
+        "noUselessThisAlias": "error",
+        "noUselessTypeConstraint": "error"
+      },
+      "correctness": {
+        "noBeforeInteractiveScriptOutsideDocument": "warn",
+        "noNextAsyncClientComponent": "warn",
+        "noUnusedVariables": "warn",
+        "useInlineScriptId": "error"
+      },
+      "performance": {
+        "noImgElement": "warn",
+        "noSyncScripts": "error",
+        "noUnwantedPolyfillio": "warn",
+        "useGoogleFontPreconnect": "warn"
+      },
+      "style": {
+        "noCommonJs": "error",
+        "noHeadElement": "warn",
+        "noNamespace": "error",
+        "useArrayLiterals": "error",
+        "useAsConstAssertion": "error"
+      },
+      "suspicious": {
+        "noDocumentImportInPage": "error",
+        "noDuplicateEnumValues": "error",
+        "noExplicitAny": "error",
+        "noExtraNonNullAssertion": "error",
+        "noHeadImportInDocument": "error",
+        "noMisleadingInstantiator": "error",
+        "noNonNullAssertedOptionalChain": "error",
+        "noArrayIndexKey": "warn",
+        "noTsIgnore": "error",
+        "noUnsafeDeclarationMerging": "error",
+        "noUnusedExpressions": "off",
+        "useGoogleFontDisplay": "warn",
+        "useNamespaceKeyword": "error"
+      }
+    },
+    "includes": ["**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}"],
+    "domains": { "next": "recommended", "react": "recommended" }
+  },
+  "javascript": { "formatter": { "quoteStyle": "double" }, "globals": [] },
+  "overrides": [
+    {
+      "includes": ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
+      "javascript": {
+        "globals": [
+          "onanimationend",
+          "exports",
+          "ongamepadconnected",
+          "onlostpointercapture",
+          "onanimationiteration",
+          "onkeyup",
+          "onmousedown",
+          "onanimationstart",
+          "onslotchange",
+          "onprogress",
+          "ontransitionstart",
+          "onpause",
+          "onended",
+          "onpointerover",
+          "onscrollend",
+          "onformdata",
+          "ontransitionrun",
+          "onanimationcancel",
+          "ondrag",
+          "onchange",
+          "onbeforeinstallprompt",
+          "onbeforexrselect",
+          "onmessage",
+          "ontransitioncancel",
+          "onpointerdown",
+          "onabort",
+          "onpointerout",
+          "oncuechange",
+          "ongotpointercapture",
+          "onscrollsnapchanging",
+          "onsearch",
+          "onsubmit",
+          "onstalled",
+          "onsuspend",
+          "onreset",
+          "onerror",
+          "onmouseenter",
+          "ongamepaddisconnected",
+          "onresize",
+          "ondragover",
+          "onbeforetoggle",
+          "onmouseover",
+          "onpagehide",
+          "onmousemove",
+          "onratechange",
+          "oncommand",
+          "onmessageerror",
+          "onwheel",
+          "ondevicemotion",
+          "onauxclick",
+          "ontransitionend",
+          "onpaste",
+          "onpageswap",
+          "ononline",
+          "ondeviceorientationabsolute",
+          "onkeydown",
+          "onclose",
+          "onselect",
+          "onpageshow",
+          "onpointercancel",
+          "onbeforematch",
+          "onpointerrawupdate",
+          "ondragleave",
+          "onscrollsnapchange",
+          "onseeked",
+          "onwaiting",
+          "onbeforeunload",
+          "onplaying",
+          "onvolumechange",
+          "ondragend",
+          "onstorage",
+          "onloadeddata",
+          "onfocus",
+          "onoffline",
+          "onplay",
+          "onafterprint",
+          "onclick",
+          "oncut",
+          "onmouseout",
+          "ondblclick",
+          "oncanplay",
+          "onloadstart",
+          "onappinstalled",
+          "onpointermove",
+          "ontoggle",
+          "oncontextmenu",
+          "onblur",
+          "oncancel",
+          "onbeforeprint",
+          "oncontextrestored",
+          "onloadedmetadata",
+          "onpointerup",
+          "onlanguagechange",
+          "oncopy",
+          "onselectstart",
+          "onscroll",
+          "onload",
+          "ondragstart",
+          "onbeforeinput",
+          "oncanplaythrough",
+          "oninput",
+          "oninvalid",
+          "ontimeupdate",
+          "ondurationchange",
+          "onselectionchange",
+          "onmouseup",
+          "location",
+          "onkeypress",
+          "onpointerleave",
+          "oncontextlost",
+          "ondrop",
+          "onsecuritypolicyviolation",
+          "oncontentvisibilityautostatechange",
+          "ondeviceorientation",
+          "onseeking",
+          "onrejectionhandled",
+          "onunload",
+          "onmouseleave",
+          "onhashchange",
+          "onpointerenter",
+          "onmousewheel",
+          "onunhandledrejection",
+          "ondragenter",
+          "onpopstate",
+          "onpagereveal",
+          "onemptied"
+        ]
+      },
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noAriaUnsupportedElements": "warn",
+            "useAltText": "warn",
+            "useAriaPropsForRole": "warn",
+            "useAriaPropsSupportedByRole": "warn",
+            "useValidAriaProps": "warn",
+            "useValidAriaValues": "warn"
+          },
+          "correctness": {
+            "noBeforeInteractiveScriptOutsideDocument": "warn",
+            "noChildrenProp": "error",
+            "noNextAsyncClientComponent": "warn",
+            "useExhaustiveDependencies": "warn",
+            "useHookAtTopLevel": "error",
+            "useInlineScriptId": "error",
+            "useJsxKeyInIterable": "error"
+          },
+          "performance": {
+            "noImgElement": "warn",
+            "noSyncScripts": "warn",
+            "noUnwantedPolyfillio": "warn",
+            "useGoogleFontPreconnect": "warn"
+          },
+          "security": {
+            "noBlankTarget": "off",
+            "noDangerouslySetInnerHtmlWithChildren": "error"
+          },
+          "style": { "noHeadElement": "warn" },
+          "suspicious": {
+            "noCommentText": "error",
+            "noDocumentImportInPage": "error",
+            "noDuplicateJsxProps": "error",
+            "noHeadImportInDocument": "error",
+            "noUnknownAttribute": "off",
+            "useGoogleFontDisplay": "warn"
+          }
+        }
+      }
+    },
+    { "includes": ["**/*.ts", "**/*.tsx"], "javascript": { "globals": [] } },
+    {
+      "includes": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+      "linter": {
+        "rules": {
+          "complexity": { "noArguments": "error" },
+          "correctness": {
+            "noConstAssign": "off",
+            "noGlobalObjectCalls": "off",
+            "noInvalidBuiltinInstantiation": "off",
+            "noInvalidConstructorSuper": "off",
+            "noSetterReturn": "off",
+            "noUndeclaredVariables": "off",
+            "noUnreachable": "off",
+            "noUnreachableSuper": "off"
+          },
+          "style": { "useConst": "error", "useSpreadOverApply": "error" },
+          "suspicious": {
+            "noClassAssign": "off",
+            "noDuplicateClassMembers": "off",
+            "noDuplicateObjectKeys": "off",
+            "noDuplicateParameters": "off",
+            "noFunctionAssign": "off",
+            "noImportAssign": "off",
+            "noRedeclare": "off",
+            "noUnsafeNegation": "off",
+            "noVar": "error",
+            "noWith": "off",
+            "useGetterReturn": "off"
+          }
+        }
+      }
+    }
+  ],
+  "assist": {
+    "enabled": true,
+    "actions": { "source": { "organizeImports": "on" } }
+  }
+}

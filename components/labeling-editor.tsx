@@ -26,12 +26,27 @@ import {
   type RallyLabel,
   type SideSwitch,
 } from "@/lib/annotations";
+import type { Rally } from "@/lib/edit-list";
+import {
+  buildLiveTimeComparisonSegments,
+  calculateF1,
+  calculateLiveTimeMetrics,
+  excludeIgnoredTime,
+  markModelPaddingOrigins,
+  padAndMergeRallies,
+  totalRallySeconds,
+} from "@/lib/timeline-comparison";
 import styles from "./labeling-editor.module.css";
 
 type IntervalKind = "rally" | "ignored" | "negative";
 type LabelingBatch = "full" | "pilot";
 type TrackletCaptureMode = "footpoint" | "box";
 type TrackletBoxDrag = { start: NormalizedPoint; current: NormalizedPoint };
+type ProductionReference = {
+  modelId: string;
+  modelLabel: string;
+  rallies: RallyLabel[];
+};
 type CourtAnchorId =
   | "nearLeft"
   | "nearRight"
@@ -96,7 +111,7 @@ type PreparedTaskSummary = {
   durationSeconds: number;
   originalFilename: string;
   videoFilename: string;
-  documentSource: "draft" | "prelabel" | "task";
+  documentSource: "draft" | "production-model" | "prelabel" | "task";
   savedAt: string | null;
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
@@ -116,6 +131,21 @@ const editableRallyTags = new Set(["service-fault", "ace", "interrupted-replay"]
 const playbackResumeKey = "volleycut.labeling.playback.v1";
 const timestampEpsilon = 0.0005;
 const trackletFrameEpsilon = 0.001;
+const comparisonPaddingCases = [2, 3] as const;
+
+function metricPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function comparableRallies(rows: RallyLabel[], prefix: string): Rally[] {
+  return rows.map((row, index) => ({
+    id: `${prefix}-${index + 1}`,
+    start: row.start,
+    end: row.end,
+    confidence: 1,
+    included: true,
+  }));
+}
 
 function playerWindowBounds(
   rally: RallyLabel,
@@ -215,6 +245,9 @@ export function LabelingEditor() {
   const resumeAttemptedRef = useRef(false);
   const lastPersistedPlaybackRef = useRef<{ taskId: string; time: number } | null>(null);
   const [labels, setLabels] = useState<LabelDocument | null>(null);
+  const [productionReference, setProductionReference] =
+    useState<ProductionReference | null>(null);
+  const [solReferenceRallies, setSolReferenceRallies] = useState<RallyLabel[]>([]);
   const [preparedTasks, setPreparedTasks] = useState<PreparedTaskSummary[]>([]);
   const [batchSummary, setBatchSummary] = useState<BatchSummary>(emptyBatchSummary);
   const [selectedBatch, setSelectedBatch] = useState<LabelingBatch>("full");
@@ -382,6 +415,67 @@ export function LabelingEditor() {
       : null;
   }, [labels?.recording.courtGeometry]);
 
+  const touchingRallyIndexes = useMemo(() => {
+    const indexes = new Set<number>();
+    labels?.rallies.forEach((row, index) => {
+      if (index > 0 && row.start <= labels.rallies[index - 1].end) {
+        indexes.add(index - 1);
+        indexes.add(index);
+      }
+    });
+    return indexes;
+  }, [labels]);
+
+  const productionComparisons = useMemo(() => {
+    if (!labels || !productionReference) return [];
+    const duration = labels.recording.durationSeconds;
+    const modelCore = comparableRallies(productionReference.rallies, "production");
+    const humanCore = comparableRallies(labels.rallies, "editable");
+    const ignored = labels.ignoredIntervals;
+    return comparisonPaddingCases.map((paddingSeconds) => {
+      // Padding is merged before any duration or metric calculation, so
+      // overlapping/touching model exports contribute to the union only once.
+      const paddedModel = padAndMergeRallies(
+        modelCore,
+        paddingSeconds,
+        paddingSeconds,
+        duration,
+      );
+      const paddedHuman = padAndMergeRallies(
+        humanCore,
+        paddingSeconds,
+        paddingSeconds,
+        duration,
+      );
+      const paddedHumanMetrics = calculateLiveTimeMetrics(
+        paddedModel,
+        paddedHuman,
+        ignored,
+      );
+      const coreHumanMetrics = calculateLiveTimeMetrics(
+        paddedModel,
+        humanCore,
+        ignored,
+      );
+      const precision = paddedHumanMetrics.precision;
+      const recall = coreHumanMetrics.recall;
+      return {
+        paddingSeconds,
+        precision,
+        recall,
+        f1: calculateF1(precision, recall),
+        exportSeconds: totalRallySeconds(excludeIgnoredTime(paddedModel, ignored)),
+        segments: markModelPaddingOrigins(
+          buildLiveTimeComparisonSegments(paddedModel, humanCore, ignored),
+          modelCore,
+          paddingSeconds,
+          paddingSeconds,
+          duration,
+        ),
+      };
+    });
+  }, [labels, productionReference]);
+
   const completionIssues = useMemo(() => {
     if (!labels) return ["Load a label task"];
     const issues: string[] = [];
@@ -411,11 +505,9 @@ export function LabelingEditor() {
         if (index > 0 && row.start < rows[index - 1].end) issues.push("Intervals overlap or are unordered");
       });
     });
-    labels.rallies.forEach((row, index) => {
-      if (index > 0 && row.start <= labels.rallies[index - 1].end) {
-        issues.push("Separate touching rallies with a positive dead-time gap");
-      }
-    });
+    if (touchingRallyIndexes.size > 0) {
+      issues.push("Separate touching rallies with a positive dead-time gap");
+    }
     labels.rallies.forEach((row) => {
       if (overlaps(row.start, row.end, labels.ignoredIntervals)) issues.push("A rally overlaps ignored time");
       if (overlaps(row.start, row.end, labels.hardNegatives)) issues.push("A rally overlaps a hard negative");
@@ -494,7 +586,16 @@ export function LabelingEditor() {
       });
     });
     return [...new Set(issues)];
-  }, [ignoredStart, labels, negativeStart, rallyStart, videoDuration, videoFilename, videoUrl]);
+  }, [
+    ignoredStart,
+    labels,
+    negativeStart,
+    rallyStart,
+    touchingRallyIndexes,
+    videoDuration,
+    videoFilename,
+    videoUrl,
+  ]);
 
   function markChanged(document: LabelDocument): LabelDocument {
     return {
@@ -517,6 +618,8 @@ export function LabelingEditor() {
     try {
       const document = parseLabelDocument(JSON.parse(await file.text()));
       setLabels(document);
+      setProductionReference(null);
+      setSolReferenceRallies([]);
       setRallyStart(null);
       setIgnoredStart(null);
       setNegativeStart(null);
@@ -559,16 +662,43 @@ export function LabelingEditor() {
     setError(null);
     setPreparedTasksLoading(true);
     try {
-      const response = await fetch(`/api/labeling/tasks/${encodeURIComponent(id)}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
+      const taskUrl = `/api/labeling/tasks/${encodeURIComponent(id)}`;
+      const [response, referencesResponse] = await Promise.all([
+        fetch(taskUrl, {
+          cache: "no-store",
+          signal: controller.signal,
+        }),
+        fetch(`${taskUrl}/references`, {
+          cache: "no-store",
+          signal: controller.signal,
+        }).catch(() => null),
+      ]);
       if (!response.ok) throw new Error("Could not load the selected prepared task");
       const batch = response.headers.get("X-VolleyCut-Batch");
       const documentSource = response.headers.get("X-VolleyCut-Document-Source");
       const savedAt = response.headers.get("X-VolleyCut-Saved-At");
       const document = parseLabelDocument(await response.json());
+      let referenceRallies: RallyLabel[] = [];
+      let nextProductionReference: ProductionReference | null = null;
+      if (referencesResponse?.ok) {
+        const references = (await referencesResponse.json()) as {
+          production?: Partial<ProductionReference> | null;
+          sol?: { rallies?: RallyLabel[] } | null;
+        };
+        if (
+          typeof references.production?.modelId === "string" &&
+          typeof references.production.modelLabel === "string" &&
+          Array.isArray(references.production.rallies)
+        ) {
+          nextProductionReference = references.production as ProductionReference;
+        }
+        if (Array.isArray(references.sol?.rallies)) {
+          referenceRallies = references.sol.rallies;
+        }
+      }
       setLabels(document);
+      setProductionReference(nextProductionReference);
+      setSolReferenceRallies(referenceRallies);
       setVideoUrl(`/api/labeling/tasks/${encodeURIComponent(id)}/video`);
       setVideoFilename(document.recording.videoFilename);
       setVideoDuration(null);
@@ -585,6 +715,8 @@ export function LabelingEditor() {
       setMessage(
         documentSource === "draft"
           ? `Resumed the NAS draft for ${document.recording.id} with ${document.rallies.length} rallies.`
+          : documentSource === "production-model"
+            ? `Loaded ${document.rallies.length} editable predictions from the production model for ${document.recording.id}. Sol is shown below as a read-only reference.`
           : documentSource === "prelabel"
             ? `Loaded ${document.rallies.length} unvalidated GPT-5.6 Sol rally candidates for ${document.recording.id}. Review every boundary before completing.`
           : `Loaded ${document.recording.id} and its matching NAS proxy. No local file selection needed.`,
@@ -1296,7 +1428,7 @@ export function LabelingEditor() {
           >
             <option value="full">
               Full corpus · {batchSummary.full.ready}/{batchSummary.full.total} ready · {batchSummary.full.saved} saved
-              {batchSummary.full.prelabeled > 0 ? ` · ${batchSummary.full.prelabeled} AI prelabels` : ""}
+              {batchSummary.full.prelabeled > 0 ? ` · ${batchSummary.full.prelabeled} AI starting points` : ""}
             </option>
             <option value="pilot">
               Pilot · {batchSummary.pilot.ready}/{batchSummary.pilot.total} ready · {batchSummary.pilot.saved} saved
@@ -1317,7 +1449,7 @@ export function LabelingEditor() {
             </option>
             {tasksForSelectedBatch.map((task) => (
               <option key={task.id} value={task.id}>
-                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.documentSource === "prelabel" ? `${task.rallyCount} AI rallies to review` : "not started"}
+                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.documentSource === "production-model" ? `${task.rallyCount} production-model rallies to review` : task.documentSource === "prelabel" ? `${task.rallyCount} Sol rallies to review` : "not started"}
               </option>
             ))}
           </select>
@@ -1336,11 +1468,15 @@ export function LabelingEditor() {
           <strong>{selectedPreparedSummary?.batch ?? "Local fallback"}</strong>
           <span>Starting point</span>
           <strong>
-            {selectedPreparedSummary?.documentSource === "prelabel"
+            {selectedPreparedSummary?.documentSource === "production-model"
+              ? "Production model · editable labels"
+              : selectedPreparedSummary?.documentSource === "prelabel"
               ? `Unvalidated GPT-5.6 Sol prelabel · ${labels?.prelabel?.ambiguities.length ?? 0} ambiguities`
               : selectedPreparedSummary?.documentSource === "draft"
-                ? labels?.prelabel
-                  ? "Human-saved NAS draft · started from AI prelabel"
+                ? labels?.prelabel?.candidateFile.startsWith("model-")
+                  ? "Human-saved NAS draft · started from production model"
+                  : labels?.prelabel
+                    ? "Human-saved NAS draft · started from Sol prelabel"
                   : "Human-saved NAS draft"
                 : "Blank task"}
           </strong>
@@ -1773,18 +1909,65 @@ export function LabelingEditor() {
               currentTime={currentTime}
               tracks={[
                 {
-                  id: "rallies",
-                  label: "Rallies",
-                  detail: `${labels.rallies.length} labeled`,
+                  id: "editable-rallies",
+                  label: "Editable labels",
+                  detail: `${labels.rallies.length} rallies · working set`,
                   active: true,
                   intervals: labels.rallies.map((row, index) => ({
                     id: `rally-${index}`,
                     start: row.start,
                     end: row.end,
                     title: `Rally ${index + 1}`,
-                    tone: "gold" as const,
-                  })),
+                    tone: labels.prelabel?.candidateFile.startsWith("model-")
+                      ? ("model" as const)
+                      : ("gold" as const),
+                    })),
                 },
+                ...(productionReference
+                  ? productionComparisons.map((comparison) => ({
+                      id: `production-reference-${comparison.paddingSeconds}s`,
+                      label: `Production model · ${comparison.paddingSeconds}s`,
+                      detail: `${productionReference.modelId} · ${productionReference.rallies.length} core rallies · merged ${comparison.paddingSeconds}s pad`,
+                      title: `${productionReference.modelLabel}. Read-only production inference compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Overlapping padded ranges are merged before scoring.`,
+                      summary: {
+                        exportTime: formatPreciseTime(comparison.exportSeconds),
+                        metricsLabel: `${comparison.paddingSeconds}s P_pad/R_core/F1`,
+                        coreMetrics: `P ${metricPercent(comparison.precision)} · R ${metricPercent(comparison.recall)} · F1 ${metricPercent(comparison.f1)}`,
+                      },
+                      intervals: comparison.segments.map((segment) => ({
+                        id: `production-reference-${comparison.paddingSeconds}s-${segment.id}`,
+                        selectionId: null,
+                        start: segment.start,
+                        end: segment.end,
+                        tone: `model-${segment.kind}` as const,
+                        paddingOrigin: segment.paddingOrigin,
+                        title: `${productionReference.modelLabel} · ${comparison.paddingSeconds}s padding · ${
+                          segment.kind === "match"
+                            ? "matches editable human live time"
+                            : segment.kind === "added"
+                              ? "predicted outside editable human live time"
+                              : "editable human live time missed by the model"
+                        } · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
+                      })),
+                    } satisfies TimelineTrack))
+                  : []),
+                ...(solReferenceRallies.length
+                  ? [{
+                      id: "sol-reference",
+                      label: "Sol reference",
+                      detail: `${solReferenceRallies.length} rallies · read only`,
+                      title:
+                        "Blind Sol labels for reference only; edits apply to the working set above.",
+                      intervals: solReferenceRallies.map((row, index) => ({
+                        id: `sol-reference-${index}`,
+                        selectionId: null,
+                        start: row.start,
+                        end: row.end,
+                        title: `Sol reference ${index + 1}`,
+                        tone: "sol" as const,
+                      })),
+                    } satisfies TimelineTrack]
+                  : []),
                 ...(labels.ignoredIntervals.length
                   ? [{
                       id: "ignored",
@@ -1819,12 +2002,12 @@ export function LabelingEditor() {
                 time: marker.time,
                 title: `Side switch ${index + 1}${marker.notes ? ` · ${marker.notes}` : ""}`,
               }))}
-              selectedTrackId="rallies"
+              selectedTrackId="editable-rallies"
               selectedIntervalId={
                 selectedRallyIndex >= 0 ? `rally-${selectedRallyIndex}` : undefined
               }
               onSeek={(time) => seekTo(time)}
-              ariaLabel="Label timeline"
+              ariaLabel="Editable rally labels with read-only production and Sol references"
             />
           )}
         </div>
@@ -2082,9 +2265,15 @@ export function LabelingEditor() {
           <div className={styles.rows}>
             {labels.rallies.map((row, index) => (
               <div
-                className={`${styles.row} ${selectedRallyIndex === index ? styles.selectedRow : ""}`}
+                className={`${styles.row} ${selectedRallyIndex === index ? styles.selectedRow : ""} ${touchingRallyIndexes.has(index) ? styles.invalidRow : ""}`}
                 key={`rally-row-${index}`}
                 aria-current={selectedRallyIndex === index ? "true" : undefined}
+                aria-invalid={touchingRallyIndexes.has(index) ? "true" : undefined}
+                title={
+                  touchingRallyIndexes.has(index)
+                    ? "This rally touches an adjacent rally. Add a positive dead-time gap."
+                    : undefined
+                }
               >
                 <strong
                   title={[

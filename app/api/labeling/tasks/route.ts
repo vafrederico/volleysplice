@@ -27,7 +27,9 @@ export async function GET() {
             }).length,
             prelabeled: batchTasks.filter((task) => {
               const index = catalog.tasks.indexOf(task);
-              return savedDocuments[index].source === "prelabel";
+              return ["production-model", "prelabel"].includes(
+                savedDocuments[index].source,
+              );
             }).length,
           },
         ];

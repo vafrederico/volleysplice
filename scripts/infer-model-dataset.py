@@ -17,6 +17,22 @@ from analysis.serve_experiment import _validate_model_pair
 SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
+def _existing_preview(output_root: Path, recording_id: str) -> Path | None:
+    for run_version in (
+        "full-percentile-v1",
+        "nb-full-percentile",
+        "nb-pilot-baseline",
+    ):
+        candidate = (
+            output_root
+            / f"model-{run_version}--{recording_id}"
+            / "court-preview.jpg"
+        )
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            return candidate
+    return None
+
+
 def _validate_existing_output(
     destination: Path,
     *,
@@ -188,11 +204,7 @@ def main() -> int:
             skipped += 1
             continue
         print(f"Inferring {model_version} on {recording_id}", flush=True)
-        existing_preview = (
-            output_root
-            / f"model-full-percentile-v1--{recording_id}"
-            / "court-preview.jpg"
-        )
+        existing_preview = _existing_preview(output_root, recording_id)
         result = infer_video(
             video_path,
             model_path,
@@ -207,7 +219,7 @@ def main() -> int:
             variant_label=args.variant_label,
             variant_description=args.variant_description,
             include_signals=args.include_signals,
-            preview_source=(existing_preview if existing_preview.is_file() else None),
+            preview_source=existing_preview,
         )
         print(
             json.dumps(
