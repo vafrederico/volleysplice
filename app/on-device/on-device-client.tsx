@@ -5,31 +5,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Brand } from "@/components/brand";
 import { buildEditList, formatTime } from "@/lib/edit-list";
-import { FEATURE_CACHE_CHUNK_ROWS } from "@/lib/on-device/feature-cache";
-import { ANALYSIS_FPS } from "@/lib/on-device/feature-schema";
+import { isMacSafariBrowser } from "@/lib/on-device/browser-support";
 import {
   deliverPreparedVideoExport,
   downloadEditDecisionList,
-  exportRawQualityReel,
-  supportsOpfsExport,
   type ExportProgress,
+  exportRawQualityReel,
   type PreparedVideoExport,
+  supportsOpfsExport,
   type VideoExportMode,
 } from "@/lib/on-device/export";
-import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
-import { requestPlayingSeek } from "@/lib/on-device/player";
-import {
-  prepareServiceWorkerStreamDownload,
-  type StreamDownloadReadiness,
-} from "@/lib/on-device/stream-download";
+import { FEATURE_CACHE_CHUNK_ROWS } from "@/lib/on-device/feature-cache";
+import { ANALYSIS_FPS } from "@/lib/on-device/feature-schema";
+import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
   analyzeOpenedMedia,
   DEFAULT_FEATURE_REDUCTION_KERNEL,
   DEFAULT_VIDEO_DECODE_STRATEGY,
   VIDEO_DECODER_HARDWARE_ACCELERATION,
 } from "@/lib/on-device/pipeline";
-import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
+import { requestPlayingSeek } from "@/lib/on-device/player";
 import { clampRoi, fullFrameRoi, inferRoiProfile } from "@/lib/on-device/roi";
+import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
+import {
+  prepareServiceWorkerStreamDownload,
+  type StreamDownloadReadiness,
+} from "@/lib/on-device/stream-download";
 import type {
   AnalysisProgress,
   FeatureExtractionPerformance,
@@ -52,6 +53,7 @@ type WorkState = "empty" | "opening" | "ready" | "analyzing" | "exporting" | "do
 
 type BrowserCompatibility = {
   checked: boolean;
+  macSafariUnsupported: boolean;
   secureContext: boolean;
   decode: boolean;
   encode: boolean;
@@ -390,6 +392,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const [postRoll, setPostRoll] = useState(fixture?.exportDefaults.postRoll ?? 2);
   const [compatibility, setCompatibility] = useState<BrowserCompatibility>({
     checked: false,
+    macSafariUnsupported: false,
     secureContext: false,
     decode: false,
     encode: false,
@@ -427,6 +430,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const resumeAfterSeek = useRef(false);
 
   const busy = workState === "opening" || workState === "analyzing" || workState === "exporting";
+  const analysisSupported = compatibility.decode && !compatibility.macSafariUnsupported;
   const editList = useMemo(
     () =>
       analysis && info
@@ -502,8 +506,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       if (!active) return;
       const diagnosticNavigator = navigator as NavigatorWithDiagnostics;
       const fallbackRenderer = webGlRenderer();
+      const macSafariUnsupported = isMacSafariBrowser();
       setCompatibility({
         checked: true,
+        macSafariUnsupported,
         secureContext: window.isSecureContext,
         decode: "VideoDecoder" in window && "AudioDecoder" in window,
         encode: "VideoEncoder" in window && "AudioEncoder" in window,
@@ -544,6 +550,13 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   }, []);
 
   useEffect(() => {
+    if (isMacSafariBrowser()) {
+      setStreamDownload({
+        ready: false,
+        reason: "Safari on Mac is not supported. Use Google Chrome instead.",
+      });
+      return;
+    }
     let active = true;
     void prepareServiceWorkerStreamDownload().then((readiness) => {
       if (active) setStreamDownload(readiness);
@@ -561,6 +574,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
 
   async function chooseFile(selected: File | null) {
     if (!selected) return;
+    if (isMacSafariBrowser()) {
+      setError("Safari on Mac is not supported. Open VolleyCut in Google Chrome instead.");
+      return;
+    }
     if (!compatibility.decode) {
       setError(
         compatibility.secureContext
@@ -737,7 +754,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       <header className={styles.topbar}>
         <Brand className={styles.brand} label="LOCAL" priority />
         <div className={styles.statusRow}>
-          <span data-ok={compatibility.decode}>WebCodecs</span>
+          <span data-ok={analysisSupported}>WebCodecs</span>
           <span data-ok={compatibility.webGpu === "available"}>WebGPU</span>
           <span data-ok={compatibility.encode}>Encode</span>
           <span data-ok={compatibility.directDisk || compatibility.opfs}>Local export</span>
@@ -769,10 +786,13 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         </div>
       </section>
 
-      {compatibility.checked && (!compatibility.secureContext || !compatibility.decode) && (
+      {compatibility.checked &&
+        (compatibility.macSafariUnsupported || !compatibility.secureContext || !compatibility.decode) && (
         <div className={styles.compatibilityNotice} role="status">
-          <strong>Browser media processing is unavailable on this origin.</strong>{" "}
-          {!compatibility.secureContext
+          <strong>{compatibility.macSafariUnsupported ? "Safari on Mac is not supported." : "Browser media processing is unavailable on this origin."}</strong>{" "}
+          {compatibility.macSafariUnsupported
+            ? "Feature extraction is unreliable in Safari. Open VolleyCut in the latest Google Chrome on this Mac instead."
+            : !compatibility.secureContext
             ? "WebCodecs is restricted on plain HTTP. Deploy this web app over HTTPS to analyze local files; the files still remain on-device."
             : "Use a current desktop Chrome or Edge build with WebCodecs enabled."}
         </div>
@@ -790,13 +810,13 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         </div>
         <label
           className={styles.fileButton}
-          data-disabled={busy || (compatibility.checked && !compatibility.decode)}
+          data-disabled={busy || (compatibility.checked && !analysisSupported)}
         >
           {sourceName ? "Choose another file" : "Open local video"}
           <input
             type="file"
             accept="video/*,.mkv,.webm,.mov,.mp4"
-            disabled={busy || (compatibility.checked && !compatibility.decode)}
+            disabled={busy || (compatibility.checked && !analysisSupported)}
             onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
           />
         </label>
@@ -1529,7 +1549,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
             <button
               className={styles.analyzeButton}
               type="button"
-              disabled={!hasOpenedMedia || !info || busy || !info.canDecodeVideo || !compatibility.decode}
+              disabled={!hasOpenedMedia || !info || busy || !info.canDecodeVideo || !analysisSupported}
               onClick={() => void runAnalysis()}
             >
               {workState === "analyzing"

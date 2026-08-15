@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { CutEditor } from "@/components/CutEditor";
-import { openLocalMedia, type OpenedMedia } from "@/lib/on-device/media";
+import { isMacSafariBrowser } from "@/lib/on-device/browser-support";
+import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
   analyzeOpenedMedia,
   DEFAULT_FEATURE_REDUCTION_KERNEL,
@@ -102,7 +103,9 @@ export function App() {
   const elapsedTimer = useRef<number | null>(null);
   const resumePreviewAfterSeek = useRef(false);
 
+  const macSafariUnsupported = isMacSafariBrowser();
   const webCodecsReady =
+    !macSafariUnsupported &&
     "VideoDecoder" in window && "AudioDecoder" in window && "VideoFrame" in window;
   const secureContext = window.isSecureContext;
   const busy = workState === "opening" || workState === "analyzing";
@@ -127,10 +130,15 @@ export function App() {
 
   async function chooseFile(selected: File | null) {
     if (!selected) return;
+    if (macSafariUnsupported) {
+      setError("Safari on Mac is not supported. Open VolleyCut in Google Chrome instead.");
+      setWorkState("error");
+      return;
+    }
     if (!webCodecsReady) {
       setError(
         secureContext
-          ? "This browser does not expose the WebCodecs APIs needed for local analysis. Use Safari 26 or a current Chrome or Edge release."
+          ? "This browser does not expose the WebCodecs APIs needed for local analysis. Use a current Chrome or Edge release."
           : "Local analysis requires HTTPS. Deploy this static app over HTTPS, or use localhost during development.",
       );
       setWorkState("error");
@@ -169,6 +177,11 @@ export function App() {
 
   async function runAnalysis() {
     if (!openedMedia.current || !file || !info || !previewUrl) return;
+    if (macSafariUnsupported) {
+      setError("Safari on Mac is not supported. Open VolleyCut in Google Chrome instead.");
+      setWorkState("error");
+      return;
+    }
     setError(null);
     setWorkState("analyzing");
     setElapsedSeconds(0);
@@ -289,7 +302,12 @@ export function App() {
         </div>
       </section>
 
-      {!secureContext && (
+      {macSafariUnsupported && (
+        <p className={styles.notice} role="status">
+          <strong>Safari on Mac is not supported.</strong> Feature extraction is unreliable in Safari. Open VolleyCut in the latest Google Chrome on this Mac instead.
+        </p>
+      )}
+      {!macSafariUnsupported && !secureContext && (
         <p className={styles.notice}>
           This page is not in a secure context. The interface is available, but local
           media analysis needs HTTPS or localhost.
@@ -307,12 +325,12 @@ export function App() {
               : "MP4, WebM, MOV, MKV, and other browser-decodable containers are supported."}
           </p>
         </div>
-        <label className={styles.fileButton} data-disabled={busy || undefined}>
+        <label className={styles.fileButton} data-disabled={busy || macSafariUnsupported || undefined}>
           {file ? "Choose another" : "Choose video"}
           <input
             type="file"
             accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
-            disabled={busy}
+            disabled={busy || macSafariUnsupported}
             onChange={(event) => void chooseFile(event.currentTarget.files?.[0] ?? null)}
           />
         </label>
@@ -404,7 +422,7 @@ export function App() {
               className={styles.analyzeButton}
               type="button"
               onClick={() => void runAnalysis()}
-              disabled={busy}
+              disabled={busy || macSafariUnsupported}
             >
               {workState === "analyzing" ? "Analyzing on this device…" : "Generate cuts locally"}
             </button>
@@ -453,7 +471,7 @@ export function App() {
 
       <footer className={styles.footer}>
         <span>All media, features, predictions, and edit drafts stay in this browser.</span>
-        <span>Chrome, Edge, or Safari 26 · HTTPS required outside localhost</span>
+        <span>Google Chrome recommended · HTTPS required outside localhost</span>
       </footer>
     </main>
   );
