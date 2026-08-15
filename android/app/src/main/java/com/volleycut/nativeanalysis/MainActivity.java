@@ -470,7 +470,7 @@ public final class MainActivity extends Activity {
         JSONObject json = new JSONObject();
         try {
             json.put("schemaVersion", 1);
-            json.put("method", "android-native-mediacodec-async-decodeonly-yuvlut-opencv-v3");
+            json.put("method", "android-native-mediacodec-cfr-decodeonly-yuvlut-opencv-v4");
             json.put("modelId", "model-9c92b8e9333f");
             json.put("sourceName", result.displayName());
             json.put("duration", result.media().durationSeconds());

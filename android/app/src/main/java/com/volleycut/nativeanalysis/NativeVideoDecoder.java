@@ -33,6 +33,7 @@ import java.util.function.BooleanSupplier;
 
 final class NativeVideoDecoder {
     private static final long CODEC_TIMEOUT_US = 10_000;
+    private static final int SAMPLE_PLAN_REORDER_LOOKAHEAD = 64;
 
     private final Context context;
 
@@ -68,8 +69,11 @@ final class NativeVideoDecoder {
             if (mime == null) throw new IOException("Video track has no MIME type");
 
             long operationStarted = System.nanoTime();
-            SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit);
-            profiler.add("sample_plan_scan", System.nanoTime() - operationStarted);
+            SamplePlan samplePlan = buildSamplePlan(extractor, format, times, sourceFrameLimit);
+            profiler.add(
+                    samplePlan.cfrFastPath() ? "sample_plan_cfr_probe" : "sample_plan_scan",
+                    System.nanoTime() - operationStarted
+            );
             if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
                 throw new IOException("Video has no decodable frames in the benchmark window");
             }
@@ -385,11 +389,15 @@ final class NativeVideoDecoder {
 
     private static SamplePlan buildSamplePlan(
             MediaExtractor extractor,
+            MediaFormat format,
             double[] times,
             int sourceFrameLimit
     ) {
-        int scanLimit = sourceFrameLimit > Integer.MAX_VALUE - 64
-                ? Integer.MAX_VALUE : sourceFrameLimit + 64;
+        SamplePlan cfrPlan = buildCfrSamplePlan(extractor, format, times, sourceFrameLimit);
+        if (cfrPlan != null) return cfrPlan;
+        extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+        int scanLimit = sourceFrameLimit > Integer.MAX_VALUE - SAMPLE_PLAN_REORDER_LOOKAHEAD
+                ? Integer.MAX_VALUE : sourceFrameLimit + SAMPLE_PLAN_REORDER_LOOKAHEAD;
         ArrayList<Long> presentationTimes = new ArrayList<>(scanLimit);
         while (presentationTimes.size() < scanLimit) {
             long presentationUs = extractor.getSampleTime();
@@ -434,7 +442,103 @@ final class NativeVideoDecoder {
                 presentationTimes.size() >= sourceFrameLimit,
                 target,
                 lastPresentationUs,
-                frameDurationUs
+                frameDurationUs,
+                false
+        );
+    }
+
+    private static SamplePlan buildCfrSamplePlan(
+            MediaExtractor extractor,
+            MediaFormat format,
+            double[] times,
+            int sourceFrameLimit
+    ) {
+        // Avoid a full presentation-timestamp scan only after the declared rate exactly
+        // predicts a reordered two-second probe. VFR inputs retain the scan-based path.
+        if (!format.containsKey(MediaFormat.KEY_FRAME_RATE)
+                || !format.containsKey(MediaFormat.KEY_DURATION)) return null;
+        double frameRate;
+        int totalFrameCount;
+        try {
+            Number frameRateValue = format.getNumber(MediaFormat.KEY_FRAME_RATE);
+            if (frameRateValue == null) return null;
+            frameRate = frameRateValue.doubleValue();
+            long durationUs = format.getLong(MediaFormat.KEY_DURATION);
+            totalFrameCount = (int) Math.min(
+                    Integer.MAX_VALUE,
+                    Math.round(durationUs / 1_000_000.0 * frameRate)
+            );
+        } catch (ClassCastException | NullPointerException ignored) {
+            return null;
+        }
+        if (frameRate <= 0 || totalFrameCount <= 0) return null;
+
+        int validationCount = Math.min(SAMPLE_PLAN_REORDER_LOOKAHEAD, totalFrameCount);
+        int probeCount = Math.min(
+                totalFrameCount,
+                validationCount + SAMPLE_PLAN_REORDER_LOOKAHEAD
+        );
+        long[] probePresentationUs = new long[probeCount];
+        int readCount = 0;
+        while (readCount < probeCount) {
+            long presentationUs = extractor.getSampleTime();
+            if (presentationUs < 0) break;
+            probePresentationUs[readCount++] = presentationUs;
+            if (!extractor.advance()) break;
+        }
+        if (readCount != probeCount) return null;
+        long[] sortedProbePresentationUs = probePresentationUs.clone();
+        Arrays.sort(sortedProbePresentationUs);
+        long firstPresentationUs = sortedProbePresentationUs[0];
+        if (Math.abs(firstPresentationUs) > 1_000) return null;
+        double frameDurationExactUs = 1_000_000.0 / frameRate;
+        for (int index = 0; index < validationCount; index++) {
+            long expectedUs = firstPresentationUs + (long) Math.floor(index * frameDurationExactUs);
+            if (Math.abs(sortedProbePresentationUs[index] - expectedUs) > 2) return null;
+        }
+        long validationLastPresentationUs = sortedProbePresentationUs[validationCount - 1];
+        int validationInputExtent = 0;
+        for (int index = 0; index < probePresentationUs.length; index++) {
+            if (probePresentationUs[index] <= validationLastPresentationUs) {
+                validationInputExtent = index + 1;
+            }
+        }
+        int observedReorderGuard = Math.max(2, validationInputExtent - validationCount);
+
+        int sourceFrameCount = Math.min(sourceFrameLimit, totalFrameCount);
+        long[] sortedPresentationUs = new long[sourceFrameCount];
+        HashSet<Long> sampledPresentationUs = new HashSet<>();
+        int target = 0;
+        for (int index = 0; index < sourceFrameCount; index++) {
+            long presentationUs = firstPresentationUs
+                    + (long) Math.floor(index * frameDurationExactUs);
+            sortedPresentationUs[index] = presentationUs;
+            if (target < times.length
+                    && presentationUs + 1_000 >= Math.round(times[target] * 1_000_000)) {
+                sampledPresentationUs.add(presentationUs);
+                target++;
+            }
+        }
+        int inputFrameCount = Math.min(
+                totalFrameCount,
+                sourceFrameCount + observedReorderGuard
+        );
+        long lastPresentationUs = sortedPresentationUs.length == 0
+                ? -1 : sortedPresentationUs[sortedPresentationUs.length - 1];
+        long frameDurationUs = sortedPresentationUs.length >= 2
+                ? Math.max(1, lastPresentationUs
+                        - sortedPresentationUs[sortedPresentationUs.length - 2])
+                : Math.max(1, Math.round(frameDurationExactUs));
+        return new SamplePlan(
+                Set.copyOf(sampledPresentationUs),
+                sortedPresentationUs,
+                inputFrameCount,
+                sourceFrameCount,
+                totalFrameCount >= sourceFrameLimit,
+                target,
+                lastPresentationUs,
+                frameDurationUs,
+                true
         );
     }
 
@@ -446,7 +550,8 @@ final class NativeVideoDecoder {
             boolean sourceFrameLimitReached,
             int sampleCount,
             long lastPresentationUs,
-            long frameDurationUs
+            long frameDurationUs,
+            boolean cfrFastPath
     ) {
         int sourceFramesAtOrBefore(long presentationUs) {
             int index = Arrays.binarySearch(sortedPresentationUs, presentationUs);
