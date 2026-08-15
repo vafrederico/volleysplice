@@ -68,6 +68,7 @@ h1 em { color:var(--orange); font-style:normal; }
 .model-timeline-legend span:before { content:""; width:19px; height:9px; border:1px solid transparent; background:#3f8f4a; }
 .model-timeline-legend span[data-tone="added"]:before { background:#e08a12; }
 .model-timeline-legend span[data-tone="missed"]:before { border-color:rgba(183,31,31,.82); border-style:dashed; background:rgba(216,23,23,.28); }
+.model-timeline-legend span[data-tone="disagreement"]:before { background:#f2c94c; }
 .model-timeline-legend span[data-tone="gold-padding"]:before { background:rgba(22,24,19,.22); }
 .model-timeline-legend span[data-tone="sol-padding"]:before { background:rgba(154,91,212,.24); }
 .model-timeline-legend span[data-tone="ignored"]:before { border-color:#696b64; background:repeating-linear-gradient(135deg,#8e9088 0,#8e9088 2px,#d9d8d2 2px,#d9d8d2 5px); }

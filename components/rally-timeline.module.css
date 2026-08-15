@@ -157,6 +157,11 @@ button.trackLabel {
 .interval[data-tone="model-no-beach"] { background: #00a47c; }
 .interval[data-tone="model-match"] { background: #3f8f4a; }
 .interval[data-tone="model-added"] { background: #e08a12; }
+.interval[data-tone="model-disagreement"] {
+  z-index: 2;
+  background: #f2c94c;
+  opacity: 1;
+}
 .interval[data-tone="model-missed"] {
   z-index: 1;
   border: 1px dashed rgba(183, 31, 31, .82);

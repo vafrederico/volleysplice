@@ -1,4 +1,7 @@
-import { PRODUCTION_MODEL_ID } from "./production-model.ts";
+import {
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+  PRODUCTION_MODEL_ID,
+} from "./production-model.ts";
 
 export type EnvironmentExperimentModel = {
   id: string;
@@ -21,9 +24,10 @@ export const ENVIRONMENT_EXPERIMENT_MODELS = [
   },
 ] as const satisfies readonly EnvironmentExperimentModel[];
 
-export const PREFERRED_REVIEW_MODEL_ID = PRODUCTION_MODEL_ID;
+export const PREFERRED_REVIEW_MODEL_ID = PRODUCTION_ENSEMBLE_MODEL_ID;
 
 export const DEFAULT_VISIBLE_MODEL_IDS: ReadonlySet<string> = new Set([
+  PRODUCTION_ENSEMBLE_MODEL_ID,
   PRODUCTION_MODEL_ID,
   ...ENVIRONMENT_EXPERIMENT_MODELS.map((model) => model.id),
 ]);

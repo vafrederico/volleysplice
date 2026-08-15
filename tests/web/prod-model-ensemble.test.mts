@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeProductionModelIntervals } from "../../prod/src/lib/on-device/ensemble.ts";
+import { mergeProductionModelIntervals } from "../../lib/production-ensemble.ts";
+import { mergeProductionModelIntervals as mergeProdIntervals } from "../../prod/src/lib/on-device/ensemble.ts";
 
 function interval(id: string, start: number, end: number, confidence: number) {
   return { id, start, end, confidence, included: true };
@@ -45,5 +46,21 @@ test("production ensemble treats transitively overlapping detections as one agre
   assert.deepEqual(
     { start: merged[0].start, end: merged[0].end, agreement: merged[0].agreement },
     { start: 10, end: 22, agreement: "both-models" },
+  );
+});
+
+test("dev and production use identical ensemble interval semantics", () => {
+  const current = [
+    interval("new-1", 5, 10, 0.8),
+    interval("new-2", 20, 25, 0.7),
+  ];
+  const previous = [
+    interval("old-1", 9, 15, 0.9),
+    interval("old-2", 25, 30, 0.6),
+  ];
+
+  assert.deepEqual(
+    mergeProductionModelIntervals(current, previous),
+    mergeProdIntervals(current, previous),
   );
 });

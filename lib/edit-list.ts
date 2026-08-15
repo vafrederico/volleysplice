@@ -1,9 +1,15 @@
+export type ModelAgreement =
+  | "both-models"
+  | "all-labels-v2-only"
+  | "previous-production-only";
+
 export type Rally = {
   id: string;
   start: number;
   end: number;
   confidence: number;
   included: boolean;
+  agreement?: ModelAgreement;
 };
 
 export const DEFAULT_JOIN_GAP_SECONDS = 3;

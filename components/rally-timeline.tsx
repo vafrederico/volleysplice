@@ -15,6 +15,7 @@ export type TimelineInterval = {
     | "model-match"
     | "model-added"
     | "model-missed"
+    | "model-disagreement"
     | "gold-padding"
     | "sol-padding"
     | "heuristic"

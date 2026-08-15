@@ -12,6 +12,16 @@ import type {
 } from "@/lib/analysis-types";
 import { parseLabelDocument, type LabelDocument, type RallyLabel } from "@/lib/annotations";
 import type { Rally } from "@/lib/edit-list";
+import { mergeProductionModelIntervals } from "@/lib/production-ensemble";
+import {
+  PREVIOUS_PRODUCTION_MODEL_ID,
+  PRODUCTION_ENSEMBLE_ALGORITHM_VERSION,
+  PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+  PRODUCTION_ENSEMBLE_MODEL_LABEL,
+  PRODUCTION_ENSEMBLE_MODEL_VERSION,
+  PRODUCTION_MODEL_ID,
+} from "@/lib/production-model";
 import { getIntakeAnalysesRoot } from "@/lib/storage";
 import {
   getPreparedLabelingCatalog,
@@ -249,6 +259,39 @@ function workingHumanLabelAnalysis(
   };
 }
 
+function productionEnsembleAnalysis(
+  allLabelsV2: ReviewAnalysis,
+  previousProduction: ReviewAnalysis,
+): ReviewAnalysis {
+  const addedAtValues = [allLabelsV2.addedAt, previousProduction.addedAt]
+    .filter((value): value is string => value !== null)
+    .sort();
+  return {
+    ...allLabelsV2,
+    id: `${PRODUCTION_ENSEMBLE_MODEL_ID}--${allLabelsV2.recordingId}`,
+    variantLabel: PRODUCTION_ENSEMBLE_MODEL_LABEL,
+    variantDescription: PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION,
+    method: `production-model-ensemble:${PRODUCTION_ENSEMBLE_ALGORITHM_VERSION}`,
+    modelVersion: PRODUCTION_ENSEMBLE_MODEL_VERSION,
+    addedAt: addedAtValues.at(-1) ?? null,
+    trainingCorpus: "mixed",
+    trainingCorpusLabel: "Mixed production training",
+    datasetRole: "not-applicable",
+    datasetRoleLabel: "Production ensemble",
+    warnings: [
+      ...new Set([
+        ...allLabelsV2.warnings,
+        ...previousProduction.warnings,
+        "Yellow ranges were detected by only one production model and require review.",
+      ]),
+    ],
+    rallies: mergeProductionModelIntervals(
+      allLabelsV2.rallies,
+      previousProduction.rallies,
+    ),
+  };
+}
+
 async function readLabelAnalysis(
   task: PreparedLabelingTask,
   filePath: string,
@@ -425,6 +468,17 @@ export async function loadReviewCatalog(): Promise<ReviewCatalog> {
           role.datasetRoleLabel,
         );
       });
+    const allLabelsV2 = taskAnalyses.find(
+      (analysis) => analysis.id === `${PRODUCTION_MODEL_ID}--${task.id}`,
+    );
+    const previousProduction = taskAnalyses.find(
+      (analysis) => analysis.id === `${PREVIOUS_PRODUCTION_MODEL_ID}--${task.id}`,
+    );
+    if (allLabelsV2 && previousProduction) {
+      taskAnalyses.push(
+        productionEnsembleAnalysis(allLabelsV2, previousProduction),
+      );
+    }
     if (gold) taskAnalyses.push(gold);
     if (sol) taskAnalyses.push(sol);
     taskAnalyses.sort((left, right) => {

@@ -4,7 +4,16 @@ import {
   type RallyLabel,
   roundTime,
 } from "./annotations.ts";
-import { PRODUCTION_MODEL_ID, PRODUCTION_MODEL_LABEL } from "./production-model.ts";
+import type { Rally } from "./edit-list.ts";
+import { mergeProductionModelIntervals } from "./production-ensemble.ts";
+import {
+  PREVIOUS_PRODUCTION_MODEL_ID,
+  PRODUCTION_ENSEMBLE_ALGORITHM_VERSION,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+  PRODUCTION_ENSEMBLE_MODEL_LABEL,
+  PRODUCTION_MODEL_ID,
+  PRODUCTION_MODEL_LABEL,
+} from "./production-model.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -125,4 +134,77 @@ export function buildProductionLabelSeed(
     rallies: modelRallies(root.rallies, base.recording.durationSeconds),
   });
   return { document, modelId, modelLabel };
+}
+
+function labelConfidence(row: RallyLabel): number {
+  const tag = row.tags.find((candidate) =>
+    candidate.startsWith("model-confidence:"),
+  );
+  const confidence = Number(tag?.slice("model-confidence:".length));
+  return Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0;
+}
+
+function labelRowsToRallies(rows: RallyLabel[], prefix: string): Rally[] {
+  return rows.map((row, index) => ({
+    id: `${prefix}-${index + 1}`,
+    start: row.start,
+    end: row.end,
+    confidence: labelConfidence(row),
+    included: true,
+  }));
+}
+
+export function buildProductionEnsembleLabelSeed(
+  base: LabelDocument,
+  allLabelsV2Value: unknown,
+  previousProductionValue: unknown,
+): ProductionLabelSeed {
+  const allLabelsV2 = buildProductionLabelSeed(
+    base,
+    allLabelsV2Value,
+    PRODUCTION_MODEL_ID,
+  );
+  const previousProduction = buildProductionLabelSeed(
+    base,
+    previousProductionValue,
+    PREVIOUS_PRODUCTION_MODEL_ID,
+  );
+  const rallies = mergeProductionModelIntervals(
+    labelRowsToRallies(allLabelsV2.document.rallies, "new"),
+    labelRowsToRallies(previousProduction.document.rallies, "old"),
+  ).map((rally): RallyLabel => ({
+    start: roundTime(rally.start),
+    end: roundTime(rally.end),
+    tags: [
+      "ai-prelabel",
+      `model-confidence:${rally.confidence.toFixed(3)}`,
+      `model-agreement:${rally.agreement}`,
+    ],
+  }));
+  const document = parseLabelDocument({
+    ...allLabelsV2.document,
+    annotation: {
+      ...allLabelsV2.document.annotation,
+      notes:
+        base.annotation.notes ||
+        "Initialized from the production two-model ensemble. Review every yellow disagreement and every boundary.",
+    },
+    prelabel: {
+      analysisMethod:
+        `production-model-ensemble:${PRODUCTION_ENSEMBLE_ALGORITHM_VERSION}`,
+      candidateFile: `${PRODUCTION_ENSEMBLE_MODEL_ID}--${base.recording.id}`,
+      analyzedAt: allLabelsV2.document.prelabel?.analyzedAt as string,
+      ambiguities: [
+        `Unvalidated starting labels from ${PRODUCTION_ENSEMBLE_MODEL_LABEL}.`,
+        "Yellow ranges were emitted by only one production model and require explicit review.",
+        "Continuously review the full recording, correct both boundaries, add misses, and remove false positives.",
+      ],
+    },
+    rallies,
+  });
+  return {
+    document,
+    modelId: PRODUCTION_ENSEMBLE_MODEL_ID,
+    modelLabel: PRODUCTION_ENSEMBLE_MODEL_LABEL,
+  };
 }

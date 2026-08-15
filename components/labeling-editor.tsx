@@ -29,8 +29,13 @@ import {
 import {
   DEFAULT_JOIN_GAP_SECONDS,
   MAX_JOIN_GAP_SECONDS,
+  type ModelAgreement,
   type Rally,
 } from "@/lib/edit-list";
+import {
+  isProductionModelDisagreement,
+  productionModelAgreementLabel,
+} from "@/lib/production-ensemble";
 import {
   buildLiveTimeComparisonSegments,
   calculateF1,
@@ -144,13 +149,34 @@ function metricPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function modelAgreementFromTags(tags: string[]): ModelAgreement | undefined {
+  const value = tags
+    .find((tag) => tag.startsWith("model-agreement:"))
+    ?.slice("model-agreement:".length);
+  return value === "both-models" ||
+    value === "all-labels-v2-only" ||
+    value === "previous-production-only"
+    ? value
+    : undefined;
+}
+
+function modelConfidenceFromTags(tags: string[]): number {
+  const value = Number(
+    tags
+      .find((tag) => tag.startsWith("model-confidence:"))
+      ?.slice("model-confidence:".length),
+  );
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
+}
+
 function comparableRallies(rows: RallyLabel[], prefix: string): Rally[] {
   return rows.map((row, index) => ({
     id: `${prefix}-${index + 1}`,
     start: row.start,
     end: row.end,
-    confidence: 1,
+    confidence: modelConfidenceFromTags(row.tags),
     included: true,
+    agreement: modelAgreementFromTags(row.tags),
   }));
 }
 
@@ -551,6 +577,7 @@ export function LabelingEditor() {
           ),
           missingHumanSegments: segments.filter((segment) => segment.kind === "missed"),
           segments,
+          disagreementRallies: modelCore.filter(isProductionModelDisagreement),
         };
       });
     });
@@ -810,7 +837,7 @@ export function LabelingEditor() {
           : documentSource === "completed"
             ? `Loaded the completed human labels for ${document.recording.id} with ${document.rallies.length} rallies. Any new save creates an editable NAS draft without changing the completed source.`
           : documentSource === "production-model"
-            ? `Loaded ${document.rallies.length} editable predictions from the production model for ${document.recording.id}. Sol is shown below as a read-only reference.`
+            ? `Loaded ${document.rallies.length} editable predictions from the production ensemble for ${document.recording.id}. Yellow ranges are model disagreements; Sol is shown below as a read-only reference.`
           : documentSource === "prelabel"
             ? `Loaded ${document.rallies.length} unvalidated GPT-5.6 Sol rally candidates for ${document.recording.id}. Review every boundary before completing.`
           : `Loaded ${document.recording.id} and its matching NAS proxy. No local file selection needed.`,
@@ -1774,6 +1801,7 @@ export function LabelingEditor() {
                   <span data-tone="export">Final padded export</span>
                   <span data-tone="joined-gap">Joined short gap</span>
                   <span data-tone="missing">Missed human core</span>
+                  <span data-tone="disagreement">Model disagreement</span>
                 </div>
                 <label htmlFor="label-join-gap">
                   Join gaps under
@@ -1804,14 +1832,17 @@ export function LabelingEditor() {
                     start: row.start,
                     end: row.end,
                     title: `Rally ${index + 1}`,
-                    tone: labels.prelabel?.candidateFile.startsWith("model-")
-                      ? ("model" as const)
-                      : ("gold" as const),
+                    tone: modelAgreementFromTags(row.tags) &&
+                      modelAgreementFromTags(row.tags) !== "both-models"
+                      ? ("model-disagreement" as const)
+                      : labels.prelabel?.candidateFile.startsWith("model-")
+                        ? ("model" as const)
+                        : ("gold" as const),
                     })),
                 },
                 ...referenceComparisons.map((comparison) => ({
                   id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s`,
-                  label: `${comparison.reference.baseline ? "Production" : comparison.reference.modelLabel} · ${comparison.paddingSeconds}s`,
+                  label: `${comparison.reference.modelLabel} · ${comparison.paddingSeconds}s`,
                   detail: `${comparison.reference.modelId} · ${comparison.reference.rallies.length} core rallies · ${comparison.paddingSeconds}s pad · < ${joinGapSeconds}s joins`,
                   title: `${comparison.reference.modelLabel}. ${comparison.reference.description ?? "Read-only model inference"} Compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Padded ranges with gaps strictly under ${joinGapSeconds} seconds are joined before scoring and export measurement.`,
                   summary: {
@@ -1837,21 +1868,30 @@ export function LabelingEditor() {
                     end: segment.end,
                     title: `${comparison.reference.modelLabel} · missed unpadded human rally time · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
                   })),
-                  intervals: comparison.segments.map((segment) => ({
-                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-${segment.id}`,
-                    selectionId: null,
-                    start: segment.start,
-                    end: segment.end,
-                    tone: `model-${segment.kind}` as const,
-                    paddingOrigin: segment.paddingOrigin,
-                    title: `${comparison.reference.modelLabel} · ${comparison.paddingSeconds}s padding · ${
-                      segment.kind === "match"
-                        ? "matches editable human live time"
-                        : segment.kind === "added"
-                          ? "predicted outside editable human live time"
-                          : "editable human live time missed by the model"
-                    } · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
-                  })),
+                  intervals: comparison.segments.map((segment) => {
+                    const midpoint = segment.start + (segment.end - segment.start) / 2;
+                    const disagreement = comparison.disagreementRallies.find(
+                      (rally) => rally.start <= midpoint && midpoint < rally.end,
+                    );
+                    return {
+                      id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-${segment.id}`,
+                      selectionId: null,
+                      start: segment.start,
+                      end: segment.end,
+                      tone: disagreement
+                        ? "model-disagreement" as const
+                        : `model-${segment.kind}` as const,
+                      paddingOrigin: segment.paddingOrigin,
+                      title: `${comparison.reference.modelLabel} · ${comparison.paddingSeconds}s padding · ${disagreement
+                        ? productionModelAgreementLabel(disagreement.agreement)
+                        : segment.kind === "match"
+                          ? "matches editable human live time"
+                          : segment.kind === "added"
+                            ? "predicted outside editable human live time"
+                            : "editable human live time missed by the model"
+                      } · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
+                    };
+                  }),
                 } satisfies TimelineTrack)),
                 ...(solReferenceRallies.length
                   ? [{

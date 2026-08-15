@@ -11,12 +11,20 @@ import {
   type NormalizedPoint,
 } from "@/lib/annotations";
 import {
+  buildProductionEnsembleLabelSeed,
   buildProductionLabelSeed,
   type ProductionLabelSeed,
 } from "@/lib/production-label-seed";
-import { PRODUCTION_MODEL_ID } from "@/lib/production-model";
+import {
+  PREVIOUS_PRODUCTION_MODEL_ID,
+  PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+  PRODUCTION_MODEL_DESCRIPTION,
+  PRODUCTION_MODEL_ID,
+} from "@/lib/production-model";
 import { ENVIRONMENT_EXPERIMENT_MODELS } from "@/lib/experiment-models";
 import {
+  getAnalysesRoot,
   getIntakeAnalysesRoot,
   getIntakeWorkspace,
 } from "@/lib/storage";
@@ -108,6 +116,7 @@ export type SolReferenceLabels = {
 export type ProductionReferenceLabels = SolReferenceLabels & {
   modelId: string;
   modelLabel: string;
+  description?: string;
 };
 
 export type ExperimentModelReferenceLabels = ProductionReferenceLabels & {
@@ -637,11 +646,28 @@ async function loadProductionLabelSeed(
       `${PRODUCTION_MODEL_ID}--${task.id}`,
       "analysis.json",
     );
-    return buildProductionLabelSeed(
-      task.document,
-      JSON.parse(await readFile(productionAnalysisPath, "utf8")) as unknown,
-      PRODUCTION_MODEL_ID,
+    const allLabelsV2Value = JSON.parse(
+      await readFile(productionAnalysisPath, "utf8"),
+    ) as unknown;
+    const previousProductionPath = path.join(
+      getAnalysesRoot("without-beach"),
+      `${PREVIOUS_PRODUCTION_MODEL_ID}--${task.id}`,
+      "analysis.json",
     );
+    try {
+      return buildProductionEnsembleLabelSeed(
+        task.document,
+        allLabelsV2Value,
+        JSON.parse(await readFile(previousProductionPath, "utf8")) as unknown,
+      );
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+      return buildProductionLabelSeed(
+        task.document,
+        allLabelsV2Value,
+        PRODUCTION_MODEL_ID,
+      );
+    }
   } catch (error) {
     if (isMissingFile(error)) return null;
     throw error;
@@ -656,6 +682,9 @@ export async function getProductionReferenceLabels(
     ? {
         modelId: seed.modelId,
         modelLabel: seed.modelLabel,
+        description: seed.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
+          ? PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION
+          : PRODUCTION_MODEL_DESCRIPTION,
         rallies: seed.document.rallies,
       }
     : null;

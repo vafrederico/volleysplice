@@ -563,6 +563,10 @@
 
 .comparisonRailLegend span[data-tone="joined-gap"]::before { background: #aaa9a2; }
 .comparisonRailLegend span[data-tone="missing"]::before { background: #d81717; }
+.comparisonRailLegend span[data-tone="disagreement"]::before {
+  height: 12px;
+  background: #f2c94c;
+}
 
 .comparisonRailControls > label {
   display: grid;

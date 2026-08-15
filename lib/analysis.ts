@@ -121,6 +121,7 @@ type AnalysisLoadOptions = {
 
 function trainingCorpusLabel(corpus: TrainingCorpus): string {
   if (corpus === "without-beach") return "Without beach training";
+  if (corpus === "mixed") return "Mixed production training";
   if (corpus === "reference") return "Reference";
   return "Original training";
 }

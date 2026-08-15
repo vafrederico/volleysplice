@@ -32,6 +32,10 @@ import {
   type EditableCut,
 } from "@/lib/cut-draft";
 import { formatTime, timelinePercent } from "@/lib/edit-list";
+import {
+  isProductionModelDisagreement,
+  productionModelAgreementLabel,
+} from "@/lib/production-ensemble";
 
 import styles from "./cut-editor.module.css";
 
@@ -220,8 +224,12 @@ export function CutEditor({
     (cut) => cut.origin === "cached-label" &&
       cut.included &&
       effectiveKeptIds.has(cut.id) &&
-      cut.confidence < draft.confidenceReviewThreshold,
+      (isProductionModelDisagreement(cut) ||
+        cut.confidence < draft.confidenceReviewThreshold),
   );
+  const disagreementCount = lowConfidenceCuts.filter(
+    isProductionModelDisagreement,
+  ).length;
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
     setDraft((current) => ({
@@ -498,7 +506,9 @@ export function CutEditor({
       : lowConfidenceCuts.find((cut) => cut.keepStart >= playbackTime) ?? lowConfidenceCuts[0];
     selectCut(next);
     setEditorMessage(
-      `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`,
+      isProductionModelDisagreement(next)
+        ? `${next.id} was detected by only one production model. Validate it and remove it if it is not a rally.`
+        : `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`,
     );
   }
 
@@ -838,7 +848,7 @@ export function CutEditor({
             </div>
             <div className={styles.confidenceReview}>
               <label htmlFor="confidence-review-threshold">
-                <span>Highlight model confidence below</span>
+                <span>Review disagreements and confidence below</span>
                 <span className={styles.confidenceInput}>
                   <input
                     id="confidence-review-threshold"
@@ -856,7 +866,7 @@ export function CutEditor({
                   <span>%</span>
                 </span>
               </label>
-              <p>{lowConfidenceCuts.length} {lowConfidenceCuts.length === 1 ? "range" : "ranges"} highlighted</p>
+              <p>{disagreementCount} disagreements · {lowConfidenceCuts.length} highlighted</p>
               <button
                 type="button"
                 onClick={reviewNextLowConfidenceCut}
@@ -903,13 +913,14 @@ export function CutEditor({
                     cut.origin === "cached-label" &&
                     cut.confidence < draft.confidenceReviewThreshold || undefined
                   }
+                  data-disagreement={isProductionModelDisagreement(cut) || undefined}
                   data-origin={cut.origin}
                   style={{
                     left: `${timelinePercent(cut.keepStart, initialAnalysis.duration)}%`,
                     width: `${timelinePercent(cut.keepEnd - cut.keepStart, initialAnalysis.duration)}%`,
                   }}
                   onClick={() => selectCut(cut)}
-                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${Math.round(cut.confidence * 100)}% confidence`}
+                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${productionModelAgreementLabel(cut.agreement)}, ${Math.round(cut.confidence * 100)}% confidence`}
                 >
                   <span
                     className={styles.overviewPadding}
@@ -968,7 +979,7 @@ export function CutEditor({
         <div className={styles.focusHeader}>
           <div>
             <span>FOCUSED RANGE</span>
-            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `Cached label · ${Math.round(selected.confidence * 100)}%`}` : "No range selected"}</strong>
+            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `${productionModelAgreementLabel(selected.agreement)} · ${Math.round(selected.confidence * 100)}%`}` : "No range selected"}</strong>
           </div>
           <div className={styles.focusHeaderControls}>
             <label className={styles.focusLock}>
@@ -1024,6 +1035,7 @@ export function CutEditor({
                   selected.origin === "cached-label" &&
                   selected.confidence < draft.confidenceReviewThreshold || undefined
                 }
+                data-disagreement={isProductionModelDisagreement(selected) || undefined}
                 style={{
                   left: `${timelinePercent(selected.keepStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.keepEnd - selected.keepStart, focus.end - focus.start)}%`,
@@ -1037,6 +1049,7 @@ export function CutEditor({
                   selected.origin === "cached-label" &&
                   selected.confidence < draft.confidenceReviewThreshold || undefined
                 }
+                data-disagreement={isProductionModelDisagreement(selected) || undefined}
                 style={{
                   left: `${timelinePercent(selected.coreStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.coreEnd - selected.coreStart, focus.end - focus.start)}%`,
@@ -1258,12 +1271,17 @@ export function CutEditor({
                 cut.origin === "cached-label" &&
                 cut.confidence < draft.confidenceReviewThreshold || undefined
               }
+              data-disagreement={isProductionModelDisagreement(cut) || undefined}
             >
               <button type="button" className={styles.cutSelect} onClick={() => selectCut(cut)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{cut.id}</strong>
                 <small>{preciseTime(cut.keepStart)}–{preciseTime(cut.keepEnd)}</small>
-                <em>{cut.origin === "manual" ? "MANUAL" : `${Math.round(cut.confidence * 100)}%`}</em>
+                <em>{cut.origin === "manual"
+                  ? "MANUAL"
+                  : isProductionModelDisagreement(cut)
+                    ? "DISAGREE"
+                    : `${Math.round(cut.confidence * 100)}%`}</em>
               </button>
               <button
                 type="button"

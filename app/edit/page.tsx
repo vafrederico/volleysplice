@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { CutEditor } from "@/components/cut-editor";
 import type { AnalysisOption } from "@/lib/analysis-types";
+import { PRODUCTION_ENSEMBLE_MODEL_ID } from "@/lib/production-model";
 import { loadReviewCatalog } from "@/lib/server/review-catalog";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ type EditPageProps = {
 
 function preferredAnalysis(analyses: AnalysisOption[]): AnalysisOption | null {
   return (
+    analyses.find((analysis) =>
+      analysis.id === `${PRODUCTION_ENSEMBLE_MODEL_ID}--${analysis.recordingId}`
+    ) ??
     analyses.find((analysis) => analysis.kind === "model") ??
     analyses.find((analysis) => analysis.kind === "sol") ??
     analyses.find((analysis) => analysis.kind === "gold") ??

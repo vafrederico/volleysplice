@@ -24,6 +24,7 @@ function visibleInCorpus(
 ): boolean {
   return (
     analysis.trainingCorpus === "reference" ||
+    analysis.trainingCorpus === "mixed" ||
     corpus === "both" ||
     analysis.trainingCorpus === corpus
   );

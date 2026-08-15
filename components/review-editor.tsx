@@ -24,6 +24,11 @@ import {
   DEFAULT_VISIBLE_MODEL_IDS,
   PREFERRED_REVIEW_MODEL_ID,
 } from "@/lib/experiment-models";
+import {
+  isProductionModelDisagreement,
+  productionModelAgreementLabel,
+} from "@/lib/production-ensemble";
+import { PRODUCTION_ENSEMBLE_MODEL_ID } from "@/lib/production-model";
 import { parseLabelDocument, type IgnoredInterval, type LabelDocument } from "@/lib/annotations";
 import {
   buildLiveTimeComparisonSegments,
@@ -37,12 +42,14 @@ import {
   totalRallySeconds,
 } from "@/lib/timeline-comparison";
 
-const MODEL_VISIBILITY_STORAGE_KEY = "volleycut:model-timeline-visibility:v2";
+const MODEL_VISIBILITY_STORAGE_KEY = "volleycut:model-timeline-visibility:v3";
 const MODEL_VISIBILITY_EVENT = "volleycut:model-timeline-visibility";
 const ACTIVITY_PADDING_STORAGE_KEY = "volleycut:activity-padding:v1";
 const ACTIVITY_PADDING_EVENT = "volleycut:activity-padding";
 const DEFAULT_VISIBLE_MODEL_KEYS = new Set(
-  [...DEFAULT_VISIBLE_MODEL_IDS].map((id) => `without-beach:${id}`),
+  [...DEFAULT_VISIBLE_MODEL_IDS].map((id) =>
+    `${id === PRODUCTION_ENSEMBLE_MODEL_ID ? "mixed" : "without-beach"}:${id}`,
+  ),
 );
 const DEFAULT_ACTIVITY_PADDING = {
   before: 3,
@@ -231,6 +238,7 @@ function visibleInCorpus(
 ): boolean {
   return (
     analysis.trainingCorpus === "reference" ||
+    analysis.trainingCorpus === "mixed" ||
     corpus === "both" ||
     analysis.trainingCorpus === corpus
   );
@@ -497,6 +505,15 @@ export function ReviewEditor({
               candidate.duration,
             )
           : null;
+        const disagreementRallies = modelCoreRallies.filter(
+          isProductionModelDisagreement,
+        );
+        const disagreementAt = (start: number, end: number) => {
+          const midpoint = start + (end - start) / 2;
+          return disagreementRallies.find(
+            (rally) => rally.start <= midpoint && midpoint < rally.end,
+          );
+        };
         const exportedRallies = excludeIgnoredTime(paddedExportRallies, ignoredRanges);
         const joinedGapRallies = excludeIgnoredTime(
           paddedExportRallies.flatMap((rally, rallyIndex) =>
@@ -573,23 +590,29 @@ export function ReviewEditor({
             title: `${candidate.variantLabel} · missed unpadded human rally time · ${formatTime(segment.start)}–${formatTime(segment.end)}`,
           })),
           intervals: comparisonSegments
-            ? comparisonSegments.map((segment) => ({
-              id: segment.id,
-              selectionId: segment.predictionId ?? null,
-              start: segment.start,
-              end: segment.end,
-              tone: `model-${segment.kind}` as const,
-              paddingOrigin: segment.paddingOrigin,
-              title: `${candidate.variantLabel} · ${
-                segment.kind === "match"
-                  ? "matches human live time"
-                  : segment.kind === "added"
-                    ? "predicted outside human live time"
-                    : "human live time missed by model"
-              }${segment.paddingOrigin
-                ? ` · ${segment.paddingOrigin === "both" ? "before + after padding" : `${segment.paddingOrigin} padding`}`
-                : " · model core"} · ${formatTime(segment.start)}–${formatTime(segment.end)}`,
-            }))
+            ? comparisonSegments.map((segment) => {
+                const disagreement = disagreementAt(segment.start, segment.end);
+                return {
+                  id: segment.id,
+                  selectionId: segment.predictionId ?? null,
+                  start: segment.start,
+                  end: segment.end,
+                  tone: disagreement
+                    ? "model-disagreement" as const
+                    : `model-${segment.kind}` as const,
+                  paddingOrigin: segment.paddingOrigin,
+                  title: `${candidate.variantLabel} · ${disagreement
+                    ? productionModelAgreementLabel(disagreement.agreement)
+                    : segment.kind === "match"
+                      ? "matches human live time"
+                      : segment.kind === "added"
+                        ? "predicted outside human live time"
+                        : "human live time missed by model"
+                  }${segment.paddingOrigin
+                    ? ` · ${segment.paddingOrigin === "both" ? "before + after padding" : `${segment.paddingOrigin} padding`}`
+                    : " · model core"} · ${formatTime(segment.start)}–${formatTime(segment.end)}`,
+                };
+              })
             : [
                 ...(
                   candidate.kind === "gold" || candidate.kind === "sol"
@@ -618,6 +641,18 @@ export function ReviewEditor({
                   tone: tone(candidate.kind, candidate.trainingCorpus),
                   title: `${candidate.variantLabel} · ${rally.id} · ${formatTime(rally.start)}–${formatTime(rally.end)}`,
                 })),
+                ...(
+                  candidate.kind === "model"
+                    ? disagreementRallies.map((rally) => ({
+                        id: `${rally.id}-disagreement`,
+                        selectionId: rally.id,
+                        start: rally.start,
+                        end: rally.end,
+                        tone: "model-disagreement" as const,
+                        title: `${candidate.variantLabel} · ${productionModelAgreementLabel(rally.agreement)} · ${formatTime(rally.start)}–${formatTime(rally.end)}`,
+                      }))
+                    : []
+                ),
               ],
         };
       });
@@ -1114,6 +1149,7 @@ export function ReviewEditor({
                 <span data-tone="match">Human match</span>
                 <span data-tone="added">Added rally</span>
                 <span data-tone="missed">Missed rally</span>
+                <span data-tone="disagreement">Model disagreement</span>
                 <span data-tone="gold-padding">Human padding</span>
                 <span data-tone="sol-padding">Sol padding</span>
                 <span data-tone="ignored">Ignored evaluation</span>

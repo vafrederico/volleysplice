@@ -380,6 +380,14 @@
   background: var(--cut-orange);
 }
 
+.overviewCut[data-included="true"][data-disagreement="true"]:not([data-ignored="true"]) {
+  box-shadow: inset 0 0 0 3px #c49500;
+}
+
+.overviewCut[data-included="true"][data-disagreement="true"]:not([data-ignored="true"]) .overviewCore {
+  background: #f2c94c;
+}
+
 .overviewPadding,
 .overviewCore {
   position: absolute;
@@ -720,6 +728,11 @@
   box-shadow: inset 0 0 0 3px rgba(255, 92, 53, .8);
 }
 
+.keptRange[data-included="true"][data-disagreement="true"]:not([data-ignored="true"]) {
+  background: rgba(242, 201, 76, .36);
+  box-shadow: inset 0 0 0 3px rgba(196, 149, 0, .78);
+}
+
 .keptRange[data-ignored="true"] {
   background: repeating-linear-gradient(
     135deg,
@@ -764,6 +777,11 @@
 
 .coreRange[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) {
   background: var(--cut-orange);
+}
+
+.coreRange[data-included="true"][data-disagreement="true"]:not([data-ignored="true"]) {
+  background: #f2c94c;
+  color: #161813;
 }
 
 .coreRange[data-ignored="true"] {
@@ -1010,6 +1028,15 @@
 
 .cutCards article[data-included="true"][data-low-confidence="true"]:not([data-ignored="true"]) .cutSelect em {
   color: #b4391c;
+}
+
+.cutCards article[data-included="true"][data-disagreement="true"]:not([data-ignored="true"]) {
+  border-color: #c49500;
+  background: #fff7d6;
+}
+
+.cutCards article[data-included="true"][data-disagreement="true"]:not([data-ignored="true"]) .cutSelect em {
+  color: #806100;
 }
 
 .cutCards article:not([data-included="true"]) {

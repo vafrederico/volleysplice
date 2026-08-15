@@ -5,7 +5,7 @@ export type AnalysisKind = "heuristic" | "model" | "sol" | "gold" | "unknown";
 
 export type DatasetRole = "training" | "validation" | "evaluation" | "not-applicable";
 
-export type TrainingCorpus = "original" | "without-beach" | "reference";
+export type TrainingCorpus = "original" | "without-beach" | "mixed" | "reference";
 
 export type TrainingCorpusView = "original" | "without-beach" | "both";
 

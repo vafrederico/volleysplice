@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parseLabelDocument } from "../../lib/annotations.ts";
-import { buildProductionLabelSeed } from "../../lib/production-label-seed.ts";
+import {
+  buildProductionEnsembleLabelSeed,
+  buildProductionLabelSeed,
+} from "../../lib/production-label-seed.ts";
+import {
+  PREVIOUS_PRODUCTION_MODEL_ID,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+  PRODUCTION_MODEL_ID,
+} from "../../lib/production-model.ts";
 
 const modelId = "model-production-fixture";
 
@@ -96,5 +104,46 @@ test("production seed rejects an artifact for different media", () => {
   assert.throws(
     () => buildProductionLabelSeed(baseDocument(), mismatched, modelId),
     /does not match the labeling task/,
+  );
+});
+
+test("production ensemble labels preserve per-range agreement provenance", () => {
+  const current = analysis();
+  current.id = `${PRODUCTION_MODEL_ID}--indoor-fixture-full`;
+  current.rallies = [
+    { id: "N1", start: 4, end: 10, confidence: 0.9, included: true },
+    { id: "N2", start: 20, end: 25, confidence: 0.8, included: true },
+  ];
+  const previous = analysis();
+  previous.id = `${PREVIOUS_PRODUCTION_MODEL_ID}--indoor-fixture-full`;
+  previous.rallies = [
+    { id: "O1", start: 6, end: 12, confidence: 0.8, included: true },
+    { id: "O2", start: 25, end: 30, confidence: 0.9, included: true },
+    { id: "O3", start: 40, end: 45, confidence: 0.7, included: true },
+  ];
+
+  const seed = buildProductionEnsembleLabelSeed(
+    baseDocument(),
+    current,
+    previous,
+  );
+
+  assert.equal(seed.modelId, PRODUCTION_ENSEMBLE_MODEL_ID);
+  assert.equal(
+    seed.document.prelabel?.candidateFile,
+    `${PRODUCTION_ENSEMBLE_MODEL_ID}--indoor-fixture-full`,
+  );
+  assert.deepEqual(
+    seed.document.rallies.map((rally) => ({
+      start: rally.start,
+      end: rally.end,
+      agreement: rally.tags.find((tag) => tag.startsWith("model-agreement:")),
+    })),
+    [
+      { start: 4, end: 12, agreement: "model-agreement:both-models" },
+      { start: 20, end: 25, agreement: "model-agreement:all-labels-v2-only" },
+      { start: 25, end: 30, agreement: "model-agreement:previous-production-only" },
+      { start: 40, end: 45, agreement: "model-agreement:previous-production-only" },
+    ],
   );
 });
