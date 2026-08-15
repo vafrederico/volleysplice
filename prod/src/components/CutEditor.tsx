@@ -24,6 +24,11 @@ import {
   type EditableCut,
 } from "@/lib/cut-draft";
 import { formatTime, timelinePercent } from "@/lib/edit-list";
+import {
+  createModelFeedbackBundle,
+  modelFeedbackBlob,
+  modelFeedbackFilename,
+} from "@/lib/model-feedback";
 import { isChromeOnIosBrowser } from "@/lib/on-device/browser-support";
 import {
   deliverPreparedVideoExport,
@@ -736,6 +741,51 @@ export function CutEditor({
     URL.revokeObjectURL(url);
   }
 
+  async function shareModelFeedback() {
+    try {
+      const bundle = createModelFeedbackBundle(
+        initialAnalysis,
+        draft,
+        finalIntervals,
+      );
+      const blob = modelFeedbackBlob(bundle);
+      const filename = modelFeedbackFilename(initialAnalysis.sourceFilename);
+      const file = new File([blob], filename, { type: blob.type });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `VolleyCut model feedback · ${initialAnalysis.sourceFilename}`,
+          });
+          setEditorMessage(
+            initialAnalysis.features
+              ? "Shared model feedback with features, inference, and corrections."
+              : "Shared inference and corrections; this older analysis has no retained feature matrix.",
+          );
+          return;
+        } catch (cause) {
+          if (cause instanceof DOMException && cause.name === "AbortError") return;
+          // Fall through to a normal browser download when native sharing fails.
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setEditorMessage(
+        initialAnalysis.features
+          ? "Downloaded model feedback with features, inference, and corrections."
+          : "Downloaded inference and corrections; this older analysis has no retained feature matrix.",
+      );
+    } catch (cause) {
+      setEditorMessage(
+        `Could not create model feedback: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
+  }
+
   async function exportVideo() {
     if (!sourceFile || exportState === "exporting" || finalIntervals.length === 0) return;
     const requestedMode = exportMode;
@@ -963,6 +1013,13 @@ export function CutEditor({
             <button type="button" className={styles.quietButton} onClick={downloadEditList}>
               Download JSON edit list
             </button>
+            <button
+              type="button"
+              className={styles.quietButton}
+              onClick={() => void shareModelFeedback()}
+            >
+              Share / download model feedback
+            </button>
             <button type="button" className={styles.quietButton} onClick={resetDraft}>
               Reset inferred edits
             </button>
@@ -974,6 +1031,17 @@ export function CutEditor({
                 ? "Chrome on iOS streams directly by default and retries with private browser storage only if the stream fails."
                 : "Desktop and Android use the standard native file or private browser storage path."}
             </p>
+            <p>
+              Model feedback JSON contains source-aligned features, probability traces, untouched
+              inference ranges, corrections, and final ranges—never video bytes. Disabled model
+              ranges are labeled false positives; included manual ranges are labeled false negatives.
+            </p>
+            {!initialAnalysis.features && (
+              <strong>
+                This saved analysis predates feature capture. Its feedback file will still contain
+                inference and corrections, but not the feature matrix.
+              </strong>
+            )}
             {!localExportSupported && (
               <strong>
                 MP4 export requires video/audio WebCodecs encoders and writable local storage.

@@ -36,7 +36,8 @@ import {
   projectSource,
   putProject,
   SELECTED_PROJECT_STORAGE_KEY,
-  sourceMatchesFile,
+  sourceCanReconnectFile,
+  sourceFileFingerprint,
   type VolleyCutProject,
 } from "@/lib/project-store";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
@@ -452,8 +453,18 @@ export function App() {
     )
       return;
 
+    const source = project.source.fingerprint
+      ? project.source
+      : {
+          ...project.source,
+          fingerprint: await sourceFileFingerprint(sourceFile).catch(
+            () => undefined,
+          ),
+        };
+    if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
     const running: VolleyCutProject = {
       ...project,
+      source,
       status: "analyzing",
       error: null,
       updatedAt: new Date().toISOString(),
@@ -572,7 +583,7 @@ export function App() {
     selected: File | null,
   ) {
     if (!selected) return;
-    if (!sourceMatchesFile(project.source, selected)) {
+    if (!(await sourceCanReconnectFile(project.source, selected))) {
       setError(
         `Choose the original ${project.source.name} file (${compactBytes(project.source.size)}). The selected file does not match this project.`,
       );
@@ -654,6 +665,10 @@ export function App() {
       width: selectedProject.info.width,
       height: selectedProject.info.height,
       sourceFilename: selectedProject.source.name,
+      source: selectedProject.source,
+      mediaInfo: selectedProject.info,
+      roi: selectedProject.roi,
+      runtimeVariant: DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
       videoUrl: selectedVideoUrl,
       rallies: selectedProject.analysis.intervals,
       ignoredIntervals: [
@@ -672,6 +687,22 @@ export function App() {
             }]
           : []),
       ],
+      features:
+        selectedProject.analysis.featureNames && selectedProject.analysis.featureValues
+          ? {
+              times: selectedProject.analysis.times,
+              values: selectedProject.analysis.featureValues,
+              rows: selectedProject.analysis.times.length,
+              columns: selectedProject.analysis.featureNames.length,
+              names: selectedProject.analysis.featureNames,
+            }
+          : null,
+      inferenceTimes: selectedProject.analysis.times,
+      probabilities: {
+        rally: selectedProject.analysis.rallyProbabilities,
+        serve: selectedProject.analysis.serveProbabilities,
+        deadState: selectedProject.analysis.deadStateProbabilities,
+      },
     };
   }, [selectedProject, selectedVideoUrl]);
 

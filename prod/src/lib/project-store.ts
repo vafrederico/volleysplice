@@ -22,6 +22,7 @@ export type ProjectSource = {
   size: number;
   lastModified: number;
   type: string;
+  fingerprint?: string;
 };
 
 export type ProjectStatus =
@@ -100,6 +101,39 @@ export function projectSource(file: File): ProjectSource {
   };
 }
 
+const SOURCE_FINGERPRINT_SAMPLE_BYTES = 1024 * 1024;
+
+function hex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes), (value) =>
+    value.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+/**
+ * A transfer-stable identity without reading a multi-gigabyte source in full.
+ * The file size and up to 1 MiB from each end are hashed together.
+ */
+export async function sourceFileFingerprint(file: File): Promise<string> {
+  const wholeFile = file.size <= SOURCE_FINGERPRINT_SAMPLE_BYTES * 2;
+  const first = new Uint8Array(
+    await file.slice(
+      0,
+      wholeFile ? file.size : SOURCE_FINGERPRINT_SAMPLE_BYTES,
+    ).arrayBuffer(),
+  );
+  const last = wholeFile
+    ? new Uint8Array(0)
+    : new Uint8Array(
+        await file.slice(file.size - SOURCE_FINGERPRINT_SAMPLE_BYTES).arrayBuffer(),
+      );
+  const payload = new Uint8Array(8 + first.length + last.length);
+  new DataView(payload.buffer).setBigUint64(0, BigInt(file.size), true);
+  payload.set(first, 8);
+  payload.set(last, 8 + first.length);
+  const digest = await crypto.subtle.digest("SHA-256", payload);
+  return `sampled-sha256-v1:${hex(digest)}`;
+}
+
 export function projectId(
   source: ProjectSource,
   info: OnDeviceMediaInfo,
@@ -126,6 +160,19 @@ export function sourceMatchesFile(source: ProjectSource, file: File): boolean {
     source.size === file.size &&
     source.lastModified === file.lastModified
   );
+}
+
+export async function sourceCanReconnectFile(
+  source: ProjectSource,
+  file: File,
+): Promise<boolean> {
+  if (sourceMatchesFile(source, file)) return true;
+  if (!source.fingerprint || source.size !== file.size) return false;
+  try {
+    return source.fingerprint === await sourceFileFingerprint(file);
+  } catch {
+    return false;
+  }
 }
 
 function finite(value: unknown): value is number {
@@ -182,6 +229,17 @@ function validAnalysisWindow(value: unknown, duration: number): value is Analysi
 function validAnalysis(value: unknown): value is OnDeviceAnalysis {
   if (!value || typeof value !== "object") return false;
   const analysis = value as Partial<OnDeviceAnalysis>;
+  const featureNames = analysis.featureNames;
+  const featureValues = analysis.featureValues;
+  const featuresMissing = featureNames === undefined && featureValues === undefined;
+  const featuresValid =
+    Array.isArray(featureNames) &&
+    featureNames.length > 0 &&
+    featureNames.every((name) => typeof name === "string" && name.length > 0) &&
+    new Set(featureNames).size === featureNames.length &&
+    featureValues instanceof Float32Array &&
+    analysis.times instanceof Float64Array &&
+    featureValues.length === analysis.times.length * featureNames.length;
   return (
     typeof analysis.modelId === "string" &&
     analysis.modelId.length > 0 &&
@@ -201,9 +259,13 @@ function validAnalysis(value: unknown): value is OnDeviceAnalysis {
           interval.agreement === "previous-production-only"),
     ) &&
     analysis.times instanceof Float64Array &&
+    (featuresMissing || featuresValid) &&
     analysis.rallyProbabilities instanceof Float32Array &&
     analysis.serveProbabilities instanceof Float32Array &&
-    analysis.deadStateProbabilities instanceof Float32Array
+    analysis.deadStateProbabilities instanceof Float32Array &&
+    analysis.rallyProbabilities.length === analysis.times.length &&
+    analysis.serveProbabilities.length === analysis.times.length &&
+    analysis.deadStateProbabilities.length === analysis.times.length
   );
 }
 
@@ -226,6 +288,9 @@ function validProject(value: unknown): value is VolleyCutProject {
     finite(project.source?.size) &&
     finite(project.source?.lastModified) &&
     typeof project.source?.type === "string" &&
+    (project.source?.fingerprint === undefined ||
+      (typeof project.source.fingerprint === "string" &&
+        /^sampled-sha256-v1:[0-9a-f]{64}$/.test(project.source.fingerprint))) &&
     validInfo(project.info) &&
     (project.analysisWindow === undefined ||
       validAnalysisWindow(project.analysisWindow, project.info.duration)) &&

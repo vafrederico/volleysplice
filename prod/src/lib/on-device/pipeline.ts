@@ -762,6 +762,8 @@ export async function analyzeOpenedMedia(
     featurePath,
     intervals,
     times: sequence.times,
+    featureNames: [...sequence.names],
+    featureValues: sequence.values,
     rallyProbabilities: allLabelsInference.probabilities.rally,
     serveProbabilities: allLabelsInference.probabilities.serve,
     deadStateProbabilities: allLabelsInference.probabilities.deadState,

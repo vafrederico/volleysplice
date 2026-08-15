@@ -22,6 +22,8 @@ import {
   normalizeStoredProject,
   projectAnalysisId,
   projectId,
+  sourceCanReconnectFile,
+  sourceFileFingerprint,
   sourceMatchesFile,
   type ProjectSource,
   type VolleyCutProject,
@@ -156,6 +158,34 @@ test("reconnected files must match name, size, and modification time", () => {
     sourceMatchesFile(source, { ...matching, name: "other.mp4" } as File),
     false,
   );
+});
+
+test("sampled source fingerprints reconnect identical transferred files", async () => {
+  const bytes = new Uint8Array(2_200_000);
+  bytes.fill(23, 0, 1_100_000);
+  bytes.fill(91, 1_100_000);
+  const original = new File([bytes], "original.mp4", {
+    type: "video/mp4",
+    lastModified: 100,
+  });
+  const transferred = new File([bytes], "renamed.mp4", {
+    type: "video/mp4",
+    lastModified: 200,
+  });
+  const changed = new File([bytes.slice(0, -1), new Uint8Array([92])], "renamed.mp4", {
+    type: "video/mp4",
+    lastModified: 200,
+  });
+  const fingerprint = await sourceFileFingerprint(original);
+  const fingerprintSource: ProjectSource = {
+    name: original.name,
+    size: original.size,
+    lastModified: original.lastModified,
+    type: original.type,
+    fingerprint,
+  };
+  assert.equal(await sourceCanReconnectFile(fingerprintSource, transferred), true);
+  assert.equal(await sourceCanReconnectFile(fingerprintSource, changed), false);
 });
 
 test("audio feature caches are isolated by source and analysis timestamps", () => {

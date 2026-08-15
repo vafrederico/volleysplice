@@ -8,6 +8,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Local production-app proxy
+
+When the production app is served on port 3000, it is available through the
+reverse proxy at `https://internal.example`.
+
 ## Rally-model iteration ranking
 
 When comparing or selecting rally-model, decoder, threshold, padding, epoch, or seed

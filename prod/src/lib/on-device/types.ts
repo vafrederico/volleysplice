@@ -106,6 +106,8 @@ export type OnDeviceAnalysis = {
   featurePath: "local-source";
   intervals: OnDeviceInterval[];
   times: Float64Array;
+  featureNames?: string[];
+  featureValues?: Float32Array;
   rallyProbabilities: Float32Array;
   serveProbabilities: Float32Array;
   deadStateProbabilities: Float32Array;
