@@ -475,8 +475,8 @@ private fun EmptyEditorScreen(sourceControls: @Composable () -> Unit) {
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("VOLLEYCUT", color = Orange, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             Text("Native cut editor", fontSize = 28.sp, fontWeight = FontWeight.Bold)
@@ -755,7 +755,7 @@ private fun EditorScreen(
             Card(colors = CardDefaults.cardColors(containerColor = Color.Black)) {
                 ContentFrame(
                     player = player,
-                    modifier = Modifier.fillMaxWidth().height(224.dp),
+                    modifier = Modifier.fillMaxWidth().height(176.dp),
                     surfaceType = SURFACE_TYPE_SURFACE_VIEW,
                 )
             }
@@ -778,8 +778,8 @@ private fun EditorScreen(
                 onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
             )
 
-            SectionCard("WHOLE RECORDING", "Tap a range to select · drag to scrub") {
-                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, onChange = { threshold ->
+            SectionCard("WHOLE RECORDING", "Tap a range · drag to scrub", compact = true) {
+                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, compact = true, onChange = { threshold ->
                     updateDraft { it.copy(confidenceReviewThreshold = threshold) }
                 }, onReviewNext = {
                     if (lowConfidence.isNotEmpty()) {
@@ -792,7 +792,8 @@ private fun EditorScreen(
                     }
                 })
                 WholeTimeline(
-                    durationMs = seed.durationMs,
+                    windowStartMs = 0,
+                    windowEndMs = seed.durationMs / 2,
                     cuts = sortedCuts,
                     ignored = draft.ignoredIntervals,
                     selectedId = selected?.id,
@@ -804,13 +805,29 @@ private fun EditorScreen(
                         seekTo(time)
                     },
                 )
-                TimelineLabels(0, seed.durationMs / 2, seed.durationMs)
+                TimelineLabels(0, seed.durationMs / 4, seed.durationMs / 2)
+                WholeTimeline(
+                    windowStartMs = seed.durationMs / 2,
+                    windowEndMs = seed.durationMs,
+                    cuts = sortedCuts,
+                    ignored = draft.ignoredIntervals,
+                    selectedId = selected?.id,
+                    effectiveIds = effectiveIds,
+                    confidenceThreshold = draft.confidenceReviewThreshold,
+                    playheadMs = playbackPositionMs,
+                    onSeek = { time, id ->
+                        id?.let { selectedId = it }
+                        seekTo(time)
+                    },
+                )
+                TimelineLabels(seed.durationMs / 2, seed.durationMs * 3 / 4, seed.durationMs)
             }
 
             SectionCard(
                 "FOCUSED RANGE",
                 selected?.let { "${it.id} · ${if (it.origin == CutOrigin.MANUAL) "Manual" else "${(it.confidence * 100).roundToInt()}% confidence"}" }
                     ?: "No range selected",
+                compact = true,
             ) {
                 if (selected == null) {
                     Text("Add a missed cut at the current playhead to begin.", color = Muted)
@@ -822,6 +839,9 @@ private fun EditorScreen(
                         Text("${selectedIndex + 1} / ${sortedCuts.size}", Modifier.padding(horizontal = 8.dp))
                         SmallButton("Next", enabled = selectedIndex < sortedCuts.lastIndex) {
                             sortedCuts.getOrNull(selectedIndex + 1)?.let { selectedId = it.id; seekTo(it.keepStartMs) }
+                        }
+                        SmallButton(if (selected.included) "Disable rally" else "Enable rally") {
+                            updateCut(selected.id) { it.copy(included = !it.included) }
                         }
                         Spacer(Modifier.weight(1f))
                         Checkbox(checked = focusLocked, onCheckedChange = { focusLocked = it })
@@ -845,9 +865,6 @@ private fun EditorScreen(
                         setBoundary("end", selected.keepEndMs + delta)
                     }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { updateCut(selected.id) { it.copy(included = !it.included) } }) {
-                            Text(if (selected.included) "Remove range" else "Restore range")
-                        }
                         OutlinedButton(onClick = {
                             updateDraft { it.copy(finalPreviewEnabled = false) }
                             seekTo(selected.keepStartMs)
@@ -999,11 +1016,33 @@ private fun EditorHeader(seed: EditorSeed, outputMs: Long, kept: Int, removed: I
 }
 
 @Composable
-private fun SectionCard(label: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
+private fun SectionCard(
+    label: String,
+    subtitle: String,
+    compact: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(label, color = Orange, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-            Text(subtitle, fontWeight = FontWeight.SemiBold)
+        Column(
+            Modifier.fillMaxWidth().padding(if (compact) 10.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 10.dp),
+        ) {
+            if (compact) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        label,
+                        Modifier.weight(1f),
+                        color = Orange,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = .7.sp,
+                    )
+                    Text(subtitle, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            } else {
+                Text(label, color = Orange, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Text(subtitle, fontWeight = FontWeight.SemiBold)
+            }
             content()
         }
     }
@@ -1019,7 +1058,7 @@ private fun PlayerControls(
     onSeekBy: (Long) -> Unit,
     onRate: (Float) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(preciseTime(positionMs), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
             Text(" / ${preciseTime(durationMs)}", fontFamily = FontFamily.Monospace, color = Muted)
@@ -1054,20 +1093,41 @@ private fun PaddingControl(label: String, valueMs: Long, onChange: (Long) -> Uni
 }
 
 @Composable
-private fun ConfidenceControl(value: Float, count: Int, onChange: (Float) -> Unit, onReviewNext: () -> Unit) {
-    Column {
+private fun ConfidenceControl(
+    value: Float,
+    count: Int,
+    compact: Boolean = false,
+    onChange: (Float) -> Unit,
+    onReviewNext: () -> Unit,
+) {
+    if (compact) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Highlight below ${(value * 100).roundToInt()}%", Modifier.weight(1f), fontSize = 13.sp)
-            Text("$count ranges", color = Muted, fontSize = 12.sp)
-            TextButton(enabled = count > 0, onClick = onReviewNext) { Text("Review next") }
+            Text("Low <${(value * 100).roundToInt()}%", fontSize = 11.sp)
+            Slider(
+                value = value,
+                onValueChange = onChange,
+                modifier = Modifier.weight(1f).height(32.dp),
+                valueRange = 0f..1f,
+                steps = 99,
+            )
+            SmallButton("Review $count", enabled = count > 0, onClick = onReviewNext)
         }
-        Slider(value = value, onValueChange = onChange, valueRange = 0f..1f, steps = 99)
+    } else {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Highlight below ${(value * 100).roundToInt()}%", Modifier.weight(1f), fontSize = 13.sp)
+                Text("$count ranges", color = Muted, fontSize = 12.sp)
+                TextButton(enabled = count > 0, onClick = onReviewNext) { Text("Review next") }
+            }
+            Slider(value = value, onValueChange = onChange, valueRange = 0f..1f, steps = 99)
+        }
     }
 }
 
 @Composable
 private fun WholeTimeline(
-    durationMs: Long,
+    windowStartMs: Long,
+    windowEndMs: Long,
     cuts: List<EditableCut>,
     ignored: List<IgnoredSourceInterval>,
     selectedId: String?,
@@ -1079,21 +1139,24 @@ private fun WholeTimeline(
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
-        fun timeAt(x: Float) = ((x / widthPx).coerceIn(0f, 1f) * durationMs).roundToLong()
+        val windowSpanMs = (windowEndMs - windowStartMs).coerceAtLeast(1)
+        fun timeAt(x: Float) = windowStartMs +
+            ((x / widthPx).coerceIn(0f, 1f) * windowSpanMs).roundToLong()
+        fun xAt(timeMs: Long) = (timeMs - windowStartMs).toFloat() / windowSpanMs * widthPx
         Canvas(
             Modifier
                 .fillMaxWidth()
-                .height(74.dp)
+                .height(34.dp)
                 .clip(RoundedCornerShape(9.dp))
                 .background(Rail)
-                .pointerInput(durationMs, cuts) {
+                .pointerInput(windowStartMs, windowEndMs, cuts) {
                     detectTapGestures { offset ->
                         val time = timeAt(offset.x)
                         val cut = cuts.lastOrNull { time in it.keepStartMs..it.keepEndMs }
                         onSeek(time, cut?.id)
                     }
                 }
-                .pointerInput(durationMs) {
+                .pointerInput(windowStartMs, windowEndMs) {
                     detectHorizontalDragGestures(
                         onDragStart = { onSeek(timeAt(it.x), null) },
                         onHorizontalDrag = { change, _ -> change.consume(); onSeek(timeAt(change.position.x), null) },
@@ -1101,13 +1164,19 @@ private fun WholeTimeline(
                 },
         ) {
             ignored.forEach { interval ->
-                val x = interval.startMs.toFloat() / durationMs * size.width
-                val width = max(1f, (interval.endMs - interval.startMs).toFloat() / durationMs * size.width)
+                val clippedStart = max(interval.startMs, windowStartMs)
+                val clippedEnd = min(interval.endMs, windowEndMs)
+                if (clippedEnd <= clippedStart) return@forEach
+                val x = xAt(clippedStart)
+                val width = max(1f, xAt(clippedEnd) - x)
                 drawRect(Danger.copy(alpha = .26f), Offset(x, 0f), Size(width, size.height))
             }
             cuts.forEach { cut ->
-                val x = cut.keepStartMs.toFloat() / durationMs * size.width
-                val width = max(2f, (cut.keepEndMs - cut.keepStartMs).toFloat() / durationMs * size.width)
+                val clippedStart = max(cut.keepStartMs, windowStartMs)
+                val clippedEnd = min(cut.keepEndMs, windowEndMs)
+                if (clippedEnd <= clippedStart) return@forEach
+                val x = xAt(clippedStart)
+                val width = max(2f, xAt(clippedEnd) - x)
                 val low = cut.origin == CutOrigin.INFERRED && cut.confidence < confidenceThreshold
                 val color = when {
                     !cut.included -> Muted.copy(alpha = .55f)
@@ -1116,15 +1185,21 @@ private fun WholeTimeline(
                     else -> PaleGreen
                 }
                 drawRoundRect(color, Offset(x, 16f), Size(width, size.height - 32f), CornerRadius(6f))
-                val coreX = cut.coreStartMs.toFloat() / durationMs * size.width
-                val coreWidth = max(1f, (cut.coreEndMs - cut.coreStartMs).toFloat() / durationMs * size.width)
-                drawRoundRect(if (cut.included) Green else Muted, Offset(coreX, 24f), Size(coreWidth, size.height - 48f), CornerRadius(4f))
+                val clippedCoreStart = max(cut.coreStartMs, windowStartMs)
+                val clippedCoreEnd = min(cut.coreEndMs, windowEndMs)
+                if (clippedCoreEnd > clippedCoreStart) {
+                    val coreX = xAt(clippedCoreStart)
+                    val coreWidth = max(1f, xAt(clippedCoreEnd) - coreX)
+                    drawRoundRect(if (cut.included) Green else Muted, Offset(coreX, 24f), Size(coreWidth, size.height - 48f), CornerRadius(4f))
+                }
                 if (cut.id == selectedId) {
                     drawRoundRect(Orange, Offset(x, 13f), Size(width, size.height - 26f), CornerRadius(7f), style = Stroke(4f))
                 }
             }
-            val playheadX = playheadMs.toFloat() / durationMs * size.width
-            drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
+            if (playheadMs in windowStartMs..windowEndMs) {
+                val playheadX = xAt(playheadMs)
+                drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
+            }
         }
     }
 }
@@ -1140,7 +1215,7 @@ private fun FocusTimeline(
     onStartChange: (Long) -> Unit,
     onEndChange: (Long) -> Unit,
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth().height(102.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(44.dp)) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val span = (window.endMs - window.startMs).coerceAtLeast(1)
@@ -1179,7 +1254,7 @@ private fun FocusTimeline(
             val playheadX = xAt(playheadMs).coerceIn(0f, size.width)
             drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f)
         }
-        val handleWidth = 30.dp
+        val handleWidth = 20.dp
         val handlePx = with(density) { handleWidth.toPx() }
         val deltaToMs = { delta: Float -> (delta / widthPx * span).roundToLong() }
         Box(
@@ -1212,11 +1287,11 @@ private fun FocusTimeline(
 @Composable
 private fun TimelineLabels(start: Long, middle: Long, end: Long) {
     Row(Modifier.fillMaxWidth()) {
-        Text(compactTime(start), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted)
+        Text(compactTime(start), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = Muted)
         Spacer(Modifier.weight(1f))
-        Text(compactTime(middle), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted)
+        Text(compactTime(middle), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = Muted)
         Spacer(Modifier.weight(1f))
-        Text(compactTime(end), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted)
+        Text(compactTime(end), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = Muted)
     }
 }
 
