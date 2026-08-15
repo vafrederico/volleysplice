@@ -1,0 +1,261 @@
+import type {
+  NormalizedRoi,
+  OnDeviceAnalysis,
+  OnDeviceMediaInfo,
+} from "./on-device/types.ts";
+
+const DATABASE_NAME = "volleycut-projects";
+const DATABASE_VERSION = 1;
+const PROJECT_STORE = "projects";
+
+export const SELECTED_PROJECT_STORAGE_KEY = "volleycut:selected-project:v1";
+
+export type ProjectSource = {
+  name: string;
+  size: number;
+  lastModified: number;
+  type: string;
+};
+
+export type ProjectStatus =
+  | "queued"
+  | "analyzing"
+  | "waiting"
+  | "ready"
+  | "error";
+
+export type VolleyCutProject = {
+  schemaVersion: 1;
+  id: string;
+  source: ProjectSource;
+  info: OnDeviceMediaInfo;
+  roi: NormalizedRoi;
+  status: ProjectStatus;
+  analysis: OnDeviceAnalysis | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.addEventListener("success", () => resolve(request.result), {
+      once: true,
+    });
+    request.addEventListener("error", () => reject(request.error), {
+      once: true,
+    });
+  });
+}
+
+function transactionComplete(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.addEventListener("complete", () => resolve(), { once: true });
+    transaction.addEventListener("abort", () => reject(transaction.error), {
+      once: true,
+    });
+    transaction.addEventListener("error", () => reject(transaction.error), {
+      once: true,
+    });
+  });
+}
+
+function openProjectDatabase(): Promise<IDBDatabase> {
+  if (!("indexedDB" in globalThis)) {
+    return Promise.reject(new Error("IndexedDB is unavailable."));
+  }
+  const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+  request.addEventListener("upgradeneeded", () => {
+    const database = request.result;
+    if (!database.objectStoreNames.contains(PROJECT_STORE)) {
+      database.createObjectStore(PROJECT_STORE, { keyPath: "id" });
+    }
+  });
+  return requestResult(request);
+}
+
+function hashText(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export function projectSource(file: File): ProjectSource {
+  return {
+    name: file.name,
+    size: file.size,
+    lastModified: file.lastModified,
+    type: file.type,
+  };
+}
+
+export function projectId(
+  source: ProjectSource,
+  info: OnDeviceMediaInfo,
+): string {
+  return `project-${hashText(
+    `${source.name}\u0000${source.size}\u0000${source.lastModified}\u0000${info.duration}`,
+  )}`;
+}
+
+export function projectAnalysisId(project: VolleyCutProject): string | null {
+  return project.analysis
+    ? `${project.id}-${project.analysis.modelId}-${project.analysis.featurePath}`
+    : null;
+}
+
+export function sourceMatchesFile(source: ProjectSource, file: File): boolean {
+  return (
+    source.name === file.name &&
+    source.size === file.size &&
+    source.lastModified === file.lastModified
+  );
+}
+
+function finite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function validInfo(value: unknown): value is OnDeviceMediaInfo {
+  if (!value || typeof value !== "object") return false;
+  const info = value as Partial<OnDeviceMediaInfo>;
+  return (
+    finite(info.duration) &&
+    info.duration > 0 &&
+    finite(info.width) &&
+    info.width > 0 &&
+    finite(info.height) &&
+    info.height > 0 &&
+    typeof info.mimeType === "string" &&
+    typeof info.videoCodec === "string" &&
+    typeof info.canDecodeVideo === "boolean" &&
+    typeof info.hasAudio === "boolean" &&
+    typeof info.canDecodeAudio === "boolean"
+  );
+}
+
+function validRoi(value: unknown): value is NormalizedRoi {
+  if (!value || typeof value !== "object") return false;
+  const roi = value as Partial<NormalizedRoi>;
+  return (
+    finite(roi.x) &&
+    finite(roi.y) &&
+    finite(roi.width) &&
+    finite(roi.height) &&
+    roi.x >= 0 &&
+    roi.y >= 0 &&
+    roi.width > 0 &&
+    roi.height > 0 &&
+    roi.x + roi.width <= 1.000_001 &&
+    roi.y + roi.height <= 1.000_001
+  );
+}
+
+function validAnalysis(value: unknown): value is OnDeviceAnalysis {
+  if (!value || typeof value !== "object") return false;
+  const analysis = value as Partial<OnDeviceAnalysis>;
+  return (
+    typeof analysis.modelId === "string" &&
+    analysis.modelId.length > 0 &&
+    analysis.featurePath === "local-source" &&
+    Array.isArray(analysis.intervals) &&
+    analysis.intervals.every(
+      (interval) =>
+        interval &&
+        typeof interval.id === "string" &&
+        finite(interval.start) &&
+        finite(interval.end) &&
+        finite(interval.confidence) &&
+        typeof interval.included === "boolean",
+    ) &&
+    analysis.times instanceof Float64Array &&
+    analysis.rallyProbabilities instanceof Float32Array &&
+    analysis.serveProbabilities instanceof Float32Array &&
+    analysis.deadStateProbabilities instanceof Float32Array
+  );
+}
+
+function validProject(value: unknown): value is VolleyCutProject {
+  if (!value || typeof value !== "object") return false;
+  const project = value as Partial<VolleyCutProject>;
+  const statuses: ProjectStatus[] = [
+    "queued",
+    "analyzing",
+    "waiting",
+    "ready",
+    "error",
+  ];
+  return (
+    project.schemaVersion === 1 &&
+    typeof project.id === "string" &&
+    project.id.length > 0 &&
+    Boolean(project.source) &&
+    typeof project.source?.name === "string" &&
+    finite(project.source?.size) &&
+    finite(project.source?.lastModified) &&
+    typeof project.source?.type === "string" &&
+    validInfo(project.info) &&
+    validRoi(project.roi) &&
+    typeof project.status === "string" &&
+    statuses.includes(project.status as ProjectStatus) &&
+    (project.analysis === null || validAnalysis(project.analysis)) &&
+    (project.error === null || typeof project.error === "string") &&
+    typeof project.createdAt === "string" &&
+    typeof project.updatedAt === "string" &&
+    (project.status !== "ready" || project.analysis !== null)
+  );
+}
+
+export async function listProjects(): Promise<VolleyCutProject[]> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readonly");
+    const complete = transactionComplete(transaction);
+    const values = await requestResult(
+      transaction.objectStore(PROJECT_STORE).getAll() as IDBRequest<unknown[]>,
+    );
+    await complete;
+    return values
+      .filter(validProject)
+      .map((project) =>
+        project.status === "queued" || project.status === "analyzing"
+          ? {
+              ...project,
+              status: "waiting" as const,
+              error: "Reconnect the source file to resume local inference.",
+            }
+          : project,
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  } finally {
+    database.close();
+  }
+}
+
+export async function putProject(project: VolleyCutProject): Promise<void> {
+  if (!validProject(project)) throw new Error("The project record is invalid.");
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    transaction.objectStore(PROJECT_STORE).put(project);
+    await complete;
+  } finally {
+    database.close();
+  }
+}
+
+export async function deleteProject(projectIdToDelete: string): Promise<void> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    transaction.objectStore(PROJECT_STORE).delete(projectIdToDelete);
+    await complete;
+  } finally {
+    database.close();
+  }
+}

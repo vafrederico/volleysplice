@@ -144,6 +144,35 @@
   font: 600 10px "Atkinson Hyperlegible Mono", monospace;
 }
 
+.attachSource {
+  position: relative;
+  min-height: 44px;
+  place-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--cut-ink);
+  background: var(--cut-acid);
+  color: var(--cut-ink) !important;
+  cursor: pointer;
+  font-weight: 700 !important;
+  text-align: center;
+}
+
+.attachSource input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.sourceError {
+  margin: 0 clamp(16px, 4vw, 56px) 18px;
+  padding: 12px 15px;
+  border-left: 5px solid var(--cut-orange);
+  background: #ffe1d8;
+  color: #7b2a17;
+  font: 600 10px/1.5 "Atkinson Hyperlegible Mono", monospace;
+}
+
 .editorShell {
   display: grid;
   gap: 14px;

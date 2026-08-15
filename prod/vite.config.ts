@@ -12,14 +12,17 @@ export default defineConfig({
   // any ordinary static host without a deployment-specific rebuild.
   base: "./",
   plugins: [react()],
-  server: httpsKey && httpsCertificate
-    ? {
-        https: {
-          key: readFileSync(httpsKey),
-          cert: readFileSync(httpsCertificate),
-        },
-      }
-    : undefined,
+  server: {
+    allowedHosts: ["internal.example"],
+    ...(httpsKey && httpsCertificate
+      ? {
+          https: {
+            key: readFileSync(httpsKey),
+            cert: readFileSync(httpsCertificate),
+          },
+        }
+      : {}),
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CutEditor } from "@/components/CutEditor";
+import { ProjectHeader } from "@/components/ProjectHeader";
 import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
+import { deleteFeatureCachesForSource } from "@/lib/on-device/feature-cache";
 import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
   analyzeOpenedMedia,
@@ -16,13 +18,27 @@ import type {
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
 } from "@/lib/on-device/types";
-import { holdScreenWakeLock, type WakeLockState } from "@/lib/on-device/wake-lock";
+import {
+  holdScreenWakeLock,
+  type WakeLockState,
+} from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
-import { runtimeAssetUrl } from "@/lib/runtime-assets";
+import {
+  deleteProject,
+  listProjects,
+  projectAnalysisId,
+  projectId,
+  projectSource,
+  putProject,
+  SELECTED_PROJECT_STORAGE_KEY,
+  sourceMatchesFile,
+  type VolleyCutProject,
+} from "@/lib/project-store";
+import { cutDraftStorageKeys } from "@/lib/cut-draft";
 
 import styles from "./App.module.css";
 
-type WorkState = "empty" | "opening" | "ready" | "analyzing" | "error";
+type WorkState = "empty" | "opening" | "ready" | "error";
 
 const COURT_CENTERED_ROI: NormalizedRoi = {
   x: 0.03,
@@ -57,12 +73,18 @@ function progressPercent(progress: AnalysisProgress | null): number {
   if (!progress) return 0;
   const fraction = progress.total > 0 ? progress.completed / progress.total : 0;
   switch (progress.stage) {
-    case "opening": return 2;
-    case "video": return Math.min(82, Math.max(3, fraction * 82));
-    case "audio": return 82 + Math.min(10, Math.max(0, fraction * 10));
-    case "normalizing": return 94;
-    case "inference": return 98;
-    case "complete": return 100;
+    case "opening":
+      return 2;
+    case "video":
+      return Math.min(82, Math.max(3, fraction * 82));
+    case "audio":
+      return 82 + Math.min(10, Math.max(0, fraction * 10));
+    case "normalizing":
+      return 94;
+    case "inference":
+      return 98;
+    case "complete":
+      return 100;
   }
 }
 
@@ -77,50 +99,87 @@ function clampRoi(roi: NormalizedRoi): NormalizedRoi {
   };
 }
 
-function localId(file: File, info: OnDeviceMediaInfo): string {
-  const source = `${file.name}\u0000${file.size}\u0000${file.lastModified}\u0000${info.duration}`;
-  let hash = 2166136261;
-  for (const character of source) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `local-${(hash >>> 0).toString(36)}`;
+function sortProjects(projects: VolleyCutProject[]): VolleyCutProject[] {
+  return [...projects].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt),
+  );
 }
 
 export function App() {
+  const [projects, setProjects] = useState<VolleyCutProject[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    null,
+  );
+  const [queueIds, setQueueIds] = useState<string[]>([]);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeProgress, setActiveProgress] = useState<AnalysisProgress | null>(
+    null,
+  );
+  const [activeElapsedSeconds, setActiveElapsedSeconds] = useState(0);
+  const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
+  const [filesRevision, setFilesRevision] = useState(0);
+
   const [workState, setWorkState] = useState<WorkState>("empty");
   const [file, setFile] = useState<File | null>(null);
   const [info, setInfo] = useState<OnDeviceMediaInfo | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [roi, setRoi] = useState<NormalizedRoi>(COURT_CENTERED_ROI);
-  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
+  const [candidateProgress, setCandidateProgress] =
+    useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
-  const openedMedia = useRef<OpenedMedia | null>(null);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+
+  const projectsRef = useRef<VolleyCutProject[]>([]);
+  const filesRef = useRef(new Map<string, File>());
+  const activeJobRef = useRef<string | null>(null);
+  const activeMediaRef = useRef<{
+    projectId: string;
+    media: OpenedMedia;
+  } | null>(null);
+  const deletedProjectIdsRef = useRef(new Set<string>());
   const previewUrlRef = useRef<string | null>(null);
-  const elapsedTimer = useRef<number | null>(null);
+  const elapsedTimerRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
   const resumePreviewAfterSeek = useRef(false);
 
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
     !safariUnsupported &&
-    "VideoDecoder" in window && "AudioDecoder" in window && "VideoFrame" in window;
+    "VideoDecoder" in window &&
+    "AudioDecoder" in window &&
+    "VideoFrame" in window;
   const secureContext = window.isSecureContext;
-  const busy = workState === "opening" || workState === "analyzing";
+  const busy = workState === "opening";
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ?? null;
+  const selectedSourceFile = selectedProjectId
+    ? (filesRef.current.get(selectedProjectId) ?? null)
+    : null;
 
-  useEffect(() => {
-    return () => {
-      openedMedia.current?.input.dispose();
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      if (elapsedTimer.current !== null) window.clearInterval(elapsedTimer.current);
-    };
-  }, []);
+  function replaceProjects(next: VolleyCutProject[]) {
+    const sorted = sortProjects(next);
+    projectsRef.current = sorted;
+    setProjects(sorted);
+  }
 
-  useEffect(() => {
-    if (analysis) window.scrollTo({ top: 0, behavior: "instant" });
-  }, [analysis]);
+  function commitProject(project: VolleyCutProject) {
+    const next = projectsRef.current.some(
+      (candidate) => candidate.id === project.id,
+    )
+      ? projectsRef.current.map((candidate) =>
+          candidate.id === project.id ? project : candidate,
+        )
+      : [...projectsRef.current, project];
+    replaceProjects(next);
+    void putProject(project).catch(() => {
+      if (mountedRef.current) {
+        setError(
+          "Browser project storage is unavailable. This project will last for this tab only.",
+        );
+      }
+    });
+  }
 
   function replacePreviewUrl(next: string | null) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -128,10 +187,105 @@ export function App() {
     setPreviewUrl(next);
   }
 
+  function resetCandidate() {
+    replacePreviewUrl(null);
+    setFile(null);
+    setInfo(null);
+    setRoi(COURT_CENTERED_ROI);
+    setCandidateProgress(null);
+    setError(null);
+    setWorkState("empty");
+    resumePreviewAfterSeek.current = false;
+  }
+
+  function selectProject(projectIdToSelect: string | null) {
+    setSelectedProjectId(projectIdToSelect);
+    setError(null);
+    if (projectIdToSelect === null) resetCandidate();
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: replaceProjects only writes through stable state setters and a ref.
+  useEffect(() => {
+    let active = true;
+    void listProjects()
+      .then((storedProjects) => {
+        if (!active) return;
+        replaceProjects(storedProjects);
+        let lastSelected: string | null = null;
+        try {
+          lastSelected = window.localStorage.getItem(
+            SELECTED_PROJECT_STORAGE_KEY,
+          );
+        } catch {
+          // Project selection still works when localStorage is restricted.
+        }
+        const initial =
+          storedProjects.find((project) => project.id === lastSelected) ??
+          storedProjects[0] ??
+          null;
+        setSelectedProjectId(initial?.id ?? null);
+      })
+      .catch(() => {
+        if (active) {
+          setError(
+            "Browser project storage is unavailable. New projects will last for this tab only.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setProjectsLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!projectsLoaded) return;
+    try {
+      if (selectedProjectId) {
+        window.localStorage.setItem(
+          SELECTED_PROJECT_STORAGE_KEY,
+          selectedProjectId,
+        );
+      } else {
+        window.localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+      }
+    } catch {
+      // Remembering the project selector is a convenience, not a workflow requirement.
+    }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [projectsLoaded, selectedProjectId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filesRevision intentionally invalidates the URL created from the file map ref.
+  useEffect(() => {
+    const source = selectedProjectId
+      ? filesRef.current.get(selectedProjectId)
+      : null;
+    const url = source ? URL.createObjectURL(source) : null;
+    setSelectedVideoUrl(url);
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [filesRevision, selectedProjectId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      activeMediaRef.current?.media.input.dispose();
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      if (elapsedTimerRef.current !== null)
+        window.clearInterval(elapsedTimerRef.current);
+    };
+  }, []);
+
   async function chooseFile(selected: File | null) {
     if (!selected) return;
     if (safariUnsupported) {
-      setError("Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.");
+      setError(
+        "Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.",
+      );
       setWorkState("error");
       return;
     }
@@ -145,15 +299,12 @@ export function App() {
       return;
     }
 
-    openedMedia.current?.input.dispose();
-    openedMedia.current = null;
     setFile(selected);
     setInfo(null);
-    setAnalysis(null);
     setRoi(COURT_CENTERED_ROI);
     setError(null);
     resumePreviewAfterSeek.current = false;
-    setProgress({
+    setCandidateProgress({
       stage: "opening",
       completed: 0,
       total: 1,
@@ -162,43 +313,116 @@ export function App() {
     setWorkState("opening");
     replacePreviewUrl(URL.createObjectURL(selected));
 
+    let opened: OpenedMedia | null = null;
     try {
-      const opened = await openLocalMedia(selected);
-      openedMedia.current = opened;
+      opened = await openLocalMedia(selected);
       setInfo(opened.info);
-      setProgress(null);
+      setCandidateProgress(null);
       setWorkState("ready");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
-      setProgress(null);
+      setCandidateProgress(null);
       setWorkState("error");
+    } finally {
+      opened?.input.dispose();
     }
   }
 
-  async function runAnalysis() {
-    if (!openedMedia.current || !file || !info || !previewUrl) return;
-    if (safariUnsupported) {
-      setError("Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.");
-      setWorkState("error");
+  function enqueueProject(projectIdToQueue: string) {
+    setQueueIds((current) =>
+      current.includes(projectIdToQueue)
+        ? current
+        : [...current, projectIdToQueue],
+    );
+  }
+
+  function createAndQueueProject() {
+    if (!file || !info) return;
+    const source = projectSource(file);
+    const id = projectId(source, info);
+    const existing = projectsRef.current.find((project) => project.id === id);
+    filesRef.current.set(id, file);
+    setFilesRevision((current) => current + 1);
+
+    if (existing?.status === "ready" && existing.analysis) {
+      setSelectedProjectId(id);
+      resetCandidate();
       return;
     }
-    setError(null);
-    setWorkState("analyzing");
-    setElapsedSeconds(0);
+
+    const now = new Date().toISOString();
+    const project: VolleyCutProject = {
+      schemaVersion: 1,
+      id,
+      source,
+      info,
+      roi,
+      status: "queued",
+      analysis: null,
+      error: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    commitProject(project);
+    setSelectedProjectId(id);
+    enqueueProject(id);
+    resetCandidate();
+  }
+
+  async function runProject(projectIdToRun: string) {
+    const project = projectsRef.current.find(
+      (candidate) => candidate.id === projectIdToRun,
+    );
+    const sourceFile = filesRef.current.get(projectIdToRun);
+    if (
+      !project ||
+      !sourceFile ||
+      deletedProjectIdsRef.current.has(projectIdToRun)
+    )
+      return;
+
+    const running: VolleyCutProject = {
+      ...project,
+      status: "analyzing",
+      error: null,
+      updatedAt: new Date().toISOString(),
+    };
+    commitProject(running);
+    setActiveProgress({
+      stage: "opening",
+      completed: 0,
+      total: 1,
+      detail: "Opening the local source for queued inference",
+    });
+    setActiveElapsedSeconds(0);
     const startedAt = performance.now();
-    elapsedTimer.current = window.setInterval(() => {
-      setElapsedSeconds((performance.now() - startedAt) / 1000);
+    elapsedTimerRef.current = window.setInterval(() => {
+      if (mountedRef.current)
+        setActiveElapsedSeconds((performance.now() - startedAt) / 1000);
     }, 500);
     const releaseWakeLock = await holdScreenWakeLock(setWakeLockState);
+    let opened: OpenedMedia | null = null;
     try {
-      const featurePath: OnDeviceAnalysis["featurePath"] = "local-source";
+      opened = await openLocalMedia(sourceFile);
+      activeMediaRef.current = { projectId: projectIdToRun, media: opened };
       const result = await analyzeOpenedMedia(
-        openedMedia.current,
-        roi,
-        featurePath,
+        opened,
+        running.roi,
+        "local-source" satisfies OnDeviceAnalysis["featurePath"],
         DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
-        setProgress,
-        { name: file.name, size: file.size, lastModified: file.lastModified },
+        (nextProgress) => {
+          if (
+            !deletedProjectIdsRef.current.has(projectIdToRun) &&
+            mountedRef.current
+          ) {
+            setActiveProgress(nextProgress);
+          }
+        },
+        {
+          name: sourceFile.name,
+          size: sourceFile.size,
+          lastModified: sourceFile.lastModified,
+        },
         {
           detailedProfiling: false,
           decodeStrategy: DEFAULT_VIDEO_DECODE_STRATEGY,
@@ -206,263 +430,490 @@ export function App() {
           reductionKernel: DEFAULT_FEATURE_REDUCTION_KERNEL,
         },
       );
-      const recordingId = localId(file, info);
-      setAnalysis({
-        id: `${recordingId}-${result.modelId}-${DEFAULT_ON_DEVICE_RUNTIME_VARIANT}`,
-        recordingId,
-        kind: "model",
-        modelId: result.modelId,
-        duration: info.duration,
-        width: info.width,
-        height: info.height,
-        sourceFilename: file.name,
-        videoUrl: previewUrl,
-        rallies: result.intervals,
-        ignoredIntervals: [],
-      });
-      openedMedia.current.input.dispose();
-      openedMedia.current = null;
-      setWorkState("ready");
+      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      const ready: VolleyCutProject = {
+        ...running,
+        status: "ready",
+        analysis: result,
+        error: null,
+        updatedAt: new Date().toISOString(),
+      };
+      commitProject(ready);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setWorkState("error");
+      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      const failed: VolleyCutProject = {
+        ...running,
+        status: "error",
+        error: cause instanceof Error ? cause.message : String(cause),
+        updatedAt: new Date().toISOString(),
+      };
+      commitProject(failed);
     } finally {
-      if (elapsedTimer.current !== null) window.clearInterval(elapsedTimer.current);
-      elapsedTimer.current = null;
-      setElapsedSeconds((performance.now() - startedAt) / 1000);
+      opened?.input.dispose();
+      if (activeMediaRef.current?.projectId === projectIdToRun)
+        activeMediaRef.current = null;
+      if (elapsedTimerRef.current !== null)
+        window.clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+      if (mountedRef.current)
+        setActiveElapsedSeconds((performance.now() - startedAt) / 1000);
       await releaseWakeLock();
+      if (deletedProjectIdsRef.current.has(projectIdToRun)) {
+        await deleteFeatureCachesForSource(running.source).catch(
+          () => undefined,
+        );
+      }
     }
   }
 
-  function startOver() {
-    openedMedia.current?.input.dispose();
-    openedMedia.current = null;
-    replacePreviewUrl(null);
-    setFile(null);
-    setInfo(null);
-    setAnalysis(null);
-    setProgress(null);
-    setError(null);
-    setElapsedSeconds(0);
-    setWakeLockState("idle");
-    setWorkState("empty");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the active-job ref serializes work while runProject reads the latest project and file refs.
+  useEffect(() => {
+    const next = queueIds[0];
+    if (!next || activeJobRef.current) return;
+    activeJobRef.current = next;
+    setActiveJobId(next);
+    void runProject(next).finally(() => {
+      activeJobRef.current = null;
+      if (mountedRef.current) {
+        setQueueIds((current) => current.filter((id) => id !== next));
+        setActiveJobId(null);
+        setActiveProgress(null);
+        setWakeLockState("idle");
+      }
+    });
+  }, [queueIds]);
+
+  function queueAttachedProject(project: VolleyCutProject) {
+    if (!filesRef.current.has(project.id)) return;
+    const queued: VolleyCutProject = {
+      ...project,
+      status: "queued",
+      error: null,
+      updatedAt: new Date().toISOString(),
+    };
+    commitProject(queued);
+    enqueueProject(project.id);
   }
 
-  if (analysis) {
+  async function attachSource(
+    project: VolleyCutProject,
+    selected: File | null,
+  ) {
+    if (!selected) return;
+    if (!sourceMatchesFile(project.source, selected)) {
+      setError(
+        `Choose the original ${project.source.name} file (${compactBytes(project.source.size)}). The selected file does not match this project.`,
+      );
+      return;
+    }
+    filesRef.current.set(project.id, selected);
+    setFilesRevision((current) => current + 1);
+    setError(null);
+    if (project.status !== "ready") {
+      queueAttachedProject(project);
+    }
+  }
+
+  async function removeSelectedProject() {
+    if (!selectedProject) return;
+    if (
+      !window.confirm(
+        `Delete ${selectedProject.source.name} (${selectedProject.id}) and its cached inference?`,
+      )
+    )
+      return;
+
+    deletedProjectIdsRef.current.add(selectedProject.id);
+    if (activeMediaRef.current?.projectId === selectedProject.id) {
+      activeMediaRef.current.media.input.dispose();
+    }
+    setQueueIds((current) => current.filter((id) => id !== selectedProject.id));
+    filesRef.current.delete(selectedProject.id);
+    setFilesRevision((current) => current + 1);
+    replaceProjects(
+      projectsRef.current.filter(
+        (project) => project.id !== selectedProject.id,
+      ),
+    );
+    setSelectedProjectId(null);
+    setError(null);
+
+    const analysisId = projectAnalysisId(selectedProject);
+    if (analysisId) {
+      try {
+        for (const key of cutDraftStorageKeys(analysisId))
+          window.localStorage.removeItem(key);
+      } catch {
+        // IndexedDB deletion remains useful if localStorage is restricted.
+      }
+    }
+    await Promise.allSettled([
+      deleteProject(selectedProject.id),
+      deleteFeatureCachesForSource(selectedProject.source),
+    ]);
+  }
+
+  const activePercent = progressPercent(activeProgress);
+  const queueLabel = activeJobId
+    ? `${projects.find((project) => project.id === activeJobId)?.source.name ?? "Project"} · ${Math.round(activePercent)}%${queueIds.length > 1 ? ` · ${queueIds.length - 1} queued` : ""}`
+    : queueIds.length > 0
+      ? `${queueIds.length} queued`
+      : null;
+  const projectHeader = (
+    <ProjectHeader
+      projects={projects}
+      selectedProjectId={selectedProjectId}
+      queueLabel={queueLabel}
+      onSelectProject={selectProject}
+      onDeleteProject={() => void removeSelectedProject()}
+    />
+  );
+
+  const productAnalysis = useMemo<ProductAnalysis | null>(() => {
+    if (!selectedProject?.analysis || selectedProject.status !== "ready")
+      return null;
+    return {
+      id: projectAnalysisId(selectedProject)!,
+      recordingId: selectedProject.id,
+      kind: "model",
+      modelId: selectedProject.analysis.modelId,
+      duration: selectedProject.info.duration,
+      width: selectedProject.info.width,
+      height: selectedProject.info.height,
+      sourceFilename: selectedProject.source.name,
+      videoUrl: selectedVideoUrl,
+      rallies: selectedProject.analysis.intervals,
+      ignoredIntervals: [],
+    };
+  }, [selectedProject, selectedVideoUrl]);
+
+  if (selectedProject && productAnalysis) {
     return (
       <CutEditor
-        key={analysis.id}
-        initialAnalysis={analysis}
-        sourceFile={file!}
-        onStartOver={startOver}
+        key={productAnalysis.id}
+        header={projectHeader}
+        initialAnalysis={productAnalysis}
+        sourceFile={selectedSourceFile}
+        sourceError={error}
+        onAttachSource={(selected) =>
+          void attachSource(selectedProject, selected)
+        }
       />
     );
   }
 
-  const percent = progressPercent(progress);
-  const featurePerformance = progress?.performance ?? null;
-  const featureRate = featurePerformance && featurePerformance.videoElapsedMs > 0
-    ? featurePerformance.generatedVideoSeconds / (featurePerformance.videoElapsedMs / 1000)
-    : null;
-  const analysisEtaSeconds = progress?.stage === "complete"
-    ? 0
-    : progress?.stage === "video" && featureRate && featureRate > 0
-      ? Math.max(0, progress.total - progress.completed) / featureRate
-      : elapsedSeconds >= 2 && percent > 2
-        ? elapsedSeconds * (100 - percent) / percent
-        : null;
+  const selectedIsActive = selectedProject?.id === activeJobId;
+  const displayedProgress = selectedIsActive
+    ? activeProgress
+    : candidateProgress;
+  const percent = progressPercent(displayedProgress);
+  const featurePerformance = displayedProgress?.performance ?? null;
+  const featureRate =
+    featurePerformance && featurePerformance.videoElapsedMs > 0
+      ? featurePerformance.generatedVideoSeconds /
+        (featurePerformance.videoElapsedMs / 1000)
+      : null;
+  const elapsedSeconds = selectedIsActive ? activeElapsedSeconds : 0;
+  const analysisEtaSeconds =
+    displayedProgress?.stage === "complete"
+      ? 0
+      : displayedProgress?.stage === "video" && featureRate && featureRate > 0
+        ? Math.max(0, displayedProgress.total - displayedProgress.completed) /
+          featureRate
+        : elapsedSeconds >= 2 && percent > 2
+          ? (elapsedSeconds * (100 - percent)) / percent
+          : null;
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <span className={styles.brand}>
-          <img src={runtimeAssetUrl("volleycut-logo.png")} alt="VolleyCut" />
-          <span>LOCAL CUT</span>
-        </span>
-        <div className={styles.capabilities}>
-          <span data-ok={secureContext || undefined}>HTTPS</span>
-          <span data-ok={webCodecsReady || undefined}>WebCodecs</span>
-          <span data-ok>Private by design</span>
-        </div>
-      </header>
+      {projectHeader}
 
-      <section className={styles.hero}>
-        <p>ONE PRIVATE WORKFLOW</p>
-        <h1>Load. Detect. <em>Refine.</em></h1>
-        <p className={styles.lede}>
-          Choose a volleyball video, generate audiovisual features and rally predictions
-          on this device, then refine every cut in the editor. The selected video is
-          never uploaded.
-        </p>
-        <div className={styles.pipeline} aria-label="Local processing pipeline">
-          <span><b>01</b> Local video</span><i>→</i>
-          <span><b>02</b> Browser features</span><i>→</i>
-          <span><b>03</b> Local inference</span><i>→</i>
-          <span><b>04</b> Cut editor</span>
-        </div>
-      </section>
-
-      {safariUnsupported && (
-        <p className={styles.notice} role="status">
-          <strong>Safari is not supported.</strong> Feature extraction is unreliable in Safari on macOS and iOS. Open VolleyCut in the latest Google Chrome instead.
-        </p>
-      )}
-      {!safariUnsupported && !secureContext && (
-        <p className={styles.notice}>
-          This page is not in a secure context. The interface is available, but local
-          media analysis needs HTTPS or localhost.
-        </p>
-      )}
-      {error && <p className={styles.error}>{error}</p>}
-
-      <section className={styles.importCard}>
-        <div>
-          <p>STEP 01 · SOURCE</p>
-          <h2>{file?.name ?? "Choose a volleyball video"}</h2>
-          <p>
-            {file
-              ? `${compactBytes(file.size)} · read directly from this browser tab`
-              : "MP4, WebM, MOV, MKV, and other browser-decodable containers are supported."}
-          </p>
-        </div>
-        <label className={styles.fileButton} data-disabled={busy || safariUnsupported || undefined}>
-          {file ? "Choose another" : "Choose video"}
-          <input
-            type="file"
-            accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
-            disabled={busy || safariUnsupported}
-            onChange={(event) => void chooseFile(event.currentTarget.files?.[0] ?? null)}
-          />
-        </label>
-      </section>
-
-      {info && previewUrl && (
-        <section className={styles.workspace}>
-          <div className={styles.viewer}>
-            <div
-              className={styles.videoStage}
-              style={{ aspectRatio: `${info.width} / ${info.height}` }}
-            >
-              <video
-                src={previewUrl}
-                controls
-                preload="metadata"
-                playsInline
-                onPlay={() => {
-                  resumePreviewAfterSeek.current = true;
-                }}
-                onPause={(event) => {
-                  if (!event.currentTarget.seeking) resumePreviewAfterSeek.current = false;
-                }}
-                onEnded={() => {
-                  resumePreviewAfterSeek.current = false;
-                }}
-                onSeeked={(event) => {
-                  if (resumePreviewAfterSeek.current) {
-                    void event.currentTarget.play().catch(() => undefined);
-                  }
-                }}
-              />
-              <div
-                className={styles.roiBox}
-                style={{
-                  left: `${roi.x * 100}%`,
-                  top: `${roi.y * 100}%`,
-                  width: `${roi.width * 100}%`,
-                  height: `${roi.height * 100}%`,
-                }}
-              >
-                <span>FEATURE CROP</span>
-              </div>
-            </div>
-          </div>
-
-          <aside className={styles.inspector}>
-            <p>STEP 02 · FEATURES</p>
-            <h2>Confirm the camera crop</h2>
-            <dl>
-              <div><dt>Duration</dt><dd>{formatDuration(info.duration)}</dd></div>
-              <div><dt>Frame</dt><dd>{info.width} × {info.height}</dd></div>
-              <div><dt>Video</dt><dd>{info.videoCodecString ?? info.videoCodec}</dd></div>
-              <div><dt>Audio</dt><dd>{info.hasAudio ? info.audioCodec ?? "Available" : "No track"}</dd></div>
-            </dl>
-            <p className={styles.cropHelp}>
-              Keep the court and players inside the box. Exclude static borders, stands,
-              or neighboring courts when practical.
+      {!selectedProject && (
+        <>
+          <section className={styles.hero}>
+            <p>PRIVATE PROJECT WORKSPACE</p>
+            <h1>
+              Load. Detect. <em>Refine.</em>
+            </h1>
+            <p className={styles.lede}>
+              Queue volleyball videos for local inference, switch between
+              projects, and refine completed cuts while the next match generates
+              features in the background. Selected videos are never uploaded.
             </p>
-            <div className={styles.presetButtons}>
-              <button type="button" onClick={() => setRoi(COURT_CENTERED_ROI)}>
-                Court centered
-              </button>
-              <button type="button" onClick={() => setRoi(FULL_FRAME_ROI)}>
-                Full frame
-              </button>
-            </div>
-            <div className={styles.roiGrid}>
-              {(["x", "y", "width", "height"] as const).map((field) => (
-                <label key={field}>
-                  <span>{field} <output>{Math.round(roi[field] * 100)}%</output></span>
-                  <input
-                    aria-label={`Feature crop ${field}`}
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={roi[field]}
-                    onChange={(event) => setRoi(clampRoi({
-                      ...roi,
-                      [field]: Number(event.currentTarget.value),
-                    }))}
-                    disabled={busy}
-                  />
-                </label>
-              ))}
-            </div>
-            <button
-              className={styles.analyzeButton}
-              type="button"
-              onClick={() => void runAnalysis()}
-              disabled={busy || safariUnsupported}
+            <div
+              className={styles.pipeline}
+              role="group"
+              aria-label="Local processing pipeline"
             >
-              {workState === "analyzing" ? "Analyzing on this device…" : "Generate cuts locally"}
-            </button>
-            <small className={styles.runtimeNote}>
-              Bundled model · OpenCV worker · feature WASM · FFmpeg audio-resampler WASM
-            </small>
-          </aside>
+              <span>
+                <b>01</b> Local video
+              </span>
+              <i>→</i>
+              <span>
+                <b>02</b> Cached features
+              </span>
+              <i>→</i>
+              <span>
+                <b>03</b> Local inference
+              </span>
+              <i>→</i>
+              <span>
+                <b>04</b> Project editor
+              </span>
+            </div>
+          </section>
+
+          {safariUnsupported && (
+            <p className={styles.notice} role="status">
+              <strong>Safari is not supported.</strong> Feature extraction is
+              unreliable in Safari on macOS and iOS. Open VolleyCut in the
+              latest Google Chrome instead.
+            </p>
+          )}
+          {!safariUnsupported && !secureContext && (
+            <p className={styles.notice}>
+              This page is not in a secure context. The interface is available,
+              but local media analysis needs HTTPS or localhost.
+            </p>
+          )}
+          {error && <p className={styles.error}>{error}</p>}
+
+          <section className={styles.importCard}>
+            <div>
+              <p>STEP 01 · NEW PROJECT SOURCE</p>
+              <h2>{file?.name ?? "Choose a volleyball video"}</h2>
+              <p>
+                {file
+                  ? `${compactBytes(file.size)} · a project is created only when you queue inference`
+                  : "MP4, WebM, MOV, MKV, and other browser-decodable containers are supported."}
+              </p>
+            </div>
+            <label
+              className={styles.fileButton}
+              data-disabled={busy || safariUnsupported || undefined}
+            >
+              {file ? "Choose another" : "Choose video"}
+              <input
+                type="file"
+                accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
+                disabled={busy || safariUnsupported}
+                onChange={(event) =>
+                  void chooseFile(event.currentTarget.files?.[0] ?? null)
+                }
+              />
+            </label>
+          </section>
+
+          {info && previewUrl && (
+            <section className={styles.workspace}>
+              <div className={styles.viewer}>
+                <div
+                  className={styles.videoStage}
+                  style={{ aspectRatio: `${info.width} / ${info.height}` }}
+                >
+                  <video
+                    src={previewUrl}
+                    controls
+                    preload="metadata"
+                    playsInline
+                    onPlay={() => {
+                      resumePreviewAfterSeek.current = true;
+                    }}
+                    onPause={(event) => {
+                      if (!event.currentTarget.seeking)
+                        resumePreviewAfterSeek.current = false;
+                    }}
+                    onEnded={() => {
+                      resumePreviewAfterSeek.current = false;
+                    }}
+                    onSeeked={(event) => {
+                      if (resumePreviewAfterSeek.current) {
+                        void event.currentTarget.play().catch(() => undefined);
+                      }
+                    }}
+                  />
+                  <div
+                    className={styles.roiBox}
+                    style={{
+                      left: `${roi.x * 100}%`,
+                      top: `${roi.y * 100}%`,
+                      width: `${roi.width * 100}%`,
+                      height: `${roi.height * 100}%`,
+                    }}
+                  >
+                    <span>FEATURE CROP</span>
+                  </div>
+                </div>
+              </div>
+
+              <aside className={styles.inspector}>
+                <p>STEP 02 · PROJECT FEATURES</p>
+                <h2>Confirm the camera crop</h2>
+                <dl>
+                  <div>
+                    <dt>Duration</dt>
+                    <dd>{formatDuration(info.duration)}</dd>
+                  </div>
+                  <div>
+                    <dt>Frame</dt>
+                    <dd>
+                      {info.width} × {info.height}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Video</dt>
+                    <dd>{info.videoCodecString ?? info.videoCodec}</dd>
+                  </div>
+                  <div>
+                    <dt>Audio</dt>
+                    <dd>
+                      {info.hasAudio
+                        ? (info.audioCodec ?? "Available")
+                        : "No track"}
+                    </dd>
+                  </div>
+                </dl>
+                <p className={styles.cropHelp}>
+                  Keep the court and players inside the box. Exclude static
+                  borders, stands, or neighboring courts when practical.
+                </p>
+                <div className={styles.presetButtons}>
+                  <button
+                    type="button"
+                    onClick={() => setRoi(COURT_CENTERED_ROI)}
+                  >
+                    Court centered
+                  </button>
+                  <button type="button" onClick={() => setRoi(FULL_FRAME_ROI)}>
+                    Full frame
+                  </button>
+                </div>
+                <div className={styles.roiGrid}>
+                  {(["x", "y", "width", "height"] as const).map((field) => (
+                    <label key={field}>
+                      <span>
+                        {field} <output>{Math.round(roi[field] * 100)}%</output>
+                      </span>
+                      <input
+                        aria-label={`Feature crop ${field}`}
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={roi[field]}
+                        onChange={(event) =>
+                          setRoi(
+                            clampRoi({
+                              ...roi,
+                              [field]: Number(event.currentTarget.value),
+                            }),
+                          )
+                        }
+                        disabled={busy}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <button
+                  className={styles.analyzeButton}
+                  type="button"
+                  onClick={createAndQueueProject}
+                  disabled={busy || safariUnsupported}
+                >
+                  Create project &amp; queue inference
+                </button>
+                <small className={styles.runtimeNote}>
+                  Final audio features and model inference are cached in
+                  IndexedDB.
+                </small>
+              </aside>
+            </section>
+          )}
+        </>
+      )}
+
+      {selectedProject && (
+        <section className={styles.projectPanel}>
+          <p>PROJECT · {selectedProject.status.toUpperCase()}</p>
+          <h1>{selectedProject.source.name}</h1>
+          <code>{selectedProject.id}</code>
+          <p>
+            {selectedProject.status === "analyzing"
+              ? "This project is generating audiovisual features locally. You can select a ready project and edit it while this continues."
+              : selectedProject.status === "queued"
+                ? `Queued for local inference${queueIds.indexOf(selectedProject.id) > 0 ? ` · position ${queueIds.indexOf(selectedProject.id) + 1}` : ""}.`
+                : (selectedProject.error ??
+                  "Reconnect the exact local source file to continue this project.")}
+          </p>
+          {(selectedProject.status === "waiting" ||
+            selectedProject.status === "error") &&
+            (selectedSourceFile ? (
+              <button
+                className={styles.fileButton}
+                type="button"
+                onClick={() => queueAttachedProject(selectedProject)}
+              >
+                Queue inference again
+              </button>
+            ) : (
+              <label className={styles.fileButton}>
+                Reconnect source &amp; queue
+                <input
+                  type="file"
+                  accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
+                  onChange={(event) =>
+                    void attachSource(
+                      selectedProject,
+                      event.currentTarget.files?.[0] ?? null,
+                    )
+                  }
+                />
+              </label>
+            ))}
+          <button
+            className={styles.newProjectButton}
+            type="button"
+            onClick={() => selectProject(null)}
+          >
+            Start another project
+          </button>
         </section>
       )}
 
-      {progress && (
+      {displayedProgress && (
         <section className={styles.progressCard} aria-live="polite">
           <div>
-            <p>LOCAL PROCESSING · {progress.stage.toUpperCase()}</p>
-            <strong>{progress.detail}</strong>
+            <p>LOCAL PROCESSING · {displayedProgress.stage.toUpperCase()}</p>
+            <strong>{displayedProgress.detail}</strong>
           </div>
           <output>{Math.round(percent)}%</output>
-          <div className={styles.progressTrack}><i style={{ width: `${percent}%` }} /></div>
-          <div className={styles.progressTiming}>
-            <div>
-              <span>Elapsed</span>
-              <strong>{formatDuration(elapsedSeconds)}</strong>
-            </div>
-            <div>
-              <span>Estimated remaining</span>
-              <strong>
-                {analysisEtaSeconds === null
-                  ? "Estimating…"
-                  : analysisEtaSeconds <= 1
-                    ? "Finishing…"
-                    : `About ${formatDuration(analysisEtaSeconds)}`}
-              </strong>
-            </div>
+          <div className={styles.progressTrack}>
+            <i style={{ width: `${percent}%` }} />
           </div>
+          {selectedIsActive && (
+            <div className={styles.progressTiming}>
+              <div>
+                <span>Elapsed</span>
+                <strong>{formatDuration(elapsedSeconds)}</strong>
+              </div>
+              <div>
+                <span>Estimated remaining</span>
+                <strong>
+                  {analysisEtaSeconds === null
+                    ? "Estimating…"
+                    : analysisEtaSeconds <= 1
+                      ? "Finishing…"
+                      : `About ${formatDuration(analysisEtaSeconds)}`}
+                </strong>
+              </div>
+            </div>
+          )}
           <p>
-            {progress.stage === "video" && featureRate
+            {displayedProgress.stage === "video" && featureRate
               ? `${featureRate.toFixed(2)}× real-time feature generation`
               : "Feature extraction, audio analysis, and inference run locally."}
-            {progress.featureCache?.resumedRows
-              ? ` · resumed ${progress.featureCache.resumedRows.toLocaleString()} saved frames`
+            {displayedProgress.featureCache?.resumedRows
+              ? ` · resumed ${displayedProgress.featureCache.resumedRows.toLocaleString()} saved frames`
               : ""}
             {wakeLockState === "active" ? " · screen wake lock active" : ""}
           </p>
@@ -470,8 +921,13 @@ export function App() {
       )}
 
       <footer className={styles.footer}>
-        <span>All media, features, predictions, and edit drafts stay in this browser.</span>
-        <span>Google Chrome recommended · HTTPS required outside localhost</span>
+        <span>
+          Project metadata, generated features, predictions, and edit drafts
+          stay in this browser.
+        </span>
+        <span>
+          Local video bytes are never uploaded or copied into project storage.
+        </span>
       </footer>
     </main>
   );

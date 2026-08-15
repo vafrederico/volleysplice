@@ -16,7 +16,7 @@ export type ProductAnalysis = {
   width: number;
   height: number;
   sourceFilename: string;
-  videoUrl: string;
+  videoUrl: string | null;
   rallies: Rally[];
   ignoredIntervals: IgnoredInterval[];
 };

@@ -188,6 +188,40 @@
 .progressTiming strong { margin: 0; color: var(--acid); font: 700 17px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .progressCard > p { grid-column: 1 / -1; color: #a9aba2; line-height: 1.5; }
 
+.projectPanel {
+  max-width: 920px;
+  margin: 64px auto 30px;
+  padding: clamp(24px, 5vw, 52px);
+  border: 1px solid var(--ink);
+  background: #fff;
+  box-shadow: 9px 9px 0 var(--ink);
+}
+.projectPanel > p:first-child {
+  margin: 0;
+  color: var(--orange);
+  font: 700 10px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 1.2px;
+}
+.projectPanel h1 {
+  margin: 10px 0 7px;
+  overflow-wrap: anywhere;
+  font-size: clamp(34px, 6vw, 68px);
+  line-height: .95;
+  letter-spacing: -.055em;
+}
+.projectPanel code { display: inline-block; padding: 5px 7px; color: #42582a; background: #f0f8c8; font-size: 10px; }
+.projectPanel > p:last-of-type { max-width: 700px; margin: 22px 0; color: #5f6259; line-height: 1.65; }
+.projectPanel .fileButton { margin-right: 9px; }
+.newProjectButton {
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .footer {
   margin-top: 70px;
   padding: 30px 5vw 44px;
@@ -212,5 +246,6 @@
   .hero { padding-top: 52px; }
   .hero h1 { letter-spacing: -.055em; }
   .importCard, .workspace { margin-inline: 18px; }
+  .projectPanel { margin: 36px 18px 24px; }
   .roiGrid { grid-template-columns: 1fr; }
 }
