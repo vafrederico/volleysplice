@@ -184,7 +184,10 @@
 
 .workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-areas:
+    "metadata"
+    "video";
+  grid-template-columns: minmax(0, 1fr);
   margin: 0 4vw;
   border: 1px solid var(--label-ink);
   background: #fff;
@@ -192,9 +195,9 @@
 }
 
 .videoColumn {
+  grid-area: video;
   min-width: 0;
   padding: 18px;
-  border-right: 1px solid var(--label-ink);
 }
 
 .videoWrap {
@@ -578,15 +581,41 @@
 }
 
 .metadata {
-  padding: 22px;
+  grid-area: metadata;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px 18px;
+  padding: 18px;
+  border-bottom: 1px solid var(--label-ink);
+  align-items: start;
 }
 
 .currentRallyCard {
-  margin: -22px -22px 24px;
-  padding: 20px 22px 22px;
-  border-bottom: 1px solid var(--label-ink);
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(210px, 0.8fr) minmax(0, 2fr);
+  gap: 10px 18px;
+  margin: 0;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--label-ink);
   background: #efffc0;
 }
+
+.currentRallyCard > .eyebrow,
+.currentRallyCard > .currentRallyHeading,
+.currentRallyCard > .currentRallyTimes,
+.currentRallyCard > .currentRallyEmpty {
+  grid-column: 1;
+}
+
+.currentRallyCard > label { grid-column: 2; }
+
+.currentRallyCard > .transitionPanel {
+  grid-column: 3;
+  grid-row: 1 / span 4;
+}
+
+.currentRallyCard > .currentRallyEvidence { grid-column: 2; }
 
 .currentRallyHeading {
   display: flex;
@@ -630,18 +659,26 @@
 
 .currentRallyTimes button:last-child { text-align: right; }
 
-.currentRallyCard label { margin-top: 12px; }
+.currentRallyCard label { margin-top: 0; }
 
 .transitionPanel {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #b8c49b;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  border-top: 0;
+  border-left: 1px solid #b8c49b;
 }
 
-.transitionPanel > strong { font-size: 12px; }
+.transitionPanel > strong {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}
 
 .transitionPanel > p {
-  margin: 5px 0 10px;
+  grid-column: 1 / -1;
+  margin: -4px 0 2px;
   color: #62665a;
   font-size: 10px;
   line-height: 1.45;
@@ -681,9 +718,46 @@
   line-height: 1;
 }
 
-.metadata dl { margin: 0 0 20px; }
-.metadata dl div { padding: 9px 0; }
-.metadata label { margin-top: 13px; }
+.metadata > .eyebrow {
+  grid-column: 1;
+  margin: 0;
+}
+
+.metadata > .taskId {
+  grid-column: 2 / -1;
+  margin: 0;
+  font-size: 20px;
+}
+
+.metadata > dl { grid-column: 1 / -1; }
+
+.metadata dl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: -4px 0 0;
+}
+
+.metadata dl div {
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid #d8d5ca;
+}
+
+.metadata dl dt {
+  color: #77796f;
+  font-size: 10px;
+}
+
+.metadata dl dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.metadata label { margin-top: 0; }
 .metadata .reviewed { grid-template-columns: auto 1fr; align-items: start; line-height: 1.4; }
 .metadata .reviewed input { margin: 2px 0 0; }
 
@@ -731,6 +805,14 @@
 }
 
 .selectedRow > strong { color: var(--label-teal); }
+
+.invalidRow {
+  padding-inline: 9px;
+  background: #ffe3df;
+  box-shadow: inset 5px 0 0 #c53f2a;
+}
+
+.invalidRow > strong { color: #9b2f20; }
 
 .selectedClassification {
   border-color: var(--label-teal) !important;
@@ -834,7 +916,17 @@
   .exportPanel { grid-template-columns: 1fr; }
   .loaders { grid-template-columns: 1fr 1fr; }
   .loaded { grid-column: 1 / -1; }
-  .videoColumn { border-right: 0; border-bottom: 1px solid var(--label-ink); }
+  .metadata { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .currentRallyCard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .currentRallyCard > .transitionPanel {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    padding: 14px 0 0;
+    border-top: 1px solid #b8c49b;
+    border-left: 0;
+  }
+  .metadata > .taskId { grid-column: 2; }
+  .metadata > dl { grid-column: 1 / -1; }
   .row { grid-template-columns: 60px 1fr 20px 1fr 1fr 1fr; }
   .row select { grid-column: 2 / 6; }
   .pointRow { grid-template-columns: 60px 100px minmax(90px, 0.45fr) minmax(160px, 1fr) 70px; }
@@ -859,6 +951,23 @@
   .trackletControls { grid-template-columns: 1fr; }
   .trackletActions,
   .trackletRowHeading { align-items: stretch; flex-direction: column; }
+  .metadata,
+  .currentRallyCard,
+  .transitionPanel { grid-template-columns: 1fr; }
+  .currentRallyCard > .eyebrow,
+  .currentRallyCard > .currentRallyHeading,
+  .currentRallyCard > .currentRallyTimes,
+  .currentRallyCard > .currentRallyEmpty,
+  .currentRallyCard > label,
+  .currentRallyCard > .transitionPanel,
+  .currentRallyCard > .currentRallyEvidence,
+  .metadata > .eyebrow,
+  .metadata > .taskId,
+  .metadata > dl,
+  .metadata > label {
+    grid-column: 1;
+  }
+  .metadata dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .row { grid-template-columns: 55px 1fr 16px 1fr; }
   .row input,
   .row select { grid-column: span 2; }

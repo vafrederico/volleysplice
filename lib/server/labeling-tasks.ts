@@ -10,7 +10,10 @@ import {
   type LabelDocument,
   type NormalizedPoint,
 } from "@/lib/annotations";
-import { buildProductionLabelSeed } from "@/lib/production-label-seed";
+import {
+  buildProductionLabelSeed,
+  type ProductionLabelSeed,
+} from "@/lib/production-label-seed";
 import { PRODUCTION_MODEL_ID } from "@/lib/production-model";
 import { getAnalysesRoot, getIntakeWorkspace } from "@/lib/storage";
 
@@ -96,6 +99,11 @@ export type SavedLabelingDocument = {
 
 export type SolReferenceLabels = {
   rallies: LabelDocument["rallies"];
+};
+
+export type ProductionReferenceLabels = SolReferenceLabels & {
+  modelId: string;
+  modelLabel: string;
 };
 
 function isWithin(parent: string, candidate: string): boolean {
@@ -569,21 +577,10 @@ export async function getSavedLabelingDocument(
     if (!isMissingFile(error)) throw error;
   }
   if (task.batch === "full") {
-    try {
-      const productionAnalysisPath = path.join(
-        getAnalysesRoot("without-beach"),
-        `${PRODUCTION_MODEL_ID}--${task.id}`,
-        "analysis.json",
-      );
-      const seed = buildProductionLabelSeed(
-        task.document,
-        JSON.parse(await readFile(productionAnalysisPath, "utf8")) as unknown,
-        PRODUCTION_MODEL_ID,
-      );
+    const seed = await loadProductionLabelSeed(task);
+    if (seed) {
       validateDraftContent(seed.document, task);
       return { document: seed.document, source: "production-model", savedAt: null };
-    } catch (error) {
-      if (!isMissingFile(error)) throw error;
     }
     try {
       const document = parseLabelDocument(
@@ -596,6 +593,40 @@ export async function getSavedLabelingDocument(
     }
   }
   return { document: task.document, source: "task", savedAt: null };
+}
+
+async function loadProductionLabelSeed(
+  task: PreparedLabelingTask,
+): Promise<ProductionLabelSeed | null> {
+  if (task.batch !== "full") return null;
+  try {
+    const productionAnalysisPath = path.join(
+      getAnalysesRoot("without-beach"),
+      `${PRODUCTION_MODEL_ID}--${task.id}`,
+      "analysis.json",
+    );
+    return buildProductionLabelSeed(
+      task.document,
+      JSON.parse(await readFile(productionAnalysisPath, "utf8")) as unknown,
+      PRODUCTION_MODEL_ID,
+    );
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
+}
+
+export async function getProductionReferenceLabels(
+  task: PreparedLabelingTask,
+): Promise<ProductionReferenceLabels | null> {
+  const seed = await loadProductionLabelSeed(task);
+  return seed
+    ? {
+        modelId: seed.modelId,
+        modelLabel: seed.modelLabel,
+        rallies: seed.document.rallies,
+      }
+    : null;
 }
 
 export async function getSolReferenceLabels(

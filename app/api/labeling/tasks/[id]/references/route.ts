@@ -1,5 +1,6 @@
 import {
   getPreparedLabelingTask,
+  getProductionReferenceLabels,
   getSolReferenceLabels,
   LabelingTaskNotFoundError,
 } from "@/lib/server/labeling-tasks";
@@ -14,8 +15,12 @@ export async function GET(
   try {
     const { id } = await params;
     const task = await getPreparedLabelingTask(id);
+    const [production, sol] = await Promise.all([
+      getProductionReferenceLabels(task),
+      getSolReferenceLabels(task),
+    ]);
     return Response.json(
-      { sol: await getSolReferenceLabels(task) },
+      { production, sol },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
