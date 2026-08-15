@@ -39,6 +39,8 @@ export type TimelineTrack = {
   };
   active?: boolean;
   intervals: TimelineInterval[];
+  exportIntervals?: TimelineInterval[];
+  missingHumanIntervals?: TimelineInterval[];
 };
 
 export type TimelineMarker = {
@@ -149,6 +151,42 @@ export function RallyTimeline({
                 aria-label={marker.title}
               />
             ))}
+            {track.exportIntervals && (
+              <div
+                className={styles.exportRail}
+                role="group"
+                aria-label={`${track.label} padded export`}
+              >
+                {track.exportIntervals.map((interval) => (
+                  <button
+                    type="button"
+                    key={interval.id}
+                    className={styles.exportInterval}
+                    style={{
+                      left: `${timelinePercent(interval.start, duration)}%`,
+                      width: `${timelinePercent(interval.end - interval.start, duration)}%`,
+                    }}
+                    onClick={() => onSeek?.(interval.start, track.id)}
+                    title={interval.title ?? `Exported: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
+                    aria-label={`Seek to exported segment at ${formatTime(interval.start)}`}
+                  />
+                ))}
+                {track.missingHumanIntervals?.map((interval) => (
+                  <button
+                    type="button"
+                    key={interval.id}
+                    className={`${styles.exportInterval} ${styles.missingHumanInterval}`}
+                    style={{
+                      left: `${timelinePercent(interval.start, duration)}%`,
+                      width: `${timelinePercent(interval.end - interval.start, duration)}%`,
+                    }}
+                    onClick={() => onSeek?.(interval.start, track.id)}
+                    title={interval.title ?? `Missed human rally: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
+                    aria-label={`Seek to missed human rally at ${formatTime(interval.start)}`}
+                  />
+                ))}
+              </div>
+            )}
             <span
               className={styles.playhead}
               style={{ left: `${timelinePercent(currentTime, duration)}%` }}

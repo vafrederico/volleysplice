@@ -15,6 +15,10 @@ import type {
   TrainingCorpusView,
 } from "@/lib/analysis-types";
 import { buildEditList, formatTime, type Rally } from "@/lib/edit-list";
+import {
+  DEFAULT_VISIBLE_MODEL_IDS,
+  PREFERRED_ENVIRONMENT_EXPERIMENT_MODEL_ID,
+} from "@/lib/experiment-models";
 import { parseLabelDocument, type IgnoredInterval, type LabelDocument } from "@/lib/annotations";
 import {
   buildLiveTimeComparisonSegments,
@@ -28,42 +32,44 @@ import {
   totalRallySeconds,
 } from "@/lib/timeline-comparison";
 
-const MODEL_VISIBILITY_STORAGE_KEY = "volleycut:model-timeline-visibility:v1";
+const MODEL_VISIBILITY_STORAGE_KEY = "volleycut:model-timeline-visibility:v2";
 const MODEL_VISIBILITY_EVENT = "volleycut:model-timeline-visibility";
 const ACTIVITY_PADDING_STORAGE_KEY = "volleycut:activity-padding:v1";
 const ACTIVITY_PADDING_EVENT = "volleycut:activity-padding";
-const EMPTY_HIDDEN_MODEL_KEYS = new Set<string>();
+const DEFAULT_VISIBLE_MODEL_KEYS = new Set(
+  [...DEFAULT_VISIBLE_MODEL_IDS].map((id) => `without-beach:${id}`),
+);
 const DEFAULT_ACTIVITY_PADDING = { before: 3, after: 2 } as const;
 type ModelFilterBasis = "coreHuman" | "paddedHuman";
 type ModelFilterMetric = "precision" | "recall" | "f1";
 type ModelFilterOperator = "greater" | "less";
 let cachedVisibilityValue: string | null | undefined;
-let cachedHiddenModelKeys = EMPTY_HIDDEN_MODEL_KEYS;
+let cachedVisibleModelKeys = DEFAULT_VISIBLE_MODEL_KEYS;
 let fallbackVisibilityValue: string | null = null;
 let cachedPaddingValue: string | null | undefined;
 let cachedActivityPadding: Readonly<{ before: number; after: number }> =
   DEFAULT_ACTIVITY_PADDING;
 let fallbackPaddingValue: string | null = null;
 
-function hiddenModelSnapshot(): Set<string> {
-  if (typeof window === "undefined") return EMPTY_HIDDEN_MODEL_KEYS;
+function visibleModelSnapshot(): Set<string> {
+  if (typeof window === "undefined") return DEFAULT_VISIBLE_MODEL_KEYS;
   let value: string | null;
   try {
     value = window.localStorage.getItem(MODEL_VISIBILITY_STORAGE_KEY);
   } catch {
     value = fallbackVisibilityValue;
   }
-  if (value === cachedVisibilityValue) return cachedHiddenModelKeys;
+  if (value === cachedVisibilityValue) return cachedVisibleModelKeys;
   cachedVisibilityValue = value;
   try {
-    const saved = JSON.parse(value ?? "null") as { hidden?: unknown } | null;
-    cachedHiddenModelKeys = saved && Array.isArray(saved.hidden)
-      ? new Set(saved.hidden.filter((item): item is string => typeof item === "string"))
-      : EMPTY_HIDDEN_MODEL_KEYS;
+    const saved = JSON.parse(value ?? "null") as { visible?: unknown } | null;
+    cachedVisibleModelKeys = saved && Array.isArray(saved.visible)
+      ? new Set(saved.visible.filter((item): item is string => typeof item === "string"))
+      : DEFAULT_VISIBLE_MODEL_KEYS;
   } catch {
-    cachedHiddenModelKeys = EMPTY_HIDDEN_MODEL_KEYS;
+    cachedVisibleModelKeys = DEFAULT_VISIBLE_MODEL_KEYS;
   }
-  return cachedHiddenModelKeys;
+  return cachedVisibleModelKeys;
 }
 
 function subscribeToModelVisibility(onChange: () => void): () => void {
@@ -82,8 +88,8 @@ function subscribeToModelVisibility(onChange: () => void): () => void {
   };
 }
 
-function saveModelVisibility(hidden: Set<string>): void {
-  const value = JSON.stringify({ hidden: [...hidden].sort() });
+function saveModelVisibility(visible: Set<string>): void {
+  const value = JSON.stringify({ visible: [...visible].sort() });
   fallbackVisibilityValue = value;
   try {
     window.localStorage.setItem(MODEL_VISIBILITY_STORAGE_KEY, value);
@@ -224,6 +230,12 @@ function preferredAnalysis(
   return (
     analyses.find(
       (analysis) =>
+        analysis.id === `${PREFERRED_ENVIRONMENT_EXPERIMENT_MODEL_ID}--${video.id}`,
+    ) ??
+    analyses.find((analysis) => analysis.kind === "gold") ??
+    analyses.find((analysis) => analysis.kind === "sol") ??
+    analyses.find(
+      (analysis) =>
         corpus === "without-beach" &&
         analysis.id === `model-nb-audiovisual-v2-final--${video.id}`,
     ) ??
@@ -316,10 +328,10 @@ export function ReviewEditor({
   const [modelFilterMetric, setModelFilterMetric] = useState<ModelFilterMetric>("f1");
   const [modelFilterOperator, setModelFilterOperator] = useState<ModelFilterOperator>("greater");
   const [modelFilterThreshold, setModelFilterThreshold] = useState("");
-  const hiddenModelKeys = useSyncExternalStore(
+  const visibleModelKeys = useSyncExternalStore(
     subscribeToModelVisibility,
-    hiddenModelSnapshot,
-    () => EMPTY_HIDDEN_MODEL_KEYS,
+    visibleModelSnapshot,
+    () => DEFAULT_VISIBLE_MODEL_KEYS,
   );
   const videoRef = useRef<HTMLVideoElement>(null);
   const intervals = useMemo(
@@ -366,9 +378,9 @@ export function ReviewEditor({
       comparisonAnalyses.filter(
         (candidate) =>
           candidate.kind !== "model" ||
-          !hiddenModelKeys.has(modelVisibilityKey(candidate)),
+          visibleModelKeys.has(modelVisibilityKey(candidate)),
       ),
-    [comparisonAnalyses, hiddenModelKeys],
+    [comparisonAnalyses, visibleModelKeys],
   );
   const humanRallies = useMemo(
     () => humanAnalysis?.rallies ?? [],
@@ -456,6 +468,24 @@ export function ReviewEditor({
               candidate.duration,
             )
           : null;
+        const exportedRallies = excludeIgnoredTime(
+          candidate.kind === "model"
+            ? trackRallies
+            : padAndMergeRallies(
+                trackRallies,
+                preRoll,
+                postRoll,
+                candidate.duration,
+              ),
+          ignoredRanges,
+        );
+        const missingHumanSegments = candidate.id === humanAnalysis?.id || humanRallies.length === 0
+          ? []
+          : (comparisonSegments ?? buildLiveTimeComparisonSegments(
+              exportedRallies,
+              humanRallies,
+              ignoredRanges,
+            )).filter((segment) => segment.kind === "missed");
         const slug = analysisSlug(candidate);
         const stats = modelTimelineStats.get(candidate.id);
         const coreMetrics = stats
@@ -494,6 +524,18 @@ export function ReviewEditor({
               ? { exportTime: formatTime(paddedHumanSeconds) }
             : undefined,
           active: candidate.id === analysis.id,
+          exportIntervals: exportedRallies.map((rally, index) => ({
+            id: `${candidate.id}-export-${index + 1}`,
+            start: rally.start,
+            end: rally.end,
+            title: `${candidate.variantLabel} · exported with ${preRoll}s before and ${postRoll}s after · ${formatTime(rally.start)}–${formatTime(rally.end)}`,
+          })),
+          missingHumanIntervals: missingHumanSegments.map((segment, index) => ({
+            id: `${candidate.id}-missing-human-${index + 1}`,
+            start: segment.start,
+            end: segment.end,
+            title: `${candidate.variantLabel} · missed unpadded human rally time · ${formatTime(segment.start)}–${formatTime(segment.end)}`,
+          })),
           intervals: comparisonSegments
             ? comparisonSegments.map((segment) => ({
               id: segment.id,
@@ -662,7 +704,7 @@ export function ReviewEditor({
 
   function toggleModelVisibility(candidate: ReviewAnalysis) {
     const key = modelVisibilityKey(candidate);
-    const next = new Set(hiddenModelKeys);
+    const next = new Set(visibleModelKeys);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     saveModelVisibility(next);
@@ -1040,6 +1082,8 @@ export function ReviewEditor({
                 <span data-tone="ignored">Ignored evaluation</span>
                 <span data-tone="before-padding">Before padding</span>
                 <span data-tone="after-padding">After padding</span>
+                <span data-tone="export">Final padded export</span>
+                <span data-tone="export-missed">Missed human core</span>
               </div>
               <div className="model-toggle-filter" aria-label="Filter model toggles">
                 <span>Show toggles where</span>
@@ -1101,7 +1145,7 @@ export function ReviewEditor({
               <div className="model-toggles">
                 {modelToggleAnalyses.map((candidate) => {
                   const slug = analysisSlug(candidate);
-                  const checked = !hiddenModelKeys.has(modelVisibilityKey(candidate));
+                  const checked = visibleModelKeys.has(modelVisibilityKey(candidate));
                   return (
                     <label
                       key={candidate.id}

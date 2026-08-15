@@ -73,6 +73,8 @@ h1 em { color:var(--orange); font-style:normal; }
 .model-timeline-legend span[data-tone="ignored"]:before { border-color:#696b64; background:repeating-linear-gradient(135deg,#8e9088 0,#8e9088 2px,#d9d8d2 2px,#d9d8d2 5px); }
 .model-timeline-legend span[data-tone="before-padding"]:before { background:repeating-linear-gradient(135deg,rgba(255,255,255,.72) 0,rgba(255,255,255,.72) 2px,transparent 2px,transparent 6px),#3f8f4a; }
 .model-timeline-legend span[data-tone="after-padding"]:before { background:repeating-linear-gradient(45deg,rgba(255,255,255,.72) 0,rgba(255,255,255,.72) 2px,transparent 2px,transparent 6px),#3f8f4a; }
+.model-timeline-legend span[data-tone="export"]:before { height:5px; background:#161813; }
+.model-timeline-legend span[data-tone="export-missed"]:before { height:5px; background:#d81717; }
 .model-toggle-filter { display:flex; flex-wrap:wrap; align-items:center; gap:6px; color:var(--muted); font:10px Atkinson Hyperlegible Mono; }
 .model-toggle-filter select, .model-toggle-filter input { height:30px; border:1px solid #aaa; border-radius:0; background:var(--paper); color:var(--ink); font:10px Atkinson Hyperlegible Mono; }
 .model-toggle-filter select { padding:0 24px 0 7px; cursor:pointer; }

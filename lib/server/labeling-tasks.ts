@@ -15,7 +15,12 @@ import {
   type ProductionLabelSeed,
 } from "@/lib/production-label-seed";
 import { PRODUCTION_MODEL_ID } from "@/lib/production-model";
-import { getAnalysesRoot, getIntakeWorkspace } from "@/lib/storage";
+import { ENVIRONMENT_EXPERIMENT_MODELS } from "@/lib/experiment-models";
+import {
+  getAnalysesRoot,
+  getIntakeAnalysesRoot,
+  getIntakeWorkspace,
+} from "@/lib/storage";
 
 const DEFAULT_MEDIA_ROOT = "/mnt/freenas/volleycut";
 const DEFAULT_LABELING_WORKSPACE =
@@ -104,6 +109,10 @@ export type SolReferenceLabels = {
 export type ProductionReferenceLabels = SolReferenceLabels & {
   modelId: string;
   modelLabel: string;
+};
+
+export type ExperimentModelReferenceLabels = ProductionReferenceLabels & {
+  description: string;
 };
 
 function isWithin(parent: string, candidate: string): boolean {
@@ -627,6 +636,40 @@ export async function getProductionReferenceLabels(
         rallies: seed.document.rallies,
       }
     : null;
+}
+
+export async function getExperimentModelReferenceLabels(
+  task: PreparedLabelingTask,
+): Promise<ExperimentModelReferenceLabels[]> {
+  if (task.batch !== "full") return [];
+  const references = await Promise.all(
+    ENVIRONMENT_EXPERIMENT_MODELS.map(async (model): Promise<ExperimentModelReferenceLabels | null> => {
+      try {
+        const analysisPath = path.join(
+          getIntakeAnalysesRoot(),
+          `${model.id}--${task.id}`,
+          "analysis.json",
+        );
+        const seed = buildProductionLabelSeed(
+          task.document,
+          JSON.parse(await readFile(analysisPath, "utf8")) as unknown,
+          model.id,
+        );
+        return {
+          modelId: seed.modelId,
+          modelLabel: seed.modelLabel || model.label,
+          description: model.description,
+          rallies: seed.document.rallies,
+        };
+      } catch (error) {
+        if (isMissingFile(error)) return null;
+        throw error;
+      }
+    }),
+  );
+  return references.filter(
+    (reference): reference is ExperimentModelReferenceLabels => reference !== null,
+  );
 }
 
 export async function getSolReferenceLabels(

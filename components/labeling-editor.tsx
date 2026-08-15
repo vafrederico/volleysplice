@@ -42,9 +42,10 @@ type IntervalKind = "rally" | "ignored" | "negative";
 type LabelingBatch = "full" | "pilot";
 type TrackletCaptureMode = "footpoint" | "box";
 type TrackletBoxDrag = { start: NormalizedPoint; current: NormalizedPoint };
-type ProductionReference = {
+type ModelReference = {
   modelId: string;
   modelLabel: string;
+  description?: string;
   rallies: RallyLabel[];
 };
 type CourtAnchorId =
@@ -246,7 +247,8 @@ export function LabelingEditor() {
   const lastPersistedPlaybackRef = useRef<{ taskId: string; time: number } | null>(null);
   const [labels, setLabels] = useState<LabelDocument | null>(null);
   const [productionReference, setProductionReference] =
-    useState<ProductionReference | null>(null);
+    useState<ModelReference | null>(null);
+  const [experimentReferences, setExperimentReferences] = useState<ModelReference[]>([]);
   const [solReferenceRallies, setSolReferenceRallies] = useState<RallyLabel[]>([]);
   const [preparedTasks, setPreparedTasks] = useState<PreparedTaskSummary[]>([]);
   const [batchSummary, setBatchSummary] = useState<BatchSummary>(emptyBatchSummary);
@@ -426,55 +428,62 @@ export function LabelingEditor() {
     return indexes;
   }, [labels]);
 
-  const productionComparisons = useMemo(() => {
-    if (!labels || !productionReference) return [];
+  const referenceComparisons = useMemo(() => {
+    if (!labels) return [];
     const duration = labels.recording.durationSeconds;
-    const modelCore = comparableRallies(productionReference.rallies, "production");
     const humanCore = comparableRallies(labels.rallies, "editable");
     const ignored = labels.ignoredIntervals;
-    return comparisonPaddingCases.map((paddingSeconds) => {
-      // Padding is merged before any duration or metric calculation, so
-      // overlapping/touching model exports contribute to the union only once.
-      const paddedModel = padAndMergeRallies(
-        modelCore,
-        paddingSeconds,
-        paddingSeconds,
-        duration,
-      );
-      const paddedHuman = padAndMergeRallies(
-        humanCore,
-        paddingSeconds,
-        paddingSeconds,
-        duration,
-      );
-      const paddedHumanMetrics = calculateLiveTimeMetrics(
-        paddedModel,
-        paddedHuman,
-        ignored,
-      );
-      const coreHumanMetrics = calculateLiveTimeMetrics(
-        paddedModel,
-        humanCore,
-        ignored,
-      );
-      const precision = paddedHumanMetrics.precision;
-      const recall = coreHumanMetrics.recall;
-      return {
-        paddingSeconds,
-        precision,
-        recall,
-        f1: calculateF1(precision, recall),
-        exportSeconds: totalRallySeconds(excludeIgnoredTime(paddedModel, ignored)),
-        segments: markModelPaddingOrigins(
-          buildLiveTimeComparisonSegments(paddedModel, humanCore, ignored),
+    const references = [
+      ...(productionReference ? [{ ...productionReference, baseline: true }] : []),
+      ...experimentReferences.map((reference) => ({ ...reference, baseline: false })),
+    ];
+    return references.flatMap((reference) => {
+      const modelCore = comparableRallies(reference.rallies, reference.modelId);
+      return comparisonPaddingCases.map((paddingSeconds) => {
+        // Padding is merged before any duration or metric calculation, so
+        // overlapping/touching model exports contribute to the union only once.
+        const paddedModel = padAndMergeRallies(
           modelCore,
           paddingSeconds,
           paddingSeconds,
           duration,
-        ),
-      };
+        );
+        const paddedHuman = padAndMergeRallies(
+          humanCore,
+          paddingSeconds,
+          paddingSeconds,
+          duration,
+        );
+        const paddedHumanMetrics = calculateLiveTimeMetrics(
+          paddedModel,
+          paddedHuman,
+          ignored,
+        );
+        const coreHumanMetrics = calculateLiveTimeMetrics(
+          paddedModel,
+          humanCore,
+          ignored,
+        );
+        const precision = paddedHumanMetrics.precision;
+        const recall = coreHumanMetrics.recall;
+        return {
+          reference,
+          paddingSeconds,
+          precision,
+          recall,
+          f1: calculateF1(precision, recall),
+          exportSeconds: totalRallySeconds(excludeIgnoredTime(paddedModel, ignored)),
+          segments: markModelPaddingOrigins(
+            buildLiveTimeComparisonSegments(paddedModel, humanCore, ignored),
+            modelCore,
+            paddingSeconds,
+            paddingSeconds,
+            duration,
+          ),
+        };
+      });
     });
-  }, [labels, productionReference]);
+  }, [experimentReferences, labels, productionReference]);
 
   const completionIssues = useMemo(() => {
     if (!labels) return ["Load a label task"];
@@ -619,6 +628,7 @@ export function LabelingEditor() {
       const document = parseLabelDocument(JSON.parse(await file.text()));
       setLabels(document);
       setProductionReference(null);
+      setExperimentReferences([]);
       setSolReferenceRallies([]);
       setRallyStart(null);
       setIgnoredStart(null);
@@ -679,10 +689,12 @@ export function LabelingEditor() {
       const savedAt = response.headers.get("X-VolleyCut-Saved-At");
       const document = parseLabelDocument(await response.json());
       let referenceRallies: RallyLabel[] = [];
-      let nextProductionReference: ProductionReference | null = null;
+      let nextProductionReference: ModelReference | null = null;
+      let nextExperimentReferences: ModelReference[] = [];
       if (referencesResponse?.ok) {
         const references = (await referencesResponse.json()) as {
-          production?: Partial<ProductionReference> | null;
+          production?: Partial<ModelReference> | null;
+          experiments?: Array<Partial<ModelReference>>;
           sol?: { rallies?: RallyLabel[] } | null;
         };
         if (
@@ -690,7 +702,15 @@ export function LabelingEditor() {
           typeof references.production.modelLabel === "string" &&
           Array.isArray(references.production.rallies)
         ) {
-          nextProductionReference = references.production as ProductionReference;
+          nextProductionReference = references.production as ModelReference;
+        }
+        if (Array.isArray(references.experiments)) {
+          nextExperimentReferences = references.experiments.filter(
+            (reference): reference is ModelReference =>
+              typeof reference.modelId === "string" &&
+              typeof reference.modelLabel === "string" &&
+              Array.isArray(reference.rallies),
+          );
         }
         if (Array.isArray(references.sol?.rallies)) {
           referenceRallies = references.sol.rallies;
@@ -698,6 +718,7 @@ export function LabelingEditor() {
       }
       setLabels(document);
       setProductionReference(nextProductionReference);
+      setExperimentReferences(nextExperimentReferences);
       setSolReferenceRallies(referenceRallies);
       setVideoUrl(`/api/labeling/tasks/${encodeURIComponent(id)}/video`);
       setVideoFilename(document.recording.videoFilename);
@@ -1691,34 +1712,32 @@ export function LabelingEditor() {
                       : ("gold" as const),
                     })),
                 },
-                ...(productionReference
-                  ? productionComparisons.map((comparison) => ({
-                      id: `production-reference-${comparison.paddingSeconds}s`,
-                      label: `Production model · ${comparison.paddingSeconds}s`,
-                      detail: `${productionReference.modelId} · ${productionReference.rallies.length} core rallies · merged ${comparison.paddingSeconds}s pad`,
-                      title: `${productionReference.modelLabel}. Read-only production inference compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Overlapping padded ranges are merged before scoring.`,
-                      summary: {
-                        exportTime: formatPreciseTime(comparison.exportSeconds),
-                        metricsLabel: `${comparison.paddingSeconds}s P_pad/R_core/F1`,
-                        coreMetrics: `P ${metricPercent(comparison.precision)} · R ${metricPercent(comparison.recall)} · F1 ${metricPercent(comparison.f1)}`,
-                      },
-                      intervals: comparison.segments.map((segment) => ({
-                        id: `production-reference-${comparison.paddingSeconds}s-${segment.id}`,
-                        selectionId: null,
-                        start: segment.start,
-                        end: segment.end,
-                        tone: `model-${segment.kind}` as const,
-                        paddingOrigin: segment.paddingOrigin,
-                        title: `${productionReference.modelLabel} · ${comparison.paddingSeconds}s padding · ${
-                          segment.kind === "match"
-                            ? "matches editable human live time"
-                            : segment.kind === "added"
-                              ? "predicted outside editable human live time"
-                              : "editable human live time missed by the model"
-                        } · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
-                      })),
-                    } satisfies TimelineTrack))
-                  : []),
+                ...referenceComparisons.map((comparison) => ({
+                  id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s`,
+                  label: `${comparison.reference.baseline ? "Previous production" : comparison.reference.modelLabel} · ${comparison.paddingSeconds}s`,
+                  detail: `${comparison.reference.modelId} · ${comparison.reference.rallies.length} core rallies · merged ${comparison.paddingSeconds}s pad`,
+                  title: `${comparison.reference.modelLabel}. ${comparison.reference.description ?? "Read-only model inference"} Compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Overlapping padded ranges are merged before scoring.`,
+                  summary: {
+                    exportTime: formatPreciseTime(comparison.exportSeconds),
+                    metricsLabel: `${comparison.paddingSeconds}s P_pad/R_core/F1`,
+                    coreMetrics: `P ${metricPercent(comparison.precision)} · R ${metricPercent(comparison.recall)} · F1 ${metricPercent(comparison.f1)}`,
+                  },
+                  intervals: comparison.segments.map((segment) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-${segment.id}`,
+                    selectionId: null,
+                    start: segment.start,
+                    end: segment.end,
+                    tone: `model-${segment.kind}` as const,
+                    paddingOrigin: segment.paddingOrigin,
+                    title: `${comparison.reference.modelLabel} · ${comparison.paddingSeconds}s padding · ${
+                      segment.kind === "match"
+                        ? "matches editable human live time"
+                        : segment.kind === "added"
+                          ? "predicted outside editable human live time"
+                          : "editable human live time missed by the model"
+                    } · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
+                  })),
+                } satisfies TimelineTrack)),
                 ...(solReferenceRallies.length
                   ? [{
                       id: "sol-reference",
@@ -1775,7 +1794,7 @@ export function LabelingEditor() {
                 selectedRallyIndex >= 0 ? `rally-${selectedRallyIndex}` : undefined
               }
               onSeek={(time) => seekTo(time)}
-              ariaLabel="Editable rally labels with read-only production and Sol references"
+              ariaLabel="Editable rally labels with read-only model and Sol references"
             />
           )}
         </div>
