@@ -92,6 +92,13 @@ overlapping rally ranges. Ranges emitted by only one model are retained but mark
 disagreements, assigned a conservative review confidence below 50%, and highlighted
 with an orange striped treatment so **Review next** visits them before export.
 
+Feature caches are versioned by the feature schema, extraction settings, source,
+media metadata, ROI, and runtime variant—not by the model—so compatible features can
+be reused across model upgrades. Persisted inference is separately keyed by an
+ensemble identity containing both complete browser-bundle SHA-256 digests and the merge
+algorithm version. A stale single-model or older-ensemble result is changed to **Needs
+source** on load and cannot be presented as current production inference.
+
 `npm run preview` serves the verified production build on `0.0.0.0:3000`, matching
 the local Traefik target for `https://internal.example`.
 - `public/runtime/feature-reductions.wasm`: fused visual feature reductions.

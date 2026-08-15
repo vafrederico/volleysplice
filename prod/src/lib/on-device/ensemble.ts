@@ -2,8 +2,14 @@ import type { OnDeviceInterval } from "./types";
 
 export const ALL_LABELS_V2_MODEL_ID = "model-1ca43e38eefc";
 export const PREVIOUS_PRODUCTION_MODEL_ID = "model-9c92b8e9333f";
+export const ALL_LABELS_V2_BUNDLE_SHA256 =
+  "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f";
+export const PREVIOUS_PRODUCTION_BUNDLE_SHA256 =
+  "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d";
+export const PRODUCTION_ENSEMBLE_ALGORITHM_VERSION =
+  "overlap-union-disagreement-v1";
 export const PRODUCTION_ENSEMBLE_MODEL_ID =
-  "ensemble-1ca43e38eefc-9c92b8e9333f";
+  `ensemble-${PRODUCTION_ENSEMBLE_ALGORITHM_VERSION}-${ALL_LABELS_V2_BUNDLE_SHA256}-${PREVIOUS_PRODUCTION_BUNDLE_SHA256}`;
 
 const DISAGREEMENT_CONFIDENCE_CEILING = 0.49;
 const DISAGREEMENT_CONFIDENCE_SCALE = 0.6;

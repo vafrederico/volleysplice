@@ -1,14 +1,28 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { audioFeatureCacheKey } from "../../prod/src/lib/on-device/feature-cache.ts";
+import {
+  ALL_LABELS_V2_BUNDLE_SHA256,
+  PREVIOUS_PRODUCTION_BUNDLE_SHA256,
+  PRODUCTION_ENSEMBLE_ALGORITHM_VERSION,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+} from "../../prod/src/lib/on-device/ensemble.ts";
 import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "../../prod/src/lib/on-device/runtime-variants.ts";
 import {
+  normalizeStoredProject,
+  projectAnalysisId,
   projectId,
   sourceMatchesFile,
   type ProjectSource,
+  type VolleyCutProject,
 } from "../../prod/src/lib/project-store.ts";
-import type { OnDeviceMediaInfo } from "../../prod/src/lib/on-device/types.ts";
+import type {
+  OnDeviceAnalysis,
+  OnDeviceMediaInfo,
+} from "../../prod/src/lib/on-device/types.ts";
 
 const source: ProjectSource = {
   name: "match.mp4",
@@ -32,6 +46,42 @@ const info: OnDeviceMediaInfo = {
   channels: 2,
   canDecodeAudio: true,
 };
+
+function cachedAnalysis(modelId: string, currentShape = false): OnDeviceAnalysis {
+  return {
+    modelId,
+    featurePath: "local-source",
+    intervals: [
+      {
+        id: "R001",
+        start: 1,
+        end: 2,
+        confidence: 0.9,
+        included: true,
+        ...(currentShape ? { agreement: "both-models" as const } : {}),
+      },
+    ],
+    times: new Float64Array([0]),
+    rallyProbabilities: new Float32Array([0]),
+    serveProbabilities: new Float32Array([0]),
+    deadStateProbabilities: new Float32Array([0]),
+  };
+}
+
+function storedProject(analysis: OnDeviceAnalysis): VolleyCutProject {
+  return {
+    schemaVersion: 1,
+    id: "project-fixture",
+    source,
+    info,
+    roi: { x: 0, y: 0, width: 1, height: 1 },
+    status: "ready",
+    analysis,
+    error: null,
+    createdAt: "2026-08-15T00:00:00.000Z",
+    updatedAt: "2026-08-15T00:00:00.000Z",
+  };
+}
 
 test("project IDs are stable for the same local source fingerprint", () => {
   assert.equal(projectId(source, info), projectId({ ...source }, { ...info }));
@@ -94,4 +144,61 @@ test("audio feature caches are isolated by source and analysis timestamps", () =
       new Float64Array([0, 0.25, 0.75]),
     ),
   );
+});
+
+test("production inference cache identity includes both bundles and ensemble logic", () => {
+  const assetHash = (filename: string) =>
+    createHash("sha256")
+      .update(
+        readFileSync(
+          new URL(`../../prod/public/runtime/${filename}`, import.meta.url),
+        ),
+      )
+      .digest("hex");
+  assert.equal(
+    ALL_LABELS_V2_BUNDLE_SHA256,
+    assetHash("model-1ca43e38eefc.json"),
+  );
+  assert.equal(
+    PREVIOUS_PRODUCTION_BUNDLE_SHA256,
+    assetHash("model-9c92b8e9333f.json"),
+  );
+  assert.match(
+    PRODUCTION_ENSEMBLE_MODEL_ID,
+    new RegExp(PRODUCTION_ENSEMBLE_ALGORITHM_VERSION),
+  );
+  assert.ok(PRODUCTION_ENSEMBLE_MODEL_ID.includes(ALL_LABELS_V2_BUNDLE_SHA256));
+  assert.ok(
+    PRODUCTION_ENSEMBLE_MODEL_ID.includes(
+      PREVIOUS_PRODUCTION_BUNDLE_SHA256,
+    ),
+  );
+
+  const project = storedProject(
+    cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true),
+  );
+  assert.equal(normalizeStoredProject(project), project);
+  assert.ok(projectAnalysisId(project)?.includes(PRODUCTION_ENSEMBLE_MODEL_ID));
+});
+
+test("stale single-model and prior-ensemble inference caches require re-inference", () => {
+  for (const modelId of [
+    "model-1ca43e38eefc",
+    "ensemble-1ca43e38eefc-9c92b8e9333f",
+  ]) {
+    const normalized = normalizeStoredProject(
+      storedProject(cachedAnalysis(modelId)),
+    );
+    assert.equal(normalized.status, "waiting");
+    assert.equal(normalized.analysis, null);
+    assert.match(normalized.error ?? "", /ensemble changed/);
+  }
+});
+
+test("an ensemble cache without per-range agreement provenance is stale", () => {
+  const normalized = normalizeStoredProject(
+    storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID)),
+  );
+  assert.equal(normalized.status, "waiting");
+  assert.equal(normalized.analysis, null);
 });
