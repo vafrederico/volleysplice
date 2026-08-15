@@ -96,7 +96,7 @@ type PreparedTaskSummary = {
   durationSeconds: number;
   originalFilename: string;
   videoFilename: string;
-  documentSource: "draft" | "prelabel" | "task";
+  documentSource: "draft" | "production-model" | "prelabel" | "task";
   savedAt: string | null;
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
@@ -215,6 +215,7 @@ export function LabelingEditor() {
   const resumeAttemptedRef = useRef(false);
   const lastPersistedPlaybackRef = useRef<{ taskId: string; time: number } | null>(null);
   const [labels, setLabels] = useState<LabelDocument | null>(null);
+  const [solReferenceRallies, setSolReferenceRallies] = useState<RallyLabel[]>([]);
   const [preparedTasks, setPreparedTasks] = useState<PreparedTaskSummary[]>([]);
   const [batchSummary, setBatchSummary] = useState<BatchSummary>(emptyBatchSummary);
   const [selectedBatch, setSelectedBatch] = useState<LabelingBatch>("full");
@@ -517,6 +518,7 @@ export function LabelingEditor() {
     try {
       const document = parseLabelDocument(JSON.parse(await file.text()));
       setLabels(document);
+      setSolReferenceRallies([]);
       setRallyStart(null);
       setIgnoredStart(null);
       setNegativeStart(null);
@@ -559,16 +561,33 @@ export function LabelingEditor() {
     setError(null);
     setPreparedTasksLoading(true);
     try {
-      const response = await fetch(`/api/labeling/tasks/${encodeURIComponent(id)}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
+      const taskUrl = `/api/labeling/tasks/${encodeURIComponent(id)}`;
+      const [response, referencesResponse] = await Promise.all([
+        fetch(taskUrl, {
+          cache: "no-store",
+          signal: controller.signal,
+        }),
+        fetch(`${taskUrl}/references`, {
+          cache: "no-store",
+          signal: controller.signal,
+        }).catch(() => null),
+      ]);
       if (!response.ok) throw new Error("Could not load the selected prepared task");
       const batch = response.headers.get("X-VolleyCut-Batch");
       const documentSource = response.headers.get("X-VolleyCut-Document-Source");
       const savedAt = response.headers.get("X-VolleyCut-Saved-At");
       const document = parseLabelDocument(await response.json());
+      let referenceRallies: RallyLabel[] = [];
+      if (referencesResponse?.ok) {
+        const references = (await referencesResponse.json()) as {
+          sol?: { rallies?: RallyLabel[] } | null;
+        };
+        if (Array.isArray(references.sol?.rallies)) {
+          referenceRallies = references.sol.rallies;
+        }
+      }
       setLabels(document);
+      setSolReferenceRallies(referenceRallies);
       setVideoUrl(`/api/labeling/tasks/${encodeURIComponent(id)}/video`);
       setVideoFilename(document.recording.videoFilename);
       setVideoDuration(null);
@@ -585,6 +604,8 @@ export function LabelingEditor() {
       setMessage(
         documentSource === "draft"
           ? `Resumed the NAS draft for ${document.recording.id} with ${document.rallies.length} rallies.`
+          : documentSource === "production-model"
+            ? `Loaded ${document.rallies.length} editable predictions from the production model for ${document.recording.id}. Sol is shown below as a read-only reference.`
           : documentSource === "prelabel"
             ? `Loaded ${document.rallies.length} unvalidated GPT-5.6 Sol rally candidates for ${document.recording.id}. Review every boundary before completing.`
           : `Loaded ${document.recording.id} and its matching NAS proxy. No local file selection needed.`,
@@ -1296,7 +1317,7 @@ export function LabelingEditor() {
           >
             <option value="full">
               Full corpus · {batchSummary.full.ready}/{batchSummary.full.total} ready · {batchSummary.full.saved} saved
-              {batchSummary.full.prelabeled > 0 ? ` · ${batchSummary.full.prelabeled} AI prelabels` : ""}
+              {batchSummary.full.prelabeled > 0 ? ` · ${batchSummary.full.prelabeled} AI starting points` : ""}
             </option>
             <option value="pilot">
               Pilot · {batchSummary.pilot.ready}/{batchSummary.pilot.total} ready · {batchSummary.pilot.saved} saved
@@ -1317,7 +1338,7 @@ export function LabelingEditor() {
             </option>
             {tasksForSelectedBatch.map((task) => (
               <option key={task.id} value={task.id}>
-                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.documentSource === "prelabel" ? `${task.rallyCount} AI rallies to review` : "not started"}
+                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.documentSource === "production-model" ? `${task.rallyCount} production-model rallies to review` : task.documentSource === "prelabel" ? `${task.rallyCount} Sol rallies to review` : "not started"}
               </option>
             ))}
           </select>
@@ -1336,11 +1357,15 @@ export function LabelingEditor() {
           <strong>{selectedPreparedSummary?.batch ?? "Local fallback"}</strong>
           <span>Starting point</span>
           <strong>
-            {selectedPreparedSummary?.documentSource === "prelabel"
+            {selectedPreparedSummary?.documentSource === "production-model"
+              ? "Production model · editable labels"
+              : selectedPreparedSummary?.documentSource === "prelabel"
               ? `Unvalidated GPT-5.6 Sol prelabel · ${labels?.prelabel?.ambiguities.length ?? 0} ambiguities`
               : selectedPreparedSummary?.documentSource === "draft"
-                ? labels?.prelabel
-                  ? "Human-saved NAS draft · started from AI prelabel"
+                ? labels?.prelabel?.candidateFile.startsWith("model-")
+                  ? "Human-saved NAS draft · started from production model"
+                  : labels?.prelabel
+                    ? "Human-saved NAS draft · started from Sol prelabel"
                   : "Human-saved NAS draft"
                 : "Blank task"}
           </strong>
@@ -1773,18 +1798,37 @@ export function LabelingEditor() {
               currentTime={currentTime}
               tracks={[
                 {
-                  id: "rallies",
-                  label: "Rallies",
-                  detail: `${labels.rallies.length} labeled`,
+                  id: "editable-rallies",
+                  label: "Editable labels",
+                  detail: `${labels.rallies.length} rallies · working set`,
                   active: true,
                   intervals: labels.rallies.map((row, index) => ({
                     id: `rally-${index}`,
                     start: row.start,
                     end: row.end,
                     title: `Rally ${index + 1}`,
-                    tone: "gold" as const,
+                    tone: labels.prelabel?.candidateFile.startsWith("model-")
+                      ? ("model" as const)
+                      : ("gold" as const),
                   })),
                 },
+                ...(solReferenceRallies.length
+                  ? [{
+                      id: "sol-reference",
+                      label: "Sol reference",
+                      detail: `${solReferenceRallies.length} rallies · read only`,
+                      title:
+                        "Blind Sol labels for reference only; edits apply to the working set above.",
+                      intervals: solReferenceRallies.map((row, index) => ({
+                        id: `sol-reference-${index}`,
+                        selectionId: null,
+                        start: row.start,
+                        end: row.end,
+                        title: `Sol reference ${index + 1}`,
+                        tone: "sol" as const,
+                      })),
+                    } satisfies TimelineTrack]
+                  : []),
                 ...(labels.ignoredIntervals.length
                   ? [{
                       id: "ignored",
@@ -1819,12 +1863,12 @@ export function LabelingEditor() {
                 time: marker.time,
                 title: `Side switch ${index + 1}${marker.notes ? ` · ${marker.notes}` : ""}`,
               }))}
-              selectedTrackId="rallies"
+              selectedTrackId="editable-rallies"
               selectedIntervalId={
                 selectedRallyIndex >= 0 ? `rally-${selectedRallyIndex}` : undefined
               }
               onSeek={(time) => seekTo(time)}
-              ariaLabel="Label timeline"
+              ariaLabel="Editable rally labels with read-only Sol reference"
             />
           )}
         </div>

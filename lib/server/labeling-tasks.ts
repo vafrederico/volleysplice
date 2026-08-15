@@ -10,7 +10,9 @@ import {
   type LabelDocument,
   type NormalizedPoint,
 } from "@/lib/annotations";
-import { getIntakeWorkspace } from "@/lib/storage";
+import { buildProductionLabelSeed } from "@/lib/production-label-seed";
+import { PRODUCTION_MODEL_ID } from "@/lib/production-model";
+import { getAnalysesRoot, getIntakeWorkspace } from "@/lib/storage";
 
 const DEFAULT_MEDIA_ROOT = "/mnt/freenas/volleycut";
 const DEFAULT_LABELING_WORKSPACE =
@@ -88,8 +90,12 @@ export class LabelingDraftValidationError extends Error {}
 
 export type SavedLabelingDocument = {
   document: LabelDocument;
-  source: "draft" | "prelabel" | "task";
+  source: "draft" | "production-model" | "prelabel" | "task";
   savedAt: string | null;
+};
+
+export type SolReferenceLabels = {
+  rallies: LabelDocument["rallies"];
 };
 
 function isWithin(parent: string, candidate: string): boolean {
@@ -564,6 +570,22 @@ export async function getSavedLabelingDocument(
   }
   if (task.batch === "full") {
     try {
+      const productionAnalysisPath = path.join(
+        getAnalysesRoot("without-beach"),
+        `${PRODUCTION_MODEL_ID}--${task.id}`,
+        "analysis.json",
+      );
+      const seed = buildProductionLabelSeed(
+        task.document,
+        JSON.parse(await readFile(productionAnalysisPath, "utf8")) as unknown,
+        PRODUCTION_MODEL_ID,
+      );
+      validateDraftContent(seed.document, task);
+      return { document: seed.document, source: "production-model", savedAt: null };
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+    }
+    try {
       const document = parseLabelDocument(
         JSON.parse(await readFile(task.prelabelPath, "utf8")) as unknown,
       );
@@ -574,6 +596,22 @@ export async function getSavedLabelingDocument(
     }
   }
   return { document: task.document, source: "task", savedAt: null };
+}
+
+export async function getSolReferenceLabels(
+  task: PreparedLabelingTask,
+): Promise<SolReferenceLabels | null> {
+  if (task.batch !== "full") return null;
+  try {
+    const document = parseLabelDocument(
+      JSON.parse(await readFile(task.prelabelPath, "utf8")) as unknown,
+    );
+    validateDraftContent(document, task);
+    return { rallies: document.rallies };
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
 }
 
 export async function saveLabelingDraft(
