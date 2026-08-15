@@ -26,7 +26,11 @@ import {
   type RallyLabel,
   type SideSwitch,
 } from "@/lib/annotations";
-import type { Rally } from "@/lib/edit-list";
+import {
+  DEFAULT_JOIN_GAP_SECONDS,
+  MAX_JOIN_GAP_SECONDS,
+  type Rally,
+} from "@/lib/edit-list";
 import {
   buildLiveTimeComparisonSegments,
   calculateF1,
@@ -42,9 +46,10 @@ type IntervalKind = "rally" | "ignored" | "negative";
 type LabelingBatch = "full" | "pilot";
 type TrackletCaptureMode = "footpoint" | "box";
 type TrackletBoxDrag = { start: NormalizedPoint; current: NormalizedPoint };
-type ProductionReference = {
+type ModelReference = {
   modelId: string;
   modelLabel: string;
+  description?: string;
   rallies: RallyLabel[];
 };
 type CourtAnchorId =
@@ -111,7 +116,7 @@ type PreparedTaskSummary = {
   durationSeconds: number;
   originalFilename: string;
   videoFilename: string;
-  documentSource: "draft" | "production-model" | "prelabel" | "task";
+  documentSource: "draft" | "completed" | "production-model" | "prelabel" | "task";
   savedAt: string | null;
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
@@ -132,6 +137,8 @@ const playbackResumeKey = "volleycut.labeling.playback.v1";
 const timestampEpsilon = 0.0005;
 const trackletFrameEpsilon = 0.001;
 const comparisonPaddingCases = [2, 3] as const;
+const activityPaddingStorageKey = "volleycut:activity-padding:v1";
+const activityPaddingEvent = "volleycut:activity-padding";
 
 function metricPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -246,7 +253,8 @@ export function LabelingEditor() {
   const lastPersistedPlaybackRef = useRef<{ taskId: string; time: number } | null>(null);
   const [labels, setLabels] = useState<LabelDocument | null>(null);
   const [productionReference, setProductionReference] =
-    useState<ProductionReference | null>(null);
+    useState<ModelReference | null>(null);
+  const [experimentReferences, setExperimentReferences] = useState<ModelReference[]>([]);
   const [solReferenceRallies, setSolReferenceRallies] = useState<RallyLabel[]>([]);
   const [preparedTasks, setPreparedTasks] = useState<PreparedTaskSummary[]>([]);
   const [batchSummary, setBatchSummary] = useState<BatchSummary>(emptyBatchSummary);
@@ -279,6 +287,55 @@ export function LabelingEditor() {
     "Choose a prepared full-corpus task, or use the local fallback files.",
   );
   const [error, setError] = useState<string | null>(null);
+  const [joinGapSeconds, setJoinGapSeconds] = useState(DEFAULT_JOIN_GAP_SECONDS);
+
+  useEffect(() => {
+    const syncJoinGap = () => {
+      try {
+        const raw = window.localStorage.getItem(activityPaddingStorageKey);
+        if (!raw) return;
+        const value = JSON.parse(raw) as { joinGap?: unknown } | null;
+        if (typeof value?.joinGap === "number" && Number.isFinite(value.joinGap)) {
+          setJoinGapSeconds(Math.max(0, Math.min(MAX_JOIN_GAP_SECONDS, value.joinGap)));
+        }
+      } catch {
+        // Storage can be unavailable or contain a legacy value without joinGap.
+      }
+    };
+    syncJoinGap();
+    window.addEventListener("storage", syncJoinGap);
+    window.addEventListener(activityPaddingEvent, syncJoinGap);
+    return () => {
+      window.removeEventListener("storage", syncJoinGap);
+      window.removeEventListener(activityPaddingEvent, syncJoinGap);
+    };
+  }, []);
+
+  function updateJoinGapSeconds(seconds: number) {
+    if (!Number.isFinite(seconds)) return;
+    const next = Math.max(0, Math.min(MAX_JOIN_GAP_SECONDS, seconds));
+    setJoinGapSeconds(next);
+    try {
+      const raw = window.localStorage.getItem(activityPaddingStorageKey);
+      const parsed = raw ? JSON.parse(raw) as unknown : null;
+      const persisted = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+      const before = typeof persisted.before === "number" && Number.isFinite(persisted.before)
+        ? persisted.before
+        : 3;
+      const after = typeof persisted.after === "number" && Number.isFinite(persisted.after)
+        ? persisted.after
+        : 2;
+      window.localStorage.setItem(
+        activityPaddingStorageKey,
+        JSON.stringify({ before, after, joinGap: next }),
+      );
+      window.dispatchEvent(new Event(activityPaddingEvent));
+    } catch {
+      // The in-memory setting still works when browser storage is unavailable.
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -426,55 +483,78 @@ export function LabelingEditor() {
     return indexes;
   }, [labels]);
 
-  const productionComparisons = useMemo(() => {
-    if (!labels || !productionReference) return [];
+  const referenceComparisons = useMemo(() => {
+    if (!labels) return [];
     const duration = labels.recording.durationSeconds;
-    const modelCore = comparableRallies(productionReference.rallies, "production");
     const humanCore = comparableRallies(labels.rallies, "editable");
     const ignored = labels.ignoredIntervals;
-    return comparisonPaddingCases.map((paddingSeconds) => {
-      // Padding is merged before any duration or metric calculation, so
-      // overlapping/touching model exports contribute to the union only once.
-      const paddedModel = padAndMergeRallies(
-        modelCore,
-        paddingSeconds,
-        paddingSeconds,
-        duration,
-      );
-      const paddedHuman = padAndMergeRallies(
-        humanCore,
-        paddingSeconds,
-        paddingSeconds,
-        duration,
-      );
-      const paddedHumanMetrics = calculateLiveTimeMetrics(
-        paddedModel,
-        paddedHuman,
-        ignored,
-      );
-      const coreHumanMetrics = calculateLiveTimeMetrics(
-        paddedModel,
-        humanCore,
-        ignored,
-      );
-      const precision = paddedHumanMetrics.precision;
-      const recall = coreHumanMetrics.recall;
-      return {
-        paddingSeconds,
-        precision,
-        recall,
-        f1: calculateF1(precision, recall),
-        exportSeconds: totalRallySeconds(excludeIgnoredTime(paddedModel, ignored)),
-        segments: markModelPaddingOrigins(
+    const references = [
+      ...(productionReference ? [{ ...productionReference, baseline: true }] : []),
+      ...experimentReferences.map((reference) => ({ ...reference, baseline: false })),
+    ];
+    return references.flatMap((reference) => {
+      const modelCore = comparableRallies(reference.rallies, reference.modelId);
+      return comparisonPaddingCases.map((paddingSeconds) => {
+        // Padding is merged before any duration or metric calculation, so
+        // overlapping/touching model exports contribute to the union only once.
+        const paddedModel = padAndMergeRallies(
+          modelCore,
+          paddingSeconds,
+          paddingSeconds,
+          duration,
+          joinGapSeconds,
+        );
+        const paddedHuman = padAndMergeRallies(
+          humanCore,
+          paddingSeconds,
+          paddingSeconds,
+          duration,
+          joinGapSeconds,
+        );
+        const paddedHumanMetrics = calculateLiveTimeMetrics(
+          paddedModel,
+          paddedHuman,
+          ignored,
+        );
+        const coreHumanMetrics = calculateLiveTimeMetrics(
+          paddedModel,
+          humanCore,
+          ignored,
+        );
+        const precision = paddedHumanMetrics.precision;
+        const recall = coreHumanMetrics.recall;
+        const segments = markModelPaddingOrigins(
           buildLiveTimeComparisonSegments(paddedModel, humanCore, ignored),
           modelCore,
           paddingSeconds,
           paddingSeconds,
           duration,
-        ),
-      };
+        );
+        return {
+          reference,
+          paddingSeconds,
+          precision,
+          recall,
+          f1: calculateF1(precision, recall),
+          exportSeconds: totalRallySeconds(excludeIgnoredTime(paddedModel, ignored)),
+          exportRallies: excludeIgnoredTime(paddedModel, ignored),
+          joinedGapRallies: excludeIgnoredTime(
+            paddedModel.flatMap((rally, rallyIndex) =>
+              rally.joinedGaps.map((gap, gapIndex) => ({
+                id: `${reference.modelId}-${paddingSeconds}s-gap-${rallyIndex + 1}-${gapIndex + 1}`,
+                start: gap.start,
+                end: gap.end,
+                confidence: 1,
+                included: true,
+              }))),
+            ignored,
+          ),
+          missingHumanSegments: segments.filter((segment) => segment.kind === "missed"),
+          segments,
+        };
+      });
     });
-  }, [labels, productionReference]);
+  }, [experimentReferences, joinGapSeconds, labels, productionReference]);
 
   const completionIssues = useMemo(() => {
     if (!labels) return ["Load a label task"];
@@ -619,6 +699,7 @@ export function LabelingEditor() {
       const document = parseLabelDocument(JSON.parse(await file.text()));
       setLabels(document);
       setProductionReference(null);
+      setExperimentReferences([]);
       setSolReferenceRallies([]);
       setRallyStart(null);
       setIgnoredStart(null);
@@ -679,10 +760,12 @@ export function LabelingEditor() {
       const savedAt = response.headers.get("X-VolleyCut-Saved-At");
       const document = parseLabelDocument(await response.json());
       let referenceRallies: RallyLabel[] = [];
-      let nextProductionReference: ProductionReference | null = null;
+      let nextProductionReference: ModelReference | null = null;
+      let nextExperimentReferences: ModelReference[] = [];
       if (referencesResponse?.ok) {
         const references = (await referencesResponse.json()) as {
-          production?: Partial<ProductionReference> | null;
+          production?: Partial<ModelReference> | null;
+          experiments?: Array<Partial<ModelReference>>;
           sol?: { rallies?: RallyLabel[] } | null;
         };
         if (
@@ -690,7 +773,15 @@ export function LabelingEditor() {
           typeof references.production.modelLabel === "string" &&
           Array.isArray(references.production.rallies)
         ) {
-          nextProductionReference = references.production as ProductionReference;
+          nextProductionReference = references.production as ModelReference;
+        }
+        if (Array.isArray(references.experiments)) {
+          nextExperimentReferences = references.experiments.filter(
+            (reference): reference is ModelReference =>
+              typeof reference.modelId === "string" &&
+              typeof reference.modelLabel === "string" &&
+              Array.isArray(reference.rallies),
+          );
         }
         if (Array.isArray(references.sol?.rallies)) {
           referenceRallies = references.sol.rallies;
@@ -698,6 +789,7 @@ export function LabelingEditor() {
       }
       setLabels(document);
       setProductionReference(nextProductionReference);
+      setExperimentReferences(nextExperimentReferences);
       setSolReferenceRallies(referenceRallies);
       setVideoUrl(`/api/labeling/tasks/${encodeURIComponent(id)}/video`);
       setVideoFilename(document.recording.videoFilename);
@@ -715,6 +807,8 @@ export function LabelingEditor() {
       setMessage(
         documentSource === "draft"
           ? `Resumed the NAS draft for ${document.recording.id} with ${document.rallies.length} rallies.`
+          : documentSource === "completed"
+            ? `Loaded the completed human labels for ${document.recording.id} with ${document.rallies.length} rallies. Any new save creates an editable NAS draft without changing the completed source.`
           : documentSource === "production-model"
             ? `Loaded ${document.rallies.length} editable predictions from the production model for ${document.recording.id}. Sol is shown below as a read-only reference.`
           : documentSource === "prelabel"
@@ -1472,6 +1566,8 @@ export function LabelingEditor() {
               ? "Production model · editable labels"
               : selectedPreparedSummary?.documentSource === "prelabel"
               ? `Unvalidated GPT-5.6 Sol prelabel · ${labels?.prelabel?.ambiguities.length ?? 0} ambiguities`
+              : selectedPreparedSummary?.documentSource === "completed"
+                ? "Completed human labels · editable copy"
               : selectedPreparedSummary?.documentSource === "draft"
                 ? labels?.prelabel?.candidateFile.startsWith("model-")
                   ? "Human-saved NAS draft · started from production model"
@@ -1624,238 +1720,6 @@ export function LabelingEditor() {
             <div className={styles.timecode}>{formatPreciseTime(currentTime)}</div>
           </div>
 
-          {labels && (
-            <div className={styles.courtPanel}>
-              <div className={styles.courtPanelHeading}>
-                <div>
-                  <strong>Court geometry · 4–8 clicks</strong>
-                  <span>Near is the camera side. Pause on a clear full-court frame.</span>
-                </div>
-                {courtAnchor && (
-                  <button type="button" onClick={() => setCourtAnchor(null)}>Finish court clicks</button>
-                )}
-              </div>
-              <div className={styles.courtAnchors}>
-                {courtAnchorSpecs.map((anchor) => {
-                  const point = courtPoint(labels.recording.courtGeometry, anchor.id);
-                  return (
-                    <div
-                      className={`${styles.courtAnchor} ${courtAnchor === anchor.id ? styles.activeCourtAnchor : ""}`}
-                      key={anchor.id}
-                    >
-                      <button type="button" onClick={() => selectCourtAnchor(anchor.id)}>
-                        {point ? "✓ " : ""}{anchor.label}{anchor.optional ? " · optional" : ""}
-                      </button>
-                      {point && (
-                        <button
-                          type="button"
-                          aria-label={`Clear ${anchor.label}`}
-                          onClick={() => updateCourtPoint(anchor.id, undefined)}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {labels && (
-            <div className={styles.playerTrackletPanel}>
-              <div className={styles.courtPanelHeading}>
-                <div>
-                  <strong>Sparse anonymous player tracks · optional</strong>
-                  <span>Label short serve/end windows only. IDs are temporary within one rally window—never enter names.</span>
-                </div>
-                {trackletCapture && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTrackletCapture(null);
-                      setTrackletBoxDrag(null);
-                    }}
-                  >
-                    Finish player clicks
-                  </button>
-                )}
-              </div>
-              <div className={styles.trackletControls}>
-                <label>
-                  Rally
-                  <select
-                    value={activeTrackletRallyIndex >= 0 ? activeTrackletRallyIndex : ""}
-                    onChange={(event) =>
-                      setTrackletRallyIndex(
-                        event.target.value === "" ? null : Number(event.target.value),
-                      )
-                    }
-                  >
-                    <option value="">Choose…</option>
-                    {labels.rallies.map((rally, index) => (
-                      <option key={`tracklet-rally-${index}`} value={index}>
-                        R{String(index + 1).padStart(3, "0")} · {formatPreciseTime(rally.start)}–{formatPreciseTime(rally.end)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Boundary window
-                  <select
-                    value={trackletWindow}
-                    onChange={(event) =>
-                      setTrackletWindow(event.target.value as PlayerTracklet["window"])
-                    }
-                  >
-                    {playerTrackletWindowValues.map((value) => (
-                      <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Short track ID
-                  <input
-                    value={trackletId}
-                    maxLength={5}
-                    placeholder="P1"
-                    onChange={(event) => setTrackletId(event.target.value.toUpperCase())}
-                  />
-                </label>
-                <label>
-                  Anonymous team
-                  <select
-                    value={trackletTeam}
-                    onChange={(event) =>
-                      setTrackletTeam(event.target.value as PlayerTracklet["team"])
-                    }
-                  >
-                    {playerTeamValues.map((value) => (
-                      <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Court side
-                  <select
-                    value={trackletCourtSide}
-                    onChange={(event) =>
-                      setTrackletCourtSide(event.target.value as PlayerTracklet["courtSide"])
-                    }
-                  >
-                    {playerCourtSideValues.map((value) => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Coarse state
-                  <select
-                    value={trackletState ?? ""}
-                    onChange={(event) =>
-                      setTrackletState(
-                        (event.target.value || undefined) as PlayerTrackletObservation["state"],
-                      )
-                    }
-                  >
-                    <option value="">Not labeled</option>
-                    {playerStateValues.map((value) => (
-                      <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className={styles.trackletActions}>
-                <button type="button" onClick={() => startTrackletCapture("footpoint")}>
-                  Click footpoints
-                </button>
-                <button type="button" onClick={() => startTrackletCapture("box")}>
-                  Draw boxes
-                </button>
-                <span>
-                  {activeTrackletRally
-                    ? (() => {
-                        const bounds = playerWindowBounds(
-                          activeTrackletRally,
-                          trackletWindow,
-                          labels.recording.durationSeconds,
-                        );
-                        return `${formatPreciseTime(bounds.start)}–${formatPreciseTime(bounds.end)} · seek, then click or drag at 2+ frames`;
-                      })()
-                    : "Choose a rally first"}
-                </span>
-              </div>
-              {activeTrackletRally && (activeTrackletRally.playerTracklets ?? []).length > 0 ? (
-                <div className={styles.trackletRows}>
-                  {(activeTrackletRally.playerTracklets ?? []).map((tracklet, trackletIndex) => (
-                    <div
-                      className={styles.trackletRow}
-                      key={`${tracklet.window}-${tracklet.trackId}`}
-                    >
-                      <div className={styles.trackletRowHeading}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTrackletId(tracklet.trackId);
-                            setTrackletWindow(tracklet.window);
-                            setTrackletTeam(tracklet.team);
-                            setTrackletCourtSide(tracklet.courtSide);
-                            seekTo(tracklet.observations[0].time);
-                          }}
-                        >
-                          {tracklet.trackId} · {tracklet.window} · {tracklet.team} · {tracklet.courtSide}
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.delete}
-                          onClick={() =>
-                            removePlayerTracklet(activeTrackletRallyIndex, trackletIndex)
-                          }
-                        >
-                          Delete track
-                        </button>
-                      </div>
-                      <div className={styles.trackletObservations}>
-                        {tracklet.observations.map((observation, observationIndex) => (
-                          <div key={`${tracklet.trackId}-${observation.time}`}>
-                            <button type="button" onClick={() => seekTo(observation.time)}>
-                              {formatPreciseTime(observation.time)}
-                            </button>
-                            <span>
-                              {observation.box && observation.footpoint
-                                ? "box + feet"
-                                : observation.box
-                                  ? "box"
-                                  : "feet"}
-                              {observation.state ? ` · ${observation.state}` : ""}
-                            </span>
-                            <button
-                              type="button"
-                              aria-label={`Delete ${tracklet.trackId} observation at ${formatPreciseTime(observation.time)}`}
-                              onClick={() =>
-                                removePlayerObservation(
-                                  activeTrackletRallyIndex,
-                                  trackletIndex,
-                                  observationIndex,
-                                )
-                              }
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className={styles.trackletEmpty}>
-                  No player tracks for the selected rally. A usable track has at least two frames.
-                </p>
-              )}
-            </div>
-          )}
-
           <div className={styles.transport}>
             <button onClick={() => seek(-1)}>−1s <kbd>←</kbd></button>
             <button onClick={() => seek(-0.1)}>−0.1s <kbd>J</kbd></button>
@@ -1904,7 +1768,29 @@ export function LabelingEditor() {
           </div>
 
           {labels && (
-            <RallyTimeline
+            <>
+              <div className={styles.comparisonRailControls}>
+                <div className={styles.comparisonRailLegend} aria-label="Final export rail legend">
+                  <span data-tone="export">Final padded export</span>
+                  <span data-tone="joined-gap">Joined short gap</span>
+                  <span data-tone="missing">Missed human core</span>
+                </div>
+                <label htmlFor="label-join-gap">
+                  Join gaps under
+                  <output>{joinGapSeconds.toFixed(1)}s</output>
+                  <input
+                    id="label-join-gap"
+                    aria-label="Join evaluation and export gaps shorter than"
+                    type="range"
+                    min="0"
+                    max={MAX_JOIN_GAP_SECONDS}
+                    step="0.5"
+                    value={joinGapSeconds}
+                    onChange={(event) => updateJoinGapSeconds(Number(event.currentTarget.value))}
+                  />
+                </label>
+              </div>
+              <RallyTimeline
               duration={labels.recording.durationSeconds}
               currentTime={currentTime}
               tracks={[
@@ -1923,34 +1809,50 @@ export function LabelingEditor() {
                       : ("gold" as const),
                     })),
                 },
-                ...(productionReference
-                  ? productionComparisons.map((comparison) => ({
-                      id: `production-reference-${comparison.paddingSeconds}s`,
-                      label: `Production model · ${comparison.paddingSeconds}s`,
-                      detail: `${productionReference.modelId} · ${productionReference.rallies.length} core rallies · merged ${comparison.paddingSeconds}s pad`,
-                      title: `${productionReference.modelLabel}. Read-only production inference compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Overlapping padded ranges are merged before scoring.`,
-                      summary: {
-                        exportTime: formatPreciseTime(comparison.exportSeconds),
-                        metricsLabel: `${comparison.paddingSeconds}s P_pad/R_core/F1`,
-                        coreMetrics: `P ${metricPercent(comparison.precision)} · R ${metricPercent(comparison.recall)} · F1 ${metricPercent(comparison.f1)}`,
-                      },
-                      intervals: comparison.segments.map((segment) => ({
-                        id: `production-reference-${comparison.paddingSeconds}s-${segment.id}`,
-                        selectionId: null,
-                        start: segment.start,
-                        end: segment.end,
-                        tone: `model-${segment.kind}` as const,
-                        paddingOrigin: segment.paddingOrigin,
-                        title: `${productionReference.modelLabel} · ${comparison.paddingSeconds}s padding · ${
-                          segment.kind === "match"
-                            ? "matches editable human live time"
-                            : segment.kind === "added"
-                              ? "predicted outside editable human live time"
-                              : "editable human live time missed by the model"
-                        } · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
-                      })),
-                    } satisfies TimelineTrack))
-                  : []),
+                ...referenceComparisons.map((comparison) => ({
+                  id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s`,
+                  label: `${comparison.reference.baseline ? "Production" : comparison.reference.modelLabel} · ${comparison.paddingSeconds}s`,
+                  detail: `${comparison.reference.modelId} · ${comparison.reference.rallies.length} core rallies · ${comparison.paddingSeconds}s pad · < ${joinGapSeconds}s joins`,
+                  title: `${comparison.reference.modelLabel}. ${comparison.reference.description ?? "Read-only model inference"} Compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Padded ranges with gaps strictly under ${joinGapSeconds} seconds are joined before scoring and export measurement.`,
+                  summary: {
+                    exportTime: formatPreciseTime(comparison.exportSeconds),
+                    metricsLabel: `${comparison.paddingSeconds}s P_pad/R_core/F1`,
+                    coreMetrics: `P ${metricPercent(comparison.precision)} · R ${metricPercent(comparison.recall)} · F1 ${metricPercent(comparison.f1)}`,
+                  },
+                  exportIntervals: comparison.exportRallies.map((rally, index) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-export-${index + 1}`,
+                    start: rally.start,
+                    end: rally.end,
+                    title: `${comparison.reference.modelLabel} · final ${comparison.paddingSeconds}s padded export · ${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}`,
+                  })),
+                  joinedGapIntervals: comparison.joinedGapRallies.map((gap, index) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-visible-gap-${index + 1}`,
+                    start: gap.start,
+                    end: gap.end,
+                    title: `${comparison.reference.modelLabel} · retained gap under ${joinGapSeconds}s · ${formatPreciseTime(gap.start)}–${formatPreciseTime(gap.end)}`,
+                  })),
+                  missingHumanIntervals: comparison.missingHumanSegments.map((segment, index) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-missing-human-${index + 1}`,
+                    start: segment.start,
+                    end: segment.end,
+                    title: `${comparison.reference.modelLabel} · missed unpadded human rally time · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
+                  })),
+                  intervals: comparison.segments.map((segment) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-${segment.id}`,
+                    selectionId: null,
+                    start: segment.start,
+                    end: segment.end,
+                    tone: `model-${segment.kind}` as const,
+                    paddingOrigin: segment.paddingOrigin,
+                    title: `${comparison.reference.modelLabel} · ${comparison.paddingSeconds}s padding · ${
+                      segment.kind === "match"
+                        ? "matches editable human live time"
+                        : segment.kind === "added"
+                          ? "predicted outside editable human live time"
+                          : "editable human live time missed by the model"
+                    } · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
+                  })),
+                } satisfies TimelineTrack)),
                 ...(solReferenceRallies.length
                   ? [{
                       id: "sol-reference",
@@ -2007,8 +1909,9 @@ export function LabelingEditor() {
                 selectedRallyIndex >= 0 ? `rally-${selectedRallyIndex}` : undefined
               }
               onSeek={(time) => seekTo(time)}
-              ariaLabel="Editable rally labels with read-only production and Sol references"
+              ariaLabel="Editable rally labels with read-only model and Sol references"
             />
+            </>
           )}
         </div>
 
@@ -2411,6 +2314,238 @@ export function LabelingEditor() {
               <button onClick={() => downloadLabels(labels, false)}>Download backup JSON</button>
               <button className={styles.complete} disabled={completionIssues.length > 0} onClick={() => downloadLabels(labels, true)}>Export completed labels</button>
             </div>
+          </div>
+        </section>
+      )}
+
+      {labels && (
+        <section className={styles.supplementalTools} aria-label="Optional court and player labels">
+          <div className={styles.courtPanel}>
+            <div className={styles.courtPanelHeading}>
+              <div>
+                <strong>Court geometry · 4–8 clicks</strong>
+                <span>Near is the camera side. Pause on a clear full-court frame.</span>
+              </div>
+              {courtAnchor && (
+                <button type="button" onClick={() => setCourtAnchor(null)}>Finish court clicks</button>
+              )}
+            </div>
+            <div className={styles.courtAnchors}>
+              {courtAnchorSpecs.map((anchor) => {
+                const point = courtPoint(labels.recording.courtGeometry, anchor.id);
+                return (
+                  <div
+                    className={`${styles.courtAnchor} ${courtAnchor === anchor.id ? styles.activeCourtAnchor : ""}`}
+                    key={anchor.id}
+                  >
+                    <button type="button" onClick={() => selectCourtAnchor(anchor.id)}>
+                      {point ? "✓ " : ""}{anchor.label}{anchor.optional ? " · optional" : ""}
+                    </button>
+                    {point && (
+                      <button
+                        type="button"
+                        aria-label={`Clear ${anchor.label}`}
+                        onClick={() => updateCourtPoint(anchor.id, undefined)}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={styles.playerTrackletPanel}>
+            <div className={styles.courtPanelHeading}>
+              <div>
+                <strong>Sparse anonymous player tracks · optional</strong>
+                <span>Label short serve/end windows only. IDs are temporary within one rally window—never enter names.</span>
+              </div>
+              {trackletCapture && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTrackletCapture(null);
+                    setTrackletBoxDrag(null);
+                  }}
+                >
+                  Finish player clicks
+                </button>
+              )}
+            </div>
+            <div className={styles.trackletControls}>
+              <label>
+                Rally
+                <select
+                  value={activeTrackletRallyIndex >= 0 ? activeTrackletRallyIndex : ""}
+                  onChange={(event) =>
+                    setTrackletRallyIndex(
+                      event.target.value === "" ? null : Number(event.target.value),
+                    )
+                  }
+                >
+                  <option value="">Choose…</option>
+                  {labels.rallies.map((rally, index) => (
+                    <option key={`tracklet-rally-${index}`} value={index}>
+                      R{String(index + 1).padStart(3, "0")} · {formatPreciseTime(rally.start)}–{formatPreciseTime(rally.end)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Boundary window
+                <select
+                  value={trackletWindow}
+                  onChange={(event) =>
+                    setTrackletWindow(event.target.value as PlayerTracklet["window"])
+                  }
+                >
+                  {playerTrackletWindowValues.map((value) => (
+                    <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Short track ID
+                <input
+                  value={trackletId}
+                  maxLength={5}
+                  placeholder="P1"
+                  onChange={(event) => setTrackletId(event.target.value.toUpperCase())}
+                />
+              </label>
+              <label>
+                Anonymous team
+                <select
+                  value={trackletTeam}
+                  onChange={(event) =>
+                    setTrackletTeam(event.target.value as PlayerTracklet["team"])
+                  }
+                >
+                  {playerTeamValues.map((value) => (
+                    <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Court side
+                <select
+                  value={trackletCourtSide}
+                  onChange={(event) =>
+                    setTrackletCourtSide(event.target.value as PlayerTracklet["courtSide"])
+                  }
+                >
+                  {playerCourtSideValues.map((value) => (
+                    <option key={value} value={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Coarse state
+                <select
+                  value={trackletState ?? ""}
+                  onChange={(event) =>
+                    setTrackletState(
+                      (event.target.value || undefined) as PlayerTrackletObservation["state"],
+                    )
+                  }
+                >
+                  <option value="">Not labeled</option>
+                  {playerStateValues.map((value) => (
+                    <option key={value} value={value}>{value.replaceAll("-", " ")}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className={styles.trackletActions}>
+              <button type="button" onClick={() => startTrackletCapture("footpoint")}>
+                Click footpoints
+              </button>
+              <button type="button" onClick={() => startTrackletCapture("box")}>
+                Draw boxes
+              </button>
+              <span>
+                {activeTrackletRally
+                  ? (() => {
+                      const bounds = playerWindowBounds(
+                        activeTrackletRally,
+                        trackletWindow,
+                        labels.recording.durationSeconds,
+                      );
+                      return `${formatPreciseTime(bounds.start)}–${formatPreciseTime(bounds.end)} · seek, then click or drag at 2+ frames`;
+                    })()
+                  : "Choose a rally first"}
+              </span>
+            </div>
+            {activeTrackletRally && (activeTrackletRally.playerTracklets ?? []).length > 0 ? (
+              <div className={styles.trackletRows}>
+                {(activeTrackletRally.playerTracklets ?? []).map((tracklet, trackletIndex) => (
+                  <div
+                    className={styles.trackletRow}
+                    key={`${tracklet.window}-${tracklet.trackId}`}
+                  >
+                    <div className={styles.trackletRowHeading}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackletId(tracklet.trackId);
+                          setTrackletWindow(tracklet.window);
+                          setTrackletTeam(tracklet.team);
+                          setTrackletCourtSide(tracklet.courtSide);
+                          seekTo(tracklet.observations[0].time);
+                        }}
+                      >
+                        {tracklet.trackId} · {tracklet.window} · {tracklet.team} · {tracklet.courtSide}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.delete}
+                        onClick={() =>
+                          removePlayerTracklet(activeTrackletRallyIndex, trackletIndex)
+                        }
+                      >
+                        Delete track
+                      </button>
+                    </div>
+                    <div className={styles.trackletObservations}>
+                      {tracklet.observations.map((observation, observationIndex) => (
+                        <div key={`${tracklet.trackId}-${observation.time}`}>
+                          <button type="button" onClick={() => seekTo(observation.time)}>
+                            {formatPreciseTime(observation.time)}
+                          </button>
+                          <span>
+                            {observation.box && observation.footpoint
+                              ? "box + feet"
+                              : observation.box
+                                ? "box"
+                                : "feet"}
+                            {observation.state ? ` · ${observation.state}` : ""}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Delete ${tracklet.trackId} observation at ${formatPreciseTime(observation.time)}`}
+                            onClick={() =>
+                              removePlayerObservation(
+                                activeTrackletRallyIndex,
+                                trackletIndex,
+                                observationIndex,
+                              )
+                            }
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.trackletEmpty}>
+                No player tracks for the selected rally. A usable track has at least two frames.
+              </p>
+            )}
           </div>
         </section>
       )}

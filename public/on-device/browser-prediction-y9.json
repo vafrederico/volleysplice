@@ -82,6 +82,7 @@
   },
   "exportDefaults": {
     "preRoll": 3,
-    "postRoll": 2
+    "postRoll": 2,
+    "joinGap": 3
   }
 }

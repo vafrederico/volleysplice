@@ -4,12 +4,25 @@ export type Rally = {
   end: number;
   confidence: number;
   included: boolean;
+  agreement?:
+    | "both-models"
+    | "all-labels-v2-only"
+    | "previous-production-only";
+};
+
+export const DEFAULT_JOIN_GAP_SECONDS = 3;
+export const MAX_JOIN_GAP_SECONDS = 10;
+
+export type JoinedGap = {
+  start: number;
+  end: number;
 };
 
 export type KeptInterval = Rally & {
   keptStart: number;
   keptEnd: number;
   rallyIds: string[];
+  joinedGaps: JoinedGap[];
 };
 
 export function buildEditList(
@@ -17,7 +30,12 @@ export function buildEditList(
   preRoll: number,
   postRoll: number,
   duration: number,
+  joinGapSeconds = DEFAULT_JOIN_GAP_SECONDS,
 ): KeptInterval[] {
+  const joinGap = Math.max(
+    0,
+    Math.min(MAX_JOIN_GAP_SECONDS, Number.isFinite(joinGapSeconds) ? joinGapSeconds : 0),
+  );
   const padded = rallies
     .filter((rally) => rally.included)
     .filter((rally) => [rally.start, rally.end].every(Number.isFinite) && rally.end > rally.start)
@@ -26,18 +44,24 @@ export function buildEditList(
       keptStart: Math.max(0, Math.min(duration, rally.start - Math.max(0, preRoll))),
       keptEnd: Math.max(0, Math.min(duration, rally.end + Math.max(0, postRoll))),
       rallyIds: [rally.id],
+      joinedGaps: [],
     }))
     .filter((interval) => interval.keptEnd > interval.keptStart)
     .sort((a, b) => a.keptStart - b.keptStart || a.keptEnd - b.keptEnd);
 
   return padded.reduce<KeptInterval[]>((merged, interval) => {
     const previous = merged.at(-1);
-    if (!previous || interval.keptStart > previous.keptEnd) {
+    const gap = previous ? interval.keptStart - previous.keptEnd : Number.POSITIVE_INFINITY;
+    if (!previous || (gap > 0 && gap >= joinGap)) {
       merged.push(interval);
       return merged;
     }
+    if (gap > 0) {
+      previous.joinedGaps.push({ start: previous.keptEnd, end: interval.keptStart });
+    }
     previous.keptEnd = Math.max(previous.keptEnd, interval.keptEnd);
     previous.rallyIds.push(...interval.rallyIds);
+    previous.joinedGaps.push(...interval.joinedGaps);
     return merged;
   }, []);
 }

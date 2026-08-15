@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any, Iterable, Sequence
 
 from .metrics import (
@@ -10,6 +11,9 @@ from .metrics import (
     outcome_slice_metrics,
 )
 from .schema import Interval
+
+
+DEFAULT_JOIN_GAP_SECONDS = 3.0
 
 
 @dataclass(frozen=True)
@@ -26,19 +30,23 @@ def pad_and_merge_intervals(
     intervals: Iterable[Interval],
     duration: float,
     padding_seconds: float,
+    join_gap_seconds: float = DEFAULT_JOIN_GAP_SECONDS,
 ) -> tuple[Interval, ...]:
-    """Apply symmetric edit padding and merge crops that now touch or overlap."""
+    """Apply padding and join crops separated by less than the configured gap."""
     if duration <= 0:
         raise ValueError("duration must be positive")
-    if padding_seconds < 0:
-        raise ValueError("padding_seconds cannot be negative")
+    if not isfinite(padding_seconds) or padding_seconds < 0:
+        raise ValueError("padding_seconds must be finite and non-negative")
+    if not isfinite(join_gap_seconds) or join_gap_seconds < 0:
+        raise ValueError("join_gap_seconds must be finite and non-negative")
     merged: list[Interval] = []
     for item in sorted(intervals, key=lambda interval: (interval.start, interval.end)):
         start = max(0.0, item.start - padding_seconds)
         end = min(duration, item.end + padding_seconds)
         if end <= start:
             continue
-        if merged and start <= merged[-1].end:
+        gap = start - merged[-1].end if merged else float("inf")
+        if merged and (gap <= 0 or gap < join_gap_seconds):
             merged[-1] = Interval(merged[-1].start, max(merged[-1].end, end))
         else:
             merged.append(Interval(start, end))
@@ -122,16 +130,19 @@ def _intersection_duration(
 def evaluate_f1_pad_p_core_r(
     recordings: Sequence[RecordingIntervals],
     padding_seconds: Sequence[float],
+    join_gap_seconds: float = DEFAULT_JOIN_GAP_SECONDS,
 ) -> list[dict[str, Any]]:
     """Calculate the pooled model-ranking metric for symmetric export padding."""
     if not recordings:
         raise ValueError("cannot evaluate an empty recording set")
     if not padding_seconds:
         raise ValueError("at least one padding value is required")
+    if not isfinite(join_gap_seconds) or join_gap_seconds < 0:
+        raise ValueError("join_gap_seconds must be finite and non-negative")
     rows: list[dict[str, Any]] = []
     for padding in padding_seconds:
-        if padding < 0:
-            raise ValueError("padding values cannot be negative")
+        if not isfinite(padding) or padding < 0:
+            raise ValueError("padding values must be finite and non-negative")
         precision_numerator = 0.0
         precision_denominator = 0.0
         recall_numerator = 0.0
@@ -154,6 +165,7 @@ def evaluate_f1_pad_p_core_r(
                     recording.predictions,
                     recording.duration,
                     float(padding),
+                    join_gap_seconds,
                 ),
                 recording.ignored_intervals,
             )
@@ -162,6 +174,7 @@ def evaluate_f1_pad_p_core_r(
                     recording.truth,
                     recording.duration,
                     float(padding),
+                    join_gap_seconds,
                 ),
                 recording.ignored_intervals,
             )
@@ -199,6 +212,7 @@ def evaluate_f1_pad_p_core_r(
         rows.append(
             {
                 "paddingSecondsBeforeAndAfter": float(padding),
+                "joinGapSeconds": float(join_gap_seconds),
                 "P_pad": padded_precision,
                 "R_core": core_recall,
                 "F1_padP_coreR": f1,
@@ -222,17 +236,20 @@ def evaluate_f1_pad_p_core_r(
 def evaluate_crop_padding(
     recordings: Sequence[RecordingIntervals],
     padding_seconds: Sequence[float],
+    join_gap_seconds: float = DEFAULT_JOIN_GAP_SECONDS,
 ) -> list[dict[str, Any]]:
     """Evaluate practical exported crops at each symmetric padding setting."""
     if not recordings:
         raise ValueError("cannot evaluate an empty recording set")
     if not padding_seconds:
         raise ValueError("at least one padding value is required")
+    if not isfinite(join_gap_seconds) or join_gap_seconds < 0:
+        raise ValueError("join_gap_seconds must be finite and non-negative")
     total_video_seconds = sum(item.duration for item in recordings)
     rows: list[dict[str, Any]] = []
     for padding in padding_seconds:
-        if padding < 0:
-            raise ValueError("padding values cannot be negative")
+        if not isfinite(padding) or padding < 0:
+            raise ValueError("padding values must be finite and non-negative")
         per_recording: list[dict[str, Any]] = []
         input_crop_count = 0
         output_crop_count = 0
@@ -242,6 +259,7 @@ def evaluate_crop_padding(
                 recording.predictions,
                 recording.duration,
                 float(padding),
+                join_gap_seconds,
             )
             output_crop_count += len(predictions)
             metrics = evaluate_intervals(recording.truth, predictions)
@@ -258,6 +276,7 @@ def evaluate_crop_padding(
         rows.append(
             {
                 "paddingSecondsBeforeAndAfter": float(padding),
+                "joinGapSeconds": float(join_gap_seconds),
                 "aggregate": aggregate,
                 "retainedVideoSeconds": retained,
                 "retainedVideoRate": retained / total_video_seconds,

@@ -8,6 +8,11 @@ import type {
 import type { Rally } from "./edit-list.ts";
 import type { IgnoredInterval } from "./annotations.ts";
 import { getAnalysesRoot } from "./storage.ts";
+import {
+  PRODUCTION_MODEL_DESCRIPTION,
+  PRODUCTION_MODEL_ID,
+  PRODUCTION_MODEL_LABEL,
+} from "./production-model.ts";
 
 const ANALYSIS_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
 
@@ -79,7 +84,9 @@ function analysisIdentity(
       ? analysis.variantLabel.trim()
       : null;
   const variantLabel =
-    explicitVariantLabel ??
+    id.startsWith(`${PRODUCTION_MODEL_ID}--`)
+      ? PRODUCTION_MODEL_LABEL
+      : explicitVariantLabel ??
     (kind === "model"
       ? `Trained model · ${modelVersion ?? "unknown version"}`
       : kind === "heuristic"
@@ -89,11 +96,13 @@ function analysisIdentity(
     typeof analysis.variantDescription === "string" && analysis.variantDescription.trim()
       ? analysis.variantDescription.trim()
       : null;
-  const variantDescription = explicitVariantDescription ?? (kind === "model"
-    ? modelVersion && MODEL_VARIANT_DESCRIPTIONS[modelVersion]
-      ? MODEL_VARIANT_DESCRIPTIONS[modelVersion]
-      : `Model iteration ${modelVersion ?? "unknown"}. This analysis artifact does not include a detailed iteration description.`
-    : null);
+  const variantDescription = id.startsWith(`${PRODUCTION_MODEL_ID}--`)
+    ? PRODUCTION_MODEL_DESCRIPTION
+    : explicitVariantDescription ?? (kind === "model"
+      ? modelVersion && MODEL_VARIANT_DESCRIPTIONS[modelVersion]
+        ? MODEL_VARIANT_DESCRIPTIONS[modelVersion]
+        : `Model iteration ${modelVersion ?? "unknown"}. This analysis artifact does not include a detailed iteration description.`
+      : null);
   return {
     kind,
     method,

@@ -18,6 +18,9 @@ a project also deletes its cached features, inference, and edit draft. The edito
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
 file or origin-private storage before iOS sharing. JSON edit-list export is also available.
+Padded ranges separated by less than the configurable join-gap threshold are exported as
+one continuous section. The default is 3 seconds, a gap of exactly 3 seconds remains a
+cut, and retained join gaps are shown in light gray on the overview rail.
 Both analysis and MP4 export show live elapsed-time and estimated-time-remaining counters
 while they run.
 
@@ -81,7 +84,23 @@ curl -I https://volleycut.vafrederico.com
 
 ## Runtime contents
 
-- `public/runtime/model-9c92b8e9333f.json`: all three inference heads and decoders.
+- `public/runtime/model-1ca43e38eefc.json`: the promoted all-labels v2 inference heads and decoders.
+- `public/runtime/model-9c92b8e9333f.json`: the previous production heads used by the two-model consensus pass.
+
+The production app extracts media features once, runs both model stacks, and unions
+overlapping rally ranges. Ranges emitted by only one model are retained but marked as
+disagreements, assigned a conservative review confidence below 50%, and highlighted
+with an orange striped treatment so **Review next** visits them before export.
+
+Feature caches are versioned by the feature schema, extraction settings, source,
+media metadata, ROI, and runtime variant—not by the model—so compatible features can
+be reused across model upgrades. Persisted inference is separately keyed by an
+ensemble identity containing both complete browser-bundle SHA-256 digests and the merge
+algorithm version. A stale single-model or older-ensemble result is changed to **Needs
+source** on load and cannot be presented as current production inference.
+
+`npm run preview` serves the verified production build on `0.0.0.0:3000`, matching
+the local Traefik target for `https://internal.example`.
 - `public/runtime/feature-reductions.wasm`: fused visual feature reductions.
 - `public/runtime/libswresample.*`: filtered local audio resampling.
 - `public/runtime/opencv*.js`: generated from the pinned npm dependency by the

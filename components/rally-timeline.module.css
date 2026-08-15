@@ -30,7 +30,7 @@
   display: grid;
   grid-template-columns: var(--timeline-label-width) minmax(0, 1fr) var(--timeline-summary-width);
   align-items: stretch;
-  min-height: 42px;
+  min-height: 50px;
 }
 
 .trackSummary {
@@ -115,12 +115,42 @@ button.trackLabel {
 
 .interval {
   position: absolute;
-  top: 7px;
+  top: 5px;
   height: 26px;
   min-width: 3px;
   border: 0;
   background: #2b676d;
   cursor: pointer;
+}
+
+.exportRail {
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  left: 0;
+  height: 5px;
+  background: #deddd5;
+}
+
+.exportInterval {
+  position: absolute;
+  top: 0;
+  height: 5px;
+  min-width: 2px;
+  padding: 0;
+  border: 0;
+  background: #161813;
+  cursor: pointer;
+}
+
+.missingHumanInterval {
+  z-index: 1;
+  background: #d81717;
+}
+
+.joinedGapInterval {
+  z-index: 1;
+  background: #aaa9a2;
 }
 
 .interval[data-tone="model"] { background: #275fc2; }

@@ -2,6 +2,7 @@ export type RuntimeAsset =
   | "feature-reductions.wasm"
   | "libswresample.mjs"
   | "libswresample.wasm"
+  | "model-1ca43e38eefc.json"
   | "model-9c92b8e9333f.json"
   | "opencv.js"
   | "opencv-worker.js"

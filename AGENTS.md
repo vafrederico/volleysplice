@@ -21,7 +21,11 @@ F1_padP_coreR = 2 * P_pad * R_core / (P_pad + R_core)
 ```
 
 Apply identical before/after padding to model and padded-human ranges, clip to video
-bounds, and merge overlapping or touching ranges before measuring union duration.
+bounds, and merge overlapping or touching ranges. Then join consecutive padded ranges
+when the positive gap between them is **strictly less than 3 seconds**; the retained gap
+becomes part of the export union. A gap of exactly 3 seconds remains a cut. Apply this
+same short-gap rule to padded model and padded-human ranges before measuring union
+duration, and record the configured join threshold in every evaluation artifact.
 For a dataset ranking, pool intersection numerators and duration denominators across
 recordings before calculating F1; do not average per-video F1 values. Compare only the
 same recording/source-group scope, gold-label revision, and padding configuration.
@@ -38,7 +42,8 @@ them from padded model, core human, and padded human interval unions before comp
 metric numerators, denominators, or export-duration comparisons. Model predictions in
 ignored time are neither true nor false positives. Never convert ignored spans into
 dead-time negatives; `hardNegatives` are the separate construct for valid confusing
-dead time. All compared models must use the same ignored-range revision.
+dead time. Do not rejoin ranges across an ignored interval after subtraction. All
+compared models must use the same ignored-range revision and short-gap threshold.
 
 Rank iterations on the declared development/validation scope. Never use the protected
 test split to select an iteration. Continue to report event F1 and all predeclared

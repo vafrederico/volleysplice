@@ -119,6 +119,19 @@ function downloadFilename(value: string): string {
   return `${safe || "volleycut"}.edit-list.json`;
 }
 
+function isModelDisagreement(cut: EditableCut): boolean {
+  return cut.agreement === "all-labels-v2-only" ||
+    cut.agreement === "previous-production-only";
+}
+
+function modelAgreementLabel(cut: EditableCut): string {
+  if (cut.agreement === "both-models") return "Both models agree";
+  if (cut.agreement === "all-labels-v2-only") return "Disagreement · all-labels v2 only";
+  if (cut.agreement === "previous-production-only")
+    return "Disagreement · previous production only";
+  return "Model prediction";
+}
+
 export function CutEditor({
   header,
   initialAnalysis,
@@ -263,8 +276,9 @@ export function CutEditor({
     (cut) => cut.origin === "cached-label" &&
       cut.included &&
       effectiveKeptIds.has(cut.id) &&
-      cut.confidence < draft.confidenceReviewThreshold,
+      (isModelDisagreement(cut) || cut.confidence < draft.confidenceReviewThreshold),
   );
+  const disagreementCount = lowConfidenceCuts.filter(isModelDisagreement).length;
   const exportPercent = exportProgress && exportProgress.totalSeconds > 0
     ? Math.min(100, Math.max(0, exportProgress.completedSeconds / exportProgress.totalSeconds * 100))
     : 0;
@@ -450,6 +464,15 @@ export function CutEditor({
     );
   }
 
+  function setJoinGapSeconds(seconds: number) {
+    if (!Number.isFinite(seconds)) return;
+    updateDraft((current) => ({
+      ...current,
+      joinGapSeconds: Math.max(0, Math.min(10, seconds)),
+    }));
+    setEditorMessage(`Joining final export gaps shorter than ${seconds.toFixed(1)} seconds.`);
+  }
+
   function toggleSelected() {
     if (!selected) return;
     updateCut(selected.id, (cut) => ({ ...cut, included: !cut.included }));
@@ -567,7 +590,9 @@ export function CutEditor({
       : lowConfidenceCuts.find((cut) => cut.keepStart >= playbackTime) ?? lowConfidenceCuts[0];
     selectCut(next);
     setEditorMessage(
-      `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`,
+      isModelDisagreement(next)
+        ? `${next.id} was detected by only one model. Validate it and remove it if it is not a rally.`
+        : `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`,
     );
   }
 
@@ -800,7 +825,7 @@ export function CutEditor({
               <p>{keptCount} kept · {removedCount} removed</p>
               {fullyIgnoredCount > 0 && <p>{fullyIgnoredCount} enabled rallies fully ignored</p>}
               <p>{draft.ignoredIntervals.length} ignored source sections</p>
-              <p>Duration includes padding and excludes ignored time</p>
+              <p>Duration includes padding and joined short gaps; ignored time is excluded</p>
             </div>
           </div>
           <div className={styles.paddingControls}>
@@ -838,7 +863,24 @@ export function CutEditor({
               />
               <div><span>0s</span><span>10s</span></div>
             </div>
-            <small>Applies to inferred cuts. You can still fine-tune each range afterward.</small>
+            <div className={styles.paddingControl}>
+              <label htmlFor="cut-join-gap">
+                <span>Join gaps under</span>
+                <output>{draft.joinGapSeconds.toFixed(1)}s</output>
+              </label>
+              <input
+                id="cut-join-gap"
+                aria-label="Join final export gaps shorter than"
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={draft.joinGapSeconds}
+                onChange={(event) => setJoinGapSeconds(Number(event.currentTarget.value))}
+              />
+              <div><span>Off</span><span>10s</span></div>
+            </div>
+            <small>Padding applies to inferred cuts. Light gray gaps are retained when they are shorter than the join setting.</small>
           </div>
           <label className={styles.cutPreviewToggle}>
             <input
@@ -848,7 +890,7 @@ export function CutEditor({
             />
             <span>
               <strong>Play final cut only</strong>
-              <small>Skip removed rallies, ignored sections, and every unselected gap.</small>
+              <small>Skip removed rallies, ignored sections, and unselected gaps at or above the join setting.</small>
             </span>
           </label>
           {chromeOnIos && (
@@ -1049,11 +1091,11 @@ export function CutEditor({
                 <span>WHOLE RECORDING</span>
                 <strong>Tap or slide to seek · select a range to refine</strong>
               </div>
-              <small>{draft.cuts.length} ranges</small>
+              <small>{draft.cuts.length} ranges · light gray = joined gap</small>
             </div>
             <div className={styles.confidenceReview}>
               <label htmlFor="confidence-review-threshold">
-                <span>Highlight model confidence below</span>
+                <span>Review disagreements and confidence below</span>
                 <span className={styles.confidenceInput}>
                   <input
                     id="confidence-review-threshold"
@@ -1071,7 +1113,7 @@ export function CutEditor({
                   <span>%</span>
                 </span>
               </label>
-              <p>{lowConfidenceCuts.length} {lowConfidenceCuts.length === 1 ? "range" : "ranges"} highlighted</p>
+              <p>{disagreementCount} disagreements · {lowConfidenceCuts.length} highlighted</p>
               <button
                 type="button"
                 onClick={reviewNextLowConfidenceCut}
@@ -1116,15 +1158,17 @@ export function CutEditor({
                   data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
                   data-low-confidence={
                     cut.origin === "cached-label" &&
-                    cut.confidence < draft.confidenceReviewThreshold || undefined
+                    (isModelDisagreement(cut) ||
+                      cut.confidence < draft.confidenceReviewThreshold) || undefined
                   }
+                  data-disagreement={isModelDisagreement(cut) || undefined}
                   data-origin={cut.origin}
                   style={{
                     left: `${timelinePercent(cut.keepStart, initialAnalysis.duration)}%`,
                     width: `${timelinePercent(cut.keepEnd - cut.keepStart, initialAnalysis.duration)}%`,
                   }}
                   onClick={() => selectCut(cut)}
-                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${Math.round(cut.confidence * 100)}% confidence`}
+                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}, ${Math.round(cut.confidence * 100)}% review confidence`}
                 >
                   <span
                     className={styles.overviewPadding}
@@ -1149,6 +1193,21 @@ export function CutEditor({
                   />
                 </button>
               ))}
+              {finalIntervals.flatMap((interval, intervalIndex) =>
+                (interval.joinedGaps ?? [])
+                  .filter((gap) => activeMarkStart === null || gap.end >= activeMarkStart)
+                  .map((gap, gapIndex) => (
+                    <span
+                      key={`joined-gap-${intervalIndex + 1}-${gapIndex + 1}`}
+                      className={styles.overviewJoinedGap}
+                      style={{
+                        left: `${timelinePercent(gap.start, initialAnalysis.duration)}%`,
+                        width: `${timelinePercent(gap.end - gap.start, initialAnalysis.duration)}%`,
+                      }}
+                      title={`Retained short gap · ${preciseTime(gap.start)} to ${preciseTime(gap.end)}`}
+                    />
+                  )),
+              )}
               <span
                 className={styles.playhead}
                 style={{ left: `${timelinePercent(playbackTime, initialAnalysis.duration)}%` }}
@@ -1168,7 +1227,7 @@ export function CutEditor({
         <div className={styles.focusHeader}>
           <div>
             <span>FOCUSED RANGE</span>
-            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `Model prediction · ${Math.round(selected.confidence * 100)}%`}` : "No range selected"}</strong>
+            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `${modelAgreementLabel(selected)} · ${Math.round(selected.confidence * 100)}% review confidence`}` : "No range selected"}</strong>
           </div>
           <div className={styles.focusHeaderControls}>
             <label className={styles.focusLock}>
@@ -1222,8 +1281,10 @@ export function CutEditor({
                 data-ignored={selected.included && !effectiveKeptIds.has(selected.id) || undefined}
                 data-low-confidence={
                   selected.origin === "cached-label" &&
-                  selected.confidence < draft.confidenceReviewThreshold || undefined
+                  (isModelDisagreement(selected) ||
+                    selected.confidence < draft.confidenceReviewThreshold) || undefined
                 }
+                data-disagreement={isModelDisagreement(selected) || undefined}
                 style={{
                   left: `${timelinePercent(selected.keepStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.keepEnd - selected.keepStart, focus.end - focus.start)}%`,
@@ -1235,8 +1296,10 @@ export function CutEditor({
                 data-ignored={selected.included && !effectiveKeptIds.has(selected.id) || undefined}
                 data-low-confidence={
                   selected.origin === "cached-label" &&
-                  selected.confidence < draft.confidenceReviewThreshold || undefined
+                  (isModelDisagreement(selected) ||
+                    selected.confidence < draft.confidenceReviewThreshold) || undefined
                 }
+                data-disagreement={isModelDisagreement(selected) || undefined}
                 style={{
                   left: `${timelinePercent(selected.coreStart - focus.start, focus.end - focus.start)}%`,
                   width: `${timelinePercent(selected.coreEnd - selected.coreStart, focus.end - focus.start)}%`,
@@ -1456,14 +1519,16 @@ export function CutEditor({
               data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
               data-low-confidence={
                 cut.origin === "cached-label" &&
-                cut.confidence < draft.confidenceReviewThreshold || undefined
+                (isModelDisagreement(cut) ||
+                  cut.confidence < draft.confidenceReviewThreshold) || undefined
               }
+              data-disagreement={isModelDisagreement(cut) || undefined}
             >
               <button type="button" className={styles.cutSelect} onClick={() => selectCut(cut)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{cut.id}</strong>
                 <small>{preciseTime(cut.keepStart)}–{preciseTime(cut.keepEnd)}</small>
-                <em>{cut.origin === "manual" ? "MANUAL" : `${Math.round(cut.confidence * 100)}%`}</em>
+                <em>{cut.origin === "manual" ? "MANUAL" : isModelDisagreement(cut) ? "CHECK" : `${Math.round(cut.confidence * 100)}%`}</em>
               </button>
               <button
                 type="button"

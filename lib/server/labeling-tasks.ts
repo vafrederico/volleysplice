@@ -15,7 +15,11 @@ import {
   type ProductionLabelSeed,
 } from "@/lib/production-label-seed";
 import { PRODUCTION_MODEL_ID } from "@/lib/production-model";
-import { getAnalysesRoot, getIntakeWorkspace } from "@/lib/storage";
+import { ENVIRONMENT_EXPERIMENT_MODELS } from "@/lib/experiment-models";
+import {
+  getIntakeAnalysesRoot,
+  getIntakeWorkspace,
+} from "@/lib/storage";
 
 const DEFAULT_MEDIA_ROOT = "/mnt/freenas/volleycut";
 const DEFAULT_LABELING_WORKSPACE =
@@ -93,7 +97,7 @@ export class LabelingDraftValidationError extends Error {}
 
 export type SavedLabelingDocument = {
   document: LabelDocument;
-  source: "draft" | "production-model" | "prelabel" | "task";
+  source: "draft" | "completed" | "production-model" | "prelabel" | "task";
   savedAt: string | null;
 };
 
@@ -104,6 +108,10 @@ export type SolReferenceLabels = {
 export type ProductionReferenceLabels = SolReferenceLabels & {
   modelId: string;
   modelLabel: string;
+};
+
+export type ExperimentModelReferenceLabels = ProductionReferenceLabels & {
+  description: string;
 };
 
 function isWithin(parent: string, candidate: string): boolean {
@@ -182,7 +190,11 @@ function isNormalizedPoint(point: NormalizedPoint | undefined): boolean {
   );
 }
 
-function validateDraftContent(document: LabelDocument, task: PreparedLabelingTask): void {
+function validateDraftContent(
+  document: LabelDocument,
+  task: PreparedLabelingTask,
+  expectedStatus: "draft" | "complete" = "draft",
+): void {
   const base = task.document;
   const immutableValues: Array<[unknown, unknown, string]> = [
     [document.createdAt, base.createdAt, "createdAt"],
@@ -203,13 +215,22 @@ function validateDraftContent(document: LabelDocument, task: PreparedLabelingTas
 
   const annotation = document.annotation;
   if (
-    !["not-started", "in-progress"].includes(annotation.status) ||
+    (expectedStatus === "draft"
+      ? !["not-started", "in-progress"].includes(annotation.status)
+      : annotation.status !== "complete") ||
     typeof annotation.annotator !== "string" ||
     typeof annotation.notes !== "string" ||
     typeof annotation.continuousVideoReviewed !== "boolean" ||
-    (annotation.reviewedAt !== null && typeof annotation.reviewedAt !== "string")
+    (expectedStatus === "complete"
+      ? annotation.annotator.trim().length === 0 ||
+        annotation.continuousVideoReviewed !== true ||
+        typeof annotation.reviewedAt !== "string" ||
+        annotation.reviewedAt.trim().length === 0
+      : annotation.reviewedAt !== null && typeof annotation.reviewedAt !== "string")
   ) {
-    throw new LabelingDraftValidationError("annotation metadata is invalid for a draft");
+    throw new LabelingDraftValidationError(
+      `annotation metadata is invalid for a ${expectedStatus === "complete" ? "completed label" : "draft"}`,
+    );
   }
   const geometry = document.recording.courtGeometry;
   if (
@@ -576,6 +597,17 @@ export async function getSavedLabelingDocument(
   } catch (error) {
     if (!isMissingFile(error)) throw error;
   }
+  try {
+    const metadata = await stat(task.completedPath);
+    if (!metadata.isFile()) throw new Error("completed labels are not a file");
+    const document = parseLabelDocument(
+      JSON.parse(await readFile(task.completedPath, "utf8")) as unknown,
+    );
+    validateDraftContent(document, task, "complete");
+    return { document, source: "completed", savedAt: metadata.mtime.toISOString() };
+  } catch (error) {
+    if (!isMissingFile(error)) throw error;
+  }
   if (task.batch === "full") {
     const seed = await loadProductionLabelSeed(task);
     if (seed) {
@@ -601,7 +633,7 @@ async function loadProductionLabelSeed(
   if (task.batch !== "full") return null;
   try {
     const productionAnalysisPath = path.join(
-      getAnalysesRoot("without-beach"),
+      getIntakeAnalysesRoot(),
       `${PRODUCTION_MODEL_ID}--${task.id}`,
       "analysis.json",
     );
@@ -627,6 +659,40 @@ export async function getProductionReferenceLabels(
         rallies: seed.document.rallies,
       }
     : null;
+}
+
+export async function getExperimentModelReferenceLabels(
+  task: PreparedLabelingTask,
+): Promise<ExperimentModelReferenceLabels[]> {
+  if (task.batch !== "full") return [];
+  const references = await Promise.all(
+    ENVIRONMENT_EXPERIMENT_MODELS.map(async (model): Promise<ExperimentModelReferenceLabels | null> => {
+      try {
+        const analysisPath = path.join(
+          getIntakeAnalysesRoot(),
+          `${model.id}--${task.id}`,
+          "analysis.json",
+        );
+        const seed = buildProductionLabelSeed(
+          task.document,
+          JSON.parse(await readFile(analysisPath, "utf8")) as unknown,
+          model.id,
+        );
+        return {
+          modelId: seed.modelId,
+          modelLabel: seed.modelLabel || model.label,
+          description: model.description,
+          rallies: seed.document.rallies,
+        };
+      } catch (error) {
+        if (isMissingFile(error)) return null;
+        throw error;
+      }
+    }),
+  );
+  return references.filter(
+    (reference): reference is ExperimentModelReferenceLabels => reference !== null,
+  );
 }
 
 export async function getSolReferenceLabels(

@@ -32,6 +32,26 @@ test("buildEditList merges padded intervals that touch exactly", () => {
   );
 });
 
+test("buildEditList joins only positive gaps strictly under the configured threshold", () => {
+  const source = [
+    { id: "first", start: 1, end: 2, confidence: 0.8, included: true },
+    { id: "second", start: 4.999, end: 6, confidence: 0.8, included: true },
+  ];
+  const joined = buildEditList(source, 0, 0, 20, 3);
+  assert.equal(joined.length, 1);
+  assert.deepEqual(joined[0].joinedGaps, [{ start: 2, end: 4.999 }]);
+
+  const exactThreshold = buildEditList(
+    [{ ...source[0] }, { ...source[1], start: 5 }],
+    0,
+    0,
+    20,
+    3,
+  );
+  assert.equal(exactThreshold.length, 2);
+  assert.equal(buildEditList(source, 0, 0, 20, 0).length, 2);
+});
+
 test("buildEditList clamps boundaries and ignores invalid or excluded rallies", () => {
   const intervals = buildEditList([
     { id: "start", start: 1, end: 4, confidence: 0.8, included: true },

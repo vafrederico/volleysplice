@@ -13,6 +13,7 @@ from typing import Any
 
 from analysis.annotations import load_label_document
 from analysis.crop_evaluation import (
+    DEFAULT_JOIN_GAP_SECONDS,
     RecordingIntervals,
     evaluate_f1_pad_p_core_r,
     subtract_intervals,
@@ -229,6 +230,7 @@ def evaluate_model(
     paddings: list[float],
     thresholds: list[float],
     target_padding: float,
+    join_gap_seconds: float,
 ) -> dict[str, Any]:
     loaded: list[
         tuple[Recording, float, list[tuple[Interval, float]], dict[str, Any]]
@@ -304,7 +306,11 @@ def evaluate_model(
                     ignored_intervals=ignored_by_id[recording.id],
                 )
             )
-        padding_rows = evaluate_f1_pad_p_core_r(evaluated_recordings, paddings)
+        padding_rows = evaluate_f1_pad_p_core_r(
+            evaluated_recordings,
+            paddings,
+            join_gap_seconds,
+        )
         cases = {_padding_key(float(row["paddingSecondsBeforeAndAfter"])): row for row in padding_rows}
         target = cases[_padding_key(target_padding)]
         for row in cases.values():
@@ -413,6 +419,12 @@ def main() -> int:
     parser.add_argument("--padding-seconds", type=float, nargs="+", default=[0, 1, 2, 3])
     parser.add_argument("--target-padding-seconds", type=float, default=1.0)
     parser.add_argument(
+        "--join-gap-seconds",
+        type=float,
+        default=DEFAULT_JOIN_GAP_SECONDS,
+        help="Join padded export ranges separated by less than this many seconds.",
+    )
+    parser.add_argument(
         "--score-thresholds",
         type=float,
         nargs="+",
@@ -426,10 +438,13 @@ def main() -> int:
         raise ValueError(f"refusing to overwrite existing report: {destination}")
     paddings = sorted(set(float(value) for value in args.padding_seconds))
     target_padding = float(args.target_padding_seconds)
+    join_gap_seconds = float(args.join_gap_seconds)
     if paddings != [0.0, 1.0, 2.0, 3.0]:
         raise ValueError("the canonical report requires padding values 0, 1, 2, and 3")
     if target_padding not in paddings:
         raise ValueError("target padding must be one of the reported padding values")
+    if not math.isfinite(join_gap_seconds) or join_gap_seconds < 0:
+        raise ValueError("join-gap-seconds must be finite and non-negative")
     thresholds = sorted(set(float(value) for value in args.score_thresholds))
     if thresholds != [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9]:
         raise ValueError(
@@ -464,6 +479,7 @@ def main() -> int:
             paddings,
             thresholds,
             target_padding,
+            join_gap_seconds,
         )
         for variant in variants
     }
@@ -504,6 +520,7 @@ def main() -> int:
         "modelCount": len(models),
         "modelVersions": variants,
         "targetProductPaddingSecondsBeforeAndAfter": target_padding,
+        "joinGapSeconds": join_gap_seconds,
         "requiredPaddingSecondsBeforeAndAfter": paddings,
         "scoreThresholdsInclusive": thresholds,
         "scoreThresholdCaveat": (

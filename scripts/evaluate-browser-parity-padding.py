@@ -12,6 +12,7 @@ from typing import Any
 
 from analysis.annotations import load_label_document
 from analysis.crop_evaluation import (
+    DEFAULT_JOIN_GAP_SECONDS,
     RecordingIntervals,
     evaluate_f1_pad_p_core_r,
     pad_and_merge_intervals,
@@ -795,6 +796,7 @@ def main() -> int:
             "selectionScope": "validation2",
             "clipToVideoBounds": True,
             "mergeTouchingOrOverlappingRanges": True,
+            "joinPositiveGapsStrictlyUnderSeconds": DEFAULT_JOIN_GAP_SECONDS,
             "subtractIgnoredIntervals": True,
         },
         "scopeRecordingIds": {

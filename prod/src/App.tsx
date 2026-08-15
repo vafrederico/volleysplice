@@ -823,8 +823,9 @@ export function App() {
                   Create project &amp; queue inference
                 </button>
                 <small className={styles.runtimeNote}>
-                  Final audio features and model inference are cached in
-                  IndexedDB.
+                  Both production models run on the same cached features.
+                  Overlaps are merged; one-model detections are flagged for
+                  validation. Results stay in IndexedDB.
                 </small>
               </aside>
             </section>
@@ -911,7 +912,7 @@ export function App() {
           <p>
             {displayedProgress.stage === "video" && featureRate
               ? `${featureRate.toFixed(2)}× real-time feature generation`
-              : "Feature extraction, audio analysis, and inference run locally."}
+              : "Feature extraction, audio analysis, and both model passes run locally."}
             {displayedProgress.featureCache?.resumedRows
               ? ` · resumed ${displayedProgress.featureCache.resumedRows.toLocaleString()} saved frames`
               : ""}

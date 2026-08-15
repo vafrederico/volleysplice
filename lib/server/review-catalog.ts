@@ -230,6 +230,25 @@ function labelAnalysis(
   };
 }
 
+function workingHumanLabelAnalysis(
+  task: PreparedLabelingTask,
+  document: LabelDocument,
+): ReviewAnalysis {
+  const analysis = labelAnalysis(task, document, "gold");
+  return {
+    ...analysis,
+    variantLabel: "Human labels · in progress",
+    variantDescription:
+      "The latest human-saved labeling draft. It is available for comparison but has not been exported as completed gold.",
+    method: "human-working-serve-contact-to-dead-ball-v1",
+    datasetRoleLabel: "Working human reference",
+    warnings: [
+      "These human labels are still in progress and must not be treated as finalized gold.",
+    ],
+    rallies: labelsToRallies(document.rallies, false),
+  };
+}
+
 async function readLabelAnalysis(
   task: PreparedLabelingTask,
   filePath: string,
@@ -260,6 +279,15 @@ function clampRunToTask(
   datasetRoleLabel: string,
 ): ReviewAnalysis {
   const duration = task.document.recording.durationSeconds;
+  const warnings = [...analysis.warnings];
+  if (
+    task.document.recording.environment === "beach" &&
+    analysis.trainingCorpus === "without-beach"
+  ) {
+    warnings.push(
+      "Beach footage was excluded from this model's training corpus; this prediction is qualitative and out of distribution.",
+    );
+  }
   return {
     ...analysis,
     recordingId: task.id,
@@ -267,6 +295,7 @@ function clampRunToTask(
     duration,
     sourceFilename: task.originalFilename,
     videoUrl: `/api/labeling/tasks/${encodeURIComponent(task.id)}/video`,
+    warnings: [...new Set(warnings)],
     datasetRole,
     datasetRoleLabel,
     rallies: analysis.rallies
@@ -322,7 +351,11 @@ export async function loadReviewCatalog(): Promise<ReviewCatalog> {
   const [prepared, original, intake, rawWithoutBeach, noBeachVersions] = await Promise.all([
     getPreparedLabelingCatalog(),
     loadAnalyses(),
-    loadAnalyses({ analysesRoot: getIntakeAnalysesRoot(), assetSource: "intake" }),
+    loadAnalyses({
+      analysesRoot: getIntakeAnalysesRoot(),
+      trainingCorpus: "without-beach",
+      assetSource: "intake",
+    }),
     loadAnalyses({ trainingCorpus: "without-beach" }),
     noBeachModelVersions(),
   ]);
@@ -363,12 +396,16 @@ export async function loadReviewCatalog(): Promise<ReviewCatalog> {
       readLabelAnalysis(task, task.prelabelPath, "sol"),
       getSavedLabelingDocument(task),
     ]);
-    const gold = completedGold && savedLabels.source === "draft"
-      ? applyIgnoredIntervalRevision(
-          completedGold,
-          savedLabels.document.ignoredIntervals,
-        )
-      : completedGold;
+    const gold = completedGold
+      ? savedLabels.source === "draft"
+        ? applyIgnoredIntervalRevision(
+            completedGold,
+            savedLabels.document.ignoredIntervals,
+          )
+        : completedGold
+      : savedLabels.source === "draft"
+        ? workingHumanLabelAnalysis(task, savedLabels.document)
+        : null;
     const taskAnalyses = generated
       .filter((analysis) => matchesTask(analysis, task))
       .map((analysis) => {

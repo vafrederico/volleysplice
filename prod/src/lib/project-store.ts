@@ -3,6 +3,7 @@ import type {
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
 } from "./on-device/types.ts";
+import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
 
 const DATABASE_NAME = "volleycut-projects";
 const DATABASE_VERSION = 1;
@@ -169,7 +170,11 @@ function validAnalysis(value: unknown): value is OnDeviceAnalysis {
         finite(interval.start) &&
         finite(interval.end) &&
         finite(interval.confidence) &&
-        typeof interval.included === "boolean",
+        typeof interval.included === "boolean" &&
+        (interval.agreement === undefined ||
+          interval.agreement === "both-models" ||
+          interval.agreement === "all-labels-v2-only" ||
+          interval.agreement === "previous-production-only"),
     ) &&
     analysis.times instanceof Float64Array &&
     analysis.rallyProbabilities instanceof Float32Array &&
@@ -209,6 +214,32 @@ function validProject(value: unknown): value is VolleyCutProject {
   );
 }
 
+export function normalizeStoredProject(
+  project: VolleyCutProject,
+): VolleyCutProject {
+  if (
+    project.analysis &&
+    (project.analysis.modelId !== PRODUCTION_ENSEMBLE_MODEL_ID ||
+      project.analysis.intervals.some((interval) => !interval.agreement))
+  ) {
+    return {
+      ...project,
+      status: "waiting",
+      analysis: null,
+      error:
+        "The production model ensemble changed. Reconnect the source to run current inference; compatible cached features will be reused.",
+    };
+  }
+  if (project.status === "queued" || project.status === "analyzing") {
+    return {
+      ...project,
+      status: "waiting",
+      error: "Reconnect the source file to resume local inference.",
+    };
+  }
+  return project;
+}
+
 export async function listProjects(): Promise<VolleyCutProject[]> {
   const database = await openProjectDatabase();
   try {
@@ -220,15 +251,7 @@ export async function listProjects(): Promise<VolleyCutProject[]> {
     await complete;
     return values
       .filter(validProject)
-      .map((project) =>
-        project.status === "queued" || project.status === "analyzing"
-          ? {
-              ...project,
-              status: "waiting" as const,
-              error: "Reconnect the source file to resume local inference.",
-            }
-          : project,
-      )
+      .map(normalizeStoredProject)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   } finally {
     database.close();

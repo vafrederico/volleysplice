@@ -239,6 +239,7 @@ export type OnDeviceUiFixture = {
   exportDefaults: {
     preRoll: number;
     postRoll: number;
+    joinGap?: number;
   };
 };
 
@@ -389,6 +390,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   );
   const [preRoll, setPreRoll] = useState(fixture?.exportDefaults.preRoll ?? 3);
   const [postRoll, setPostRoll] = useState(fixture?.exportDefaults.postRoll ?? 2);
+  const [joinGap, setJoinGap] = useState(fixture?.exportDefaults.joinGap ?? 3);
   const [compatibility, setCompatibility] = useState<BrowserCompatibility>({
     checked: false,
     chromeOnIos: false,
@@ -434,9 +436,9 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const editList = useMemo(
     () =>
       analysis && info
-        ? buildEditList(analysis.intervals, preRoll, postRoll, info.duration)
+        ? buildEditList(analysis.intervals, preRoll, postRoll, info.duration, joinGap)
         : [],
-    [analysis, info, preRoll, postRoll],
+    [analysis, info, joinGap, preRoll, postRoll],
   );
   const keptSeconds = editList.reduce(
     (total, interval) => total + interval.keptEnd - interval.keptStart,
@@ -532,8 +534,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       try {
         const adapter = await diagnosticNavigator.gpu.requestAdapter();
         if (!active) return;
-        const info = adapter
-          ? adapter.info ?? (await adapter.requestAdapterInfo?.().catch(() => undefined))
+        const compatibleAdapter = adapter as GpuAdapterLike | null;
+        const info = compatibleAdapter
+          ? compatibleAdapter.info ??
+            (await compatibleAdapter.requestAdapterInfo?.().catch(() => undefined))
           : undefined;
         setCompatibility((current) => ({
           ...current,
@@ -931,6 +935,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                 <div className={styles.timelineLegend}>
                   <span><i data-kind="prediction" /> Prediction</span>
                   <span><i data-kind="export" /> Padded export · overlaps merged</span>
+                  <span><i data-kind="joined-gap" /> Joined short gap</span>
                 </div>
                 <div className={styles.timeline} aria-label="Candidate rally and padded export timeline">
                   <div className={styles.exportRanges} aria-label="Merged padded export sections">
@@ -947,6 +952,19 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         onClick={() => seek(interval.keptStart)}
                       />
                     ))}
+                    {editList.flatMap((interval, intervalIndex) =>
+                      interval.joinedGaps.map((gap, gapIndex) => (
+                        <span
+                          key={`joined-gap-${intervalIndex + 1}-${gapIndex + 1}`}
+                          className={styles.joinedGapRange}
+                          title={`Retained because the gap is under ${joinGap}s · ${preciseTime(gap.start)}–${preciseTime(gap.end)}`}
+                          style={{
+                            left: `${(gap.start / info.duration) * 100}%`,
+                            width: `${Math.max(0.2, ((gap.end - gap.start) / info.duration) * 100)}%`,
+                          }}
+                        />
+                      )),
+                    )}
                   </div>
                   <div className={styles.predictionRanges} aria-label="Model predictions">
                     {analysis.intervals.map((interval) => (
@@ -993,12 +1011,23 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                         onChange={(event) => setPostRoll(Number(event.target.value))}
                       />
                     </label>
+                    <label>
+                      Join gaps under <output>{joinGap}s</output>
+                      <input
+                        type="range"
+                        min={0}
+                        max={10}
+                        step={0.5}
+                        value={joinGap}
+                        onChange={(event) => setJoinGap(Number(event.target.value))}
+                      />
+                    </label>
                   </div>
                 )}
                 <p className={styles.timelineSummary}>
                   {editList.length} export {editList.length === 1 ? "section" : "sections"} after
-                  applying {preRoll}s pre-roll and {postRoll}s post-roll. Touching or overlapping
-                  padding is exported once.
+                  applying {preRoll}s pre-roll and {postRoll}s post-roll. Gaps under {joinGap}s
+                  are retained and shown in light gray.
                 </p>
               </div>
             )}
@@ -1715,6 +1744,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
               }} /></label>
               <label>Post-roll <output>{postRoll}s</output><input type="range" min={0} max={8} step={0.5} value={postRoll} onChange={(event) => {
                 setPostRoll(Number(event.target.value));
+                setPreparedExport(null);
+              }} /></label>
+              <label>Join gaps under <output>{joinGap}s</output><input type="range" min={0} max={10} step={0.5} value={joinGap} onChange={(event) => {
+                setJoinGap(Number(event.target.value));
                 setPreparedExport(null);
               }} /></label>
             </div>

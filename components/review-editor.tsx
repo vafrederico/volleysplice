@@ -14,7 +14,16 @@ import type {
   TrainingCorpus,
   TrainingCorpusView,
 } from "@/lib/analysis-types";
-import { buildEditList, formatTime, type Rally } from "@/lib/edit-list";
+import {
+  buildEditList,
+  DEFAULT_JOIN_GAP_SECONDS,
+  formatTime,
+  type Rally,
+} from "@/lib/edit-list";
+import {
+  DEFAULT_VISIBLE_MODEL_IDS,
+  PREFERRED_REVIEW_MODEL_ID,
+} from "@/lib/experiment-models";
 import { parseLabelDocument, type IgnoredInterval, type LabelDocument } from "@/lib/annotations";
 import {
   buildLiveTimeComparisonSegments,
@@ -28,42 +37,48 @@ import {
   totalRallySeconds,
 } from "@/lib/timeline-comparison";
 
-const MODEL_VISIBILITY_STORAGE_KEY = "volleycut:model-timeline-visibility:v1";
+const MODEL_VISIBILITY_STORAGE_KEY = "volleycut:model-timeline-visibility:v2";
 const MODEL_VISIBILITY_EVENT = "volleycut:model-timeline-visibility";
 const ACTIVITY_PADDING_STORAGE_KEY = "volleycut:activity-padding:v1";
 const ACTIVITY_PADDING_EVENT = "volleycut:activity-padding";
-const EMPTY_HIDDEN_MODEL_KEYS = new Set<string>();
-const DEFAULT_ACTIVITY_PADDING = { before: 3, after: 2 } as const;
+const DEFAULT_VISIBLE_MODEL_KEYS = new Set(
+  [...DEFAULT_VISIBLE_MODEL_IDS].map((id) => `without-beach:${id}`),
+);
+const DEFAULT_ACTIVITY_PADDING = {
+  before: 3,
+  after: 2,
+  joinGap: DEFAULT_JOIN_GAP_SECONDS,
+} as const;
+type ActivityPadding = Readonly<{ before: number; after: number; joinGap: number }>;
 type ModelFilterBasis = "coreHuman" | "paddedHuman";
 type ModelFilterMetric = "precision" | "recall" | "f1";
 type ModelFilterOperator = "greater" | "less";
 let cachedVisibilityValue: string | null | undefined;
-let cachedHiddenModelKeys = EMPTY_HIDDEN_MODEL_KEYS;
+let cachedVisibleModelKeys = DEFAULT_VISIBLE_MODEL_KEYS;
 let fallbackVisibilityValue: string | null = null;
 let cachedPaddingValue: string | null | undefined;
-let cachedActivityPadding: Readonly<{ before: number; after: number }> =
-  DEFAULT_ACTIVITY_PADDING;
+let cachedActivityPadding: ActivityPadding = DEFAULT_ACTIVITY_PADDING;
 let fallbackPaddingValue: string | null = null;
 
-function hiddenModelSnapshot(): Set<string> {
-  if (typeof window === "undefined") return EMPTY_HIDDEN_MODEL_KEYS;
+function visibleModelSnapshot(): Set<string> {
+  if (typeof window === "undefined") return DEFAULT_VISIBLE_MODEL_KEYS;
   let value: string | null;
   try {
     value = window.localStorage.getItem(MODEL_VISIBILITY_STORAGE_KEY);
   } catch {
     value = fallbackVisibilityValue;
   }
-  if (value === cachedVisibilityValue) return cachedHiddenModelKeys;
+  if (value === cachedVisibilityValue) return cachedVisibleModelKeys;
   cachedVisibilityValue = value;
   try {
-    const saved = JSON.parse(value ?? "null") as { hidden?: unknown } | null;
-    cachedHiddenModelKeys = saved && Array.isArray(saved.hidden)
-      ? new Set(saved.hidden.filter((item): item is string => typeof item === "string"))
-      : EMPTY_HIDDEN_MODEL_KEYS;
+    const saved = JSON.parse(value ?? "null") as { visible?: unknown } | null;
+    cachedVisibleModelKeys = saved && Array.isArray(saved.visible)
+      ? new Set(saved.visible.filter((item): item is string => typeof item === "string"))
+      : DEFAULT_VISIBLE_MODEL_KEYS;
   } catch {
-    cachedHiddenModelKeys = EMPTY_HIDDEN_MODEL_KEYS;
+    cachedVisibleModelKeys = DEFAULT_VISIBLE_MODEL_KEYS;
   }
-  return cachedHiddenModelKeys;
+  return cachedVisibleModelKeys;
 }
 
 function subscribeToModelVisibility(onChange: () => void): () => void {
@@ -82,8 +97,8 @@ function subscribeToModelVisibility(onChange: () => void): () => void {
   };
 }
 
-function saveModelVisibility(hidden: Set<string>): void {
-  const value = JSON.stringify({ hidden: [...hidden].sort() });
+function saveModelVisibility(visible: Set<string>): void {
+  const value = JSON.stringify({ visible: [...visible].sort() });
   fallbackVisibilityValue = value;
   try {
     window.localStorage.setItem(MODEL_VISIBILITY_STORAGE_KEY, value);
@@ -94,7 +109,7 @@ function saveModelVisibility(hidden: Set<string>): void {
   window.dispatchEvent(new Event(MODEL_VISIBILITY_EVENT));
 }
 
-function activityPaddingSnapshot(): Readonly<{ before: number; after: number }> {
+function activityPaddingSnapshot(): ActivityPadding {
   if (typeof window === "undefined") return DEFAULT_ACTIVITY_PADDING;
   let value: string | null;
   try {
@@ -105,13 +120,20 @@ function activityPaddingSnapshot(): Readonly<{ before: number; after: number }> 
   if (value === cachedPaddingValue) return cachedActivityPadding;
   cachedPaddingValue = value;
   try {
-    const saved = JSON.parse(value ?? "null") as { before?: unknown; after?: unknown } | null;
+    const saved = JSON.parse(value ?? "null") as {
+      before?: unknown;
+      after?: unknown;
+      joinGap?: unknown;
+    } | null;
     cachedActivityPadding = saved &&
       typeof saved.before === "number" && Number.isFinite(saved.before) &&
       typeof saved.after === "number" && Number.isFinite(saved.after)
       ? {
           before: Math.max(0, Math.min(8, saved.before)),
           after: Math.max(0, Math.min(8, saved.after)),
+          joinGap: typeof saved.joinGap === "number" && Number.isFinite(saved.joinGap)
+            ? Math.max(0, Math.min(10, saved.joinGap))
+            : DEFAULT_JOIN_GAP_SECONDS,
         }
       : DEFAULT_ACTIVITY_PADDING;
   } catch {
@@ -136,7 +158,7 @@ function subscribeToActivityPadding(onChange: () => void): () => void {
   };
 }
 
-function saveActivityPadding(padding: { before: number; after: number }): void {
+function saveActivityPadding(padding: ActivityPadding): void {
   const value = JSON.stringify(padding);
   fallbackPaddingValue = value;
   try {
@@ -222,6 +244,12 @@ function preferredAnalysis(
     visibleInCorpus(analysis, corpus),
   );
   return (
+    analyses.find(
+      (analysis) =>
+        analysis.id === `${PREFERRED_REVIEW_MODEL_ID}--${video.id}`,
+    ) ??
+    analyses.find((analysis) => analysis.kind === "gold") ??
+    analyses.find((analysis) => analysis.kind === "sol") ??
     analyses.find(
       (analysis) =>
         corpus === "without-beach" &&
@@ -310,21 +338,22 @@ export function ReviewEditor({
   );
   const preRoll = activityPadding.before;
   const postRoll = activityPadding.after;
+  const joinGap = activityPadding.joinGap;
   const [playbackTime, setPlaybackTime] = useState(initialTime);
   const [isPlaying, setIsPlaying] = useState(false);
   const [modelFilterBasis, setModelFilterBasis] = useState<ModelFilterBasis>("coreHuman");
   const [modelFilterMetric, setModelFilterMetric] = useState<ModelFilterMetric>("f1");
   const [modelFilterOperator, setModelFilterOperator] = useState<ModelFilterOperator>("greater");
   const [modelFilterThreshold, setModelFilterThreshold] = useState("");
-  const hiddenModelKeys = useSyncExternalStore(
+  const visibleModelKeys = useSyncExternalStore(
     subscribeToModelVisibility,
-    hiddenModelSnapshot,
-    () => EMPTY_HIDDEN_MODEL_KEYS,
+    visibleModelSnapshot,
+    () => DEFAULT_VISIBLE_MODEL_KEYS,
   );
   const videoRef = useRef<HTMLVideoElement>(null);
   const intervals = useMemo(
-    () => buildEditList(rallies, preRoll, postRoll, analysis.duration),
-    [rallies, preRoll, postRoll, analysis.duration],
+    () => buildEditList(rallies, preRoll, postRoll, analysis.duration, joinGap),
+    [rallies, preRoll, postRoll, analysis.duration, joinGap],
   );
   const selected = rallies.find((rally) => rally.id === selectedId) ?? rallies[0] ?? null;
   const keptSeconds = intervals.reduce(
@@ -366,9 +395,9 @@ export function ReviewEditor({
       comparisonAnalyses.filter(
         (candidate) =>
           candidate.kind !== "model" ||
-          !hiddenModelKeys.has(modelVisibilityKey(candidate)),
+          visibleModelKeys.has(modelVisibilityKey(candidate)),
       ),
-    [comparisonAnalyses, hiddenModelKeys],
+    [comparisonAnalyses, visibleModelKeys],
   );
   const humanRallies = useMemo(
     () => humanAnalysis?.rallies ?? [],
@@ -383,10 +412,11 @@ export function ReviewEditor({
           preRoll,
           postRoll,
           candidate.duration,
+          joinGap,
         ),
       ]),
     ),
-    [analysis.id, modelAnalyses, postRoll, preRoll, rallies],
+    [analysis.id, joinGap, modelAnalyses, postRoll, preRoll, rallies],
   );
   const paddedHumanRallies = useMemo(
     () => padAndMergeRallies(
@@ -394,8 +424,9 @@ export function ReviewEditor({
       preRoll,
       postRoll,
       analysis.duration,
+      joinGap,
     ),
-    [analysis.duration, humanRallies, postRoll, preRoll],
+    [analysis.duration, humanRallies, joinGap, postRoll, preRoll],
   );
   const paddedHumanSeconds = useMemo(
     () => totalRallySeconds(excludeIgnoredTime(paddedHumanRallies, ignoredRanges)),
@@ -444,9 +475,19 @@ export function ReviewEditor({
         const modelCoreRallies = candidate.kind === "model"
           ? candidate.id === analysis.id ? rallies : candidate.rallies
           : [];
-        const trackRallies = candidate.kind === "model"
+        const candidateCoreRallies = candidate.id === analysis.id ? rallies : candidate.rallies;
+        const paddedExportRallies = candidate.kind === "model"
           ? paddedModelRallies.get(candidate.id) ?? []
-          : candidate.id === analysis.id ? rallies : candidate.rallies;
+          : padAndMergeRallies(
+              candidateCoreRallies,
+              preRoll,
+              postRoll,
+              candidate.duration,
+              joinGap,
+            );
+        const trackRallies = candidate.kind === "model"
+          ? paddedExportRallies
+          : candidateCoreRallies;
         const comparisonSegments = candidate.kind === "model" && humanRallies.length > 0
           ? markModelPaddingOrigins(
               buildLiveTimeComparisonSegments(trackRallies, humanRallies, ignoredRanges),
@@ -456,6 +497,25 @@ export function ReviewEditor({
               candidate.duration,
             )
           : null;
+        const exportedRallies = excludeIgnoredTime(paddedExportRallies, ignoredRanges);
+        const joinedGapRallies = excludeIgnoredTime(
+          paddedExportRallies.flatMap((rally, rallyIndex) =>
+            rally.joinedGaps.map((gap, gapIndex) => ({
+              id: `${candidate.id}-joined-gap-${rallyIndex + 1}-${gapIndex + 1}`,
+              start: gap.start,
+              end: gap.end,
+              confidence: 1,
+              included: true,
+            }))),
+          ignoredRanges,
+        );
+        const missingHumanSegments = candidate.id === humanAnalysis?.id || humanRallies.length === 0
+          ? []
+          : (comparisonSegments ?? buildLiveTimeComparisonSegments(
+              exportedRallies,
+              humanRallies,
+              ignoredRanges,
+            )).filter((segment) => segment.kind === "missed");
         const slug = analysisSlug(candidate);
         const stats = modelTimelineStats.get(candidate.id);
         const coreMetrics = stats
@@ -494,6 +554,24 @@ export function ReviewEditor({
               ? { exportTime: formatTime(paddedHumanSeconds) }
             : undefined,
           active: candidate.id === analysis.id,
+          exportIntervals: exportedRallies.map((rally, index) => ({
+            id: `${candidate.id}-export-${index + 1}`,
+            start: rally.start,
+            end: rally.end,
+            title: `${candidate.variantLabel} · exported with ${preRoll}s before and ${postRoll}s after · ${formatTime(rally.start)}–${formatTime(rally.end)}`,
+          })),
+          joinedGapIntervals: joinedGapRallies.map((gap, index) => ({
+            id: `${candidate.id}-joined-gap-visible-${index + 1}`,
+            start: gap.start,
+            end: gap.end,
+            title: `${candidate.variantLabel} · retained because the cut gap is under ${joinGap}s · ${formatTime(gap.start)}–${formatTime(gap.end)}`,
+          })),
+          missingHumanIntervals: missingHumanSegments.map((segment, index) => ({
+            id: `${candidate.id}-missing-human-${index + 1}`,
+            start: segment.start,
+            end: segment.end,
+            title: `${candidate.variantLabel} · missed unpadded human rally time · ${formatTime(segment.start)}–${formatTime(segment.end)}`,
+          })),
           intervals: comparisonSegments
             ? comparisonSegments.map((segment) => ({
               id: segment.id,
@@ -567,6 +645,7 @@ export function ReviewEditor({
       humanAnalysis?.id,
       humanRallies,
       ignoredRanges,
+      joinGap,
       modelTimelineStats,
       paddedModelRallies,
       paddedHumanSeconds,
@@ -662,7 +741,7 @@ export function ReviewEditor({
 
   function toggleModelVisibility(candidate: ReviewAnalysis) {
     const key = modelVisibilityKey(candidate);
-    const next = new Set(hiddenModelKeys);
+    const next = new Set(visibleModelKeys);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     saveModelVisibility(next);
@@ -1040,6 +1119,9 @@ export function ReviewEditor({
                 <span data-tone="ignored">Ignored evaluation</span>
                 <span data-tone="before-padding">Before padding</span>
                 <span data-tone="after-padding">After padding</span>
+                <span data-tone="export">Final padded export</span>
+                <span data-tone="joined-gap">Joined short gap</span>
+                <span data-tone="export-missed">Missed human core</span>
               </div>
               <div className="model-toggle-filter" aria-label="Filter model toggles">
                 <span>Show toggles where</span>
@@ -1101,7 +1183,7 @@ export function ReviewEditor({
               <div className="model-toggles">
                 {modelToggleAnalyses.map((candidate) => {
                   const slug = analysisSlug(candidate);
-                  const checked = !hiddenModelKeys.has(modelVisibilityKey(candidate));
+                  const checked = visibleModelKeys.has(modelVisibilityKey(candidate));
                   return (
                     <label
                       key={candidate.id}
@@ -1154,6 +1236,7 @@ export function ReviewEditor({
         <div><p className="eyebrow">EDIT DECISION LIST</p><h2>Give every point<br />room to breathe.</h2></div>
         <label>Before activity <output>{preRoll}s</output><input type="range" min="0" max="8" value={preRoll} onChange={(event) => saveActivityPadding({ ...activityPadding, before: Number(event.target.value) })} /></label>
         <label>After activity <output>{postRoll}s</output><input type="range" min="0" max="8" value={postRoll} onChange={(event) => saveActivityPadding({ ...activityPadding, after: Number(event.target.value) })} /></label>
+        <label>Join gaps under <output>{joinGap}s</output><input type="range" min="0" max="10" step="0.5" value={joinGap} onChange={(event) => saveActivityPadding({ ...activityPadding, joinGap: Number(event.target.value) })} /></label>
         <div className="export"><span>ESTIMATED EXPORT</span><strong>{formatTime(keptSeconds)}</strong><button disabled>Export coming next</button></div>
       </section>
     </main>

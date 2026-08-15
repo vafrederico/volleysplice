@@ -4,6 +4,7 @@ import type {
   ReviewAnalysis,
   TrainingCorpusView,
 } from "@/lib/analysis-types";
+import { PREFERRED_REVIEW_MODEL_ID } from "@/lib/experiment-models";
 import { loadReviewCatalog } from "@/lib/server/review-catalog";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,9 @@ export default async function Home({ searchParams }: HomeProps) {
     requestedCorpus ??
     (requestedAnalysis?.trainingCorpus === "without-beach"
       ? "without-beach"
-      : "original");
+      : requestedAnalysis?.trainingCorpus === "original"
+        ? "original"
+        : "without-beach");
   const selectedVideo =
     catalog.videos.find(
       (video) => video.id === (requestedAnalysis?.recordingId ?? requestedVideoId),
@@ -59,6 +62,13 @@ export default async function Home({ searchParams }: HomeProps) {
       )
     : [];
   const defaultAnalysis =
+    analyses.find(
+      (candidate) =>
+        candidate.id ===
+        `${PREFERRED_REVIEW_MODEL_ID}--${selectedVideo?.id}`,
+    ) ??
+    analyses.find((candidate) => candidate.kind === "gold") ??
+    analyses.find((candidate) => candidate.kind === "sol") ??
     analyses.find(
       (candidate) =>
         corpusView === "without-beach" &&

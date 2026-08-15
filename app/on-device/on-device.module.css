@@ -56,16 +56,18 @@
 .timelineLegend i { width: 14px; height: 7px; border: 1px solid #11130f; }
 .timelineLegend i[data-kind="prediction"] { background: #37757a; }
 .timelineLegend i[data-kind="export"] { background: var(--local-orange); }
+.timelineLegend i[data-kind="joined-gap"] { background: #aaa9a2; }
 .timeline { position: relative; height: 72px; border-block: 1px solid #aaa; background: repeating-linear-gradient(90deg, #dedcd3 0, #dedcd3 1px, transparent 1px, transparent 10%); }
 .timeline > div { position: absolute; inset-inline: 0; height: 25px; }
 .exportRanges { top: 7px; }
 .predictionRanges { top: 40px; }
 .timeline button { position: absolute; inset-block: 0; min-width: 4px; padding: 0; border: 0; cursor: pointer; }
 .exportRanges button { background: var(--local-orange); opacity: .78; }
+.joinedGapRange { position: absolute; z-index: 1; inset-block: 0; min-width: 2px; background: #aaa9a2; pointer-events: none; }
 .predictionRanges button { background: #37757a; }
 .predictionRanges button[data-selected="true"] { z-index: 2; outline: 3px solid var(--local-acid); outline-offset: 2px; }
 .predictionRanges button[data-included="false"] { opacity: .2; }
-.fixtureRolls { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; padding: 10px 12px; border: 1px solid #cfcdc4; background: rgba(255, 255, 255, .65); }
+.fixtureRolls { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; margin-top: 12px; padding: 10px 12px; border: 1px solid #cfcdc4; background: rgba(255, 255, 255, .65); }
 .fixtureRolls label { color: #66685f; font: 9px "DM Mono", monospace; }
 .fixtureRolls output { float: right; color: var(--local-orange); }
 .fixtureRolls input { width: 100%; margin-top: 7px; accent-color: var(--local-orange); }
@@ -148,7 +150,7 @@
 .exportIntro p strong { color: #fff; }
 .exportCaveat { padding-left: 12px; border-left: 3px solid var(--local-orange); font: 10px/1.6 "DM Mono", monospace !important; }
 .exportControls { align-self: center; }
-.rolls { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.rolls { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
 .rolls label { color: #aeb0a7; font-size: 11px; }
 .rolls output { float: right; color: var(--local-acid); font: 12px "DM Mono", monospace; }
 .rolls input { width: 100%; margin-top: 12px; accent-color: var(--local-acid); }
