@@ -590,21 +590,14 @@
   font-family: "Atkinson Hyperlegible Mono", monospace;
 }
 
-.streamExportToggle {
-  border-color: #74796a;
-}
-
 .streamExportStatus {
+  grid-template-columns: minmax(0, 1fr);
+  border-color: #74796a;
   cursor: default;
 }
 
-.streamExportToggle strong {
+.streamExportStatus strong {
   color: var(--cut-acid);
-}
-
-.streamExportToggle:has(input:disabled) {
-  opacity: .55;
-  cursor: not-allowed;
 }
 
 .cutPreviewToggle strong {

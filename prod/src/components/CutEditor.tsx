@@ -31,10 +31,7 @@ import {
 } from "@/lib/on-device/export-delivery";
 import type { ExportProgress, VideoExportMode } from "@/lib/on-device/export";
 import { requestPlayingSeek } from "@/lib/on-device/player";
-import {
-  prepareServiceWorkerStreamDownload,
-  type StreamDownloadReadiness,
-} from "@/lib/on-device/stream-download";
+import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
@@ -158,10 +155,7 @@ export function CutEditor({
     isChromeOnIosBrowser() ? "stream-download" : "compatible",
   );
   const [streamFallbackReason, setStreamFallbackReason] = useState<string | null>(null);
-  const [streamDownload, setStreamDownload] = useState<StreamDownloadReadiness>({
-    ready: false,
-    reason: null,
-  });
+  const [streamDownloadReady, setStreamDownloadReady] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWakeLock, setExportWakeLock] = useState<WakeLockState>("idle");
   const manualStart = draft.pendingManualStart;
@@ -212,6 +206,7 @@ export function CutEditor({
 
   useEffect(() => {
     const chromeOnIos = isChromeOnIosBrowser();
+    if (!chromeOnIos) return;
     let active = true;
     const workerUrl = new URL(
       `${import.meta.env.BASE_URL}volleycut-export-sw.js`,
@@ -219,15 +214,13 @@ export function CutEditor({
     ).href;
     void prepareServiceWorkerStreamDownload(workerUrl).then((readiness) => {
       if (!active) return;
-      setStreamDownload(readiness);
-      if (chromeOnIos) {
-        if (readiness.ready) {
-          setExportMode("stream-download");
-          setStreamFallbackReason(null);
-        } else {
-          setExportMode("opfs");
-          setStreamFallbackReason(readiness.reason ?? "Direct download is unavailable.");
-        }
+      setStreamDownloadReady(readiness.ready);
+      if (readiness.ready) {
+        setExportMode("stream-download");
+        setStreamFallbackReason(null);
+      } else {
+        setExportMode("opfs");
+        setStreamFallbackReason(readiness.reason ?? "Direct download is unavailable.");
       }
     });
     return () => {
@@ -282,7 +275,7 @@ export function CutEditor({
   const chromeOnIos = isChromeOnIosBrowser();
   const encodingSupported = "VideoEncoder" in window && "AudioEncoder" in window;
   const exportStorageReady = exportMode === "stream-download"
-    ? streamDownload.ready
+    ? streamDownloadReady
     : exportMode === "opfs"
       ? opfsSupported
       : directDiskSupported || opfsSupported;
@@ -850,8 +843,8 @@ export function CutEditor({
               <small>Skip removed rallies, ignored sections, and every unselected gap.</small>
             </span>
           </label>
-          {chromeOnIos ? (
-            <div className={`${styles.cutPreviewToggle} ${styles.streamExportToggle} ${styles.streamExportStatus}`}>
+          {chromeOnIos && (
+            <div className={`${styles.cutPreviewToggle} ${styles.streamExportStatus}`}>
               <span>
                 <strong>
                   {exportMode === "stream-download"
@@ -865,28 +858,6 @@ export function CutEditor({
                 </small>
               </span>
             </div>
-          ) : (
-            <label className={`${styles.cutPreviewToggle} ${styles.streamExportToggle}`}>
-              <input
-                type="checkbox"
-                checked={exportMode === "stream-download"}
-                disabled={exportState === "exporting" || !streamDownload.ready}
-                onChange={(event) => {
-                  setExportMode(event.currentTarget.checked ? "stream-download" : "compatible");
-                  setPreparedExport(null);
-                  setExportState("idle");
-                  setExportProgress(null);
-                  setExportError(null);
-                }}
-              />
-              <span>
-                <strong>Experimental direct download</strong>
-                <small>
-                  Streams fragmented MP4 through a Service Worker with no OPFS copy. Keep this page
-                  open until encoding finishes.
-                </small>
-              </span>
-            </label>
           )}
           <div className={styles.summaryActions}>
             <button
@@ -924,11 +895,8 @@ export function CutEditor({
               Exports the final edit at the original dimensions using a very-high-quality AVC/AAC encode.
               Video data stays on this device. {chromeOnIos
                 ? "Chrome on iOS streams directly by default and retries with private browser storage only if the stream fails."
-                : "Compatible mode writes to a selected file or private browser storage; experimental mode streams directly to the browser download."}
+                : "Desktop and Android use the standard native file or private browser storage path."}
             </p>
-            {!chromeOnIos && !streamDownload.ready && streamDownload.reason && (
-              <strong>Direct-stream test unavailable: {streamDownload.reason}</strong>
-            )}
             {!localExportSupported && (
               <strong>
                 MP4 export requires video/audio WebCodecs encoders and writable local storage.

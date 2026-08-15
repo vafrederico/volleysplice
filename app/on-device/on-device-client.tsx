@@ -30,10 +30,7 @@ import {
 import { requestPlayingSeek } from "@/lib/on-device/player";
 import { clampRoi, fullFrameRoi, inferRoiProfile } from "@/lib/on-device/roi";
 import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
-import {
-  prepareServiceWorkerStreamDownload,
-  type StreamDownloadReadiness,
-} from "@/lib/on-device/stream-download";
+import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type {
   AnalysisProgress,
   FeatureExtractionPerformance,
@@ -384,10 +381,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   const [preparedExport, setPreparedExport] = useState<PreparedVideoExport | null>(null);
   const [exportMode, setExportMode] = useState<VideoExportMode>("compatible");
   const [streamFallbackReason, setStreamFallbackReason] = useState<string | null>(null);
-  const [streamDownload, setStreamDownload] = useState<StreamDownloadReadiness>({
-    ready: false,
-    reason: null,
-  });
+  const [streamDownloadReady, setStreamDownloadReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewWarning, setPreviewWarning] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -476,7 +470,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       )
     : 0;
   const exportStorageReady = exportMode === "stream-download"
-    ? streamDownload.ready
+    ? streamDownloadReady
     : exportMode === "opfs"
       ? compatibility.opfs
       : compatibility.directDisk || compatibility.opfs;
@@ -560,26 +554,18 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   }, []);
 
   useEffect(() => {
-    if (isUnsupportedSafariBrowser()) {
-      setStreamDownload({
-        ready: false,
-        reason: "Safari is not supported. Use Google Chrome instead.",
-      });
-      return;
-    }
     const chromeOnIos = isChromeOnIosBrowser();
+    if (!chromeOnIos) return;
     let active = true;
     void prepareServiceWorkerStreamDownload().then((readiness) => {
       if (!active) return;
-      setStreamDownload(readiness);
-      if (chromeOnIos) {
-        if (readiness.ready) {
-          setExportMode("stream-download");
-          setStreamFallbackReason(null);
-        } else {
-          setExportMode("opfs");
-          setStreamFallbackReason(readiness.reason ?? "Direct download is unavailable.");
-        }
+      setStreamDownloadReady(readiness.ready);
+      if (readiness.ready) {
+        setExportMode("stream-download");
+        setStreamFallbackReason(null);
+      } else {
+        setExportMode("opfs");
+        setStreamFallbackReason(readiness.reason ?? "Direct download is unavailable.");
       }
     });
     return () => {
@@ -1747,8 +1733,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
             {exportFile !== file && (
               <p className={styles.modeNote}>The alternate master must have the same timeline as the analyzed proxy.</p>
             )}
-            {compatibility.chromeOnIos ? (
-              <div className={`${styles.streamExportToggle} ${styles.streamExportStatus}`}>
+            {compatibility.chromeOnIos && (
+              <div className={styles.streamExportStatus}>
                 <span>
                   <strong>
                     {exportMode === "stream-download"
@@ -1762,28 +1748,6 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   </small>
                 </span>
               </div>
-            ) : (
-              <label className={styles.streamExportToggle}>
-                <input
-                  type="checkbox"
-                  checked={exportMode === "stream-download"}
-                  disabled={busy || !streamDownload.ready}
-                  onChange={(event) => {
-                    setExportMode(event.currentTarget.checked ? "stream-download" : "compatible");
-                    setPreparedExport(null);
-                  }}
-                />
-                <span>
-                  <strong>Experimental direct download</strong>
-                  <small>
-                    Streams fragmented MP4 through a Service Worker without an OPFS copy. Keep this
-                    page open until encoding finishes.
-                  </small>
-                </span>
-              </label>
-            )}
-            {!compatibility.chromeOnIos && !streamDownload.ready && streamDownload.reason && (
-              <p className={styles.modeNote}>Direct-stream test unavailable: {streamDownload.reason}</p>
             )}
             <div className={styles.exportActions}>
               <button
@@ -1860,7 +1824,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
           <strong>POC boundary:</strong> Browser decoding and encoding still depend on the
           device&apos;s codec support. {compatibility.chromeOnIos
             ? "Chrome on iOS streams exports directly by default and retries with private browser storage only if streaming fails."
-            : "Compatible export uses a selected file or private browser storage; experimental direct export streams while this page remains open."}
+            : "Desktop and Android exports use the standard native file or private browser storage path."}
         </p>
         <div className={styles.footerLinks}>
           <Link href={uiFixtureMode ? "/on-device" : "/on-device-ui"}>
