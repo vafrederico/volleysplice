@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 
 import {
@@ -34,14 +35,15 @@ import { requestPlayingSeek } from "@/lib/on-device/player";
 import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
-import { runtimeAssetUrl } from "@/lib/runtime-assets";
 
 import styles from "./CutEditor.module.css";
 
 type CutEditorProps = {
+  header: ReactNode;
   initialAnalysis: ProductAnalysis;
-  sourceFile: File;
-  onStartOver: () => void;
+  sourceFile: File | null;
+  sourceError: string | null;
+  onAttachSource: (file: File | null) => void;
 };
 
 type ExportState = "idle" | "exporting" | "done" | "error";
@@ -118,9 +120,11 @@ function downloadFilename(value: string): string {
 }
 
 export function CutEditor({
+  header,
   initialAnalysis,
   sourceFile,
-  onStartOver,
+  sourceError,
+  onAttachSource,
 }: CutEditorProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const detailRailRef = useRef<HTMLDivElement>(null);
@@ -279,7 +283,7 @@ export function CutEditor({
     : exportMode === "opfs"
       ? opfsSupported
       : directDiskSupported || opfsSupported;
-  const localExportSupported = encodingSupported && exportStorageReady;
+  const localExportSupported = Boolean(sourceFile) && encodingSupported && exportStorageReady;
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
     if (exportState !== "exporting") {
@@ -681,7 +685,7 @@ export function CutEditor({
   }
 
   async function exportVideo() {
-    if (exportState === "exporting" || finalIntervals.length === 0) return;
+    if (!sourceFile || exportState === "exporting" || finalIntervals.length === 0) return;
     const requestedMode = exportMode;
     let directStreamFailure: string | null = null;
     setExportError(null);
@@ -759,17 +763,7 @@ export function CutEditor({
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.brand}>
-            <img src={runtimeAssetUrl("volleycut-logo.png")} alt="VolleyCut" />
-            <span>ON-DEVICE CUTS</span>
-          </span>
-        </div>
-        <span className={styles.storageState} data-ready={storageReady || undefined}>
-          <i /> {storageMessage}
-        </span>
-      </header>
+      {header}
 
       <section className={styles.sourcePicker} aria-label="Local inference source">
         <div className={styles.sourceMeta}>
@@ -780,8 +774,22 @@ export function CutEditor({
           <span>INFERENCE</span>
           <strong>{initialAnalysis.modelId} · {initialAnalysis.rallies.length} ranges</strong>
         </div>
-        <button type="button" onClick={onStartOver}>Analyze another video</button>
+        <span className={styles.storageState} data-ready={storageReady || undefined}>
+          <i /> {storageMessage}
+        </span>
+        {!sourceFile && (
+          <label className={styles.attachSource}>
+            Reconnect source for playback &amp; export
+            <input
+              type="file"
+              accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
+              onChange={(event) => onAttachSource(event.currentTarget.files?.[0] ?? null)}
+            />
+          </label>
+        )}
       </section>
+
+      {sourceError && <p className={styles.sourceError}>{sourceError}</p>}
 
       <section className={styles.editorShell}>
         <aside className={styles.summaryCard} aria-label="Final edit settings">

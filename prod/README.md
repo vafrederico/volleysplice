@@ -5,10 +5,17 @@ video loading, audiovisual feature extraction, rally inference, and the cut edit
 one UI. It has no API routes, server database, media catalog, mounted-media paths, or
 upload behavior.
 
-The selected video stays in the browser. OpenCV runs in a dedicated worker, feature
-reductions and FFmpeg-compatible audio resampling run through bundled WebAssembly, the
-model runs on CPU, feature checkpoints use local IndexedDB, and edit drafts use local
-storage. The editor exports its final padded and corrected intervals as an MP4 at the
+The selected video stays in the browser. Each inference request creates a durable local
+project, and the top-bar project selector returns to completed inputs without rerunning
+the model. Multiple projects can be queued: one generates features at a time while any
+completed project remains available in the editor. OpenCV runs in a dedicated worker,
+feature reductions and FFmpeg-compatible audio resampling run through bundled WebAssembly,
+and the model runs on CPU. Visual checkpoints, completed audio features, project metadata,
+and finalized inference results use local IndexedDB; edit drafts use local storage. Source
+video bytes are not copied into project storage, so a browser restart only requires
+reconnecting the exact local file for playback or export—not rerunning inference. Deleting
+a project also deletes its cached features, inference, and edit draft. The editor exports
+its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
 file or origin-private storage before iOS sharing. JSON edit-list export is also available.
 Both analysis and MP4 export show live elapsed-time and estimated-time-remaining counters

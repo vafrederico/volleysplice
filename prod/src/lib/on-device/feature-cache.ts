@@ -1,4 +1,5 @@
-import { ANALYSIS_FPS, FRAME_FEATURE_NAMES } from "./feature-schema.ts";
+import { ANALYSIS_FPS, AUDIO_FEATURE_NAMES, FRAME_FEATURE_NAMES } from "./feature-schema.ts";
+import type { OnDeviceRuntimeVariant } from "./runtime-variants.ts";
 import type {
   FeatureReductionKernel,
   NormalizedRoi,
@@ -8,9 +9,11 @@ import type {
 } from "./types.ts";
 
 const DATABASE_NAME = "volleycut-on-device-features";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 3;
 const ENTRY_STORE = "entries";
 const CHUNK_STORE = "chunks";
+const AUDIO_STORE = "audio";
+const CHUNK_CACHE_KEY_INDEX = "cacheKey";
 
 export const FEATURE_CACHE_CHUNK_ROWS = 16;
 
@@ -48,6 +51,15 @@ type FeatureCacheChunk = {
   values: ArrayBuffer;
 };
 
+type AudioFeatureCacheEntry = {
+  id: string;
+  schemaVersion: 1;
+  columns: number;
+  rowCount: number;
+  values: ArrayBuffer;
+  updatedAt: number;
+};
+
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.addEventListener("success", () => resolve(request.result), { once: true });
@@ -73,11 +85,44 @@ function openFeatureDatabase(): Promise<IDBDatabase> {
     if (!database.objectStoreNames.contains(ENTRY_STORE)) {
       database.createObjectStore(ENTRY_STORE, { keyPath: "id" });
     }
-    if (!database.objectStoreNames.contains(CHUNK_STORE)) {
-      database.createObjectStore(CHUNK_STORE, { keyPath: "id" });
+    const chunks = database.objectStoreNames.contains(CHUNK_STORE)
+      ? request.transaction!.objectStore(CHUNK_STORE)
+      : database.createObjectStore(CHUNK_STORE, { keyPath: "id" });
+    if (!chunks.indexNames.contains(CHUNK_CACHE_KEY_INDEX)) {
+      chunks.createIndex(CHUNK_CACHE_KEY_INDEX, "cacheKey", { unique: false });
+    }
+    if (!database.objectStoreNames.contains(AUDIO_STORE)) {
+      database.createObjectStore(AUDIO_STORE, { keyPath: "id" });
     }
   });
   return requestResult(request);
+}
+
+function hashTimes(times: Float64Array): string {
+  let hash = 0x811c9dc5;
+  const bytes = new Uint8Array(times.buffer, times.byteOffset, times.byteLength);
+  for (const byte of bytes) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16);
+}
+
+export function audioFeatureCacheKey(
+  source: LocalFeatureSource,
+  info: OnDeviceMediaInfo,
+  runtimeVariant: OnDeviceRuntimeVariant,
+  times: Float64Array,
+): string {
+  return JSON.stringify({
+    schema: 1,
+    columns: AUDIO_FEATURE_NAMES,
+    source: [source.name, source.size, source.lastModified],
+    media: [info.duration, info.hasAudio, info.audioCodec, info.sampleRate, info.channels],
+    runtimeVariant,
+    rows: times.length,
+    times: hashTimes(times),
+  });
 }
 
 function chunkId(cacheKey: string, index: number): string {
@@ -233,6 +278,118 @@ export async function markVisualFeatureCacheComplete(
     };
     transaction.objectStore(ENTRY_STORE).put(entry);
     await completeTransaction;
+  } finally {
+    database.close();
+  }
+}
+
+export async function readAudioFeatureCache(
+  key: string,
+): Promise<Float32Array | null> {
+  const database = await openFeatureDatabase();
+  try {
+    const transaction = database.transaction(AUDIO_STORE, "readonly");
+    const complete = transactionComplete(transaction);
+    const entry = await requestResult(
+      transaction.objectStore(AUDIO_STORE).get(key) as IDBRequest<
+        AudioFeatureCacheEntry | undefined
+      >,
+    );
+    await complete;
+    if (
+      !entry ||
+      entry.schemaVersion !== 1 ||
+      entry.columns !== AUDIO_FEATURE_NAMES.length ||
+      entry.rowCount < 0
+    ) {
+      return null;
+    }
+    const values = new Float32Array(entry.values);
+    return values.length === entry.rowCount * entry.columns ? values : null;
+  } finally {
+    database.close();
+  }
+}
+
+export async function writeAudioFeatureCache(
+  key: string,
+  values: Float32Array,
+  rowCount: number,
+): Promise<void> {
+  if (values.length !== rowCount * AUDIO_FEATURE_NAMES.length) {
+    throw new Error("Invalid audio feature cache entry.");
+  }
+  const database = await openFeatureDatabase();
+  try {
+    const transaction = database.transaction(AUDIO_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    const entry: AudioFeatureCacheEntry = {
+      id: key,
+      schemaVersion: 1,
+      columns: AUDIO_FEATURE_NAMES.length,
+      rowCount,
+      values: new Float32Array(values).buffer,
+      updatedAt: Date.now(),
+    };
+    transaction.objectStore(AUDIO_STORE).put(entry);
+    await complete;
+  } finally {
+    database.close();
+  }
+}
+
+function cacheKeyMatchesSource(
+  key: IDBValidKey,
+  source: LocalFeatureSource,
+): boolean {
+  if (typeof key !== "string") return false;
+  try {
+    const value = JSON.parse(key) as { source?: unknown };
+    return (
+      Array.isArray(value.source) &&
+      value.source[0] === source.name &&
+      value.source[1] === source.size &&
+      value.source[2] === source.lastModified
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteFeatureCachesForSource(
+  source: LocalFeatureSource,
+): Promise<void> {
+  const database = await openFeatureDatabase();
+  try {
+    const transaction = database.transaction(
+      [ENTRY_STORE, CHUNK_STORE, AUDIO_STORE],
+      "readwrite",
+    );
+    const complete = transactionComplete(transaction);
+    const entries = transaction.objectStore(ENTRY_STORE);
+    const chunks = transaction.objectStore(CHUNK_STORE);
+    const audio = transaction.objectStore(AUDIO_STORE);
+
+    const [entryKeys, audioKeys] = await Promise.all([
+      requestResult(entries.getAllKeys()),
+      requestResult(audio.getAllKeys()),
+    ]);
+    const matchingEntryKeys = entryKeys.filter((key) =>
+      cacheKeyMatchesSource(key, source),
+    );
+    const matchingAudioKeys = audioKeys.filter((key) =>
+      cacheKeyMatchesSource(key, source),
+    );
+    const chunkIndex = chunks.index(CHUNK_CACHE_KEY_INDEX);
+    const chunkKeyGroups = await Promise.all(
+      matchingEntryKeys.map((key) => requestResult(chunkIndex.getAllKeys(key))),
+    );
+
+    for (const key of matchingEntryKeys) entries.delete(key);
+    for (const key of matchingAudioKeys) audio.delete(key);
+    for (const key of chunkKeyGroups.flat()) chunks.delete(key);
+
+    await complete;
   } finally {
     database.close();
   }

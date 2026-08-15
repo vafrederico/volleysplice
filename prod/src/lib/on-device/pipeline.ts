@@ -3,11 +3,14 @@ import { CanvasSink, VideoSample, VideoSampleSink } from "mediabunny";
 import { runtimeAssetUrl } from "../runtime-assets";
 import { extractAudioFeatures } from "./audio-features";
 import {
+  audioFeatureCacheKey,
   FEATURE_CACHE_CHUNK_ROWS,
   markVisualFeatureCacheComplete,
+  readAudioFeatureCache,
   readVisualFeatureCache,
   type LocalFeatureSource,
   visualFeatureCacheKey,
+  writeAudioFeatureCache,
   writeVisualFeatureChunk,
 } from "./feature-cache";
 import {
@@ -538,19 +541,45 @@ export async function extractBrowserFeatures(
   rows.forEach((row, index) => visual.set(row, index * FRAME_FEATURE_NAMES.length));
   const temporal = temporalVisualFeatures(visual, rows.length);
   const finalPerformance = performanceSnapshot();
-  const audio = await extractAudioFeatures(
-    media.audioTrack,
-    timeValues,
-    media.info.duration,
-    runtimeVariant,
-    onProgress
-      ? (progress) => onProgress({
-          ...progress,
-          featureCache: featureCache(),
-          performance: finalPerformance,
-        })
-      : undefined,
-  );
+  const audioCacheKey = cacheSource
+    ? audioFeatureCacheKey(cacheSource, media.info, runtimeVariant, timeValues)
+    : null;
+  let audio: Float32Array | null = null;
+  if (audioCacheKey) {
+    try {
+      audio = await readAudioFeatureCache(audioCacheKey);
+    } catch {
+      // Private browsing and storage quotas can disable caching without blocking analysis.
+    }
+  }
+  if (audio) {
+    onProgress?.({
+      stage: "audio",
+      completed: media.info.duration,
+      total: media.info.duration,
+      detail: "Restored cached audio features",
+      featureCache: featureCache(),
+      performance: finalPerformance,
+    });
+    await yieldToBrowser();
+  } else {
+    audio = await extractAudioFeatures(
+      media.audioTrack,
+      timeValues,
+      media.info.duration,
+      runtimeVariant,
+      onProgress
+        ? (progress) => onProgress({
+            ...progress,
+            featureCache: featureCache(),
+            performance: finalPerformance,
+          })
+        : undefined,
+    );
+    if (audioCacheKey) {
+      await writeAudioFeatureCache(audioCacheKey, audio, rows.length).catch(() => undefined);
+    }
+  }
   const base = new Float32Array(rows.length * BASE_FEATURE_NAMES.length);
   for (let row = 0; row < rows.length; row += 1) {
     const outputOffset = row * BASE_FEATURE_NAMES.length;
