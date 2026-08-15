@@ -3,7 +3,14 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { audioFeatureCacheKey } from "../../prod/src/lib/on-device/feature-cache.ts";
+import {
+  audioFeatureCacheKey,
+  visualFeatureCacheKey,
+} from "../../prod/src/lib/on-device/feature-cache.ts";
+import {
+  fullAnalysisWindow,
+  normalizeAnalysisWindow,
+} from "../../prod/src/lib/on-device/analysis-window.ts";
 import {
   ALL_LABELS_V2_BUNDLE_SHA256,
   PREVIOUS_PRODUCTION_BUNDLE_SHA256,
@@ -74,6 +81,7 @@ function storedProject(analysis: OnDeviceAnalysis): VolleyCutProject {
     id: "project-fixture",
     source,
     info,
+    analysisWindow: fullAnalysisWindow(info.duration),
     roi: { x: 0, y: 0, width: 1, height: 1 },
     status: "ready",
     analysis,
@@ -98,6 +106,43 @@ test("project IDs change when source identity or timeline changes", () => {
     id,
     projectId(source, { ...info, duration: info.duration + 0.001 }),
   );
+});
+
+test("project IDs and visual caches are isolated by marked game window", () => {
+  const fullId = projectId(source, info);
+  const firstGame = { start: 10, end: 80 };
+  const secondGame = { start: 12, end: 80 };
+  assert.notEqual(fullId, projectId(source, info, firstGame));
+  assert.notEqual(
+    projectId(source, info, firstGame),
+    projectId(source, info, secondGame),
+  );
+
+  const roi = { x: 0, y: 0, width: 1, height: 1 };
+  const localSource = {
+    name: source.name,
+    size: source.size,
+    lastModified: source.lastModified,
+  };
+  assert.notEqual(
+    visualFeatureCacheKey(localSource, info, roi, undefined, firstGame),
+    visualFeatureCacheKey(localSource, info, roi, undefined, secondGame),
+  );
+});
+
+test("legacy projects default to the full source window", () => {
+  const legacy = storedProject(
+    cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true),
+  ) as VolleyCutProject & { analysisWindow?: undefined };
+  delete legacy.analysisWindow;
+  assert.deepEqual(
+    normalizeStoredProject(legacy as VolleyCutProject).analysisWindow,
+    { start: 0, end: info.duration },
+  );
+  assert.deepEqual(normalizeAnalysisWindow({ start: -5, end: 120 }, 90), {
+    start: 0,
+    end: 90,
+  });
 });
 
 test("reconnected files must match name, size, and modification time", () => {

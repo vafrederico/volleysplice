@@ -3,6 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CutEditor } from "@/components/CutEditor";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
+import {
+  MIN_ANALYSIS_WINDOW_SECONDS,
+  normalizeAnalysisWindow,
+  type AnalysisWindow,
+} from "@/lib/on-device/analysis-window";
 import { deleteFeatureCachesForSource } from "@/lib/on-device/feature-cache";
 import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
@@ -69,6 +74,16 @@ function formatDuration(seconds: number): string {
     : `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
+function preciseTime(seconds: number): string {
+  const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const remainder = safe % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${remainder.toFixed(1).padStart(4, "0")}`
+    : `${minutes}:${remainder.toFixed(1).padStart(4, "0")}`;
+}
+
 function progressPercent(progress: AnalysisProgress | null): number {
   if (!progress) return 0;
   const fraction = progress.total > 0 ? progress.completed / progress.total : 0;
@@ -125,6 +140,10 @@ export function App() {
   const [info, setInfo] = useState<OnDeviceMediaInfo | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [roi, setRoi] = useState<NormalizedRoi>(COURT_CENTERED_ROI);
+  const [analysisWindow, setAnalysisWindow] = useState<AnalysisWindow>({
+    start: 0,
+    end: 0,
+  });
   const [candidateProgress, setCandidateProgress] =
     useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +161,7 @@ export function App() {
   const elapsedTimerRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const resumePreviewAfterSeek = useRef(false);
+  const candidateVideoRef = useRef<HTMLVideoElement>(null);
 
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
@@ -192,6 +212,7 @@ export function App() {
     setFile(null);
     setInfo(null);
     setRoi(COURT_CENTERED_ROI);
+    setAnalysisWindow({ start: 0, end: 0 });
     setCandidateProgress(null);
     setError(null);
     setWorkState("empty");
@@ -302,6 +323,7 @@ export function App() {
     setFile(selected);
     setInfo(null);
     setRoi(COURT_CENTERED_ROI);
+    setAnalysisWindow({ start: 0, end: 0 });
     setError(null);
     resumePreviewAfterSeek.current = false;
     setCandidateProgress({
@@ -317,6 +339,7 @@ export function App() {
     try {
       opened = await openLocalMedia(selected);
       setInfo(opened.info);
+      setAnalysisWindow({ start: 0, end: opened.info.duration });
       setCandidateProgress(null);
       setWorkState("ready");
     } catch (cause) {
@@ -336,10 +359,57 @@ export function App() {
     );
   }
 
+  function setGameBoundary(side: "start" | "end", requestedTime: number) {
+    if (!info || !Number.isFinite(requestedTime)) return;
+    setAnalysisWindow((current) => {
+      const normalized = normalizeAnalysisWindow(current, info.duration);
+      if (side === "start") {
+        return {
+          ...normalized,
+          start: Math.max(
+            0,
+            Math.min(
+              normalized.end - MIN_ANALYSIS_WINDOW_SECONDS,
+              Math.round(requestedTime * 10) / 10,
+            ),
+          ),
+        };
+      }
+      return {
+        ...normalized,
+        end: Math.min(
+          info.duration,
+          Math.max(
+            normalized.start + MIN_ANALYSIS_WINDOW_SECONDS,
+            Math.round(requestedTime * 10) / 10,
+          ),
+        ),
+      };
+    });
+    setError(null);
+  }
+
+  function markGameBoundary(side: "start" | "end") {
+    setGameBoundary(side, candidateVideoRef.current?.currentTime ?? 0);
+  }
+
   function createAndQueueProject() {
     if (!file || !info) return;
+    const normalizedWindow = normalizeAnalysisWindow(
+      analysisWindow,
+      info.duration,
+    );
+    if (
+      normalizedWindow.end - normalizedWindow.start <
+      MIN_ANALYSIS_WINDOW_SECONDS
+    ) {
+      setError(
+        `Mark at least ${MIN_ANALYSIS_WINDOW_SECONDS} second of game footage before queueing inference.`,
+      );
+      return;
+    }
     const source = projectSource(file);
-    const id = projectId(source, info);
+    const id = projectId(source, info, normalizedWindow);
     const existing = projectsRef.current.find((project) => project.id === id);
     filesRef.current.set(id, file);
     setFilesRevision((current) => current + 1);
@@ -356,6 +426,7 @@ export function App() {
       id,
       source,
       info,
+      analysisWindow: normalizedWindow,
       roi,
       status: "queued",
       analysis: null,
@@ -428,6 +499,7 @@ export function App() {
           decodeStrategy: DEFAULT_VIDEO_DECODE_STRATEGY,
           decoderAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION,
           reductionKernel: DEFAULT_FEATURE_REDUCTION_KERNEL,
+          analysisWindow: running.analysisWindow,
         },
       );
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
@@ -578,12 +650,28 @@ export function App() {
       kind: "model",
       modelId: selectedProject.analysis.modelId,
       duration: selectedProject.info.duration,
+      analysisWindow: selectedProject.analysisWindow,
       width: selectedProject.info.width,
       height: selectedProject.info.height,
       sourceFilename: selectedProject.source.name,
       videoUrl: selectedVideoUrl,
       rallies: selectedProject.analysis.intervals,
-      ignoredIntervals: [],
+      ignoredIntervals: [
+        ...(selectedProject.analysisWindow.start > 0
+          ? [{
+              start: 0,
+              end: selectedProject.analysisWindow.start,
+              reason: "outside-game-window",
+            }]
+          : []),
+        ...(selectedProject.analysisWindow.end < selectedProject.info.duration
+          ? [{
+              start: selectedProject.analysisWindow.end,
+              end: selectedProject.info.duration,
+              reason: "outside-game-window",
+            }]
+          : []),
+      ],
     };
   }, [selectedProject, selectedVideoUrl]);
 
@@ -712,6 +800,7 @@ export function App() {
                   style={{ aspectRatio: `${info.width} / ${info.height}` }}
                 >
                   <video
+                    ref={candidateVideoRef}
                     src={previewUrl}
                     controls
                     preload="metadata"
@@ -777,6 +866,70 @@ export function App() {
                   Keep the court and players inside the box. Exclude static
                   borders, stands, or neighboring courts when practical.
                 </p>
+                <section className={styles.gameWindow} aria-labelledby="game-window-heading">
+                  <div className={styles.gameWindowHeading}>
+                    <div>
+                      <span>ANALYSIS WINDOW</span>
+                      <strong id="game-window-heading">Mark game start &amp; end</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAnalysisWindow({ start: 0, end: info.duration })
+                      }
+                    >
+                      Use full video
+                    </button>
+                  </div>
+                  <p>
+                    Seek the video, then mark each boundary. Only this range
+                    generates features or appears on the editor overview.
+                  </p>
+                  <div className={styles.gameBoundaryGrid}>
+                    <label>
+                      <span>Game start</span>
+                      <input
+                        aria-label="Game start in seconds"
+                        type="number"
+                        min="0"
+                        max={Math.max(0, analysisWindow.end - MIN_ANALYSIS_WINDOW_SECONDS)}
+                        step="0.1"
+                        value={analysisWindow.start}
+                        onChange={(event) =>
+                          setGameBoundary("start", event.currentTarget.valueAsNumber)
+                        }
+                      />
+                      <output>{preciseTime(analysisWindow.start)}</output>
+                      <button type="button" onClick={() => markGameBoundary("start")}>
+                        Set to playhead
+                      </button>
+                    </label>
+                    <label>
+                      <span>Game end</span>
+                      <input
+                        aria-label="Game end in seconds"
+                        type="number"
+                        min={analysisWindow.start + MIN_ANALYSIS_WINDOW_SECONDS}
+                        max={info.duration}
+                        step="0.1"
+                        value={analysisWindow.end}
+                        onChange={(event) =>
+                          setGameBoundary("end", event.currentTarget.valueAsNumber)
+                        }
+                      />
+                      <output>{preciseTime(analysisWindow.end)}</output>
+                      <button type="button" onClick={() => markGameBoundary("end")}>
+                        Set to playhead
+                      </button>
+                    </label>
+                  </div>
+                  <strong className={styles.gameWindowSummary}>
+                    {formatDuration(analysisWindow.end - analysisWindow.start)} analyzed
+                    {analysisWindow.end - analysisWindow.start < info.duration - 0.05
+                      ? ` · ${formatDuration(info.duration - (analysisWindow.end - analysisWindow.start))} skipped`
+                      : " · full source"}
+                  </strong>
+                </section>
                 <div className={styles.presetButtons}>
                   <button
                     type="button"
@@ -818,7 +971,12 @@ export function App() {
                   className={styles.analyzeButton}
                   type="button"
                   onClick={createAndQueueProject}
-                  disabled={busy || safariUnsupported}
+                  disabled={
+                    busy ||
+                    safariUnsupported ||
+                    analysisWindow.end - analysisWindow.start <
+                      MIN_ANALYSIS_WINDOW_SECONDS
+                  }
                 >
                   Create project &amp; queue inference
                 </button>

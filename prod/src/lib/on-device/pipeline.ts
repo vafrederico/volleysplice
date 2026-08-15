@@ -1,6 +1,11 @@
 import { CanvasSink, VideoSample, VideoSampleSink } from "mediabunny";
 
 import { runtimeAssetUrl } from "../runtime-assets";
+import {
+  MIN_ANALYSIS_WINDOW_SECONDS,
+  normalizeAnalysisWindow,
+  type AnalysisWindow,
+} from "./analysis-window";
 import { extractAudioFeatures } from "./audio-features";
 import {
   audioFeatureCacheKey,
@@ -72,6 +77,7 @@ export type FeatureExtractionOptions = {
   decodeStrategy?: VideoDecodeStrategy;
   decoderAcceleration?: VideoDecoderAcceleration;
   reductionKernel?: FeatureReductionKernel;
+  analysisWindow?: AnalysisWindow;
 };
 
 function column(values: Float32Array, rows: number, columns: number, index: number): Float32Array {
@@ -158,9 +164,14 @@ function instrumentCanvasDraw(onDraw: (milliseconds: number) => void): () => voi
   };
 }
 
-function* analysisTimestampsFrom(duration: number, fps: number, start: number) {
+function* analysisTimestampsBetween(
+  duration: number,
+  fps: number,
+  start: number,
+  end: number,
+) {
   for (const timestamp of analysisTimestamps(duration, fps)) {
-    if (timestamp + 1e-9 >= start) yield timestamp;
+    if (timestamp + 1e-9 >= start && timestamp < end - 1e-9) yield timestamp;
   }
 }
 
@@ -186,6 +197,16 @@ export async function extractBrowserFeatures(
   const decoderAcceleration =
     options.decoderAcceleration ?? VIDEO_DECODER_HARDWARE_ACCELERATION;
   const reductionKernel = options.reductionKernel ?? DEFAULT_FEATURE_REDUCTION_KERNEL;
+  const analysisWindow = normalizeAnalysisWindow(
+    options.analysisWindow,
+    media.info.duration,
+  );
+  const analysisDuration = analysisWindow.end - analysisWindow.start;
+  if (analysisDuration < MIN_ANALYSIS_WINDOW_SECONDS) {
+    throw new Error(
+      `The marked game must be at least ${MIN_ANALYSIS_WINDOW_SECONDS} second long.`,
+    );
+  }
   const videoStartedAt = performance.now();
   const timingTotals: FeatureExtractionPerformance = {
     profilingEnabled: detailedProfiling,
@@ -247,7 +268,13 @@ export async function extractBrowserFeatures(
             decoderAcceleration,
             ...(reductionKernel === "wasm" ? { reductionKernel } : {}),
           };
-    const resolvedCacheKey = visualFeatureCacheKey(cacheSource, media.info, roi, experiment);
+    const resolvedCacheKey = visualFeatureCacheKey(
+      cacheSource,
+      media.info,
+      roi,
+      experiment,
+      analysisWindow,
+    );
     cacheKey = resolvedCacheKey;
     try {
       const cached = await measureCacheIo(() => readVisualFeatureCache(resolvedCacheKey));
@@ -272,8 +299,16 @@ export async function extractBrowserFeatures(
   });
   onProgress?.({
     stage: "video",
-    completed: cachedRows > 0 ? cachedTimes[cachedRows - 1] ?? 0 : 0,
-    total: media.info.duration,
+    completed: cachedComplete
+      ? analysisDuration
+      : cachedRows > 0
+        ? Math.max(
+            0,
+            (cachedTimes[cachedRows - 1] ?? analysisWindow.start) -
+              analysisWindow.start,
+          )
+        : 0,
+    total: analysisDuration,
     detail: cachedRows > 0
       ? `Restored ${cachedRows.toLocaleString()} locally saved frames`
       : "Loading OpenCV WASM",
@@ -289,7 +324,10 @@ export async function extractBrowserFeatures(
   let decoded = cachedRows;
   if (!cachedComplete) {
     const resumeAfter = cachedRows > 0 ? cachedTimes[cachedRows - 1] : -Infinity;
-    const warmupStart = Math.max(0, resumeAfter - 1 / ANALYSIS_FPS);
+    const warmupStart = Math.max(
+      analysisWindow.start,
+      resumeAfter - 1 / ANALYSIS_FPS,
+    );
     const crop = {
       left,
       top,
@@ -351,8 +389,8 @@ export async function extractBrowserFeatures(
       if (timingTotals.generatedFrames % 8 !== 0) return;
       onProgress?.({
         stage: "video",
-        completed: timestamp,
-        total: media.info.duration,
+        completed: Math.max(0, timestamp - analysisWindow.start),
+        total: analysisDuration,
         detail: cachedRows > 0
           ? `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} new · ${decoded.toLocaleString()} total frames`
           : `Measuring motion · ${timingTotals.generatedFrames.toLocaleString()} frames`,
@@ -396,7 +434,12 @@ export async function extractBrowserFeatures(
           hardwareAcceleration: decoderAcceleration,
         });
         const requestedTimestamps = Array.from(
-          analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
+          analysisTimestampsBetween(
+            media.info.duration,
+            ANALYSIS_FPS,
+            warmupStart,
+            analysisWindow.end,
+          ),
         );
         const sampleIterator = decodeStrategy === "sequential"
           ? samplesAtTimestampsFromSequentialPass(sink, requestedTimestamps, () => {
@@ -468,7 +511,12 @@ export async function extractBrowserFeatures(
           decoderOptions: { hardwareAcceleration: decoderAcceleration },
         });
         const canvasIterator = sink.canvasesAtTimestamps(
-          analysisTimestampsFrom(media.info.duration, ANALYSIS_FPS, warmupStart),
+          analysisTimestampsBetween(
+            media.info.duration,
+            ANALYSIS_FPS,
+            warmupStart,
+            analysisWindow.end,
+          ),
         );
         const stopCanvasDrawTiming = detailedProfiling
           ? instrumentCanvasDraw((milliseconds) => {
@@ -561,8 +609,8 @@ export async function extractBrowserFeatures(
   if (audio) {
     onProgress?.({
       stage: "audio",
-      completed: media.info.duration,
-      total: media.info.duration,
+      completed: analysisDuration,
+      total: analysisDuration,
       detail: "Restored cached audio features",
       featureCache: featureCache(),
       performance: finalPerformance,
@@ -572,7 +620,7 @@ export async function extractBrowserFeatures(
     audio = await extractAudioFeatures(
       media.audioTrack,
       timeValues,
-      media.info.duration,
+      analysisWindow,
       runtimeVariant,
       onProgress
         ? (progress) => onProgress({
@@ -625,6 +673,11 @@ export async function analyzeOpenedMedia(
   cacheSource?: LocalFeatureSource,
   options: FeatureExtractionOptions = {},
 ): Promise<OnDeviceAnalysis> {
+  const analysisWindow = normalizeAnalysisWindow(
+    options.analysisWindow,
+    media.info.duration,
+  );
+  const analysisDuration = analysisWindow.end - analysisWindow.start;
   const sequence = await extractBrowserFeatures(
     media,
     roi,
@@ -637,7 +690,7 @@ export async function analyzeOpenedMedia(
     stage: "normalizing",
     completed: 0,
     total: sequence.rows,
-    detail: "Ranking whole-recording features and adding temporal context",
+    detail: "Ranking game-window features and adding temporal context",
     featureCache: sequence.featureCache,
     performance: sequence.performance,
   });
@@ -678,22 +731,28 @@ export async function analyzeOpenedMedia(
     allLabelsBundle,
     sequence.times,
     contextual.values,
-    media.info.duration,
+    analysisWindow.end,
   );
   const previousProductionInference = runOnDeviceModel(
     previousProductionBundle,
     sequence.times,
     contextual.values,
-    media.info.duration,
+    analysisWindow.end,
   );
   const intervals = mergeProductionModelIntervals(
     allLabelsInference.rallies,
     previousProductionInference.rallies,
-  );
+  )
+    .map((interval) => ({
+      ...interval,
+      start: Math.max(analysisWindow.start, interval.start),
+      end: Math.min(analysisWindow.end, interval.end),
+    }))
+    .filter((interval) => interval.end > interval.start);
   onProgress?.({
     stage: "complete",
-    completed: media.info.duration,
-    total: media.info.duration,
+    completed: analysisDuration,
+    total: analysisDuration,
     detail: `${intervals.length} merged candidates ready for review`,
     featureCache: sequence.featureCache,
     performance: sequence.performance,

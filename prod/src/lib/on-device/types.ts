@@ -5,6 +5,8 @@ export type NormalizedRoi = {
   height: number;
 };
 
+export type { AnalysisWindow } from "./analysis-window";
+
 export type OnDeviceMediaInfo = {
   duration: number;
   mimeType: string;
