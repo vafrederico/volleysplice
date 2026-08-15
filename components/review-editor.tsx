@@ -22,7 +22,7 @@ import {
 } from "@/lib/edit-list";
 import {
   DEFAULT_VISIBLE_MODEL_IDS,
-  PREFERRED_ENVIRONMENT_EXPERIMENT_MODEL_ID,
+  PREFERRED_REVIEW_MODEL_ID,
 } from "@/lib/experiment-models";
 import { parseLabelDocument, type IgnoredInterval, type LabelDocument } from "@/lib/annotations";
 import {
@@ -246,7 +246,7 @@ function preferredAnalysis(
   return (
     analyses.find(
       (analysis) =>
-        analysis.id === `${PREFERRED_ENVIRONMENT_EXPERIMENT_MODEL_ID}--${video.id}`,
+        analysis.id === `${PREFERRED_REVIEW_MODEL_ID}--${video.id}`,
     ) ??
     analyses.find((analysis) => analysis.kind === "gold") ??
     analyses.find((analysis) => analysis.kind === "sol") ??

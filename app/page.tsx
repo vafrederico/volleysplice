@@ -4,7 +4,7 @@ import type {
   ReviewAnalysis,
   TrainingCorpusView,
 } from "@/lib/analysis-types";
-import { PREFERRED_ENVIRONMENT_EXPERIMENT_MODEL_ID } from "@/lib/experiment-models";
+import { PREFERRED_REVIEW_MODEL_ID } from "@/lib/experiment-models";
 import { loadReviewCatalog } from "@/lib/server/review-catalog";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +65,7 @@ export default async function Home({ searchParams }: HomeProps) {
     analyses.find(
       (candidate) =>
         candidate.id ===
-        `${PREFERRED_ENVIRONMENT_EXPERIMENT_MODEL_ID}--${selectedVideo?.id}`,
+        `${PREFERRED_REVIEW_MODEL_ID}--${selectedVideo?.id}`,
     ) ??
     analyses.find((candidate) => candidate.kind === "gold") ??
     analyses.find((candidate) => candidate.kind === "sol") ??

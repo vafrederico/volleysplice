@@ -8,12 +8,6 @@ export type EnvironmentExperimentModel = {
 
 export const ENVIRONMENT_EXPERIMENT_MODELS = [
   {
-    id: "model-1ca43e38eefc",
-    label: "All labels + latest grass v2",
-    description:
-      "Production three-head architecture refit on all six grass recordings and five indoor recordings, including Turkey Tourney, Forest Ridge, and YMCA KOB Set 4.",
-  },
-  {
     id: "model-04dc7d97e693",
     label: "Grass specialist",
     description:
@@ -27,8 +21,7 @@ export const ENVIRONMENT_EXPERIMENT_MODELS = [
   },
 ] as const satisfies readonly EnvironmentExperimentModel[];
 
-export const PREFERRED_ENVIRONMENT_EXPERIMENT_MODEL_ID =
-  ENVIRONMENT_EXPERIMENT_MODELS[0].id;
+export const PREFERRED_REVIEW_MODEL_ID = PRODUCTION_MODEL_ID;
 
 export const DEFAULT_VISIBLE_MODEL_IDS: ReadonlySet<string> = new Set([
   PRODUCTION_MODEL_ID,

@@ -84,7 +84,16 @@ curl -I https://volleycut.vafrederico.com
 
 ## Runtime contents
 
-- `public/runtime/model-9c92b8e9333f.json`: all three inference heads and decoders.
+- `public/runtime/model-1ca43e38eefc.json`: the promoted all-labels v2 inference heads and decoders.
+- `public/runtime/model-9c92b8e9333f.json`: the previous production heads used by the two-model consensus pass.
+
+The production app extracts media features once, runs both model stacks, and unions
+overlapping rally ranges. Ranges emitted by only one model are retained but marked as
+disagreements, assigned a conservative review confidence below 50%, and highlighted
+with an orange striped treatment so **Review next** visits them before export.
+
+`npm run preview` serves the verified production build on `0.0.0.0:3000`, matching
+the local Traefik target for `https://internal.example`.
 - `public/runtime/feature-reductions.wasm`: fused visual feature reductions.
 - `public/runtime/libswresample.*`: filtered local audio resampling.
 - `public/runtime/opencv*.js`: generated from the pinned npm dependency by the

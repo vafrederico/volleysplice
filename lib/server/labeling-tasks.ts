@@ -17,7 +17,6 @@ import {
 import { PRODUCTION_MODEL_ID } from "@/lib/production-model";
 import { ENVIRONMENT_EXPERIMENT_MODELS } from "@/lib/experiment-models";
 import {
-  getAnalysesRoot,
   getIntakeAnalysesRoot,
   getIntakeWorkspace,
 } from "@/lib/storage";
@@ -634,7 +633,7 @@ async function loadProductionLabelSeed(
   if (task.batch !== "full") return null;
   try {
     const productionAnalysisPath = path.join(
-      getAnalysesRoot("without-beach"),
+      getIntakeAnalysesRoot(),
       `${PRODUCTION_MODEL_ID}--${task.id}`,
       "analysis.json",
     );

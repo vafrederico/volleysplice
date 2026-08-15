@@ -1,4 +1,5 @@
 import { CanvasSink, VideoSample, VideoSampleSink } from "mediabunny";
+import { PRODUCTION_MODEL_ID } from "../production-model";
 
 import { extractAudioFeatures } from "./audio-features";
 import {
@@ -42,7 +43,7 @@ import {
   type WorkerFeatureResult,
 } from "./visual-feature-worker-client";
 
-const MODEL_URL = "/on-device/model-9c92b8e9333f.json";
+const MODEL_URL = `/on-device/${PRODUCTION_MODEL_ID}.json`;
 
 export const DEFAULT_VIDEO_DECODE_STRATEGY: VideoDecodeStrategy = "sequential";
 export const VIDEO_DECODER_HARDWARE_ACCELERATION: VideoDecoderAcceleration =
@@ -617,7 +618,7 @@ export async function analyzeOpenedMedia(
     contextual.names.length !== bundle.featureNames.length ||
     contextual.names.some((name, index) => name !== bundle.featureNames[index])
   ) {
-    throw new Error("Extracted feature signature does not match model-9c92b8e9333f.");
+    throw new Error(`Extracted feature signature does not match ${PRODUCTION_MODEL_ID}.`);
   }
   onProgress?.({
     stage: "inference",
@@ -643,7 +644,7 @@ export async function analyzeOpenedMedia(
     performance: sequence.performance,
   });
   return {
-    modelId: "model-9c92b8e9333f",
+    modelId: PRODUCTION_MODEL_ID,
     featurePath,
     intervals,
     times: sequence.times,

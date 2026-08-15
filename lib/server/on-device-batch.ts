@@ -13,9 +13,9 @@ import type { PreparedLabelingTask } from "./labeling-tasks.ts";
 export const ON_DEVICE_BATCH_MODEL_ID = PRODUCTION_MODEL_ID;
 export const ON_DEVICE_BATCH_FEATURE_PATH = "training-proxy";
 export const ON_DEVICE_BATCH_MODEL_VERSION =
-  "dead-state-transition-audio-normalized-v5-no-legacy-final";
+  "environment-specialists-v2-all-labels";
 export const ON_DEVICE_BATCH_BUNDLE_SHA256 =
-  "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d";
+  "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f";
 
 const TOKEN_ENV = "VOLLEYCUT_ON_DEVICE_BATCH_TOKEN";
 const OUTPUT_ROOT_ENV = "VOLLEYCUT_ON_DEVICE_BATCH_OUTPUT_ROOT";
@@ -24,9 +24,9 @@ const DURATION_TOLERANCE_SECONDS = 0.1;
 
 const RUNTIME_VARIANT_CONFIG = {
   "linear-v1": {
-    analysisIdPrefix: "model-browser-on-device-9c92b8e9333f--",
+    analysisIdPrefix: `model-browser-on-device-${PRODUCTION_MODEL_ID.replace("model-", "")}--`,
     method: "browser-on-device-webcodecs-opencv-wasm-v1",
-    variantLabel: "Browser on-device · model-9c92b8e9333f",
+    variantLabel: `Browser on-device · ${PRODUCTION_MODEL_ID}`,
     variantDescription:
       "Browser-native WebCodecs, OpenCV WASM, and CPU inference over the fixed training proxy; media-feature parity remains unvalidated.",
     audioResampler: "deterministic-linear-48khz-to-16khz",
@@ -36,10 +36,10 @@ const RUNTIME_VARIANT_CONFIG = {
   },
   "libswresample-wasm-v1": {
     analysisIdPrefix:
-      "model-browser-on-device-libswresample-wasm-9c92b8e9333f--",
+      `model-browser-on-device-libswresample-wasm-${PRODUCTION_MODEL_ID.replace("model-", "")}--`,
     method: "browser-on-device-webcodecs-opencv-libswresample-wasm-v1",
     variantLabel:
-      "Browser on-device · libswresample WASM · model-9c92b8e9333f",
+      `Browser on-device · libswresample WASM · ${PRODUCTION_MODEL_ID}`,
     variantDescription:
       "Browser-native WebCodecs, OpenCV WASM, FFmpeg libswresample WASM audio conversion, and CPU inference over the fixed training proxy; end-to-end parity remains under evaluation.",
     audioResampler: "ffmpeg-libswresample-wasm",
@@ -62,16 +62,16 @@ const RUNTIME_VARIANT_CONFIG = {
 
 const MODEL_PARTS = {
   rally: {
-    version: "full-audiovisual-audio-normalized-v3",
-    sha256: "ca004bff50fb36652142a861fcc9334bab0ad50d3aca68cd3bb30d1c53e725ba",
+    version: "environment-specialists-v2-all-labels-rally",
+    sha256: "d084247aa09fd60b10a45458d150c4c1e1132b79b262009d2295e6c6b5e75693",
   },
   serve: {
-    version: "serve-specialist-audio-normalized-v5",
-    sha256: "5ff951b60ee838a1c51e8677ede1c9c9ed5a48b252028b22b2ea8783f4964bbb",
+    version: "environment-specialists-v2-all-labels-serve",
+    sha256: "0fc2f32e25d1784ec131ced2bb874ba90ba8e625726da0c728205e37d8ff11f6",
   },
   deadState: {
-    version: "dead-state-transition-audio-normalized-v5-no-legacy-final",
-    sha256: "9c92b8e9333f6247336639409acbe063da68dea4cc74735c7b2a8791f8dda2a7",
+    version: "environment-specialists-v2-all-labels-dead-state",
+    sha256: "1ca43e38eefc0a3b0554b8818fe5c77492dc8bd697301fc55d229bf4092b2329",
   },
 } as const;
 
@@ -555,7 +555,7 @@ export async function persistOnDeviceBatchAnalysis(
   try {
     const previewSource = path.join(
       outputRoot,
-      `model-9c92b8e9333f--${task.id}`,
+      `${PRODUCTION_MODEL_ID}--${task.id}`,
       "court-preview.jpg",
     );
     try {

@@ -1811,7 +1811,7 @@ export function LabelingEditor() {
                 },
                 ...referenceComparisons.map((comparison) => ({
                   id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s`,
-                  label: `${comparison.reference.baseline ? "Previous production" : comparison.reference.modelLabel} · ${comparison.paddingSeconds}s`,
+                  label: `${comparison.reference.baseline ? "Production" : comparison.reference.modelLabel} · ${comparison.paddingSeconds}s`,
                   detail: `${comparison.reference.modelId} · ${comparison.reference.rallies.length} core rallies · ${comparison.paddingSeconds}s pad · < ${joinGapSeconds}s joins`,
                   title: `${comparison.reference.modelLabel}. ${comparison.reference.description ?? "Read-only model inference"} Compared live with the editable labels at ${comparison.paddingSeconds} seconds before and after. Padded ranges with gaps strictly under ${joinGapSeconds} seconds are joined before scoring and export measurement.`,
                   summary: {

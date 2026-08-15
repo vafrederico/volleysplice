@@ -11,15 +11,23 @@ import numpy as np
 
 
 MODEL_NAMES = {
-    "rally": "full-audiovisual-audio-normalized-v3",
-    "serve": "serve-specialist-audio-normalized-v5",
-    "deadState": "dead-state-transition-audio-normalized-v5-no-legacy-final",
+    "rally": "rally",
+    "serve": "serve",
+    "deadState": "dead-state",
+}
+
+MODEL_ID = "model-1ca43e38eefc"
+
+MODEL_VERSIONS = {
+    "rally": "environment-specialists-v2-all-labels-rally",
+    "serve": "environment-specialists-v2-all-labels-serve",
+    "deadState": "environment-specialists-v2-all-labels-dead-state",
 }
 
 ARTIFACT_SHA256 = {
-    "rally": "ca004bff50fb36652142a861fcc9334bab0ad50d3aca68cd3bb30d1c53e725ba",
-    "serve": "5ff951b60ee838a1c51e8677ede1c9c9ed5a48b252028b22b2ea8783f4964bbb",
-    "deadState": "9c92b8e9333f6247336639409acbe063da68dea4cc74735c7b2a8791f8dda2a7",
+    "rally": "d084247aa09fd60b10a45458d150c4c1e1132b79b262009d2295e6c6b5e75693",
+    "serve": "0fc2f32e25d1784ec131ced2bb874ba90ba8e625726da0c728205e37d8ff11f6",
+    "deadState": "1ca43e38eefc0a3b0554b8818fe5c77492dc8bd697301fc55d229bf4092b2329",
 }
 
 SERVE_DECODER = {
@@ -69,7 +77,7 @@ def _head(
     metadata = json.loads((model_dir / "model.json").read_text(encoding="utf-8"))
     with np.load(model_dir / "weights.npz", allow_pickle=False) as weights:
         payload: dict[str, object] = {
-            "version": name,
+            "version": MODEL_VERSIONS[role],
             "artifactSha256": ARTIFACT_SHA256[role],
             "predictionTask": metadata["predictionTask"],
             "mean": weights["mean"].astype(np.float32).tolist(),
@@ -109,7 +117,7 @@ def main() -> None:
 
     payload = {
         "schemaVersion": 1,
-        "modelId": "model-9c92b8e9333f",
+        "modelId": MODEL_ID,
         "analysisFps": rally["featureConfig"]["analysis_fps"],
         "featureVersion": rally["featureVersion"],
         "featureConfig": rally["featureConfig"],

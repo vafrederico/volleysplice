@@ -20,6 +20,7 @@ export type EditableCut = {
   confidence: number;
   included: boolean;
   origin: CutOrigin;
+  agreement?: Rally["agreement"];
 };
 
 export type IgnoredSourceInterval = IgnoredInterval & {
@@ -84,6 +85,7 @@ export function cutSourceRevision(seed: CutDraftSeed): string {
       rally.id,
       Number(rally.start.toFixed(3)),
       Number(rally.end.toFixed(3)),
+      rally.agreement ?? null,
     ]),
     ignoredIntervals: seed.ignoredIntervals.map((interval) => [
       Number(interval.start.toFixed(3)),
@@ -130,6 +132,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
       confidence: clamp(rally.confidence, 0, 1),
       included: rally.included,
       origin: "cached-label",
+      agreement: rally.agreement,
     })),
     ignoredIntervals: seed.ignoredIntervals.map((interval, index) => ({
       id: `I${String(index + 1).padStart(3, "0")}`,
@@ -153,6 +156,10 @@ function validCut(value: unknown, duration: number): value is EditableCut {
     finiteTime(cut.confidence) &&
     typeof cut.included === "boolean" &&
     (cut.origin === "cached-label" || cut.origin === "manual") &&
+    (cut.agreement === undefined ||
+      cut.agreement === "both-models" ||
+      cut.agreement === "all-labels-v2-only" ||
+      cut.agreement === "previous-production-only") &&
     cut.keepStart >= 0 &&
     cut.keepStart <= cut.coreStart &&
     cut.coreStart < cut.coreEnd &&

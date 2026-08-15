@@ -4,6 +4,7 @@ import {
   type RallyLabel,
   roundTime,
 } from "./annotations.ts";
+import { PRODUCTION_MODEL_ID, PRODUCTION_MODEL_LABEL } from "./production-model.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -97,8 +98,9 @@ export function buildProductionLabelSeed(
       : null;
   if (!analyzedAt)
     throw new Error("production model analysis timestamp is invalid");
-  const modelLabel =
-    typeof analysis.variantLabel === "string" && analysis.variantLabel.trim()
+  const modelLabel = modelId === PRODUCTION_MODEL_ID
+    ? PRODUCTION_MODEL_LABEL
+    : typeof analysis.variantLabel === "string" && analysis.variantLabel.trim()
       ? analysis.variantLabel.trim()
       : modelId;
   const document = parseLabelDocument({

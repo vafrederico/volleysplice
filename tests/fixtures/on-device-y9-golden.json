@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceFeatureCacheSha256": "1961e588f16132187fe41d88d13324a6221919fef3d5e6eac84052ca8f9f6426",
-  "sourceAnalysisSha256": "d2698c9d079af66e6fd2b78e7937cfaefdf5e8735c8b31368122fe266ffebfcc",
+  "sourceAnalysisSha256": "a4e4e9c76d2d4dca654d78f4f1d8257533ef0b7b7c4433bc06608d3208db914e",
   "duration": 868.4666666666667,
   "rows": 3474,
   "columns": 104,
@@ -115,225 +115,255 @@
   "rallies": [
     {
       "id": "R001",
-      "start": 1.25,
-      "end": 3.75,
-      "confidence": 0.85475
+      "start": 0.25,
+      "end": 2.75,
+      "confidence": 0.99903
     },
     {
       "id": "R002",
-      "start": 24.983,
-      "end": 35.35,
-      "confidence": 0.99908
+      "start": 11.483,
+      "end": 13.983,
+      "confidence": 0.95407
     },
     {
       "id": "R003",
-      "start": 51.883,
-      "end": 58.117,
-      "confidence": 0.88818
+      "start": 24.983,
+      "end": 35.85,
+      "confidence": 0.99997
     },
     {
       "id": "R004",
-      "start": 75.983,
-      "end": 77.35,
-      "confidence": 0.99805
+      "start": 50.617,
+      "end": 59.617,
+      "confidence": 0.89974
     },
     {
       "id": "R005",
-      "start": 88.117,
-      "end": 102.117,
-      "confidence": 0.85409
+      "start": 74.617,
+      "end": 79.35,
+      "confidence": 0.80659
     },
     {
       "id": "R006",
-      "start": 115.983,
-      "end": 129.117,
-      "confidence": 0.99995
+      "start": 87.117,
+      "end": 102.617,
+      "confidence": 0.84954
     },
     {
       "id": "R007",
-      "start": 145.383,
-      "end": 155.5,
-      "confidence": 0.94078
+      "start": 115.883,
+      "end": 129.85,
+      "confidence": 0.87812
     },
     {
       "id": "R008",
-      "start": 173.617,
-      "end": 192.35,
-      "confidence": 0.72489
+      "start": 144.117,
+      "end": 155.617,
+      "confidence": 0.89869
     },
     {
       "id": "R009",
-      "start": 209.117,
-      "end": 213.617,
-      "confidence": 0.83832
+      "start": 173.117,
+      "end": 179.617,
+      "confidence": 0.83747
     },
     {
       "id": "R010",
-      "start": 228.383,
-      "end": 233.85,
-      "confidence": 0.86164
+      "start": 185.117,
+      "end": 188.85,
+      "confidence": 0.66302
     },
     {
       "id": "R011",
-      "start": 243.983,
-      "end": 268.35,
-      "confidence": 0.99988
+      "start": 190.883,
+      "end": 194.117,
+      "confidence": 0.71894
     },
     {
       "id": "R012",
-      "start": 282.383,
-      "end": 285.5,
-      "confidence": 0.92779
+      "start": 208.883,
+      "end": 214.117,
+      "confidence": 0.86891
     },
     {
       "id": "R013",
-      "start": 293.383,
-      "end": 311.0,
-      "confidence": 0.93366
+      "start": 227.883,
+      "end": 234.35,
+      "confidence": 0.86672
     },
     {
       "id": "R014",
-      "start": 324.117,
-      "end": 335.35,
-      "confidence": 0.88803
+      "start": 243.883,
+      "end": 263.85,
+      "confidence": 0.84099
     },
     {
       "id": "R015",
-      "start": 346.483,
-      "end": 348.5,
-      "confidence": 0.99959
+      "start": 282.983,
+      "end": 285.0,
+      "confidence": 0.99981
     },
     {
       "id": "R016",
-      "start": 360.117,
-      "end": 365.233,
-      "confidence": 0.91804
+      "start": 293.117,
+      "end": 311.117,
+      "confidence": 0.84505
     },
     {
       "id": "R017",
-      "start": 384.883,
-      "end": 392.0,
-      "confidence": 0.928
+      "start": 324.383,
+      "end": 335.85,
+      "confidence": 0.84304
     },
     {
       "id": "R018",
-      "start": 405.117,
-      "end": 410.617,
-      "confidence": 0.87473
+      "start": 346.383,
+      "end": 349.85,
+      "confidence": 0.78828
     },
     {
       "id": "R019",
-      "start": 427.117,
-      "end": 434.35,
-      "confidence": 0.83026
+      "start": 359.383,
+      "end": 367.35,
+      "confidence": 0.83686
     },
     {
       "id": "R020",
-      "start": 444.617,
-      "end": 451.617,
-      "confidence": 0.8881
+      "start": 384.617,
+      "end": 392.117,
+      "confidence": 0.87568
     },
     {
       "id": "R021",
-      "start": 462.117,
-      "end": 476.35,
-      "confidence": 0.93571
+      "start": 404.883,
+      "end": 410.85,
+      "confidence": 0.83399
     },
     {
       "id": "R022",
-      "start": 492.383,
-      "end": 506.617,
-      "confidence": 0.93189
+      "start": 427.383,
+      "end": 432.617,
+      "confidence": 0.79314
     },
     {
       "id": "R023",
-      "start": 518.617,
-      "end": 530.117,
-      "confidence": 0.91704
+      "start": 444.617,
+      "end": 451.617,
+      "confidence": 0.87589
     },
     {
       "id": "R024",
-      "start": 542.25,
-      "end": 546.117,
-      "confidence": 0.99865
+      "start": 461.883,
+      "end": 476.35,
+      "confidence": 0.89013
     },
     {
       "id": "R025",
-      "start": 555.617,
-      "end": 563.117,
-      "confidence": 0.87145
+      "start": 478.483,
+      "end": 480.983,
+      "confidence": 0.8825
     },
     {
       "id": "R026",
-      "start": 581.483,
-      "end": 590.5,
-      "confidence": 0.99778
+      "start": 492.617,
+      "end": 504.35,
+      "confidence": 0.92317
     },
     {
       "id": "R027",
-      "start": 606.617,
-      "end": 624.617,
-      "confidence": 0.84327
+      "start": 518.383,
+      "end": 529.117,
+      "confidence": 0.7625
     },
     {
       "id": "R028",
-      "start": 642.117,
-      "end": 651.85,
-      "confidence": 0.90626
+      "start": 542.25,
+      "end": 547.35,
+      "confidence": 0.99998
     },
     {
       "id": "R029",
-      "start": 657.617,
-      "end": 668.117,
-      "confidence": 0.77837
+      "start": 555.117,
+      "end": 564.35,
+      "confidence": 0.87521
     },
     {
       "id": "R030",
-      "start": 682.883,
-      "end": 691.617,
-      "confidence": 0.89496
+      "start": 580.383,
+      "end": 591.35,
+      "confidence": 0.88444
     },
     {
       "id": "R031",
-      "start": 703.25,
-      "end": 709.85,
-      "confidence": 0.99931
+      "start": 606.383,
+      "end": 625.617,
+      "confidence": 0.87798
     },
     {
       "id": "R032",
-      "start": 725.117,
-      "end": 742.117,
-      "confidence": 0.93182
+      "start": 641.617,
+      "end": 652.117,
+      "confidence": 0.90013
     },
     {
       "id": "R033",
-      "start": 760.25,
-      "end": 762.75,
-      "confidence": 0.99954
+      "start": 660.883,
+      "end": 668.617,
+      "confidence": 0.89062
     },
     {
       "id": "R034",
-      "start": 773.883,
-      "end": 778.85,
-      "confidence": 0.87683
+      "start": 682.983,
+      "end": 692.117,
+      "confidence": 0.99776
     },
     {
       "id": "R035",
-      "start": 788.617,
-      "end": 801.117,
-      "confidence": 0.93641
+      "start": 703.617,
+      "end": 710.35,
+      "confidence": 0.76761
     },
     {
       "id": "R036",
-      "start": 814.117,
-      "end": 819.117,
-      "confidence": 0.85537
+      "start": 724.983,
+      "end": 742.617,
+      "confidence": 1.0
     },
     {
       "id": "R037",
+      "start": 759.983,
+      "end": 762.483,
+      "confidence": 0.99994
+    },
+    {
+      "id": "R038",
+      "start": 773.883,
+      "end": 779.85,
+      "confidence": 0.83278
+    },
+    {
+      "id": "R039",
+      "start": 788.883,
+      "end": 801.35,
+      "confidence": 0.74354
+    },
+    {
+      "id": "R040",
+      "start": 813.883,
+      "end": 818.617,
+      "confidence": 0.8281
+    },
+    {
+      "id": "R041",
       "start": 829.75,
-      "end": 845.0,
-      "confidence": 0.99797
+      "end": 844.85,
+      "confidence": 0.99997
+    },
+    {
+      "id": "R042",
+      "start": 854.75,
+      "end": 857.5,
+      "confidence": 0.97744
     }
   ]
 }

@@ -4,6 +4,10 @@ export type Rally = {
   end: number;
   confidence: number;
   included: boolean;
+  agreement?:
+    | "both-models"
+    | "all-labels-v2-only"
+    | "previous-production-only";
 };
 
 export const DEFAULT_JOIN_GAP_SECONDS = 3;

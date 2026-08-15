@@ -38,6 +38,10 @@ import {
 
 const TOKEN_ENV = "VOLLEYCUT_ON_DEVICE_BATCH_TOKEN";
 const OUTPUT_ROOT_ENV = "VOLLEYCUT_ON_DEVICE_BATCH_OUTPUT_ROOT";
+const PRODUCTION_MODEL_SLUG = ON_DEVICE_BATCH_MODEL_ID.replace("model-", "");
+const LINEAR_ANALYSIS_PREFIX = `model-browser-on-device-${PRODUCTION_MODEL_SLUG}--`;
+const RESAMPLED_ANALYSIS_PREFIX =
+  `model-browser-on-device-libswresample-wasm-${PRODUCTION_MODEL_SLUG}--`;
 
 type SavedArtifact = {
   schemaVersion: number;
@@ -339,12 +343,12 @@ test("catalog exposes only fixed media metadata and completion state", async () 
   const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), "volleycut-browser-catalog-"));
   const completedId = ON_DEVICE_BATCH_RECORDING_IDS[2];
   await fs.mkdir(
-    path.join(outputRoot, `model-browser-on-device-9c92b8e9333f--${completedId}`),
+    path.join(outputRoot, `${LINEAR_ANALYSIS_PREFIX}${completedId}`),
   );
   await fs.writeFile(
     path.join(
       outputRoot,
-      `model-browser-on-device-9c92b8e9333f--${completedId}`,
+      `${LINEAR_ANALYSIS_PREFIX}${completedId}`,
       "analysis.json",
     ),
     "{}",
@@ -380,7 +384,7 @@ test("catalog exposes only fixed media metadata and completion state", async () 
     );
     assert.equal(
       onDeviceBatchAnalysisId(completedId, "libswresample-wasm-v1"),
-      `model-browser-on-device-libswresample-wasm-9c92b8e9333f--${completedId}`,
+      `${RESAMPLED_ANALYSIS_PREFIX}${completedId}`,
     );
     const resampledCatalog = await buildOnDeviceBatchCatalog(
       ON_DEVICE_BATCH_RECORDING_IDS.map((id) => taskFor(id)),
@@ -500,7 +504,7 @@ test("persistence creates one ordinary no-beach analysis atomically and append-o
     validBody(task.id),
     task,
   ) as OnDeviceBatchSubmission;
-  const previewDirectory = path.join(outputRoot, `model-9c92b8e9333f--${task.id}`);
+  const previewDirectory = path.join(outputRoot, `${ON_DEVICE_BATCH_MODEL_ID}--${task.id}`);
   await fs.mkdir(previewDirectory);
   await fs.writeFile(path.join(previewDirectory, "court-preview.jpg"), "preview-fixture");
   try {
@@ -511,7 +515,7 @@ test("persistence creates one ordinary no-beach analysis atomically and append-o
       "2026-08-13T20:01:00.000Z",
     );
     assert.deepEqual(result, {
-      analysisId: `model-browser-on-device-9c92b8e9333f--${task.id}`,
+      analysisId: `${LINEAR_ANALYSIS_PREFIX}${task.id}`,
       recordingId: task.id,
       rallyCount: 2,
     });
@@ -524,7 +528,7 @@ test("persistence creates one ordinary no-beach analysis atomically and append-o
     assert.equal(artifact.recordingId, task.id);
     assert.equal(artifact.analysis.method, "browser-on-device-webcodecs-opencv-wasm-v1");
     assert.equal(artifact.analysis.modelVersion, ON_DEVICE_BATCH_MODEL_VERSION);
-    assert.equal(artifact.analysis.variantLabel, "Browser on-device · model-9c92b8e9333f");
+    assert.equal(artifact.analysis.variantLabel, `Browser on-device · ${ON_DEVICE_BATCH_MODEL_ID}`);
     assert.equal(artifact.analysis.modelBundleSha256, ON_DEVICE_BATCH_BUNDLE_SHA256);
     assert.equal(artifact.analysis.provenance.inferenceLocation, "browser");
     assert.equal(artifact.analysis.provenance.runtimeVariant, "linear-v1");
@@ -547,7 +551,7 @@ test("persistence creates one ordinary no-beach analysis atomically and append-o
     assert.equal(parsed.kind, "model");
     assert.equal(parsed.trainingCorpus, "without-beach");
     assert.equal(parsed.modelVersion, ON_DEVICE_BATCH_MODEL_VERSION);
-    assert.equal(parsed.variantLabel, "Browser on-device · model-9c92b8e9333f");
+    assert.equal(parsed.variantLabel, `Browser on-device · ${ON_DEVICE_BATCH_MODEL_ID}`);
     assert.equal(parsed.rallies.length, 2);
 
     await assert.rejects(
@@ -588,7 +592,7 @@ test("libswresample persistence uses a distinct append-only artifact identity", 
     );
     assert.equal(
       result.analysisId,
-      `model-browser-on-device-libswresample-wasm-9c92b8e9333f--${task.id}`,
+      `${RESAMPLED_ANALYSIS_PREFIX}${task.id}`,
     );
     const artifact = await readPersistedOnDeviceBatchAnalysis(
       outputRoot,
@@ -601,7 +605,7 @@ test("libswresample persistence uses a distinct append-only artifact identity", 
     );
     assert.equal(
       artifact.analysis.variantLabel,
-      "Browser on-device · libswresample WASM · model-9c92b8e9333f",
+      `Browser on-device · libswresample WASM · ${ON_DEVICE_BATCH_MODEL_ID}`,
     );
     assert.equal(artifact.analysis.provenance.runtimeVariant, runtimeVariant);
     assert.equal(
@@ -624,7 +628,7 @@ test("an incomplete final directory conflicts without leaking a staging director
   const submission = validateOnDeviceBatchSubmission(validBody(task.id), task);
   const destination = path.join(
     outputRoot,
-    `model-browser-on-device-9c92b8e9333f--${task.id}`,
+    `${LINEAR_ANALYSIS_PREFIX}${task.id}`,
   );
   await fs.mkdir(destination);
   try {

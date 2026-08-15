@@ -23,6 +23,12 @@ import {
   TEMPORAL_FEATURE_NAMES,
 } from "./feature-schema";
 import { contextualizeFeatures, rollingMean } from "./feature-math";
+import {
+  ALL_LABELS_V2_MODEL_ID,
+  mergeProductionModelIntervals,
+  PREVIOUS_PRODUCTION_MODEL_ID,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+} from "./ensemble";
 import { analysisTimestamps, type OpenedMedia } from "./media";
 import { loadOnDeviceModelBundle, runOnDeviceModel } from "./model";
 import {
@@ -637,46 +643,68 @@ export async function analyzeOpenedMedia(
   });
   await yieldToBrowser();
   const contextual = contextualizeFeatures(sequence.times, sequence.values, sequence.names);
-  const response = await fetch(runtimeAssetUrl("model-9c92b8e9333f.json"));
-  if (!response.ok) throw new Error(`Could not load the on-device model (${response.status}).`);
-  const rawBundle: unknown = await response.json();
-  const bundle = loadOnDeviceModelBundle(rawBundle);
-  if (
-    contextual.names.length !== bundle.featureNames.length ||
-    contextual.names.some((name, index) => name !== bundle.featureNames[index])
-  ) {
-    throw new Error("Extracted feature signature does not match model-9c92b8e9333f.");
+  const [allLabelsResponse, previousProductionResponse] = await Promise.all([
+    fetch(runtimeAssetUrl("model-1ca43e38eefc.json")),
+    fetch(runtimeAssetUrl("model-9c92b8e9333f.json")),
+  ]);
+  for (const response of [allLabelsResponse, previousProductionResponse]) {
+    if (!response.ok)
+      throw new Error(`Could not load an on-device model (${response.status}).`);
+  }
+  const [allLabelsBundle, previousProductionBundle] = await Promise.all([
+    allLabelsResponse.json().then(loadOnDeviceModelBundle),
+    previousProductionResponse.json().then(loadOnDeviceModelBundle),
+  ]);
+  for (const [modelId, bundle] of [
+    [ALL_LABELS_V2_MODEL_ID, allLabelsBundle] as const,
+    [PREVIOUS_PRODUCTION_MODEL_ID, previousProductionBundle] as const,
+  ]) {
+    if (
+      contextual.names.length !== bundle.featureNames.length ||
+      contextual.names.some((name, index) => name !== bundle.featureNames[index])
+    ) {
+      throw new Error(`Extracted feature signature does not match ${modelId}.`);
+    }
   }
   onProgress?.({
     stage: "inference",
     completed: sequence.rows,
     total: sequence.rows,
-    detail: "Running rally, serve, and dead-state heads on CPU",
+    detail: "Running both production model stacks on CPU",
     featureCache: sequence.featureCache,
     performance: sequence.performance,
   });
-  const inference = runOnDeviceModel(
-    bundle,
+  const allLabelsInference = runOnDeviceModel(
+    allLabelsBundle,
     sequence.times,
     contextual.values,
     media.info.duration,
   );
-  const intervals = inference.rallies.map((rally) => ({ ...rally }));
+  const previousProductionInference = runOnDeviceModel(
+    previousProductionBundle,
+    sequence.times,
+    contextual.values,
+    media.info.duration,
+  );
+  const intervals = mergeProductionModelIntervals(
+    allLabelsInference.rallies,
+    previousProductionInference.rallies,
+  );
   onProgress?.({
     stage: "complete",
     completed: media.info.duration,
     total: media.info.duration,
-    detail: `${intervals.length} candidate rallies ready for review`,
+    detail: `${intervals.length} merged candidates ready for review`,
     featureCache: sequence.featureCache,
     performance: sequence.performance,
   });
   return {
-    modelId: "model-9c92b8e9333f",
+    modelId: PRODUCTION_ENSEMBLE_MODEL_ID,
     featurePath,
     intervals,
     times: sequence.times,
-    rallyProbabilities: inference.probabilities.rally,
-    serveProbabilities: inference.probabilities.serve,
-    deadStateProbabilities: inference.probabilities.deadState,
+    rallyProbabilities: allLabelsInference.probabilities.rally,
+    serveProbabilities: allLabelsInference.probabilities.serve,
+    deadStateProbabilities: allLabelsInference.probabilities.deadState,
   };
 }

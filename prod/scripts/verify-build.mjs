@@ -7,6 +7,10 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const expectedHashes = new Map([
   [
+    "runtime/model-1ca43e38eefc.json",
+    "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f",
+  ],
+  [
     "runtime/model-9c92b8e9333f.json",
     "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d",
   ],

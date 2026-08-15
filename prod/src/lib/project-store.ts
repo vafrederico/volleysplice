@@ -169,7 +169,11 @@ function validAnalysis(value: unknown): value is OnDeviceAnalysis {
         finite(interval.start) &&
         finite(interval.end) &&
         finite(interval.confidence) &&
-        typeof interval.included === "boolean",
+        typeof interval.included === "boolean" &&
+        (interval.agreement === undefined ||
+          interval.agreement === "both-models" ||
+          interval.agreement === "all-labels-v2-only" ||
+          interval.agreement === "previous-production-only"),
     ) &&
     analysis.times instanceof Float64Array &&
     analysis.rallyProbabilities instanceof Float32Array &&

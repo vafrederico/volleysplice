@@ -14,6 +14,7 @@ import {
 } from "mediabunny";
 
 import { openLocalMedia } from "./media";
+import { PRODUCTION_MODEL_ID } from "../production-model";
 import {
   clipSampleToInterval,
   normalizeExportIntervals,
@@ -402,7 +403,7 @@ export function downloadEditDecisionList(
   const payload = {
     schemaVersion: 1,
     source: { name: file.name, size: file.size, lastModified: file.lastModified, duration },
-    modelId: "model-9c92b8e9333f",
+    modelId: PRODUCTION_MODEL_ID,
     intervals: normalizeExportIntervals(intervals, duration),
   };
   const url = URL.createObjectURL(
