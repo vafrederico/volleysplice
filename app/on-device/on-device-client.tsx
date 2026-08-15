@@ -534,8 +534,10 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
       try {
         const adapter = await diagnosticNavigator.gpu.requestAdapter();
         if (!active) return;
-        const info = adapter
-          ? adapter.info ?? (await adapter.requestAdapterInfo?.().catch(() => undefined))
+        const compatibleAdapter = adapter as GpuAdapterLike | null;
+        const info = compatibleAdapter
+          ? compatibleAdapter.info ??
+            (await compatibleAdapter.requestAdapterInfo?.().catch(() => undefined))
           : undefined;
         setCompatibility((current) => ({
           ...current,
