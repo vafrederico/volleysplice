@@ -125,7 +125,7 @@ public final class MainActivity extends Activity {
         TextView brand = text("VOLLEYCUT", 14, ORANGE);
         brand.setLetterSpacing(.18f);
         root.addView(brand);
-        TextView title = text("Native analysis benchmark", 30, INK);
+        TextView title = text("Analysis benchmark", 30, INK);
         title.setPadding(0, dp(8), 0, dp(5));
         root.addView(title);
         root.addView(text(
@@ -174,7 +174,7 @@ public final class MainActivity extends Activity {
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        analyzeButton = button("Run native analysis");
+        analyzeButton = button("Run analysis");
         analyzeButton.setEnabled(false);
         analyzeButton.setOnClickListener(view -> runAnalysis());
         cancelButton = button("Cancel");
@@ -214,10 +214,10 @@ public final class MainActivity extends Activity {
         copyButton.setOnClickListener(view -> copyResult());
         root.addView(copyButton, margins(0, dp(10), 0, 0));
 
-        editorButton = button("Open native cut editor");
+        editorButton = button("Open cut editor");
         boolean canResumeEditor = EditorActivity.createResumeIntent(this) != null;
         editorButton.setEnabled(canResumeEditor);
-        if (canResumeEditor) editorButton.setText("Resume native cut editor");
+        if (canResumeEditor) editorButton.setText("Resume cut editor");
         editorButton.setOnClickListener(view -> openEditor());
         root.addView(editorButton, margins(0, dp(8), 0, 0));
 
@@ -246,7 +246,7 @@ public final class MainActivity extends Activity {
         analyzeButton.setEnabled(true);
         copyButton.setEnabled(false);
         editorButton.setEnabled(false);
-        editorButton.setText("Open native cut editor");
+        editorButton.setText("Open cut editor");
         lastResult = null;
 
         if (!intent.getBooleanExtra(EXTRA_AUTO_RUN, false)) return;
@@ -307,7 +307,7 @@ public final class MainActivity extends Activity {
         analyzeButton.setEnabled(true);
         copyButton.setEnabled(false);
         editorButton.setEnabled(false);
-        editorButton.setText("Open native cut editor");
+        editorButton.setText("Open cut editor");
         lastResult = null;
     }
 
@@ -400,7 +400,7 @@ public final class MainActivity extends Activity {
         lastResult = result;
         copyButton.setEnabled(true);
         editorButton.setEnabled(true);
-        editorButton.setText("Open native cut editor");
+        editorButton.setText("Open cut editor");
         progressBar.setProgress(1000);
         double totalSeconds = result.totalMilliseconds() / 1000.0;
         double overallRealtime = totalSeconds > 0 ? result.analyzedDurationSeconds() / totalSeconds : 0;
@@ -549,7 +549,7 @@ public final class MainActivity extends Activity {
     private void copyResult() {
         if (lastResult == null) return;
         ClipboardManager clipboard = getSystemService(ClipboardManager.class);
-        clipboard.setPrimaryClip(ClipData.newPlainText("VolleyCut native analysis", resultJson(lastResult).toString()));
+        clipboard.setPrimaryClip(ClipData.newPlainText("VolleyCut analysis", resultJson(lastResult).toString()));
         Toast.makeText(this, "Result JSON copied", Toast.LENGTH_SHORT).show();
     }
 

@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,18 +34,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -87,8 +84,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -248,6 +247,16 @@ private data class InferenceUiState(
     val detail: String = "",
     val performance: AnalysisTypes.PerformanceStats? = null,
     val error: String? = null,
+)
+
+private data class EditorProjectSummary(
+    val width: Int,
+    val height: Int,
+    val sourceDurationMs: Long,
+    val outputDurationMs: Long,
+    val kept: Int,
+    val removed: Int,
+    val ignored: Int,
 )
 
 @Composable
@@ -479,12 +488,13 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     val queueCount = projects.count {
         it.status == ProjectStatus.QUEUED || it.status == ProjectStatus.ANALYZING
     }
-    val projectControls: @Composable () -> Unit = {
+    val projectControls: @Composable (EditorProjectSummary?) -> Unit = { editorSummary ->
         ProjectHeaderBar(
             projects = projects,
             selected = selectedProject,
             creatingNew = creatingNew,
             queueCount = queueCount,
+            editorSummary = editorSummary,
             onSelect = { project ->
                 selectedProjectId = project.id
                 NativeProjectStore.setSelectedId(context, project.id)
@@ -503,7 +513,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     }
 
     if (creatingNew || selectedProject == null) {
-        ProjectShell(projectControls) {
+        ProjectShell(projectControls = { projectControls(null) }) {
             NewProjectCard(
                 selected = selectedSource,
                 preparing = preparingSource,
@@ -523,7 +533,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             )
         }
     } else if (selectedProject.status != ProjectStatus.READY) {
-        ProjectShell(projectControls) {
+        ProjectShell(projectControls = { projectControls(null) }) {
             ProjectInferenceCard(
                 project = selectedProject,
                 state = inference.takeIf { it.projectId == selectedProject.id } ?: InferenceUiState(),
@@ -571,6 +581,7 @@ private fun ProjectHeaderBar(
     selected: NativeProject?,
     creatingNew: Boolean,
     queueCount: Int,
+    editorSummary: EditorProjectSummary?,
     onSelect: (NativeProject) -> Unit,
     onNew: () -> Unit,
     onDelete: () -> Unit,
@@ -583,7 +594,12 @@ private fun ProjectHeaderBar(
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("VOLLEYCUT", color = Orange, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Image(
+                    painter = painterResource(R.drawable.volleycut_logo),
+                    contentDescription = "VolleyCut",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.width(116.dp).height(39.dp),
+                )
                 Spacer(Modifier.weight(1f))
                 Text(
                     if (queueCount == 0) "Queue idle" else "$queueCount in queue",
@@ -629,6 +645,20 @@ private fun ProjectHeaderBar(
                 if (selected != null && !creatingNew) {
                     TextButton(onClick = onDelete) { Text("Delete", color = Danger) }
                 }
+            }
+            editorSummary?.let { summary ->
+                Text(
+                    "${summary.width}×${summary.height} · ${compactTime(summary.sourceDurationMs)} source · " +
+                        "${compactTime(summary.outputDurationMs)} output",
+                    modifier = Modifier.padding(top = 4.dp),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                )
+                Text(
+                    "${summary.kept} kept · ${summary.removed} removed · ${summary.ignored} fully ignored",
+                    color = Muted,
+                    fontSize = 12.sp,
+                )
             }
         }
     }
@@ -760,8 +790,6 @@ private fun ProjectShell(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(scaffoldPadding)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .windowInsetsPadding(WindowInsets.navigationBars)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -781,7 +809,7 @@ private fun EditorScreen(
     initialDraft: EditorDraft,
     restored: Boolean,
     analysisRunning: Boolean,
-    sourceControls: @Composable () -> Unit,
+    sourceControls: @Composable (EditorProjectSummary) -> Unit,
 ) {
     val context = LocalContext.current
     var draft by remember { mutableStateOf(initialDraft) }
@@ -1003,15 +1031,21 @@ private fun EditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(scaffoldPadding)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .windowInsetsPadding(WindowInsets.navigationBars)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            sourceControls()
-
-            EditorHeader(seed, totalFinalMs, effectiveIds.size, removedCount, ignoredCutCount)
+            sourceControls(
+                EditorProjectSummary(
+                    width = seed.width,
+                    height = seed.height,
+                    sourceDurationMs = seed.durationMs,
+                    outputDurationMs = totalFinalMs,
+                    kept = effectiveIds.size,
+                    removed = removedCount,
+                    ignored = ignoredCutCount,
+                ),
+            )
 
             SectionCard("OUTPUT PADDING", "Applied to inferred ranges only") {
                 PaddingControl("Before", draft.beforePaddingMs) { before ->
@@ -1283,21 +1317,6 @@ private fun EditorScreen(
             }
             Spacer(Modifier.height(20.dp))
         }
-    }
-}
-
-@Composable
-private fun EditorHeader(seed: EditorSeed, outputMs: Long, kept: Int, removed: Int, ignored: Int) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("VOLLEYCUT", color = Orange, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-        Text("Native cut editor", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text(seed.displayName, color = Muted, fontSize = 13.sp, maxLines = 2)
-        Text(
-            "${seed.width}×${seed.height} · ${compactTime(seed.durationMs)} source · ${compactTime(outputMs)} output",
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-        )
-        Text("$kept kept · $removed removed · $ignored fully ignored", fontSize = 12.sp, color = Muted)
     }
 }
 

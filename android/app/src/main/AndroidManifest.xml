@@ -8,10 +8,11 @@
     <application
         android:name=".VolleyCutApplication"
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
-        android:label="VolleyCut Native"
+        android:icon="@mipmap/ic_launcher"
+        android:label="VolleyCut"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.VolleyCut">
+        android:theme="@style/Theme.VolleyCut.Starting">
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
