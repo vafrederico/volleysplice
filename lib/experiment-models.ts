@@ -8,10 +8,10 @@ export type EnvironmentExperimentModel = {
 
 export const ENVIRONMENT_EXPERIMENT_MODELS = [
   {
-    id: "model-942b67f0d3ab",
-    label: "All labels + latest grass",
+    id: "model-1ca43e38eefc",
+    label: "All labels + latest grass v2",
     description:
-      "Production three-head architecture refit with the established corpus plus the latest grass labels and walking / ball-retrieval hard negatives.",
+      "Production three-head architecture refit on all six grass recordings and five indoor recordings, including Turkey Tourney, Forest Ridge, and YMCA KOB Set 4.",
   },
   {
     id: "model-04dc7d97e693",
@@ -20,10 +20,10 @@ export const ENVIRONMENT_EXPERIMENT_MODELS = [
       "Production three-head architecture trained only on grass labels, including the latest walking / ball-retrieval hard negatives.",
   },
   {
-    id: "model-69a90313927f",
-    label: "Indoor specialist",
+    id: "model-18d5e86f8923",
+    label: "Indoor specialist v2",
     description:
-      "Production three-head architecture trained only on the pre-existing indoor training labels; the newest indoor labels remain evaluation-only.",
+      "Production three-head architecture trained only on five indoor recordings across four source groups; SPU Match 1 Set 2 remains evaluation-only.",
   },
 ] as const satisfies readonly EnvironmentExperimentModel[];
 
