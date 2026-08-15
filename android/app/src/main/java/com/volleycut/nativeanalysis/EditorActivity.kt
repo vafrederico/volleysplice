@@ -1,0 +1,1390 @@
+package com.volleycut.nativeanalysis
+
+import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.OpenableColumns
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
+
+class EditorActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val seed = seedFromIntent(intent) ?: EditorProjectStore.load(this)
+        setContent {
+            VolleyCutTheme {
+                EditorApp(activity = this, initialSeed = seed)
+            }
+        }
+    }
+
+    private fun seedFromIntent(intent: Intent): EditorSeed? {
+        val sourceUri = intent.getStringExtra(EXTRA_SOURCE_URI) ?: return null
+        val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0)
+        val starts = intent.getLongArrayExtra(EXTRA_RANGE_STARTS) ?: longArrayOf()
+        val ends = intent.getLongArrayExtra(EXTRA_RANGE_ENDS) ?: longArrayOf()
+        val confidence = intent.getFloatArrayExtra(EXTRA_RANGE_CONFIDENCE) ?: floatArrayOf()
+        if (durationMs <= 0 || starts.size != ends.size || starts.size != confidence.size) return null
+        return EditorSeed(
+            sourceUri = sourceUri,
+            displayName = intent.getStringExtra(EXTRA_DISPLAY_NAME) ?: "recording.mp4",
+            durationMs = durationMs,
+            width = intent.getIntExtra(EXTRA_WIDTH, 0),
+            height = intent.getIntExtra(EXTRA_HEIGHT, 0),
+            rotation = intent.getIntExtra(EXTRA_ROTATION, 0),
+            ranges = starts.indices.map { SeedRange(starts[it], ends[it], confidence[it]) },
+        )
+    }
+
+    companion object {
+        private const val EXTRA_SOURCE_URI = "editor_source_uri"
+        private const val EXTRA_DISPLAY_NAME = "editor_display_name"
+        private const val EXTRA_DURATION_MS = "editor_duration_ms"
+        private const val EXTRA_WIDTH = "editor_width"
+        private const val EXTRA_HEIGHT = "editor_height"
+        private const val EXTRA_ROTATION = "editor_rotation"
+        private const val EXTRA_RANGE_STARTS = "editor_range_starts"
+        private const val EXTRA_RANGE_ENDS = "editor_range_ends"
+        private const val EXTRA_RANGE_CONFIDENCE = "editor_range_confidence"
+
+        @JvmStatic
+        fun createIntent(context: Context, result: AnalysisTypes.AnalysisResult): Intent {
+            val seed = editorSeedFromResult(result)
+            EditorProjectStore.save(context, seed)
+            return intentFromSeed(context, seed)
+        }
+
+        @JvmStatic
+        fun createResumeIntent(context: Context): Intent? =
+            EditorProjectStore.load(context)?.let { intentFromSeed(context, it) }
+
+        private fun intentFromSeed(context: Context, seed: EditorSeed) =
+            Intent(context, EditorActivity::class.java).apply {
+                putExtra(EXTRA_SOURCE_URI, seed.sourceUri)
+                putExtra(EXTRA_DISPLAY_NAME, seed.displayName)
+                putExtra(EXTRA_DURATION_MS, seed.durationMs)
+                putExtra(EXTRA_WIDTH, seed.width)
+                putExtra(EXTRA_HEIGHT, seed.height)
+                putExtra(EXTRA_ROTATION, seed.rotation)
+                putExtra(EXTRA_RANGE_STARTS, seed.ranges.map { it.startMs }.toLongArray())
+                putExtra(EXTRA_RANGE_ENDS, seed.ranges.map { it.endMs }.toLongArray())
+                putExtra(EXTRA_RANGE_CONFIDENCE, seed.ranges.map { it.confidence }.toFloatArray())
+            }
+    }
+}
+
+private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorSeed(
+    sourceUri = result.source().toString(),
+    displayName = result.displayName(),
+    durationMs = secondsToMs(result.media().durationSeconds()),
+    width = result.media().width(),
+    height = result.media().height(),
+    rotation = result.media().rotation(),
+    ranges = result.ranges().map {
+        SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence())
+    },
+)
+
+private val Paper = Color(0xFFF7F4EE)
+private val Ink = Color(0xFF20201E)
+private val Orange = Color(0xFFEF5B35)
+private val Green = Color(0xFF26734D)
+private val PaleGreen = Color(0xFF9ED5B5)
+private val Muted = Color(0xFF77736C)
+private val Rail = Color(0xFFE4E0D7)
+private val Danger = Color(0xFFB3261E)
+private val Warning = Color(0xFFE8A317)
+
+@Composable
+private fun VolleyCutTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = lightColorScheme(
+            primary = Orange,
+            onPrimary = Color.White,
+            background = Paper,
+            onBackground = Ink,
+            surface = Color.White,
+            onSurface = Ink,
+            error = Danger,
+        ),
+        content = content,
+    )
+}
+
+private data class ExportUiState(
+    val status: String = "idle",
+    val progress: Int = 0,
+    val detail: String = "",
+    val metrics: String? = null,
+)
+
+private data class SourceSelection(val uri: Uri, val displayName: String)
+
+private data class InferenceUiState(
+    val running: Boolean = false,
+    val progress: Float = 0f,
+    val stage: String = "",
+    val detail: String = "",
+    val performance: AnalysisTypes.PerformanceStats? = null,
+    val error: String? = null,
+)
+
+@Composable
+private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var seed by remember { mutableStateOf(initialSeed) }
+    var selectedSource by remember {
+        mutableStateOf(initialSeed?.let { SourceSelection(Uri.parse(it.sourceUri), it.displayName) })
+    }
+    var inference by remember { mutableStateOf(InferenceUiState()) }
+    var useCache by remember { mutableStateOf(true) }
+    var cacheBytes by remember { mutableLongStateOf(NativeFeatureCache.totalBytes(context)) }
+    val cancelled = remember { AtomicBoolean(false) }
+
+    val sourcePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            selectedSource = SourceSelection(uri, sourceDisplayName(context, uri))
+            inference = InferenceUiState(detail = "Ready for full video + audio inference")
+        }
+    }
+
+    fun startAnalysis() {
+        val selected = selectedSource ?: return
+        if (inference.running) return
+        cancelled.set(false)
+        inference = InferenceUiState(
+            running = true,
+            stage = "opening",
+            detail = "Preparing full-file analysis",
+        )
+        activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        runCatching { activity.window.setSustainedPerformanceMode(true) }
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    AnalysisEngine(context).analyze(
+                        selected.uri,
+                        false,
+                        FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
+                        AnalysisTypes.VideoDecoderOptions.defaults(),
+                        if (useCache) NativeFeatureCache.Mode.USE else NativeFeatureCache.Mode.REFRESH,
+                        cancelled,
+                        object : AnalysisTypes.ProgressListener {
+                            override fun onProgress(stage: String, fraction: Double, detail: String) {
+                                activity.runOnUiThread {
+                                    inference = inference.copy(
+                                        running = true,
+                                        progress = fraction.coerceIn(0.0, 1.0).toFloat(),
+                                        stage = stage,
+                                        detail = detail,
+                                        error = null,
+                                    )
+                                }
+                            }
+
+                            override fun onPerformance(stats: AnalysisTypes.PerformanceStats) {
+                                activity.runOnUiThread {
+                                    inference = inference.copy(performance = stats)
+                                }
+                            }
+                        },
+                    )
+                }
+                val newSeed = editorSeedFromResult(result)
+                withContext(Dispatchers.IO) { EditorProjectStore.save(context, newSeed) }
+                seed = newSeed
+                selectedSource = SourceSelection(result.source(), result.displayName())
+                cacheBytes = NativeFeatureCache.totalBytes(context)
+                inference = inference.copy(
+                    running = false,
+                    progress = 1f,
+                    stage = "complete",
+                    detail = "${result.ranges().size} inferred ranges from the full recording",
+                    error = null,
+                )
+            } catch (error: Exception) {
+                inference = inference.copy(
+                    running = false,
+                    stage = "failed",
+                    detail = "",
+                    error = error.message ?: error.javaClass.simpleName,
+                )
+                cacheBytes = NativeFeatureCache.totalBytes(context)
+            } finally {
+                runCatching { activity.window.setSustainedPerformanceMode(false) }
+                if (!inference.running) activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { cancelled.set(true) }
+    }
+
+    val sourceControls: @Composable () -> Unit = {
+        SourceAnalysisCard(
+            currentSeed = seed,
+            selected = selectedSource,
+            state = inference,
+            useCache = useCache,
+            cacheBytes = cacheBytes,
+            onSelect = { sourcePicker.launch(arrayOf("video/*")) },
+            onAnalyze = ::startAnalysis,
+            onCancel = {
+                cancelled.set(true)
+                inference = inference.copy(detail = "Cancelling after the current decoder operation")
+            },
+            onUseCache = { useCache = it },
+            onClearCache = {
+                NativeFeatureCache.clearAll(context)
+                cacheBytes = 0
+                inference = InferenceUiState(detail = "Feature cache cleared")
+            },
+            onBenchmark = { context.startActivity(Intent(context, MainActivity::class.java)) },
+        )
+    }
+
+    val currentSeed = seed
+    if (currentSeed == null) {
+        EmptyEditorScreen(sourceControls)
+    } else {
+        key(currentSeed.sourceRevision) {
+            val store = remember(currentSeed.sourceRevision) { EditorDraftStore(context, currentSeed) }
+            val restored = remember(currentSeed.sourceRevision) { store.load() }
+            EditorScreen(
+                activity = activity,
+                seed = currentSeed,
+                store = store,
+                initialDraft = restored ?: EditorMath.newDraft(currentSeed),
+                restored = restored != null,
+                analysisRunning = inference.running,
+                sourceControls = sourceControls,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SourceAnalysisCard(
+    currentSeed: EditorSeed?,
+    selected: SourceSelection?,
+    state: InferenceUiState,
+    useCache: Boolean,
+    cacheBytes: Long,
+    onSelect: () -> Unit,
+    onAnalyze: () -> Unit,
+    onCancel: () -> Unit,
+    onUseCache: (Boolean) -> Unit,
+    onClearCache: () -> Unit,
+    onBenchmark: () -> Unit,
+) {
+    SectionCard(
+        "SOURCE & INFERENCE",
+        selected?.displayName ?: currentSeed?.displayName ?: "Select a recording to begin",
+    ) {
+        if (currentSeed != null && selected?.uri.toString() != currentSeed.sourceUri) {
+            Text("Currently editing ${currentSeed.displayName}", color = Muted, fontSize = 12.sp)
+        }
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(enabled = !state.running, onClick = onSelect) { Text("Choose video") }
+            Button(enabled = selected != null && !state.running, onClick = onAnalyze) {
+                Text(if (currentSeed == null) "Run full inference" else "Run full inference again")
+            }
+            if (state.running) {
+                OutlinedButton(onClick = onCancel) { Text("Cancel", color = Danger) }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Reuse generated features", fontWeight = FontWeight.SemiBold)
+                Text("${formatBytes(cacheBytes)} cached on this device", fontSize = 12.sp, color = Muted)
+            }
+            Switch(enabled = !state.running, checked = useCache, onCheckedChange = onUseCache)
+        }
+        if (state.running || state.stage.isNotBlank()) {
+            LinearProgressIndicator(
+                progress = { state.progress },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            val stageText = state.stage.ifBlank { "analysis" }.uppercase(Locale.US)
+            Text("$stageText · ${state.detail}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        }
+        state.performance?.let { stats ->
+            Text(
+                String.format(
+                    Locale.US,
+                    "%,d / %,d source frames · %.1f feature frames/s · %.2fx realtime",
+                    stats.decodedSourceFrames(),
+                    stats.totalFrames(),
+                    stats.framesPerSecond(),
+                    stats.realtimeRatio(),
+                ),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+            )
+            Text(
+                "${secondsLabel(stats.elapsedSeconds())} elapsed · ${secondsLabel(stats.etaSeconds())} video ETA",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                color = Muted,
+            )
+        }
+        state.error?.let { Text(it, color = Danger, fontSize = 13.sp) }
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TextButton(enabled = !state.running && cacheBytes > 0, onClick = onClearCache) {
+                Text("Clear feature cache")
+            }
+            TextButton(enabled = !state.running, onClick = onBenchmark) { Text("Benchmark tools") }
+        }
+    }
+}
+
+@Composable
+private fun EmptyEditorScreen(sourceControls: @Composable () -> Unit) {
+    Scaffold(containerColor = Paper) { scaffoldPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(scaffoldPadding)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("VOLLEYCUT", color = Orange, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+            Text("Native cut editor", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text("Analyze a recording to populate the timeline and editing tools.", color = Muted)
+            sourceControls()
+        }
+    }
+}
+
+@OptIn(markerClass = [UnstableApi::class])
+@Composable
+private fun EditorScreen(
+    activity: ComponentActivity,
+    seed: EditorSeed,
+    store: EditorDraftStore,
+    initialDraft: EditorDraft,
+    restored: Boolean,
+    analysisRunning: Boolean,
+    sourceControls: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    var draft by remember { mutableStateOf(initialDraft) }
+    var selectedId by remember { mutableStateOf(initialDraft.cuts.firstOrNull()?.id.orEmpty()) }
+    var focusLocked by remember { mutableStateOf(false) }
+    var playbackPositionMs by remember { mutableLongStateOf(0L) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var previewEndMs by remember { mutableStateOf<Long?>(null) }
+    var message by remember {
+        mutableStateOf(if (restored) "Restored saved edits on this device" else "New on-device draft")
+    }
+    var exportState by remember { mutableStateOf(ExportUiState()) }
+    var confirmReset by remember { mutableStateOf(false) }
+
+    val player = remember {
+        ExoPlayer.Builder(context).build().apply {
+            setSeekParameters(SeekParameters.EXACT)
+            setMediaItem(MediaItem.fromUri(seed.sourceUri))
+            prepare()
+        }
+    }
+    val sortedCuts = draft.cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
+    val selected = sortedCuts.firstOrNull { it.id == selectedId } ?: sortedCuts.firstOrNull()
+    val selectedIndex = selected?.let { sortedCuts.indexOf(it) } ?: -1
+    val finalIntervals = EditorMath.finalIntervals(draft)
+    val effectiveIds = EditorMath.effectiveKeptIds(draft)
+    val lowConfidence = sortedCuts.filter {
+        it.origin == CutOrigin.INFERRED && it.included && it.id in effectiveIds &&
+            it.confidence < draft.confidenceReviewThreshold
+    }
+    val totalFinalMs = EditorMath.totalFinalMs(finalIntervals)
+    val removedCount = draft.cuts.count { !it.included }
+    val ignoredCutCount = draft.cuts.count { it.included && it.id !in effectiveIds }
+    val detailWindow = EditorMath.detailWindow(selected, playbackPositionMs, seed.durationMs)
+
+    fun updateDraft(mutate: (EditorDraft) -> EditorDraft) {
+        draft = mutate(draft).copy(updatedAtMs = System.currentTimeMillis())
+    }
+
+    fun updateCut(id: String, mutate: (EditableCut) -> EditableCut) {
+        updateDraft { current ->
+            current.copy(cuts = current.cuts.map { if (it.id == id) mutate(it) else it })
+        }
+    }
+
+    fun seekTo(positionMs: Long) {
+        val target = positionMs.coerceIn(0, seed.durationMs)
+        playbackPositionMs = target
+        player.seekTo(target)
+    }
+
+    fun setBoundary(side: String, valueMs: Long) {
+        val cut = selected ?: return
+        updateCut(cut.id) { current ->
+            if (current.origin == CutOrigin.MANUAL) {
+                if (side == "start") {
+                    val start = valueMs.coerceIn(0, current.keepEndMs - MIN_MARK_MS)
+                    current.copy(coreStartMs = start, keepStartMs = start)
+                } else {
+                    val end = valueMs.coerceIn(current.keepStartMs + MIN_MARK_MS, seed.durationMs)
+                    current.copy(coreEndMs = end, keepEndMs = end)
+                }
+            } else if (side == "start") {
+                current.copy(keepStartMs = valueMs.coerceIn(0, current.coreStartMs))
+            } else {
+                current.copy(keepEndMs = valueMs.coerceIn(current.coreEndMs, seed.durationMs))
+            }
+        }
+    }
+
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("video/mp4"),
+    ) { uri ->
+        if (uri != null && finalIntervals.isNotEmpty()) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            if (Build.VERSION.SDK_INT >= 33 &&
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            val exportIntent = Intent(context, ExportService::class.java).apply {
+                putExtra(ExportService.EXTRA_SOURCE_URI, seed.sourceUri)
+                putExtra(ExportService.EXTRA_SOURCE_NAME, seed.displayName)
+                putExtra(ExportService.EXTRA_SOURCE_DURATION_MS, seed.durationMs)
+                putExtra(ExportService.EXTRA_DESTINATION_URI, uri.toString())
+                putExtra(ExportService.EXTRA_INTERVAL_STARTS, finalIntervals.map { it.startMs }.toLongArray())
+                putExtra(ExportService.EXTRA_INTERVAL_ENDS, finalIntervals.map { it.endMs }.toLongArray())
+            }
+            context.startForegroundService(exportIntent)
+            exportState = ExportUiState("running", 0, "Preparing export")
+        }
+    }
+    val editListLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
+                it.write(editListJson(seed, draft, finalIntervals).toString(2))
+            }
+        }.onSuccess { message = "Saved edit-list JSON" }
+            .onFailure { message = it.message ?: "Could not save edit list" }
+    }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                message = error.message ?: "Video playback failed"
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+
+    DisposableEffect(activity, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) player.pause()
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
+
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != ExportService.ACTION_PROGRESS) return
+                exportState = ExportUiState(
+                    status = intent.getStringExtra(ExportService.EXTRA_STATUS) ?: "running",
+                    progress = intent.getIntExtra(ExportService.EXTRA_PROGRESS, 0),
+                    detail = intent.getStringExtra(ExportService.EXTRA_DETAIL).orEmpty(),
+                    metrics = intent.getStringExtra(ExportService.EXTRA_METRICS),
+                )
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(ExportService.ACTION_PROGRESS),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
+
+    LaunchedEffect(draft) {
+        delay(200)
+        withContext(Dispatchers.IO) { store.save(draft) }
+    }
+
+    LaunchedEffect(draft.playbackRate) {
+        player.playbackParameters = PlaybackParameters(draft.playbackRate)
+    }
+
+    LaunchedEffect(player, draft.finalPreviewEnabled, finalIntervals, previewEndMs, focusLocked) {
+        while (true) {
+            delay(33)
+            val position = player.currentPosition.coerceAtLeast(0)
+            playbackPositionMs = position
+            if (!focusLocked) {
+                EditorMath.playbackFocusCut(sortedCuts, position)?.let { reached ->
+                    if (reached.id != selectedId) selectedId = reached.id
+                }
+            }
+            previewEndMs?.let { end ->
+                if (player.isPlaying && position >= end) {
+                    player.pause()
+                    previewEndMs = null
+                }
+            }
+            if (draft.finalPreviewEnabled && player.isPlaying && previewEndMs == null) {
+                val activeIndex = finalIntervals.indexOfLast { position >= it.startMs }
+                when {
+                    finalIntervals.isEmpty() -> player.pause()
+                    activeIndex < 0 -> player.seekTo(finalIntervals.first().startMs)
+                    position >= finalIntervals[activeIndex].endMs -> {
+                        val next = finalIntervals.getOrNull(activeIndex + 1)
+                        if (next == null) player.pause() else player.seekTo(next.startMs)
+                    }
+                }
+            }
+        }
+    }
+
+    DisposableEffect(isPlaying, exportState.status, analysisRunning) {
+        if (isPlaying || exportState.status == "running" || analysisRunning) {
+            activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { }
+    }
+
+    if (confirmReset) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("Reset this edit?") },
+            text = { Text("All boundary, keep/remove, manual-cut, and ignored-section changes will be discarded.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    store.clear()
+                    draft = EditorMath.newDraft(seed)
+                    selectedId = draft.cuts.firstOrNull()?.id.orEmpty()
+                    confirmReset = false
+                    message = "Restored inference ranges"
+                }) { Text("Reset") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+        )
+    }
+
+    Scaffold(containerColor = Paper) { scaffoldPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(scaffoldPadding)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            EditorHeader(seed, totalFinalMs, effectiveIds.size, removedCount, ignoredCutCount)
+
+            sourceControls()
+
+            SectionCard("OUTPUT PADDING", "Applied to inferred ranges only") {
+                PaddingControl("Before", draft.beforePaddingMs) { before ->
+                    updateDraft { EditorMath.applyPadding(it, before, it.afterPaddingMs, seed.durationMs) }
+                }
+                PaddingControl("After", draft.afterPaddingMs) { after ->
+                    updateDraft { EditorMath.applyPadding(it, it.beforePaddingMs, after, seed.durationMs) }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Play final cut only", fontWeight = FontWeight.SemiBold)
+                        Text("Skip removed, ignored, and unselected time", fontSize = 12.sp, color = Muted)
+                    }
+                    Switch(
+                        checked = draft.finalPreviewEnabled,
+                        onCheckedChange = { enabled ->
+                            previewEndMs = null
+                            updateDraft { it.copy(finalPreviewEnabled = enabled) }
+                            if (enabled) {
+                                EditorMath.nextFinalTime(finalIntervals, player.currentPosition)?.let(::seekTo)
+                            }
+                        },
+                    )
+                }
+            }
+
+            Card(colors = CardDefaults.cardColors(containerColor = Color.Black)) {
+                ContentFrame(
+                    player = player,
+                    modifier = Modifier.fillMaxWidth().height(224.dp),
+                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                )
+            }
+            PlayerControls(
+                playing = isPlaying,
+                positionMs = playbackPositionMs,
+                durationMs = seed.durationMs,
+                playbackRate = draft.playbackRate,
+                onToggle = {
+                    previewEndMs = null
+                    if (player.isPlaying) player.pause() else {
+                        if (draft.finalPreviewEnabled) {
+                            EditorMath.nextFinalTime(finalIntervals, player.currentPosition)
+                                ?.let { if (it != player.currentPosition) seekTo(it) }
+                        }
+                        player.play()
+                    }
+                },
+                onSeekBy = { seekTo(player.currentPosition + it) },
+                onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
+            )
+
+            SectionCard("WHOLE RECORDING", "Tap a range to select · drag to scrub") {
+                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, onChange = { threshold ->
+                    updateDraft { it.copy(confidenceReviewThreshold = threshold) }
+                }, onReviewNext = {
+                    if (lowConfidence.isNotEmpty()) {
+                        val current = lowConfidence.indexOfFirst { it.id == selected?.id }
+                        val next = if (current >= 0) lowConfidence[(current + 1) % lowConfidence.size]
+                        else lowConfidence.firstOrNull { it.keepStartMs >= playbackPositionMs } ?: lowConfidence.first()
+                        selectedId = next.id
+                        seekTo(next.keepStartMs)
+                        message = "${next.id} has ${(next.confidence * 100).roundToInt()}% confidence"
+                    }
+                })
+                WholeTimeline(
+                    durationMs = seed.durationMs,
+                    cuts = sortedCuts,
+                    ignored = draft.ignoredIntervals,
+                    selectedId = selected?.id,
+                    effectiveIds = effectiveIds,
+                    confidenceThreshold = draft.confidenceReviewThreshold,
+                    playheadMs = playbackPositionMs,
+                    onSeek = { time, id ->
+                        id?.let { selectedId = it }
+                        seekTo(time)
+                    },
+                )
+                TimelineLabels(0, seed.durationMs / 2, seed.durationMs)
+            }
+
+            SectionCard(
+                "FOCUSED RANGE",
+                selected?.let { "${it.id} · ${if (it.origin == CutOrigin.MANUAL) "Manual" else "${(it.confidence * 100).roundToInt()}% confidence"}" }
+                    ?: "No range selected",
+            ) {
+                if (selected == null) {
+                    Text("Add a missed cut at the current playhead to begin.", color = Muted)
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SmallButton("Previous", enabled = selectedIndex > 0) {
+                            sortedCuts.getOrNull(selectedIndex - 1)?.let { selectedId = it.id; seekTo(it.keepStartMs) }
+                        }
+                        Text("${selectedIndex + 1} / ${sortedCuts.size}", Modifier.padding(horizontal = 8.dp))
+                        SmallButton("Next", enabled = selectedIndex < sortedCuts.lastIndex) {
+                            sortedCuts.getOrNull(selectedIndex + 1)?.let { selectedId = it.id; seekTo(it.keepStartMs) }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Checkbox(checked = focusLocked, onCheckedChange = { focusLocked = it })
+                        Text("Lock", fontSize = 13.sp)
+                    }
+                    TimelineLabels(detailWindow.startMs, (detailWindow.startMs + detailWindow.endMs) / 2, detailWindow.endMs)
+                    FocusTimeline(
+                        cut = selected,
+                        window = detailWindow,
+                        playheadMs = playbackPositionMs,
+                        effective = selected.id in effectiveIds,
+                        lowConfidence = selected.confidence < draft.confidenceReviewThreshold,
+                        onSeek = ::seekTo,
+                        onStartChange = { setBoundary("start", it) },
+                        onEndChange = { setBoundary("end", it) },
+                    )
+                    BoundaryControls("Kept start", selected.keepStartMs) { delta ->
+                        setBoundary("start", selected.keepStartMs + delta)
+                    }
+                    BoundaryControls("Kept end", selected.keepEndMs) { delta ->
+                        setBoundary("end", selected.keepEndMs + delta)
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { updateCut(selected.id) { it.copy(included = !it.included) } }) {
+                            Text(if (selected.included) "Remove range" else "Restore range")
+                        }
+                        OutlinedButton(onClick = {
+                            updateDraft { it.copy(finalPreviewEnabled = false) }
+                            seekTo(selected.keepStartMs)
+                            previewEndMs = selected.keepEndMs
+                            player.play()
+                        }) { Text("Preview range") }
+                        if (selected.origin == CutOrigin.INFERRED) {
+                            OutlinedButton(onClick = {
+                                updateCut(selected.id) { cut -> cut.copy(
+                                    keepStartMs = (cut.coreStartMs - draft.beforePaddingMs).coerceAtLeast(0),
+                                    keepEndMs = (cut.coreEndMs + draft.afterPaddingMs).coerceAtMost(seed.durationMs),
+                                ) }
+                            }) { Text("Reset padding") }
+                        }
+                        if (selected.origin == CutOrigin.MANUAL) {
+                            OutlinedButton(onClick = {
+                                val remaining = sortedCuts.filterNot { it.id == selected.id }
+                                updateDraft { it.copy(cuts = it.cuts.filterNot { cut -> cut.id == selected.id }) }
+                                selectedId = remaining.getOrNull((selectedIndex - 1).coerceAtLeast(0))?.id.orEmpty()
+                            }) { Text("Delete", color = Danger) }
+                        }
+                    }
+                }
+            }
+
+            MarkingTools(
+                draft = draft,
+                playbackPositionMs = playbackPositionMs,
+                onDraft = ::updateDraft,
+                onManualCompleted = { cut ->
+                    selectedId = cut.id
+                    message = "Added ${cut.id} from ${preciseTime(cut.keepStartMs)} to ${preciseTime(cut.keepEndMs)}"
+                },
+                onMessage = { message = it },
+            )
+
+            if (message.isNotBlank()) {
+                Surface(color = Color(0xFFFFE2D8), shape = RoundedCornerShape(10.dp)) {
+                    Text(message, Modifier.padding(12.dp), fontSize = 13.sp)
+                }
+            }
+
+            if (draft.ignoredIntervals.isNotEmpty()) {
+                SectionCard("IGNORED SOURCE", "Removed from the derived edit list") {
+                    draft.ignoredIntervals.sortedBy { it.startMs }.forEach { interval ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { seekTo(interval.startMs) }) {
+                                Text("${preciseTime(interval.startMs)}–${preciseTime(interval.endMs)}")
+                            }
+                            Text(interval.reason.replace('-', ' '), Modifier.weight(1f), fontSize = 12.sp)
+                            TextButton(onClick = {
+                                updateDraft { it.copy(ignoredIntervals = it.ignoredIntervals.filterNot { item -> item.id == interval.id }) }
+                            }) { Text("Remove", color = Danger) }
+                        }
+                    }
+                }
+            }
+
+            SectionCard("ALL CUTS", "${effectiveIds.size} kept · $ignoredCutCount fully ignored") {
+                sortedCuts.forEachIndexed { index, cut ->
+                    val state = when {
+                        !cut.included -> "Removed"
+                        cut.id !in effectiveIds -> "Ignored"
+                        else -> "Keep"
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (cut.id == selected?.id) Color(0xFFFFEEE8) else Color.Transparent)
+                            .clickable { selectedId = cut.id; seekTo(cut.keepStartMs) }
+                            .padding(vertical = 7.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text((index + 1).toString().padStart(2, '0'), color = Muted, fontFamily = FontFamily.Monospace)
+                        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                            Text(cut.id, fontWeight = FontWeight.SemiBold)
+                            Text("${preciseTime(cut.keepStartMs)}–${preciseTime(cut.keepEndMs)}", fontSize = 12.sp, color = Muted)
+                        }
+                        Text(
+                            if (cut.origin == CutOrigin.MANUAL) "MANUAL" else "${(cut.confidence * 100).roundToInt()}%",
+                            fontSize = 12.sp,
+                            color = if (cut.confidence < draft.confidenceReviewThreshold) Warning else Muted,
+                        )
+                        TextButton(onClick = { updateCut(cut.id) { it.copy(included = !it.included) } }) {
+                            Text(state, color = if (state == "Keep") Green else Danger)
+                        }
+                    }
+                    if (index < sortedCuts.lastIndex) HorizontalDivider(color = Rail)
+                }
+            }
+
+            SectionCard("EXPORT", "Exact intervals · AVC video · AAC audio · MP4") {
+                Text(
+                    "${finalIntervals.size} merged ranges · ${compactTime(totalFinalMs)} output",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (exportState.status == "running") {
+                    LinearProgressIndicator(
+                        progress = { exportState.progress / 100f },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    )
+                    Text(exportState.detail, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                } else if (exportState.detail.isNotBlank()) {
+                    Text(exportState.detail, color = if (exportState.status == "failed") Danger else Green)
+                    exportState.metrics?.let { Text(it, fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = Muted) }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = finalIntervals.isNotEmpty() && exportState.status != "running",
+                        onClick = { exportLauncher.launch(exportFilename(seed.displayName)) },
+                    ) { Text("Export MP4") }
+                    OutlinedButton(
+                        enabled = finalIntervals.isNotEmpty(),
+                        onClick = { editListLauncher.launch(editListFilename(seed.displayName)) },
+                    ) { Text("Save edit list") }
+                    if (exportState.status == "running") {
+                        OutlinedButton(onClick = {
+                            context.startService(Intent(context, ExportService::class.java).setAction(ExportService.ACTION_CANCEL))
+                        }) { Text("Cancel export", color = Danger) }
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { confirmReset = true }) { Text("Reset editor") }
+                TextButton(onClick = { context.startActivity(Intent(context, MainActivity::class.java)) }) {
+                    Text("Benchmark tools")
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun EditorHeader(seed: EditorSeed, outputMs: Long, kept: Int, removed: Int, ignored: Int) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("VOLLEYCUT", color = Orange, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+        Text("Native cut editor", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text(seed.displayName, color = Muted, fontSize = 13.sp, maxLines = 2)
+        Text(
+            "${seed.width}×${seed.height} · ${compactTime(seed.durationMs)} source · ${compactTime(outputMs)} output",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+        )
+        Text("$kept kept · $removed removed · $ignored fully ignored", fontSize = 12.sp, color = Muted)
+    }
+}
+
+@Composable
+private fun SectionCard(label: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(label, color = Orange, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            Text(subtitle, fontWeight = FontWeight.SemiBold)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun PlayerControls(
+    playing: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    playbackRate: Float,
+    onToggle: () -> Unit,
+    onSeekBy: (Long) -> Unit,
+    onRate: (Float) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(preciseTime(positionMs), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            Text(" / ${preciseTime(durationMs)}", fontFamily = FontFamily.Monospace, color = Muted)
+            Spacer(Modifier.weight(1f))
+            Button(onClick = onToggle) { Text(if (playing) "Pause" else "Play") }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(-1_000L to "−1s", -100L to "−0.1s", 100L to "+0.1s", 1_000L to "+1s")
+                .forEach { (delta, label) -> SmallButton(label) { onSeekBy(delta) } }
+            Spacer(Modifier.width(8.dp))
+            listOf(1f, 2f, 4f, 8f).forEach { rate ->
+                FilterChip(selected = playbackRate == rate, onClick = { onRate(rate) }, label = { Text("${rate.toInt()}x") })
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaddingControl(label: String, valueMs: Long, onChange: (Long) -> Unit) {
+    Column {
+        Row {
+            Text(label, Modifier.weight(1f), fontSize = 13.sp)
+            Text(String.format(Locale.US, "%.1fs", valueMs / 1_000.0), fontFamily = FontFamily.Monospace)
+        }
+        Slider(
+            value = valueMs / 1_000f,
+            onValueChange = { value -> onChange((value * 2).roundToLong() * 500) },
+            valueRange = 0f..10f,
+            steps = 19,
+        )
+    }
+}
+
+@Composable
+private fun ConfidenceControl(value: Float, count: Int, onChange: (Float) -> Unit, onReviewNext: () -> Unit) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Highlight below ${(value * 100).roundToInt()}%", Modifier.weight(1f), fontSize = 13.sp)
+            Text("$count ranges", color = Muted, fontSize = 12.sp)
+            TextButton(enabled = count > 0, onClick = onReviewNext) { Text("Review next") }
+        }
+        Slider(value = value, onValueChange = onChange, valueRange = 0f..1f, steps = 99)
+    }
+}
+
+@Composable
+private fun WholeTimeline(
+    durationMs: Long,
+    cuts: List<EditableCut>,
+    ignored: List<IgnoredSourceInterval>,
+    selectedId: String?,
+    effectiveIds: Set<String>,
+    confidenceThreshold: Float,
+    playheadMs: Long,
+    onSeek: (Long, String?) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+        fun timeAt(x: Float) = ((x / widthPx).coerceIn(0f, 1f) * durationMs).roundToLong()
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(74.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(Rail)
+                .pointerInput(durationMs, cuts) {
+                    detectTapGestures { offset ->
+                        val time = timeAt(offset.x)
+                        val cut = cuts.lastOrNull { time in it.keepStartMs..it.keepEndMs }
+                        onSeek(time, cut?.id)
+                    }
+                }
+                .pointerInput(durationMs) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { onSeek(timeAt(it.x), null) },
+                        onHorizontalDrag = { change, _ -> change.consume(); onSeek(timeAt(change.position.x), null) },
+                    )
+                },
+        ) {
+            ignored.forEach { interval ->
+                val x = interval.startMs.toFloat() / durationMs * size.width
+                val width = max(1f, (interval.endMs - interval.startMs).toFloat() / durationMs * size.width)
+                drawRect(Danger.copy(alpha = .26f), Offset(x, 0f), Size(width, size.height))
+            }
+            cuts.forEach { cut ->
+                val x = cut.keepStartMs.toFloat() / durationMs * size.width
+                val width = max(2f, (cut.keepEndMs - cut.keepStartMs).toFloat() / durationMs * size.width)
+                val low = cut.origin == CutOrigin.INFERRED && cut.confidence < confidenceThreshold
+                val color = when {
+                    !cut.included -> Muted.copy(alpha = .55f)
+                    cut.id !in effectiveIds -> Danger.copy(alpha = .65f)
+                    low -> Warning
+                    else -> PaleGreen
+                }
+                drawRoundRect(color, Offset(x, 16f), Size(width, size.height - 32f), CornerRadius(6f))
+                val coreX = cut.coreStartMs.toFloat() / durationMs * size.width
+                val coreWidth = max(1f, (cut.coreEndMs - cut.coreStartMs).toFloat() / durationMs * size.width)
+                drawRoundRect(if (cut.included) Green else Muted, Offset(coreX, 24f), Size(coreWidth, size.height - 48f), CornerRadius(4f))
+                if (cut.id == selectedId) {
+                    drawRoundRect(Orange, Offset(x, 13f), Size(width, size.height - 26f), CornerRadius(7f), style = Stroke(4f))
+                }
+            }
+            val playheadX = playheadMs.toFloat() / durationMs * size.width
+            drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
+private fun FocusTimeline(
+    cut: EditableCut,
+    window: DetailWindow,
+    playheadMs: Long,
+    effective: Boolean,
+    lowConfidence: Boolean,
+    onSeek: (Long) -> Unit,
+    onStartChange: (Long) -> Unit,
+    onEndChange: (Long) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(102.dp)) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+        val span = (window.endMs - window.startMs).coerceAtLeast(1)
+        fun xAt(time: Long) = (time - window.startMs).toFloat() / span * widthPx
+        fun timeAt(x: Float) = window.startMs + ((x / widthPx).coerceIn(0f, 1f) * span).roundToLong()
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Rail)
+                .pointerInput(window) { detectTapGestures { onSeek(timeAt(it.x)) } }
+                .pointerInput(window) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { onSeek(timeAt(it.x)) },
+                        onHorizontalDrag = { change, _ -> change.consume(); onSeek(timeAt(change.position.x)) },
+                    )
+                },
+        ) {
+            val keptColor = when {
+                !cut.included || !effective -> Danger.copy(alpha = .6f)
+                lowConfidence -> Warning.copy(alpha = .8f)
+                else -> PaleGreen
+            }
+            drawRoundRect(
+                keptColor,
+                Offset(xAt(cut.keepStartMs), 18f),
+                Size(max(2f, xAt(cut.keepEndMs) - xAt(cut.keepStartMs)), size.height - 36f),
+                CornerRadius(8f),
+            )
+            drawRoundRect(
+                if (cut.included) Green else Muted,
+                Offset(xAt(cut.coreStartMs), 33f),
+                Size(max(2f, xAt(cut.coreEndMs) - xAt(cut.coreStartMs)), size.height - 66f),
+                CornerRadius(5f),
+            )
+            val playheadX = xAt(playheadMs).coerceIn(0f, size.width)
+            drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f)
+        }
+        val handleWidth = 30.dp
+        val handlePx = with(density) { handleWidth.toPx() }
+        val deltaToMs = { delta: Float -> (delta / widthPx * span).roundToLong() }
+        Box(
+            Modifier
+                .offset { IntOffset((xAt(cut.keepStartMs) - handlePx / 2).roundToInt(), 0) }
+                .width(handleWidth)
+                .fillMaxHeight()
+                .semantics { contentDescription = "Adjust kept start at ${preciseTime(cut.keepStartMs)}" }
+                .draggable(
+                    orientation = Orientation.Horizontal,
+                    state = rememberDraggableState { delta -> onStartChange(cut.keepStartMs + deltaToMs(delta)) },
+                )
+                .border(3.dp, Orange, RoundedCornerShape(8.dp)),
+        )
+        Box(
+            Modifier
+                .offset { IntOffset((xAt(cut.keepEndMs) - handlePx / 2).roundToInt(), 0) }
+                .width(handleWidth)
+                .fillMaxHeight()
+                .semantics { contentDescription = "Adjust kept end at ${preciseTime(cut.keepEndMs)}" }
+                .draggable(
+                    orientation = Orientation.Horizontal,
+                    state = rememberDraggableState { delta -> onEndChange(cut.keepEndMs + deltaToMs(delta)) },
+                )
+                .border(3.dp, Orange, RoundedCornerShape(8.dp)),
+        )
+    }
+}
+
+@Composable
+private fun TimelineLabels(start: Long, middle: Long, end: Long) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(compactTime(start), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted)
+        Spacer(Modifier.weight(1f))
+        Text(compactTime(middle), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted)
+        Spacer(Modifier.weight(1f))
+        Text(compactTime(end), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted)
+    }
+}
+
+@Composable
+private fun BoundaryControls(label: String, valueMs: Long, onNudge: (Long) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.width(104.dp)) {
+            Text(label, fontSize = 12.sp, color = Muted)
+            Text(preciseTime(valueMs), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            listOf(-1_000L to "−1s", -100L to "−0.1s", 100L to "+0.1s", 1_000L to "+1s")
+                .forEach { (delta, labelText) -> SmallButton(labelText) { onNudge(delta) } }
+        }
+    }
+}
+
+@Composable
+private fun MarkingTools(
+    draft: EditorDraft,
+    playbackPositionMs: Long,
+    onDraft: ((EditorDraft) -> EditorDraft) -> Unit,
+    onManualCompleted: (EditableCut) -> Unit,
+    onMessage: (String) -> Unit,
+) {
+    SectionCard("ADD A MISSED CUT", draft.pendingManualStartMs?.let { "Started ${preciseTime(it)}" } ?: "Find the first frame") {
+        Text("Seek, mark the start, then seek and mark the end.", fontSize = 12.sp, color = Muted)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                val startMark = draft.pendingManualStartMs
+                if (startMark == null) {
+                    onDraft { it.copy(pendingManualStartMs = playbackPositionMs, pendingIgnoreStartMs = null) }
+                    onMessage("Missed cut starts at ${preciseTime(playbackPositionMs)}")
+                } else {
+                    val start = min(startMark, playbackPositionMs)
+                    val end = max(startMark, playbackPositionMs)
+                    if (end - start < MIN_MARK_MS) onMessage("A manual cut must be at least 0.1 seconds")
+                    else {
+                        val cut = EditableCut(
+                            id = EditorMath.nextId("M", draft.cuts.map { it.id }),
+                            coreStartMs = start, coreEndMs = end,
+                            keepStartMs = start, keepEndMs = end,
+                            confidence = 1f, included = true, origin = CutOrigin.MANUAL,
+                        )
+                        onDraft { it.copy(pendingManualStartMs = null, cuts = it.cuts + cut) }
+                        onManualCompleted(cut)
+                    }
+                }
+            }) { Text(if (draft.pendingManualStartMs == null) "Mark start · ${preciseTime(playbackPositionMs)}" else "Mark end · ${preciseTime(playbackPositionMs)}") }
+            if (draft.pendingManualStartMs != null) {
+                OutlinedButton(onClick = { onDraft { it.copy(pendingManualStartMs = null) } }) { Text("Cancel") }
+            }
+        }
+    }
+    SectionCard("IGNORE SOURCE SECTION", draft.pendingIgnoreStartMs?.let { "Started ${preciseTime(it)}" } ?: "Exclude unusable footage") {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            listOf("non-game-content", "camera-gap", "partial-rally", "boundary-ambiguous").forEach { reason ->
+                FilterChip(
+                    selected = draft.ignoreReason == reason,
+                    onClick = { onDraft { it.copy(ignoreReason = reason) } },
+                    label = { Text(reason.replace('-', ' '), fontSize = 11.sp) },
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                val startMark = draft.pendingIgnoreStartMs
+                if (startMark == null) {
+                    onDraft { it.copy(pendingIgnoreStartMs = playbackPositionMs, pendingManualStartMs = null) }
+                    onMessage("Ignored section starts at ${preciseTime(playbackPositionMs)}")
+                } else {
+                    val start = min(startMark, playbackPositionMs)
+                    val end = max(startMark, playbackPositionMs)
+                    if (end - start < MIN_MARK_MS) onMessage("An ignored section must be at least 0.1 seconds")
+                    else {
+                        val ignored = IgnoredSourceInterval(
+                            EditorMath.nextId("I", draft.ignoredIntervals.map { it.id }),
+                            start, end, draft.ignoreReason,
+                        )
+                        onDraft { it.copy(pendingIgnoreStartMs = null, ignoredIntervals = it.ignoredIntervals + ignored) }
+                        onMessage("Ignored ${preciseTime(start)} to ${preciseTime(end)}")
+                    }
+                }
+            }) { Text(if (draft.pendingIgnoreStartMs == null) "Mark start · ${preciseTime(playbackPositionMs)}" else "Mark end · ${preciseTime(playbackPositionMs)}") }
+            if (draft.pendingIgnoreStartMs != null) {
+                OutlinedButton(onClick = { onDraft { it.copy(pendingIgnoreStartMs = null) } }) { Text("Cancel") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmallButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    OutlinedButton(enabled = enabled, onClick = onClick, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 5.dp)) {
+        Text(label, fontSize = 12.sp)
+    }
+}
+
+private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<FinalCutInterval>) =
+    JSONObject().apply {
+        put("schemaVersion", 1)
+        put("method", "android-native-editor-v1")
+        put("sourceName", seed.displayName)
+        put("sourceUri", seed.sourceUri)
+        put("sourceDuration", seed.durationMs / 1_000.0)
+        put("sourceRevision", seed.sourceRevision)
+        put("beforePaddingSeconds", draft.beforePaddingMs / 1_000.0)
+        put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)
+        put("outputDuration", EditorMath.totalFinalMs(intervals) / 1_000.0)
+        put("ranges", JSONArray().apply {
+            intervals.forEach { range -> put(JSONObject().apply {
+                put("start", range.startMs / 1_000.0)
+                put("end", range.endMs / 1_000.0)
+                put("cutIds", JSONArray(range.cutIds))
+            }) }
+        })
+        put("cuts", JSONArray().apply {
+            draft.cuts.forEach { cut -> put(JSONObject().apply {
+                put("id", cut.id)
+                put("coreStart", cut.coreStartMs / 1_000.0)
+                put("coreEnd", cut.coreEndMs / 1_000.0)
+                put("keepStart", cut.keepStartMs / 1_000.0)
+                put("keepEnd", cut.keepEndMs / 1_000.0)
+                put("confidence", cut.confidence.toDouble())
+                put("included", cut.included)
+                put("origin", cut.origin.name.lowercase())
+            }) }
+        })
+        put("ignoredIntervals", JSONArray().apply {
+            draft.ignoredIntervals.forEach { interval -> put(JSONObject().apply {
+                put("id", interval.id)
+                put("start", interval.startMs / 1_000.0)
+                put("end", interval.endMs / 1_000.0)
+                put("reason", interval.reason)
+            }) }
+        })
+    }
+
+private fun exportFilename(sourceName: String): String {
+    val base = sourceName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-')
+    return "${base.ifBlank { "volleycut" }}-cut.mp4"
+}
+
+private fun editListFilename(sourceName: String): String = exportFilename(sourceName).removeSuffix(".mp4") + ".edit-list.json"
+
+private fun sourceDisplayName(context: Context, uri: Uri): String {
+    runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
+        }
+    }
+    return uri.lastPathSegment ?: "selected-video"
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_073_741_824 -> String.format(Locale.US, "%.1f GiB", bytes / 1_073_741_824.0)
+    bytes >= 1_048_576 -> String.format(Locale.US, "%.1f MiB", bytes / 1_048_576.0)
+    bytes >= 1_024 -> String.format(Locale.US, "%.1f KiB", bytes / 1_024.0)
+    else -> "$bytes B"
+}
+
+private fun secondsLabel(seconds: Double): String =
+    if (!seconds.isFinite() || seconds < 0) "calculating…"
+    else compactTime((seconds * 1_000).roundToLong())

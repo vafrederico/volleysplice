@@ -11,6 +11,7 @@ final class FeatureSchema {
     static final int ANALYSIS_WIDTH = 192;
     static final int ANALYSIS_HEIGHT = 108;
     static final int BENCHMARK_SOURCE_FRAME_LIMIT = 1_000;
+    static final int FULL_SOURCE_FRAME_LIMIT = Integer.MAX_VALUE;
 
     static final List<String> FRAME = buildFrameNames();
     static final List<String> TEMPORAL = List.of(

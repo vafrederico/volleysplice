@@ -19,9 +19,9 @@ npm run analysis:setup
 
 The second command creates a local `.venv` and installs NumPy plus headless OpenCV. Both `.venv` and all generated video artifacts are ignored by Git.
 
-## Native Android analysis benchmark
+## Native Android app
 
-The [`android/`](android/) project ports only the video-to-features-to-inference-to-ranges path to a native app for Pixel 10 Pro performance testing. It targets API 36 and runs on the Pixel's Android 17 runtime, replacing WebCodecs/WASM with Android `MediaCodec`, native OpenCV, and in-app audio DSP. See [`android/README.md`](android/README.md) for SDK setup, installation, benchmark procedure, and parity caveats.
+The [`android/`](android/) project ports video/audio feature extraction, inference, range editing, preview, and MP4 export to a native Pixel 10 Pro app. It targets API 37 on Android 17, replacing WebCodecs/WASM with Android `MediaCodec`, native OpenCV, in-app audio DSP, Jetpack Compose timelines, and Media3 playback/export. See [`android/README.md`](android/README.md) for SDK setup, editor/export behavior, benchmark procedure, and parity caveats.
 
 Set the durable media location in an ignored `.env.local` file. This machine currently uses `/mnt/freenas/volleycut`:
 

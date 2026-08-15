@@ -1,6 +1,6 @@
-# VolleyCut native Android analysis benchmark
+# VolleyCut native Android analysis and editor
 
-This folder contains a native Android port of the on-device analysis path. It is intentionally not an editor. Its only workflow is:
+This folder contains the native Android analysis path plus a first-party cut editor and exporter. The analysis workflow is:
 
 ```text
 video URI
@@ -20,15 +20,15 @@ No media is uploaded. The app has no network permission. It does not use a WebVi
 ## Target device and SDK
 
 - Target device: Pixel 10 Pro, arm64-v8a
-- `compileSdk`: 36
-- `targetSdk`: 36
+- `compileSdk`: 37
+- `targetSdk`: 37
 - `minSdk`: 29
 - Android Gradle Plugin: 9.1.1
 - Gradle: 9.3.1
 - Java: 17 bytecode
 - OpenCV Android AAR: 4.12.0
 
-The Pixel 10 Pro can run this API 36-targeted app normally on Android 17. The analysis path does not call Android 17-specific APIs, and targeting API 37 would not accelerate `MediaCodec`, OpenCV, or the Java DSP. Keeping API 36 as the default also avoids opting into unrelated Android 17 target-behavior changes during this performance experiment. The project intentionally packages only `arm64-v8a`, since its immediate purpose is measuring the Pixel 10 Pro rather than running an x86 emulator.
+API 37 does not make the analysis kernels faster by itself, but it is now the default so the app is tested against the Pixel 10 Pro's Android 17 target behavior. The project intentionally packages only `arm64-v8a`, since its immediate purpose is the Pixel 10 Pro rather than an x86 emulator.
 
 ## Build and install
 
@@ -40,7 +40,23 @@ cd android
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
-SDK 36 is the default, so no Gradle property overrides are needed. The app still executes on the Pixel's Android 17 runtime and uses the device's installed codec implementations.
+SDK 37 is the default, so no Gradle property overrides are needed. Install the Android 17 SDK Platform 37.0 and Build-Tools 37.0.0 before building from the command line.
+
+## Native editor and export
+
+Run full inference, then tap **Open native cut editor**. The editor uses the unpadded inferred ranges as its immutable cores and provides:
+
+- global before/after output padding for inferred ranges;
+- a whole-recording timeline and a focused range timeline with draggable handles;
+- exact source seeking, 1x/2x/4x/8x playback, and final-cut-only preview;
+- keep/remove review, low-confidence review, 0.1/1 second nudges, and per-range reset;
+- manual missed cuts and ignored source sections;
+- atomic, versioned draft persistence and a **Resume native cut editor** entry after process restart;
+- edit-list JSON output and an exact-boundary MP4 export with progress, cancellation, and encoder telemetry.
+
+The player is Media3 ExoPlayer. Export builds a Media3 `Composition` from the final merged ranges after ignored sections are subtracted, then uses Transformer to encode AVC video and AAC audio into MP4. Export runs as an Android `mediaProcessing` foreground service. A custom Media3 muxer factory writes directly to the seekable file descriptor returned for the document selected with Android's system picker, so normal local exports do not need duplicate temporary storage. Streaming-only document providers automatically retain the app-cache-and-copy fallback. Failed, cancelled, or abandoned exports remove their incomplete destination document. The service logs a `VolleyCutExport` JSON record containing the selected `outputWriteMode`, wall time, real-time ratio, frame rate, encoder names, bitrates, output geometry, file size, conversion modes, and failures.
+
+All new UI/media dependencies are open source: Jetpack Compose, AndroidX Activity/Core, and Media3 are Apache-2.0. OpenCV remains Apache-2.0. No commercial editor SDK is embedded.
 
 ## Run a benchmark
 
@@ -100,4 +116,11 @@ The first full audiovisual run and its interval-level comparison against the sto
 - `app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java`: resampling, FFT, and audio feature schema
 - `app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java`: restart-safe visual checkpoints and completed audio matrices
 - `app/src/main/java/com/volleycut/nativeanalysis/ModelRunner.java`: exact three-head inference and range decoding
+- `app/src/main/java/com/volleycut/nativeanalysis/EditorActivity.kt`: native player, recording/focused timelines, and editing controls
+- `app/src/main/java/com/volleycut/nativeanalysis/EditorModels.kt`: final-range interval algebra and editor state
+- `app/src/main/java/com/volleycut/nativeanalysis/EditorDraftStore.kt`: restart-safe edit persistence
+- `app/src/main/java/com/volleycut/nativeanalysis/EditorProjectStore.kt`: last-project metadata used by editor resume
+- `app/src/main/java/com/volleycut/nativeanalysis/DirectUriMp4MuxerFactory.kt`: seekable document-descriptor MP4 output
+- `app/src/main/java/com/volleycut/nativeanalysis/ExportService.kt`: foreground Media3 composition export and telemetry
+- `app/src/test/java/com/volleycut/nativeanalysis/EditorMathTest.kt`: merge, ignored-time, padding, and seed identity tests
 - `app/src/test/java/com/volleycut/nativeanalysis/GoldenModelTest.java`: frozen-feature model parity test

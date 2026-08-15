@@ -72,6 +72,7 @@ public final class MainActivity extends Activity {
     private Button analyzeButton;
     private Button cancelButton;
     private Button copyButton;
+    private Button editorButton;
     private Button clearCacheButton;
     private CheckBox fullFrame;
     private CheckBox limitSourceFrames;
@@ -213,6 +214,13 @@ public final class MainActivity extends Activity {
         copyButton.setOnClickListener(view -> copyResult());
         root.addView(copyButton, margins(0, dp(10), 0, 0));
 
+        editorButton = button("Open native cut editor");
+        boolean canResumeEditor = EditorActivity.createResumeIntent(this) != null;
+        editorButton.setEnabled(canResumeEditor);
+        if (canResumeEditor) editorButton.setText("Resume native cut editor");
+        editorButton.setOnClickListener(view -> openEditor());
+        root.addView(editorButton, margins(0, dp(8), 0, 0));
+
         TextView caveat = text(
                 "Benchmark note: MediaCodec decodes the source in one asynchronous pass and only exposes the 192×108 YUV frames needed at 4 Hz. "
                         + "The model and decoder match the web bundle; Android YUV conversion and native OpenCV may shift feature values, "
@@ -237,6 +245,8 @@ public final class MainActivity extends Activity {
         fileLabel.setText(selectedUri.toString());
         analyzeButton.setEnabled(true);
         copyButton.setEnabled(false);
+        editorButton.setEnabled(false);
+        editorButton.setText("Open native cut editor");
         lastResult = null;
 
         if (!intent.getBooleanExtra(EXTRA_AUTO_RUN, false)) return;
@@ -296,6 +306,8 @@ public final class MainActivity extends Activity {
         fileLabel.setText(selectedUri.toString());
         analyzeButton.setEnabled(true);
         copyButton.setEnabled(false);
+        editorButton.setEnabled(false);
+        editorButton.setText("Open native cut editor");
         lastResult = null;
     }
 
@@ -319,7 +331,7 @@ public final class MainActivity extends Activity {
                 ? sourceFrameLimit
                 : (limitSourceFrames.isChecked()
                         ? FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT
-                        : 1_000_000);
+                        : FeatureSchema.FULL_SOURCE_FRAME_LIMIT);
         AnalysisTypes.VideoDecoderOptions requestedDecoderOptions = decoderOptions;
         NativeFeatureCache.Mode requestedCacheMode = automatedRun
                 ? cacheMode
@@ -387,6 +399,8 @@ public final class MainActivity extends Activity {
     private void showResult(AnalysisTypes.AnalysisResult result) {
         lastResult = result;
         copyButton.setEnabled(true);
+        editorButton.setEnabled(true);
+        editorButton.setText("Open native cut editor");
         progressBar.setProgress(1000);
         double totalSeconds = result.totalMilliseconds() / 1000.0;
         double overallRealtime = totalSeconds > 0 ? result.analyzedDurationSeconds() / totalSeconds : 0;
@@ -400,11 +414,18 @@ public final class MainActivity extends Activity {
         output.append(result.displayName()).append('\n');
         output.append(String.format(Locale.US, "%.2f min · %,d samples · %,d ranges\n\n",
                 result.media().durationSeconds() / 60, result.sampleRows(), result.ranges().size()));
-        output.append(String.format(Locale.US,
-                "Analyzed %.2f s; benchmark cap %,d source frames%s\n\n",
-                result.analyzedDurationSeconds(),
-                result.sourceFrameLimit(),
-                result.sourceFrameLimitReached() ? " (reached)" : " (short clip)"));
+        if (result.sourceFrameLimit() == FeatureSchema.FULL_SOURCE_FRAME_LIMIT) {
+            output.append(String.format(Locale.US,
+                    "Analyzed %.2f s; full-file mode; %,d source frames\n\n",
+                    result.analyzedDurationSeconds(),
+                    result.decodedSourceFrames()));
+        } else {
+            output.append(String.format(Locale.US,
+                    "Analyzed %.2f s; benchmark cap %,d source frames%s\n\n",
+                    result.analyzedDurationSeconds(),
+                    result.sourceFrameLimit(),
+                    result.sourceFrameLimitReached() ? " (reached)" : " (short clip)"));
+        }
         output.append("Video decoder: ").append(result.videoDecoder())
                 .append(result.hardwareVideoDecoder() ? " (hardware)" : " (software)").append('\n');
         output.append(String.format(Locale.US,
@@ -776,6 +797,13 @@ public final class MainActivity extends Activity {
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
         return button;
+    }
+
+    private void openEditor() {
+        Intent intent = lastResult != null
+                ? EditorActivity.createIntent(this, lastResult)
+                : EditorActivity.createResumeIntent(this);
+        if (intent != null) startActivity(intent);
     }
 
     private String cacheSizeLabel() {
