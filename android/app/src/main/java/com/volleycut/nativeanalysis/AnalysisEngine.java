@@ -233,7 +233,7 @@ final class AnalysisEngine {
         );
     }
 
-    private AnalysisTypes.MediaInfo probe(Uri uri) throws IOException {
+    AnalysisTypes.MediaInfo probe(Uri uri) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
         try {
             extractor.setDataSource(context, uri, null);
@@ -260,7 +260,7 @@ final class AnalysisEngine {
         }
     }
 
-    private String displayName(Uri uri) {
+    String displayName(Uri uri) {
         try (Cursor cursor = context.getContentResolver().query(
                 uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null
         )) {
@@ -303,7 +303,7 @@ final class AnalysisEngine {
         return output;
     }
 
-    private static AnalysisTypes.Roi inferRoi(String filename) {
+    static AnalysisTypes.Roi inferRoi(String filename) {
         record Known(String needle, double x, double y, double width, double height, String label) {}
         List<Known> profiles = List.of(
                 new Known("beach-source-02", .02, .12, .96, .86, "Known beach camera"),

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 
 final class FeatureSchema {
+    static final String MODEL_ID = "model-9c92b8e9333f";
     static final int ANALYSIS_FPS = 4;
     static final int ANALYSIS_WIDTH = 192;
     static final int ANALYSIS_HEIGHT = 108;

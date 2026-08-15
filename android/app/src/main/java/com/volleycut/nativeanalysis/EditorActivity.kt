@@ -53,6 +53,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -112,7 +114,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -162,12 +163,20 @@ class EditorActivity : ComponentActivity() {
         fun createIntent(context: Context, result: AnalysisTypes.AnalysisResult): Intent {
             val seed = editorSeedFromResult(result)
             EditorProjectStore.save(context, seed)
+            val project = NativeProjectStore.fromResult(context, result)
+            NativeProjectStore.save(context, project)
+            NativeProjectStore.setSelectedId(context, project.id)
             return intentFromSeed(context, seed)
         }
 
         @JvmStatic
-        fun createResumeIntent(context: Context): Intent? =
-            EditorProjectStore.load(context)?.let { intentFromSeed(context, it) }
+        fun createResumeIntent(context: Context): Intent? {
+            val projects = NativeProjectStore.list(context)
+            val selected = NativeProjectStore.selectedId(context)
+                ?.let { id -> projects.firstOrNull { it.id == id } }
+            return (selected?.editorSeed() ?: projects.firstNotNullOfOrNull { it.editorSeed() }
+                ?: EditorProjectStore.load(context))?.let { intentFromSeed(context, it) }
+        }
 
         private fun intentFromSeed(context: Context, seed: EditorSeed) =
             Intent(context, EditorActivity::class.java).apply {
@@ -232,6 +241,7 @@ private data class ExportUiState(
 private data class SourceSelection(val uri: Uri, val displayName: String)
 
 private data class InferenceUiState(
+    val projectId: String? = null,
     val running: Boolean = false,
     val progress: Float = 0f,
     val stage: String = "",
@@ -244,14 +254,50 @@ private data class InferenceUiState(
 private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var seed by remember { mutableStateOf(initialSeed) }
-    var selectedSource by remember {
-        mutableStateOf(initialSeed?.let { SourceSelection(Uri.parse(it.sourceUri), it.displayName) })
+    val initialProjects = remember {
+        var stored = NativeProjectStore.list(context)
+            .map { NativeProjectStore.repairLegacyMetadata(context, it) }
+        if (initialSeed != null && stored.none { it.source.uri == initialSeed.sourceUri }) {
+            NativeProjectStore.fromSeed(context, initialSeed).also {
+                NativeProjectStore.save(context, it)
+                stored = NativeProjectStore.list(context)
+            }
+        }
+        stored
     }
+    var projects by remember { mutableStateOf(initialProjects) }
+    var selectedProjectId by remember {
+        mutableStateOf(
+            NativeProjectStore.selectedId(context)
+                ?.takeIf { id -> initialProjects.any { it.id == id } }
+                ?: initialProjects.firstOrNull()?.id,
+        )
+    }
+    var creatingNew by remember { mutableStateOf(selectedProjectId == null) }
+    var selectedSource by remember { mutableStateOf<SourceSelection?>(null) }
+    var preparingSource by remember { mutableStateOf(false) }
     var inference by remember { mutableStateOf(InferenceUiState()) }
     var useCache by remember { mutableStateOf(true) }
     var cacheBytes by remember { mutableLongStateOf(NativeFeatureCache.totalBytes(context)) }
-    val cancelled = remember { AtomicBoolean(false) }
+    var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
+
+    fun reloadProjects(
+        preferredId: String? = selectedProjectId,
+        preserveNewProject: Boolean = creatingNew,
+    ) {
+        projects = NativeProjectStore.list(context)
+        if (preserveNewProject) {
+            selectedProjectId = null
+            NativeProjectStore.setSelectedId(context, null)
+            cacheBytes = NativeFeatureCache.totalBytes(context)
+            return
+        }
+        selectedProjectId = preferredId?.takeIf { id -> projects.any { it.id == id } }
+            ?: projects.firstOrNull()?.id
+        NativeProjectStore.setSelectedId(context, selectedProjectId)
+        if (selectedProjectId != null) creatingNew = false
+        cacheBytes = NativeFeatureCache.totalBytes(context)
+    }
 
     val sourcePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -264,64 +310,80 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 )
             }
             selectedSource = SourceSelection(uri, sourceDisplayName(context, uri))
-            inference = InferenceUiState(detail = "Ready for full video + audio inference")
+            inference = InferenceUiState(detail = "Ready to create and queue this project")
         }
     }
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
 
-    fun startAnalysis() {
+    fun queueSelectedSource() {
         val selected = selectedSource ?: return
-        if (inference.running) return
-        cancelled.set(false)
+        if (preparingSource) return
+        preparingSource = true
         inference = InferenceUiState(
-            running = true,
             stage = "opening",
-            detail = "Preparing full-file analysis",
+            detail = "Reading recording metadata",
         )
-        activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        runCatching { activity.window.setSustainedPerformanceMode(true) }
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) {
-                    AnalysisEngine(context).analyze(
-                        selected.uri,
-                        false,
-                        FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
-                        AnalysisTypes.VideoDecoderOptions.defaults(),
-                        if (useCache) NativeFeatureCache.Mode.USE else NativeFeatureCache.Mode.REFRESH,
-                        cancelled,
-                        object : AnalysisTypes.ProgressListener {
-                            override fun onProgress(stage: String, fraction: Double, detail: String) {
-                                activity.runOnUiThread {
-                                    inference = inference.copy(
-                                        running = true,
-                                        progress = fraction.coerceIn(0.0, 1.0).toFloat(),
-                                        stage = stage,
-                                        detail = detail,
-                                        error = null,
-                                    )
-                                }
-                            }
-
-                            override fun onPerformance(stats: AnalysisTypes.PerformanceStats) {
-                                activity.runOnUiThread {
-                                    inference = inference.copy(performance = stats)
-                                }
-                            }
-                        },
-                    )
+                val prepared = withContext(Dispatchers.IO) {
+                    val engine = AnalysisEngine(context)
+                    val media = engine.probe(selected.uri)
+                    val source = NativeProjectStore.source(context, selected.uri, selected.displayName)
+                    Triple(source, media, AnalysisEngine.inferRoi(source.name))
                 }
-                val newSeed = editorSeedFromResult(result)
-                withContext(Dispatchers.IO) { EditorProjectStore.save(context, newSeed) }
-                seed = newSeed
-                selectedSource = SourceSelection(result.source(), result.displayName())
-                cacheBytes = NativeFeatureCache.totalBytes(context)
-                inference = inference.copy(
-                    running = false,
-                    progress = 1f,
-                    stage = "complete",
-                    detail = "${result.ranges().size} inferred ranges from the full recording",
-                    error = null,
-                )
+                val candidate = NativeProjectStore.newQueued(prepared.first, prepared.second, prepared.third)
+                val existing = NativeProjectStore.findMatching(context, candidate)
+                val reusable = useCache && existing?.status == ProjectStatus.READY &&
+                    existing.modelId == FeatureSchema.MODEL_ID
+                if (reusable) {
+                    selectedProjectId = existing.id
+                    creatingNew = false
+                    selectedSource = null
+                    inference = InferenceUiState(
+                        projectId = existing.id,
+                        progress = 1f,
+                        stage = "complete",
+                        detail = "Opened cached inference; no analysis was run",
+                    )
+                    reloadProjects(existing.id)
+                } else if (existing?.status == ProjectStatus.QUEUED ||
+                    existing?.status == ProjectStatus.ANALYZING
+                ) {
+                    selectedProjectId = existing.id
+                    creatingNew = false
+                    selectedSource = null
+                    inference = InferenceUiState(
+                        projectId = existing.id,
+                        running = true,
+                        stage = existing.status.wireName,
+                        detail = "This recording is already in the inference queue",
+                    )
+                    reloadProjects(existing.id)
+                } else {
+                    val queued = candidate.copy(
+                        id = existing?.id ?: candidate.id,
+                        createdAtMs = existing?.createdAtMs ?: candidate.createdAtMs,
+                        cacheMode = if (useCache) NativeFeatureCache.Mode.USE.wireName()
+                            else NativeFeatureCache.Mode.REFRESH.wireName(),
+                    )
+                    withContext(Dispatchers.IO) { NativeProjectStore.save(context, queued) }
+                    selectedProjectId = queued.id
+                    creatingNew = false
+                    selectedSource = null
+                    inference = InferenceUiState(
+                        projectId = queued.id,
+                        running = true,
+                        stage = "queued",
+                        detail = "Waiting for full video + audio inference",
+                    )
+                    reloadProjects(queued.id)
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    ProjectAnalysisService.enqueue(context, queued.id)
+                }
             } catch (error: Exception) {
                 inference = inference.copy(
                     running = false,
@@ -329,118 +391,282 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     detail = "",
                     error = error.message ?: error.javaClass.simpleName,
                 )
-                cacheBytes = NativeFeatureCache.totalBytes(context)
             } finally {
-                runCatching { activity.window.setSustainedPerformanceMode(false) }
-                if (!inference.running) activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                preparingSource = false
             }
         }
     }
 
     DisposableEffect(Unit) {
-        onDispose { cancelled.set(true) }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != ProjectAnalysisService.ACTION_UPDATE) return
+                val projectId = intent.getStringExtra(ProjectAnalysisService.EXTRA_PROJECT_ID) ?: return
+                if (intent.getBooleanExtra(ProjectAnalysisService.EXTRA_PERFORMANCE, false)) {
+                    if (projectId == selectedProjectId) {
+                        inference = inference.copy(
+                            projectId = projectId,
+                            running = true,
+                            performance = AnalysisTypes.PerformanceStats(
+                                intent.getIntExtra(ProjectAnalysisService.EXTRA_GENERATED_FRAMES, 0),
+                                intent.getIntExtra(ProjectAnalysisService.EXTRA_TOTAL_FRAMES, 0),
+                                intent.getIntExtra(ProjectAnalysisService.EXTRA_DECODED_FRAMES, 0),
+                                0.0,
+                                intent.getDoubleExtra(ProjectAnalysisService.EXTRA_ELAPSED_SECONDS, 0.0),
+                                intent.getDoubleExtra(ProjectAnalysisService.EXTRA_FPS, 0.0),
+                                intent.getDoubleExtra(ProjectAnalysisService.EXTRA_REALTIME, 0.0),
+                                intent.getDoubleExtra(ProjectAnalysisService.EXTRA_ETA_SECONDS, 0.0),
+                                0,
+                                0,
+                            ),
+                        )
+                    }
+                    return
+                }
+                if (projectId == selectedProjectId) {
+                    val status = intent.getStringExtra(ProjectAnalysisService.EXTRA_STATUS)
+                        ?.let(ProjectStatus::fromWireName)
+                    inference = inference.copy(
+                        projectId = projectId,
+                        running = status == ProjectStatus.QUEUED || status == ProjectStatus.ANALYZING,
+                        progress = intent.getDoubleExtra(ProjectAnalysisService.EXTRA_PROGRESS, 0.0)
+                            .coerceIn(0.0, 1.0).toFloat(),
+                        stage = intent.getStringExtra(ProjectAnalysisService.EXTRA_STAGE).orEmpty(),
+                        detail = intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL).orEmpty(),
+                        error = if (status == ProjectStatus.ERROR) {
+                            intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL)
+                        } else null,
+                    )
+                }
+                reloadProjects(selectedProjectId)
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(ProjectAnalysisService.ACTION_UPDATE),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        ProjectAnalysisService.resumePending(context)
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
-    val sourceControls: @Composable () -> Unit = {
-        SourceAnalysisCard(
-            currentSeed = seed,
-            selected = selectedSource,
-            state = inference,
-            useCache = useCache,
-            cacheBytes = cacheBytes,
-            onSelect = { sourcePicker.launch(arrayOf("video/*")) },
-            onAnalyze = ::startAnalysis,
-            onCancel = {
-                cancelled.set(true)
-                inference = inference.copy(detail = "Cancelling after the current decoder operation")
+    if (confirmDelete != null) {
+        val deleting = checkNotNull(confirmDelete)
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Delete ${deleting.source.name}?") },
+            text = {
+                Text("This removes its inference, saved editor changes, and generated feature cache from this device.")
             },
-            onUseCache = { useCache = it },
-            onClearCache = {
-                NativeFeatureCache.clearAll(context)
-                cacheBytes = 0
-                inference = InferenceUiState(detail = "Feature cache cleared")
+            confirmButton = {
+                TextButton(onClick = {
+                    val nextId = projects.firstOrNull { it.id != deleting.id }?.id
+                    ProjectAnalysisService.delete(context, deleting.id)
+                    projects = projects.filterNot { it.id == deleting.id }
+                    selectedProjectId = nextId
+                    NativeProjectStore.setSelectedId(context, nextId)
+                    creatingNew = nextId == null
+                    inference = InferenceUiState(detail = "Project deleted")
+                    confirmDelete = null
+                }) { Text("Delete", color = Danger) }
             },
-            onBenchmark = { context.startActivity(Intent(context, MainActivity::class.java)) },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )
     }
 
-    val currentSeed = seed
-    if (currentSeed == null) {
-        EmptyEditorScreen(sourceControls)
+    val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
+    val queueCount = projects.count {
+        it.status == ProjectStatus.QUEUED || it.status == ProjectStatus.ANALYZING
+    }
+    val projectControls: @Composable () -> Unit = {
+        ProjectHeaderBar(
+            projects = projects,
+            selected = selectedProject,
+            creatingNew = creatingNew,
+            queueCount = queueCount,
+            onSelect = { project ->
+                selectedProjectId = project.id
+                NativeProjectStore.setSelectedId(context, project.id)
+                creatingNew = false
+                inference = InferenceUiState(projectId = project.id)
+            },
+            onNew = {
+                creatingNew = true
+                selectedProjectId = null
+                NativeProjectStore.setSelectedId(context, null)
+                selectedSource = null
+                inference = InferenceUiState(detail = "Choose a recording for the new project")
+            },
+            onDelete = { selectedProject?.let { confirmDelete = it } },
+        )
+    }
+
+    if (creatingNew || selectedProject == null) {
+        ProjectShell(projectControls) {
+            NewProjectCard(
+                selected = selectedSource,
+                preparing = preparingSource,
+                state = inference,
+                useCache = useCache,
+                cacheBytes = cacheBytes,
+                queueCount = queueCount,
+                onSelect = { sourcePicker.launch(arrayOf("video/*")) },
+                onQueue = ::queueSelectedSource,
+                onUseCache = { useCache = it },
+                onClearCache = {
+                    NativeFeatureCache.clearAll(context)
+                    cacheBytes = 0
+                    inference = InferenceUiState(detail = "Feature cache cleared")
+                },
+                onBenchmark = { context.startActivity(Intent(context, MainActivity::class.java)) },
+            )
+        }
+    } else if (selectedProject.status != ProjectStatus.READY) {
+        ProjectShell(projectControls) {
+            ProjectInferenceCard(
+                project = selectedProject,
+                state = inference.takeIf { it.projectId == selectedProject.id } ?: InferenceUiState(),
+                onRetry = {
+                    val queued = selectedProject.copy(
+                        status = ProjectStatus.QUEUED,
+                        error = null,
+                        updatedAtMs = System.currentTimeMillis(),
+                    )
+                    NativeProjectStore.save(context, queued)
+                    inference = InferenceUiState(
+                        projectId = queued.id,
+                        running = true,
+                        stage = "queued",
+                        detail = "Waiting for full video + audio inference",
+                    )
+                    reloadProjects(queued.id)
+                    ProjectAnalysisService.enqueue(context, queued.id)
+                },
+            )
+        }
     } else {
-        key(currentSeed.sourceRevision) {
-            val store = remember(currentSeed.sourceRevision) { EditorDraftStore(context, currentSeed) }
-            val restored = remember(currentSeed.sourceRevision) { store.load() }
+        val currentSeed = checkNotNull(selectedProject.editorSeed())
+        key(selectedProject.id, currentSeed.sourceRevision) {
+            val store = remember(selectedProject.id, currentSeed.sourceRevision) {
+                EditorDraftStore(context, currentSeed)
+            }
+            val restored = remember(selectedProject.id, currentSeed.sourceRevision) { store.load() }
             EditorScreen(
                 activity = activity,
                 seed = currentSeed,
                 store = store,
                 initialDraft = restored ?: EditorMath.newDraft(currentSeed),
                 restored = restored != null,
-                analysisRunning = inference.running,
-                sourceControls = sourceControls,
+                analysisRunning = queueCount > 0,
+                sourceControls = projectControls,
             )
         }
     }
 }
 
 @Composable
-private fun SourceAnalysisCard(
-    currentSeed: EditorSeed?,
-    selected: SourceSelection?,
-    state: InferenceUiState,
-    useCache: Boolean,
-    cacheBytes: Long,
-    onSelect: () -> Unit,
-    onAnalyze: () -> Unit,
-    onCancel: () -> Unit,
-    onUseCache: (Boolean) -> Unit,
-    onClearCache: () -> Unit,
-    onBenchmark: () -> Unit,
+private fun ProjectHeaderBar(
+    projects: List<NativeProject>,
+    selected: NativeProject?,
+    creatingNew: Boolean,
+    queueCount: Int,
+    onSelect: (NativeProject) -> Unit,
+    onNew: () -> Unit,
+    onDelete: () -> Unit,
 ) {
-    SectionCard(
-        "SOURCE & INFERENCE",
-        selected?.displayName ?: currentSeed?.displayName ?: "Select a recording to begin",
+    var expanded by remember { mutableStateOf(false) }
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(12.dp),
+        shadowElevation = 1.dp,
     ) {
-        if (currentSeed != null && selected?.uri.toString() != currentSeed.sourceUri) {
-            Text("Currently editing ${currentSeed.displayName}", color = Muted, fontSize = 12.sp)
-        }
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(enabled = !state.running, onClick = onSelect) { Text("Choose video") }
-            Button(enabled = selected != null && !state.running, onClick = onAnalyze) {
-                Text(if (currentSeed == null) "Run full inference" else "Run full inference again")
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("VOLLEYCUT", color = Orange, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (queueCount == 0) "Queue idle" else "$queueCount in queue",
+                    color = if (queueCount == 0) Muted else Green,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
-            if (state.running) {
-                OutlinedButton(onClick = onCancel) { Text("Cancel", color = Danger) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { expanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (creatingNew || selected == null) "New project"
+                            else "${selected.source.name} · ${selected.status.wireName}",
+                            maxLines = 1,
+                        )
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("＋ Start a new project") },
+                            onClick = { expanded = false; onNew() },
+                        )
+                        projects.forEach { project ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(project.source.name, maxLines = 1)
+                                        Text(
+                                            "${project.status.wireName} · ${project.id.removePrefix("project-")}",
+                                            color = Muted,
+                                            fontSize = 11.sp,
+                                        )
+                                    }
+                                },
+                                onClick = { expanded = false; onSelect(project) },
+                            )
+                        }
+                    }
+                }
+                if (selected != null && !creatingNew) {
+                    TextButton(onClick = onDelete) { Text("Delete", color = Danger) }
+                }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Reuse generated features", fontWeight = FontWeight.SemiBold)
-                Text("${formatBytes(cacheBytes)} cached on this device", fontSize = 12.sp, color = Muted)
-            }
-            Switch(enabled = !state.running, checked = useCache, onCheckedChange = onUseCache)
+    }
+}
+
+@Composable
+private fun ProjectInferenceCard(
+    project: NativeProject,
+    state: InferenceUiState,
+    onRetry: () -> Unit,
+) {
+    SectionCard("PROJECT INFERENCE", project.source.name) {
+        Text(
+            when (project.status) {
+                ProjectStatus.QUEUED -> "Queued behind any active project"
+                ProjectStatus.ANALYZING -> "Generating video and audio features in the background"
+                ProjectStatus.ERROR -> "Inference stopped with an error"
+                ProjectStatus.READY -> "Inference ready"
+            },
+            color = Muted,
+        )
+        if (project.status == ProjectStatus.ANALYZING || state.progress > 0f) {
+            LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
         }
-        if (state.running || state.stage.isNotBlank()) {
-            LinearProgressIndicator(
-                progress = { state.progress },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            val stageText = state.stage.ifBlank { "analysis" }.uppercase(Locale.US)
-            Text("$stageText · ${state.detail}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-        }
+        val detail = state.detail.ifBlank { project.error.orEmpty() }
+        if (state.stage.isNotBlank() || detail.isNotBlank()) Text(
+            "${state.stage.ifBlank { project.status.wireName }.uppercase(Locale.US)} · $detail",
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            color = if (project.status == ProjectStatus.ERROR) Danger else Ink,
+        )
         state.performance?.let { stats ->
             Text(
                 String.format(
                     Locale.US,
                     "%,d / %,d source frames · %.1f feature frames/s · %.2fx realtime",
-                    stats.decodedSourceFrames(),
-                    stats.totalFrames(),
-                    stats.framesPerSecond(),
-                    stats.realtimeRatio(),
+                    stats.decodedSourceFrames(), stats.totalFrames(),
+                    stats.framesPerSecond(), stats.realtimeRatio(),
                 ),
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
@@ -452,21 +678,83 @@ private fun SourceAnalysisCard(
                 color = Muted,
             )
         }
+        Text(
+            "Project ${project.id} · ${compactTime((project.media.durationSeconds() * 1_000).toLong())}",
+            color = Muted,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+        if (project.status == ProjectStatus.ERROR) Button(onClick = onRetry) { Text("Retry") }
+    }
+}
+
+@Composable
+private fun NewProjectCard(
+    selected: SourceSelection?,
+    preparing: Boolean,
+    state: InferenceUiState,
+    useCache: Boolean,
+    cacheBytes: Long,
+    queueCount: Int,
+    onSelect: () -> Unit,
+    onQueue: () -> Unit,
+    onUseCache: (Boolean) -> Unit,
+    onClearCache: () -> Unit,
+    onBenchmark: () -> Unit,
+) {
+    SectionCard(
+        "NEW PROJECT",
+        selected?.displayName ?: "Select a recording to create a persistent project",
+    ) {
+        Text(
+            if (queueCount == 0) "Inference starts immediately."
+            else "This waits behind $queueCount ${if (queueCount == 1) "project" else "projects"}; you can edit any ready project meanwhile.",
+            color = Muted,
+            fontSize = 12.sp,
+        )
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(enabled = !preparing, onClick = onSelect) { Text("Choose video") }
+            Button(enabled = selected != null && !preparing, onClick = onQueue) {
+                Text(if (preparing) "Creating…" else "Create & queue")
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Reuse generated features", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (useCache) "Completed inference opens without running anything"
+                    else "Regenerate this source's features for an experiment",
+                    fontSize = 12.sp,
+                    color = Muted,
+                )
+            }
+            Switch(enabled = !preparing, checked = useCache, onCheckedChange = onUseCache)
+        }
+        if (preparing || state.stage.isNotBlank()) {
+            val stageText = state.stage.ifBlank { "analysis" }.uppercase(Locale.US)
+            Text("$stageText · ${state.detail}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        }
         state.error?.let { Text(it, color = Danger, fontSize = 13.sp) }
         Row(
             Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextButton(enabled = !state.running && cacheBytes > 0, onClick = onClearCache) {
-                Text("Clear feature cache")
+            TextButton(enabled = !preparing && queueCount == 0 && cacheBytes > 0, onClick = onClearCache) {
+                Text("Clear ${formatBytes(cacheBytes)} feature cache")
             }
-            TextButton(enabled = !state.running, onClick = onBenchmark) { Text("Benchmark tools") }
+            TextButton(enabled = !preparing, onClick = onBenchmark) { Text("Benchmark tools") }
         }
     }
 }
 
 @Composable
-private fun EmptyEditorScreen(sourceControls: @Composable () -> Unit) {
+private fun ProjectShell(
+    projectControls: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Scaffold(containerColor = Paper) { scaffoldPadding ->
         Column(
             modifier = Modifier
@@ -478,10 +766,8 @@ private fun EmptyEditorScreen(sourceControls: @Composable () -> Unit) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("VOLLEYCUT", color = Orange, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-            Text("Native cut editor", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("Analyze a recording to populate the timeline and editing tools.", color = Muted)
-            sourceControls()
+            projectControls()
+            content()
         }
     }
 }
@@ -723,9 +1009,9 @@ private fun EditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            EditorHeader(seed, totalFinalMs, effectiveIds.size, removedCount, ignoredCutCount)
-
             sourceControls()
+
+            EditorHeader(seed, totalFinalMs, effectiveIds.size, removedCount, ignoredCutCount)
 
             SectionCard("OUTPUT PADDING", "Applied to inferred ranges only") {
                 PaddingControl("Before", draft.beforePaddingMs) { before ->
