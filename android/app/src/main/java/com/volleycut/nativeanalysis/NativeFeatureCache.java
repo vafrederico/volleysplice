@@ -123,12 +123,17 @@ final class NativeFeatureCache {
             int sourceFrameLimit,
             int maximumRows,
             AnalysisTypes.AnalysisWindow analysisWindow,
-            Mode mode
+            Mode mode,
+            Long knownSourceSize,
+            Long knownSourceModified
     ) {
         this.mode = mode;
         this.maximumRows = maximumRows;
         cacheRoot = new File(context.getFilesDir(), CACHE_VERSION);
-        key = buildKey(context, uri, displayName, media, roi, sourceFrameLimit, analysisWindow);
+        key = buildKey(
+                context, uri, displayName, media, roi, sourceFrameLimit, analysisWindow,
+                knownSourceSize, knownSourceModified
+        );
         entryDirectory = new File(cacheRoot, key);
         if (mode == Mode.BYPASS) return;
         if (mode == Mode.REFRESH) deleteRecursively(entryDirectory);
@@ -148,7 +153,27 @@ final class NativeFeatureCache {
     ) {
         return new NativeFeatureCache(
                 context.getApplicationContext(), uri, displayName, media, roi,
-                sourceFrameLimit, maximumRows, analysisWindow, mode
+                sourceFrameLimit, maximumRows, analysisWindow, mode, null, null
+        );
+    }
+
+    /** Opens a retained cache without requiring the original document URI to remain readable. */
+    static NativeFeatureCache openWithSourceMetadata(
+            Context context,
+            Uri uri,
+            String displayName,
+            long sourceSize,
+            long sourceModified,
+            AnalysisTypes.MediaInfo media,
+            AnalysisTypes.Roi roi,
+            int sourceFrameLimit,
+            int maximumRows,
+            AnalysisTypes.AnalysisWindow analysisWindow
+    ) {
+        return new NativeFeatureCache(
+                context.getApplicationContext(), uri, displayName, media, roi,
+                sourceFrameLimit, maximumRows, analysisWindow, Mode.USE,
+                sourceSize, sourceModified
         );
     }
 
@@ -642,19 +667,40 @@ final class NativeFeatureCache {
             int sourceFrameLimit,
             AnalysisTypes.AnalysisWindow requestedWindow
     ) {
-        long sourceSize = -1;
-        long sourceModified = -1;
-        try (Cursor cursor = context.getContentResolver().query(uri, null, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
-                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) sourceSize = cursor.getLong(sizeIndex);
-                int modifiedIndex = cursor.getColumnIndex("last_modified");
-                if (modifiedIndex < 0) modifiedIndex = cursor.getColumnIndex("date_modified");
-                if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) {
-                    sourceModified = cursor.getLong(modifiedIndex);
+        return buildKey(
+                context, uri, displayName, media, roi, sourceFrameLimit, requestedWindow,
+                null, null
+        );
+    }
+
+    private static String buildKey(
+            Context context,
+            Uri uri,
+            String displayName,
+            AnalysisTypes.MediaInfo media,
+            AnalysisTypes.Roi roi,
+            int sourceFrameLimit,
+            AnalysisTypes.AnalysisWindow requestedWindow,
+            Long knownSourceSize,
+            Long knownSourceModified
+    ) {
+        long sourceSize = knownSourceSize == null ? -1 : knownSourceSize;
+        long sourceModified = knownSourceModified == null ? -1 : knownSourceModified;
+        if (knownSourceSize == null || knownSourceModified == null) {
+            try (Cursor cursor = context.getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                    if (knownSourceSize == null && sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                        sourceSize = cursor.getLong(sizeIndex);
+                    }
+                    int modifiedIndex = cursor.getColumnIndex("last_modified");
+                    if (modifiedIndex < 0) modifiedIndex = cursor.getColumnIndex("date_modified");
+                    if (knownSourceModified == null && modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) {
+                        sourceModified = cursor.getLong(modifiedIndex);
+                    }
                 }
-            }
-        } catch (RuntimeException ignored) {}
+            } catch (RuntimeException ignored) {}
+        }
         AnalysisTypes.AnalysisWindow analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
                 requestedWindow, media.durationSeconds()
         );

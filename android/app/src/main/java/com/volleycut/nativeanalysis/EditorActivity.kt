@@ -654,6 +654,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             val restored = remember(selectedProject.id, currentSeed.sourceRevision) { store.load() }
             EditorScreen(
                 activity = activity,
+                project = selectedProject,
                 seed = currentSeed,
                 store = store,
                 initialDraft = restored ?: EditorMath.newDraft(currentSeed),
@@ -1021,6 +1022,7 @@ private fun ProjectShell(
 @Composable
 private fun EditorScreen(
     activity: ComponentActivity,
+    project: NativeProject,
     seed: EditorSeed,
     store: EditorDraftStore,
     initialDraft: EditorDraft,
@@ -1029,6 +1031,7 @@ private fun EditorScreen(
     sourceControls: @Composable (EditorProjectSummary) -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var draft by remember { mutableStateOf(initialDraft) }
     var selectedId by remember { mutableStateOf(initialDraft.cuts.firstOrNull()?.id.orEmpty()) }
     var focusLocked by remember { mutableStateOf(false) }
@@ -1039,6 +1042,7 @@ private fun EditorScreen(
         mutableStateOf(if (restored) "Restored saved edits on this device" else "New on-device draft")
     }
     var exportState by remember { mutableStateOf(ExportUiState()) }
+    var feedbackExporting by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
 
     val player = remember {
@@ -1146,6 +1150,27 @@ private fun EditorScreen(
             }
         }.onSuccess { message = "Saved edit-list JSON" }
             .onFailure { message = it.message ?: "Could not save edit list" }
+    }
+    val feedbackSaveLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) scope.launch {
+            feedbackExporting = true
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val bundle = createModelFeedback(context, project, draft, finalIntervals)
+                    context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
+                        it.write(bundle)
+                    }
+                }
+            }
+            feedbackExporting = false
+            result.onSuccess {
+                message = "Saved model feedback with features, inference, and corrections"
+            }.onFailure {
+                message = it.message ?: "Could not save model feedback"
+            }
+        }
     }
 
     DisposableEffect(player) {
@@ -1556,7 +1581,7 @@ private fun EditorScreen(
                 }
             }
 
-            SectionCard("EXPORT", "Exact intervals · AVC video · AAC audio · MP4") {
+            SectionCard("EXPORT", "MP4 video + training feedback JSON") {
                 Text(
                     "${finalIntervals.size} merged ranges · ${compactTime(totalFinalMs)} output",
                     fontWeight = FontWeight.SemiBold,
@@ -1580,12 +1605,23 @@ private fun EditorScreen(
                         enabled = finalIntervals.isNotEmpty(),
                         onClick = { editListLauncher.launch(editListFilename(seed.displayName)) },
                     ) { Text("Save edit list") }
+                    OutlinedButton(
+                        enabled = !feedbackExporting,
+                        onClick = {
+                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                        },
+                    ) { Text(if (feedbackExporting) "Exporting feedback…" else "Export model feedback") }
                     if (exportState.status == "running") {
                         OutlinedButton(onClick = {
                             context.startService(Intent(context, ExportService::class.java).setAction(ExportService.ACTION_CANCEL))
                         }) { Text("Cancel export", color = Danger) }
                     }
                 }
+                Text(
+                    "Model feedback includes source-aligned audiovisual features, probability traces, initial ranges, and your corrections. It never includes video bytes.",
+                    color = Muted,
+                    fontSize = 11.sp,
+                )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2059,6 +2095,23 @@ private fun exportFilename(sourceName: String): String {
 }
 
 private fun editListFilename(sourceName: String): String = exportFilename(sourceName).removeSuffix(".mp4") + ".edit-list.json"
+
+private fun createModelFeedback(
+    context: Context,
+    project: NativeProject,
+    draft: EditorDraft,
+    intervals: List<FinalCutInterval>,
+): String {
+    val analysis = ModelFeedbackExporter.loadAnalysis(context, project)
+    val fingerprint = ModelFeedbackExporter.sourceFingerprint(context, project)
+    return ModelFeedbackExporter.createBundle(
+        project,
+        draft,
+        intervals,
+        analysis,
+        fingerprint,
+    ).toString() + "\n"
+}
 
 private fun sourceDisplayName(context: Context, uri: Uri): String {
     runCatching {

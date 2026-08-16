@@ -17,6 +17,9 @@ import java.util.List;
 final class ModelRunner {
     record RunResult(
             List<AnalysisTypes.Interval> intervals,
+            float[] rallyProbabilities,
+            float[] serveProbabilities,
+            float[] deadStateProbabilities,
             java.util.Map<String, Double> profileMilliseconds
     ) {}
     private record Head(float[] mean, float[] scale, float[] weights, float bias) {}
@@ -113,7 +116,13 @@ final class ModelRunner {
                 bundle.deadDecoder, bundle.refinement
         );
         profiler.add("dead_state_refinement", System.nanoTime() - operationStarted);
-        return new RunResult(refined, profiler.milliseconds());
+        return new RunResult(
+                refined,
+                rallyProbabilities,
+                serveProbabilities,
+                deadProbabilities,
+                profiler.milliseconds()
+        );
     }
 
     private static Bundle parseBundle(JSONObject json) throws JSONException {

@@ -57,6 +57,9 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
 - manual missed cuts and ignored source sections;
 - atomic, versioned draft persistence and a **Resume native cut editor** entry after process restart;
 - edit-list JSON output and an exact-boundary MP4 export with progress, cancellation, and encoder telemetry.
+- document-saved model-feedback JSON containing source-aligned base features,
+  probability traces, original inference, corrections, ignored intervals, and final export ranges,
+  without embedding raw video bytes.
 
 The player is Media3 ExoPlayer. Export builds a Media3 `Composition` from the final merged ranges after ignored sections are subtracted, then uses Transformer to encode AVC video and AAC audio into MP4. Export runs as an Android `mediaProcessing` foreground service. A custom Media3 muxer factory writes directly to the seekable file descriptor returned for the document selected with Android's system picker, so normal local exports do not need duplicate temporary storage. Streaming-only document providers automatically retain the app-cache-and-copy fallback. Failed, cancelled, or abandoned exports remove their incomplete destination document. The service logs a `VolleyCutExport` JSON record containing the selected `outputWriteMode`, wall time, real-time ratio, frame rate, encoder names, bitrates, output geometry, file size, conversion modes, and failures.
 
