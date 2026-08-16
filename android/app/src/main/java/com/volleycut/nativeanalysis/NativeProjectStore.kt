@@ -150,22 +150,30 @@ internal object NativeProjectStore {
 
     @Synchronized
     fun delete(context: Context, project: NativeProject) {
-        project.editorSeed()?.let { EditorDraftStore(context, it).clear() }
-        val cacheSource = project.featureCacheSource ?: project.source
-        NativeFeatureCache.clearEntryWithSourceMetadata(
-            context,
-            Uri.parse(cacheSource.uri),
-            cacheSource.name,
-            cacheSource.size,
-            cacheSource.lastModified,
-            project.media,
-            project.roi,
-            FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
-            project.analysisWindow,
-        )
+        // Delete authoritative and recovery metadata before optional artifact cleanup. A missing
+        // source or a cache cleanup failure must never leave (or recreate) a visible project.
         val target = projectFile(context, project.id)
         if (target.exists() && !target.delete()) Log.w(TAG, "Could not delete ${target.name}")
         if (selectedId(context) == project.id) setSelectedId(context, null)
+        project.editorSeed()?.let { seed ->
+            EditorProjectStore.clearIfMatches(context, seed)
+            runCatching { EditorDraftStore(context, seed).clear() }
+                .onFailure { Log.w(TAG, "Could not delete editor draft for ${project.id}", it) }
+        }
+        val cacheSource = project.featureCacheSource ?: project.source
+        runCatching {
+            NativeFeatureCache.clearEntryWithSourceMetadata(
+                context,
+                Uri.parse(cacheSource.uri),
+                cacheSource.name,
+                cacheSource.size,
+                cacheSource.lastModified,
+                project.media,
+                project.roi,
+                FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
+                project.analysisWindow,
+            )
+        }.onFailure { Log.w(TAG, "Could not delete feature cache for ${project.id}", it) }
     }
 
     fun sourceAvailable(context: Context, project: NativeProject): Boolean = runCatching {

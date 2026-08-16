@@ -14,6 +14,7 @@ internal object EditorProjectStore {
     private const val TAG = "VolleyCutEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
+    @Synchronized
     fun save(context: Context, seed: EditorSeed) {
         runCatching {
             val directory = File(context.filesDir, "editor-drafts")
@@ -53,6 +54,7 @@ internal object EditorProjectStore {
         }.onFailure { Log.e(TAG, "Could not save editor project", it) }
     }
 
+    @Synchronized
     fun load(context: Context): EditorSeed? = runCatching {
         val target = File(File(context.filesDir, "editor-drafts"), FILE_NAME)
         if (!target.isFile) return null
@@ -92,4 +94,24 @@ internal object EditorProjectStore {
             }
         }
     }.onFailure { Log.w(TAG, "Could not restore editor project", it) }.getOrNull()
+
+    /**
+     * Removes the legacy last-editor recovery record when it points at a project being deleted.
+     * Native project records superseded this file, but older launch and benchmark flows still use
+     * it as a fallback. Leaving it behind causes the deleted last project to be recreated on the
+     * next launch.
+     */
+    @Synchronized
+    fun clearIfMatches(context: Context, seed: EditorSeed) {
+        if (load(context)?.sourceRevision != seed.sourceRevision) return
+        val directory = File(context.filesDir, "editor-drafts")
+        listOf(
+            File(directory, FILE_NAME),
+            File(directory, "$FILE_NAME.tmp"),
+        ).forEach { target ->
+            if (target.exists() && !target.delete()) {
+                Log.w(TAG, "Could not delete ${target.name}")
+            }
+        }
+    }
 }
