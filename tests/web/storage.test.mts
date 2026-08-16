@@ -6,6 +6,7 @@ import {
   getDataRoot,
   getIntakeAnalysesRoot,
   getIntakeWorkspace,
+  getModelFeedbackRoot,
 } from "../../lib/storage.ts";
 
 test("storage defaults to the repository data directory", () => {
@@ -44,4 +45,19 @@ test("storage supports a supplemental intake workspace", () => {
   assert.equal(getIntakeAnalysesRoot(), "/mnt/example/intake/analyses");
   if (previous === undefined) delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
   else process.env.VOLLEYCUT_INTAKE_WORKSPACE = previous;
+});
+
+test("model-feedback imports default under data and support a durable override", () => {
+  const previousData = process.env.VOLLEYCUT_DATA_ROOT;
+  const previousFeedback = process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT;
+  process.env.VOLLEYCUT_DATA_ROOT = "/mnt/example/volleycut";
+  delete process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT;
+  assert.equal(getModelFeedbackRoot(), "/mnt/example/volleycut/model-feedback");
+  process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT = "/mnt/example/feedback";
+  assert.equal(getModelFeedbackRoot(), "/mnt/example/feedback");
+  if (previousData === undefined) delete process.env.VOLLEYCUT_DATA_ROOT;
+  else process.env.VOLLEYCUT_DATA_ROOT = previousData;
+  if (previousFeedback === undefined)
+    delete process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT;
+  else process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT = previousFeedback;
 });

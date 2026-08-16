@@ -1,0 +1,772 @@
+export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
+export const MODEL_FEEDBACK_SCHEMA_VERSION = 1 as const;
+
+const MAX_NUMERIC_VALUES = 25_000_000;
+
+export type FeedbackSource = "production-web" | "android";
+
+export type FeedbackRange = {
+  id: string;
+  start: number;
+  end: number;
+  confidence: number;
+  included?: boolean;
+  agreement?: string;
+};
+
+export type CorrectedFeedbackRange = {
+  id: string;
+  coreStart: number;
+  coreEnd: number;
+  keepStart: number;
+  keepEnd: number;
+  confidence: number;
+  included: boolean;
+  origin: "cached-label" | "manual";
+  agreement?: string;
+};
+
+export type IgnoredFeedbackRange = {
+  id: string;
+  start: number;
+  end: number;
+  reason: string;
+};
+
+export type FinalFeedbackRange = {
+  start: number;
+  end: number;
+  cutIds: string[];
+  joinedGaps: Array<{ start: number; end: number }>;
+};
+
+export type ParsedModelFeedback = {
+  schema: typeof MODEL_FEEDBACK_SCHEMA;
+  schemaVersion: typeof MODEL_FEEDBACK_SCHEMA_VERSION;
+  generatedAt: string;
+  producer: FeedbackSource;
+  source: {
+    projectId: string;
+    analysisId: string;
+    timelineCoordinates: "seconds-from-start-of-source";
+    file: {
+      name: string;
+      sizeBytes: number;
+      lastModifiedMs: number;
+      mimeType: string;
+      sampledFingerprint: string | null;
+    };
+    media: {
+      duration: number;
+      mimeType: string;
+      width: number;
+      height: number;
+      rotation: number;
+      videoCodec: string;
+      videoCodecString: string | null;
+      hasAudio: boolean;
+      audioCodec: string | null;
+      sampleRate: number | null;
+      channels: number | null;
+    };
+    gameWindow: { start: number; end: number };
+    featureRoi: { x: number; y: number; width: number; height: number };
+    runtimeVariant: string;
+  };
+  features: {
+    analysisFps: number;
+    rows: number;
+    columns: number;
+    names: string[];
+    timestamps: Float64Array;
+    values: Float32Array;
+  } | null;
+  initialInference: {
+    modelId: string;
+    components: Array<{ modelId: string; bundleSha256: string }>;
+    ensembleAlgorithmVersion: string;
+    ranges: FeedbackRange[];
+    probabilityModelId: string;
+    timestamps: Float64Array;
+    rallyProbabilities: Float32Array;
+    serveProbabilities: Float32Array;
+    deadStateProbabilities: Float32Array;
+  };
+  corrections: {
+    updatedAt: string;
+    beforePaddingSeconds: number;
+    afterPaddingSeconds: number;
+    joinGapSeconds: number;
+    correctedRanges: CorrectedFeedbackRange[];
+    ignoredIntervals: IgnoredFeedbackRange[];
+    labels: {
+      falsePositives: FeedbackRange[];
+      falseNegatives: FeedbackRange[];
+      confirmedModelRanges: FeedbackRange[];
+      discardedManualRanges: FeedbackRange[];
+    };
+  };
+  finalExportIntervals: FinalFeedbackRange[];
+  warnings: string[];
+};
+
+export class ModelFeedbackValidationError extends Error {}
+
+function fail(field: string, message: string): never {
+  throw new ModelFeedbackValidationError(`${field} ${message}`);
+}
+
+function object(value: unknown, field: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    fail(field, "must be an object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function string(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.length === 0)
+    fail(field, "must be a non-empty string");
+  return value as string;
+}
+
+function text(value: unknown, field: string): string {
+  if (typeof value !== "string") fail(field, "must be a string");
+  return value as string;
+}
+
+function nullableString(value: unknown, field: string): string | null {
+  if (value === null) return null;
+  return string(value, field);
+}
+
+function number(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value))
+    fail(field, "must be finite");
+  return value as number;
+}
+
+function nonNegative(value: unknown, field: string): number {
+  const parsed = number(value, field);
+  if (parsed < 0) fail(field, "must be non-negative");
+  return parsed;
+}
+
+function integer(value: unknown, field: string): number {
+  const parsed = nonNegative(value, field);
+  if (!Number.isSafeInteger(parsed)) fail(field, "must be a safe integer");
+  return parsed;
+}
+
+function boolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") fail(field, "must be a boolean");
+  return value as boolean;
+}
+
+function date(value: unknown, field: string): string {
+  const parsed = string(value, field);
+  if (!Number.isFinite(Date.parse(parsed))) fail(field, "must be an ISO date");
+  return parsed;
+}
+
+function stringArray(value: unknown, field: string): string[] {
+  if (!Array.isArray(value)) fail(field, "must be an array");
+  return value.map((item, index) => string(item, `${field}[${index}]`));
+}
+
+function optionalNumber(value: unknown, field: string): number | null {
+  return value === null ? null : number(value, field);
+}
+
+function decodeBase64(value: string, field: string): Uint8Array {
+  if (
+    value.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    )
+  ) {
+    fail(field, "must be canonical base64");
+  }
+  try {
+    const binary = atob(value);
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    fail(field, "must be valid base64");
+  }
+}
+
+function decodeNumericArray(
+  value: unknown,
+  field: string,
+  dataType: "float32" | "float64",
+  expectedShape?: number[],
+): Float32Array | Float64Array {
+  const payload = object(value, field);
+  if (payload.encoding !== "base64")
+    fail(`${field}.encoding`, "must be base64");
+  if (payload.byteOrder !== "little-endian") {
+    fail(`${field}.byteOrder`, "must be little-endian");
+  }
+  if (payload.dataType !== dataType)
+    fail(`${field}.dataType`, `must be ${dataType}`);
+  if (!Array.isArray(payload.shape) || payload.shape.length === 0) {
+    fail(`${field}.shape`, "must be a non-empty array");
+  }
+  const shape = payload.shape.map((dimension, index) =>
+    integer(dimension, `${field}.shape[${index}]`),
+  );
+  if (
+    expectedShape &&
+    (shape.length !== expectedShape.length ||
+      shape.some((item, index) => item !== expectedShape[index]))
+  ) {
+    fail(`${field}.shape`, `must be [${expectedShape.join(", ")}]`);
+  }
+  const values = shape.reduce((product, dimension) => product * dimension, 1);
+  if (!Number.isSafeInteger(values) || values > MAX_NUMERIC_VALUES) {
+    fail(`${field}.shape`, "contains too many values");
+  }
+  const bytes = decodeBase64(
+    string(payload.data, `${field}.data`),
+    `${field}.data`,
+  );
+  const elementBytes = dataType === "float32" ? 4 : 8;
+  if (bytes.byteLength !== values * elementBytes) {
+    fail(`${field}.data`, "byte length does not match its shape");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (dataType === "float32") {
+    const output = new Float32Array(values);
+    for (let index = 0; index < values; index += 1) {
+      const decoded = view.getFloat32(index * elementBytes, true);
+      if (!Number.isFinite(decoded))
+        fail(`${field}.data`, "must contain only finite values");
+      output[index] = decoded;
+    }
+    return output;
+  }
+  const output = new Float64Array(values);
+  for (let index = 0; index < values; index += 1) {
+    const decoded = view.getFloat64(index * elementBytes, true);
+    if (!Number.isFinite(decoded))
+      fail(`${field}.data`, "must contain only finite values");
+    output[index] = decoded;
+  }
+  return output;
+}
+
+function checkBounds(
+  start: number,
+  end: number,
+  duration: number,
+  field: string,
+): void {
+  if (start < 0 || end <= start || end > duration) {
+    fail(field, `must satisfy 0 <= start < end <= ${duration}`);
+  }
+}
+
+function range(value: unknown, field: string, duration: number): FeedbackRange {
+  const item = object(value, field);
+  const start = number(item.start, `${field}.start`);
+  const end = number(item.end, `${field}.end`);
+  checkBounds(start, end, duration, field);
+  const confidence = number(item.confidence, `${field}.confidence`);
+  if (confidence < 0 || confidence > 1)
+    fail(`${field}.confidence`, "must be between 0 and 1");
+  return {
+    id: string(item.id, `${field}.id`),
+    start,
+    end,
+    confidence,
+    ...(item.included === undefined
+      ? {}
+      : { included: boolean(item.included, `${field}.included`) }),
+    ...(item.agreement === undefined
+      ? {}
+      : { agreement: string(item.agreement, `${field}.agreement`) }),
+  };
+}
+
+function ranges(
+  value: unknown,
+  field: string,
+  duration: number,
+): FeedbackRange[] {
+  if (!Array.isArray(value)) fail(field, "must be an array");
+  return value.map((item, index) =>
+    range(item, `${field}[${index}]`, duration),
+  );
+}
+
+function correctedRange(
+  value: unknown,
+  field: string,
+  duration: number,
+): CorrectedFeedbackRange {
+  const item = object(value, field);
+  const coreStart = number(item.coreStart, `${field}.coreStart`);
+  const coreEnd = number(item.coreEnd, `${field}.coreEnd`);
+  const keepStart = number(item.keepStart, `${field}.keepStart`);
+  const keepEnd = number(item.keepEnd, `${field}.keepEnd`);
+  checkBounds(coreStart, coreEnd, duration, field);
+  checkBounds(keepStart, keepEnd, duration, field);
+  if (keepStart > coreStart || keepEnd < coreEnd)
+    fail(field, "padding must contain its core range");
+  const confidence = number(item.confidence, `${field}.confidence`);
+  if (confidence < 0 || confidence > 1)
+    fail(`${field}.confidence`, "must be between 0 and 1");
+  if (item.origin !== "cached-label" && item.origin !== "manual") {
+    fail(`${field}.origin`, "must be cached-label or manual");
+  }
+  return {
+    id: string(item.id, `${field}.id`),
+    coreStart,
+    coreEnd,
+    keepStart,
+    keepEnd,
+    confidence,
+    included: boolean(item.included, `${field}.included`),
+    origin: item.origin,
+    ...(item.agreement === undefined
+      ? {}
+      : { agreement: string(item.agreement, `${field}.agreement`) }),
+  };
+}
+
+function validateTimestamps(
+  values: Float64Array,
+  duration: number,
+  field: string,
+): void {
+  for (let index = 0; index < values.length; index += 1) {
+    if (
+      values[index] < 0 ||
+      values[index] > duration ||
+      (index > 0 && values[index] <= values[index - 1])
+    ) {
+      fail(field, "must be strictly increasing and inside the source duration");
+    }
+  }
+}
+
+function validateProbabilities(values: Float32Array, field: string): void {
+  if (values.some((value) => value < 0 || value > 1)) {
+    fail(field, "must contain values between 0 and 1");
+  }
+}
+
+function sourceProducer(runtimeVariant: string): FeedbackSource {
+  return runtimeVariant.startsWith("native-android")
+    ? "android"
+    : "production-web";
+}
+
+export function parseModelFeedback(value: unknown): ParsedModelFeedback {
+  const root = object(value, "bundle");
+  if (root.schema !== MODEL_FEEDBACK_SCHEMA) {
+    fail("bundle.schema", `must be ${MODEL_FEEDBACK_SCHEMA}`);
+  }
+  if (root.schemaVersion !== MODEL_FEEDBACK_SCHEMA_VERSION) {
+    fail("bundle.schemaVersion", `must be ${MODEL_FEEDBACK_SCHEMA_VERSION}`);
+  }
+
+  const source = object(root.source, "bundle.source");
+  if (source.timelineCoordinates !== "seconds-from-start-of-source") {
+    fail(
+      "bundle.source.timelineCoordinates",
+      "must be seconds-from-start-of-source",
+    );
+  }
+  if (source.videoBytesIncluded !== false) {
+    fail("bundle.source.videoBytesIncluded", "must be false");
+  }
+  const file = object(source.file, "bundle.source.file");
+  const media = object(source.media, "bundle.source.media");
+  const gameWindow = object(source.gameWindow, "bundle.source.gameWindow");
+  const featureRoi = object(source.featureRoi, "bundle.source.featureRoi");
+  const duration = nonNegative(media.duration, "bundle.source.media.duration");
+  if (duration <= 0) fail("bundle.source.media.duration", "must be positive");
+  const windowStart = nonNegative(
+    gameWindow.start,
+    "bundle.source.gameWindow.start",
+  );
+  const windowEnd = number(gameWindow.end, "bundle.source.gameWindow.end");
+  if (windowEnd <= windowStart || windowEnd > duration) {
+    fail("bundle.source.gameWindow", "must be inside the source duration");
+  }
+  const roi = {
+    x: number(featureRoi.x, "bundle.source.featureRoi.x"),
+    y: number(featureRoi.y, "bundle.source.featureRoi.y"),
+    width: number(featureRoi.width, "bundle.source.featureRoi.width"),
+    height: number(featureRoi.height, "bundle.source.featureRoi.height"),
+  };
+  if (
+    roi.x < 0 ||
+    roi.y < 0 ||
+    roi.width <= 0 ||
+    roi.height <= 0 ||
+    roi.x + roi.width > 1.000001 ||
+    roi.y + roi.height > 1.000001
+  ) {
+    fail("bundle.source.featureRoi", "must be a normalized rectangle");
+  }
+  const runtimeVariant = string(
+    source.runtimeVariant,
+    "bundle.source.runtimeVariant",
+  );
+
+  let features: ParsedModelFeedback["features"] = null;
+  if (root.features !== null) {
+    const feature = object(root.features, "bundle.features");
+    const rows = integer(feature.rows, "bundle.features.rows");
+    const columns = integer(feature.columns, "bundle.features.columns");
+    const names = stringArray(feature.names, "bundle.features.names");
+    if (columns !== names.length)
+      fail("bundle.features.names", "length must match columns");
+    features = {
+      analysisFps: nonNegative(
+        feature.analysisFps,
+        "bundle.features.analysisFps",
+      ),
+      rows,
+      columns,
+      names,
+      timestamps: decodeNumericArray(
+        feature.timestamps,
+        "bundle.features.timestamps",
+        "float64",
+        [rows],
+      ) as Float64Array,
+      values: decodeNumericArray(
+        feature.values,
+        "bundle.features.values",
+        "float32",
+        [rows, columns],
+      ) as Float32Array,
+    };
+    validateTimestamps(
+      features.timestamps,
+      duration,
+      "bundle.features.timestamps",
+    );
+  }
+
+  const inference = object(root.initialInference, "bundle.initialInference");
+  const inferenceTimesPayload = object(
+    inference.timestamps,
+    "bundle.initialInference.timestamps",
+  );
+  if (
+    !Array.isArray(inferenceTimesPayload.shape) ||
+    inferenceTimesPayload.shape.length !== 1
+  ) {
+    fail("bundle.initialInference.timestamps.shape", "must have one dimension");
+  }
+  const inferenceRows = integer(
+    inferenceTimesPayload.shape[0],
+    "bundle.initialInference.timestamps.shape[0]",
+  );
+  const probabilities = object(
+    inference.probabilities,
+    "bundle.initialInference.probabilities",
+  );
+  const componentsValue = inference.components;
+  if (!Array.isArray(componentsValue))
+    fail("bundle.initialInference.components", "must be an array");
+  const components = componentsValue.map((component, index) => {
+    const item = object(
+      component,
+      `bundle.initialInference.components[${index}]`,
+    );
+    return {
+      modelId: string(
+        item.modelId,
+        `bundle.initialInference.components[${index}].modelId`,
+      ),
+      bundleSha256: string(
+        item.bundleSha256,
+        `bundle.initialInference.components[${index}].bundleSha256`,
+      ),
+    };
+  });
+  const inferenceTimestamps = decodeNumericArray(
+    inference.timestamps,
+    "bundle.initialInference.timestamps",
+    "float64",
+    [inferenceRows],
+  ) as Float64Array;
+  const rallyProbabilities = decodeNumericArray(
+    probabilities.rally,
+    "bundle.initialInference.probabilities.rally",
+    "float32",
+    [inferenceRows],
+  ) as Float32Array;
+  const serveProbabilities = decodeNumericArray(
+    probabilities.serve,
+    "bundle.initialInference.probabilities.serve",
+    "float32",
+    [inferenceRows],
+  ) as Float32Array;
+  const deadStateProbabilities = decodeNumericArray(
+    probabilities.deadState,
+    "bundle.initialInference.probabilities.deadState",
+    "float32",
+    [inferenceRows],
+  ) as Float32Array;
+  validateTimestamps(
+    inferenceTimestamps,
+    duration,
+    "bundle.initialInference.timestamps",
+  );
+  validateProbabilities(
+    rallyProbabilities,
+    "bundle.initialInference.probabilities.rally",
+  );
+  validateProbabilities(
+    serveProbabilities,
+    "bundle.initialInference.probabilities.serve",
+  );
+  validateProbabilities(
+    deadStateProbabilities,
+    "bundle.initialInference.probabilities.deadState",
+  );
+
+  const corrections = object(root.corrections, "bundle.corrections");
+  const correctedValue = corrections.correctedRanges;
+  if (!Array.isArray(correctedValue))
+    fail("bundle.corrections.correctedRanges", "must be an array");
+  const ignoredValue = corrections.ignoredIntervals;
+  if (!Array.isArray(ignoredValue))
+    fail("bundle.corrections.ignoredIntervals", "must be an array");
+  const labels = object(corrections.labels, "bundle.corrections.labels");
+  const finalValue = root.finalExportIntervals;
+  if (!Array.isArray(finalValue))
+    fail("bundle.finalExportIntervals", "must be an array");
+
+  return {
+    schema: MODEL_FEEDBACK_SCHEMA,
+    schemaVersion: MODEL_FEEDBACK_SCHEMA_VERSION,
+    generatedAt: date(root.generatedAt, "bundle.generatedAt"),
+    producer: sourceProducer(runtimeVariant),
+    source: {
+      projectId: string(source.projectId, "bundle.source.projectId"),
+      analysisId: string(source.analysisId, "bundle.source.analysisId"),
+      timelineCoordinates: "seconds-from-start-of-source",
+      file: {
+        name: string(file.name, "bundle.source.file.name"),
+        sizeBytes: integer(file.sizeBytes, "bundle.source.file.sizeBytes"),
+        lastModifiedMs: nonNegative(
+          file.lastModifiedMs,
+          "bundle.source.file.lastModifiedMs",
+        ),
+        mimeType: text(file.mimeType, "bundle.source.file.mimeType"),
+        sampledFingerprint: (() => {
+          if (file.sampledFingerprint === null) return null;
+          const fingerprint = string(
+            file.sampledFingerprint,
+            "bundle.source.file.sampledFingerprint",
+          );
+          if (!/^sampled-sha256-v1:[0-9a-f]{64}$/.test(fingerprint)) {
+            fail(
+              "bundle.source.file.sampledFingerprint",
+              "must use sampled-sha256-v1",
+            );
+          }
+          return fingerprint;
+        })(),
+      },
+      media: {
+        duration,
+        mimeType: string(media.mimeType, "bundle.source.media.mimeType"),
+        width: integer(media.width, "bundle.source.media.width"),
+        height: integer(media.height, "bundle.source.media.height"),
+        rotation: number(media.rotation, "bundle.source.media.rotation"),
+        videoCodec: string(media.videoCodec, "bundle.source.media.videoCodec"),
+        videoCodecString: nullableString(
+          media.videoCodecString,
+          "bundle.source.media.videoCodecString",
+        ),
+        hasAudio: boolean(media.hasAudio, "bundle.source.media.hasAudio"),
+        audioCodec: nullableString(
+          media.audioCodec,
+          "bundle.source.media.audioCodec",
+        ),
+        sampleRate: optionalNumber(
+          media.sampleRate,
+          "bundle.source.media.sampleRate",
+        ),
+        channels: optionalNumber(
+          media.channels,
+          "bundle.source.media.channels",
+        ),
+      },
+      gameWindow: { start: windowStart, end: windowEnd },
+      featureRoi: roi,
+      runtimeVariant,
+    },
+    features,
+    initialInference: {
+      modelId: string(inference.modelId, "bundle.initialInference.modelId"),
+      components,
+      ensembleAlgorithmVersion: string(
+        inference.ensembleAlgorithmVersion,
+        "bundle.initialInference.ensembleAlgorithmVersion",
+      ),
+      ranges: ranges(
+        inference.ranges,
+        "bundle.initialInference.ranges",
+        duration,
+      ),
+      probabilityModelId: string(
+        inference.probabilityModelId,
+        "bundle.initialInference.probabilityModelId",
+      ),
+      timestamps: inferenceTimestamps,
+      rallyProbabilities,
+      serveProbabilities,
+      deadStateProbabilities,
+    },
+    corrections: {
+      updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),
+      beforePaddingSeconds: nonNegative(
+        corrections.beforePaddingSeconds,
+        "bundle.corrections.beforePaddingSeconds",
+      ),
+      afterPaddingSeconds: nonNegative(
+        corrections.afterPaddingSeconds,
+        "bundle.corrections.afterPaddingSeconds",
+      ),
+      joinGapSeconds: nonNegative(
+        corrections.joinGapSeconds,
+        "bundle.corrections.joinGapSeconds",
+      ),
+      correctedRanges: correctedValue.map((item, index) =>
+        correctedRange(
+          item,
+          `bundle.corrections.correctedRanges[${index}]`,
+          duration,
+        ),
+      ),
+      ignoredIntervals: ignoredValue.map((item, index) => {
+        const ignored = object(
+          item,
+          `bundle.corrections.ignoredIntervals[${index}]`,
+        );
+        const start = number(
+          ignored.start,
+          `bundle.corrections.ignoredIntervals[${index}].start`,
+        );
+        const end = number(
+          ignored.end,
+          `bundle.corrections.ignoredIntervals[${index}].end`,
+        );
+        checkBounds(
+          start,
+          end,
+          duration,
+          `bundle.corrections.ignoredIntervals[${index}]`,
+        );
+        return {
+          id: string(
+            ignored.id,
+            `bundle.corrections.ignoredIntervals[${index}].id`,
+          ),
+          start,
+          end,
+          reason: string(
+            ignored.reason,
+            `bundle.corrections.ignoredIntervals[${index}].reason`,
+          ),
+        };
+      }),
+      labels: {
+        falsePositives: ranges(
+          labels.falsePositives,
+          "bundle.corrections.labels.falsePositives",
+          duration,
+        ),
+        falseNegatives: ranges(
+          labels.falseNegatives,
+          "bundle.corrections.labels.falseNegatives",
+          duration,
+        ),
+        confirmedModelRanges: ranges(
+          labels.confirmedModelRanges,
+          "bundle.corrections.labels.confirmedModelRanges",
+          duration,
+        ),
+        discardedManualRanges: ranges(
+          labels.discardedManualRanges,
+          "bundle.corrections.labels.discardedManualRanges",
+          duration,
+        ),
+      },
+    },
+    finalExportIntervals: finalValue.map((item, index) => {
+      const interval = object(item, `bundle.finalExportIntervals[${index}]`);
+      const start = number(
+        interval.start,
+        `bundle.finalExportIntervals[${index}].start`,
+      );
+      const end = number(
+        interval.end,
+        `bundle.finalExportIntervals[${index}].end`,
+      );
+      checkBounds(
+        start,
+        end,
+        duration,
+        `bundle.finalExportIntervals[${index}]`,
+      );
+      const gapValue = interval.joinedGaps ?? [];
+      if (!Array.isArray(gapValue)) {
+        fail(
+          `bundle.finalExportIntervals[${index}].joinedGaps`,
+          "must be an array",
+        );
+      }
+      return {
+        start,
+        end,
+        cutIds: stringArray(
+          interval.cutIds,
+          `bundle.finalExportIntervals[${index}].cutIds`,
+        ),
+        joinedGaps: gapValue.map((gap, gapIndex) => {
+          const joined = object(
+            gap,
+            `bundle.finalExportIntervals[${index}].joinedGaps[${gapIndex}]`,
+          );
+          const gapStart = number(
+            joined.start,
+            `bundle.finalExportIntervals[${index}].joinedGaps[${gapIndex}].start`,
+          );
+          const gapEnd = number(
+            joined.end,
+            `bundle.finalExportIntervals[${index}].joinedGaps[${gapIndex}].end`,
+          );
+          if (gapStart < start || gapEnd > end || gapEnd <= gapStart) {
+            fail(
+              `bundle.finalExportIntervals[${index}].joinedGaps[${gapIndex}]`,
+              "must be inside its export interval",
+            );
+          }
+          return { start: gapStart, end: gapEnd };
+        }),
+      };
+    }),
+    warnings: stringArray(root.warnings, "bundle.warnings"),
+  };
+}
+
+export function parseModelFeedbackText(text: string): ParsedModelFeedback {
+  let value: unknown;
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch {
+    throw new ModelFeedbackValidationError(
+      "The selected file is not valid JSON",
+    );
+  }
+  return parseModelFeedback(value);
+}

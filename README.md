@@ -156,6 +156,23 @@ The review screen provides:
 - Per-model core, padded, and Padded P/Core R F1 metrics plus export-duration cost.
 - Explicit warnings for missing audio, fallback court regions, low camera stability, and zero detected rallies.
 
+Open `/model-feedback` (or use **Import model feedback** in the LAB header) to inspect the
+`*.model-feedback.json` files exported by either the production web editor or the native Android
+editor. The importer validates and decodes source-aligned feature matrices and probability traces,
+then shows initial ranges, correction labels, ignored intervals, and final exports on one clock.
+
+The feedback JSON can be saved to `$VOLLEYCUT_MODEL_FEEDBACK_ROOT` without linking a source file
+and reopened from the **NAS feedback library** picker at the top of the page. A source is optional
+and can be linked in two ways:
+
+- **Local only** selects a video through the browser. The app checks its size and, when Web Crypto
+  is available, its sampled fingerprint. The object URL disappears when the tab reloads.
+- **Server path** accepts an optional absolute path readable by the dev server. When supplied, the
+  server verifies size and the sampled fingerprint, stores the bundle and link under
+  `$VOLLEYCUT_MODEL_FEEDBACK_ROOT` (default `$VOLLEYCUT_DATA_ROOT/model-feedback`), and exposes the
+  source through an opaque byte-range media URL. The video itself is never copied into the import
+  store.
+
 Generated videos are served only through an allowlisted local media route. Original source recordings are never exposed by that route.
 
 ## What the analyzer currently does

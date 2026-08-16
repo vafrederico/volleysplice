@@ -31,3 +31,10 @@ export function getIntakeWorkspace(): string {
 export function getIntakeAnalysesRoot(): string {
   return path.join(getIntakeWorkspace(), "analyses");
 }
+
+export function getModelFeedbackRoot(): string {
+  const configured = process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT?.trim();
+  return configured
+    ? path.resolve(configured)
+    : path.join(getDataRoot(), "model-feedback");
+}

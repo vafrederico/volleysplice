@@ -859,6 +859,7 @@ export function ReviewEditor({
       <header className="topbar">
         <Brand className="brand" label="LAB" priority />
         <div className="top-actions">
+          <Link href="/model-feedback">Import model feedback →</Link>
           <Link href="/on-device">Try local browser cut →</Link>
           <Link href="/edit">Open cut editor →</Link>
           <Link href="/label">Open labeling station →</Link>

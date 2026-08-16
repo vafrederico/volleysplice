@@ -20,6 +20,7 @@ __pycache__/
 /data/features/
 /data/models/
 /data/reports/
+/data/model-feedback/
 
 # Logs and editor files
 *.log
