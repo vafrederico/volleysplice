@@ -407,6 +407,24 @@ final class NativeFeatureCache {
         deleteRecursively(new File(new File(context.getFilesDir(), CACHE_VERSION), key));
     }
 
+    static void clearEntryWithSourceMetadata(
+            Context context,
+            Uri uri,
+            String displayName,
+            long sourceSize,
+            long sourceModified,
+            AnalysisTypes.MediaInfo media,
+            AnalysisTypes.Roi roi,
+            int sourceFrameLimit,
+            AnalysisTypes.AnalysisWindow analysisWindow
+    ) {
+        String key = buildKey(
+                context.getApplicationContext(), uri, displayName, media, roi, sourceFrameLimit,
+                analysisWindow, sourceSize, sourceModified
+        );
+        deleteRecursively(new File(new File(context.getFilesDir(), CACHE_VERSION), key));
+    }
+
     static long totalBytes(Context context) {
         return directoryBytes(new File(context.getFilesDir(), CACHE_VERSION));
     }

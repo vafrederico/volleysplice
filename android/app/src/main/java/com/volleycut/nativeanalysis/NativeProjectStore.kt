@@ -33,6 +33,8 @@ internal data class ProjectSource(
 internal data class NativeProject(
     val id: String,
     val source: ProjectSource,
+    /** Original source identity retained only while a re-linked project still uses its old cache. */
+    val featureCacheSource: ProjectSource? = null,
     val media: AnalysisTypes.MediaInfo,
     val analysisWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
     val roi: AnalysisTypes.Roi,
@@ -124,6 +126,7 @@ internal object NativeProjectStore {
         val current = get(context, id) ?: return null
         return current.copy(
             source = current.source.copy(name = result.displayName()),
+            featureCacheSource = null,
             media = result.media(),
             roi = result.roi(),
             status = ProjectStatus.READY,
@@ -148,10 +151,13 @@ internal object NativeProjectStore {
     @Synchronized
     fun delete(context: Context, project: NativeProject) {
         project.editorSeed()?.let { EditorDraftStore(context, it).clear() }
-        NativeFeatureCache.clearEntry(
+        val cacheSource = project.featureCacheSource ?: project.source
+        NativeFeatureCache.clearEntryWithSourceMetadata(
             context,
-            Uri.parse(project.source.uri),
-            project.source.name,
+            Uri.parse(cacheSource.uri),
+            cacheSource.name,
+            cacheSource.size,
+            cacheSource.lastModified,
             project.media,
             project.roi,
             FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
@@ -160,6 +166,58 @@ internal object NativeProjectStore {
         val target = projectFile(context, project.id)
         if (target.exists() && !target.delete()) Log.w(TAG, "Could not delete ${target.name}")
         if (selectedId(context) == project.id) setSelectedId(context, null)
+    }
+
+    fun sourceAvailable(context: Context, project: NativeProject): Boolean = runCatching {
+        context.contentResolver.openFileDescriptor(Uri.parse(project.source.uri), "r")?.use {
+            it.fileDescriptor.valid()
+        } == true
+    }.getOrDefault(false)
+
+    internal fun replacementMismatch(
+        project: NativeProject,
+        replacement: ProjectSource,
+        replacementMedia: AnalysisTypes.MediaInfo,
+    ): String? = when {
+        project.source.size >= 0 && replacement.size >= 0 &&
+            project.source.size != replacement.size ->
+            "That file has a different byte size from the original recording."
+        kotlin.math.abs(project.media.durationSeconds() - replacementMedia.durationSeconds()) > .05 ->
+            "That file has a different duration from the original recording."
+        project.media.width() != replacementMedia.width() ||
+            project.media.height() != replacementMedia.height() ||
+            project.media.rotation() != replacementMedia.rotation() ->
+            "That file has different video dimensions or rotation from the original recording."
+        project.media.videoMime() != replacementMedia.videoMime() ->
+            "That file uses a different video codec from the original recording."
+        project.media.audioMime() != replacementMedia.audioMime() ->
+            "That file has a different audio track from the original recording."
+        else -> null
+    }
+
+    @Synchronized
+    fun relink(
+        context: Context,
+        project: NativeProject,
+        replacement: ProjectSource,
+        replacementMedia: AnalysisTypes.MediaInfo,
+    ): NativeProject {
+        replacementMismatch(project, replacement, replacementMedia)?.let {
+            throw IllegalArgumentException(it)
+        }
+        val oldSeed = project.editorSeed()
+        val updated = project.copy(
+            source = replacement,
+            featureCacheSource = project.featureCacheSource ?: project.source,
+            updatedAtMs = System.currentTimeMillis(),
+        )
+        val newSeed = updated.editorSeed()
+        if (oldSeed != null && newSeed != null) {
+            EditorDraftStore.relink(context, oldSeed, newSeed)
+            EditorProjectStore.save(context, newSeed)
+        }
+        save(context, updated)
+        return updated
     }
 
     fun selectedId(context: Context): String? =
@@ -325,6 +383,7 @@ internal object NativeProjectStore {
             put("lastModified", project.source.lastModified)
             put("mimeType", project.source.mimeType)
         })
+        put("featureCacheSource", project.featureCacheSource?.let(::encodeSource) ?: JSONObject.NULL)
         put("media", JSONObject().apply {
             put("durationSeconds", project.media.durationSeconds())
             put("width", project.media.width())
@@ -363,6 +422,7 @@ internal object NativeProjectStore {
     internal fun decode(json: JSONObject): NativeProject? {
         if (json.optInt("version") != VERSION) return null
         val sourceJson = json.getJSONObject("source")
+        val featureCacheSource = json.optJSONObject("featureCacheSource")?.let(::decodeSource)
         val mediaJson = json.getJSONObject("media")
         val roiJson = json.getJSONObject("roi")
         val rangesJson = json.optJSONArray("ranges") ?: JSONArray()
@@ -382,6 +442,7 @@ internal object NativeProjectStore {
                 lastModified = sourceJson.optLong("lastModified", -1),
                 mimeType = sourceJson.optString("mimeType"),
             ),
+            featureCacheSource = featureCacheSource,
             media = AnalysisTypes.MediaInfo(
                 mediaJson.getDouble("durationSeconds"),
                 mediaJson.optInt("width"),
@@ -417,7 +478,9 @@ internal object NativeProjectStore {
             updatedAtMs = json.getLong("updatedAtMs"),
         )
         return project.takeIf {
-            it.id.isNotBlank() && it.source.uri.isNotBlank() && it.media.durationSeconds() > 0 &&
+            it.id.isNotBlank() && it.source.uri.isNotBlank() &&
+                (it.featureCacheSource == null || it.featureCacheSource.uri.isNotBlank()) &&
+                it.media.durationSeconds() > 0 &&
                 it.analysisWindow.end() - it.analysisWindow.start() >=
                     AnalysisTypes.MIN_ANALYSIS_WINDOW_SECONDS &&
                 it.ranges.all { range ->
@@ -466,6 +529,22 @@ internal object NativeProjectStore {
 
     private fun projectFile(context: Context, id: String) =
         File(directory(context), "${id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.json")
+
+    private fun encodeSource(source: ProjectSource) = JSONObject().apply {
+        put("uri", source.uri)
+        put("name", source.name)
+        put("size", source.size)
+        put("lastModified", source.lastModified)
+        put("mimeType", source.mimeType)
+    }
+
+    private fun decodeSource(json: JSONObject) = ProjectSource(
+        uri = json.getString("uri"),
+        name = json.getString("name"),
+        size = json.optLong("size", -1),
+        lastModified = json.optLong("lastModified", -1),
+        mimeType = json.optString("mimeType"),
+    )
 
     private fun Cursor.string(column: String): String? {
         val index = getColumnIndex(column)

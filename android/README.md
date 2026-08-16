@@ -56,6 +56,8 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
 - keep/remove review, mandatory single-model disagreement review, confidence review, 0.1/1 second nudges, and per-range reset;
 - manual missed cuts and ignored source sections;
 - atomic, versioned draft persistence and a **Resume native cut editor** entry after process restart;
+- source-availability detection and validated video re-linking that preserves inference, feature
+  cache identity, and saved editor corrections after a recording is moved or its document grant expires;
 - edit-list JSON output and an exact-boundary MP4 export with progress, cancellation, and encoder telemetry.
 - document-saved model-feedback JSON containing source-aligned base features,
   probability traces, original inference, corrections, ignored intervals, and final export ranges,

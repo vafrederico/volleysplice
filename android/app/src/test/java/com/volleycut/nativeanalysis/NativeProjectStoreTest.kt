@@ -161,4 +161,65 @@ class NativeProjectStoreTest {
 
         assertEquals(ProjectStatus.QUEUED, NativeProjectStore.normalizeStored(project).status)
     }
+
+    @Test
+    fun replacementMatchingStableMediaIdentityIsAcceptedAfterMoveOrRename() {
+        val project = readyProject()
+        val replacement = source.copy(
+            uri = "content://new-location/renamed.mp4",
+            name = "renamed.mp4",
+            lastModified = source.lastModified + 500_000,
+        )
+
+        assertEquals(
+            null,
+            NativeProjectStore.replacementMismatch(project, replacement, project.media),
+        )
+    }
+
+    @Test
+    fun replacementWithDifferentContentIdentityIsRejected() {
+        val project = readyProject()
+
+        assertEquals(
+            "That file has a different byte size from the original recording.",
+            NativeProjectStore.replacementMismatch(
+                project,
+                source.copy(size = source.size + 1),
+                project.media,
+            ),
+        )
+        assertEquals(
+            "That file has a different duration from the original recording.",
+            NativeProjectStore.replacementMismatch(
+                project,
+                source,
+                AnalysisTypes.MediaInfo(13.0, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"),
+            ),
+        )
+    }
+
+    @Test
+    fun retainedCacheSourceRoundTripsAfterRelink() {
+        val project = readyProject().copy(
+            source = source.copy(uri = "content://new-location/match.mp4"),
+            featureCacheSource = source,
+        )
+
+        val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(project)))
+
+        assertEquals(project.source, restored.source)
+        assertEquals(source, restored.featureCacheSource)
+    }
+
+    private fun readyProject() = NativeProject(
+        id = NativeProjectStore.projectId(source, 12.5),
+        source = source,
+        media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"),
+        roi = AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default"),
+        status = ProjectStatus.READY,
+        ranges = listOf(SeedRange(1_000, 4_500, .82f, ProductionEnsemble.BOTH_MODELS)),
+        createdAtMs = 100,
+        updatedAtMs = 200,
+    )
 }

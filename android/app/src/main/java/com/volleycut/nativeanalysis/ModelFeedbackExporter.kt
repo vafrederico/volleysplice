@@ -33,12 +33,13 @@ internal object ModelFeedbackExporter {
             project.analysisWindow.start(),
             project.analysisWindow.end(),
         )
+        val cacheSource = project.featureCacheSource ?: project.source
         val cache = NativeFeatureCache.openWithSourceMetadata(
             context,
-            Uri.parse(project.source.uri),
-            project.source.name,
-            project.source.size,
-            project.source.lastModified,
+            Uri.parse(cacheSource.uri),
+            cacheSource.name,
+            cacheSource.size,
+            cacheSource.lastModified,
             project.media,
             project.roi,
             FeatureSchema.FULL_SOURCE_FRAME_LIMIT,

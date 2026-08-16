@@ -148,5 +148,15 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
     private fun JSONObject.optNullableString(key: String): String? =
         if (!has(key) || isNull(key)) null else getString(key)
 
-    companion object { private const val TAG = "VolleyCutEditor" }
+    companion object {
+        private const val TAG = "VolleyCutEditor"
+
+        fun relink(context: Context, oldSeed: EditorSeed, newSeed: EditorSeed) {
+            val oldDraft = EditorDraftStore(context, oldSeed).load() ?: return
+            EditorDraftStore(context, newSeed).save(oldDraft.copy(
+                sourceRevision = newSeed.sourceRevision,
+                updatedAtMs = System.currentTimeMillis(),
+            ))
+        }
+    }
 }

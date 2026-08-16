@@ -321,6 +321,15 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
+    val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
+    var sourceAvailable by remember(selectedProject?.id, selectedProject?.source?.uri) {
+        mutableStateOf<Boolean?>(null)
+    }
+    var relinkTargetId by remember { mutableStateOf<String?>(null) }
+    var relinkingSource by remember { mutableStateOf(false) }
+    var relinkMessage by remember { mutableStateOf<String?>(null) }
+    var relinkFailed by remember { mutableStateOf(false) }
+    var sourceCheckNonce by remember { mutableLongStateOf(0L) }
 
     fun reloadProjects(
         preferredId: String? = selectedProjectId,
@@ -388,9 +397,67 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             }
         }
     }
+    val relinkPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val target = relinkTargetId?.let { id -> projects.firstOrNull { it.id == id } }
+        relinkTargetId = null
+        if (uri != null && target != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            relinkingSource = true
+            relinkMessage = "Validating replacement recording…"
+            relinkFailed = false
+            scope.launch {
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val engine = AnalysisEngine(context)
+                        val media = engine.probe(uri)
+                        val source = NativeProjectStore.source(
+                            context,
+                            uri,
+                            sourceDisplayName(context, uri),
+                        )
+                        NativeProjectStore.relink(context, target, source, media)
+                    }
+                }
+                relinkingSource = false
+                result.onSuccess { updated ->
+                    projects = NativeProjectStore.list(context)
+                    selectedProjectId = updated.id
+                    sourceAvailable = true
+                    relinkMessage = "Re-linked ${updated.source.name}; saved edits and inference were preserved."
+                    relinkFailed = false
+                }.onFailure { error ->
+                    sourceAvailable = false
+                    relinkMessage = error.message ?: "Could not re-link that recording."
+                    relinkFailed = true
+                }
+            }
+        }
+    }
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { }
+
+    DisposableEffect(activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) sourceCheckNonce++
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(selectedProject?.id, selectedProject?.source?.uri, sourceCheckNonce) {
+        val project = selectedProject
+        sourceAvailable = if (project == null) null else withContext(Dispatchers.IO) {
+            NativeProjectStore.sourceAvailable(context, project)
+        }
+    }
 
     fun queueSelectedSource() {
         val selected = selectedSource ?: return
@@ -557,7 +624,6 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         )
     }
 
-    val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
     val queueCount = projects.count {
         it.status == ProjectStatus.QUEUED || it.status == ProjectStatus.ANALYZING
     }
@@ -573,6 +639,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 NativeProjectStore.setSelectedId(context, project.id)
                 creatingNew = false
                 inference = InferenceUiState(projectId = project.id)
+                relinkMessage = null
+                relinkFailed = false
             },
             onNew = {
                 creatingNew = true
@@ -582,6 +650,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 gameStartMs = 0
                 gameEndMs = 0
                 inference = InferenceUiState(detail = "Choose a recording for the new project")
+                relinkMessage = null
+                relinkFailed = false
             },
             onDelete = { selectedProject?.let { confirmDelete = it } },
         )
@@ -627,6 +697,13 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             ProjectInferenceCard(
                 project = selectedProject,
                 state = inference.takeIf { it.projectId == selectedProject.id } ?: InferenceUiState(),
+                sourceAvailable = sourceAvailable,
+                relinkingSource = relinkingSource,
+                relinkMessage = relinkMessage,
+                onRelink = {
+                    relinkTargetId = selectedProject.id
+                    relinkPicker.launch(arrayOf("video/*"))
+                },
                 onRetry = {
                     val queued = selectedProject.copy(
                         status = ProjectStatus.QUEUED,
@@ -660,6 +737,14 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 initialDraft = restored ?: EditorMath.newDraft(currentSeed),
                 restored = restored != null,
                 analysisRunning = queueCount > 0,
+                sourceAvailable = sourceAvailable,
+                relinkingSource = relinkingSource,
+                relinkMessage = relinkMessage,
+                relinkFailed = relinkFailed,
+                onRelink = {
+                    relinkTargetId = selectedProject.id
+                    relinkPicker.launch(arrayOf("video/*"))
+                },
                 sourceControls = projectControls,
             )
         }
@@ -759,6 +844,10 @@ private fun ProjectHeaderBar(
 private fun ProjectInferenceCard(
     project: NativeProject,
     state: InferenceUiState,
+    sourceAvailable: Boolean?,
+    relinkingSource: Boolean,
+    relinkMessage: String?,
+    onRelink: () -> Unit,
     onRetry: () -> Unit,
 ) {
     SectionCard("PROJECT INFERENCE", project.source.name) {
@@ -805,7 +894,20 @@ private fun ProjectInferenceCard(
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
         )
-        if (project.status == ProjectStatus.ERROR) Button(onClick = onRetry) { Text("Retry") }
+        if (sourceAvailable == false) {
+            Text(
+                relinkMessage
+                    ?: "The saved video location is unavailable. Re-link the original recording before retrying inference.",
+                color = Danger,
+                fontSize = 12.sp,
+            )
+            Button(enabled = !relinkingSource, onClick = onRelink) {
+                Text(if (relinkingSource) "Validating…" else "Re-link video")
+            }
+        }
+        if (project.status == ProjectStatus.ERROR) {
+            Button(enabled = sourceAvailable != false, onClick = onRetry) { Text("Retry") }
+        }
     }
 }
 
@@ -1028,6 +1130,11 @@ private fun EditorScreen(
     initialDraft: EditorDraft,
     restored: Boolean,
     analysisRunning: Boolean,
+    sourceAvailable: Boolean?,
+    relinkingSource: Boolean,
+    relinkMessage: String?,
+    relinkFailed: Boolean,
+    onRelink: () -> Unit,
     sourceControls: @Composable (EditorProjectSummary) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1312,6 +1419,31 @@ private fun EditorScreen(
                     ignored = ignoredCutCount,
                 ),
             )
+
+            if (sourceAvailable == false || relinkMessage != null) {
+                SectionCard(
+                    if (sourceAvailable == false) "SOURCE UNAVAILABLE" else "SOURCE RE-LINKED",
+                    if (sourceAvailable == false) seed.displayName else "Playback and exports restored",
+                ) {
+                    Text(
+                        relinkMessage
+                            ?: "VolleyCut cannot open the saved video location. Choose the original recording again to restore playback and MP4 export.",
+                        color = if (relinkFailed) Danger else Muted,
+                        fontSize = 12.sp,
+                    )
+                    if (sourceAvailable == false) {
+                        Button(
+                            enabled = !relinkingSource,
+                            onClick = {
+                                store.save(draft)
+                                onRelink()
+                            },
+                        ) {
+                            Text(if (relinkingSource) "Validating…" else "Re-link video")
+                        }
+                    }
+                }
+            }
 
             SectionCard("OUTPUT", "Padding and retained short gaps") {
                 PaddingControl("Before", draft.beforePaddingMs) { before ->
