@@ -69,6 +69,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -113,6 +114,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -255,10 +257,19 @@ private fun VolleyCutTheme(content: @Composable () -> Unit) {
 }
 
 private data class ExportUiState(
+    val jobId: String? = null,
     val status: String = "idle",
     val progress: Int = 0,
     val detail: String = "",
     val metrics: String? = null,
+)
+
+private fun ExportJobStatus.toUiState() = ExportUiState(
+    jobId = jobId,
+    status = status,
+    progress = progress,
+    detail = detail,
+    metrics = metrics,
 )
 
 private data class SourceSelection(
@@ -330,6 +341,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var relinkMessage by remember { mutableStateOf<String?>(null) }
     var relinkFailed by remember { mutableStateOf(false) }
     var sourceCheckNonce by remember { mutableLongStateOf(0L) }
+    var exportQueueCount by remember { mutableIntStateOf(ExportService.pendingCount()) }
 
     fun reloadProjects(
         preferredId: String? = selectedProjectId,
@@ -549,6 +561,13 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == ExportService.ACTION_PROGRESS) {
+                    exportQueueCount = intent.getIntExtra(
+                        ExportService.EXTRA_QUEUE_COUNT,
+                        ExportService.pendingCount(),
+                    )
+                    return
+                }
                 if (intent?.action != ProjectAnalysisService.ACTION_UPDATE) return
                 val projectId = intent.getStringExtra(ProjectAnalysisService.EXTRA_PROJECT_ID) ?: return
                 if (intent.getBooleanExtra(ProjectAnalysisService.EXTRA_PERFORMANCE, false)) {
@@ -593,7 +612,10 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         ContextCompat.registerReceiver(
             context,
             receiver,
-            IntentFilter(ProjectAnalysisService.ACTION_UPDATE),
+            IntentFilter().apply {
+                addAction(ProjectAnalysisService.ACTION_UPDATE)
+                addAction(ExportService.ACTION_PROGRESS)
+            },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         ProjectAnalysisService.resumePending(context)
@@ -633,6 +655,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             selected = selectedProject,
             creatingNew = creatingNew,
             queueCount = queueCount,
+            exportQueueCount = exportQueueCount,
             editorSummary = editorSummary,
             onSelect = { project ->
                 selectedProjectId = project.id
@@ -757,6 +780,7 @@ private fun ProjectHeaderBar(
     selected: NativeProject?,
     creatingNew: Boolean,
     queueCount: Int,
+    exportQueueCount: Int,
     editorSummary: EditorProjectSummary?,
     onSelect: (NativeProject) -> Unit,
     onNew: () -> Unit,
@@ -778,8 +802,13 @@ private fun ProjectHeaderBar(
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    if (queueCount == 0) "Queue idle" else "$queueCount in queue",
-                    color = if (queueCount == 0) Muted else Green,
+                    when {
+                        queueCount == 0 && exportQueueCount == 0 -> "Queue idle"
+                        queueCount == 0 -> "$exportQueueCount encoding"
+                        exportQueueCount == 0 -> "$queueCount analyzing"
+                        else -> "$queueCount analyzing · $exportQueueCount encoding"
+                    },
+                    color = if (queueCount == 0 && exportQueueCount == 0) Muted else Green,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -1148,7 +1177,10 @@ private fun EditorScreen(
     var message by remember {
         mutableStateOf(if (restored) "Restored saved edits on this device" else "New on-device draft")
     }
-    var exportState by remember { mutableStateOf(ExportUiState()) }
+    var exportState by remember(project.id) {
+        mutableStateOf(ExportService.statusForProject(project.id)?.toUiState() ?: ExportUiState())
+    }
+    var pendingExportIntervals by remember { mutableStateOf<List<FinalCutInterval>?>(null) }
     var feedbackExporting by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
 
@@ -1172,6 +1204,7 @@ private fun EditorScreen(
     val disagreementCount = lowConfidence.count(EditableCut::isModelDisagreement)
     val joinedGaps = finalIntervals.flatMap { it.joinedGaps }
     val totalFinalMs = EditorMath.totalFinalMs(finalIntervals)
+    val exportPending = exportState.status == "queued" || exportState.status == "running"
     val removedCount = draft.cuts.count { !it.included }
     val ignoredCutCount = draft.cuts.count { it.included && it.id !in effectiveIds }
     val visibleIgnoredIntervals = draft.ignoredIntervals.filter {
@@ -1226,7 +1259,9 @@ private fun EditorScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("video/mp4"),
     ) { uri ->
-        if (uri != null && finalIntervals.isNotEmpty()) {
+        val requestedIntervals = pendingExportIntervals
+        pendingExportIntervals = null
+        if (uri != null && !requestedIntervals.isNullOrEmpty()) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
@@ -1236,16 +1271,19 @@ private fun EditorScreen(
             if (Build.VERSION.SDK_INT >= 33 &&
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            val jobId = UUID.randomUUID().toString()
             val exportIntent = Intent(context, ExportService::class.java).apply {
+                putExtra(ExportService.EXTRA_JOB_ID, jobId)
+                putExtra(ExportService.EXTRA_PROJECT_ID, project.id)
                 putExtra(ExportService.EXTRA_SOURCE_URI, seed.sourceUri)
                 putExtra(ExportService.EXTRA_SOURCE_NAME, seed.displayName)
                 putExtra(ExportService.EXTRA_SOURCE_DURATION_MS, seed.durationMs)
                 putExtra(ExportService.EXTRA_DESTINATION_URI, uri.toString())
-                putExtra(ExportService.EXTRA_INTERVAL_STARTS, finalIntervals.map { it.startMs }.toLongArray())
-                putExtra(ExportService.EXTRA_INTERVAL_ENDS, finalIntervals.map { it.endMs }.toLongArray())
+                putExtra(ExportService.EXTRA_INTERVAL_STARTS, requestedIntervals.map { it.startMs }.toLongArray())
+                putExtra(ExportService.EXTRA_INTERVAL_ENDS, requestedIntervals.map { it.endMs }.toLongArray())
             }
             context.startForegroundService(exportIntent)
-            exportState = ExportUiState("running", 0, "Preparing export")
+            exportState = ExportUiState(jobId, "queued", 0, "Added to export queue")
         }
     }
     val editListLauncher = rememberLauncherForActivityResult(
@@ -1306,7 +1344,9 @@ private fun EditorScreen(
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action != ExportService.ACTION_PROGRESS) return
+                if (intent.getStringExtra(ExportService.EXTRA_PROJECT_ID) != project.id) return
                 exportState = ExportUiState(
+                    jobId = intent.getStringExtra(ExportService.EXTRA_JOB_ID),
                     status = intent.getStringExtra(ExportService.EXTRA_STATUS) ?: "running",
                     progress = intent.getIntExtra(ExportService.EXTRA_PROGRESS, 0),
                     detail = intent.getStringExtra(ExportService.EXTRA_DETAIL).orEmpty(),
@@ -1724,15 +1764,20 @@ private fun EditorScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     )
                     Text(exportState.detail, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                } else if (exportState.status == "queued") {
+                    Text(exportState.detail, color = Green, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                 } else if (exportState.detail.isNotBlank()) {
                     Text(exportState.detail, color = if (exportState.status == "failed") Danger else Green)
                     exportState.metrics?.let { Text(it, fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = Muted) }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        enabled = finalIntervals.isNotEmpty() && exportState.status != "running",
-                        onClick = { exportLauncher.launch(exportFilename(seed.displayName)) },
-                    ) { Text("Export MP4") }
+                        enabled = finalIntervals.isNotEmpty() && !exportPending,
+                        onClick = {
+                            pendingExportIntervals = finalIntervals
+                            exportLauncher.launch(exportFilename(seed.displayName))
+                        },
+                    ) { Text(if (exportPending) "Export queued" else "Queue MP4 export") }
                     OutlinedButton(
                         enabled = finalIntervals.isNotEmpty(),
                         onClick = { editListLauncher.launch(editListFilename(seed.displayName)) },
@@ -1743,10 +1788,14 @@ private fun EditorScreen(
                             feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
                         },
                     ) { Text(if (feedbackExporting) "Exporting feedback…" else "Export model feedback") }
-                    if (exportState.status == "running") {
+                    if (exportPending) {
                         OutlinedButton(onClick = {
-                            context.startService(Intent(context, ExportService::class.java).setAction(ExportService.ACTION_CANCEL))
-                        }) { Text("Cancel export", color = Danger) }
+                            context.startService(
+                                Intent(context, ExportService::class.java)
+                                    .setAction(ExportService.ACTION_CANCEL)
+                                    .putExtra(ExportService.EXTRA_JOB_ID, exportState.jobId),
+                            )
+                        }) { Text(if (exportState.status == "queued") "Remove from queue" else "Cancel export", color = Danger) }
                     }
                 }
                 Text(
