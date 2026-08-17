@@ -272,6 +272,21 @@ private fun ExportJobStatus.toUiState() = ExportUiState(
     metrics = metrics,
 )
 
+private fun projectStatusLabel(
+    project: NativeProject,
+    export: ExportJobStatus?,
+): String {
+    val encoding = when (export?.status) {
+        "queued" -> "encoding queued"
+        "running" -> "encoding ${export.progress.coerceIn(0, 100)}%"
+        "complete" -> "encoding finished"
+        "failed" -> "encoding failed"
+        "cancelled" -> "encoding cancelled"
+        else -> null
+    }
+    return listOfNotNull(project.status.wireName, encoding).joinToString(" · ")
+}
+
 private data class SourceSelection(
     val uri: Uri,
     val displayName: String,
@@ -342,6 +357,13 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var relinkFailed by remember { mutableStateOf(false) }
     var sourceCheckNonce by remember { mutableLongStateOf(0L) }
     var exportQueueCount by remember { mutableIntStateOf(ExportService.pendingCount()) }
+    var exportStatuses by remember {
+        mutableStateOf(
+            initialProjects.mapNotNull { project ->
+                ExportService.statusForProject(project.id)?.let { project.id to it }
+            }.toMap(),
+        )
+    }
 
     fun reloadProjects(
         preferredId: String? = selectedProjectId,
@@ -566,6 +588,18 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         ExportService.EXTRA_QUEUE_COUNT,
                         ExportService.pendingCount(),
                     )
+                    val projectId = intent.getStringExtra(ExportService.EXTRA_PROJECT_ID)
+                    val jobId = intent.getStringExtra(ExportService.EXTRA_JOB_ID)
+                    if (projectId != null && jobId != null) {
+                        exportStatuses = exportStatuses + (projectId to ExportJobStatus(
+                            jobId = jobId,
+                            projectId = projectId,
+                            status = intent.getStringExtra(ExportService.EXTRA_STATUS) ?: "running",
+                            progress = intent.getIntExtra(ExportService.EXTRA_PROGRESS, 0),
+                            detail = intent.getStringExtra(ExportService.EXTRA_DETAIL).orEmpty(),
+                            metrics = intent.getStringExtra(ExportService.EXTRA_METRICS),
+                        ))
+                    }
                     return
                 }
                 if (intent?.action != ProjectAnalysisService.ACTION_UPDATE) return
@@ -656,6 +690,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             creatingNew = creatingNew,
             queueCount = queueCount,
             exportQueueCount = exportQueueCount,
+            exportStatuses = exportStatuses,
             editorSummary = editorSummary,
             onSelect = { project ->
                 selectedProjectId = project.id
@@ -781,6 +816,7 @@ private fun ProjectHeaderBar(
     creatingNew: Boolean,
     queueCount: Int,
     exportQueueCount: Int,
+    exportStatuses: Map<String, ExportJobStatus>,
     editorSummary: EditorProjectSummary?,
     onSelect: (NativeProject) -> Unit,
     onNew: () -> Unit,
@@ -821,7 +857,7 @@ private fun ProjectHeaderBar(
                     ) {
                         Text(
                             if (creatingNew || selected == null) "New project"
-                            else "${selected.source.name} · ${selected.status.wireName}",
+                            else "${selected.source.name} · ${projectStatusLabel(selected, exportStatuses[selected.id])}",
                             maxLines = 1,
                         )
                     }
@@ -836,7 +872,7 @@ private fun ProjectHeaderBar(
                                     Column {
                                         Text(project.source.name, maxLines = 1)
                                         Text(
-                                            "${project.status.wireName} · ${project.id.removePrefix("project-")}",
+                                            "${projectStatusLabel(project, exportStatuses[project.id])} · ${project.id.removePrefix("project-")}",
                                             color = Muted,
                                             fontSize = 11.sp,
                                         )
