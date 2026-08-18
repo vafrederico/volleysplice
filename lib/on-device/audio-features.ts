@@ -1,8 +1,16 @@
 import FFT from "fft.js";
-import { AudioSampleSink, type AudioSample, type InputAudioTrack } from "mediabunny";
-
+import {
+  type AudioSample,
+  AudioSampleSink,
+  type InputAudioTrack,
+} from "mediabunny";
+import {
+  mean,
+  percentileRanks,
+  quantile,
+  rollingMean,
+} from "./feature-math.ts";
 import { ANALYSIS_FPS, AUDIO_FEATURE_NAMES } from "./feature-schema.ts";
-import { mean, percentileRanks, quantile, rollingMean } from "./feature-math.ts";
 import { LibswresampleWasmResampler } from "./libswresample-wasm.ts";
 import type { OnDeviceRuntimeVariant } from "./runtime-variants.ts";
 import type { AnalysisProgress } from "./types.ts";
@@ -25,6 +33,33 @@ type AudioFrameFeatures = {
   peak: number[];
   spectralFlux: number[];
   bandPower: number[][];
+};
+
+export type AudioFeatureExtractionWindow = {
+  start: number;
+  end: number;
+};
+
+export type AudioFeatureExtractionMetrics = {
+  runtimeVariant: OnDeviceRuntimeVariant;
+  windowSeconds: number;
+  outputRows: number;
+  decodedChunks: number;
+  decodedSourceFrames: number;
+  featureFrames: number;
+  capabilityCheckMs: number;
+  resamplerInitMs: number;
+  decodeWaitMs: number;
+  sampleCopyAndDspMs: number;
+  finalizeMs: number;
+  featureTransformMs: number;
+  poolingMs: number;
+  totalMs: number;
+  realtimeFactor: number;
+};
+
+export type AudioFeatureExtractionOptions = {
+  onMetrics?: (metrics: AudioFeatureExtractionMetrics) => void;
 };
 
 export type StreamingAudioResampler = {
@@ -52,7 +87,8 @@ export function planTimestampedAudioChunk(
   sampleRate: number,
   nextFrame: number,
 ): TimestampedAudioChunkPlan {
-  if (!Number.isFinite(timestamp)) throw new Error("Audio sample timestamp is not finite.");
+  if (!Number.isFinite(timestamp))
+    throw new Error("Audio sample timestamp is not finite.");
   if (!Number.isInteger(frameCount) || frameCount < 0) {
     throw new Error("Audio sample frame count is invalid.");
   }
@@ -75,7 +111,10 @@ export function planTimestampedAudioChunk(
 
   const presentedStart = startFrame + primingFrames;
   const gapFrames = Math.max(0, presentedStart - nextFrame);
-  const overlapFrames = Math.min(presentedFrames, Math.max(0, nextFrame - presentedStart));
+  const overlapFrames = Math.min(
+    presentedFrames,
+    Math.max(0, nextFrame - presentedStart),
+  );
   const trimFrames = primingFrames + overlapFrames;
   const appendFrames = frameCount - trimFrames;
 
@@ -113,7 +152,11 @@ function rankVector(values: Float32Array): Float32Array {
   return percentileRanks(values, values.length, 1);
 }
 
-function rollingPercentile(values: Float32Array, window: number, percentile: number): Float32Array {
+function rollingPercentile(
+  values: Float32Array,
+  window: number,
+  percentile: number,
+): Float32Array {
   const output = new Float32Array(values.length);
   const sorted: number[] = [];
   for (let index = 0; index < values.length; index += 1) {
@@ -135,9 +178,15 @@ function rollingPercentile(values: Float32Array, window: number, percentile: num
 export class AudioAccumulator {
   private readonly wasmResampler: StreamingAudioResampler | null;
   private readonly fft = new FFT(FFT_SIZE);
+  private readonly fftInput = new Array<number>(FFT_SIZE).fill(0);
+  private readonly fftOutput: number[];
+  private readonly spectrum = new Float32Array(FFT_SIZE / 2 + 1);
+  private readonly previousSpectrum = new Float32Array(FFT_SIZE / 2 + 1);
+  private hasPreviousSpectrum = false;
   private readonly window = Float32Array.from(
     { length: FRAME_SAMPLES },
-    (_, index) => 0.5 - 0.5 * Math.cos((2 * Math.PI * index) / (FRAME_SAMPLES - 1)),
+    (_, index) =>
+      0.5 - 0.5 * Math.cos((2 * Math.PI * index) / (FRAME_SAMPLES - 1)),
   );
   private readonly bandIndexes = BAND_BOUNDS.map(([lower, upper]) => {
     const indexes: number[] = [];
@@ -147,12 +196,16 @@ export class AudioAccumulator {
     }
     return indexes;
   });
-  private previousSpectrum: Float32Array | null = null;
   private sourceRate = 0;
   private nextSourceFrame = 0;
   private sourceBuffer = new Float32Array(0);
+  private sourceLength = 0;
   private sourcePosition = 0;
-  private outputFrame: number[] = [];
+  private readonly outputFrame = new Float32Array(FRAME_SAMPLES);
+  private outputFrameLength = 0;
+  private interleavedScratch = new Float32Array(0);
+  private monoScratch = new Float32Array(0);
+  private readonly planarScratch = [new Float32Array(0), new Float32Array(0)];
   readonly features: AudioFrameFeatures = {
     rms: [],
     peak: [],
@@ -162,24 +215,48 @@ export class AudioAccumulator {
 
   constructor(wasmResampler: StreamingAudioResampler | null = null) {
     this.wasmResampler = wasmResampler;
+    this.fftOutput = this.fft.createComplexArray();
   }
 
-  push(sample: AudioSample): void {
+  push(sample: AudioSample, timestampOffset = 0): void {
     if (this.wasmResampler) {
+      if (sample.numberOfChannels < 1 || sample.numberOfChannels > 2) {
+        throw new Error(
+          "The libswresample experiment supports mono or stereo audio.",
+        );
+      }
       const planes: Float32Array[] = [];
       for (let channel = 0; channel < sample.numberOfChannels; channel += 1) {
-        const allocation = sample.allocationSize({ format: "f32-planar", planeIndex: channel });
-        const plane = new Float32Array(allocation / Float32Array.BYTES_PER_ELEMENT);
+        const allocation = sample.allocationSize({
+          format: "f32-planar",
+          planeIndex: channel,
+        });
+        const length = allocation / Float32Array.BYTES_PER_ELEMENT;
+        if (this.planarScratch[channel].length < length) {
+          this.planarScratch[channel] = new Float32Array(length);
+        }
+        const plane = this.planarScratch[channel].subarray(0, length);
         sample.copyTo(plane, { format: "f32-planar", planeIndex: channel });
         planes.push(plane);
       }
-      this.pushPlanar(planes, sample.timestamp, sample.sampleRate);
+      this.pushPlanar(
+        planes,
+        sample.timestamp + timestampOffset,
+        sample.sampleRate,
+      );
       return;
     }
     const allocation = sample.allocationSize({ format: "f32", planeIndex: 0 });
-    const interleaved = new Float32Array(allocation / Float32Array.BYTES_PER_ELEMENT);
+    const interleavedLength = allocation / Float32Array.BYTES_PER_ELEMENT;
+    if (this.interleavedScratch.length < interleavedLength) {
+      this.interleavedScratch = new Float32Array(interleavedLength);
+    }
+    const interleaved = this.interleavedScratch.subarray(0, interleavedLength);
     sample.copyTo(interleaved, { format: "f32", planeIndex: 0 });
-    const mono = new Float32Array(sample.numberOfFrames);
+    if (this.monoScratch.length < sample.numberOfFrames) {
+      this.monoScratch = new Float32Array(sample.numberOfFrames);
+    }
+    const mono = this.monoScratch.subarray(0, sample.numberOfFrames);
     for (let frame = 0; frame < sample.numberOfFrames; frame += 1) {
       let total = 0;
       for (let channel = 0; channel < sample.numberOfChannels; channel += 1) {
@@ -187,7 +264,7 @@ export class AudioAccumulator {
       }
       mono[frame] = total / sample.numberOfChannels;
     }
-    this.pushMono(mono, sample.timestamp, sample.sampleRate);
+    this.pushMono(mono, sample.timestamp + timestampOffset, sample.sampleRate);
   }
 
   pushMono(mono: Float32Array, timestamp: number, sampleRate: number): void {
@@ -207,16 +284,25 @@ export class AudioAccumulator {
       this.nextSourceFrame,
     );
     if (plan.gapFrames > 0) this.appendSilence(plan.gapFrames);
-    if (plan.appendFrames > 0) this.appendSource(mono.subarray(plan.trimFrames));
+    if (plan.appendFrames > 0)
+      this.appendSource(mono.subarray(plan.trimFrames));
     this.nextSourceFrame = plan.nextFrame;
   }
 
-  pushPlanar(planes: readonly Float32Array[], timestamp: number, sampleRate: number): void {
+  pushPlanar(
+    planes: readonly Float32Array[],
+    timestamp: number,
+    sampleRate: number,
+  ): void {
     if (!this.wasmResampler) {
-      throw new Error("Planar audio input requires the libswresample WASM runtime.");
+      throw new Error(
+        "Planar audio input requires the libswresample WASM runtime.",
+      );
     }
     if (planes.length < 1 || planes.length > 2) {
-      throw new Error("The libswresample experiment supports mono or stereo audio.");
+      throw new Error(
+        "The libswresample experiment supports mono or stereo audio.",
+      );
     }
     const frameCount = planes[0].length;
     if (planes.some((plane) => plane.length !== frameCount)) {
@@ -233,10 +319,13 @@ export class AudioAccumulator {
       sampleRate,
       this.nextSourceFrame,
     );
-    if (plan.gapFrames > 0) this.appendPlanarSilence(plan.gapFrames, planes.length);
+    if (plan.gapFrames > 0)
+      this.appendPlanarSilence(plan.gapFrames, planes.length);
     if (plan.appendFrames > 0) {
       this.pushResampled(
-        this.wasmResampler.push(planes.map((plane) => plane.subarray(plan.trimFrames))),
+        this.wasmResampler.push(
+          planes.map((plane) => plane.subarray(plan.trimFrames)),
+        ),
       );
     }
     this.nextSourceFrame = plan.nextFrame;
@@ -250,16 +339,20 @@ export class AudioAccumulator {
         this.wasmResampler.close();
       }
     }
-    if (this.sourceBuffer.length) {
-      while (this.sourcePosition < this.sourceBuffer.length) {
-        this.pushOutput(this.sourceBuffer[Math.min(this.sourceBuffer.length - 1, Math.floor(this.sourcePosition))]);
+    if (this.sourceLength) {
+      while (this.sourcePosition < this.sourceLength) {
+        this.pushOutput(
+          this.sourceBuffer[
+            Math.min(this.sourceLength - 1, Math.floor(this.sourcePosition))
+          ],
+        );
         this.sourcePosition += this.sourceRate / TARGET_SAMPLE_RATE;
       }
     }
-    if (this.outputFrame.length) {
-      while (this.outputFrame.length < FRAME_SAMPLES) this.outputFrame.push(0);
+    if (this.outputFrameLength) {
+      this.outputFrame.fill(0, this.outputFrameLength);
       this.processFrame(this.outputFrame);
-      this.outputFrame = [];
+      this.outputFrameLength = 0;
     }
     return this.features;
   }
@@ -269,47 +362,70 @@ export class AudioAccumulator {
   }
 
   private appendSource(mono: Float32Array): void {
-    const combined = new Float32Array(this.sourceBuffer.length + mono.length);
-    combined.set(this.sourceBuffer);
-    combined.set(mono, this.sourceBuffer.length);
-    this.sourceBuffer = combined;
+    const requiredLength = this.sourceLength + mono.length;
+    if (this.sourceBuffer.length < requiredLength) {
+      let capacity = Math.max(2048, this.sourceBuffer.length || 1);
+      while (capacity < requiredLength) capacity *= 2;
+      const expanded = new Float32Array(capacity);
+      expanded.set(this.sourceBuffer.subarray(0, this.sourceLength));
+      this.sourceBuffer = expanded;
+    }
+    this.sourceBuffer.set(mono, this.sourceLength);
+    this.sourceLength = requiredLength;
     const step = this.sourceRate / TARGET_SAMPLE_RATE;
-    while (this.sourcePosition + 1 < this.sourceBuffer.length) {
+    while (this.sourcePosition + 1 < this.sourceLength) {
       const lower = Math.floor(this.sourcePosition);
       const fraction = this.sourcePosition - lower;
       const value =
-        this.sourceBuffer[lower] * (1 - fraction) + this.sourceBuffer[lower + 1] * fraction;
+        this.sourceBuffer[lower] * (1 - fraction) +
+        this.sourceBuffer[lower + 1] * fraction;
       // The reference asks FFmpeg for signed 16-bit PCM. Quantization here reduces one avoidable mismatch.
-      this.pushOutput(Math.max(-32768, Math.min(32767, Math.round(value * 32768))) / 32768);
+      this.pushOutput(
+        Math.max(-32768, Math.min(32767, Math.round(value * 32768))) / 32768,
+      );
       this.sourcePosition += step;
     }
     const consumed = Math.floor(this.sourcePosition);
     if (consumed > 0) {
-      this.sourceBuffer = this.sourceBuffer.slice(consumed);
+      const retainedStart = Math.min(consumed, this.sourceLength);
+      this.sourceBuffer.copyWithin(0, retainedStart, this.sourceLength);
+      this.sourceLength -= retainedStart;
       this.sourcePosition -= consumed;
     }
   }
 
   private appendSilence(frameCount: number): void {
-    const block = new Float32Array(Math.min(frameCount, Math.max(1, Math.round(this.sourceRate))));
+    const block = new Float32Array(
+      Math.min(frameCount, Math.max(1, Math.round(this.sourceRate))),
+    );
     let remaining = frameCount;
     while (remaining > 0) {
       const length = Math.min(remaining, block.length);
-      this.appendSource(length === block.length ? block : block.subarray(0, length));
+      this.appendSource(
+        length === block.length ? block : block.subarray(0, length),
+      );
       remaining -= length;
     }
   }
 
   private appendPlanarSilence(frameCount: number, channels: number): void {
     if (!this.wasmResampler) return;
-    const blockFrames = Math.min(frameCount, Math.max(1, Math.round(this.sourceRate)));
-    const block = Array.from({ length: channels }, () => new Float32Array(blockFrames));
+    const blockFrames = Math.min(
+      frameCount,
+      Math.max(1, Math.round(this.sourceRate)),
+    );
+    const block = Array.from(
+      { length: channels },
+      () => new Float32Array(blockFrames),
+    );
     let remaining = frameCount;
     while (remaining > 0) {
       const length = Math.min(remaining, blockFrames);
       this.pushResampled(
         this.wasmResampler.push(
-          length === blockFrames ? block : block.map((plane) => plane.subarray(0, length)),
+          length === blockFrames
+            ? block
+            : block.map((plane) => plane.subarray(0, length)),
         ),
       );
       remaining -= length;
@@ -321,54 +437,64 @@ export class AudioAccumulator {
   }
 
   private pushOutput(value: number): void {
-    this.outputFrame.push(value);
-    if (this.outputFrame.length === FRAME_SAMPLES) {
+    this.outputFrame[this.outputFrameLength] = value;
+    this.outputFrameLength += 1;
+    if (this.outputFrameLength === FRAME_SAMPLES) {
       this.processFrame(this.outputFrame);
-      this.outputFrame = [];
+      this.outputFrameLength = 0;
     }
   }
 
-  private processFrame(frame: number[]): void {
+  private processFrame(frame: Float32Array): void {
     let squareTotal = 0;
     let peak = 0;
-    const fftInput = new Array<number>(FFT_SIZE).fill(0);
     for (let index = 0; index < FRAME_SAMPLES; index += 1) {
       const value = frame[index];
       squareTotal += value * value;
       peak = Math.max(peak, Math.abs(value));
-      fftInput[index] = value * this.window[index];
+      this.fftInput[index] = value * this.window[index];
     }
     this.features.rms.push(Math.sqrt(squareTotal / FRAME_SAMPLES));
     this.features.peak.push(peak);
-    const complex = this.fft.createComplexArray();
-    this.fft.realTransform(complex, fftInput);
-    const spectrum = new Float32Array(FFT_SIZE / 2 + 1);
+    this.fft.realTransform(this.fftOutput, this.fftInput);
     let spectrumTotal = 0;
     for (let bin = 0; bin <= FFT_SIZE / 2; bin += 1) {
-      const magnitude = Math.hypot(complex[bin * 2], complex[bin * 2 + 1]);
-      spectrum[bin] = magnitude;
+      const magnitude = Math.hypot(
+        this.fftOutput[bin * 2],
+        this.fftOutput[bin * 2 + 1],
+      );
+      this.spectrum[bin] = magnitude;
       spectrumTotal += magnitude;
     }
     for (let band = 0; band < this.bandIndexes.length; band += 1) {
       let power = 0;
-      for (const bin of this.bandIndexes[band]) power += spectrum[bin] * spectrum[bin];
+      for (const bin of this.bandIndexes[band]) {
+        power += this.spectrum[bin] * this.spectrum[bin];
+      }
       this.features.bandPower[band].push(power);
     }
     const divisor = Math.max(spectrumTotal, 1e-8);
-    for (let bin = 0; bin < spectrum.length; bin += 1) spectrum[bin] /= divisor;
+    for (let bin = 0; bin < this.spectrum.length; bin += 1)
+      this.spectrum[bin] /= divisor;
     let fluxSquares = 0;
-    if (this.previousSpectrum) {
-      for (let bin = 0; bin < spectrum.length; bin += 1) {
-        const difference = Math.max(spectrum[bin] - this.previousSpectrum[bin], 0);
+    if (this.hasPreviousSpectrum) {
+      for (let bin = 0; bin < this.spectrum.length; bin += 1) {
+        const difference = Math.max(
+          this.spectrum[bin] - this.previousSpectrum[bin],
+          0,
+        );
         fluxSquares += difference * difference;
       }
     }
     this.features.spectralFlux.push(Math.sqrt(fluxSquares));
-    this.previousSpectrum = spectrum;
+    this.previousSpectrum.set(this.spectrum);
+    this.hasPreviousSpectrum = true;
   }
 }
 
-function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Float32Array> {
+function buildFrameFeatureSources(
+  frames: AudioFrameFeatures,
+): Record<string, Float32Array> {
   const rms = Float32Array.from(frames.rms);
   const peak = Float32Array.from(frames.peak);
   const spectralFlux = Float32Array.from(frames.spectralFlux);
@@ -383,12 +509,23 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
   const onsetStrength = new Float32Array(count);
   const contactLike = new Float32Array(count);
   for (let index = 0; index < count; index += 1) {
-    onsetStrength[index] = 0.45 * fluxRank[index] + 0.35 * noveltyRank[index] + 0.2 * peakRank[index];
+    onsetStrength[index] =
+      0.45 * fluxRank[index] +
+      0.35 * noveltyRank[index] +
+      0.2 * peakRank[index];
     contactLike[index] = onsetStrength[index] * Math.sqrt(peakRank[index]);
   }
   const strongThreshold = Math.max(0.72, quantile(contactLike, 0.85));
-  const cadence = rollingMean(contactLike, Math.round(2 / FRAME_SECONDS), false);
-  const futureCadence = rollingMean(contactLike, Math.round(1 / FRAME_SECONDS), true);
+  const cadence = rollingMean(
+    contactLike,
+    Math.round(2 / FRAME_SECONDS),
+    false,
+  );
+  const futureCadence = rollingMean(
+    contactLike,
+    Math.round(1 / FRAME_SECONDS),
+    true,
+  );
   const cadenceCollapse = new Float32Array(count);
   const elapsed = new Float32Array(count).fill(10);
   let lastTime: number | null = null;
@@ -408,8 +545,13 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
   const snr = new Float32Array(count);
   const peakToRms = new Float32Array(count);
   for (let index = 0; index < count; index += 1) {
-    snr[index] = Math.log1p(Math.max(rms[index] - noiseFloor[index], 0) / (noiseFloor[index] + 1e-4));
-    peakToRms[index] = Math.min(30, Math.max(0, peak[index] / (rms[index] + 1e-5)));
+    snr[index] = Math.log1p(
+      Math.max(rms[index] - noiseFloor[index], 0) / (noiseFloor[index] + 1e-4),
+    );
+    peakToRms[index] = Math.min(
+      30,
+      Math.max(0, peak[index] / (rms[index] + 1e-5)),
+    );
   }
 
   const sources: Record<string, Float32Array> = {
@@ -427,7 +569,14 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
     audio_seconds_since_transient: elapsed,
   };
 
-  const bandLabels = ["80_250", "250_500", "500_1000", "1000_2000", "2000_4000", "4000_7800"];
+  const bandLabels = [
+    "80_250",
+    "250_500",
+    "500_1000",
+    "1000_2000",
+    "2000_4000",
+    "4000_7800",
+  ];
   const broadbandNumerator = new Float32Array(count);
   const broadbandDenominator = new Float32Array(count);
   const normalizedFluxSquares = new Float32Array(count);
@@ -439,7 +588,10 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
     for (let index = 0; index < count; index += 1) {
       const excess = Math.max(power[index] - floor[index], 0);
       snrValues[index] = Math.log1p(excess / (floor[index] + 1e-8));
-      fluxValues[index] = Math.max(snrValues[index] - snrValues[Math.max(0, index - 1)], 0);
+      fluxValues[index] = Math.max(
+        snrValues[index] - snrValues[Math.max(0, index - 1)],
+        0,
+      );
       broadbandNumerator[index] += excess;
       broadbandDenominator[index] += floor[index];
       normalizedFluxSquares[index] += fluxValues[index] * fluxValues[index];
@@ -450,7 +602,9 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
   const broadband = new Float32Array(count);
   const normalizedFlux = new Float32Array(count);
   for (let index = 0; index < count; index += 1) {
-    broadband[index] = Math.log1p(broadbandNumerator[index] / (broadbandDenominator[index] + 1e-8));
+    broadband[index] = Math.log1p(
+      broadbandNumerator[index] / (broadbandDenominator[index] + 1e-8),
+    );
     normalizedFlux[index] = Math.sqrt(normalizedFluxSquares[index]);
   }
   sources.audio_noise_removed_broadband = broadband;
@@ -461,34 +615,76 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
 export async function extractAudioFeatures(
   audioTrack: InputAudioTrack | null,
   times: Float64Array,
-  duration: number,
+  durationOrWindow: number | AudioFeatureExtractionWindow,
   runtimeVariant: OnDeviceRuntimeVariant = "linear-v1",
   onProgress?: (progress: AnalysisProgress) => void,
+  options: AudioFeatureExtractionOptions = {},
 ): Promise<Float32Array> {
+  const totalStartedAt = performance.now();
   const columns = AUDIO_FEATURE_NAMES.length;
   const output = new Float32Array(times.length * columns);
-  if (!audioTrack || !(await audioTrack.canDecode())) return output;
+  const windowStart =
+    typeof durationOrWindow === "number"
+      ? 0
+      : Math.max(0, durationOrWindow.start);
+  const analysisWindow =
+    typeof durationOrWindow === "number"
+      ? { start: windowStart, end: Math.max(0, durationOrWindow) }
+      : {
+          start: windowStart,
+          end: Math.max(windowStart, durationOrWindow.end),
+        };
+  const analysisDuration = analysisWindow.end - analysisWindow.start;
+  const capabilityStartedAt = performance.now();
+  const canDecode = audioTrack ? await audioTrack.canDecode() : false;
+  const capabilityCheckMs = performance.now() - capabilityStartedAt;
+  if (!audioTrack || !canDecode) return output;
 
+  const resamplerStartedAt = performance.now();
   const accumulator = new AudioAccumulator(
     runtimeVariant === "libswresample-wasm-v1"
       ? await LibswresampleWasmResampler.create()
       : null,
   );
+  const resamplerInitMs = performance.now() - resamplerStartedAt;
   const sink = new AudioSampleSink(audioTrack);
   let lastProgress = -1;
+  let decodedChunks = 0;
+  let decodedSourceFrames = 0;
+  let decodeWaitMs = 0;
+  let sampleCopyAndDspMs = 0;
+  let finalizeMs = 0;
   let frames: AudioFrameFeatures;
   try {
-    for await (const sample of sink.samples()) {
+    const iterator = sink
+      .samples(analysisWindow.start, analysisWindow.end)
+      [Symbol.asyncIterator]();
+    while (true) {
+      const decodeStartedAt = performance.now();
+      const next = await iterator.next();
+      decodeWaitMs += performance.now() - decodeStartedAt;
+      if (next.done) break;
+      const sample = next.value;
       try {
-        accumulator.push(sample);
-        const progress = Math.min(duration, Math.max(0, sample.timestamp + sample.duration));
+        decodedChunks += 1;
+        decodedSourceFrames += sample.numberOfFrames;
+        const dspStartedAt = performance.now();
+        accumulator.push(sample, -analysisWindow.start);
+        sampleCopyAndDspMs += performance.now() - dspStartedAt;
+        const progress = Math.min(
+          analysisDuration,
+          Math.max(
+            0,
+            sample.timestamp + sample.duration - analysisWindow.start,
+          ),
+        );
         const rounded = Math.floor(progress);
         if (rounded !== lastProgress) {
           lastProgress = rounded;
           onProgress?.({
             stage: "audio",
             completed: progress,
-            total: duration,
+            total: analysisDuration,
             detail:
               runtimeVariant === "libswresample-wasm-v1"
                 ? "Decoding audio through libswresample WASM"
@@ -499,16 +695,20 @@ export async function extractAudioFeatures(
         sample.close();
       }
     }
+    const finalizeStartedAt = performance.now();
     frames = accumulator.finish();
+    finalizeMs = performance.now() - finalizeStartedAt;
   } catch (error) {
     accumulator.dispose();
     throw error;
   }
   if (frames.rms.length === 0) return output;
+  const transformStartedAt = performance.now();
   const sources = buildFrameFeatureSources(frames);
+  const featureTransformMs = performance.now() - transformStartedAt;
   const audioTimes = Float64Array.from(
     { length: frames.rms.length },
-    (_, index) => (index + 0.5) * FRAME_SECONDS,
+    (_, index) => analysisWindow.start + (index + 0.5) * FRAME_SECONDS,
   );
   const halfWidth = 0.5 / ANALYSIS_FPS;
   const meanPooled = new Set([
@@ -519,6 +719,7 @@ export async function extractAudioFeatures(
     "audio_cadence_collapse",
     "audio_seconds_since_transient",
   ]);
+  const poolingStartedAt = performance.now();
   for (let row = 0; row < times.length; row += 1) {
     output[row * columns] = 1;
     let left = lowerBound(audioTimes, times[row] - halfWidth);
@@ -526,7 +727,10 @@ export async function extractAudioFeatures(
     if (right <= left) {
       const nearest = Math.min(
         audioTimes.length - 1,
-        Math.max(0, Math.round(times[row] / FRAME_SECONDS - 0.5)),
+        Math.max(
+          0,
+          Math.round((times[row] - analysisWindow.start) / FRAME_SECONDS - 0.5),
+        ),
       );
       left = nearest;
       right = nearest + 1;
@@ -540,5 +744,24 @@ export async function extractAudioFeatures(
         : Math.max(...segment);
     }
   }
+  const poolingMs = performance.now() - poolingStartedAt;
+  const totalMs = performance.now() - totalStartedAt;
+  options.onMetrics?.({
+    runtimeVariant,
+    windowSeconds: analysisDuration,
+    outputRows: times.length,
+    decodedChunks,
+    decodedSourceFrames,
+    featureFrames: frames.rms.length,
+    capabilityCheckMs,
+    resamplerInitMs,
+    decodeWaitMs,
+    sampleCopyAndDspMs,
+    finalizeMs,
+    featureTransformMs,
+    poolingMs,
+    totalMs,
+    realtimeFactor: totalMs > 0 ? analysisDuration / (totalMs / 1000) : 0,
+  });
   return output;
 }

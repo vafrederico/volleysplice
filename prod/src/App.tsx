@@ -733,6 +733,40 @@ export function App() {
         (featurePerformance.videoElapsedMs / 1000)
       : null;
   const elapsedSeconds = selectedIsActive ? activeElapsedSeconds : 0;
+  const audioProgressPercent =
+    displayedProgress?.stage === "audio" && displayedProgress.total > 0
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            (displayedProgress.completed / displayedProgress.total) * 100,
+          ),
+        )
+      : null;
+  const audioPerformance = displayedProgress?.audioPerformance ?? null;
+  const audioElapsedSeconds = audioPerformance
+    ? audioPerformance.elapsedMs / 1000
+    : null;
+  const audioDecodeRate =
+    audioPerformance && audioPerformance.decodeElapsedMs > 0
+      ? audioPerformance.decodedAudioSeconds /
+        (audioPerformance.decodeElapsedMs / 1000)
+      : null;
+  const audioProcessingRate =
+    audioElapsedSeconds &&
+    displayedProgress?.stage === "audio" &&
+    displayedProgress.completed > 0
+      ? displayedProgress.completed / audioElapsedSeconds
+      : null;
+  const audioEtaSeconds =
+    audioProcessingRate &&
+    displayedProgress?.stage === "audio" &&
+    displayedProgress.total > displayedProgress.completed
+      ? (displayedProgress.total - displayedProgress.completed) /
+        audioProcessingRate
+      : audioProgressPercent !== null && audioProgressPercent >= 100
+        ? 0
+        : null;
   const analysisEtaSeconds =
     displayedProgress?.stage === "complete"
       ? 0
@@ -1096,12 +1130,40 @@ export function App() {
                       : `About ${formatDuration(analysisEtaSeconds)}`}
                 </strong>
               </div>
+              {audioProgressPercent !== null && (
+                <>
+                  <div>
+                    <span>Audio processing</span>
+                    <strong>{Math.round(audioProgressPercent)}%</strong>
+                  </div>
+                  <div>
+                    <span>Audio elapsed</span>
+                    <strong>
+                      {audioElapsedSeconds === null
+                        ? "Starting…"
+                        : formatDuration(audioElapsedSeconds)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Audio remaining</span>
+                    <strong>
+                      {audioEtaSeconds === null
+                        ? "Estimating…"
+                        : audioEtaSeconds <= 1
+                          ? "Finishing…"
+                          : `About ${formatDuration(audioEtaSeconds)}`}
+                    </strong>
+                  </div>
+                </>
+              )}
             </div>
           )}
           <p>
             {displayedProgress.stage === "video" && featureRate
               ? `${featureRate.toFixed(2)}× real-time feature generation`
-              : "Feature extraction, audio analysis, and both model passes run locally."}
+              : displayedProgress.stage === "audio" && audioProcessingRate
+                ? `${audioProcessingRate.toFixed(2)}× real-time audio processing${audioDecodeRate ? ` · ${audioDecodeRate.toFixed(2)}× decode` : ""}`
+                : "Feature extraction, audio analysis, and both model passes run locally."}
             {displayedProgress.featureCache?.resumedRows
               ? ` · resumed ${displayedProgress.featureCache.resumedRows.toLocaleString()} saved frames`
               : ""}

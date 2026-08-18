@@ -1860,6 +1860,8 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
             : "Desktop and Android exports use the standard native file or private browser storage path."}
         </p>
         <div className={styles.footerLinks}>
+          <Link href="/video-benchmark">Profile video extraction →</Link>
+          <Link href="/audio-benchmark">Profile audio extraction →</Link>
           <Link href={uiFixtureMode ? "/on-device" : "/on-device-ui"}>
             {uiFixtureMode ? "Open live pipeline" : "Open cached UI fixture"} →
           </Link>

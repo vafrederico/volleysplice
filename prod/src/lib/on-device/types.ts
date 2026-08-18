@@ -67,6 +67,13 @@ export type FeatureExtractionPerformance = {
   cacheIoMs: number;
 };
 
+export type AudioExtractionPerformance = {
+  phase: "decoding" | "features" | "alignment" | "complete";
+  elapsedMs: number;
+  decodeElapsedMs: number;
+  decodedAudioSeconds: number;
+};
+
 export type AnalysisProgress = {
   stage: AnalysisStage;
   completed: number;
@@ -79,6 +86,7 @@ export type AnalysisProgress = {
     savedRows: number;
   };
   performance?: FeatureExtractionPerformance;
+  audioPerformance?: AudioExtractionPerformance;
 };
 
 export type BaseFeatureSequence = {

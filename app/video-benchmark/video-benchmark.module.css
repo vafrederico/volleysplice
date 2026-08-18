@@ -1,0 +1,154 @@
+.videoControls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.roiToggle {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #5f6159;
+  font:
+    10px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.roiToggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #151711;
+}
+
+.mediaStrip {
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.telemetry {
+  margin: 64px 4vw 30px;
+}
+
+.telemetry > header {
+  padding-bottom: 17px;
+  border-bottom: 3px solid #151711;
+}
+
+.telemetryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-left: 1px solid #bdbbb2;
+}
+
+.telemetryGrid article {
+  min-width: 0;
+  padding: 22px;
+  border-right: 1px solid #bdbbb2;
+  border-bottom: 1px solid #bdbbb2;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.telemetryGrid h2 {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+
+.telemetryGrid dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.telemetryGrid dl div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  padding-top: 8px;
+  border-top: 1px solid #dad8cf;
+  font:
+    9px / 1.4 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.telemetryGrid dt {
+  color: #777970;
+}
+
+.telemetryGrid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+  font-weight: 600;
+}
+
+.androidGap {
+  margin: 22px 4vw 30px;
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.35fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 28px;
+  color: #fff;
+  background: #151711;
+}
+
+.androidGap div {
+  display: grid;
+  gap: 5px;
+}
+
+.androidGap span {
+  color: #dfff35;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+  letter-spacing: 1px;
+}
+
+.androidGap strong {
+  font-size: 15px;
+}
+
+.androidGap p {
+  margin: 0;
+  color: #bcbeb5;
+  font:
+    9px / 1.7 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+@media (max-width: 1100px) {
+  .mediaStrip {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .telemetryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .androidGap {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 620px) {
+  .videoControls,
+  .mediaStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .telemetry,
+  .androidGap {
+    margin-inline: 18px;
+  }
+
+  .telemetryGrid dl div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .telemetryGrid dd {
+    text-align: left;
+  }
+}

@@ -20,7 +20,11 @@ const MAX_SOURCE_CACHE_SIZE = 8 * 1024 * 1024;
 
 type ProbeMessages = { unreadable: string; noVideo: string };
 
-async function probeMedia(input: Input, messages: ProbeMessages): Promise<OpenedMedia> {
+async function probeMedia(
+  input: Input,
+  messages: ProbeMessages,
+  requireDecodableVideo = true,
+): Promise<OpenedMedia> {
   try {
     if (!(await input.canRead())) {
       throw new Error(messages.unreadable);
@@ -66,7 +70,7 @@ async function probeMedia(input: Input, messages: ProbeMessages): Promise<Opened
       channels,
       canDecodeAudio,
     };
-    if (!info.canDecodeVideo) {
+    if (requireDecodableVideo && !info.canDecodeVideo) {
       throw new Error(
         `The container is readable, but this browser cannot decode ${info.videoCodec}.`,
       );
@@ -88,6 +92,16 @@ export function openLocalMedia(file: File): Promise<OpenedMedia> {
   });
 }
 
+export function openLocalMediaForAudio(file: File): Promise<OpenedMedia> {
+  return probeMedia(new Input({
+    source: new BlobSource(file, { maxCacheSize: MAX_SOURCE_CACHE_SIZE }),
+    formats: ALL_FORMATS,
+  }), {
+    unreadable: "This browser cannot read the selected media container.",
+    noVideo: "The selected file has no video track.",
+  }, false);
+}
+
 export function openUrlMedia(
   url: string | URL | Request,
   requestInit?: Omit<RequestInit, "signal">,
@@ -102,6 +116,22 @@ export function openUrlMedia(
     unreadable: "This browser cannot read the requested media container.",
     noVideo: "The requested media has no video track.",
   });
+}
+
+export function openUrlMediaForAudio(
+  url: string | URL | Request,
+  requestInit?: Omit<RequestInit, "signal">,
+): Promise<OpenedMedia> {
+  return probeMedia(new Input({
+    source: new UrlSource(url, {
+      maxCacheSize: MAX_SOURCE_CACHE_SIZE,
+      requestInit,
+    }),
+    formats: ALL_FORMATS,
+  }), {
+    unreadable: "This browser cannot read the requested media container.",
+    noVideo: "The requested media has no video track.",
+  }, false);
 }
 
 export function* analysisTimestamps(duration: number, fps: number) {
