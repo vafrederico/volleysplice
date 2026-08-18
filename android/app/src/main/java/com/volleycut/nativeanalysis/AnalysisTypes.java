@@ -42,6 +42,31 @@ public final class AnalysisTypes {
         }
     }
 
+    public enum AudioDecoderMode {
+        AUTO("auto"),
+        SINGLE_ACCESS_UNIT("single"),
+        BATCHED_ACCESS_UNITS("batched");
+
+        private final String wireName;
+
+        AudioDecoderMode(String wireName) {
+            this.wireName = wireName;
+        }
+
+        static AudioDecoderMode fromWireName(String value) {
+            if (value == null || value.isBlank() || value.equalsIgnoreCase("single")) {
+                return SINGLE_ACCESS_UNIT;
+            }
+            if (value.equalsIgnoreCase("auto")) return AUTO;
+            if (value.equalsIgnoreCase("batched")) return BATCHED_ACCESS_UNITS;
+            throw new IllegalArgumentException("Invalid audio decoder mode: " + value);
+        }
+
+        String wireName() {
+            return wireName;
+        }
+    }
+
     public record AnalysisStages(
             boolean videoFeatures,
             boolean audioFeatures,
@@ -149,6 +174,12 @@ public final class AnalysisTypes {
             int audioCodecOperatingRate,
             int audioCodecPriority,
             boolean audioMultipleFramesSupported,
+            String audioDecoderMode,
+            long audioInputAccessUnits,
+            long audioInputBatches,
+            long audioOutputAccessUnits,
+            long audioOutputBatches,
+            String audioFeatureSha256,
             List<Interval> ranges,
             Map<String, Long> stageMilliseconds,
             Map<String, Double> profileMilliseconds,

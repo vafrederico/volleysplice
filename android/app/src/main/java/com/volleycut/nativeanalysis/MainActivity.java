@@ -49,6 +49,7 @@ public final class MainActivity extends Activity {
     private static final String EXTRA_CODEC_PRIORITY = "benchmark_codec_priority";
     private static final String EXTRA_FEATURE_CACHE_MODE = "benchmark_feature_cache_mode";
     private static final String EXTRA_STAGES = "benchmark_stages";
+    private static final String EXTRA_AUDIO_DECODER_MODE = "benchmark_audio_decoder_mode";
     private static final String EXTRA_DURATION_MILLISECONDS = "benchmark_duration_milliseconds";
     private static final String BENCHMARK_RESULT_FILE = "benchmark-result.json";
     private static final int PICK_VIDEO = 10;
@@ -66,6 +67,8 @@ public final class MainActivity extends Activity {
     private AnalysisTypes.VideoDecoderOptions decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
     private NativeFeatureCache.Mode cacheMode = NativeFeatureCache.Mode.USE;
     private AnalysisTypes.AnalysisStages benchmarkStages = AnalysisTypes.AnalysisStages.all();
+    private AnalysisTypes.AudioDecoderMode benchmarkAudioDecoderMode =
+            AnalysisTypes.AudioDecoderMode.SINGLE_ACCESS_UNIT;
     private int benchmarkDurationMilliseconds;
     private AnalysisTypes.AnalysisResult lastResult;
     private TextView fileLabel;
@@ -277,6 +280,9 @@ public final class MainActivity extends Activity {
         benchmarkStages = AnalysisTypes.AnalysisStages.fromWireName(
                 intent.getStringExtra(EXTRA_STAGES)
         );
+        benchmarkAudioDecoderMode = AnalysisTypes.AudioDecoderMode.fromWireName(
+                intent.getStringExtra(EXTRA_AUDIO_DECODER_MODE)
+        );
         benchmarkDurationMilliseconds = Math.max(
                 0,
                 intent.getIntExtra(EXTRA_DURATION_MILLISECONDS, 0)
@@ -292,6 +298,7 @@ public final class MainActivity extends Activity {
             running.put("codecPriority", decoderOptions.priority());
             running.put("featureCacheMode", cacheMode.wireName());
             running.put("benchmarkStages", benchmarkStages.wireName());
+            running.put("audioDecoderMode", benchmarkAudioDecoderMode.wireName());
             running.put("benchmarkDurationSeconds", benchmarkDurationMilliseconds / 1000.0);
         } catch (Exception impossible) {
             throw new IllegalStateException(impossible);
@@ -316,6 +323,7 @@ public final class MainActivity extends Activity {
         decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
         cacheMode = NativeFeatureCache.Mode.USE;
         benchmarkStages = AnalysisTypes.AnalysisStages.all();
+        benchmarkAudioDecoderMode = AnalysisTypes.AudioDecoderMode.SINGLE_ACCESS_UNIT;
         benchmarkDurationMilliseconds = 0;
         useFeatureCache.setChecked(true);
         fileLabel.setText(selectedUri.toString());
@@ -356,6 +364,9 @@ public final class MainActivity extends Activity {
         AnalysisTypes.AnalysisStages requestedStages = writeAutomationOutput
                 ? benchmarkStages
                 : AnalysisTypes.AnalysisStages.all();
+        AnalysisTypes.AudioDecoderMode requestedAudioDecoderMode = writeAutomationOutput
+                ? benchmarkAudioDecoderMode
+                : AnalysisTypes.AudioDecoderMode.AUTO;
         AnalysisTypes.AnalysisWindow requestedWindow = writeAutomationOutput
                 && benchmarkDurationMilliseconds > 0
                 ? new AnalysisTypes.AnalysisWindow(0, benchmarkDurationMilliseconds / 1000.0)
@@ -370,6 +381,7 @@ public final class MainActivity extends Activity {
                         requestedCacheMode,
                         requestedWindow,
                         requestedStages,
+                        requestedAudioDecoderMode,
                         cancelled,
                         new AnalysisTypes.ProgressListener() {
                             @Override
@@ -396,6 +408,7 @@ public final class MainActivity extends Activity {
                     json.put("codecPriority", requestedDecoderOptions.priority());
                     json.put("featureCacheMode", requestedCacheMode.wireName());
                     json.put("benchmarkStages", requestedStages.wireName());
+                    json.put("requestedAudioDecoderMode", requestedAudioDecoderMode.wireName());
                     json.put("benchmarkDurationSeconds",
                             requestedWindow == null ? 0 : requestedWindow.end());
                     writeAutomationResult(json);
@@ -463,6 +476,10 @@ public final class MainActivity extends Activity {
                 "Audio codec request: %,d samples/s · priority %d · multi-frame %s\n",
                 result.audioCodecOperatingRate(), result.audioCodecPriority(),
                 result.audioMultipleFramesSupported() ? "supported" : "unsupported"));
+        output.append(String.format(Locale.US,
+                "Audio decode: %s; input %,d AU / %,d batches; output %,d AU / %,d batches\n",
+                result.audioDecoderMode(), result.audioInputAccessUnits(), result.audioInputBatches(),
+                result.audioOutputAccessUnits(), result.audioOutputBatches()));
         NativeFeatureCache.CacheStats cache = result.featureCache();
         output.append(String.format(Locale.US,
                 "Feature cache: %s · video %s · audio %s · context %s · resumed %,d rows · %.1f MiB\n",
@@ -615,6 +632,12 @@ public final class MainActivity extends Activity {
             json.put("audioCodecOperatingRate", result.audioCodecOperatingRate());
             json.put("audioCodecPriority", result.audioCodecPriority());
             json.put("audioMultipleFramesSupported", result.audioMultipleFramesSupported());
+            json.put("audioDecoderMode", result.audioDecoderMode());
+            json.put("audioInputAccessUnits", result.audioInputAccessUnits());
+            json.put("audioInputBatches", result.audioInputBatches());
+            json.put("audioOutputAccessUnits", result.audioOutputAccessUnits());
+            json.put("audioOutputBatches", result.audioOutputBatches());
+            json.put("audioFeatureSha256", result.audioFeatureSha256());
             NativeFeatureCache.CacheStats cache = result.featureCache();
             JSONObject cacheJson = new JSONObject();
             cacheJson.put("mode", cache.mode());

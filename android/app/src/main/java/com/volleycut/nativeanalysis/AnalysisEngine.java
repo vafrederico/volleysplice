@@ -37,7 +37,8 @@ final class AnalysisEngine {
     ) throws IOException, JSONException {
         return analyze(
                 uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, null,
-                AnalysisTypes.AnalysisStages.all(), cancelled, progress
+                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
+                cancelled, progress
         );
     }
 
@@ -53,7 +54,8 @@ final class AnalysisEngine {
     ) throws IOException, JSONException {
         return analyze(
                 uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
-                AnalysisTypes.AnalysisStages.all(), cancelled, progress
+                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
+                cancelled, progress
         );
     }
 
@@ -65,6 +67,7 @@ final class AnalysisEngine {
             NativeFeatureCache.Mode cacheMode,
             AnalysisTypes.AnalysisWindow requestedWindow,
             AnalysisTypes.AnalysisStages stages,
+            AnalysisTypes.AudioDecoderMode audioDecoderMode,
             AtomicBoolean cancelled,
             AnalysisTypes.ProgressListener progress
     ) throws IOException, JSONException {
@@ -188,6 +191,7 @@ final class AnalysisEngine {
                     uri,
                     new AnalysisTypes.AnalysisWindow(analysisWindow.start(), analyzedDurationSeconds),
                     times,
+                    audioDecoderMode,
                     progress,
                     cancelled::get
             );
@@ -299,6 +303,12 @@ final class AnalysisEngine {
                 audio.codecOperatingRate(),
                 audio.codecPriority(),
                 audio.multipleFramesSupported(),
+                audio.decoderMode(),
+                audio.inputAccessUnits(),
+                audio.inputBatches(),
+                audio.outputAccessUnits(),
+                audio.outputBatches(),
+                audio.featureSha256(),
                 List.copyOf(ranges),
                 timings,
                 profile,
@@ -339,14 +349,16 @@ final class AnalysisEngine {
 
     private static NativeAudioDecoder.Result cachedAudioFeatures(float[] features) {
         return new NativeAudioDecoder.Result(
-                features, "feature-cache", 0, 0, 0, 0, -1, false, 0, Map.of()
+                features, "feature-cache", 0, 0, 0, 0, -1, false,
+                "cache", 0, 0, 0, 0, NativeAudioDecoder.featureSha256(features), 0, Map.of()
         );
     }
 
     private static NativeAudioDecoder.Result emptyAudioFeatures(int rows) {
         return new NativeAudioDecoder.Result(
                 new float[rows * FeatureSchema.AUDIO.size()],
-                "not-selected", 0, 0, 0, 0, -1, false, 0, Map.of()
+                "not-selected", 0, 0, 0, 0, -1, false,
+                "not-selected", 0, 0, 0, 0, "", 0, Map.of()
         );
     }
 

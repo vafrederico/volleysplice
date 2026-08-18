@@ -25,4 +25,26 @@ public final class AnalysisStagesTest {
     public void rejectsUnknownStages() {
         AnalysisTypes.AnalysisStages.fromWireName("audio,export");
     }
+
+    @Test
+    public void parsesAudioDecoderModes() {
+        assertEquals(
+                AnalysisTypes.AudioDecoderMode.SINGLE_ACCESS_UNIT,
+                AnalysisTypes.AudioDecoderMode.fromWireName(null)
+        );
+        assertEquals(
+                AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS,
+                AnalysisTypes.AudioDecoderMode.fromWireName("Batched")
+        );
+        assertEquals(
+                AnalysisTypes.AudioDecoderMode.AUTO,
+                AnalysisTypes.AudioDecoderMode.fromWireName("auto")
+        );
+        assertEquals("batched", AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS.wireName());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsUnknownAudioDecoderMode() {
+        AnalysisTypes.AudioDecoderMode.fromWireName("parallel");
+    }
 }

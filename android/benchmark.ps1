@@ -14,6 +14,8 @@ param(
     [int]$CodecPriority = 1,
     [ValidateSet("Use", "Bypass", "Refresh")]
     [string]$CacheMode = "Use",
+    [ValidateSet("Auto", "Single", "Batched")]
+    [string]$AudioDecoderMode = "Single",
     [ValidateRange(1, 100)]
     [int]$Runs = 1,
     [ValidateRange(10, 3600)]
@@ -131,6 +133,7 @@ if ($selectedRow -notmatch "_id=(\d+)") {
 $sourceUri = "content://media/external/video/media/$($Matches[1])"
 Write-Host "Benchmark source: $VideoName ($sourceUri)"
 Write-Host "Benchmark stages: $stageWireName; duration: $(if ($DurationSeconds -gt 0) { "$DurationSeconds s" } else { "full selected scope" })"
+Write-Host "Audio decoder mode: $($AudioDecoderMode.ToLowerInvariant())"
 
 $results = @()
 for ($run = 1; $run -le $Runs; $run++) {
@@ -149,6 +152,7 @@ for ($run = 1; $run -le $Runs; $run++) {
         "--ei", "benchmark_codec_priority", $CodecPriority.ToString(),
         "--es", "benchmark_feature_cache_mode", $CacheMode.ToLowerInvariant(),
         "--es", "benchmark_stages", $stageWireName,
+        "--es", "benchmark_audio_decoder_mode", $AudioDecoderMode.ToLowerInvariant(),
         "--ei", "benchmark_duration_milliseconds", $durationMilliseconds.ToString()
     )
     if ($launchOutput -notmatch "Status: ok") {
