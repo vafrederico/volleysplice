@@ -15,6 +15,10 @@ const expectedHashes = new Map([
     "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d",
   ],
   [
+    "runtime/suppression-39eddf581639.json",
+    "ef0ad4eb93fa61ce1d403f083d91f7578cf9ff0f31fac797fde9ab8b73f42794",
+  ],
+  [
     "runtime/feature-reductions.wasm",
     "2b11060145a38e598df5ffdc15e8a8ef6783b05217445d8bc579552788d45446",
   ],
@@ -37,6 +41,7 @@ for (const [asset, expected] of expectedHashes) {
 }
 
 for (const asset of [
+  "runtime/suppression-39eddf581639.manifest.json",
   "runtime/opencv.js",
   "runtime/opencv-worker.js",
   "runtime/volleycut-logo.png",

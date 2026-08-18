@@ -16,6 +16,7 @@ import {
   DEFAULT_VIDEO_DECODE_STRATEGY,
   VIDEO_DECODER_HARDWARE_ACCELERATION,
 } from "@/lib/on-device/pipeline";
+import { augmentStoredAnalysisWithSuppression } from "@/lib/on-device/production-inference";
 import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
 import type {
   AnalysisProgress,
@@ -163,6 +164,7 @@ export function App() {
   const mountedRef = useRef(true);
   const resumePreviewAfterSeek = useRef(false);
   const candidateVideoRef = useRef<HTMLVideoElement>(null);
+  const suppressionAugmentingRef = useRef(new Set<string>());
 
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
@@ -278,6 +280,49 @@ export function App() {
     }
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [projectsLoaded, selectedProjectId]);
+
+  useEffect(() => {
+    const project = projectsRef.current.find(
+      (candidate) => candidate.id === selectedProjectId,
+    );
+    if (
+      !project?.analysis ||
+      project.status !== "ready" ||
+      project.analysis.suppression ||
+      !project.analysis.featureNames ||
+      !project.analysis.featureValues ||
+      suppressionAugmentingRef.current.has(project.id)
+    ) {
+      return;
+    }
+    suppressionAugmentingRef.current.add(project.id);
+    let active = true;
+    void augmentStoredAnalysisWithSuppression(
+      project.analysis,
+      project.analysisWindow,
+    )
+      .then((analysis) => {
+        if (!active || !analysis) return;
+        commitProject({
+          ...project,
+          analysis,
+          updatedAt: new Date().toISOString(),
+        });
+      })
+      .catch((cause) => {
+        if (active) {
+          setError(
+            `Suppression suggestions could not be added from cached features: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        }
+      })
+      .finally(() => {
+        suppressionAugmentingRef.current.delete(project.id);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProjectId, projects]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: filesRevision intentionally invalidates the URL created from the file map ref.
   useEffect(() => {
@@ -592,7 +637,11 @@ export function App() {
     filesRef.current.set(project.id, selected);
     setFilesRevision((current) => current + 1);
     setError(null);
-    if (project.status !== "ready") {
+    if (
+      project.status !== "ready" ||
+      (!project.analysis?.suppression &&
+        (!project.analysis?.featureNames || !project.analysis?.featureValues))
+    ) {
       queueAttachedProject(project);
     }
   }
@@ -703,6 +752,8 @@ export function App() {
         serve: selectedProject.analysis.serveProbabilities,
         deadState: selectedProject.analysis.deadStateProbabilities,
       },
+      productionComponents: selectedProject.analysis.productionComponents,
+      suppression: selectedProject.analysis.suppression,
     };
   }, [selectedProject, selectedVideoUrl]);
 
@@ -717,6 +768,7 @@ export function App() {
         onAttachSource={(selected) =>
           void attachSource(selectedProject, selected)
         }
+        onRequestSuppression={() => queueAttachedProject(selectedProject)}
       />
     );
   }

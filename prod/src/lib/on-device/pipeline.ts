@@ -1,6 +1,5 @@
 import { CanvasSink, VideoSample, VideoSampleSink } from "mediabunny";
 
-import { runtimeAssetUrl } from "../runtime-assets";
 import {
   MIN_ANALYSIS_WINDOW_SECONDS,
   normalizeAnalysisWindow,
@@ -27,15 +26,9 @@ import {
   FRAME_FEATURE_NAMES,
   TEMPORAL_FEATURE_NAMES,
 } from "./feature-schema";
-import { contextualizeFeatures, rollingMean } from "./feature-math";
-import {
-  ALL_LABELS_V2_MODEL_ID,
-  mergeProductionModelIntervals,
-  PREVIOUS_PRODUCTION_MODEL_ID,
-  PRODUCTION_ENSEMBLE_MODEL_ID,
-} from "./ensemble";
+import { rollingMean } from "./feature-math";
 import { analysisTimestamps, type OpenedMedia } from "./media";
-import { loadOnDeviceModelBundle, runOnDeviceModel } from "./model";
+import { runProductionInferenceFromFeatures } from "./production-inference";
 import {
   DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
   type OnDeviceRuntimeVariant,
@@ -695,77 +688,22 @@ export async function analyzeOpenedMedia(
     performance: sequence.performance,
   });
   await yieldToBrowser();
-  const contextual = contextualizeFeatures(sequence.times, sequence.values, sequence.names);
-  const [allLabelsResponse, previousProductionResponse] = await Promise.all([
-    fetch(runtimeAssetUrl("model-1ca43e38eefc.json")),
-    fetch(runtimeAssetUrl("model-9c92b8e9333f.json")),
-  ]);
-  for (const response of [allLabelsResponse, previousProductionResponse]) {
-    if (!response.ok)
-      throw new Error(`Could not load an on-device model (${response.status}).`);
-  }
-  const [allLabelsBundle, previousProductionBundle] = await Promise.all([
-    allLabelsResponse.json().then(loadOnDeviceModelBundle),
-    previousProductionResponse.json().then(loadOnDeviceModelBundle),
-  ]);
-  for (const [modelId, bundle] of [
-    [ALL_LABELS_V2_MODEL_ID, allLabelsBundle] as const,
-    [PREVIOUS_PRODUCTION_MODEL_ID, previousProductionBundle] as const,
-  ]) {
-    if (
-      contextual.names.length !== bundle.featureNames.length ||
-      contextual.names.some((name, index) => name !== bundle.featureNames[index])
-    ) {
-      throw new Error(`Extracted feature signature does not match ${modelId}.`);
-    }
-  }
   onProgress?.({
     stage: "inference",
     completed: sequence.rows,
     total: sequence.rows,
-    detail: "Running both production model stacks on CPU",
+    detail: "Running both production stacks and suppression specialist on CPU",
     featureCache: sequence.featureCache,
     performance: sequence.performance,
   });
-  const allLabelsInference = runOnDeviceModel(
-    allLabelsBundle,
-    sequence.times,
-    contextual.values,
-    analysisWindow.end,
-  );
-  const previousProductionInference = runOnDeviceModel(
-    previousProductionBundle,
-    sequence.times,
-    contextual.values,
-    analysisWindow.end,
-  );
-  const intervals = mergeProductionModelIntervals(
-    allLabelsInference.rallies,
-    previousProductionInference.rallies,
-  )
-    .map((interval) => ({
-      ...interval,
-      start: Math.max(analysisWindow.start, interval.start),
-      end: Math.min(analysisWindow.end, interval.end),
-    }))
-    .filter((interval) => interval.end > interval.start);
+  const result = await runProductionInferenceFromFeatures(sequence, analysisWindow);
   onProgress?.({
     stage: "complete",
     completed: analysisDuration,
     total: analysisDuration,
-    detail: `${intervals.length} merged candidates ready for review`,
+    detail: `${result.intervals.length} merged candidates and ${result.suppression?.suggestions.length ?? 0} suppression suggestions ready`,
     featureCache: sequence.featureCache,
     performance: sequence.performance,
   });
-  return {
-    modelId: PRODUCTION_ENSEMBLE_MODEL_ID,
-    featurePath,
-    intervals,
-    times: sequence.times,
-    featureNames: [...sequence.names],
-    featureValues: sequence.values,
-    rallyProbabilities: allLabelsInference.probabilities.rally,
-    serveProbabilities: allLabelsInference.probabilities.serve,
-    deadStateProbabilities: allLabelsInference.probabilities.deadState,
-  };
+  return { ...result, featurePath };
 }

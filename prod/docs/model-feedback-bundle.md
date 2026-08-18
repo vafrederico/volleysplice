@@ -11,7 +11,7 @@ The top-level format is identified by:
 ```json
 {
   "schema": "volleycut-model-feedback",
-  "schemaVersion": 1
+  "schemaVersion": 2
 }
 ```
 
@@ -23,8 +23,12 @@ The bundle contains:
   inputs;
 - the initial production-ensemble ranges and timestamped rally, serve, and dead-state probability
   traces (the producing component is identified by `probabilityModelId`);
+- the untouched raw ranges from both production models, plus the held suppression artifact
+  identity, probability trace, decoded events, and policy-eligible suggestion spans;
 - the full corrected editor ranges and ignored intervals;
-- explicit feedback labels and the final padded/joined export intervals.
+- the selected suppression policy, explicit and dormant decisions, touched inferred ranges, and
+  effective state of every suggestion; and
+- explicit feedback labels, final padded/joined export intervals, and materialization provenance.
 
 The label contract is deliberately simple:
 

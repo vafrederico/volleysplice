@@ -1,4 +1,10 @@
-import type { CutDraft, EditableCut, FinalCutInterval } from "./cut-draft";
+import {
+  materializeFinalCutIntervals,
+  suppressionSuggestionState,
+  type CutDraft,
+  type EditableCut,
+  type FinalCutInterval,
+} from "./cut-draft.ts";
 import {
   ALL_LABELS_V2_BUNDLE_SHA256,
   ALL_LABELS_V2_MODEL_ID,
@@ -10,7 +16,7 @@ import { ANALYSIS_FPS } from "./on-device/feature-schema.ts";
 import type { ProductAnalysis } from "./product-analysis";
 
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
-export const MODEL_FEEDBACK_SCHEMA_VERSION = 1 as const;
+export const MODEL_FEEDBACK_SCHEMA_VERSION = 2 as const;
 
 export type EncodedNumericArray = {
   encoding: "base64";
@@ -69,6 +75,18 @@ export type ModelFeedbackBundle = {
       serve: EncodedNumericArray;
       deadState: EncodedNumericArray;
     };
+    productionComponents: ProductAnalysis["productionComponents"];
+    suppression: null | {
+      modelId: string;
+      artifactSha256: string;
+      weightsSha256: string;
+      decoderVersion: string;
+      policyContractVersion: number;
+      timestamps: EncodedNumericArray;
+      probabilities: EncodedNumericArray;
+      decodedIntervals: NonNullable<ProductAnalysis["suppression"]>["decodedIntervals"];
+      suggestions: NonNullable<ProductAnalysis["suppression"]>["suggestions"];
+    };
   };
   corrections: {
     updatedAt: string;
@@ -77,6 +95,16 @@ export type ModelFeedbackBundle = {
     joinGapSeconds: number;
     correctedRanges: EditableCut[];
     ignoredIntervals: CutDraft["ignoredIntervals"];
+    suppression: {
+      selectedPolicy: CutDraft["selectedSuppressionPolicy"];
+      decisionOverrides: CutDraft["suppressionDecisionOverrides"];
+      userTouchedCutIds: string[];
+      decisions: Array<{
+        suggestionId: string;
+        logicalId: string;
+        state: ReturnType<typeof suppressionSuggestionState>;
+      }>;
+    };
     labels: {
       falsePositives: FeedbackRange[];
       falseNegatives: FeedbackRange[];
@@ -85,6 +113,7 @@ export type ModelFeedbackBundle = {
     };
   };
   finalExportIntervals: FinalCutInterval[];
+  finalExportProvenance: ReturnType<typeof materializeFinalCutIntervals>["provenance"];
   warnings: string[];
 };
 
@@ -169,6 +198,8 @@ export function createModelFeedbackBundle(
       "Base features are unavailable because this analysis predates model-feedback capture; inference and corrections are still included.",
     );
   }
+  const materialized = materializeFinalCutIntervals(draft, analysis.suppression);
+  const allSuppressionSuggestions = analysis.suppression?.suggestions ?? [];
 
   return {
     schema: MODEL_FEEDBACK_SCHEMA,
@@ -235,6 +266,33 @@ export function createModelFeedbackBundle(
           analysis.probabilities.deadState.length,
         ]),
       },
+      productionComponents: analysis.productionComponents
+        ? {
+            allLabelsV2: analysis.productionComponents.allLabelsV2.map((range) => ({ ...range })),
+            previousProduction: analysis.productionComponents.previousProduction.map((range) => ({ ...range })),
+          }
+        : undefined,
+      suppression: analysis.suppression
+        ? {
+            modelId: analysis.suppression.modelId,
+            artifactSha256: analysis.suppression.artifactSha256,
+            weightsSha256: analysis.suppression.weightsSha256,
+            decoderVersion: analysis.suppression.decoderVersion,
+            policyContractVersion: analysis.suppression.policyContractVersion,
+            timestamps: encodeNumericArray(analysis.inferenceTimes, [
+              analysis.inferenceTimes.length,
+            ]),
+            probabilities: encodeNumericArray(analysis.suppression.probabilities, [
+              analysis.suppression.probabilities.length,
+            ]),
+            decodedIntervals: analysis.suppression.decodedIntervals.map((range) => ({ ...range })),
+            suggestions: analysis.suppression.suggestions.map((suggestion) => ({
+              ...suggestion,
+              sourceProductionIds: [...suggestion.sourceProductionIds],
+              eligiblePolicyIds: [...suggestion.eligiblePolicyIds],
+            })),
+          }
+        : null,
     },
     corrections: {
       updatedAt: draft.updatedAt,
@@ -245,6 +303,16 @@ export function createModelFeedbackBundle(
       ignoredIntervals: draft.ignoredIntervals.map((interval) => ({
         ...interval,
       })),
+      suppression: {
+        selectedPolicy: draft.selectedSuppressionPolicy,
+        decisionOverrides: { ...draft.suppressionDecisionOverrides },
+        userTouchedCutIds: [...draft.userTouchedCutIds],
+        decisions: allSuppressionSuggestions.map((suggestion) => ({
+          suggestionId: suggestion.id,
+          logicalId: suggestion.logicalId,
+          state: suppressionSuggestionState(suggestion, draft),
+        })),
+      },
       labels: {
         falsePositives: modelCuts
           .filter((cut) => !cut.included)
@@ -266,6 +334,10 @@ export function createModelFeedbackBundle(
       ...(interval.joinedGaps
         ? { joinedGaps: interval.joinedGaps.map((gap) => ({ ...gap })) }
         : {}),
+    })),
+    finalExportProvenance: materialized.provenance.map((segment) => ({
+      ...segment,
+      cutIds: [...segment.cutIds],
     })),
     warnings,
   };

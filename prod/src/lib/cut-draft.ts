@@ -1,7 +1,14 @@
 import type { IgnoredInterval } from "./product-analysis.ts";
 import type { Rally } from "./edit-list.ts";
+import {
+  SUPPRESSION_POLICY_CONTRACT_VERSION,
+  SUPPRESSION_POLICY_IDS,
+  type SuppressionPolicyId,
+  type SuppressionSuggestion,
+} from "./on-device/suppression-policy.ts";
+import type { OnDeviceSuppression } from "./on-device/types.ts";
 
-export const CUT_DRAFT_VERSION = 8 as const;
+export const CUT_DRAFT_VERSION = 9 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -32,6 +39,8 @@ export type CutDraft = {
   analysisId: string;
   recordingId: string;
   sourceRevision: string;
+  analysisStart: number;
+  analysisEnd: number;
   updatedAt: string;
   beforePaddingSeconds: number;
   afterPaddingSeconds: number;
@@ -43,6 +52,10 @@ export type CutDraft = {
   playbackRate: (typeof PLAYBACK_RATES)[number];
   confidenceReviewThreshold: number;
   reviewedCutIds: string[];
+  selectedSuppressionPolicy: SuppressionPolicyId;
+  suppressionDecisionOverrides: Record<string, "keep" | "suppress">;
+  userTouchedCutIds: string[];
+  suppressionContractVersion: number;
   cuts: EditableCut[];
   ignoredIntervals: IgnoredSourceInterval[];
 };
@@ -54,6 +67,18 @@ export type FinalCutInterval = {
   joinedGaps?: Array<{ start: number; end: number }>;
 };
 
+export type FinalCutProvenanceSegment = {
+  start: number;
+  end: number;
+  kind: "inferred-core" | "padding" | "joined-gap" | "manual";
+  cutIds: string[];
+};
+
+export type FinalCutMaterialization = {
+  intervals: FinalCutInterval[];
+  provenance: FinalCutProvenanceSegment[];
+};
+
 export type CutDraftSeed = {
   analysisId: string;
   recordingId: string;
@@ -62,6 +87,7 @@ export type CutDraftSeed = {
   analysisEnd?: number;
   rallies: Rally[];
   ignoredIntervals: IgnoredInterval[];
+  suppressionContractVersion?: number;
 };
 
 function seedAnalysisBounds(seed: CutDraftSeed): { start: number; end: number } {
@@ -115,7 +141,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -128,6 +154,8 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     analysisId: seed.analysisId,
     recordingId: seed.recordingId,
     sourceRevision: cutSourceRevision(seed),
+    analysisStart: bounds.start,
+    analysisEnd: bounds.end,
     updatedAt: new Date(0).toISOString(),
     beforePaddingSeconds: DEFAULT_CUT_PADDING.before,
     afterPaddingSeconds: DEFAULT_CUT_PADDING.after,
@@ -139,6 +167,11 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     playbackRate: 1,
     confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
     reviewedCutIds: [],
+    selectedSuppressionPolicy: "none",
+    suppressionDecisionOverrides: {},
+    userTouchedCutIds: [],
+    suppressionContractVersion:
+      seed.suppressionContractVersion ?? SUPPRESSION_POLICY_CONTRACT_VERSION,
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
       coreStart: clamp(rally.start, bounds.start, bounds.end),
@@ -217,6 +250,40 @@ function validIgnoredInterval(
   );
 }
 
+function inferLegacyTouchedCutIds(
+  cuts: readonly EditableCut[],
+  seed: CutDraftSeed,
+  beforePaddingSeconds: number,
+  afterPaddingSeconds: number,
+): string[] {
+  const bounds = seedAnalysisBounds(seed);
+  const rallies = new Map(seed.rallies.map((rally) => [rally.id, rally]));
+  return cuts
+    .filter((cut) => cut.origin === "cached-label")
+    .filter((cut) => {
+      const rally = rallies.get(cut.id);
+      if (!rally) return true;
+      const expectedStart = roundTime(clamp(
+        rally.start - beforePaddingSeconds,
+        bounds.start,
+        bounds.end,
+      ));
+      const expectedEnd = roundTime(clamp(
+        rally.end + afterPaddingSeconds,
+        bounds.start,
+        bounds.end,
+      ));
+      return (
+        cut.included !== rally.included ||
+        Math.abs(cut.coreStart - rally.start) > 0.000_5 ||
+        Math.abs(cut.coreEnd - rally.end) > 0.000_5 ||
+        Math.abs(cut.keepStart - expectedStart) > 0.000_5 ||
+        Math.abs(cut.keepEnd - expectedEnd) > 0.000_5
+      );
+    })
+    .map((cut) => cut.id);
+}
+
 export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null {
   try {
     const bounds = seedAnalysisBounds(seed);
@@ -227,13 +294,15 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, CUT_DRAFT_VERSION].includes(persistedVersion)
+      ![1, 2, 3, 4, 5, 6, 7, 8, CUT_DRAFT_VERSION].includes(persistedVersion)
     ) {
       return null;
     }
     const value: Partial<CutDraft> = {
       ...persisted,
       version: CUT_DRAFT_VERSION,
+      analysisStart: persistedVersion >= 9 ? persisted.analysisStart : bounds.start,
+      analysisEnd: persistedVersion >= 9 ? persisted.analysisEnd : bounds.end,
       beforePaddingSeconds: persistedVersion === 1
         ? 3
         : persistedVersion === 2
@@ -258,12 +327,55 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         ? persisted.confidenceReviewThreshold
         : DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
       reviewedCutIds: persistedVersion >= 8 ? persisted.reviewedCutIds : [],
+      selectedSuppressionPolicy: persistedVersion >= 9
+        ? persisted.selectedSuppressionPolicy
+        : "none",
+      suppressionDecisionOverrides: persistedVersion >= 9
+        ? persisted.suppressionDecisionOverrides
+        : {},
+      userTouchedCutIds: persistedVersion >= 9
+        ? persisted.userTouchedCutIds
+        : Array.isArray(persisted.cuts) &&
+            finiteTime(
+              persistedVersion === 1
+                ? 3
+                : persistedVersion === 2
+                  ? persisted.paddingSeconds
+                  : persisted.beforePaddingSeconds,
+            ) &&
+            finiteTime(
+              persistedVersion === 1
+                ? 2
+                : persistedVersion === 2
+                  ? persisted.paddingSeconds
+                  : persisted.afterPaddingSeconds,
+            )
+          ? inferLegacyTouchedCutIds(
+              persisted.cuts as EditableCut[],
+              seed,
+              persistedVersion === 1
+                ? 3
+                : persistedVersion === 2
+                  ? persisted.paddingSeconds as number
+                  : persisted.beforePaddingSeconds as number,
+              persistedVersion === 1
+                ? 2
+                : persistedVersion === 2
+                  ? persisted.paddingSeconds as number
+                  : persisted.afterPaddingSeconds as number,
+            )
+          : [],
+      suppressionContractVersion: persistedVersion >= 9
+        ? persisted.suppressionContractVersion
+        : seed.suppressionContractVersion ?? SUPPRESSION_POLICY_CONTRACT_VERSION,
     };
     if (
       value.version !== CUT_DRAFT_VERSION ||
       value.analysisId !== seed.analysisId ||
       value.recordingId !== seed.recordingId ||
       value.sourceRevision !== cutSourceRevision(seed) ||
+      value.analysisStart !== bounds.start ||
+      value.analysisEnd !== bounds.end ||
       typeof value.updatedAt !== "string" ||
       !finiteTime(value.beforePaddingSeconds) ||
       value.beforePaddingSeconds < 0 ||
@@ -296,6 +408,21 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       !Array.isArray(value.reviewedCutIds) ||
       !value.reviewedCutIds.every((id) => typeof id === "string" && id.length > 0) ||
       new Set(value.reviewedCutIds).size !== value.reviewedCutIds.length ||
+      !SUPPRESSION_POLICY_IDS.includes(
+        value.selectedSuppressionPolicy as SuppressionPolicyId,
+      ) ||
+      !value.suppressionDecisionOverrides ||
+      typeof value.suppressionDecisionOverrides !== "object" ||
+      Array.isArray(value.suppressionDecisionOverrides) ||
+      !Object.entries(value.suppressionDecisionOverrides).every(
+        ([id, decision]) =>
+          id.length > 0 && (decision === "keep" || decision === "suppress"),
+      ) ||
+      !Array.isArray(value.userTouchedCutIds) ||
+      !value.userTouchedCutIds.every((id) => typeof id === "string" && id.length > 0) ||
+      new Set(value.userTouchedCutIds).size !== value.userTouchedCutIds.length ||
+      !Number.isInteger(value.suppressionContractVersion) ||
+      value.suppressionContractVersion! < 1 ||
       (value.pendingManualStart !== null && value.pendingIgnoreStart !== null) ||
       !Array.isArray(value.cuts) ||
       !Array.isArray(value.ignoredIntervals) ||
@@ -314,7 +441,10 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const cachedCutIds = new Set(
       value.cuts.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
     );
-    if (value.reviewedCutIds.some((id) => !cachedCutIds.has(id))) return null;
+    if (
+      value.reviewedCutIds.some((id) => !cachedCutIds.has(id)) ||
+      value.userTouchedCutIds.some((id) => !cachedCutIds.has(id))
+    ) return null;
     return value as CutDraft;
   } catch {
     return null;
@@ -336,7 +466,7 @@ export function applyPaddingToCachedCuts(
     beforePaddingSeconds: before,
     afterPaddingSeconds: after,
     cuts: draft.cuts.map((cut) =>
-      cut.origin === "cached-label"
+      cut.origin === "cached-label" && !draft.userTouchedCutIds.includes(cut.id)
         ? {
             ...cut,
             keepStart: roundTime(
@@ -389,89 +519,216 @@ function mergeIgnoredIntervals(
     }, []);
 }
 
-export function effectiveKeptCutIds(draft: CutDraft): string[] {
-  const ignored = mergeIgnoredIntervals(draft.ignoredIntervals);
-  return draft.cuts
-    .filter((cut) => cut.included && cut.keepEnd > cut.keepStart)
-    .filter((cut) => {
-      const ignoredSeconds = ignored.reduce((total, interval) => {
-        const overlap = Math.max(
-          0,
-          Math.min(cut.keepEnd, interval.end) - Math.max(cut.keepStart, interval.start),
-        );
-        return total + overlap;
-      }, 0);
-      return cut.keepEnd - cut.keepStart - ignoredSeconds > 0.000_001;
-    })
-    .map((cut) => cut.id);
+export type SuppressionSuggestionState =
+  | "dormant"
+  | "suppressed"
+  | "kept"
+  | "edited-kept";
+
+export function suppressionSuggestionState(
+  suggestion: SuppressionSuggestion,
+  draft: CutDraft,
+): SuppressionSuggestionState {
+  const policy = draft.selectedSuppressionPolicy;
+  if (policy === "none" || !suggestion.eligiblePolicyIds.includes(policy)) {
+    return "dormant";
+  }
+  const override = draft.suppressionDecisionOverrides[suggestion.logicalId];
+  if (override === "suppress") return "suppressed";
+  if (override === "keep") return "kept";
+  const touched = new Set(draft.userTouchedCutIds);
+  if (
+    draft.cuts.some(
+      (cut) =>
+        cut.origin === "cached-label" &&
+        touched.has(cut.id) &&
+        cut.coreStart < suggestion.end &&
+        suggestion.start < cut.coreEnd,
+    )
+  ) {
+    return "edited-kept";
+  }
+  return "suppressed";
 }
 
-export function buildFinalCutIntervals(draft: CutDraft): FinalCutInterval[] {
+export function activeSuppressionSuggestions(
+  draft: CutDraft,
+  suppression?: Pick<OnDeviceSuppression, "suggestions">,
+): SuppressionSuggestion[] {
+  if (!suppression || draft.selectedSuppressionPolicy === "none") return [];
+  return suppression.suggestions.filter((suggestion) =>
+    suggestion.eligiblePolicyIds.includes(draft.selectedSuppressionPolicy as Exclude<SuppressionPolicyId, "none">)
+  );
+}
+
+function subtractRanges(
+  source: { start: number; end: number },
+  removals: readonly { start: number; end: number }[],
+): Array<{ start: number; end: number }> {
+  return mergeIgnoredIntervals(
+    removals.map((interval, index) => ({
+      ...interval,
+      id: `removal-${index}`,
+      reason: "suppression",
+    })),
+  ).reduce<Array<{ start: number; end: number }>>(
+    (pieces, removal) => pieces.flatMap((piece) => {
+      if (removal.end <= piece.start || removal.start >= piece.end) return [piece];
+      return [
+        ...(removal.start > piece.start
+          ? [{ start: piece.start, end: Math.min(piece.end, removal.start) }]
+          : []),
+        ...(removal.end < piece.end
+          ? [{ start: Math.max(piece.start, removal.end), end: piece.end }]
+          : []),
+      ];
+    }),
+    [{ ...source }],
+  );
+}
+
+export function materializeFinalCutIntervals(
+  draft: CutDraft,
+  suppression?: Pick<OnDeviceSuppression, "suggestions">,
+): FinalCutMaterialization {
+  const appliedSuggestions = activeSuppressionSuggestions(draft, suppression)
+    .filter((suggestion) => suppressionSuggestionState(suggestion, draft) === "suppressed");
+  const provenance: FinalCutProvenanceSegment[] = [];
+  const sourceIntervals: FinalCutInterval[] = [];
+  for (const cut of draft.cuts) {
+    if (!cut.included || cut.keepEnd <= cut.keepStart) continue;
+    if (cut.origin === "manual") {
+      sourceIntervals.push({ start: cut.keepStart, end: cut.keepEnd, cutIds: [cut.id] });
+      provenance.push({
+        start: cut.keepStart,
+        end: cut.keepEnd,
+        kind: "manual",
+        cutIds: [cut.id],
+      });
+      continue;
+    }
+    const fragments = subtractRanges(
+      { start: cut.coreStart, end: cut.coreEnd },
+      appliedSuggestions,
+    );
+    for (const fragment of fragments) {
+      const outerStart = Math.abs(fragment.start - cut.coreStart) < 0.000_5;
+      const outerEnd = Math.abs(fragment.end - cut.coreEnd) < 0.000_5;
+      const start = roundTime(clamp(
+        outerStart ? cut.keepStart : fragment.start - draft.beforePaddingSeconds,
+        draft.analysisStart,
+        draft.analysisEnd,
+      ));
+      const end = roundTime(clamp(
+        outerEnd ? cut.keepEnd : fragment.end + draft.afterPaddingSeconds,
+        draft.analysisStart,
+        draft.analysisEnd,
+      ));
+      if (end <= start) continue;
+      sourceIntervals.push({ start, end, cutIds: [cut.id] });
+      provenance.push({
+        start: fragment.start,
+        end: fragment.end,
+        kind: "inferred-core",
+        cutIds: [cut.id],
+      });
+      if (start < fragment.start) {
+        provenance.push({
+          start,
+          end: fragment.start,
+          kind: "padding",
+          cutIds: [cut.id],
+        });
+      }
+      if (fragment.end < end) {
+        provenance.push({
+          start: fragment.end,
+          end,
+          kind: "padding",
+          cutIds: [cut.id],
+        });
+      }
+    }
+  }
+
   const joinGap = clamp(draft.joinGapSeconds, 0, MAX_JOIN_GAP_SECONDS);
-  const merged = draft.cuts
-    .filter((cut) => cut.included && cut.keepEnd > cut.keepStart)
-    .sort((left, right) => left.keepStart - right.keepStart || left.keepEnd - right.keepEnd)
-    .reduce<FinalCutInterval[]>((intervals, cut) => {
+  const merged = sourceIntervals
+    .sort((left, right) => left.start - right.start || left.end - right.end)
+    .reduce<FinalCutInterval[]>((intervals, interval) => {
       const previous = intervals.at(-1);
-      const gap = previous ? cut.keepStart - previous.end : Number.POSITIVE_INFINITY;
+      const gap = previous ? interval.start - previous.end : Number.POSITIVE_INFINITY;
       if (!previous || (gap > 0 && gap >= joinGap)) {
-        intervals.push({ start: cut.keepStart, end: cut.keepEnd, cutIds: [cut.id] });
+        intervals.push({ ...interval, cutIds: [...interval.cutIds] });
       } else {
         if (gap > 0) {
-          previous.joinedGaps = [
-            ...(previous.joinedGaps ?? []),
-            { start: previous.end, end: cut.keepStart },
-          ];
+          const joinedGap = { start: previous.end, end: interval.start };
+          previous.joinedGaps = [...(previous.joinedGaps ?? []), joinedGap];
+          provenance.push({ ...joinedGap, kind: "joined-gap", cutIds: [] });
         }
-        previous.end = Math.max(previous.end, cut.keepEnd);
-        previous.cutIds.push(cut.id);
+        previous.end = Math.max(previous.end, interval.end);
+        previous.cutIds = [...new Set([...previous.cutIds, ...interval.cutIds])];
       }
       return intervals;
-  }, []);
+    }, []);
+
   const ignored = mergeIgnoredIntervals(draft.ignoredIntervals);
-  const remaining = ignored.reduce<FinalCutInterval[]>((intervals, excluded) => {
-    return intervals.flatMap((interval) => {
-      if (excluded.end <= interval.start || excluded.start >= interval.end) {
-        return [interval];
-      }
-      const pieces: FinalCutInterval[] = [];
-      if (excluded.start > interval.start) {
-        pieces.push({
-          ...interval,
-          end: Math.min(interval.end, excluded.start),
-          cutIds: [...interval.cutIds],
-        });
-      }
-      if (excluded.end < interval.end) {
-        pieces.push({
-          ...interval,
-          start: Math.max(interval.start, excluded.end),
-          cutIds: [...interval.cutIds],
-        });
-      }
-      return pieces;
-    });
-  }, merged);
-  const cutsById = new Map(draft.cuts.map((cut) => [cut.id, cut]));
-  return remaining.map((interval) => {
-    const { joinedGaps: sourceJoinedGaps, ...baseInterval } = interval;
-    const joinedGaps = sourceJoinedGaps
+  const remaining = ignored.reduce<FinalCutInterval[]>(
+    (intervals, excluded) => intervals.flatMap((interval) => {
+      if (excluded.end <= interval.start || excluded.start >= interval.end) return [interval];
+      return [
+        ...(excluded.start > interval.start
+          ? [{ ...interval, end: Math.min(interval.end, excluded.start), cutIds: [...interval.cutIds] }]
+          : []),
+        ...(excluded.end < interval.end
+          ? [{ ...interval, start: Math.max(interval.start, excluded.end), cutIds: [...interval.cutIds] }]
+          : []),
+      ];
+    }),
+    merged,
+  );
+  const intervals = remaining.map((interval) => {
+    const joinedGaps = interval.joinedGaps
       ?.map((gap) => ({
         start: Math.max(interval.start, gap.start),
         end: Math.min(interval.end, gap.end),
       }))
       .filter((gap) => gap.end > gap.start);
     return {
-      ...baseInterval,
+      start: interval.start,
+      end: interval.end,
+      cutIds: interval.cutIds.filter((id) => provenance.some(
+        (segment) =>
+          segment.cutIds.includes(id) &&
+          segment.start < interval.end &&
+          interval.start < segment.end,
+      )),
       ...(joinedGaps?.length ? { joinedGaps } : {}),
-      cutIds: interval.cutIds.filter((id) => {
-        const cut = cutsById.get(id);
-        return Boolean(
-          cut && Math.min(cut.keepEnd, interval.end) - Math.max(cut.keepStart, interval.start) > 0.000_001,
-        );
-      }),
     };
   });
+  const visibleProvenance = provenance.flatMap((segment) => intervals.flatMap((interval) => {
+    const start = Math.max(segment.start, interval.start);
+    const end = Math.min(segment.end, interval.end);
+    return end > start ? [{ ...segment, start, end }] : [];
+  }));
+  return { intervals, provenance: visibleProvenance };
+}
+
+export function effectiveKeptCutIds(
+  draft: CutDraft,
+  suppression?: Pick<OnDeviceSuppression, "suggestions">,
+): string[] {
+  return [...new Set(
+    materializeFinalCutIntervals(draft, suppression).intervals.flatMap(
+      (interval) => interval.cutIds,
+    ),
+  )];
+}
+
+export function buildFinalCutIntervals(
+  draft: CutDraft,
+  suppression?: Pick<OnDeviceSuppression, "suggestions">,
+): FinalCutInterval[] {
+  return materializeFinalCutIntervals(draft, suppression).intervals;
 }
 
 export function totalFinalCutSeconds(intervals: FinalCutInterval[]): number {

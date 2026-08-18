@@ -4,6 +4,7 @@ import type { OnDeviceRuntimeVariant } from "./on-device/runtime-variants";
 import type {
   BaseFeatureSequence,
   NormalizedRoi,
+  OnDeviceAnalysis,
   OnDeviceMediaInfo,
 } from "./on-device/types";
 import type { ProjectSource } from "./project-store";
@@ -39,4 +40,6 @@ export type ProductAnalysis = {
     serve: Float32Array;
     deadState: Float32Array;
   };
+  productionComponents?: OnDeviceAnalysis["productionComponents"];
+  suppression?: OnDeviceAnalysis["suppression"];
 };

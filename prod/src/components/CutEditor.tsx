@@ -8,17 +8,20 @@ import {
 } from "react";
 
 import {
+  activeSuppressionSuggestions,
   applyPaddingToCachedCuts,
   buildFinalCutIntervals,
   createCutDraft,
   cutDraftStorageKey,
   cutDraftStorageKeys,
   effectiveKeptCutIds,
+  materializeFinalCutIntervals,
   nextFinalCutTime,
   parseCutDraft,
   playbackFocusCut,
   PLAYBACK_RATES,
   totalFinalCutSeconds,
+  suppressionSuggestionState,
   type CutDraft,
   type CutDraftSeed,
   type EditableCut,
@@ -38,6 +41,14 @@ import {
 import type { ExportProgress, VideoExportMode } from "@/lib/on-device/export";
 import { modelDisplayName } from "@/lib/on-device/ensemble";
 import { requestPlayingSeek } from "@/lib/on-device/player";
+import {
+  nextSuppressionAfterTime,
+  nextSuppressionSuggestion,
+  SUPPRESSION_POLICY_DIAGNOSTIC_NAMES,
+  SUPPRESSION_POLICY_LABELS,
+  type SuppressionPolicyId,
+  type SuppressionSuggestion,
+} from "@/lib/on-device/suppression-policy";
 import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
@@ -50,6 +61,7 @@ type CutEditorProps = {
   sourceFile: File | null;
   sourceError: string | null;
   onAttachSource: (file: File | null) => void;
+  onRequestSuppression: () => void;
 };
 
 type ExportState = "idle" | "exporting" | "done" | "error";
@@ -146,6 +158,7 @@ export function CutEditor({
   sourceFile,
   sourceError,
   onAttachSource,
+  onRequestSuppression,
 }: CutEditorProps) {
   const analysisStart = initialAnalysis.analysisWindow.start;
   const analysisEnd = initialAnalysis.analysisWindow.end;
@@ -172,6 +185,7 @@ export function CutEditor({
       analysisEnd,
       rallies: initialAnalysis.rallies,
       ignoredIntervals: initialAnalysis.ignoredIntervals,
+      suppressionContractVersion: initialAnalysis.suppression?.policyContractVersion,
     }),
     [initialAnalysis, analysisStart, analysisEnd],
   );
@@ -180,6 +194,7 @@ export function CutEditor({
   const [storageReady, setStorageReady] = useState(false);
   const [storageMessage, setStorageMessage] = useState("Loading on-device draft…");
   const [selectedId, setSelectedId] = useState(initialDraft.cuts[0]?.id ?? "");
+  const [selectedSuppressionId, setSelectedSuppressionId] = useState("");
   const [focusLocked, setFocusLocked] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(analysisStart);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -274,15 +289,59 @@ export function CutEditor({
   const selectedIndex = selected
     ? sortedCuts.findIndex((cut) => cut.id === selected.id)
     : -1;
-  const finalIntervals = useMemo(() => buildFinalCutIntervals(draft), [draft]);
+  const materialized = useMemo(
+    () => materializeFinalCutIntervals(draft, initialAnalysis.suppression),
+    [draft, initialAnalysis.suppression],
+  );
+  const finalIntervals = materialized.intervals;
   const keptSeconds = totalFinalCutSeconds(finalIntervals);
-  const effectiveKeptIds = useMemo(() => new Set(effectiveKeptCutIds(draft)), [draft]);
+  const noSuppressionSeconds = useMemo(
+    () => totalFinalCutSeconds(buildFinalCutIntervals(
+      { ...draft, selectedSuppressionPolicy: "none" },
+      initialAnalysis.suppression,
+    )),
+    [draft, initialAnalysis.suppression],
+  );
+  const effectiveKeptIds = useMemo(
+    () => new Set(effectiveKeptCutIds(draft, initialAnalysis.suppression)),
+    [draft, initialAnalysis.suppression],
+  );
+  const suppressionSuggestions = useMemo(
+    () => activeSuppressionSuggestions(draft, initialAnalysis.suppression)
+      .sort((left, right) => left.start - right.start || left.end - right.end),
+    [draft, initialAnalysis.suppression],
+  );
+  const selectedSuppression = suppressionSuggestions.find(
+    (suggestion) => suggestion.id === selectedSuppressionId,
+  ) ?? null;
+  const selectedSuppressionIndex = selectedSuppression
+    ? suppressionSuggestions.findIndex((suggestion) => suggestion.id === selectedSuppression.id)
+    : -1;
+  const appliedSuppressionCount = suppressionSuggestions.filter(
+    (suggestion) => suppressionSuggestionState(suggestion, draft) === "suppressed",
+  ).length;
   const keptCount = effectiveKeptIds.size;
   const removedCount = draft.cuts.filter((cut) => !cut.included).length;
   const fullyIgnoredCount = draft.cuts.filter(
     (cut) => cut.included && !effectiveKeptIds.has(cut.id),
   ).length;
-  const focus = detailWindow(selected, playbackTime, analysisStart, analysisEnd);
+  const focus = detailWindow(
+    selectedSuppression
+      ? {
+          id: selectedSuppression.id,
+          coreStart: selectedSuppression.start,
+          coreEnd: selectedSuppression.end,
+          keepStart: selectedSuppression.start,
+          keepEnd: selectedSuppression.end,
+          confidence: selectedSuppression.score,
+          included: true,
+          origin: "cached-label",
+        }
+      : selected,
+    playbackTime,
+    analysisStart,
+    analysisEnd,
+  );
   const activeMarkStart = manualStart ?? ignoreStart;
   const overviewCuts = activeMarkStart === null
     ? sortedCuts
@@ -348,6 +407,11 @@ export function CutEditor({
     updateDraft((current) => ({
       ...current,
       cuts: current.cuts.map((cut) => (cut.id === id ? mutate(cut) : cut)),
+      userTouchedCutIds: current.cuts.some(
+        (cut) => cut.id === id && cut.origin === "cached-label",
+      )
+        ? [...new Set([...current.userTouchedCutIds, id])]
+        : current.userTouchedCutIds,
     }));
   }
 
@@ -403,6 +467,7 @@ export function CutEditor({
       selectedSeekRef.current = null;
     }
     if (previewEndRef.current !== null) return;
+    if (selectedSuppressionId) return;
     if (focusLocked) return;
     const reachedCut = playbackFocusCut(sortedCuts, time);
     if (reachedCut) {
@@ -411,9 +476,69 @@ export function CutEditor({
   }
 
   function selectCut(cut: EditableCut) {
+    setSelectedSuppressionId("");
     setSelectedId(cut.id);
     seekTo(cut.keepStart, undefined, cut.id);
     setEditorMessage(null);
+  }
+
+  function selectSuppression(suggestion: SuppressionSuggestion) {
+    const video = videoRef.current;
+    video?.pause();
+    const overlapping = sortedCuts.find(
+      (cut) => cut.coreStart < suggestion.end && suggestion.start < cut.coreEnd,
+    );
+    if (overlapping) setSelectedId(overlapping.id);
+    setSelectedSuppressionId(suggestion.id);
+    seekTo(Math.max(analysisStart, suggestion.start - 2), false);
+    setEditorMessage(
+      `${preciseTime(suggestion.start)}–${preciseTime(suggestion.end)} · review without changing its current decision.`,
+    );
+  }
+
+  function setSuppressionPolicy(policy: SuppressionPolicyId) {
+    updateDraft((current) => ({ ...current, selectedSuppressionPolicy: policy }));
+    if (policy === "none") setSelectedSuppressionId("");
+    setEditorMessage(
+      policy === "none"
+        ? "Suppression suggestions are dormant; saved review choices are preserved."
+        : `${SUPPRESSION_POLICY_LABELS[policy]} suppression selected. Untouched suggestions default to Suppress.`,
+    );
+  }
+
+  function setSuppressionDecision(
+    suggestion: SuppressionSuggestion,
+    decision: "keep" | "suppress",
+  ) {
+    updateDraft((current) => ({
+      ...current,
+      suppressionDecisionOverrides: {
+        ...current.suppressionDecisionOverrides,
+        [suggestion.logicalId]: decision,
+      },
+    }));
+    setEditorMessage(
+      decision === "suppress"
+        ? "Suggestion applied to the derived export. Manual ranges still win."
+        : "Suggestion kept in the export and retained for review.",
+    );
+  }
+
+  function navigateSuppression(offset: -1 | 1) {
+    const next = nextSuppressionSuggestion(
+      suppressionSuggestions,
+      selectedSuppression?.id ?? "",
+      offset,
+    );
+    if (next) selectSuppression(next);
+  }
+
+  function reviewNextSuppression() {
+    const timelineAnchor = selectedSuppression
+      ? Math.max(playbackTime, selectedSuppression.start)
+      : playbackTime;
+    const next = nextSuppressionAfterTime(suppressionSuggestions, timelineAnchor);
+    if (next) selectSuppression(next);
   }
 
   async function togglePlayback() {
@@ -731,6 +856,7 @@ export function CutEditor({
     drag: Pick<TimelineDrag, "left" | "width" | "windowStart" | "windowEnd">,
   ) {
     const ratio = Math.max(0, Math.min(1, (clientX - drag.left) / drag.width));
+    setSelectedSuppressionId("");
     seekTo(drag.windowStart + ratio * (drag.windowEnd - drag.windowStart));
   }
 
@@ -812,12 +938,13 @@ export function CutEditor({
     setExportError(null);
     setDraft({ ...initialDraft, updatedAt: new Date().toISOString() });
     setSelectedId(initialDraft.cuts[0]?.id ?? "");
+    setSelectedSuppressionId("");
     setEditorMessage("Reset to the inferred model ranges.");
   }
 
   function downloadEditList() {
     const payload = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       source: {
         analysisId: initialAnalysis.id,
         recordingId: initialAnalysis.recordingId,
@@ -830,7 +957,28 @@ export function CutEditor({
       cuts: draft.cuts,
       reviewedCutIds: draft.reviewedCutIds,
       ignoredIntervals: draft.ignoredIntervals,
+      suppression: {
+        selectedPolicy: draft.selectedSuppressionPolicy,
+        artifact: initialAnalysis.suppression
+          ? {
+              modelId: initialAnalysis.suppression.modelId,
+              artifactSha256: initialAnalysis.suppression.artifactSha256,
+              weightsSha256: initialAnalysis.suppression.weightsSha256,
+              decoderVersion: initialAnalysis.suppression.decoderVersion,
+              policyContractVersion: initialAnalysis.suppression.policyContractVersion,
+            }
+          : null,
+        suggestions: initialAnalysis.suppression?.suggestions ?? [],
+        decisionOverrides: draft.suppressionDecisionOverrides,
+        userTouchedCutIds: draft.userTouchedCutIds,
+        decisions: (initialAnalysis.suppression?.suggestions ?? []).map((suggestion) => ({
+          suggestionId: suggestion.id,
+          logicalId: suggestion.logicalId,
+          state: suppressionSuggestionState(suggestion, draft),
+        })),
+      },
       finalIntervals,
+      finalIntervalProvenance: materialized.provenance,
     };
     const url = URL.createObjectURL(
       new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" }),
@@ -1007,6 +1155,65 @@ export function CutEditor({
               <p>{draft.ignoredIntervals.length} ignored source sections</p>
               <p>Duration includes padding and joined short gaps; ignored time is excluded</p>
             </div>
+          </div>
+          <div className={styles.suppressionControls}>
+            <div>
+              <span>FALSE-POSITIVE SUPPRESSION</span>
+              <strong>
+                {SUPPRESSION_POLICY_LABELS[draft.selectedSuppressionPolicy]}
+              </strong>
+            </div>
+            {initialAnalysis.suppression ? (
+              <>
+                <label
+                  className={styles.suppressionSelect}
+                  htmlFor="suppression-policy"
+                >
+                  <span>Suppression level</span>
+                  <select
+                    id="suppression-policy"
+                    value={draft.selectedSuppressionPolicy}
+                    onChange={(event) => setSuppressionPolicy(
+                      event.currentTarget.value as SuppressionPolicyId,
+                    )}
+                    title={draft.selectedSuppressionPolicy === "none"
+                      ? "Preserve the existing production output"
+                      : SUPPRESSION_POLICY_DIAGNOSTIC_NAMES[draft.selectedSuppressionPolicy]}
+                  >
+                  {(initialAnalysis.suppression.identicalPolicyResults
+                    ? ["none", "conservative"] as const
+                    : ["none", "conservative", "balanced", "aggressive"] as const
+                  ).map((policy) => (
+                    <option key={policy} value={policy}>
+                      {initialAnalysis.suppression?.identicalPolicyResults && policy === "conservative"
+                        ? "Suppression suggestions"
+                        : SUPPRESSION_POLICY_LABELS[policy]}
+                    </option>
+                  ))}
+                  </select>
+                </label>
+                {draft.selectedSuppressionPolicy === "none" ? (
+                  <small>Choose a suppression level to automatically remove its suggested false positives.</small>
+                ) : suppressionSuggestions.length === 0 ? (
+                  <small>No suppression suggestions for this game.</small>
+                ) : (
+                  <small>
+                    Untouched suggestions are automatically suppressed. Choose Keep while reviewing to restore one.
+                  </small>
+                )}
+              </>
+            ) : (
+              <>
+                <small>
+                  This saved analysis has no retained suppression layer. No suppression remains fully usable.
+                </small>
+                {sourceFile && (
+                  <button type="button" onClick={onRequestSuppression}>
+                    Add suppression from cached features
+                  </button>
+                )}
+              </>
+            )}
           </div>
           <div className={styles.paddingControls}>
             <div className={styles.paddingControl}>
@@ -1374,20 +1581,45 @@ export function CutEditor({
                   <span>%</span>
                 </span>
               </label>
-              <p>
-                {disagreementCount} disagreements · {reviewedLowConfidenceCount}/{lowConfidenceCuts.length} reviewed · {unreviewedLowConfidenceCuts.length} remaining
-              </p>
-              <button
-                type="button"
-                onClick={reviewNextLowConfidenceCut}
-                disabled={unreviewedLowConfidenceCuts.length === 0}
-              >
-                {unreviewedLowConfidenceCuts.length === 0
-                  ? "Review complete"
-                  : selectedReviewCandidate && !selectedIsReviewed
-                    ? "Mark reviewed & next"
-                    : "Review next"}
-              </button>
+              <div className={styles.reviewStatus}>
+                <p>
+                  {disagreementCount} disagreements · {reviewedLowConfidenceCount}/{lowConfidenceCuts.length} reviewed · {unreviewedLowConfidenceCuts.length} remaining
+                </p>
+                {draft.selectedSuppressionPolicy !== "none" && suppressionSuggestions.length > 0 && (
+                  <p data-suppression="true">
+                    {suppressionSuggestions.length} suppression suggestions · {appliedSuppressionCount} applied · {Math.max(0, noSuppressionSeconds - keptSeconds).toFixed(1)}s removed
+                  </p>
+                )}
+              </div>
+              <div className={styles.reviewActions}>
+                <button
+                  type="button"
+                  onClick={reviewNextLowConfidenceCut}
+                  disabled={unreviewedLowConfidenceCuts.length === 0}
+                >
+                  {unreviewedLowConfidenceCuts.length === 0
+                    ? "Review complete"
+                    : selectedReviewCandidate && !selectedIsReviewed
+                      ? "Mark reviewed & next"
+                      : "Review next"}
+                </button>
+                {draft.selectedSuppressionPolicy !== "none" && suppressionSuggestions.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.nextSuppression}
+                    onClick={reviewNextSuppression}
+                  >
+                    Next suppression
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className={styles.timelineLegend} aria-label="Timeline legend">
+              <span><i data-kind="ordinary" /> Kept rally</span>
+              <span><i data-kind="suppressed" /> Suppressed</span>
+              <span><i data-kind="suggestion-kept" /> Suggestion kept</span>
+              <span><i data-kind="ignored" /> Ignored source</span>
+              <span><i data-kind="joined" /> Joined gap</span>
             </div>
             <div
               className={styles.overviewRail}
@@ -1464,6 +1696,28 @@ export function CutEditor({
                   />
                 </button>
               ))}
+              {suppressionSuggestions.map((suggestion) => {
+                const state = suppressionSuggestionState(suggestion, draft);
+                return (
+                  <button
+                    type="button"
+                    key={suggestion.id}
+                    className={styles.overviewSuppression}
+                    data-state={state}
+                    data-selected={suggestion.id === selectedSuppression?.id || undefined}
+                    style={{
+                      left: `${timelinePercent(suggestion.start - analysisStart, analysisDuration)}%`,
+                      width: `${timelinePercent(suggestion.end - suggestion.start, analysisDuration)}%`,
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      selectSuppression(suggestion);
+                    }}
+                    aria-label={`${state === "suppressed" ? "Suppressed" : state === "edited-kept" ? "Edited rally—kept" : "Suggestion kept"}, ${preciseTime(suggestion.start)} to ${preciseTime(suggestion.end)}, ${Math.round(suggestion.score * 100)}% score`}
+                    title={`${state === "suppressed" ? "Suppressed" : state === "edited-kept" ? "Edited rally—kept" : "Suggestion kept"} · ${preciseTime(suggestion.start)}–${preciseTime(suggestion.end)}`}
+                  />
+                );
+              })}
               {finalIntervals.flatMap((interval) =>
                 (interval.joinedGaps ?? [])
                   .filter((gap) => activeMarkStart === null || gap.end >= activeMarkStart)
@@ -1500,7 +1754,13 @@ export function CutEditor({
         <div className={styles.focusHeader}>
           <div>
             <span>FOCUSED RANGE</span>
-            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `${modelAgreementLabel(selected)} · ${Math.round(selected.confidence * 100)}% review confidence${selectedIsReviewed ? " · reviewed" : ""}`}` : "No range selected"}</strong>
+            <strong>
+              {selectedSuppression
+                ? `Suppression suggestion · ${preciseTime(selectedSuppression.start)}–${preciseTime(selectedSuppression.end)} · ${Math.round(selectedSuppression.score * 100)}% score`
+                : selected
+                  ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `${modelAgreementLabel(selected)} · ${Math.round(selected.confidence * 100)}% review confidence${selectedIsReviewed ? " · reviewed" : ""}`}`
+                  : "No range selected"}
+            </strong>
           </div>
           <div className={styles.focusHeaderControls}>
             <label className={styles.focusLock}>
@@ -1511,7 +1771,17 @@ export function CutEditor({
               />
               <span>Lock focus</span>
             </label>
-            {selected && (
+            {selectedSuppression ? (
+              <div className={styles.rangeNavigation}>
+                <button type="button" onClick={() => navigateSuppression(-1)}>
+                  Previous
+                </button>
+                <span>{selectedSuppressionIndex + 1} / {suppressionSuggestions.length}</span>
+                <button type="button" onClick={() => navigateSuppression(1)}>
+                  Next
+                </button>
+              </div>
+            ) : selected && (
               <div className={styles.rangeNavigation}>
                 <button type="button" onClick={() => navigateCut(-1)} disabled={selectedIndex <= 0}>
                   Previous
@@ -1580,7 +1850,26 @@ export function CutEditor({
               >
                 <small>INFERRED CORE</small>
               </span>
-              <button
+              {selectedSuppression && (
+                <span
+                  className={styles.detailSuppression}
+                  data-state={suppressionSuggestionState(selectedSuppression, draft)}
+                  style={{
+                    left: `${timelinePercent(selectedSuppression.start - focus.start, focus.end - focus.start)}%`,
+                    width: `${timelinePercent(selectedSuppression.end - selectedSuppression.start, focus.end - focus.start)}%`,
+                  }}
+                  aria-label={`Selected suppression suggestion, ${preciseTime(selectedSuppression.start)} to ${preciseTime(selectedSuppression.end)}`}
+                >
+                  <small>
+                    {suppressionSuggestionState(selectedSuppression, draft) === "suppressed"
+                      ? "SUPPRESSED"
+                      : suppressionSuggestionState(selectedSuppression, draft) === "edited-kept"
+                        ? "EDITED RALLY—KEPT"
+                        : "SUGGESTION KEPT"}
+                  </small>
+                </span>
+              )}
+              {!selectedSuppression && <button
                 type="button"
                 className={`${styles.boundaryHandle} ${styles.startHandle}`}
                 style={{
@@ -1594,8 +1883,8 @@ export function CutEditor({
                 onLostPointerCapture={endBoundaryDrag}
               >
                 <i />
-              </button>
-              <button
+              </button>}
+              {!selectedSuppression && <button
                 type="button"
                 className={`${styles.boundaryHandle} ${styles.endHandle}`}
                 style={{
@@ -1609,7 +1898,7 @@ export function CutEditor({
                 onLostPointerCapture={endBoundaryDrag}
               >
                 <i />
-              </button>
+              </button>}
               <span
                 className={styles.detailPlayhead}
                 style={{
@@ -1618,7 +1907,7 @@ export function CutEditor({
               />
             </div>
 
-            <div className={styles.boundaryControls}>
+            {!selectedSuppression && <div className={styles.boundaryControls}>
               <fieldset>
                 <legend>Kept start</legend>
                 <output>{preciseTime(selected.keepStart)}</output>
@@ -1639,37 +1928,66 @@ export function CutEditor({
                   <button type="button" onClick={() => nudgeBoundary("end", 1)}>+1s</button>
                 </div>
               </fieldset>
-            </div>
+            </div>}
 
             <div className={styles.focusActions}>
-              <button
-                type="button"
-                className={styles.primaryAction}
-                data-included={selected.included || undefined}
-                onClick={toggleSelected}
-              >
-                {selected.included ? "✓ Keep this range" : "+ Restore this range"}
-              </button>
-              <button type="button" onClick={previewSelected}>Preview cut</button>
-              <button type="button" onClick={resetSelectedPadding}>Reset padding</button>
-              {selectedReviewCandidate && (
-                <button
+              {selectedSuppression ? (
+                <>
+                  <p className={styles.suppressionStateText}>
+                    {suppressionSuggestionState(selectedSuppression, draft) === "suppressed"
+                      ? "This suggestion is currently removed from the derived export."
+                      : suppressionSuggestionState(selectedSuppression, draft) === "edited-kept"
+                        ? "Kept because an overlapping inferred rally was already edited. Choose Suppress to override that protection."
+                        : "You explicitly kept this suggestion in the export."}
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.suppressAction}
+                    data-active={suppressionSuggestionState(selectedSuppression, draft) === "suppressed" || undefined}
+                    onClick={() => setSuppressionDecision(selectedSuppression, "suppress")}
+                  >
+                    Suppress
+                  </button>
+                  <button
+                    type="button"
+                    data-active={suppressionSuggestionState(selectedSuppression, draft) !== "suppressed" || undefined}
+                    onClick={() => setSuppressionDecision(selectedSuppression, "keep")}
+                  >
+                    Keep
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={styles.primaryAction}
+                    data-included={selected.included || undefined}
+                    onClick={toggleSelected}
+                  >
+                    {selected.included ? "✓ Keep this range" : "+ Restore this range"}
+                  </button>
+                  <button type="button" onClick={previewSelected}>Preview cut</button>
+                  <button type="button" onClick={resetSelectedPadding}>Reset padding</button>
+                  {selectedReviewCandidate && (
+                    <button
                   type="button"
                   className={styles.reviewAction}
                   data-reviewed={selectedIsReviewed || undefined}
                   onClick={toggleSelectedReviewed}
                 >
                   {selectedIsReviewed ? "✓ Reviewed" : "Mark reviewed"}
-                </button>
-              )}
-              {selected.origin === "manual" && (
-                <button
+                    </button>
+                  )}
+                  {selected.origin === "manual" && (
+                    <button
                   type="button"
                   className={styles.dangerButton}
                   onClick={() => deleteManualCut(selected.id)}
                 >
                   Delete manual cut
-                </button>
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </>
@@ -1807,12 +2125,17 @@ export function CutEditor({
               }
               data-disagreement={isModelDisagreement(cut) || undefined}
               data-reviewed={reviewedCutIds.has(cut.id) || undefined}
+              data-suppression={suppressionSuggestions.some(
+                (suggestion) => suggestion.start < cut.coreEnd && suggestion.end > cut.coreStart,
+              ) || undefined}
             >
               <button type="button" className={styles.cutSelect} onClick={() => selectCut(cut)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{cut.id}</strong>
                 <small>{preciseTime(cut.keepStart)}–{preciseTime(cut.keepEnd)}</small>
-                <em>{cut.origin === "manual" ? "MANUAL" : reviewedCutIds.has(cut.id) ? "REVIEWED" : isModelDisagreement(cut) ? "CHECK" : `${Math.round(cut.confidence * 100)}%`}</em>
+                <em>{cut.origin === "manual" ? "MANUAL" : suppressionSuggestions.some(
+                  (suggestion) => suggestion.start < cut.coreEnd && suggestion.end > cut.coreStart,
+                ) ? "SUPPRESS" : reviewedCutIds.has(cut.id) ? "REVIEWED" : isModelDisagreement(cut) ? "CHECK" : `${Math.round(cut.confidence * 100)}%`}</em>
               </button>
               <button
                 type="button"

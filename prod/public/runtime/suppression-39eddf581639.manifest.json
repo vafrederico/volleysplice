@@ -1,0 +1,23 @@
+{
+  "decoder": {
+    "bridge_gap_seconds": 0.5,
+    "enter_threshold": 0.75,
+    "exit_threshold": 0.65,
+    "min_live_seconds": 0.5,
+    "short_event_min_seconds": 0.25,
+    "short_event_threshold": 0.9,
+    "smoothing_seconds": 1.0
+  },
+  "decoderVersion": "held-production-suppression-decoder-v1",
+  "emitted": {
+    "filename": "suppression-39eddf581639.json",
+    "sha256": "ef0ad4eb93fa61ce1d403f083d91f7578cf9ff0f31fac797fde9ab8b73f42794"
+  },
+  "schemaVersion": 1,
+  "source": {
+    "artifactSha256": "39eddf58163901930434ea422a802686ae921ae1e8fe23c20a3c12e5f453da93",
+    "metadataSha256": "78ffc80af032da6987ffe7b52ce4e452eef59dc5061e2509306700abd5e9d40e",
+    "modelDirectory": "/mnt/freenas/volleycut/intake-2026-08-13/experiments/feedback-suppression-v3-2026-08-16/models/suppression-overlap-exclusion-retrained",
+    "weightsSha256": "a943749b69c98a1bc926f8efc9fe60c67c1226534fe09a892c632519217aa3bb"
+  }
+}

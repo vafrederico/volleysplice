@@ -1,6 +1,6 @@
 # Suppression product implementation plan
 
-Status: proposed implementation plan for production web and native Android.
+Status: production web implementation completed; native Android remains planned.
 
 ## Outcome
 

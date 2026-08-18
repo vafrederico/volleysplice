@@ -109,6 +109,18 @@ export type OnDeviceInterval = {
     | "previous-production-only";
 };
 
+export type OnDeviceSuppression = {
+  modelId: string;
+  artifactSha256: string;
+  weightsSha256: string;
+  decoderVersion: string;
+  policyContractVersion: number;
+  probabilities: Float32Array;
+  decodedIntervals: OnDeviceInterval[];
+  suggestions: import("./suppression-policy").SuppressionSuggestion[];
+  identicalPolicyResults: boolean;
+};
+
 export type OnDeviceAnalysis = {
   modelId: string;
   featurePath: "local-source";
@@ -119,4 +131,9 @@ export type OnDeviceAnalysis = {
   rallyProbabilities: Float32Array;
   serveProbabilities: Float32Array;
   deadStateProbabilities: Float32Array;
+  productionComponents?: {
+    allLabelsV2: OnDeviceInterval[];
+    previousProduction: OnDeviceInterval[];
+  };
+  suppression?: OnDeviceSuppression;
 };

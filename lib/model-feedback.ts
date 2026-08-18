@@ -1,5 +1,6 @@
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
-export const MODEL_FEEDBACK_SCHEMA_VERSION = 1 as const;
+export const MODEL_FEEDBACK_SCHEMA_VERSION = 2 as const;
+export const SUPPORTED_MODEL_FEEDBACK_SCHEMA_VERSIONS = [1, 2] as const;
 
 const MAX_NUMERIC_VALUES = 25_000_000;
 
@@ -42,7 +43,7 @@ export type FinalFeedbackRange = {
 
 export type ParsedModelFeedback = {
   schema: typeof MODEL_FEEDBACK_SCHEMA;
-  schemaVersion: typeof MODEL_FEEDBACK_SCHEMA_VERSION;
+  schemaVersion: (typeof SUPPORTED_MODEL_FEEDBACK_SCHEMA_VERSIONS)[number];
   generatedAt: string;
   producer: FeedbackSource;
   source: {
@@ -366,9 +367,13 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   if (root.schema !== MODEL_FEEDBACK_SCHEMA) {
     fail("bundle.schema", `must be ${MODEL_FEEDBACK_SCHEMA}`);
   }
-  if (root.schemaVersion !== MODEL_FEEDBACK_SCHEMA_VERSION) {
-    fail("bundle.schemaVersion", `must be ${MODEL_FEEDBACK_SCHEMA_VERSION}`);
+  if (
+    root.schemaVersion !== 1 &&
+    root.schemaVersion !== MODEL_FEEDBACK_SCHEMA_VERSION
+  ) {
+    fail("bundle.schemaVersion", "must be 1 or 2");
   }
+  const schemaVersion = root.schemaVersion;
 
   const source = object(root.source, "bundle.source");
   if (source.timelineCoordinates !== "seconds-from-start-of-source") {
@@ -545,7 +550,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
 
   return {
     schema: MODEL_FEEDBACK_SCHEMA,
-    schemaVersion: MODEL_FEEDBACK_SCHEMA_VERSION,
+    schemaVersion,
     generatedAt: date(root.generatedAt, "bundle.generatedAt"),
     producer: sourceProducer(runtimeVariant),
     source: {

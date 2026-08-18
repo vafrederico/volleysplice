@@ -333,6 +333,11 @@
   font: 700 12px "Atkinson Hyperlegible Mono", monospace;
 }
 
+.reviewStatus {
+  display: grid;
+  gap: 3px;
+}
+
 .confidenceReview p {
   margin: 0;
   color: #a3452e;
@@ -340,10 +345,63 @@
   white-space: nowrap;
 }
 
+.confidenceReview p[data-suppression="true"] {
+  color: #9f1320;
+}
+
 .confidenceReview button {
   padding: 0 12px;
   background: #fff;
   white-space: nowrap;
+}
+
+.reviewActions {
+  display: flex;
+  gap: 6px;
+}
+
+.reviewActions button {
+  min-height: 44px;
+}
+
+.timelineLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  margin-top: 9px;
+  color: var(--cut-muted);
+  font: 9px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.timelineLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.timelineLegend i {
+  width: 18px;
+  height: 10px;
+  border: 1px solid #888;
+  background: var(--cut-blue);
+}
+
+.timelineLegend i[data-kind="suppressed"] {
+  border-color: #bd1826;
+  background: repeating-linear-gradient(135deg, #bd1826 0, #bd1826 4px, #ffd8dc 4px, #ffd8dc 7px);
+}
+
+.timelineLegend i[data-kind="suggestion-kept"] {
+  border: 2px solid #bd1826;
+  background: #fff;
+}
+
+.timelineLegend i[data-kind="ignored"] {
+  background: repeating-linear-gradient(135deg, #5f625b 0, #5f625b 4px, #d7d6cf 4px, #d7d6cf 7px);
+}
+
+.timelineLegend i[data-kind="joined"] {
+  background: #aaa9a2;
 }
 
 .sectionHeading,
@@ -491,6 +549,46 @@
   pointer-events: none;
 }
 
+.overviewSuppression {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  height: 52px;
+  min-width: 4px;
+  min-height: 0 !important;
+  padding: 0;
+  border: 2px solid #bd1826;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(189, 24, 38, .88) 0,
+    rgba(189, 24, 38, .88) 6px,
+    rgba(255, 228, 231, .88) 6px,
+    rgba(255, 228, 231, .88) 11px
+  );
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.overviewSuppression[data-state="kept"],
+.overviewSuppression[data-state="edited-kept"] {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, .82) 0,
+    rgba(255, 255, 255, .82) 6px,
+    rgba(231, 91, 103, .38) 6px,
+    rgba(231, 91, 103, .38) 11px
+  );
+}
+
+.overviewSuppression[data-state="edited-kept"] {
+  border-style: dashed;
+}
+
+.overviewSuppression[data-selected="true"] {
+  outline: 3px solid var(--cut-acid);
+  outline-offset: 1px;
+}
+
 .overviewJoinedGap {
   position: absolute;
   z-index: 3;
@@ -529,6 +627,65 @@
   padding: 18px;
   border: 1px solid var(--cut-ink);
   background: var(--cut-ink);
+  color: #fff;
+}
+
+.suppressionControls {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid #5b5e55;
+  background: #23251f;
+  color: #fff;
+}
+
+.suppressionControls > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.suppressionControls > div:first-child span {
+  color: #fff;
+  font: 600 9px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: 1px;
+}
+
+.suppressionControls > div:first-child strong {
+  color: var(--cut-acid);
+  font-size: 14px;
+}
+
+.suppressionControls small {
+  color: #b7b9af;
+  font: 10px/1.45 "Atkinson Hyperlegible Mono", monospace;
+}
+
+.suppressionSelect {
+  display: grid;
+  gap: 4px;
+}
+
+.suppressionSelect > span {
+  color: #9fa198;
+  font: 600 9px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+
+.suppressionSelect select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #686b62;
+  border-radius: 0;
+  background: #161813;
+  color: #fff;
+  font: 600 11px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.confidenceReview .nextSuppression {
+  border-color: #9f1320;
+  background: #bd1826;
   color: #fff;
 }
 
@@ -965,6 +1122,54 @@
   opacity: .55;
 }
 
+.detailSuppression {
+  position: absolute;
+  z-index: 4;
+  top: 9px;
+  display: grid;
+  height: 94px;
+  min-width: 5px;
+  min-height: 0 !important;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 3px solid #a8111e;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(189, 24, 38, .8) 0,
+    rgba(189, 24, 38, .8) 8px,
+    rgba(255, 220, 224, .82) 8px,
+    rgba(255, 220, 224, .82) 14px
+  );
+  color: #fff;
+  pointer-events: none;
+}
+
+.detailSuppression[data-state="kept"],
+.detailSuppression[data-state="edited-kept"] {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, .86) 0,
+    rgba(255, 255, 255, .86) 8px,
+    rgba(231, 91, 103, .45) 8px,
+    rgba(231, 91, 103, .45) 14px
+  );
+  color: #81101a;
+}
+
+.detailSuppression[data-state="edited-kept"] {
+  border-style: dashed;
+}
+
+.detailSuppression small {
+  padding: 4px;
+  background: rgba(105, 7, 16, .82);
+  color: #fff;
+  font: 700 8px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: .7px;
+  white-space: nowrap;
+}
+
 .boundaryHandle {
   position: absolute;
   z-index: 5;
@@ -1066,6 +1271,26 @@
 .focusActions .dangerButton {
   border-color: #b52c20;
   color: #a51e1e;
+}
+
+.focusActions .suppressAction[data-active="true"] {
+  border-color: #94101c;
+  background: #bd1826;
+  color: #fff;
+}
+
+.focusActions button[data-active="true"]:not(.suppressAction) {
+  border-color: #4d7c46;
+  background: #e6f4df;
+}
+
+.suppressionStateText {
+  margin: 0;
+  padding: 10px;
+  border-left: 4px solid #bd1826;
+  background: #fff1f2;
+  color: #651019;
+  font: 10px/1.5 "Atkinson Hyperlegible Mono", monospace;
 }
 
 .emptyMessage {
@@ -1225,6 +1450,14 @@
   color: #477642;
 }
 
+.cutCards article[data-suppression="true"] .cutSelect em {
+  padding: 2px 4px;
+  border: 1px solid #a8111e;
+  background: #fff1f2;
+  color: #a8111e;
+  font-weight: 700;
+}
+
 .cutCards article:not([data-included="true"]) {
   background: repeating-linear-gradient(
     135deg,
@@ -1313,10 +1546,30 @@
   }
 
   .confidenceReview {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .confidenceReview label {
+    grid-column: auto;
+  }
+
+  .confidenceReview p {
+    white-space: normal;
+  }
+
+  .reviewActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .reviewActions button {
+    min-width: 0;
+    padding: 0 7px;
+    white-space: normal;
+  }
+
+  .reviewActions button:only-child {
     grid-column: 1 / -1;
   }
 
@@ -1398,10 +1651,10 @@
 @media (min-width: 1100px) {
   .summaryCard {
     grid-template-columns:
-      minmax(190px, .7fr)
-      minmax(360px, 1.4fr)
-      minmax(230px, .85fr)
-      minmax(150px, .55fr);
+      minmax(240px, .8fr)
+      minmax(220px, .65fr)
+      minmax(360px, 1.3fr)
+      minmax(180px, .75fr);
   }
 
   .summaryActions {

@@ -100,6 +100,9 @@ curl -I https://volleycut.vafrederico.com
 
 - `public/runtime/model-1ca43e38eefc.json`: the promoted all-labels v2 inference heads and decoders.
 - `public/runtime/model-9c92b8e9333f.json`: the previous production heads used by the two-model consensus pass.
+- `public/runtime/suppression-39eddf581639.json`: the held corrected suppression
+  specialist. Its neighboring manifest records the source artifact, weights, decoder,
+  and emitted asset hashes.
 
 The production app extracts media features once, runs both model stacks, and unions
 overlapping rally ranges. Ranges emitted by only one model are retained but marked as
@@ -112,6 +115,19 @@ be reused across model upgrades. Persisted inference is separately keyed by an
 ensemble identity containing both complete browser-bundle SHA-256 digests and the merge
 algorithm version. A stale single-model or older-ensemble result is changed to **Needs
 source** on load and cannot be presented as current production inference.
+
+The optional suppression review runs on the same cached contextual features. **No
+suppression** is the default and preserves the existing export. Conservative,
+Balanced, and Aggressive choices differ only in how one-model-only production
+components become suggestions; every removal remains visible and reversible in the
+editor. Regenerate the checked-in browser artifact deterministically with:
+
+```sh
+python scripts/export-browser-suppression-model.py \
+  /path/to/suppression-overlap-exclusion-retrained \
+  public/runtime/suppression-39eddf581639.json \
+  public/runtime/suppression-39eddf581639.manifest.json
+```
 
 `npm run preview` serves the verified production build on `0.0.0.0:3000`, matching
 the local Traefik target for `https://internal.example`.

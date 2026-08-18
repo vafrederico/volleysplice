@@ -173,6 +173,13 @@ test("feedback importer recognizes the Android producer using the shared contrac
   assert.equal(imported.corrections.ignoredIntervals[0].reason, "camera-gap");
 });
 
+test("feedback importer accepts suppression-era schema version two bundles", () => {
+  const current = fixture();
+  current.schemaVersion = 2;
+  const imported = parseModelFeedback(current);
+  assert.equal(imported.schemaVersion, 2);
+});
+
 test("feedback importer rejects malformed numeric array shapes", () => {
   const malformed = fixture();
   malformed.features.values.shape = [4, 1];

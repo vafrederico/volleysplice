@@ -10,6 +10,13 @@ import {
   type AnalysisWindow,
 } from "./on-device/analysis-window.ts";
 import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
+import { SUPPRESSION_POLICY_CONTRACT_VERSION } from "./on-device/suppression-policy.ts";
+import {
+  SUPPRESSION_ARTIFACT_SHA256,
+  SUPPRESSION_DECODER_VERSION,
+  SUPPRESSION_MODEL_ID,
+  SUPPRESSION_WEIGHTS_SHA256,
+} from "./on-device/suppression-model.ts";
 
 const DATABASE_NAME = "volleycut-projects";
 const DATABASE_VERSION = 1;
@@ -226,6 +233,56 @@ function validAnalysisWindow(value: unknown, duration: number): value is Analysi
   );
 }
 
+function validInterval(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const interval = value as Record<string, unknown>;
+  return (
+    typeof interval.id === "string" &&
+    finite(interval.start) &&
+    finite(interval.end) &&
+    interval.end > interval.start &&
+    finite(interval.confidence) &&
+    typeof interval.included === "boolean"
+  );
+}
+
+function validSuppression(value: unknown, rows: number): boolean {
+  if (!value || typeof value !== "object") return false;
+  const suppression = value as Record<string, unknown>;
+  return (
+    suppression.modelId === SUPPRESSION_MODEL_ID &&
+    suppression.artifactSha256 === SUPPRESSION_ARTIFACT_SHA256 &&
+    suppression.weightsSha256 === SUPPRESSION_WEIGHTS_SHA256 &&
+    suppression.decoderVersion === SUPPRESSION_DECODER_VERSION &&
+    suppression.policyContractVersion === SUPPRESSION_POLICY_CONTRACT_VERSION &&
+    suppression.probabilities instanceof Float32Array &&
+    suppression.probabilities.length === rows &&
+    Array.isArray(suppression.decodedIntervals) &&
+    suppression.decodedIntervals.every(validInterval) &&
+    Array.isArray(suppression.suggestions) &&
+    suppression.suggestions.every((candidate) => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const suggestion = candidate as Record<string, unknown>;
+      return (
+        typeof suggestion.id === "string" &&
+        typeof suggestion.logicalId === "string" &&
+        typeof suggestion.suppressionEventId === "string" &&
+        finite(suggestion.start) &&
+        finite(suggestion.end) &&
+        suggestion.end > suggestion.start &&
+        finite(suggestion.score) &&
+        Array.isArray(suggestion.sourceProductionIds) &&
+        suggestion.sourceProductionIds.every((id) => typeof id === "string") &&
+        Array.isArray(suggestion.eligiblePolicyIds) &&
+        suggestion.eligiblePolicyIds.every((id) =>
+          id === "conservative" || id === "balanced" || id === "aggressive"
+        )
+      );
+    }) &&
+    typeof suppression.identicalPolicyResults === "boolean"
+  );
+}
+
 function validAnalysis(value: unknown): value is OnDeviceAnalysis {
   if (!value || typeof value !== "object") return false;
   const analysis = value as Partial<OnDeviceAnalysis>;
@@ -265,7 +322,14 @@ function validAnalysis(value: unknown): value is OnDeviceAnalysis {
     analysis.deadStateProbabilities instanceof Float32Array &&
     analysis.rallyProbabilities.length === analysis.times.length &&
     analysis.serveProbabilities.length === analysis.times.length &&
-    analysis.deadStateProbabilities.length === analysis.times.length
+    analysis.deadStateProbabilities.length === analysis.times.length &&
+    (analysis.productionComponents === undefined ||
+      (Array.isArray(analysis.productionComponents.allLabelsV2) &&
+        analysis.productionComponents.allLabelsV2.every(validInterval) &&
+        Array.isArray(analysis.productionComponents.previousProduction) &&
+        analysis.productionComponents.previousProduction.every(validInterval))) &&
+    (analysis.suppression === undefined ||
+      validSuppression(analysis.suppression, analysis.times.length))
   );
 }
 
