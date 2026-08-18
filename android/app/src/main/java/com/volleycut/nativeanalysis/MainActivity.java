@@ -459,6 +459,10 @@ public final class MainActivity extends Activity {
                 "Codec request: operating rate %d fps · priority %d\n",
                 result.codecOperatingRate(), result.codecPriority()));
         output.append("Audio decoder: ").append(result.audioDecoder()).append('\n');
+        output.append(String.format(Locale.US,
+                "Audio codec request: %,d samples/s · priority %d · multi-frame %s\n",
+                result.audioCodecOperatingRate(), result.audioCodecPriority(),
+                result.audioMultipleFramesSupported() ? "supported" : "unsupported"));
         NativeFeatureCache.CacheStats cache = result.featureCache();
         output.append(String.format(Locale.US,
                 "Feature cache: %s · video %s · audio %s · context %s · resumed %,d rows · %.1f MiB\n",
@@ -608,6 +612,9 @@ public final class MainActivity extends Activity {
             json.put("codecOperatingRate", result.codecOperatingRate());
             json.put("codecPriority", result.codecPriority());
             json.put("audioDecoder", result.audioDecoder());
+            json.put("audioCodecOperatingRate", result.audioCodecOperatingRate());
+            json.put("audioCodecPriority", result.audioCodecPriority());
+            json.put("audioMultipleFramesSupported", result.audioMultipleFramesSupported());
             NativeFeatureCache.CacheStats cache = result.featureCache();
             JSONObject cacheJson = new JSONObject();
             cacheJson.put("mode", cache.mode());

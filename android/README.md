@@ -102,6 +102,21 @@ Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppre
 
 The 240 FPS operating-rate request was retained after a 5,000-frame 1080p60 A/B reduced median video-stage time from 29,102.5 ms to 19,749.0 ms (32.1%) with identical sampled timestamps and candidate ranges. Android uses this value for codec resource planning; it does not change source timestamps or the 4 Hz sampling schedule.
 
+The audio-only stage selector exposed a similar codec scheduling opportunity. On the Pixel 10 Pro,
+five fresh 60-second runs of `PXL_20260816_160023210.mp4` improved from a 6,276 ms baseline median
+to 5,277 ms (15.9%) after requesting a 4x-source-rate audio operating rate with real-time codec
+priority. An 8x request regressed to 6,354 ms, while 4x with best-effort priority measured 5,877 ms.
+The retained request is reported in benchmark JSON. It affects scheduling only; decoded timestamps,
+PCM, and feature math are unchanged.
+
+A full 885.1-second audio-only run took 152,916 ms (5.79x real time). Final whole-recording audio
+reductions and 4 Hz pooling used only 300 ms; GC used 765 ms. The dominant costs were per-access-unit
+demux advance (51.6 s), codec input queueing (37.0 s), codec output calls (34.6 s), and streaming
+downmix/resample/FFT work (22.4 s). A bounded codec-to-DSP worker and reusable FFT/source buffers
+were rejected because CPU contention or buffer clearing erased their theoretical overlap. Android 17
+multi-access-unit codec support is now reported for future batching work, but an async batching rewrite
+needs its own PCM/feature parity gate and still cannot avoid MP4 extractor sample-table traversal.
+
 Asynchronous decode-only output was then retained after reducing the same 5,000-frame median from 19,749.0 ms to 14,683.5 ms (25.6% further, 49.5% versus the unhinted baseline). It produced only 334 output images for 5,000 decoded source frames. The 1080p and 4K checks retained identical analyzed durations, sample timestamps, ranges, and confidences; three warm 4K60 runs had a 5,884 ms median for 1,000 frames.
 
 The YUV crop/scale/color sampler now precomputes source-plane offsets and exact integer conversion lookup tables. A 5,000-frame 1080p60 check fell from 14,683.5 ms to 13,429.5 ms (8.5%) with identical ranges and confidences. The 1,000-frame median fell from 3,026 ms to 2,837 ms (6.2%). The decoder-bound 4K60 case improved more modestly, from 5,884 ms to 5,797 ms (1.5%). Batched compressed input was rejected: although it reduced codec calls, the Pixel decoder produced different visual features and ranges.

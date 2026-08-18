@@ -3,6 +3,7 @@ package com.volleycut.nativeanalysis;
 import android.content.Context;
 import android.media.AudioFormat;
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.net.Uri;
@@ -21,11 +22,16 @@ final class NativeAudioDecoder {
             long decodedPcmFrames,
             long resampledOutputSamples,
             int audioFeatureFrames,
+            int codecOperatingRate,
+            int codecPriority,
+            boolean multipleFramesSupported,
             double threadCpuMilliseconds,
             Map<String, Double> profileMilliseconds
     ) {}
 
     private static final long CODEC_TIMEOUT_US = 10_000;
+    private static final float CODEC_OPERATING_RATE_MULTIPLIER = 4f;
+    private static final int CODEC_PRIORITY = 0;
     private final Context context;
 
     NativeAudioDecoder(Context context) {
@@ -55,7 +61,7 @@ final class NativeAudioDecoder {
                 progress.onProgress("audio", 1, "No audio track; using zero audio features");
                 return new Result(
                         new float[analysisTimes.length * FeatureSchema.AUDIO.size()],
-                        "none", 0, 0, 0,
+                        "none", 0, 0, 0, 0, -1, false,
                         (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0,
                         Map.of()
                 );
@@ -65,14 +71,20 @@ final class NativeAudioDecoder {
             MediaFormat inputFormat = extractor.getTrackFormat(track);
             String mime = inputFormat.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Audio track has no MIME type");
+            int sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            int codecOperatingRate = Math.round(sampleRate * CODEC_OPERATING_RATE_MULTIPLIER);
+            inputFormat.setFloat(MediaFormat.KEY_OPERATING_RATE, codecOperatingRate);
+            inputFormat.setInteger(MediaFormat.KEY_PRIORITY, CODEC_PRIORITY);
             codec = MediaCodec.createDecoderByType(mime);
             String decoderName = codec.getName();
+            boolean multipleFramesSupported = codec.getCodecInfo()
+                    .getCapabilitiesForType(mime)
+                    .isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_MultipleFrames);
             codec.configure(inputFormat, null, null, 0);
             codec.start();
             profiler.add("setup", System.nanoTime() - setupStarted);
             progress.onProgress("audio", 0, "Decoding PCM + resampling + per-frame FFT");
 
-            int sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
             int channels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
             int encoding = AudioFormat.ENCODING_PCM_16BIT;
             AudioFeatureExtractor accumulator = new AudioFeatureExtractor();
@@ -190,6 +202,9 @@ final class NativeAudioDecoder {
                     decodedPcmFrames,
                     accumulator.resampledOutputSamples(),
                     accumulator.audioFeatureFrameCount(),
+                    codecOperatingRate,
+                    CODEC_PRIORITY,
+                    multipleFramesSupported,
                     (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0,
                     profiler.milliseconds()
             );

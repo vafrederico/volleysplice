@@ -296,6 +296,9 @@ final class AnalysisEngine {
                 decoderOptions.operatingRate(),
                 decoderOptions.priority(),
                 audio.decoderName(),
+                audio.codecOperatingRate(),
+                audio.codecPriority(),
+                audio.multipleFramesSupported(),
                 List.copyOf(ranges),
                 timings,
                 profile,
@@ -336,14 +339,14 @@ final class AnalysisEngine {
 
     private static NativeAudioDecoder.Result cachedAudioFeatures(float[] features) {
         return new NativeAudioDecoder.Result(
-                features, "feature-cache", 0, 0, 0, 0, Map.of()
+                features, "feature-cache", 0, 0, 0, 0, -1, false, 0, Map.of()
         );
     }
 
     private static NativeAudioDecoder.Result emptyAudioFeatures(int rows) {
         return new NativeAudioDecoder.Result(
                 new float[rows * FeatureSchema.AUDIO.size()],
-                "not-selected", 0, 0, 0, 0, Map.of()
+                "not-selected", 0, 0, 0, 0, -1, false, 0, Map.of()
         );
     }
 
