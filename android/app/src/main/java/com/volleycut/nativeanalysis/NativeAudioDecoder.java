@@ -51,12 +51,15 @@ final class NativeAudioDecoder {
             long setupStarted = System.nanoTime();
             extractor.setDataSource(context, uri, null);
             int track = NativeVideoDecoder.findTrack(extractor, "audio/");
-            if (track < 0) return new Result(
-                    new float[analysisTimes.length * FeatureSchema.AUDIO.size()],
-                    "none", 0, 0, 0,
-                    (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0,
-                    Map.of()
-            );
+            if (track < 0) {
+                progress.onProgress("audio", 1, "No audio track; using zero audio features");
+                return new Result(
+                        new float[analysisTimes.length * FeatureSchema.AUDIO.size()],
+                        "none", 0, 0, 0,
+                        (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0,
+                        Map.of()
+                );
+            }
             extractor.selectTrack(track);
             extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             MediaFormat inputFormat = extractor.getTrackFormat(track);
@@ -67,6 +70,7 @@ final class NativeAudioDecoder {
             codec.configure(inputFormat, null, null, 0);
             codec.start();
             profiler.add("setup", System.nanoTime() - setupStarted);
+            progress.onProgress("audio", 0, "Decoding PCM + resampling + per-frame FFT");
 
             int sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
             int channels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
@@ -151,8 +155,16 @@ final class NativeAudioDecoder {
                     );
                     if (second != lastReportedSecond) {
                         lastReportedSecond = second;
-                        progress.onProgress("audio", Math.min(1, second / analysisDuration),
-                                "Native audio decode + 16 kHz DSP · " + second + " s");
+                        progress.onProgress(
+                                "audio",
+                                Math.min(0.80, 0.80 * second / analysisDuration),
+                                String.format(
+                                        java.util.Locale.US,
+                                        "Decoding PCM + resampling + per-frame FFT · %d / %.0f s",
+                                        second,
+                                        analysisDuration
+                                )
+                        );
                     }
                 }
                 outputEnded = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
@@ -165,7 +177,10 @@ final class NativeAudioDecoder {
             for (int index = 0; index < analysisTimes.length; index++) {
                 relativeTimes[index] = analysisTimes[index] - analysisWindow.start();
             }
-            float[] features = accumulator.finishAndPool(relativeTimes);
+            float[] features = accumulator.finishAndPool(
+                    relativeTimes,
+                    (fraction, detail) -> progress.onProgress("audio", fraction, detail)
+            );
             profiler.add("dsp_finish_and_pool_call", System.nanoTime() - finishStarted);
             profiler.appendMilliseconds("dsp/", accumulator.performanceMilliseconds());
             profiler.add("audio_pipeline_wall", System.nanoTime() - pipelineStartedNanos);

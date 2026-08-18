@@ -130,6 +130,7 @@ final class AnalysisEngine {
         profile.put("video/max_sample_timestamp_error", video.maxSampleTimestampErrorMilliseconds());
 
         stage = System.nanoTime();
+        progress.onProgress("audio", 0, "Checking audio feature cache");
         cacheReadStarted = System.nanoTime();
         float[] cachedAudio = cache.loadAudio(times.length);
         profile.put("cache/audio_read", elapsedMilliseconds(cacheReadStarted));
@@ -148,8 +149,10 @@ final class AnalysisEngine {
                     cancelled::get
             );
             long cacheWriteStarted = System.nanoTime();
+            progress.onProgress("audio", 0.995, "Saving audio features to local cache");
             cache.storeAudio(audio.features(), times.length);
             profile.put("cache/audio_write", elapsedMilliseconds(cacheWriteStarted));
+            progress.onProgress("audio", 1, "Audio feature generation complete");
         }
         timings.put("audio_decode_and_features", elapsedMs(stage));
         appendProfile(profile, "audio/", audio.profileMilliseconds());
