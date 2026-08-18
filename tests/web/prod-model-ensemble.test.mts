@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { mergeProductionModelIntervals } from "../../lib/production-ensemble.ts";
-import { mergeProductionModelIntervals as mergeProdIntervals } from "../../prod/src/lib/on-device/ensemble.ts";
+import {
+  mergeProductionModelIntervals as mergeProdIntervals,
+  modelDisplayName,
+  PRODUCTION_ENSEMBLE_DISPLAY_NAME,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+} from "../../prod/src/lib/on-device/ensemble.ts";
 
 function interval(id: string, start: number, end: number, confidence: number) {
   return { id, start, end, confidence, included: true };
@@ -63,4 +68,12 @@ test("dev and production use identical ensemble interval semantics", () => {
     mergeProductionModelIntervals(current, previous),
     mergeProdIntervals(current, previous),
   );
+});
+
+test("production editor shows a readable ensemble name", () => {
+  assert.equal(
+    modelDisplayName(PRODUCTION_ENSEMBLE_MODEL_ID),
+    PRODUCTION_ENSEMBLE_DISPLAY_NAME,
+  );
+  assert.equal(modelDisplayName("future-model"), "future-model");
 });

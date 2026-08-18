@@ -1,7 +1,7 @@
 import type { IgnoredInterval } from "./product-analysis.ts";
 import type { Rally } from "./edit-list.ts";
 
-export const CUT_DRAFT_VERSION = 7 as const;
+export const CUT_DRAFT_VERSION = 8 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -42,6 +42,7 @@ export type CutDraft = {
   cutPreviewEnabled: boolean;
   playbackRate: (typeof PLAYBACK_RATES)[number];
   confidenceReviewThreshold: number;
+  reviewedCutIds: string[];
   cuts: EditableCut[];
   ignoredIntervals: IgnoredSourceInterval[];
 };
@@ -114,7 +115,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -137,6 +138,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     cutPreviewEnabled: false,
     playbackRate: 1,
     confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
+    reviewedCutIds: [],
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
       coreStart: clamp(rally.start, bounds.start, bounds.end),
@@ -225,7 +227,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, CUT_DRAFT_VERSION].includes(persistedVersion)
+      ![1, 2, 3, 4, 5, 6, 7, CUT_DRAFT_VERSION].includes(persistedVersion)
     ) {
       return null;
     }
@@ -255,6 +257,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       confidenceReviewThreshold: persistedVersion >= 6
         ? persisted.confidenceReviewThreshold
         : DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
+      reviewedCutIds: persistedVersion >= 8 ? persisted.reviewedCutIds : [],
     };
     if (
       value.version !== CUT_DRAFT_VERSION ||
@@ -290,6 +293,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       !finiteTime(value.confidenceReviewThreshold) ||
       value.confidenceReviewThreshold < 0 ||
       value.confidenceReviewThreshold > 1 ||
+      !Array.isArray(value.reviewedCutIds) ||
+      !value.reviewedCutIds.every((id) => typeof id === "string" && id.length > 0) ||
+      new Set(value.reviewedCutIds).size !== value.reviewedCutIds.length ||
       (value.pendingManualStart !== null && value.pendingIgnoreStart !== null) ||
       !Array.isArray(value.cuts) ||
       !Array.isArray(value.ignoredIntervals) ||
@@ -305,6 +311,10 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       ...value.ignoredIntervals.map((interval) => interval.id),
     ];
     if (new Set(ids).size !== ids.length) return null;
+    const cachedCutIds = new Set(
+      value.cuts.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
+    );
+    if (value.reviewedCutIds.some((id) => !cachedCutIds.has(id))) return null;
     return value as CutDraft;
   } catch {
     return null;

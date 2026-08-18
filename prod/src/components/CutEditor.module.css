@@ -472,6 +472,11 @@
   outline-offset: 2px;
 }
 
+.overviewCut[data-reviewed="true"]:not([data-selected="true"]) {
+  box-shadow: inset 0 0 0 3px #54a95e;
+  opacity: .72;
+}
+
 .overviewIgnored {
   position: absolute;
   z-index: 4;
@@ -1052,6 +1057,12 @@
   background: #e4e3dc;
 }
 
+.focusActions .reviewAction[data-reviewed="true"] {
+  border-color: #4d7c46;
+  background: #e6f4df;
+  color: #31552c;
+}
+
 .focusActions .dangerButton {
   border-color: #b52c20;
   color: #a51e1e;
@@ -1203,6 +1214,15 @@
     #ffe0d5 10px,
     #ffe0d5 20px
   );
+}
+
+.cutCards article[data-reviewed="true"]:not([data-selected="true"]) {
+  border-color: #78a16f;
+  background: #f0f7ec;
+}
+
+.cutCards article[data-reviewed="true"] .cutSelect em {
+  color: #477642;
 }
 
 .cutCards article:not([data-included="true"]) {

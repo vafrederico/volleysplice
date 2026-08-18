@@ -36,6 +36,7 @@ import {
   type PreparedVideoExport,
 } from "@/lib/on-device/export-delivery";
 import type { ExportProgress, VideoExportMode } from "@/lib/on-device/export";
+import { modelDisplayName } from "@/lib/on-device/ensemble";
 import { requestPlayingSeek } from "@/lib/on-device/player";
 import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
@@ -155,7 +156,13 @@ export function CutEditor({
   const timelineDragRef = useRef<TimelineDrag | null>(null);
   const suppressTimelineClickUntilRef = useRef(0);
   const previewEndRef = useRef<number | null>(null);
+  const previewStopRef = useRef<number | null>(null);
   const resumeAfterSeekRef = useRef(false);
+  const selectedSeekRef = useRef<{
+    cutId: string;
+    target: number;
+    arrived: boolean;
+  } | null>(null);
   const seed = useMemo<CutDraftSeed>(
     () => ({
       analysisId: initialAnalysis.id,
@@ -294,6 +301,16 @@ export function CutEditor({
       (isModelDisagreement(cut) || cut.confidence < draft.confidenceReviewThreshold),
   );
   const disagreementCount = lowConfidenceCuts.filter(isModelDisagreement).length;
+  const reviewedCutIds = useMemo(() => new Set(draft.reviewedCutIds), [draft.reviewedCutIds]);
+  const unreviewedLowConfidenceCuts = lowConfidenceCuts.filter(
+    (cut) => !reviewedCutIds.has(cut.id),
+  );
+  const reviewedLowConfidenceCount = lowConfidenceCuts.length -
+    unreviewedLowConfidenceCuts.length;
+  const selectedReviewCandidate = selected
+    ? lowConfidenceCuts.find((cut) => cut.id === selected.id) ?? null
+    : null;
+  const selectedIsReviewed = Boolean(selected && reviewedCutIds.has(selected.id));
   const exportPercent = exportProgress && exportProgress.totalSeconds > 0
     ? Math.min(100, Math.max(0, exportProgress.completedSeconds / exportProgress.totalSeconds * 100))
     : 0;
@@ -345,22 +362,47 @@ export function CutEditor({
     updateDraft((current) => ({ ...current, confidenceReviewThreshold: threshold }));
   }
 
-  function seekTo(time: number, resumePlayback?: boolean) {
+  function seekTo(
+    time: number,
+    resumePlayback?: boolean,
+    selectedCutId?: string,
+  ) {
     const clamped = Math.max(analysisStart, Math.min(analysisEnd, time));
     setPlaybackTime(clamped);
     const video = videoRef.current;
+    selectedSeekRef.current = video && selectedCutId
+      ? { cutId: selectedCutId, target: clamped, arrived: false }
+      : null;
     if (!video) return;
     const shouldResume = resumePlayback ?? !video.paused;
     if (shouldResume) {
       resumeAfterSeekRef.current = true;
-      requestPlayingSeek(video, clamped);
+      const waitingForSeek = requestPlayingSeek(video, clamped);
+      if (!waitingForSeek && selectedSeekRef.current) {
+        selectedSeekRef.current.arrived = true;
+      }
     } else {
+      const alreadyAtTarget = Math.abs(video.currentTime - clamped) < 0.01 && !video.seeking;
       video.currentTime = clamped;
+      if (alreadyAtTarget && selectedSeekRef.current) {
+        selectedSeekRef.current.arrived = true;
+      }
     }
   }
 
   function trackPlayback(time: number) {
     setPlaybackTime(time);
+    const selectedSeek = selectedSeekRef.current;
+    if (selectedSeek) {
+      const atTarget = Math.abs(time - selectedSeek.target) <= 0.25;
+      if (atTarget) selectedSeek.arrived = true;
+      if (!selectedSeek.arrived || atTarget) {
+        setSelectedId(selectedSeek.cutId);
+        return;
+      }
+      selectedSeekRef.current = null;
+    }
+    if (previewEndRef.current !== null) return;
     if (focusLocked) return;
     const reachedCut = playbackFocusCut(sortedCuts, time);
     if (reachedCut) {
@@ -370,7 +412,7 @@ export function CutEditor({
 
   function selectCut(cut: EditableCut) {
     setSelectedId(cut.id);
-    seekTo(cut.keepStart);
+    seekTo(cut.keepStart, undefined, cut.id);
     setEditorMessage(null);
   }
 
@@ -378,6 +420,7 @@ export function CutEditor({
     const video = videoRef.current;
     if (!video) return;
     previewEndRef.current = null;
+    previewStopRef.current = null;
     if (video.paused) {
       if (cutPreviewEnabled) {
         const target = nextFinalCutTime(finalIntervals, video.currentTime)
@@ -396,8 +439,10 @@ export function CutEditor({
 
   function previewSelected() {
     if (!selected || !videoRef.current) return;
+    previewStopRef.current = null;
     previewEndRef.current = selected.keepEnd;
-    seekTo(selected.keepStart, true);
+    setSelectedId(selected.id);
+    seekTo(selected.keepStart, true, selected.id);
   }
 
   function setBoundary(id: string, side: BoundarySide, value: number) {
@@ -511,6 +556,7 @@ export function CutEditor({
   function toggleCutPreview(enabled: boolean) {
     updateDraft((current) => ({ ...current, cutPreviewEnabled: enabled }));
     previewEndRef.current = null;
+    previewStopRef.current = null;
     if (!enabled || !videoRef.current) return;
     const target = nextFinalCutTime(finalIntervals, videoRef.current.currentTime)
       ?? finalIntervals[0]?.start;
@@ -612,17 +658,71 @@ export function CutEditor({
     selectCut(sortedCuts[index]);
   }
 
-  function reviewNextLowConfidenceCut() {
-    if (lowConfidenceCuts.length === 0) return;
-    const currentIndex = lowConfidenceCuts.findIndex((cut) => cut.id === selected?.id);
-    const next = currentIndex >= 0
-      ? lowConfidenceCuts[(currentIndex + 1) % lowConfidenceCuts.length]
-      : lowConfidenceCuts.find((cut) => cut.keepStart >= playbackTime) ?? lowConfidenceCuts[0];
-    selectCut(next);
+  function setCutReviewed(id: string, reviewed: boolean) {
+    setDraft((current) => ({
+      ...current,
+      updatedAt: new Date().toISOString(),
+      reviewedCutIds: reviewed
+        ? [...new Set([...current.reviewedCutIds, id])]
+        : current.reviewedCutIds.filter((cutId) => cutId !== id),
+    }));
+  }
+
+  function toggleSelectedReviewed() {
+    if (!selectedReviewCandidate) return;
+    const reviewed = !selectedIsReviewed;
+    setCutReviewed(selectedReviewCandidate.id, reviewed);
     setEditorMessage(
-      isModelDisagreement(next)
+      reviewed
+        ? `${selectedReviewCandidate.id} marked reviewed.`
+        : `${selectedReviewCandidate.id} returned to the review queue.`,
+    );
+  }
+
+  function reviewNextLowConfidenceCut() {
+    if (unreviewedLowConfidenceCuts.length === 0) return;
+    const currentIndex = lowConfidenceCuts.findIndex((cut) => cut.id === selected?.id);
+    const markCurrentReviewed = Boolean(
+      selectedReviewCandidate && !reviewedCutIds.has(selectedReviewCandidate.id),
+    );
+    if (markCurrentReviewed && selectedReviewCandidate) {
+      setCutReviewed(selectedReviewCandidate.id, true);
+    }
+    const remaining = unreviewedLowConfidenceCuts.filter(
+      (cut) => cut.id !== selectedReviewCandidate?.id,
+    );
+    if (remaining.length === 0) {
+      setEditorMessage(
+        markCurrentReviewed && selectedReviewCandidate
+          ? `${selectedReviewCandidate.id} marked reviewed. Review queue complete.`
+          : "Review queue complete.",
+      );
+      return;
+    }
+    const remainingIds = new Set(remaining.map((cut) => cut.id));
+    let next: EditableCut | undefined;
+    if (currentIndex >= 0) {
+      for (let offset = 1; offset <= lowConfidenceCuts.length; offset += 1) {
+        const candidate = lowConfidenceCuts[
+          (currentIndex + offset) % lowConfidenceCuts.length
+        ];
+        if (remainingIds.has(candidate.id)) {
+          next = candidate;
+          break;
+        }
+      }
+    } else {
+      next = remaining.find((cut) => cut.keepStart >= playbackTime) ?? remaining[0];
+    }
+    if (!next) return;
+    selectCut(next);
+    const reviewedPrefix = markCurrentReviewed && selectedReviewCandidate
+      ? `${selectedReviewCandidate.id} marked reviewed. `
+      : "";
+    setEditorMessage(
+      reviewedPrefix + (isModelDisagreement(next)
         ? `${next.id} was detected by only one model. Validate it and remove it if it is not a rally.`
-        : `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`,
+        : `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`),
     );
   }
 
@@ -728,6 +828,7 @@ export function CutEditor({
       },
       generatedAt: new Date().toISOString(),
       cuts: draft.cuts,
+      reviewedCutIds: draft.reviewedCutIds,
       ignoredIntervals: draft.ignoredIntervals,
       finalIntervals,
     };
@@ -874,7 +975,9 @@ export function CutEditor({
         </div>
         <div className={styles.sourceMeta}>
           <span>INFERENCE</span>
-          <strong>{initialAnalysis.modelId} · {initialAnalysis.rallies.length} ranges</strong>
+          <strong title={initialAnalysis.modelId}>
+            {modelDisplayName(initialAnalysis.modelId)} · {initialAnalysis.rallies.length} ranges
+          </strong>
         </div>
         <span className={styles.storageState} data-ready={storageReady || undefined}>
           <i /> {storageMessage}
@@ -1115,6 +1218,9 @@ export function CutEditor({
                     return;
                   }
                   if (time >= analysisEnd - 0.01) {
+                    resumeAfterSeekRef.current = false;
+                    selectedSeekRef.current = null;
+                    previewStopRef.current = null;
                     event.currentTarget.pause();
                     if (Math.abs(time - analysisEnd) > 0.001) {
                       event.currentTarget.currentTime = analysisEnd;
@@ -1123,10 +1229,40 @@ export function CutEditor({
                     trackPlayback(analysisEnd);
                     return;
                   }
+                  if (previewStopRef.current !== null) {
+                    resumeAfterSeekRef.current = false;
+                    event.currentTarget.pause();
+                    setPlaybackTime(previewStopRef.current);
+                    return;
+                  }
+                  const selectedSeek = selectedSeekRef.current;
+                  const previewEnd = previewEndRef.current;
+                  const previewSeekArrived = !selectedSeek ||
+                    selectedSeek.arrived ||
+                    Math.abs(time - selectedSeek.target) <= 0.25;
+                  if (
+                    previewEnd !== null &&
+                    previewSeekArrived &&
+                    time >= previewEnd - 0.01
+                  ) {
+                    resumeAfterSeekRef.current = false;
+                    selectedSeekRef.current = null;
+                    previewEndRef.current = null;
+                    const correctToBoundary = Math.abs(time - previewEnd) > 0.01;
+                    previewStopRef.current = correctToBoundary ? previewEnd : null;
+                    event.currentTarget.pause();
+                    if (correctToBoundary) {
+                      event.currentTarget.currentTime = previewEnd;
+                    }
+                    setPlaybackTime(previewEnd);
+                    return;
+                  }
                   trackPlayback(time);
+                  if (previewEndRef.current !== null) return;
                   if (cutPreviewEnabled) {
                     const target = nextFinalCutTime(finalIntervals, time);
                     if (target === null) {
+                      resumeAfterSeekRef.current = false;
                       event.currentTarget.pause();
                       return;
                     }
@@ -1136,10 +1272,6 @@ export function CutEditor({
                       trackPlayback(target);
                       return;
                     }
-                  }
-                  if (previewEndRef.current !== null && time >= previewEndRef.current) {
-                    event.currentTarget.pause();
-                    previewEndRef.current = null;
                   }
                 }}
                 onPlay={() => {
@@ -1155,6 +1287,21 @@ export function CutEditor({
                   setIsPlaying(false);
                 }}
                 onSeeked={(event) => {
+                  if (previewStopRef.current !== null) {
+                    const previewStop = previewStopRef.current;
+                    previewStopRef.current = null;
+                    resumeAfterSeekRef.current = false;
+                    event.currentTarget.pause();
+                    setPlaybackTime(previewStop);
+                    return;
+                  }
+                  const selectedSeek = selectedSeekRef.current;
+                  if (
+                    selectedSeek &&
+                    Math.abs(event.currentTarget.currentTime - selectedSeek.target) <= 0.25
+                  ) {
+                    selectedSeek.arrived = true;
+                  }
                   if (resumeAfterSeekRef.current) {
                     void event.currentTarget.play().catch(() => undefined);
                   }
@@ -1227,13 +1374,19 @@ export function CutEditor({
                   <span>%</span>
                 </span>
               </label>
-              <p>{disagreementCount} disagreements · {lowConfidenceCuts.length} highlighted</p>
+              <p>
+                {disagreementCount} disagreements · {reviewedLowConfidenceCount}/{lowConfidenceCuts.length} reviewed · {unreviewedLowConfidenceCuts.length} remaining
+              </p>
               <button
                 type="button"
                 onClick={reviewNextLowConfidenceCut}
-                disabled={lowConfidenceCuts.length === 0}
+                disabled={unreviewedLowConfidenceCuts.length === 0}
               >
-                Review next
+                {unreviewedLowConfidenceCuts.length === 0
+                  ? "Review complete"
+                  : selectedReviewCandidate && !selectedIsReviewed
+                    ? "Mark reviewed & next"
+                    : "Review next"}
               </button>
             </div>
             <div
@@ -1279,13 +1432,14 @@ export function CutEditor({
                       cut.confidence < draft.confidenceReviewThreshold) || undefined
                   }
                   data-disagreement={isModelDisagreement(cut) || undefined}
+                  data-reviewed={reviewedCutIds.has(cut.id) || undefined}
                   data-origin={cut.origin}
                   style={{
                     left: `${timelinePercent(cut.keepStart - analysisStart, analysisDuration)}%`,
                     width: `${timelinePercent(cut.keepEnd - cut.keepStart, analysisDuration)}%`,
                   }}
                   onClick={() => selectCut(cut)}
-                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}, ${Math.round(cut.confidence * 100)}% review confidence`}
+                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}, ${Math.round(cut.confidence * 100)}% review confidence${reviewedCutIds.has(cut.id) ? ", reviewed" : ""}`}
                 >
                   <span
                     className={styles.overviewPadding}
@@ -1346,7 +1500,7 @@ export function CutEditor({
         <div className={styles.focusHeader}>
           <div>
             <span>FOCUSED RANGE</span>
-            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `${modelAgreementLabel(selected)} · ${Math.round(selected.confidence * 100)}% review confidence`}` : "No range selected"}</strong>
+            <strong>{selected ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `${modelAgreementLabel(selected)} · ${Math.round(selected.confidence * 100)}% review confidence${selectedIsReviewed ? " · reviewed" : ""}`}` : "No range selected"}</strong>
           </div>
           <div className={styles.focusHeaderControls}>
             <label className={styles.focusLock}>
@@ -1498,6 +1652,16 @@ export function CutEditor({
               </button>
               <button type="button" onClick={previewSelected}>Preview cut</button>
               <button type="button" onClick={resetSelectedPadding}>Reset padding</button>
+              {selectedReviewCandidate && (
+                <button
+                  type="button"
+                  className={styles.reviewAction}
+                  data-reviewed={selectedIsReviewed || undefined}
+                  onClick={toggleSelectedReviewed}
+                >
+                  {selectedIsReviewed ? "✓ Reviewed" : "Mark reviewed"}
+                </button>
+              )}
               {selected.origin === "manual" && (
                 <button
                   type="button"
@@ -1642,12 +1806,13 @@ export function CutEditor({
                   cut.confidence < draft.confidenceReviewThreshold) || undefined
               }
               data-disagreement={isModelDisagreement(cut) || undefined}
+              data-reviewed={reviewedCutIds.has(cut.id) || undefined}
             >
               <button type="button" className={styles.cutSelect} onClick={() => selectCut(cut)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{cut.id}</strong>
                 <small>{preciseTime(cut.keepStart)}–{preciseTime(cut.keepEnd)}</small>
-                <em>{cut.origin === "manual" ? "MANUAL" : isModelDisagreement(cut) ? "CHECK" : `${Math.round(cut.confidence * 100)}%`}</em>
+                <em>{cut.origin === "manual" ? "MANUAL" : reviewedCutIds.has(cut.id) ? "REVIEWED" : isModelDisagreement(cut) ? "CHECK" : `${Math.round(cut.confidence * 100)}%`}</em>
               </button>
               <button
                 type="button"

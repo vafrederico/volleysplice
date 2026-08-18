@@ -10,6 +10,14 @@ export const PRODUCTION_ENSEMBLE_ALGORITHM_VERSION =
   "overlap-union-disagreement-v1";
 export const PRODUCTION_ENSEMBLE_MODEL_ID =
   `ensemble-${PRODUCTION_ENSEMBLE_ALGORITHM_VERSION}-${ALL_LABELS_V2_BUNDLE_SHA256}-${PREVIOUS_PRODUCTION_BUNDLE_SHA256}`;
+export const PRODUCTION_ENSEMBLE_DISPLAY_NAME =
+  "Production ensemble · all-labels v2 + previous production";
+
+export function modelDisplayName(modelId: string): string {
+  return modelId === PRODUCTION_ENSEMBLE_MODEL_ID
+    ? PRODUCTION_ENSEMBLE_DISPLAY_NAME
+    : modelId;
+}
 
 const DISAGREEMENT_CONFIDENCE_CEILING = 0.49;
 const DISAGREEMENT_CONFIDENCE_SCALE = 0.6;
