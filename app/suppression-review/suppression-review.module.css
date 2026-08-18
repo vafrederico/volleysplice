@@ -1,0 +1,1010 @@
+.shell {
+  --review-ink: #151712;
+  --review-paper: #f3f0e7;
+  --review-acid: #dfff35;
+  --review-orange: #ff5c35;
+  --review-red: #c72c23;
+  min-height: 100vh;
+  color: var(--review-ink);
+  background:
+    radial-gradient(
+      circle at 91% 5%,
+      rgba(223, 255, 53, 0.34),
+      transparent 22rem
+    ),
+    var(--review-paper);
+}
+
+.topbar {
+  height: 72px;
+  padding: 0 4vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #c7c5bc;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.brand img {
+  width: 145px;
+  height: auto;
+  mix-blend-mode: multiply;
+}
+.brand span {
+  margin-left: 6px;
+  padding: 4px 7px;
+  color: var(--review-acid);
+  background: var(--review-ink);
+  font:
+    500 10px "Atkinson Hyperlegible Mono",
+    monospace;
+  letter-spacing: 1px;
+}
+.topbar > div {
+  display: flex;
+  gap: 20px;
+}
+.topbar > div a {
+  color: inherit;
+  font:
+    500 10px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+.topbar > div a:hover {
+  color: var(--review-orange);
+}
+
+.hero {
+  padding: 68px 4vw 45px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 50px;
+  align-items: end;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #77796f;
+  font:
+    600 10px "Atkinson Hyperlegible Mono",
+    monospace;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.hero h1 {
+  max-width: 940px;
+  margin: 12px 0 22px;
+  font-size: clamp(48px, 7vw, 96px);
+  line-height: 0.88;
+  letter-spacing: -0.07em;
+}
+.hero h1 em {
+  color: var(--review-orange);
+  font-style: normal;
+}
+.intro {
+  max-width: 810px;
+  margin: 0;
+  color: #595c53;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.metricPair {
+  min-width: 265px;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: baseline;
+  gap: 5px 12px;
+  padding: 20px;
+  color: #fff;
+  background: var(--review-ink);
+}
+.metricPair span {
+  color: #aeb0a7;
+  font:
+    10px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.metricPair strong {
+  font:
+    500 24px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.metricPair small {
+  color: var(--review-acid);
+  font:
+    10px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.policySwitch {
+  margin: 0 4vw 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(430px, 0.9fr);
+  gap: 18px;
+  align-items: stretch;
+  padding: 16px;
+  border: 1px solid var(--review-ink);
+  background: #e8e5db;
+}
+.policySwitch > div {
+  padding: 4px 6px;
+}
+.policySwitch > div > span,
+.policySwitch > div > strong {
+  display: block;
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+.policySwitch > div > span {
+  color: #77796f;
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.policySwitch > div > strong {
+  margin-top: 5px;
+  font-size: 14px;
+}
+.policySwitch p {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: #61645b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.policySwitch nav {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+}
+.policySwitch nav a {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 12px;
+  border: 1px solid #aaa;
+  color: var(--review-ink);
+  background: #fff;
+  font:
+    600 9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-decoration: none;
+}
+.policySwitch nav a small {
+  margin-top: 4px;
+  color: #77796f;
+  font-size: 7px;
+  font-weight: 400;
+}
+.policySwitch nav a[data-active="true"] {
+  border-color: var(--review-ink);
+  color: var(--review-acid);
+  background: var(--review-ink);
+}
+.policySwitch nav a[data-active="true"] small {
+  color: #c8cabf;
+}
+
+.summaryStrip {
+  margin: 0 4vw;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid var(--review-ink);
+  background: #fff;
+  box-shadow: 7px 7px 0 var(--review-ink);
+}
+.summaryStrip > div {
+  min-width: 0;
+  padding: 18px 20px;
+  border-right: 1px solid #d0cec5;
+}
+.summaryStrip > div:last-child {
+  border-right: 0;
+}
+.summaryStrip span {
+  display: block;
+  color: #77796f;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+.summaryStrip strong {
+  display: block;
+  margin-top: 8px;
+  font:
+    600 28px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.summaryStrip div[data-tone="danger"] strong {
+  color: var(--review-red);
+}
+.summaryStrip div[data-tone="warning"] strong {
+  color: #a85a00;
+}
+
+.outcomePanel {
+  margin: 24px 4vw 0;
+  display: grid;
+  grid-template-columns: minmax(270px, 0.6fr) minmax(0, 1.4fr);
+  gap: 16px;
+}
+.outcomeLead {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--review-ink);
+  background: var(--review-ink);
+}
+.outcomeLead > div {
+  min-width: 0;
+  padding: 17px;
+  border-right: 1px solid #464940;
+}
+.outcomeLead > div:last-child {
+  border-right: 0;
+}
+.outcomeLead span,
+.outcomeLead strong,
+.outcomeLead small {
+  display: block;
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+.outcomeLead span {
+  color: #aeb0a7;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.outcomeLead strong {
+  margin-top: 9px;
+  color: var(--review-acid);
+  font-size: clamp(22px, 2.6vw, 35px);
+}
+.outcomeLead small {
+  margin-top: 6px;
+  color: #c1c3b8;
+  font-size: 8px;
+  line-height: 1.4;
+}
+.movementGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.movementCard {
+  min-width: 0;
+  padding: 13px 15px;
+  border: 1px solid #b9b7ae;
+  background: #fff;
+}
+.movementCard > div > strong,
+.movementCard > div > small {
+  display: block;
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+.movementCard > div > strong {
+  font-size: 11px;
+}
+.movementCard > div > small {
+  margin-top: 2px;
+  color: #77796f;
+  font-size: 7px;
+}
+.movementCard dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 12px 0 0;
+}
+.movementCard dl > div {
+  min-width: 0;
+  padding: 0 9px;
+  border-left: 1px solid #d0cec5;
+  cursor: help;
+}
+.movementCard dl > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.movementCard dt {
+  color: #77796f;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+.movementCard dd {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 5px 0 0;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.movementCard dd span {
+  color: #77796f;
+}
+.movementCard dd b {
+  color: #aaa;
+}
+.movementCard dd strong {
+  color: var(--review-ink);
+}
+.movementCard dl > div > small {
+  display: block;
+  margin-top: 3px;
+  color: #47700d;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.movementCard dl > div > small[data-direction="down"] {
+  color: var(--review-red);
+}
+
+.legend {
+  margin: 28px 4vw 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  color: #66685f;
+  font:
+    10px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.legend span::before {
+  content: "";
+  width: 26px;
+  height: 10px;
+  border: 1px solid #77796f;
+  background: #475fbd;
+}
+.legend span[data-kind="padding"]::before {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.8) 0 2px,
+      transparent 2px 6px
+    ),
+    #8fa8dc;
+}
+.legend span[data-kind="joined"]::before {
+  background: repeating-linear-gradient(90deg, #6d7068 0 3px, #c5c5bd 3px 6px);
+}
+.legend span[data-kind="muted"]::before {
+  opacity: 0.28;
+  background: repeating-linear-gradient(
+    135deg,
+    #5e6259 0 2px,
+    transparent 2px 5px
+  );
+}
+.legend span[data-kind="focus"]::before {
+  border-color: #a6be20;
+  background: rgba(223, 255, 53, 0.35);
+}
+.legend span[data-kind="score"]::before {
+  content: ".842";
+  width: auto;
+  height: auto;
+  padding: 2px 5px;
+  border-color: var(--review-ink);
+  color: var(--review-acid);
+  background: var(--review-ink);
+  font-size: 8px;
+}
+
+.reviewSection {
+  margin: 76px 4vw 0;
+}
+.sectionHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 30px;
+  padding-bottom: 15px;
+  border-bottom: 3px solid var(--review-ink);
+}
+.sectionHeading h2 {
+  margin: 7px 0 0;
+  font-size: 35px;
+  letter-spacing: -0.04em;
+}
+.sectionHeading > strong {
+  color: #77796f;
+  font:
+    500 11px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.cardList {
+  display: grid;
+  gap: 34px;
+  margin-top: 24px;
+}
+
+.videoCard {
+  overflow: hidden;
+  border: 1px solid var(--review-ink);
+  background: #fff;
+  box-shadow: 7px 7px 0 #bcbab1;
+}
+.videoCard[data-severity="complete"] {
+  box-shadow: 7px 7px 0 var(--review-red);
+}
+.cardHeader {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  gap: 15px;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--review-ink);
+}
+.cardIndex {
+  color: var(--review-orange);
+  font:
+    600 18px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.cardHeader h2 {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.cardHeader p {
+  margin: 0;
+  color: #77796f;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+.cardBadges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 6px;
+}
+.cardBadges span,
+.cardBadges b {
+  padding: 6px 8px;
+  border: 1px solid #aaa;
+  font:
+    600 9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+.cardBadges b {
+  color: #fff;
+  border-color: var(--review-red);
+  background: var(--review-red);
+}
+.cardActions {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 10px;
+}
+.cardActions > button {
+  padding: 8px 10px;
+  border: 1px solid var(--review-ink);
+  color: #fff;
+  background: var(--review-ink);
+  cursor: pointer;
+  font:
+    600 9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cardActions > button:hover {
+  color: var(--review-ink);
+  background: var(--review-acid);
+}
+
+.inspectionGrid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.72fr) minmax(570px, 1.5fr);
+  min-width: 0;
+}
+.playerColumn {
+  min-width: 0;
+  padding: 16px;
+  border-right: 1px solid #cbc9c0;
+  background: #efede5;
+}
+.playerColumn video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #090a08;
+}
+.rallyPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+.rallyPicker button {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 8px;
+  min-width: 118px;
+  padding: 8px 9px;
+  border: 1px solid #aaa;
+  color: inherit;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.rallyPicker button[data-complete="true"] {
+  border-color: var(--review-red);
+}
+.rallyPicker button[data-active="true"] {
+  outline: 3px solid var(--review-acid);
+  outline-offset: 1px;
+}
+.rallyPicker strong {
+  color: var(--review-red);
+  font:
+    600 11px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.rallyPicker span {
+  font:
+    10px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.rallyPicker small {
+  grid-column: 1 / -1;
+  color: #77796f;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.timelineColumn {
+  min-width: 0;
+  padding: 16px 18px 20px;
+}
+.selectedSummary {
+  display: grid;
+  grid-template-columns: minmax(125px, 0.7fr) minmax(330px, 1.7fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 11px 13px;
+  background: var(--review-ink);
+  color: #fff;
+}
+.selectedSummary > div > span {
+  display: block;
+  color: var(--review-orange);
+  font:
+    600 9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+.selectedSummary > div > strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+}
+.selectedSummary dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+}
+.selectedSummary dl div {
+  padding: 0 10px;
+  border-left: 1px solid #45483f;
+}
+.selectedSummary dt {
+  color: #96988f;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.selectedSummary dd {
+  margin: 4px 0 0;
+  color: var(--review-acid);
+  font:
+    12px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.selectedSummary button {
+  padding: 8px 9px;
+  border: 1px solid #73766c;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.selectedSummary button:hover {
+  color: var(--review-ink);
+  background: var(--review-acid);
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 15px 0 13px;
+  color: #77796f;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.overviewLabel {
+  text-align: right;
+}
+.overviewRail {
+  position: relative;
+  height: 20px;
+  overflow: hidden;
+  border: 1px solid #aaa;
+  background:
+    repeating-linear-gradient(90deg, #e0ded6 0 1px, transparent 1px 10%),
+    #f8f7f2;
+  cursor: crosshair;
+}
+.overviewFocus,
+.overviewMiss,
+.overviewPlayhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.overviewFocus {
+  background: rgba(223, 255, 53, 0.42);
+}
+.overviewMiss {
+  top: 4px;
+  bottom: 4px;
+  min-width: 3px;
+  background: #d68223;
+}
+.overviewMiss[data-complete="true"] {
+  background: var(--review-red);
+}
+.overviewPlayhead {
+  z-index: 3;
+  width: 2px;
+  background: #111;
+}
+
+.confidencePanel {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0 0 14px;
+  padding: 9px 10px;
+  border: 1px solid #cbc9c0;
+  background: #f5f3ec;
+}
+.confidencePanel > div:first-child {
+  text-align: right;
+}
+.confidencePanel > div:first-child strong,
+.confidencePanel > div:first-child small {
+  display: block;
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+.confidencePanel > div:first-child strong {
+  font-size: 9px;
+}
+.confidencePanel > div:first-child small {
+  margin-top: 2px;
+  color: #888a81;
+  font-size: 7px;
+}
+.confidenceGroups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.confidenceGroup {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.confidenceGroup > span {
+  color: #77796f;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+.confidenceGroup button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border: 0;
+  color: var(--review-acid);
+  background: var(--review-ink);
+  cursor: pointer;
+  font:
+    600 9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.confidenceGroup button small {
+  color: #c3c5bb;
+  font-size: 7px;
+  font-weight: 400;
+}
+.confidenceGroup em {
+  color: #9a9c93;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.confidencePanel > p {
+  grid-column: 2;
+  margin: 0;
+  color: #77796f;
+  font:
+    8px / 1.45 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.timelineHeader {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+  color: #77796f;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+.timeAxis {
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+  text-transform: none;
+}
+.tracks {
+  display: grid;
+  gap: 5px;
+  margin-top: 5px;
+}
+.track {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 38px;
+}
+.trackLabel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  text-align: right;
+}
+.trackLabel strong {
+  overflow: hidden;
+  font:
+    600 10px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trackLabel small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #888a81;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-top: 1px solid #b8b7af;
+  border-bottom: 1px solid #b8b7af;
+  background:
+    repeating-linear-gradient(90deg, #e3e1da 0 1px, transparent 1px 10%),
+    #f8f7f2;
+  cursor: crosshair;
+}
+.focusBand {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(223, 255, 53, 0.2);
+  pointer-events: none;
+}
+.interval {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  height: 20px;
+  min-width: 2px;
+  padding: 0;
+  border: 0;
+  background: #4b66bb;
+  cursor: pointer;
+}
+.interval[data-kind="padding"] {
+  z-index: 1;
+  top: 4px;
+  height: 28px;
+  opacity: 0.72;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.7) 0 2px,
+    transparent 2px 6px
+  );
+}
+.interval[data-kind="joined"] {
+  z-index: 1;
+  top: 4px;
+  height: 28px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.65) 0 3px,
+    transparent 3px 6px
+  );
+}
+.interval[data-affected="false"] {
+  opacity: 0.22;
+  filter: saturate(0.35);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.78) 0 2px,
+    transparent 2px 5px
+  );
+}
+.interval[data-tone="affected"] {
+  background-color: #d5362d;
+}
+.interval[data-tone="human"] {
+  background-color: #171914;
+}
+.interval[data-tone="previous"] {
+  background-color: #305fc0;
+}
+.interval[data-tone="v2"] {
+  background-color: #008b73;
+}
+.interval[data-tone="ensemble"] {
+  background-color: #694aa7;
+}
+.interval[data-tone="veto"] {
+  background-color: #ef6a22;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.7) 0 2px,
+    transparent 2px 6px
+  );
+}
+.interval[data-tone="candidate"] {
+  background-color: #b23162;
+}
+.playhead {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #e21e17;
+  pointer-events: none;
+}
+
+.footer {
+  margin-top: 85px;
+  padding: 28px 4vw 44px;
+  display: flex;
+  justify-content: space-between;
+  gap: 25px;
+  border-top: 1px solid #c7c5bc;
+  color: #77796f;
+  font:
+    10px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+.footer p {
+  margin: 0;
+}
+.footer a {
+  color: var(--review-ink);
+  font-weight: 700;
+}
+
+@media (max-width: 1050px) {
+  .policySwitch,
+  .outcomePanel {
+    grid-template-columns: 1fr;
+  }
+  .inspectionGrid {
+    grid-template-columns: 1fr;
+  }
+  .playerColumn {
+    border-right: 0;
+    border-bottom: 1px solid #cbc9c0;
+  }
+  .playerColumn video {
+    max-height: 520px;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    padding-inline: 3vw;
+  }
+  .topbar > div {
+    gap: 12px;
+  }
+  .brand img {
+    width: 120px;
+  }
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .metricPair {
+    min-width: 0;
+  }
+  .summaryStrip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .policySwitch nav,
+  .movementGrid {
+    grid-template-columns: 1fr;
+  }
+  .summaryStrip > div {
+    border-bottom: 1px solid #d0cec5;
+  }
+  .sectionHeading,
+  .cardHeader {
+    align-items: start;
+  }
+  .cardHeader {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+  .cardBadges {
+    justify-content: start;
+  }
+  .cardActions {
+    grid-column: 2;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: start;
+  }
+  .selectedSummary {
+    grid-template-columns: 1fr;
+  }
+  .selectedSummary dl {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .overview,
+  .confidencePanel,
+  .timelineHeader,
+  .track {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 7px;
+  }
+  .footer {
+    flex-direction: column;
+  }
+}
