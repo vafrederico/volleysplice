@@ -238,6 +238,9 @@ final class AnalysisEngine {
 
         stage = System.nanoTime();
         List<AnalysisTypes.Interval> ranges = List.of();
+        AnalysisTypes.ProductionComponents productionComponents =
+                AnalysisTypes.ProductionComponents.empty();
+        AnalysisTypes.SuppressionAnalysis suppression = null;
         if (stages.inference()) {
             progress.onProgress("inference", 0, "Running all-labels v2 model stack on CPU");
             long operation = System.nanoTime();
@@ -257,15 +260,36 @@ final class AnalysisEngine {
                     times, contextual, analyzedDurationSeconds
             );
             appendProfile(profile, "inference/previous_production/", previousResult.profileMilliseconds());
+            List<AnalysisTypes.Interval> allLabelsRaw = clipIntervals(
+                    allLabelsResult.intervals(), analysisWindow.start(), analyzedDurationSeconds
+            );
+            List<AnalysisTypes.Interval> previousRaw = clipIntervals(
+                    previousResult.intervals(), analysisWindow.start(), analyzedDurationSeconds
+            );
+            productionComponents = new AnalysisTypes.ProductionComponents(
+                    allLabelsRaw, previousRaw
+            );
+            operation = System.nanoTime();
+            SuppressionModelRunner.Result suppressionResult =
+                    new SuppressionModelRunner(context).run(
+                            times, contextual, analyzedDurationSeconds
+                    );
+            suppression = SuppressionPolicyEngine.build(
+                    allLabelsRaw,
+                    previousRaw,
+                    suppressionResult.probabilities(),
+                    clipIntervals(
+                            suppressionResult.decodedIntervals(),
+                            analysisWindow.start(),
+                            analyzedDurationSeconds
+                    ),
+                    analyzedDurationSeconds
+            );
+            profile.put("inference/suppression", elapsedMilliseconds(operation));
             operation = System.nanoTime();
             ranges = ProductionEnsemble.merge(
-                    allLabelsResult.intervals(), previousResult.intervals()
-            ).stream().map(interval -> new AnalysisTypes.Interval(
-                    Math.max(analysisWindow.start(), interval.start()),
-                    Math.min(analyzedDurationSeconds, interval.end()),
-                    interval.confidence(),
-                    interval.agreement()
-            )).filter(interval -> interval.end() > interval.start()).toList();
+                    allLabelsRaw, previousRaw
+            );
             profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
         } else {
             progress.onProgress("inference", 1, "Model inference not selected");
@@ -310,6 +334,8 @@ final class AnalysisEngine {
                 audio.outputBatches(),
                 audio.featureSha256(),
                 List.copyOf(ranges),
+                productionComponents,
+                suppression,
                 timings,
                 profile,
                 threadCpuMilliseconds,
@@ -324,6 +350,17 @@ final class AnalysisEngine {
                 total,
                 cache.stats()
         );
+    }
+
+    private static List<AnalysisTypes.Interval> clipIntervals(
+            List<AnalysisTypes.Interval> intervals, double start, double end
+    ) {
+        return intervals.stream().map(interval -> new AnalysisTypes.Interval(
+                Math.max(start, interval.start()),
+                Math.min(end, interval.end()),
+                interval.confidence(),
+                interval.agreement()
+        )).filter(interval -> interval.end() > interval.start()).toList();
     }
 
     private static AnalysisTypes.VideoFeatures emptyVideoFeatures(

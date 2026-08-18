@@ -13,6 +13,7 @@ video URI
   -> game-window percentile ranks and +/-2 s context (520 columns)
   -> all-labels-v2 and previous-production rally/serve/dead-state stacks
   -> overlap-union-disagreement-v1 production ensemble
+  -> frozen overlap-safe suppression head + Conservative/Balanced/Aggressive suggestions
   -> unpadded candidates with model-agreement provenance + stage timings
 ```
 
@@ -54,6 +55,7 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
 - a game-window timeline and a focused range timeline with draggable handles;
 - exact source seeking, 1x/2x/4x/8x playback, and final-cut-only preview;
 - keep/remove review, mandatory single-model disagreement review, confidence review, 0.1/1 second nudges, and per-range reset;
+- optional suppression suggestions (off by default), selectable Conservative/Balanced/Aggressive levels, persisted Highlight-only/Disable-initially behavior, whole-rally suppression by default with per-suggestion veto-region scope, red timeline overlays, Keep/Suppress overrides, and suppression navigation beside confidence review;
 - manual missed cuts and ignored source sections;
 - atomic, versioned draft persistence and a **Resume native cut editor** entry after process restart;
 - source-availability detection and validated video re-linking that preserves inference, feature

@@ -40,6 +40,9 @@ internal data class NativeProject(
     val roi: AnalysisTypes.Roi,
     val status: ProjectStatus,
     val ranges: List<SeedRange> = emptyList(),
+    val productionComponents: AnalysisTypes.ProductionComponents =
+        AnalysisTypes.ProductionComponents.empty(),
+    val suppression: AnalysisTypes.SuppressionAnalysis? = null,
     val modelId: String = FeatureSchema.MODEL_ID,
     val cacheMode: String = NativeFeatureCache.Mode.USE.wireName(),
     val error: String? = null,
@@ -57,13 +60,15 @@ internal data class NativeProject(
             ranges = ranges,
             gameStartMs = secondsToMs(analysisWindow.start()),
             gameEndMs = secondsToMs(analysisWindow.end()),
+            productionComponents = productionComponents,
+            suppression = suppression,
         )
     } else null
 }
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val TAG = "VolleyCutProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -138,6 +143,8 @@ internal object NativeProjectStore {
                     agreement = it.agreement(),
                 )
             },
+            productionComponents = result.productionComponents(),
+            suppression = result.suppression(),
             modelId = FeatureSchema.MODEL_ID,
             cacheMode = NativeFeatureCache.Mode.USE.wireName(),
             error = null,
@@ -313,6 +320,8 @@ internal object NativeProjectStore {
                     it.agreement(),
                 )
             },
+            productionComponents = result.productionComponents(),
+            suppression = result.suppression(),
             createdAtMs = now,
             updatedAtMs = now,
         )
@@ -344,6 +353,8 @@ internal object NativeProjectStore {
             roi = AnalysisEngine.inferRoi(seed.displayName),
             status = ProjectStatus.READY,
             ranges = seed.ranges,
+            productionComponents = seed.productionComponents,
+            suppression = seed.suppression,
             createdAtMs = now,
             updatedAtMs = now,
         )
@@ -425,10 +436,12 @@ internal object NativeProjectStore {
                 put("agreement", range.agreement ?: JSONObject.NULL)
             }) }
         })
+        put("productionComponents", encodeProductionComponents(project.productionComponents))
+        put("suppression", project.suppression?.let(::encodeSuppression) ?: JSONObject.NULL)
     }
 
     internal fun decode(json: JSONObject): NativeProject? {
-        if (json.optInt("version") != VERSION) return null
+        if (json.optInt("version") !in 1..VERSION) return null
         val sourceJson = json.getJSONObject("source")
         val featureCacheSource = json.optJSONObject("featureCacheSource")?.let(::decodeSource)
         val mediaJson = json.getJSONObject("media")
@@ -479,6 +492,10 @@ internal object NativeProjectStore {
                     ))
                 }
             },
+            productionComponents = json.optJSONObject("productionComponents")?.let {
+                decodeProductionComponents(it)
+            } ?: AnalysisTypes.ProductionComponents.empty(),
+            suppression = json.optJSONObject("suppression")?.let(::decodeSuppression),
             modelId = json.optString("modelId"),
             cacheMode = json.optString("cacheMode", NativeFeatureCache.Mode.USE.wireName()),
             error = if (json.isNull("error")) null else json.optString("error"),
@@ -553,6 +570,93 @@ internal object NativeProjectStore {
         lastModified = json.optLong("lastModified", -1),
         mimeType = json.optString("mimeType"),
     )
+
+    private fun encodeProductionComponents(value: AnalysisTypes.ProductionComponents) =
+        JSONObject().apply {
+            put("allLabelsV2", encodeAnalysisIntervals(value.allLabelsV2()))
+            put("previousProduction", encodeAnalysisIntervals(value.previousProduction()))
+        }
+
+    private fun decodeProductionComponents(json: JSONObject) = AnalysisTypes.ProductionComponents(
+        decodeAnalysisIntervals(json.optJSONArray("allLabelsV2") ?: JSONArray()),
+        decodeAnalysisIntervals(json.optJSONArray("previousProduction") ?: JSONArray()),
+    )
+
+    private fun encodeSuppression(value: AnalysisTypes.SuppressionAnalysis) = JSONObject().apply {
+        put("modelId", value.modelId())
+        put("artifactSha256", value.artifactSha256())
+        put("weightsSha256", value.weightsSha256())
+        put("decoderVersion", value.decoderVersion())
+        put("probabilities", JSONArray(value.probabilities().map(Float::toDouble)))
+        put("decodedIntervals", encodeAnalysisIntervals(value.decodedIntervals()))
+        put("suggestions", JSONArray().apply {
+            value.suggestions().forEach { suggestion -> put(JSONObject().apply {
+                put("logicalId", suggestion.logicalId())
+                put("fragmentId", suggestion.fragmentId())
+                put("startMs", suggestion.startMs())
+                put("endMs", suggestion.endMs())
+                put("score", suggestion.score().toDouble())
+                put("sourceProductionIds", JSONArray(suggestion.sourceProductionIds()))
+                put("eligiblePolicyIds", JSONArray(suggestion.eligiblePolicyIds()))
+            }) }
+        })
+    }
+
+    private fun decodeSuppression(json: JSONObject): AnalysisTypes.SuppressionAnalysis? {
+        if (json.optString("modelId") != FeatureSchema.SUPPRESSION_MODEL_ID ||
+            json.optString("artifactSha256") != FeatureSchema.SUPPRESSION_ARTIFACT_SHA256 ||
+            json.optString("weightsSha256") != FeatureSchema.SUPPRESSION_WEIGHTS_SHA256 ||
+            json.optString("decoderVersion") != FeatureSchema.SUPPRESSION_DECODER_VERSION
+        ) return null
+        val probabilitiesJson = json.optJSONArray("probabilities") ?: JSONArray()
+        val suggestionsJson = json.optJSONArray("suggestions") ?: JSONArray()
+        return AnalysisTypes.SuppressionAnalysis(
+            FeatureSchema.SUPPRESSION_MODEL_ID,
+            FeatureSchema.SUPPRESSION_ARTIFACT_SHA256,
+            FeatureSchema.SUPPRESSION_WEIGHTS_SHA256,
+            FeatureSchema.SUPPRESSION_DECODER_VERSION,
+            FloatArray(probabilitiesJson.length()) { probabilitiesJson.getDouble(it).toFloat() },
+            decodeAnalysisIntervals(json.optJSONArray("decodedIntervals") ?: JSONArray()),
+            buildList {
+                for (index in 0 until suggestionsJson.length()) {
+                    val item = suggestionsJson.getJSONObject(index)
+                    add(AnalysisTypes.SuppressionSuggestion(
+                        item.getString("logicalId"),
+                        item.getString("fragmentId"),
+                        item.getLong("startMs"),
+                        item.getLong("endMs"),
+                        item.getDouble("score").toFloat(),
+                        item.getJSONArray("sourceProductionIds").strings(),
+                        item.getJSONArray("eligiblePolicyIds").strings(),
+                    ))
+                }
+            },
+        )
+    }
+
+    private fun encodeAnalysisIntervals(values: List<AnalysisTypes.Interval>) = JSONArray().apply {
+        values.forEach { value -> put(JSONObject().apply {
+            put("start", value.start())
+            put("end", value.end())
+            put("confidence", value.confidence().toDouble())
+            put("agreement", value.agreement() ?: JSONObject.NULL)
+        }) }
+    }
+
+    private fun decodeAnalysisIntervals(values: JSONArray) = buildList {
+        for (index in 0 until values.length()) {
+            val item = values.getJSONObject(index)
+            add(AnalysisTypes.Interval(
+                item.getDouble("start"), item.getDouble("end"),
+                item.getDouble("confidence").toFloat(),
+                if (item.isNull("agreement")) null else item.optString("agreement"),
+            ))
+        }
+    }
+
+    private fun JSONArray.strings() = buildList {
+        for (index in 0 until length()) add(getString(index))
+    }
 
     private fun Cursor.string(column: String): String? {
         val index = getColumnIndex(column)

@@ -9,6 +9,13 @@ import java.util.Set;
 final class FeatureSchema {
     static final String ALL_LABELS_V2_MODEL_ID = "model-1ca43e38eefc";
     static final String PREVIOUS_PRODUCTION_MODEL_ID = "model-9c92b8e9333f";
+    static final String SUPPRESSION_MODEL_ID = "suppression-overlap-exclusion-retrained";
+    static final String SUPPRESSION_ARTIFACT_SHA256 =
+            "39eddf58163901930434ea422a802686ae921ae1e8fe23c20a3c12e5f453da93";
+    static final String SUPPRESSION_WEIGHTS_SHA256 =
+            "a943749b69c98a1bc926f8efc9fe60c67c1226534fe09a892c632519217aa3bb";
+    static final String SUPPRESSION_DECODER_VERSION = "held-production-suppression-decoder-v1";
+    static final String SUPPRESSION_POLICY_CONTRACT_VERSION = "suppression-policy-v1";
     static final String ALL_LABELS_V2_BUNDLE_SHA256 =
             "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f";
     static final String PREVIOUS_PRODUCTION_BUNDLE_SHA256 =
