@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -11,8 +13,8 @@ android {
         applicationId = "com.volleycut.nativeanalysis"
         minSdk = 29
         targetSdk = providers.gradleProperty("volleycut.targetSdk").orElse("37").get().toInt()
-        versionCode = 13
-        versionName = "0.9.0"
+        versionCode = 14
+        versionName = "0.10.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -46,6 +48,24 @@ android {
         jniLibs.useLegacyPackaging = false
     }
 }
+
+val verifySuppressionAsset by tasks.registering {
+    val asset = layout.projectDirectory.file(
+        "src/main/assets/suppression-overlap-exclusion-retrained.json",
+    )
+    inputs.file(asset)
+    doLast {
+        val expected = "02274d0f17b89cd54ea24da7d1665a6475e48dc0f554d06092e9ef892332d4f1"
+        val actual = MessageDigest.getInstance("SHA-256")
+            .digest(asset.asFile.readBytes())
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        check(actual == expected) {
+            "Frozen suppression asset hash mismatch: expected $expected, got $actual"
+        }
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn(verifySuppressionAsset) }
 
 dependencies {
     implementation("org.opencv:opencv:4.12.0")

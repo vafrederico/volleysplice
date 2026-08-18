@@ -5,7 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
-internal const val EDITOR_DRAFT_VERSION = 2
+internal const val EDITOR_DRAFT_VERSION = 5
 internal const val DEFAULT_BEFORE_PADDING_MS = 2_000L
 internal const val DEFAULT_AFTER_PADDING_MS = 2_000L
 internal const val DEFAULT_JOIN_GAP_MS = 3_000L
@@ -14,6 +14,33 @@ internal const val MAX_JOIN_GAP_MS = 10_000L
 internal const val MIN_MARK_MS = 100L
 
 internal enum class CutOrigin { INFERRED, MANUAL }
+internal enum class SuppressionDecision(val wireName: String) {
+    KEEP("keep"), SUPPRESS("suppress");
+
+    companion object {
+        fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
+    }
+}
+
+internal enum class SuppressionInitialBehavior(val wireName: String, val label: String) {
+    HIGHLIGHT_ONLY("highlight-only", "Highlight only"),
+    DISABLE_INITIALLY("disable-initially", "Disable initially");
+
+    companion object {
+        fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
+            ?: DISABLE_INITIALLY
+    }
+}
+
+internal enum class SuppressionScope(val wireName: String, val label: String) {
+    WHOLE_RALLY("whole-rally", "Whole rally"),
+    VETO_REGION("veto-region", "Veto region");
+
+    companion object {
+        fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
+            ?: WHOLE_RALLY
+    }
+}
 
 internal data class EditorSeed(
     val sourceUri: String,
@@ -25,6 +52,9 @@ internal data class EditorSeed(
     val ranges: List<SeedRange>,
     val gameStartMs: Long = 0,
     val gameEndMs: Long = durationMs,
+    val productionComponents: AnalysisTypes.ProductionComponents =
+        AnalysisTypes.ProductionComponents.empty(),
+    val suppression: AnalysisTypes.SuppressionAnalysis? = null,
 ) {
     val sourceRevision: String by lazy {
         val canonical = buildString {
@@ -85,6 +115,14 @@ internal data class EditorDraft(
     val confidenceReviewThreshold: Float = .7f,
     val cuts: List<EditableCut>,
     val ignoredIntervals: List<IgnoredSourceInterval> = emptyList(),
+    val selectedSuppressionPolicy: SuppressionPolicyEngine.Policy =
+        SuppressionPolicyEngine.Policy.NONE,
+    val suppressionInitialBehavior: SuppressionInitialBehavior =
+        SuppressionInitialBehavior.DISABLE_INITIALLY,
+    val suppressionDecisionOverrides: Map<String, SuppressionDecision> = emptyMap(),
+    val suppressionScopeOverrides: Map<String, SuppressionScope> = emptyMap(),
+    val userTouchedCutIds: Set<String> = emptySet(),
+    val suppressionContractVersion: String = FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION,
 )
 
 internal data class JoinedGap(val startMs: Long, val endMs: Long)
@@ -97,6 +135,19 @@ internal data class FinalCutInterval(
 )
 
 internal data class DetailWindow(val startMs: Long, val endMs: Long)
+
+internal data class MaterializationProvenance(
+    val startMs: Long,
+    val endMs: Long,
+    val kind: String,
+    val cutIds: List<String> = emptyList(),
+    val suggestionIds: List<String> = emptyList(),
+)
+
+internal data class FinalMaterialization(
+    val intervals: List<FinalCutInterval>,
+    val provenance: List<MaterializationProvenance>,
+)
 
 internal object EditorMath {
     fun newDraft(seed: EditorSeed): EditorDraft = EditorDraft(
@@ -150,24 +201,136 @@ internal object EditorMath {
         )
     }
 
-    fun finalIntervals(draft: EditorDraft): List<FinalCutInterval> {
+    fun finalIntervals(
+        draft: EditorDraft,
+        suppression: AnalysisTypes.SuppressionAnalysis? = null,
+    ): List<FinalCutInterval> = materialize(draft, suppression).intervals
+
+    fun materialize(
+        draft: EditorDraft,
+        suppression: AnalysisTypes.SuppressionAnalysis? = null,
+    ): FinalMaterialization {
         val joinGapMs = draft.joinGapMs.coerceIn(0, MAX_JOIN_GAP_MS)
+        val activeSuggestions = activeSuggestions(draft, suppression)
+        val appliedSuggestions = activeSuggestions.filter { suggestion ->
+            suggestionEffectiveDecision(draft, suggestion) == SuppressionDecision.SUPPRESS
+        }
+        val wholeRallySuggestions = appliedSuggestions.filter { suggestion ->
+            suggestionEffectiveScope(draft, suggestion) == SuppressionScope.WHOLE_RALLY
+        }
+        val vetoRegionSuggestions = appliedSuggestions.filter { suggestion ->
+            suggestionEffectiveScope(draft, suggestion) == SuppressionScope.VETO_REGION
+        }
+        val wholeRallyCutIds = draft.cuts.asSequence()
+            .filter { it.origin == CutOrigin.INFERRED }
+            .filter { cut ->
+                wholeRallySuggestions.any { suggestion ->
+                    cut.coreStartMs < suggestion.endMs() && suggestion.startMs() < cut.coreEndMs
+                }
+            }
+            .map { it.id }
+            .toSet()
+        val suppressionBarriers = buildList {
+            vetoRegionSuggestions.forEach { suggestion ->
+                add(suggestion.startMs() to suggestion.endMs())
+            }
+            draft.cuts.filter { it.id in wholeRallyCutIds }.forEach { cut ->
+                add(cut.keepStartMs to cut.keepEndMs)
+            }
+        }
+        val sourceIntervals = mutableListOf<FinalCutInterval>()
+        val provenance = mutableListOf<MaterializationProvenance>()
+        draft.cuts.asSequence().filter { it.included }.forEach { cut ->
+            if (cut.origin == CutOrigin.MANUAL) {
+                if (cut.keepEndMs > cut.keepStartMs) {
+                    sourceIntervals += FinalCutInterval(cut.keepStartMs, cut.keepEndMs, listOf(cut.id))
+                    provenance += MaterializationProvenance(
+                        cut.keepStartMs, cut.keepEndMs, "manual", listOf(cut.id),
+                    )
+                }
+                return@forEach
+            }
+            if (cut.id in wholeRallyCutIds) return@forEach
+            var fragments = listOf(cut.coreStartMs to cut.coreEndMs)
+            vetoRegionSuggestions.forEach { suggestion ->
+                fragments = fragments.flatMap { (start, end) ->
+                    subtract(start, end, suggestion.startMs(), suggestion.endMs())
+                }
+            }
+            fragments.forEach { (coreStart, coreEnd) ->
+                if (coreEnd <= coreStart) return@forEach
+                val paddedStart = if (coreStart == cut.coreStartMs) cut.keepStartMs
+                    else (coreStart - draft.beforePaddingMs).coerceAtLeast(0)
+                val paddedEnd = if (coreEnd == cut.coreEndMs) cut.keepEndMs
+                    else coreEnd + draft.afterPaddingMs
+                if (paddedEnd > paddedStart) {
+                    val hardClipped = vetoRegionSuggestions.fold(
+                        listOf(paddedStart to paddedEnd),
+                    ) { fragments, suggestion ->
+                        fragments.flatMap { (start, end) ->
+                            subtract(start, end, suggestion.startMs(), suggestion.endMs())
+                        }
+                    }
+                    hardClipped.forEach { (start, end) ->
+                        if (end > start) {
+                            sourceIntervals += FinalCutInterval(start, end, listOf(cut.id))
+                        }
+                    }
+                    provenance += MaterializationProvenance(
+                        coreStart, coreEnd, "inferred-core", listOf(cut.id),
+                    )
+                    if (paddedStart < coreStart) provenance += MaterializationProvenance(
+                        paddedStart, coreStart, "padding", listOf(cut.id),
+                    )
+                    if (paddedEnd > coreEnd) provenance += MaterializationProvenance(
+                        coreEnd, paddedEnd, "padding", listOf(cut.id),
+                    )
+                }
+            }
+        }
+        appliedSuggestions.forEach { suggestion ->
+            if (suggestionEffectiveScope(draft, suggestion) == SuppressionScope.WHOLE_RALLY) {
+                draft.cuts.filter { cut ->
+                    cut.id in wholeRallyCutIds && cut.coreStartMs < suggestion.endMs() &&
+                        suggestion.startMs() < cut.coreEndMs
+                }.forEach { cut ->
+                    provenance += MaterializationProvenance(
+                        cut.keepStartMs, cut.keepEndMs, "suppression-whole-rally",
+                        cutIds = listOf(cut.id),
+                        suggestionIds = listOf(suggestion.logicalId()),
+                    )
+                }
+            } else {
+                provenance += MaterializationProvenance(
+                    suggestion.startMs(), suggestion.endMs(), "suppression-veto-region",
+                    suggestionIds = listOf(suggestion.logicalId()),
+                )
+            }
+        }
+
         val merged = mutableListOf<FinalCutInterval>()
-        draft.cuts.asSequence()
-            .filter { it.included && it.keepEndMs > it.keepStartMs }
-            .sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
-            .forEach { cut ->
+        sourceIntervals.asSequence()
+            .sortedWith(compareBy<FinalCutInterval> { it.startMs }.thenBy { it.endMs })
+            .forEach { interval ->
                 val previous = merged.lastOrNull()
-                val gap = previous?.let { cut.keepStartMs - it.endMs } ?: Long.MAX_VALUE
-                if (previous == null || (gap > 0 && gap >= joinGapMs)) {
-                    merged += FinalCutInterval(cut.keepStartMs, cut.keepEndMs, listOf(cut.id))
+                val gap = previous?.let { interval.startMs - it.endMs } ?: Long.MAX_VALUE
+                val crossesSuppression = previous != null && gap > 0 &&
+                    suppressionBarriers.any { (start, end) ->
+                        start < interval.startMs && previous.endMs < end
+                    }
+                if (previous == null || (gap > 0 && (gap >= joinGapMs || crossesSuppression))) {
+                    merged += interval
                 } else {
                     merged[merged.lastIndex] = previous.copy(
-                        endMs = max(previous.endMs, cut.keepEndMs),
-                        cutIds = previous.cutIds + cut.id,
+                        endMs = max(previous.endMs, interval.endMs),
+                        cutIds = (previous.cutIds + interval.cutIds).distinct(),
                         joinedGaps = if (gap > 0) {
-                            previous.joinedGaps + JoinedGap(previous.endMs, cut.keepStartMs)
+                            previous.joinedGaps + JoinedGap(previous.endMs, interval.startMs)
                         } else previous.joinedGaps,
+                    )
+                    if (gap > 0) provenance += MaterializationProvenance(
+                        previous.endMs, interval.startMs, "joined-gap",
+                        (previous.cutIds + interval.cutIds).distinct(),
                     )
                 }
             }
@@ -189,13 +352,15 @@ internal object EditorMath {
                 }
             }
         }
-        val byId = draft.cuts.associateBy { it.id }
-        return remaining.map { interval ->
+        val sourceById = sourceIntervals.flatMap { source ->
+            source.cutIds.map { id -> id to source }
+        }.groupBy({ it.first }, { it.second })
+        val result = remaining.map { interval ->
             interval.copy(
                 cutIds = interval.cutIds.filter { id ->
-                    byId[id]?.let { cut ->
-                        min(cut.keepEndMs, interval.endMs) - max(cut.keepStartMs, interval.startMs) > 0
-                    } == true
+                    sourceById[id].orEmpty().any { source ->
+                        min(source.endMs, interval.endMs) > max(source.startMs, interval.startMs)
+                    }
                 },
                 joinedGaps = interval.joinedGaps.mapNotNull { gap ->
                     val start = max(interval.startMs, gap.startMs)
@@ -204,20 +369,63 @@ internal object EditorMath {
                 },
             )
         }
+        val clippedProvenance = provenance.flatMap { item ->
+            if (item.kind.startsWith("suppression-")) listOf(item) else result.mapNotNull { interval ->
+                    val start = max(item.startMs, interval.startMs)
+                    val end = min(item.endMs, interval.endMs)
+                    if (end > start) item.copy(startMs = start, endMs = end) else null
+                }
+        }
+        return FinalMaterialization(result, clippedProvenance)
     }
 
-    fun effectiveKeptIds(draft: EditorDraft): Set<String> {
-        val ignored = mergeIgnored(draft.ignoredIntervals)
-        return draft.cuts.asSequence()
-            .filter { it.included && it.keepEndMs > it.keepStartMs }
-            .filter { cut ->
-                val ignoredMs = ignored.sumOf { interval ->
-                    max(0, min(cut.keepEndMs, interval.endMs) - max(cut.keepStartMs, interval.startMs))
-                }
-                cut.keepEndMs - cut.keepStartMs - ignoredMs > 0
-            }
-            .map { it.id }
-            .toSet()
+    fun effectiveKeptIds(
+        draft: EditorDraft,
+        suppression: AnalysisTypes.SuppressionAnalysis? = null,
+    ): Set<String> = finalIntervals(draft, suppression).flatMap { it.cutIds }.toSet()
+
+    fun activeSuggestions(
+        draft: EditorDraft,
+        suppression: AnalysisTypes.SuppressionAnalysis?,
+    ): List<AnalysisTypes.SuppressionSuggestion> = SuppressionPolicyEngine.active(
+        suppression,
+        draft.selectedSuppressionPolicy,
+    )
+
+    fun suggestionEffectiveDecision(
+        draft: EditorDraft,
+        suggestion: AnalysisTypes.SuppressionSuggestion,
+    ): SuppressionDecision {
+        draft.suppressionDecisionOverrides[suggestion.logicalId()]?.let { return it }
+        val overlapsTouched = draft.cuts.any { cut ->
+            cut.origin == CutOrigin.INFERRED && cut.id in draft.userTouchedCutIds &&
+                cut.coreStartMs < suggestion.endMs() && suggestion.startMs() < cut.coreEndMs
+        }
+        if (overlapsTouched) return SuppressionDecision.KEEP
+        return if (draft.suppressionInitialBehavior == SuppressionInitialBehavior.DISABLE_INITIALLY) {
+            SuppressionDecision.SUPPRESS
+        } else SuppressionDecision.KEEP
+    }
+
+    fun suggestionEffectiveScope(
+        draft: EditorDraft,
+        suggestion: AnalysisTypes.SuppressionSuggestion,
+    ): SuppressionScope = draft.suppressionScopeOverrides[suggestion.logicalId()]
+        ?: SuppressionScope.WHOLE_RALLY
+
+    fun reconcileTouchedCuts(draft: EditorDraft, seed: EditorSeed): EditorDraft {
+        val seedCuts = applyPadding(
+            newDraft(seed), draft.beforePaddingMs, draft.afterPaddingMs, seed.durationMs,
+            seed.gameStartMs, seed.gameEndMs,
+        ).cuts.associateBy { it.id }
+        val changed = draft.cuts.asSequence().filter { cut ->
+            if (cut.origin != CutOrigin.INFERRED) return@filter false
+            val original = seedCuts[cut.id] ?: return@filter true
+            cut.coreStartMs != original.coreStartMs || cut.coreEndMs != original.coreEndMs ||
+                cut.keepStartMs != original.keepStartMs || cut.keepEndMs != original.keepEndMs ||
+                cut.included != original.included
+        }.map { it.id }.toSet()
+        return draft.copy(userTouchedCutIds = draft.userTouchedCutIds + changed)
     }
 
     fun totalFinalMs(intervals: List<FinalCutInterval>): Long =
@@ -229,6 +437,27 @@ internal object EditorMath {
             if (positionMs < interval.startMs) return interval.startMs
         }
         return null
+    }
+
+    fun nextSuppressionSuggestion(
+        suggestions: List<AnalysisTypes.SuppressionSuggestion>,
+        positionMs: Long,
+        selectedFragmentId: String?,
+        reviewPrerollMs: Long = 2_000,
+    ): AnalysisTypes.SuppressionSuggestion? {
+        if (suggestions.isEmpty()) return null
+        val ordered = suggestions.sortedWith(
+            compareBy<AnalysisTypes.SuppressionSuggestion> { it.startMs() }
+                .thenBy { it.endMs() },
+        )
+        val selectedIndex = ordered.indexOfFirst { it.fragmentId() == selectedFragmentId }
+        if (selectedIndex >= 0) {
+            val selected = ordered[selectedIndex]
+            if (positionMs in (selected.startMs() - reviewPrerollMs).coerceAtLeast(0)..selected.endMs()) {
+                return ordered[(selectedIndex + 1) % ordered.size]
+            }
+        }
+        return ordered.firstOrNull { it.startMs() >= positionMs } ?: ordered.first()
     }
 
     fun playbackFocusCut(cuts: List<EditableCut>, positionMs: Long): EditableCut? =
@@ -274,6 +503,19 @@ internal object EditorMath {
                 }
             }
         return merged
+    }
+
+    private fun subtract(
+        start: Long,
+        end: Long,
+        removeStart: Long,
+        removeEnd: Long,
+    ): List<Pair<Long, Long>> {
+        if (removeEnd <= start || removeStart >= end) return listOf(start to end)
+        return buildList {
+            if (removeStart > start) add(start to min(end, removeStart))
+            if (removeEnd < end) add(max(start, removeEnd) to end)
+        }
     }
 }
 

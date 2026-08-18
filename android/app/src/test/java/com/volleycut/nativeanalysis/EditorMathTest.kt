@@ -189,6 +189,139 @@ class EditorMathTest {
         )
     }
 
+    @Test
+    fun untouchedSuggestionsDefaultToWholeRallyWhileTouchedAndExplicitChoicesWin() {
+        val suppression = suppression(12_000, 18_000)
+        val base = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            beforePaddingMs = 0,
+            afterPaddingMs = 0,
+            joinGapMs = 0,
+            selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.AGGRESSIVE,
+            cuts = listOf(cut("R001", 10_000, 20_000)),
+        )
+
+        assertTrue(EditorMath.finalIntervals(base, suppression).isEmpty())
+        assertEquals(
+            listOf(FinalCutInterval(10_000, 20_000, listOf("R001"))),
+            EditorMath.finalIntervals(
+                base.copy(suppressionInitialBehavior = SuppressionInitialBehavior.HIGHLIGHT_ONLY),
+                suppression,
+            ),
+        )
+        assertEquals(
+            listOf(FinalCutInterval(10_000, 20_000, listOf("R001"))),
+            EditorMath.finalIntervals(base.copy(userTouchedCutIds = setOf("R001")), suppression),
+        )
+        assertEquals(
+            0,
+            EditorMath.finalIntervals(base.copy(
+                userTouchedCutIds = setOf("R001"),
+                suppressionDecisionOverrides = mapOf("S-fixture" to SuppressionDecision.SUPPRESS),
+            ), suppression).size,
+        )
+        assertEquals(
+            1,
+            EditorMath.finalIntervals(base.copy(
+                suppressionDecisionOverrides = mapOf("S-fixture" to SuppressionDecision.KEEP),
+            ), suppression).size,
+        )
+        assertEquals(
+            listOf(
+                FinalCutInterval(10_000, 12_000, listOf("R001")),
+                FinalCutInterval(18_000, 20_000, listOf("R001")),
+            ),
+            EditorMath.finalIntervals(base.copy(
+                suppressionScopeOverrides = mapOf("S-fixture" to SuppressionScope.VETO_REGION),
+            ), suppression),
+        )
+    }
+
+    @Test
+    fun suppressionRemainsAHardBoundaryAfterPaddingAndShortGapJoining() {
+        val draft = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            beforePaddingMs = 2_000,
+            afterPaddingMs = 2_000,
+            joinGapMs = 3_000,
+            selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.AGGRESSIVE,
+            suppressionScopeOverrides = mapOf("S-fixture" to SuppressionScope.VETO_REGION),
+            cuts = listOf(
+                cut("R001", 10_000, 20_000).copy(keepStartMs = 8_000, keepEndMs = 22_000),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                FinalCutInterval(8_000, 12_000, listOf("R001")),
+                FinalCutInterval(13_000, 22_000, listOf("R001")),
+            ),
+            EditorMath.finalIntervals(draft, suppression(12_000, 13_000)),
+        )
+    }
+
+    @Test
+    fun nextSuppressionUsesThePlayheadWhenThePreviousSelectionIsStale() {
+        val first = suppression(10_000, 11_000).suggestions().single()
+        val second = suppression(20_000, 21_000).suggestions().single()
+        val suggestions = listOf(first, second)
+
+        assertEquals(first.fragmentId(), EditorMath.nextSuppressionSuggestion(
+            suggestions, 5_000, null,
+        )?.fragmentId())
+        assertEquals(second.fragmentId(), EditorMath.nextSuppressionSuggestion(
+            suggestions, 15_000, first.fragmentId(),
+        )?.fragmentId())
+        assertEquals(second.fragmentId(), EditorMath.nextSuppressionSuggestion(
+            suggestions, 8_000, first.fragmentId(),
+        )?.fragmentId())
+        assertEquals(first.fragmentId(), EditorMath.nextSuppressionSuggestion(
+            suggestions, 25_000, second.fragmentId(),
+        )?.fragmentId())
+    }
+
+    @Test
+    fun manualRangesAreUnionedBackAfterAutomaticSuppression() {
+        val draft = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            beforePaddingMs = 0,
+            afterPaddingMs = 0,
+            joinGapMs = 0,
+            selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.AGGRESSIVE,
+            suppressionScopeOverrides = mapOf("S-fixture" to SuppressionScope.VETO_REGION),
+            cuts = listOf(
+                cut("R001", 10_000, 20_000),
+                cut("M001", 11_000, 19_000, CutOrigin.MANUAL),
+            ),
+        )
+
+        assertEquals(
+            listOf(FinalCutInterval(10_000, 20_000, listOf("R001", "M001"))),
+            EditorMath.finalIntervals(draft, suppression(12_000, 18_000)),
+        )
+    }
+
+    private fun suppression(startMs: Long, endMs: Long) = AnalysisTypes.SuppressionAnalysis(
+        FeatureSchema.SUPPRESSION_MODEL_ID,
+        FeatureSchema.SUPPRESSION_ARTIFACT_SHA256,
+        FeatureSchema.SUPPRESSION_WEIGHTS_SHA256,
+        FeatureSchema.SUPPRESSION_DECODER_VERSION,
+        floatArrayOf(),
+        listOf(AnalysisTypes.Interval(startMs / 1_000.0, endMs / 1_000.0, .9f)),
+        listOf(AnalysisTypes.SuppressionSuggestion(
+            "S-fixture",
+            "S-fixture:$startMs:$endMs",
+            startMs,
+            endMs,
+            .9f,
+            listOf("all-labels-v2:0001"),
+            listOf("aggressive"),
+        )),
+    )
+
     private fun cut(
         id: String,
         start: Long,

@@ -22,6 +22,7 @@ class ModelFeedbackExporterTest {
             updatedAtMs = 1_786_752_000_000,
             cuts = listOf(inferredRemoved, inferredKept, manualKept, manualRemoved),
             ignoredIntervals = listOf(IgnoredSourceInterval("I001", 24_000, 25_000, "break")),
+            suppressionInitialBehavior = SuppressionInitialBehavior.HIGHLIGHT_ONLY,
         )
 
         val bundle = ModelFeedbackExporter.createBundle(
@@ -42,6 +43,14 @@ class ModelFeedbackExporterTest {
         assertEquals("R002", labels.getJSONArray("confirmedModelRanges").getJSONObject(0).getString("id"))
         assertEquals("M002", labels.getJSONArray("discardedManualRanges").getJSONObject(0).getString("id"))
         assertEquals(2, bundle.getJSONObject("initialInference").getJSONArray("ranges").length())
+        assertEquals(
+            "highlight-only",
+            bundle.getJSONObject("corrections").getString("suppressionInitialBehavior"),
+        )
+        assertEquals(
+            "whole-rally",
+            bundle.getJSONObject("corrections").getString("defaultSuppressionScope"),
+        )
         assertTrue(bundle.getJSONArray("warnings").getString(0).contains("feature cache"))
     }
 

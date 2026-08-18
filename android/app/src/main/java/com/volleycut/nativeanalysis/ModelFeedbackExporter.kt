@@ -173,6 +173,33 @@ internal object ModelFeedbackExporter {
                         range.agreement?.let { put("agreement", it) }
                     }) }
                 })
+                put("productionComponents", JSONObject().apply {
+                    put("allLabelsV2", analysisIntervals(project.productionComponents.allLabelsV2()))
+                    put("previousProduction", analysisIntervals(project.productionComponents.previousProduction()))
+                })
+                put("suppression", project.suppression?.let { suppression -> JSONObject().apply {
+                    put("modelId", suppression.modelId())
+                    put("artifactSha256", suppression.artifactSha256())
+                    put("weightsSha256", suppression.weightsSha256())
+                    put("decoderVersion", suppression.decoderVersion())
+                    put("policyContractVersion", draft.suppressionContractVersion)
+                    put("probabilities", encode(
+                        suppression.probabilities(),
+                        intArrayOf(suppression.probabilities().size),
+                    ))
+                    put("decodedIntervals", analysisIntervals(suppression.decodedIntervals()))
+                    put("suggestions", JSONArray().apply {
+                        suppression.suggestions().forEach { suggestion -> put(JSONObject().apply {
+                            put("logicalId", suggestion.logicalId())
+                            put("fragmentId", suggestion.fragmentId())
+                            put("start", suggestion.startMs() / 1_000.0)
+                            put("end", suggestion.endMs() / 1_000.0)
+                            put("score", suggestion.score().toDouble())
+                            put("sourceProductionIds", JSONArray(suggestion.sourceProductionIds()))
+                            put("eligiblePolicyIds", JSONArray(suggestion.eligiblePolicyIds()))
+                        }) }
+                    })
+                }} ?: JSONObject.NULL)
                 put("probabilityModelId", FeatureSchema.ALL_LABELS_V2_MODEL_ID)
                 put("timestamps", encode(
                     analysis?.timestamps ?: doubleArrayOf(),
@@ -198,6 +225,22 @@ internal object ModelFeedbackExporter {
                 put("beforePaddingSeconds", draft.beforePaddingMs / 1_000.0)
                 put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)
                 put("joinGapSeconds", draft.joinGapMs / 1_000.0)
+                put("selectedSuppressionPolicy", draft.selectedSuppressionPolicy.wireName)
+                put("recordedSuppressionPolicy", draft.selectedSuppressionPolicy.recordedPolicy)
+                put("suppressionInitialBehavior", draft.suppressionInitialBehavior.wireName)
+                put("defaultSuppressionScope", SuppressionScope.WHOLE_RALLY.wireName)
+                put("suppressionContractVersion", draft.suppressionContractVersion)
+                put("suppressionDecisionOverrides", JSONObject().apply {
+                    draft.suppressionDecisionOverrides.toSortedMap().forEach { (id, decision) ->
+                        put(id, decision.wireName)
+                    }
+                })
+                put("suppressionScopeOverrides", JSONObject().apply {
+                    draft.suppressionScopeOverrides.toSortedMap().forEach { (id, scope) ->
+                        put(id, scope.wireName)
+                    }
+                })
+                put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
                 put("correctedRanges", JSONArray().apply {
                     draft.cuts.forEach { put(correctedRange(it)) }
                 })
@@ -228,6 +271,17 @@ internal object ModelFeedbackExporter {
                         }) }
                     })
                 }) }
+            })
+            put("materializationProvenance", JSONArray().apply {
+                EditorMath.materialize(draft, project.suppression).provenance.forEach { segment ->
+                    put(JSONObject().apply {
+                        put("start", segment.startMs / 1_000.0)
+                        put("end", segment.endMs / 1_000.0)
+                        put("kind", segment.kind)
+                        put("cutIds", JSONArray(segment.cutIds))
+                        put("suggestionIds", JSONArray(segment.suggestionIds))
+                    })
+                }
             })
             put("warnings", warnings)
         }
@@ -344,6 +398,15 @@ internal object ModelFeedbackExporter {
     private fun modelComponent(modelId: String, sha256: String) = JSONObject().apply {
         put("modelId", modelId)
         put("bundleSha256", sha256)
+    }
+
+    private fun analysisIntervals(values: List<AnalysisTypes.Interval>) = JSONArray().apply {
+        values.forEach { interval -> put(JSONObject().apply {
+            put("start", interval.start())
+            put("end", interval.end())
+            put("confidence", interval.confidence().toDouble())
+            interval.agreement()?.let { put("agreement", it) }
+        }) }
     }
 
     private fun lastModifiedMs(value: Long): Long =

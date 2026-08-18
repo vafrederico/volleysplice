@@ -113,6 +113,35 @@ public final class AnalysisTypes {
 
     public record Serve(double time, float confidence) {}
 
+    public record ProductionComponents(
+            List<Interval> allLabelsV2,
+            List<Interval> previousProduction
+    ) {
+        public static ProductionComponents empty() {
+            return new ProductionComponents(List.of(), List.of());
+        }
+    }
+
+    public record SuppressionSuggestion(
+            String logicalId,
+            String fragmentId,
+            long startMs,
+            long endMs,
+            float score,
+            List<String> sourceProductionIds,
+            List<String> eligiblePolicyIds
+    ) {}
+
+    public record SuppressionAnalysis(
+            String modelId,
+            String artifactSha256,
+            String weightsSha256,
+            String decoderVersion,
+            float[] probabilities,
+            List<Interval> decodedIntervals,
+            List<SuppressionSuggestion> suggestions
+    ) {}
+
     public record MediaInfo(
             double durationSeconds,
             int width,
@@ -181,6 +210,8 @@ public final class AnalysisTypes {
             long audioOutputBatches,
             String audioFeatureSha256,
             List<Interval> ranges,
+            ProductionComponents productionComponents,
+            SuppressionAnalysis suppression,
             Map<String, Long> stageMilliseconds,
             Map<String, Double> profileMilliseconds,
             double threadCpuMilliseconds,
