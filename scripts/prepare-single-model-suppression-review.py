@@ -40,6 +40,11 @@ def main() -> None:
     parser.add_argument("--policy", choices=tuple(POLICIES), default="pointwise")
     parser.add_argument("--output", type=Path)
     parser.add_argument(
+        "--experiment-root",
+        type=Path,
+        help="Experiment directory containing split-policy.json and inference/.",
+    )
+    parser.add_argument(
         "--suppression-model",
         type=Path,
         help="Suppression model directory; defaults to the original specialist.",
@@ -77,6 +82,7 @@ def main() -> None:
         ANY_OVERLAP_OUTPUT if args.policy == "any-overlap" else DEFAULT_OUTPUT
     )
     ns = runpy.run_path(str(TRAIN_SCRIPT))
+    experiment_root = (args.experiment_root or ns["DEFAULT_OUTPUT"]).resolve()
     interval = ns["Interval"]
     merge = ns["_merge_intervals"]
     subtract = ns["subtract_intervals"]
@@ -240,7 +246,7 @@ def main() -> None:
 
     old_heads, v2_heads = ns["load_heads"]()
     suppression_model_path = args.suppression_model or (
-        ns["DEFAULT_OUTPUT"]
+        experiment_root
         / "models"
         / "v3-candidate2-four-head"
         / "suppression"
@@ -256,7 +262,7 @@ def main() -> None:
         for recording in ns["load_manifest"](ns["ALL_LABELS_MANIFEST"]).recordings
     }
     split = json.loads(
-        (ns["DEFAULT_OUTPUT"] / "split-policy.json").read_text(encoding="utf-8")
+        (experiment_root / "split-policy.json").read_text(encoding="utf-8")
     )
     feedback_fit = set(split["fitProjectIds"])
     feedback_imports = {}
@@ -280,7 +286,7 @@ def main() -> None:
         partition = "fit" if prepared.recording.id in feedback_fit else "held-out"
         entries.append(item_type(prepared, "export-feedback", partition, True))
 
-    inference_root = ns["DEFAULT_OUTPUT"] / "inference"
+    inference_root = experiment_root / "inference"
     baseline_predictions = {}
     candidate_predictions = {}
     video_payloads = []
@@ -480,6 +486,59 @@ def main() -> None:
 
     baseline_summary = metric_summary(baseline_metric)
     candidate_summary = metric_summary(all_metric)
+    scopes = {
+        "all-evaluable": entries,
+        "development": [
+            entry
+            for entry in entries
+            if entry.prepared.recording.id in ns["DEVELOPMENT_IDS"]
+        ],
+        "protected-test": [
+            entry
+            for entry in entries
+            if entry.prepared.recording.id in ns["PROTECTED_TEST_IDS"]
+        ],
+        "training-dataset": [
+            entry for entry in entries if entry.provenance == "training-dataset"
+        ],
+        "evaluation-validation-test-only": [
+            entry
+            for entry in entries
+            if entry.provenance == "evaluation-validation-test-only"
+        ],
+        "export-feedback": [
+            entry for entry in entries if entry.provenance == "export-feedback"
+        ],
+        "feedback-fit": [
+            entry for entry in entries if entry.feedback_partition == "fit"
+        ],
+        "feedback-held-out": [
+            entry for entry in entries if entry.feedback_partition == "held-out"
+        ],
+    }
+    scope_metrics = {
+        scope: {
+            "recordings": len(scoped_entries),
+            "production": {
+                f"{padding:g}": metric_summary(
+                    ns["metric_for"](
+                        scoped_entries, baseline_predictions, padding
+                    )
+                )
+                for padding in ns["PADDING_CASES"]
+            },
+            "candidate": {
+                f"{padding:g}": metric_summary(
+                    ns["metric_for"](
+                        scoped_entries, candidate_predictions, padding
+                    )
+                )
+                for padding in ns["PADDING_CASES"]
+            },
+        }
+        for scope, scoped_entries in scopes.items()
+        if scoped_entries
+    }
     agreement_join_description = (
         "with no agreement-component gap joining"
         if args.agreement_join_gap <= 0
@@ -499,7 +558,7 @@ def main() -> None:
     )
     payload = {
         "schemaVersion": 4,
-        "experiment": ns["EXPERIMENT_ID"],
+        "experiment": split.get("experiment", ns["EXPERIMENT_ID"]),
         "policyId": args.policy,
         "policyLabel": (
             f"Any-overlap: {args.agreement_padding:g}s grouping padding, "
@@ -548,6 +607,7 @@ def main() -> None:
             "production": baseline_summary,
             "candidate": candidate_summary,
         },
+        "scopeMetrics": scope_metrics,
         "correctlyRemovedPredictions": correctly_removed_rows,
         "videos": video_payloads,
     }

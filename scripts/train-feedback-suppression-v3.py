@@ -10,7 +10,9 @@ and subtracts those spans from the candidate-1 output.
 All feedback features are decoded from the feedback JSON.  No feedback source video
 is opened for feature extraction.  Suppression thresholds are selected only on the
 three predeclared challenge-development recordings; protected test and held-feedback
-labels are opened only for final reporting.
+labels are opened only for final reporting. The production-suppression path holds
+the previously selected decoder; a newly tuned development winner is recorded as
+diagnostic evidence only and is not substituted into the product comparison.
 """
 
 from __future__ import annotations
@@ -72,6 +74,15 @@ PADDING_CASES = (0.0, 1.0, 2.0, 3.0)
 JOIN_GAP_SECONDS = 3.0
 FEEDBACK_SPLIT_SEED = 20260816
 HARD_NEGATIVE_MULTIPLIER = 4
+HELD_PRODUCTION_SUPPRESSION_DECODER = DecoderConfig(
+    smoothing_seconds=1.0,
+    enter_threshold=0.75,
+    exit_threshold=0.65,
+    min_live_seconds=0.5,
+    bridge_gap_seconds=0.5,
+    short_event_min_seconds=0.25,
+    short_event_threshold=0.9,
+)
 
 ALL_LABELS_MANIFEST = Path(
     "/mnt/freenas/volleycut/intake-2026-08-13/experiments/"
@@ -323,6 +334,80 @@ def subtract_predictions(source: Sequence[Interval], cuts: Sequence[Interval]) -
     return subtract_intervals(source, cuts)
 
 
+def intersect_intervals(
+    left: Sequence[Interval], right: Sequence[Interval]
+) -> tuple[Interval, ...]:
+    first = list(_merge_intervals(left))
+    second = list(_merge_intervals(right))
+    result: list[Interval] = []
+    first_index = second_index = 0
+    while first_index < len(first) and second_index < len(second):
+        start = max(first[first_index].start, second[second_index].start)
+        end = min(first[first_index].end, second[second_index].end)
+        if end > start:
+            result.append(Interval(start, end))
+        if first[first_index].end <= second[second_index].end:
+            first_index += 1
+        else:
+            second_index += 1
+    return _merge_intervals(result)
+
+
+def one_model_support(
+    old: Sequence[Interval],
+    v2: Sequence[Interval],
+    duration: float,
+    *,
+    agreement_padding: float,
+    agreement_join_gap: float,
+    raw_connected: bool = False,
+) -> tuple[Interval, ...]:
+    old_rows = tuple(old)
+    v2_rows = tuple(v2)
+    if raw_connected:
+        tagged = [
+            (float(row.start), float(row.end), "old") for row in old_rows
+        ]
+        tagged.extend(
+            (float(row.start), float(row.end), "v2") for row in v2_rows
+        )
+        tagged.sort(key=lambda row: (row[0], row[1], row[2]))
+        components: list[tuple[float, float, set[str]]] = []
+        for start, end, source in tagged:
+            if not components or start >= components[-1][1]:
+                components.append((start, end, {source}))
+                continue
+            component_start, component_end, sources = components[-1]
+            sources.add(source)
+            components[-1] = (
+                component_start,
+                max(component_end, end),
+                sources,
+            )
+        return _merge_intervals(
+            Interval(start, end)
+            for start, end, sources in components
+            if len(sources) == 1
+        )
+
+    raw_union = union_intervals(old_rows, v2_rows)
+    agreement_components = pad_and_merge_intervals(
+        raw_union,
+        duration,
+        agreement_padding,
+        agreement_join_gap,
+    )
+    one_model_components = tuple(
+        component
+        for component in agreement_components
+        if not (
+            _intersection_duration((component,), old_rows) > 1e-9
+            and _intersection_duration((component,), v2_rows) > 1e-9
+        )
+    )
+    return intersect_intervals(raw_union, one_model_components)
+
+
 def hard_negative_mask(item: PreparedRecording) -> np.ndarray:
     mask = np.zeros(len(item.sequence.times), dtype=bool)
     for field in ("hardNegatives", "sideSwitches"):
@@ -458,6 +543,8 @@ def train_suppression(
     training: Sequence[PreparedRecording],
     baseline: Mapping[str, Sequence[Interval]],
     template: LogisticModel,
+    *,
+    exclude_overlapping_feedback_false_positives: bool = False,
 ) -> tuple[LogisticModel, dict[str, Any]]:
     train_values: list[np.ndarray] = []
     train_labels: list[np.ndarray] = []
@@ -467,7 +554,26 @@ def train_suppression(
         truth = item.labels > 0.5
         predicted = labels_for_times(times, baseline[item.recording.id]) > 0.5
         explicit = hard_negative_mask(item)
-        positive = item.sample_mask & ~truth & (predicted | explicit)
+        positive_before_exclusion = item.sample_mask & ~truth & (predicted | explicit)
+        excluded_intervals: tuple[Interval, ...] = ()
+        if (
+            exclude_overlapping_feedback_false_positives
+            and item.recording.raw.get("feedbackPath")
+        ):
+            false_positives = as_intervals(
+                item.recording.raw.get("hardNegatives", [])
+            )
+            excluded_intervals = tuple(
+                false_positive
+                for false_positive in false_positives
+                if any(
+                    false_positive.start < rally.end
+                    and rally.start < false_positive.end
+                    for rally in item.recording.rallies
+                )
+            )
+        exclusion = labels_for_times(times, excluded_intervals) > 0.5
+        positive = positive_before_exclusion & ~exclusion
         negative = item.sample_mask & truth
         selected = positive | negative
         if not np.any(positive) or not np.any(negative):
@@ -476,7 +582,14 @@ def train_suppression(
         train_labels.append(positive[selected].astype(np.float32))
         stats.append({
             "id": item.recording.id,
+            "positiveSuppressionSamplesBeforeExclusion": int(
+                np.sum(positive_before_exclusion)
+            ),
             "positiveSuppressionSamples": int(np.sum(positive)),
+            "excludedPositiveSamples": int(
+                np.sum(positive_before_exclusion & exclusion)
+            ),
+            "excludedFalsePositiveIntervals": interval_rows(excluded_intervals),
             "negativeRallySamples": int(np.sum(negative)),
             "explicitNegativeSamples": int(np.sum(explicit)),
         })
@@ -497,13 +610,34 @@ def train_suppression(
     model.feature_version = template.feature_version
     model.training_summary.update({
         "experiment": EXPERIMENT_ID,
-        "candidate": "false-positive-suppression-head",
+        "candidate": (
+            "false-positive-suppression-head-overlap-exclusion"
+            if exclude_overlapping_feedback_false_positives
+            else "false-positive-suppression-head"
+        ),
         "specialistRole": "veto selected dead/setup/side-switch activity",
-        "positiveDefinition": "valid non-rally samples selected by current production, plus explicit hard-negative/side-switch samples",
+        "positiveDefinition": (
+            "valid non-rally samples selected by current production or explicit "
+            "hard-negative/side-switch labels, excluding complete false-positive "
+            "intervals that intersect an included corrected rally core"
+            if exclude_overlapping_feedback_false_positives
+            else "valid non-rally samples selected by current production, plus explicit hard-negative/side-switch samples"
+        ),
         "negativeDefinition": "valid human rally samples",
         "trainingRecordingIds": [item.recording.id for item in training],
         "feedbackFeaturesReusedFromBundles": True,
         "perRecordingTargets": stats,
+        "overlapExclusionPolicy": (
+            "Exclude the complete half-open false-positive interval from "
+            "suppression-positive targets when it has any positive-duration "
+            "overlap with an included corrected rally core. Apply exclusion "
+            "after the baseline and explicit-target union."
+            if exclude_overlapping_feedback_false_positives
+            else None
+        ),
+        "excludedPositiveSamples": sum(
+            row["excludedPositiveSamples"] for row in stats
+        ),
         "selectionPolicy": "Fit labels exclude protected test and held-feedback files; decoder selected only on predeclared development recordings.",
     })
     return model, {"perRecording": stats}
@@ -646,7 +780,19 @@ def tune_suppression(
 
 
 def group_items(items: Sequence[Item]) -> dict[str, list[Item]]:
-    groups: dict[str, list[Item]] = {"all-evaluable": list(items)}
+    groups: dict[str, list[Item]] = {
+        "all-evaluable": list(items),
+        "selection:development": [
+            entry
+            for entry in items
+            if entry.prepared.recording.id in DEVELOPMENT_IDS
+        ],
+        "disclosure:protected-test": [
+            entry
+            for entry in items
+            if entry.prepared.recording.id in PROTECTED_TEST_IDS
+        ],
+    }
     for entry in items:
         environment = entry.prepared.recording.environment
         groups.setdefault(f"environment:{environment}", []).append(entry)
@@ -727,9 +873,20 @@ def markdown_report(report: Mapping[str, Any]) -> str:
 
 
 def main() -> None:
+    global EXPERIMENT_ID
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--experiment-id", default=EXPERIMENT_ID)
+    parser.add_argument(
+        "--exclude-overlapping-feedback-false-positives",
+        action="store_true",
+        help=(
+            "Exclude complete feedback false-positive intervals from suppression "
+            "targets when they intersect an included corrected rally."
+        ),
+    )
     args = parser.parse_args()
+    EXPERIMENT_ID = args.experiment_id
     output = args.output.resolve()
     if output.exists():
         raise FileExistsError(f"refusing to overwrite experiment directory {output}")
@@ -781,11 +938,21 @@ def main() -> None:
         "protectedTestIds": sorted(PROTECTED_TEST_IDS),
         "targetPaddingSeconds": TARGET_PADDING_SECONDS,
         "joinGapSecondsStrictlyLessThan": JOIN_GAP_SECONDS,
+        "excludeOverlappingFeedbackFalsePositiveTargets": (
+            args.exclude_overlapping_feedback_false_positives
+        ),
     }
     write_new_json(output / "split-policy.json", split_payload)
 
     candidate1 = train_three_heads(training, v2_heads, output / "models" / "v3-candidate1-three-head")
-    suppression, suppression_targets = train_suppression(training, baseline_training, v2_heads.rally)
+    suppression, suppression_targets = train_suppression(
+        training,
+        baseline_training,
+        v2_heads.rally,
+        exclude_overlapping_feedback_false_positives=(
+            args.exclude_overlapping_feedback_false_positives
+        ),
+    )
 
     labeled_records = load_labeled_records()
     inference_manifest = load_manifest(INFERENCE_MANIFEST)
@@ -819,7 +986,44 @@ def main() -> None:
         base_predictions["v3"][recording_id] = v3
 
     development = [entry for entry in all_items if entry.prepared.recording.id in DEVELOPMENT_IDS]
-    prod_config, prod_selection = tune_suppression(development, base_predictions["current"], suppression)
+    prod_tuned_config, prod_tuned_selection = tune_suppression(
+        development, base_predictions["current"], suppression
+    )
+    prod_config = HELD_PRODUCTION_SUPPRESSION_DECODER
+    held_prod_predictions = {
+        entry.prepared.recording.id: subtract_predictions(
+            base_predictions["current"][entry.prepared.recording.id],
+            decode_suppression(entry.prepared, suppression, prod_config),
+        )
+        for entry in development
+    }
+    prod_selection = {
+        "scope": sorted(
+            entry.prepared.recording.id for entry in development
+        ),
+        "assessmentRole": "product-held-prior-decoder",
+        "targetPaddingSeconds": TARGET_PADDING_SECONDS,
+        "rankingMetric": "F1_padP_coreR",
+        "baseline": metric_for(
+            development,
+            base_predictions["current"],
+            TARGET_PADDING_SECONDS,
+        ),
+        "selected": metric_for(
+            development,
+            held_prod_predictions,
+            TARGET_PADDING_SECONDS,
+        ),
+        "selectedConfig": prod_config.to_dict(),
+        "decision": (
+            "Hold the previous production suppression decoder. Do not replace "
+            "it with the newly tuned development winner."
+        ),
+        "tunedDiagnostic": {
+            **prod_tuned_selection,
+            "selectedConfig": prod_tuned_config.to_dict(),
+        },
+    }
     v3_config, v3_selection = tune_suppression(development, base_predictions["v3"], suppression)
     suppression.decoder = v3_config
     suppression.training_summary.update({
@@ -861,7 +1065,9 @@ def main() -> None:
 
     variants: dict[str, dict[str, tuple[Interval, ...]]] = {
         "current-production-ensemble": dict(base_predictions["current"]),
-        "production-plus-suppression": {},
+        "production-plus-suppression-raw-connected": {},
+        "production-plus-suppression-aggressive-intermediate": {},
+        "production-plus-suppression-zero-non-exempt-misses": {},
         "v3-candidate1-three-head": dict(base_predictions["v3"]),
         "v3-candidate2-four-head": {},
         "old-plus-v3-candidate1": {},
@@ -872,9 +1078,46 @@ def main() -> None:
         prod_cut = decode_suppression(entry.prepared, suppression, prod_config)
         v3_cut = decode_suppression(entry.prepared, suppression, v3_config)
         v3_suppressed = subtract_predictions(base_predictions["v3"][recording_id], v3_cut)
-        variants["production-plus-suppression"][recording_id] = subtract_predictions(
-            base_predictions["current"][recording_id], prod_cut
+        raw_connected_support = one_model_support(
+            base_predictions["old"][recording_id],
+            base_predictions["v2"][recording_id],
+            entry.prepared.sequence.metadata.duration,
+            agreement_padding=0.0,
+            agreement_join_gap=0.0,
+            raw_connected=True,
         )
+        aggressive_support = one_model_support(
+            base_predictions["old"][recording_id],
+            base_predictions["v2"][recording_id],
+            entry.prepared.sequence.metadata.duration,
+            agreement_padding=1.5,
+            agreement_join_gap=0.5,
+        )
+        zero_miss_support = one_model_support(
+            base_predictions["old"][recording_id],
+            base_predictions["v2"][recording_id],
+            entry.prepared.sequence.metadata.duration,
+            agreement_padding=2.0,
+            agreement_join_gap=0.5,
+        )
+        for variant_id, support in (
+            (
+                "production-plus-suppression-raw-connected",
+                raw_connected_support,
+            ),
+            (
+                "production-plus-suppression-aggressive-intermediate",
+                aggressive_support,
+            ),
+            (
+                "production-plus-suppression-zero-non-exempt-misses",
+                zero_miss_support,
+            ),
+        ):
+            applied_cut = intersect_intervals(prod_cut, support)
+            variants[variant_id][recording_id] = subtract_predictions(
+                base_predictions["current"][recording_id], applied_cut
+            )
         variants["v3-candidate2-four-head"][recording_id] = v3_suppressed
         variants["old-plus-v3-candidate1"][recording_id] = union_intervals(
             base_predictions["old"][recording_id], base_predictions["v3"][recording_id]
@@ -918,6 +1161,8 @@ def main() -> None:
     display_scopes = [
         key for key in (
             "all-evaluable",
+            "selection:development",
+            "disclosure:protected-test",
             "provenance:training-dataset",
             "provenance:evaluation-validation-test-only",
             "provenance:export-feedback",
@@ -941,10 +1186,19 @@ def main() -> None:
         "models": {"candidate1": candidate1_bundle, "candidate2": candidate2_bundle},
         "suppressionTargets": suppression_targets,
         "selection": {"productionPlusSuppression": prod_selection, "v3Candidate2": v3_selection},
+        "productDecision": {
+            "productionBase": "current-production-ensemble",
+            "productionSuppressionDecoder": "held-prior-decoder",
+            "productionSuppressionDecoderConfig": prod_config.to_dict(),
+            "v3Candidate1": "rejected-not-moving-forward",
+            "v3Candidate2": "rejected-not-moving-forward",
+        },
         "variantOrder": variant_order,
         "variantLabels": {
             "current-production-ensemble": "Current production (old + all-labels v2)",
-            "production-plus-suppression": "Current production + suppression specialist",
+            "production-plus-suppression-raw-connected": "Current production + suppression (raw-connected)",
+            "production-plus-suppression-aggressive-intermediate": "Current production + suppression (1.5s agreement padding, joins <0.5s)",
+            "production-plus-suppression-zero-non-exempt-misses": "Current production + suppression (2s agreement padding, joins <0.5s)",
             "v3-candidate1-three-head": "v3 candidate 1 (three-head refit)",
             "v3-candidate2-four-head": "v3 candidate 2 (three heads + suppression)",
             "old-plus-v3-candidate1": "Old production + v3 candidate 1",
@@ -956,6 +1210,23 @@ def main() -> None:
             "labeledAndScored": len(evaluable),
             "unlabeledInferenceOnly": sorted(entry.prepared.recording.id for entry in all_items if not entry.labeled),
             "feedbackFeatureGenerationPerformed": False,
+        },
+        "productionSuppressionPolicies": {
+            "production-plus-suppression-raw-connected": {
+                "agreementPaddingSeconds": 0.0,
+                "agreementJoinGapSecondsStrictlyLessThan": 0.0,
+                "rawConnected": True,
+            },
+            "production-plus-suppression-aggressive-intermediate": {
+                "agreementPaddingSeconds": 1.5,
+                "agreementJoinGapSecondsStrictlyLessThan": 0.5,
+                "rawConnected": False,
+            },
+            "production-plus-suppression-zero-non-exempt-misses": {
+                "agreementPaddingSeconds": 2.0,
+                "agreementJoinGapSecondsStrictlyLessThan": 0.5,
+                "rawConnected": False,
+            },
         },
         "metrics": metrics,
     }
