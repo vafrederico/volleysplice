@@ -6,7 +6,10 @@ import type { AnalysisWindow } from "./analysis-window.ts";
 import { mean, percentileRanks, quantile, rollingMean } from "./feature-math.ts";
 import { LibswresampleWasmResampler } from "./libswresample-wasm.ts";
 import type { OnDeviceRuntimeVariant } from "./runtime-variants.ts";
-import type { AnalysisProgress } from "./types.ts";
+import type {
+  AnalysisProgress,
+  AudioExtractionPerformance,
+} from "./types.ts";
 
 const TARGET_SAMPLE_RATE = 16_000;
 const FRAME_SAMPLES = 800;
@@ -373,7 +376,20 @@ export class AudioAccumulator {
   }
 }
 
-function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Float32Array> {
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function buildFrameFeatureSources(
+  frames: AudioFrameFeatures,
+  onProgress?: (completedPasses: number, totalPasses: number) => Promise<void>,
+): Promise<Record<string, Float32Array>> {
+  const totalPasses = 8;
+  let completedPasses = 0;
+  const completePass = async () => {
+    completedPasses += 1;
+    await onProgress?.(completedPasses, totalPasses);
+  };
   const rms = Float32Array.from(frames.rms);
   const peak = Float32Array.from(frames.peak);
   const spectralFlux = Float32Array.from(frames.spectralFlux);
@@ -407,6 +423,7 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
       elapsed[index] = Math.min(10, timestamp - lastTime);
     }
   }
+  await completePass();
 
   const noiseWindow = Math.round(10 / FRAME_SECONDS);
   const noiseFloor = rollingPercentile(rms, noiseWindow, 0.2);
@@ -416,6 +433,7 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
     snr[index] = Math.log1p(Math.max(rms[index] - noiseFloor[index], 0) / (noiseFloor[index] + 1e-4));
     peakToRms[index] = Math.min(30, Math.max(0, peak[index] / (rms[index] + 1e-5)));
   }
+  await completePass();
 
   const sources: Record<string, Float32Array> = {
     audio_rms: rms,
@@ -451,6 +469,7 @@ function buildFrameFeatureSources(frames: AudioFrameFeatures): Record<string, Fl
     }
     sources[`audio_band_${bandLabels[band]}_snr`] = snrValues;
     sources[`audio_band_${bandLabels[band]}_snr_flux`] = fluxValues;
+    await completePass();
   }
   const broadband = new Float32Array(count);
   const normalizedFlux = new Float32Array(count);
@@ -472,7 +491,41 @@ export async function extractAudioFeatures(
 ): Promise<Float32Array> {
   const columns = AUDIO_FEATURE_NAMES.length;
   const output = new Float32Array(times.length * columns);
-  if (!audioTrack || !(await audioTrack.canDecode())) return output;
+  const analysisDuration = analysisWindow.end - analysisWindow.start;
+  const audioStartedAt = performance.now();
+  let decodeElapsedMs = 0;
+  let decodedAudioSeconds = 0;
+  const performanceSnapshot = (
+    phase: AudioExtractionPerformance["phase"],
+  ): AudioExtractionPerformance => ({
+    phase,
+    elapsedMs: performance.now() - audioStartedAt,
+    decodeElapsedMs,
+    decodedAudioSeconds,
+  });
+  const reportProgress = async (
+    fraction: number,
+    detail: string,
+    phase: AudioExtractionPerformance["phase"],
+  ) => {
+    if (!onProgress) return;
+    onProgress({
+      stage: "audio",
+      completed: Math.max(0, Math.min(1, fraction)) * analysisDuration,
+      total: analysisDuration,
+      detail,
+      audioPerformance: performanceSnapshot(phase),
+    });
+    await yieldToBrowser();
+  };
+  if (!audioTrack || !(await audioTrack.canDecode())) {
+    await reportProgress(
+      1,
+      "No decodable audio track; continuing with visual features",
+      "complete",
+    );
+    return output;
+  }
 
   const accumulator = new AudioAccumulator(
     runtimeVariant === "libswresample-wasm-v1"
@@ -480,7 +533,6 @@ export async function extractAudioFeatures(
       : null,
   );
   const sink = new AudioSampleSink(audioTrack);
-  const analysisDuration = analysisWindow.end - analysisWindow.start;
   let lastProgress = -1;
   let frames: AudioFrameFeatures;
   try {
@@ -492,17 +544,20 @@ export async function extractAudioFeatures(
           analysisDuration,
           Math.max(0, sample.timestamp + sample.duration - analysisWindow.start),
         );
+        decodedAudioSeconds = Math.max(decodedAudioSeconds, progress);
         const rounded = Math.floor(progress);
         if (rounded !== lastProgress) {
           lastProgress = rounded;
+          decodeElapsedMs = performance.now() - audioStartedAt;
           onProgress?.({
             stage: "audio",
-            completed: progress,
+            completed: progress * 0.7,
             total: analysisDuration,
             detail:
               runtimeVariant === "libswresample-wasm-v1"
-                ? "Decoding audio through libswresample WASM"
-                : "Decoding audio at 16 kHz",
+                ? `Decoding audio through libswresample WASM · ${Math.round((progress / analysisDuration) * 100)}%`
+                : `Decoding audio at 16 kHz · ${Math.round((progress / analysisDuration) * 100)}%`,
+            audioPerformance: performanceSnapshot("decoding"),
           });
         }
       } finally {
@@ -510,12 +565,30 @@ export async function extractAudioFeatures(
       }
     }
     frames = accumulator.finish();
+    decodeElapsedMs = performance.now() - audioStartedAt;
   } catch (error) {
     accumulator.dispose();
     throw error;
   }
-  if (frames.rms.length === 0) return output;
-  const sources = buildFrameFeatureSources(frames);
+  if (frames.rms.length === 0) {
+    await reportProgress(
+      1,
+      "Audio track contains no usable samples",
+      "complete",
+    );
+    return output;
+  }
+  await reportProgress(0.7, "Building audio feature signals", "features");
+  const sources = await buildFrameFeatureSources(
+    frames,
+    async (completedPasses, totalPasses) => {
+      await reportProgress(
+        0.7 + (completedPasses / totalPasses) * 0.2,
+        `Building audio feature signals · ${completedPasses} of ${totalPasses}`,
+        "features",
+      );
+    },
+  );
   const audioTimes = Float64Array.from(
     { length: frames.rms.length },
     (_, index) => analysisWindow.start + (index + 0.5) * FRAME_SECONDS,
@@ -529,6 +602,7 @@ export async function extractAudioFeatures(
     "audio_cadence_collapse",
     "audio_seconds_since_transient",
   ]);
+  const alignmentBatchSize = Math.max(1, Math.ceil(times.length / 20));
   for (let row = 0; row < times.length; row += 1) {
     output[row * columns] = 1;
     let left = lowerBound(audioTimes, times[row] - halfWidth);
@@ -548,6 +622,17 @@ export async function extractAudioFeatures(
       output[row * columns + column] = meanPooled.has(name)
         ? mean(segment)
         : Math.max(...segment);
+    }
+    const completedRows = row + 1;
+    if (
+      completedRows === times.length ||
+      completedRows % alignmentBatchSize === 0
+    ) {
+      await reportProgress(
+        0.9 + (completedRows / times.length) * 0.1,
+        `Aligning audio with video features · ${Math.round((completedRows / times.length) * 100)}%`,
+        completedRows === times.length ? "complete" : "alignment",
+      );
     }
   }
   return output;
