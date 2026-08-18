@@ -84,9 +84,50 @@ cd android
 .\benchmark.bat -VideoName "1080p60.mp4" -FrameLimit 1000 -Runs 3
 ```
 
+Select individual pipeline stages or combinations with `-Stages`. For example, this runs only
+fresh audio decode and feature generation over the first 60 seconds on a specific ADB transport:
+
+```powershell
+.\benchmark.ps1 -DeviceSerial "192.0.2.1:40461" -VideoName "1080p60.mp4" `
+  -Stages Audio -DurationSeconds 60 -CacheMode Bypass -AudioDecoderMode Batched -Runs 5
+```
+
+Accepted stage plans are `All`, `Video`, `Audio`, `Inference`, `VideoAudio`,
+`VideoInference`, and `AudioInference`. `-DurationSeconds 0` uses the full selected scope.
+The source-frame limit applies only when video generation is selected. Inference without one or
+both feature stages loads those exact prerequisites from the matching feature cache and fails
+clearly when they are unavailable, keeping an inference-only measurement honest.
+Use `-AudioDecoderMode Single` for the one-access-unit control, `Batched` for Android's
+asynchronous multi-access-unit path, or `Auto` for the production selection. Normal app analysis
+selects batching automatically on API 35+ when the decoder advertises `FEATURE_MultipleFrames`,
+and otherwise falls back to the control path.
+
 Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppress the full JSON lines. Every successful run contributes to the median summary. The app writes `benchmarkStatus`, a unique `benchmarkRunId`, and either the normal result payload or structured failure details, so a stale result cannot be mistaken for the current run. `-FrameLimit` can extend a measurement when a 1,000-frame sample is too noisy. Use `-CacheMode Use`, `Bypass`, or `Refresh` to reuse, ignore, or replace the matching feature entry. The production configuration requests a 240 FPS codec operating rate at best-effort priority; pass `-OperatingRate -1 -CodecPriority -1` for the unhinted control.
 
 The 240 FPS operating-rate request was retained after a 5,000-frame 1080p60 A/B reduced median video-stage time from 29,102.5 ms to 19,749.0 ms (32.1%) with identical sampled timestamps and candidate ranges. Android uses this value for codec resource planning; it does not change source timestamps or the 4 Hz sampling schedule.
+
+The audio-only stage selector exposed a similar codec scheduling opportunity. On the Pixel 10 Pro,
+five fresh 60-second runs of `PXL_20260816_160023210.mp4` improved from a 6,276 ms baseline median
+to 5,277 ms (15.9%) after requesting a 4x-source-rate audio operating rate with real-time codec
+priority. An 8x request regressed to 6,354 ms, while 4x with best-effort priority measured 5,877 ms.
+The retained request is reported in benchmark JSON. It affects scheduling only; decoded timestamps,
+PCM, and feature math are unchanged.
+
+A full 885.1-second single-access-unit audio-only control took 160,381 ms (5.52x real time). The
+accepted Android 17 asynchronous multi-access-unit path reduced that to 61,062 ms (14.50x), a 61.9%
+reduction, while collapsing 41,489 codec input submissions and outputs into 2,680 batches. Five fresh
+60-second runs improved from a 6,213 ms control median to 1,970 ms (68.3%). Exact SHA-256 fingerprints
+of all pooled audio features matched at 10 seconds, 60 seconds, and the full recording. The batching
+path retains original access-unit timestamps and reconstructs PCM boundaries before the unchanged
+resampler/FFT pipeline; per-unit end-window clipping is also preserved exactly.
+
+After batching, full-file `MediaExtractor.advance()` remains the scaling limit at 39.3 seconds of the
+61.1-second run. Codec input queueing fell to 3.8 seconds, output release to 1.4 seconds, and final
+whole-recording reductions plus pooling remained about 300 ms. A bounded codec-to-DSP worker and
+reusable FFT/source buffers were rejected because CPU contention or buffer clearing erased their
+theoretical overlap. Further gains should therefore target extractor traversal or a different demux
+path rather than requiring the complete recording to be decoded before DSP begins; codec decode and
+feature extraction already stream concurrently in the asynchronous path.
 
 Asynchronous decode-only output was then retained after reducing the same 5,000-frame median from 19,749.0 ms to 14,683.5 ms (25.6% further, 49.5% versus the unhinted baseline). It produced only 334 output images for 5,000 decoded source frames. The 1080p and 4K checks retained identical analyzed durations, sample timestamps, ranges, and confidences; three warm 4K60 runs had a 5,884 ms median for 1,000 frames.
 

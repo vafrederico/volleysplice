@@ -8,6 +8,11 @@ import java.util.List;
 import java.util.Map;
 
 final class AudioFeatureExtractor {
+    @FunctionalInterface
+    interface ProgressListener {
+        void onProgress(double fraction, String detail);
+    }
+
     static final int TARGET_SAMPLE_RATE = 16_000;
     private static final int FRAME_SAMPLES = 800;
     private static final double FRAME_SECONDS = 0.05;
@@ -76,7 +81,12 @@ final class AudioFeatureExtractor {
     }
 
     float[] finishAndPool(double[] analysisTimes) {
+        return finishAndPool(analysisTimes, (fraction, detail) -> {});
+    }
+
+    float[] finishAndPool(double[] analysisTimes, ProgressListener progress) {
         long finishStarted = System.nanoTime();
+        progress.onProgress(0.82, "Flushing resampler + final FFT frames");
         if (sourceBuffer.length > 0) {
             while (sourcePosition < sourceBuffer.length) {
                 pushOutput(sourceBuffer[Math.min(sourceBuffer.length - 1, (int) Math.floor(sourcePosition))]);
@@ -90,10 +100,12 @@ final class AudioFeatureExtractor {
         }
         float[] output = new float[analysisTimes.length * FeatureSchema.AUDIO.size()];
         if (rms.isEmpty()) {
+            progress.onProgress(0.99, "No decoded audio frames to pool");
             profiler.add("finish_and_pool", System.nanoTime() - finishStarted);
             return output;
         }
         long operationStarted = System.nanoTime();
+        progress.onProgress(0.88, "Computing audio ranks + rolling noise floors");
         Map<String, float[]> sources = buildFrameFeatureSources();
         profiler.add("whole_recording_audio_reductions", System.nanoTime() - operationStarted);
         double[] audioTimes = new double[rms.size()];
@@ -104,6 +116,7 @@ final class AudioFeatureExtractor {
                 "audio_cadence_collapse", "audio_seconds_since_transient"
         );
         operationStarted = System.nanoTime();
+        progress.onProgress(0.95, "Pooling audio features to 4 Hz video timestamps");
         for (int row = 0; row < analysisTimes.length; row++) {
             output[row * FeatureSchema.AUDIO.size()] = 1;
             int left = FeatureMath.lowerBound(audioTimes, analysisTimes[row] - halfWidth);
@@ -123,6 +136,7 @@ final class AudioFeatureExtractor {
                 output[row * FeatureSchema.AUDIO.size() + column] = pooled;
             }
         }
+        progress.onProgress(0.99, "Audio DSP complete; preparing feature cache");
         profiler.add("pool_to_analysis_timestamps", System.nanoTime() - operationStarted);
         profiler.add("finish_and_pool", System.nanoTime() - finishStarted);
         return output;

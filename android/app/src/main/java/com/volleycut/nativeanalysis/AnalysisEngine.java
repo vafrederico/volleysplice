@@ -37,6 +37,7 @@ final class AnalysisEngine {
     ) throws IOException, JSONException {
         return analyze(
                 uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, null,
+                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
                 cancelled, progress
         );
     }
@@ -48,6 +49,25 @@ final class AnalysisEngine {
             AnalysisTypes.VideoDecoderOptions decoderOptions,
             NativeFeatureCache.Mode cacheMode,
             AnalysisTypes.AnalysisWindow requestedWindow,
+            AtomicBoolean cancelled,
+            AnalysisTypes.ProgressListener progress
+    ) throws IOException, JSONException {
+        return analyze(
+                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
+                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
+                cancelled, progress
+        );
+    }
+
+    AnalysisTypes.AnalysisResult analyze(
+            Uri uri,
+            boolean fullFrame,
+            int sourceFrameLimit,
+            AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.Mode cacheMode,
+            AnalysisTypes.AnalysisWindow requestedWindow,
+            AnalysisTypes.AnalysisStages stages,
+            AnalysisTypes.AudioDecoderMode audioDecoderMode,
             AtomicBoolean cancelled,
             AnalysisTypes.ProgressListener progress
     ) throws IOException, JSONException {
@@ -95,7 +115,22 @@ final class AnalysisEngine {
         profile.put("cache/visual_read", elapsedMilliseconds(cacheReadStarted));
         AnalysisTypes.VideoFeatures video;
         NativeFeatureCache.VisualWriter visualWriter = cache.newVisualWriter(cachedVisual);
-        if (cachedVisual.complete() && cachedVisual.rows() > 0) {
+        if (!stages.videoFeatures()) {
+            if (stages.inference()) {
+                if (!cachedVisual.complete() || cachedVisual.rows() <= 0) {
+                    throw new IOException(
+                            "Inference without video features requires a complete matching feature cache"
+                    );
+                }
+                progress.onProgress("video", 1, String.format(
+                        Locale.US, "Skipped video generation; loaded %,d cached rows", cachedVisual.rows()
+                ));
+                video = cachedVideoFeatures(cachedVisual);
+            } else {
+                progress.onProgress("video", 1, "Video feature generation not selected");
+                video = emptyVideoFeatures(requestedTimes, analysisWindow.end());
+            }
+        } else if (cachedVisual.complete() && cachedVisual.rows() > 0) {
             progress.onProgress("video", 1, String.format(
                     Locale.US, "Loaded %,d cached visual feature rows", cachedVisual.rows()
             ));
@@ -123,44 +158,62 @@ final class AnalysisEngine {
         double analyzedDurationSeconds = Math.min(
                 analysisWindow.end(), video.analyzedDurationSeconds()
         );
-        timings.put("video_decode_and_features", elapsedMs(stage));
+        timings.put("video_decode_and_features", stages.videoFeatures() ? elapsedMs(stage) : 0L);
         appendProfile(profile, "video/", video.profileMilliseconds());
         profile.put("video/thread_cpu", video.threadCpuMilliseconds());
         profile.put("video/mean_sample_timestamp_error", video.meanSampleTimestampErrorMilliseconds());
         profile.put("video/max_sample_timestamp_error", video.maxSampleTimestampErrorMilliseconds());
 
         stage = System.nanoTime();
+        progress.onProgress("audio", 0, "Checking audio feature cache");
         cacheReadStarted = System.nanoTime();
         float[] cachedAudio = cache.loadAudio(times.length);
         profile.put("cache/audio_read", elapsedMilliseconds(cacheReadStarted));
         NativeAudioDecoder.Result audio;
-        if (cachedAudio != null) {
+        if (!stages.audioFeatures()) {
+            if (stages.inference()) {
+                if (cachedAudio == null) {
+                    throw new IOException(
+                            "Inference without audio features requires a complete matching feature cache"
+                    );
+                }
+                progress.onProgress("audio", 1, "Skipped audio generation; loaded cached features");
+                audio = cachedAudioFeatures(cachedAudio);
+            } else {
+                progress.onProgress("audio", 1, "Audio feature generation not selected");
+                audio = emptyAudioFeatures(times.length);
+            }
+        } else if (cachedAudio != null) {
             progress.onProgress("audio", 1, "Loaded cached audio features");
-            audio = new NativeAudioDecoder.Result(
-                    cachedAudio, "feature-cache", 0, 0, 0, 0, Map.of()
-            );
+            audio = cachedAudioFeatures(cachedAudio);
         } else {
             audio = new NativeAudioDecoder(context).decode(
                     uri,
                     new AnalysisTypes.AnalysisWindow(analysisWindow.start(), analyzedDurationSeconds),
                     times,
+                    audioDecoderMode,
                     progress,
                     cancelled::get
             );
             long cacheWriteStarted = System.nanoTime();
+            progress.onProgress("audio", 0.995, "Saving audio features to local cache");
             cache.storeAudio(audio.features(), times.length);
             profile.put("cache/audio_write", elapsedMilliseconds(cacheWriteStarted));
+            progress.onProgress("audio", 1, "Audio feature generation complete");
         }
-        timings.put("audio_decode_and_features", elapsedMs(stage));
+        timings.put("audio_decode_and_features", stages.audioFeatures() ? elapsedMs(stage) : 0L);
         appendProfile(profile, "audio/", audio.profileMilliseconds());
         profile.put("audio/thread_cpu", audio.threadCpuMilliseconds());
         if (cancelled.get()) throw new IOException("Analysis cancelled");
 
         stage = System.nanoTime();
-        cacheReadStarted = System.nanoTime();
-        float[] contextual = cache.loadContext(times.length);
-        profile.put("cache/context_read", elapsedMilliseconds(cacheReadStarted));
-        if (contextual == null) {
+        float[] contextual = null;
+        if (stages.inference()) {
+            cacheReadStarted = System.nanoTime();
+            contextual = cache.loadContext(times.length);
+            profile.put("cache/context_read", elapsedMilliseconds(cacheReadStarted));
+        }
+        if (stages.inference() && contextual == null) {
             long operation = System.nanoTime();
             float[] temporal = FeatureMath.temporalVisualFeatures(video.values(), times.length);
             profile.put("context/temporal_visual_features", elapsedMilliseconds(operation));
@@ -178,41 +231,46 @@ final class AnalysisEngine {
             long cacheWriteStarted = System.nanoTime();
             cache.storeContext(contextual, times.length);
             profile.put("cache/context_write", elapsedMilliseconds(cacheWriteStarted));
-        } else {
+        } else if (stages.inference()) {
             progress.onProgress("normalizing", 1, "Loaded cached contextual features");
         }
-        timings.put("contextualize", elapsedMs(stage));
+        timings.put("contextualize", stages.inference() ? elapsedMs(stage) : 0L);
 
         stage = System.nanoTime();
-        progress.onProgress("inference", 0, "Running all-labels v2 model stack on CPU");
-        long operation = System.nanoTime();
-        ModelRunner allLabelsRunner = new ModelRunner(context, FeatureSchema.ALL_LABELS_V2_MODEL_ID);
-        profile.put("inference/all_labels_v2_model_asset_parse", elapsedMilliseconds(operation));
-        ModelRunner.RunResult allLabelsResult = allLabelsRunner.runProfiled(
-                times, contextual, analyzedDurationSeconds
-        );
-        appendProfile(profile, "inference/all_labels_v2/", allLabelsResult.profileMilliseconds());
-        progress.onProgress("inference", .5, "Running previous production model stack on CPU");
-        operation = System.nanoTime();
-        ModelRunner previousRunner = new ModelRunner(
-                context, FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID
-        );
-        profile.put("inference/previous_production_model_asset_parse", elapsedMilliseconds(operation));
-        ModelRunner.RunResult previousResult = previousRunner.runProfiled(
-                times, contextual, analyzedDurationSeconds
-        );
-        appendProfile(profile, "inference/previous_production/", previousResult.profileMilliseconds());
-        operation = System.nanoTime();
-        List<AnalysisTypes.Interval> ranges = ProductionEnsemble.merge(
-                allLabelsResult.intervals(), previousResult.intervals()
-        ).stream().map(interval -> new AnalysisTypes.Interval(
-                Math.max(analysisWindow.start(), interval.start()),
-                Math.min(analyzedDurationSeconds, interval.end()),
-                interval.confidence(),
-                interval.agreement()
-        )).filter(interval -> interval.end() > interval.start()).toList();
-        profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
-        timings.put("inference", elapsedMs(stage));
+        List<AnalysisTypes.Interval> ranges = List.of();
+        if (stages.inference()) {
+            progress.onProgress("inference", 0, "Running all-labels v2 model stack on CPU");
+            long operation = System.nanoTime();
+            ModelRunner allLabelsRunner = new ModelRunner(context, FeatureSchema.ALL_LABELS_V2_MODEL_ID);
+            profile.put("inference/all_labels_v2_model_asset_parse", elapsedMilliseconds(operation));
+            ModelRunner.RunResult allLabelsResult = allLabelsRunner.runProfiled(
+                    times, contextual, analyzedDurationSeconds
+            );
+            appendProfile(profile, "inference/all_labels_v2/", allLabelsResult.profileMilliseconds());
+            progress.onProgress("inference", .5, "Running previous production model stack on CPU");
+            operation = System.nanoTime();
+            ModelRunner previousRunner = new ModelRunner(
+                    context, FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID
+            );
+            profile.put("inference/previous_production_model_asset_parse", elapsedMilliseconds(operation));
+            ModelRunner.RunResult previousResult = previousRunner.runProfiled(
+                    times, contextual, analyzedDurationSeconds
+            );
+            appendProfile(profile, "inference/previous_production/", previousResult.profileMilliseconds());
+            operation = System.nanoTime();
+            ranges = ProductionEnsemble.merge(
+                    allLabelsResult.intervals(), previousResult.intervals()
+            ).stream().map(interval -> new AnalysisTypes.Interval(
+                    Math.max(analysisWindow.start(), interval.start()),
+                    Math.min(analyzedDurationSeconds, interval.end()),
+                    interval.confidence(),
+                    interval.agreement()
+            )).filter(interval -> interval.end() > interval.start()).toList();
+            profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
+        } else {
+            progress.onProgress("inference", 1, "Model inference not selected");
+        }
+        timings.put("inference", stages.inference() ? elapsedMs(stage) : 0L);
         long total = elapsedMs(totalStarted);
         double threadCpuMilliseconds = (Debug.threadCpuTimeNanos() - threadCpuStarted) / 1_000_000.0
                 + video.profileMilliseconds().getOrDefault("feature_worker_thread_cpu", 0.0)
@@ -242,6 +300,15 @@ final class AnalysisEngine {
                 decoderOptions.operatingRate(),
                 decoderOptions.priority(),
                 audio.decoderName(),
+                audio.codecOperatingRate(),
+                audio.codecPriority(),
+                audio.multipleFramesSupported(),
+                audio.decoderMode(),
+                audio.inputAccessUnits(),
+                audio.inputBatches(),
+                audio.outputAccessUnits(),
+                audio.outputBatches(),
+                audio.featureSha256(),
                 List.copyOf(ranges),
                 timings,
                 profile,
@@ -256,6 +323,42 @@ final class AnalysisEngine {
                 runtime.availableProcessors(),
                 total,
                 cache.stats()
+        );
+    }
+
+    private static AnalysisTypes.VideoFeatures emptyVideoFeatures(
+            double[] times,
+            double analyzedDurationSeconds
+    ) {
+        return new AnalysisTypes.VideoFeatures(
+                new float[times.length * FeatureSchema.FRAME.size()],
+                times,
+                analyzedDurationSeconds,
+                false,
+                "not-selected",
+                false,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                Map.of()
+        );
+    }
+
+    private static NativeAudioDecoder.Result cachedAudioFeatures(float[] features) {
+        return new NativeAudioDecoder.Result(
+                features, "feature-cache", 0, 0, 0, 0, -1, false,
+                "cache", 0, 0, 0, 0, NativeAudioDecoder.featureSha256(features), 0, Map.of()
+        );
+    }
+
+    private static NativeAudioDecoder.Result emptyAudioFeatures(int rows) {
+        return new NativeAudioDecoder.Result(
+                new float[rows * FeatureSchema.AUDIO.size()],
+                "not-selected", 0, 0, 0, 0, -1, false,
+                "not-selected", 0, 0, 0, 0, "", 0, Map.of()
         );
     }
 

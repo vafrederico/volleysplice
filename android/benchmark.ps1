@@ -1,6 +1,11 @@
 [CmdletBinding()]
 param(
     [string]$VideoName = "1080p60.mp4",
+    [string]$DeviceSerial = "",
+    [ValidateSet("All", "Video", "Audio", "Inference", "VideoAudio", "VideoInference", "AudioInference")]
+    [string]$Stages = "All",
+    [ValidateRange(0, 86400)]
+    [double]$DurationSeconds = 0,
     [ValidateRange(1, 1000000)]
     [int]$FrameLimit = 1000,
     [ValidateRange(-1, 2147483647)]
@@ -9,6 +14,8 @@ param(
     [int]$CodecPriority = 1,
     [ValidateSet("Use", "Bypass", "Refresh")]
     [string]$CacheMode = "Use",
+    [ValidateSet("Auto", "Single", "Batched")]
+    [string]$AudioDecoderMode = "Single",
     [ValidateRange(1, 100)]
     [int]$Runs = 1,
     [ValidateRange(10, 3600)]
@@ -31,10 +38,21 @@ $packageName = "com.volleycut.nativeanalysis"
 $activityName = "$packageName/.MainActivity"
 $resultFile = "files/benchmark-result.json"
 $apkPath = Join-Path $PSScriptRoot "app\build\outputs\apk\debug\app-debug.apk"
+$adbTargetArguments = if ($DeviceSerial) { @("-s", $DeviceSerial) } else { @() }
+$stageWireName = switch ($Stages) {
+    "Video" { "video" }
+    "Audio" { "audio" }
+    "Inference" { "inference" }
+    "VideoAudio" { "video,audio" }
+    "VideoInference" { "video,inference" }
+    "AudioInference" { "audio,inference" }
+    default { "video,audio,inference" }
+}
+$durationMilliseconds = [int][math]::Round($DurationSeconds * 1000)
 
 function Invoke-Adb {
     param([string[]]$AdbArguments)
-    $output = & adb @AdbArguments 2>&1
+    $output = & adb @adbTargetArguments @AdbArguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "adb $($AdbArguments -join ' ') failed:`n$($output -join "`n")"
     }
@@ -55,7 +73,7 @@ function Read-BenchmarkResult {
     $savedPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        $output = & adb exec-out run-as $packageName cat $resultFile 2>$null
+        $output = & adb @adbTargetArguments exec-out run-as $packageName cat $resultFile 2>$null
         $readExitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $savedPreference
@@ -64,10 +82,13 @@ function Read-BenchmarkResult {
     return ($output -join "`n").Trim()
 }
 
-Invoke-Adb -AdbArguments @("start-server") | Out-Null
-$deviceLines = (Invoke-Adb -AdbArguments @("devices")) -split "\r?\n" |
+& adb start-server | Out-Null
+$deviceLines = (& adb devices) -split "\r?\n" |
     Where-Object { $_ -match "\sdevice$" }
-if ($deviceLines.Count -ne 1) {
+if ($DeviceSerial -and -not ($deviceLines | Where-Object { $_ -match "^$([regex]::Escape($DeviceSerial))\s+device$" })) {
+    throw "ADB device '$DeviceSerial' is not connected."
+}
+if (-not $DeviceSerial -and $deviceLines.Count -ne 1) {
     throw "Expected exactly one adb device, found $($deviceLines.Count)."
 }
 
@@ -111,6 +132,8 @@ if ($selectedRow -notmatch "_id=(\d+)") {
 }
 $sourceUri = "content://media/external/video/media/$($Matches[1])"
 Write-Host "Benchmark source: $VideoName ($sourceUri)"
+Write-Host "Benchmark stages: $stageWireName; duration: $(if ($DurationSeconds -gt 0) { "$DurationSeconds s" } else { "full selected scope" })"
+Write-Host "Audio decoder mode: $($AudioDecoderMode.ToLowerInvariant())"
 
 $results = @()
 for ($run = 1; $run -le $Runs; $run++) {
@@ -127,7 +150,10 @@ for ($run = 1; $run -le $Runs; $run++) {
         "--ei", "benchmark_source_frame_limit", $FrameLimit.ToString(),
         "--ei", "benchmark_codec_operating_rate", $OperatingRate.ToString(),
         "--ei", "benchmark_codec_priority", $CodecPriority.ToString(),
-        "--es", "benchmark_feature_cache_mode", $CacheMode.ToLowerInvariant()
+        "--es", "benchmark_feature_cache_mode", $CacheMode.ToLowerInvariant(),
+        "--es", "benchmark_stages", $stageWireName,
+        "--es", "benchmark_audio_decoder_mode", $AudioDecoderMode.ToLowerInvariant(),
+        "--ei", "benchmark_duration_milliseconds", $durationMilliseconds.ToString()
     )
     if ($launchOutput -notmatch "Status: ok") {
         throw "Activity launch did not report success:`n$launchOutput"
@@ -159,14 +185,24 @@ for ($run = 1; $run -le $Runs; $run++) {
         Start-Sleep -Milliseconds 250
     }
     if (-not $completed) {
-        $logTail = & adb logcat -d -t 120 -s VolleyCutBenchmark VolleyCut 2>&1
+        $logTail = & adb @adbTargetArguments logcat -d -t 120 -s VolleyCutBenchmark VolleyCut 2>&1
         throw "Benchmark timed out after $TimeoutSeconds seconds.`n$($logTail -join "`n")"
     }
 }
 
-$videoTimes = @($results | ForEach-Object {
-    [double]$_.stageMilliseconds.video_decode_and_features
-})
-$ratios = @($results | ForEach-Object { [double]$_.featureRealtimeRatio })
-Write-Host ("Completed {0} run(s): median video {1:N1} ms, median feature realtime {2:N3}x" -f
-    $results.Count, (Get-Median -Values $videoTimes), (Get-Median -Values $ratios))
+$stageKeys = [ordered]@{
+    video = "video_decode_and_features"
+    audio = "audio_decode_and_features"
+    inference = "inference"
+}
+$summaryParts = @()
+foreach ($stageName in $stageKeys.Keys) {
+    if (($stageWireName -split ",") -contains $stageName) {
+        $key = $stageKeys[$stageName]
+        $values = @($results | ForEach-Object { [double]$_.stageMilliseconds.$key })
+        $summaryParts += ("median {0} {1:N1} ms" -f $stageName, (Get-Median -Values $values))
+    }
+}
+$totalTimes = @($results | ForEach-Object { [double]$_.totalMilliseconds })
+$summaryParts += ("median total {0:N1} ms" -f (Get-Median -Values $totalTimes))
+Write-Host ("Completed {0} run(s): {1}" -f $results.Count, ($summaryParts -join ", "))

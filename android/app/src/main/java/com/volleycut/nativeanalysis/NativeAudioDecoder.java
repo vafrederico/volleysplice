@@ -3,15 +3,26 @@ package com.volleycut.nativeanalysis;
 import android.content.Context;
 import android.media.AudioFormat;
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Debug;
+import android.os.Handler;
+import android.os.HandlerThread;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayDeque;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
 final class NativeAudioDecoder {
@@ -21,11 +32,23 @@ final class NativeAudioDecoder {
             long decodedPcmFrames,
             long resampledOutputSamples,
             int audioFeatureFrames,
+            int codecOperatingRate,
+            int codecPriority,
+            boolean multipleFramesSupported,
+            String decoderMode,
+            long inputAccessUnits,
+            long inputBatches,
+            long outputAccessUnits,
+            long outputBatches,
+            String featureSha256,
             double threadCpuMilliseconds,
             Map<String, Double> profileMilliseconds
     ) {}
 
     private static final long CODEC_TIMEOUT_US = 10_000;
+    private static final float CODEC_OPERATING_RATE_MULTIPLIER = 4f;
+    private static final int CODEC_PRIORITY = 0;
+    private static final int MAX_BATCH_ACCESS_UNITS = 32;
     private final Context context;
 
     NativeAudioDecoder(Context context) {
@@ -36,6 +59,7 @@ final class NativeAudioDecoder {
             Uri uri,
             AnalysisTypes.AnalysisWindow analysisWindow,
             double[] analysisTimes,
+            AnalysisTypes.AudioDecoderMode decoderMode,
             AnalysisTypes.ProgressListener progress,
             BooleanSupplier cancelled
     ) throws IOException {
@@ -51,24 +75,51 @@ final class NativeAudioDecoder {
             long setupStarted = System.nanoTime();
             extractor.setDataSource(context, uri, null);
             int track = NativeVideoDecoder.findTrack(extractor, "audio/");
-            if (track < 0) return new Result(
-                    new float[analysisTimes.length * FeatureSchema.AUDIO.size()],
-                    "none", 0, 0, 0,
-                    (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0,
-                    Map.of()
-            );
+            if (track < 0) {
+                progress.onProgress("audio", 1, "No audio track; using zero audio features");
+                return new Result(
+                        new float[analysisTimes.length * FeatureSchema.AUDIO.size()],
+                        "none", 0, 0, 0, 0, -1, false,
+                        decoderMode.wireName(), 0, 0, 0, 0, "",
+                        (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0,
+                        Map.of()
+                );
+            }
             extractor.selectTrack(track);
             extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             MediaFormat inputFormat = extractor.getTrackFormat(track);
             String mime = inputFormat.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Audio track has no MIME type");
+            int sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            int codecOperatingRate = Math.round(sampleRate * CODEC_OPERATING_RATE_MULTIPLIER);
+            inputFormat.setFloat(MediaFormat.KEY_OPERATING_RATE, codecOperatingRate);
+            inputFormat.setInteger(MediaFormat.KEY_PRIORITY, CODEC_PRIORITY);
             codec = MediaCodec.createDecoderByType(mime);
             String decoderName = codec.getName();
+            boolean multipleFramesSupported = codec.getCodecInfo()
+                    .getCapabilitiesForType(mime)
+                    .isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_MultipleFrames);
+            boolean batchingAvailable = Build.VERSION.SDK_INT >= 35 && multipleFramesSupported;
+            if (decoderMode == AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS
+                    && !batchingAvailable) {
+                throw new IOException(Build.VERSION.SDK_INT < 35
+                        ? "Batched audio decoding requires Android 15 or newer"
+                        : "The selected audio decoder does not support multiple frames");
+            }
+            if (decoderMode == AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS
+                    || decoderMode == AnalysisTypes.AudioDecoderMode.AUTO && batchingAvailable) {
+                return decodeBatched(
+                        extractor, codec, inputFormat, analysisWindow, analysisTimes,
+                        startUs, endUs, analysisDuration, sampleRate, codecOperatingRate,
+                        decoderName, multipleFramesSupported, setupStarted, pipelineStartedNanos,
+                        threadCpuStartedNanos, profiler, progress, cancelled
+                );
+            }
             codec.configure(inputFormat, null, null, 0);
             codec.start();
             profiler.add("setup", System.nanoTime() - setupStarted);
+            progress.onProgress("audio", 0, "Decoding PCM + resampling + per-frame FFT");
 
-            int sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
             int channels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
             int encoding = AudioFormat.ENCODING_PCM_16BIT;
             AudioFeatureExtractor accumulator = new AudioFeatureExtractor();
@@ -77,6 +128,8 @@ final class NativeAudioDecoder {
             boolean outputEnded = false;
             long lastReportedSecond = -1;
             long decodedPcmFrames = 0;
+            long inputAccessUnits = 0;
+            long outputAccessUnits = 0;
             while (!outputEnded) {
                 if (cancelled.getAsBoolean()) throw new IOException("Analysis cancelled");
                 if (!inputEnded) {
@@ -100,6 +153,7 @@ final class NativeAudioDecoder {
                             inputEnded = true;
                         } else {
                             codec.queueInputBuffer(inputIndex, 0, sampleSize, sampleTime, sampleFlags);
+                            inputAccessUnits++;
                             profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
                             operationStarted = System.nanoTime();
                             extractor.advance();
@@ -124,6 +178,7 @@ final class NativeAudioDecoder {
                 }
                 if (outputIndex < 0) continue;
                 if (info.size > 0 && info.presentationTimeUs < endUs) {
+                    outputAccessUnits++;
                     operationStarted = System.nanoTime();
                     ByteBuffer buffer = codec.getOutputBuffer(outputIndex);
                     if (buffer == null) throw new IOException("Audio decoder returned no output buffer");
@@ -151,8 +206,16 @@ final class NativeAudioDecoder {
                     );
                     if (second != lastReportedSecond) {
                         lastReportedSecond = second;
-                        progress.onProgress("audio", Math.min(1, second / analysisDuration),
-                                "Native audio decode + 16 kHz DSP · " + second + " s");
+                        progress.onProgress(
+                                "audio",
+                                Math.min(0.80, 0.80 * second / analysisDuration),
+                                String.format(
+                                        java.util.Locale.US,
+                                        "Decoding PCM + resampling + per-frame FFT · %d / %.0f s",
+                                        second,
+                                        analysisDuration
+                                )
+                        );
                     }
                 }
                 outputEnded = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
@@ -165,7 +228,10 @@ final class NativeAudioDecoder {
             for (int index = 0; index < analysisTimes.length; index++) {
                 relativeTimes[index] = analysisTimes[index] - analysisWindow.start();
             }
-            float[] features = accumulator.finishAndPool(relativeTimes);
+            float[] features = accumulator.finishAndPool(
+                    relativeTimes,
+                    (fraction, detail) -> progress.onProgress("audio", fraction, detail)
+            );
             profiler.add("dsp_finish_and_pool_call", System.nanoTime() - finishStarted);
             profiler.appendMilliseconds("dsp/", accumulator.performanceMilliseconds());
             profiler.add("audio_pipeline_wall", System.nanoTime() - pipelineStartedNanos);
@@ -175,6 +241,15 @@ final class NativeAudioDecoder {
                     decodedPcmFrames,
                     accumulator.resampledOutputSamples(),
                     accumulator.audioFeatureFrameCount(),
+                    codecOperatingRate,
+                    CODEC_PRIORITY,
+                    multipleFramesSupported,
+                    AnalysisTypes.AudioDecoderMode.SINGLE_ACCESS_UNIT.wireName(),
+                    inputAccessUnits,
+                    inputAccessUnits,
+                    outputAccessUnits,
+                    outputAccessUnits,
+                    featureSha256(features),
                     (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0,
                     profiler.milliseconds()
             );
@@ -185,6 +260,436 @@ final class NativeAudioDecoder {
             }
             extractor.release();
         }
+    }
+
+    private Result decodeBatched(
+            MediaExtractor extractor,
+            MediaCodec codec,
+            MediaFormat inputFormat,
+            AnalysisTypes.AnalysisWindow analysisWindow,
+            double[] analysisTimes,
+            long startUs,
+            long endUs,
+            double analysisDuration,
+            int initialSampleRate,
+            int codecOperatingRate,
+            String decoderName,
+            boolean multipleFramesSupported,
+            long setupStarted,
+            long pipelineStartedNanos,
+            long threadCpuStartedNanos,
+            NanoProfiler profiler,
+            AnalysisTypes.ProgressListener progress,
+            BooleanSupplier cancelled
+    ) throws IOException {
+        int initialChannels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        int oneSecondPcmBytes = Math.min(
+                1_048_576,
+                Math.max(16_384, initialSampleRate * initialChannels * 2)
+        );
+        inputFormat.setInteger(MediaFormat.KEY_BUFFER_BATCH_MAX_OUTPUT_SIZE, oneSecondPcmBytes);
+        inputFormat.setInteger(
+                MediaFormat.KEY_BUFFER_BATCH_THRESHOLD_OUTPUT_SIZE,
+                oneSecondPcmBytes / 2
+        );
+
+        HandlerThread codecThread = new HandlerThread("volleycut-audio-codec");
+        codecThread.start();
+        Handler codecHandler = new Handler(codecThread.getLooper());
+        AudioFeatureExtractor accumulator = new AudioFeatureExtractor();
+        BatchedDecodeState state = new BatchedDecodeState(
+                extractor, analysisWindow, startUs, endUs, analysisDuration,
+                initialSampleRate, initialChannels, accumulator, profiler, progress, cancelled
+        );
+        try {
+            codec.setCallback(state, codecHandler);
+            codec.configure(inputFormat, null, null, 0);
+            codec.start();
+            profiler.add("setup", System.nanoTime() - setupStarted);
+            progress.onProgress(
+                    "audio", 0,
+                    "Decoding batched PCM + resampling + per-frame FFT"
+            );
+            state.awaitCompletion();
+
+            CountDownLatch callbacksDrained = new CountDownLatch(1);
+            codecHandler.post(callbacksDrained::countDown);
+            try {
+                if (!callbacksDrained.await(5, TimeUnit.SECONDS)) {
+                    throw new IOException("Timed out draining audio codec callbacks");
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while draining audio codec callbacks", error);
+            }
+
+            long finishStarted = System.nanoTime();
+            double[] relativeTimes = new double[analysisTimes.length];
+            for (int index = 0; index < analysisTimes.length; index++) {
+                relativeTimes[index] = analysisTimes[index] - analysisWindow.start();
+            }
+            float[] features = accumulator.finishAndPool(
+                    relativeTimes,
+                    (fraction, detail) -> progress.onProgress("audio", fraction, detail)
+            );
+            profiler.add("dsp_finish_and_pool_call", System.nanoTime() - finishStarted);
+            profiler.appendMilliseconds("dsp/", accumulator.performanceMilliseconds());
+            profiler.add("audio_pipeline_wall", System.nanoTime() - pipelineStartedNanos);
+            return new Result(
+                    features,
+                    decoderName,
+                    state.decodedPcmFrames,
+                    accumulator.resampledOutputSamples(),
+                    accumulator.audioFeatureFrameCount(),
+                    codecOperatingRate,
+                    CODEC_PRIORITY,
+                    multipleFramesSupported,
+                    AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS.wireName(),
+                    state.inputAccessUnits,
+                    state.inputBatches,
+                    state.outputAccessUnits,
+                    state.outputBatches,
+                    featureSha256(features),
+                    (Debug.threadCpuTimeNanos() - threadCpuStartedNanos
+                            + state.callbackCpuNanos) / 1_000_000.0,
+                    profiler.milliseconds()
+            );
+        } finally {
+            codecThread.quitSafely();
+            try {
+                codecThread.join(5_000);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private static final class BatchedDecodeState extends MediaCodec.Callback {
+        private final MediaExtractor extractor;
+        private final AnalysisTypes.AnalysisWindow analysisWindow;
+        private final long startUs;
+        private final long endUs;
+        private final double analysisDuration;
+        private final AudioFeatureExtractor accumulator;
+        private final NanoProfiler profiler;
+        private final AnalysisTypes.ProgressListener progress;
+        private final BooleanSupplier cancelled;
+        private final CountDownLatch completion = new CountDownLatch(1);
+        private final AtomicReference<Throwable> failure = new AtomicReference<>();
+        private final AtomicBoolean terminal = new AtomicBoolean();
+        private final ArrayDeque<Long> pendingInputTimes = new ArrayDeque<>();
+        private int sampleRate;
+        private int channels;
+        private int encoding = AudioFormat.ENCODING_PCM_16BIT;
+        private boolean inputEnded;
+        private long lastReportedSecond = -1;
+        private long decodedPcmFrames;
+        private long inputAccessUnits;
+        private long inputBatches;
+        private long outputAccessUnits;
+        private long outputBatches;
+        private int decodedFramesPerAccessUnit;
+        private long callbackCpuNanos;
+
+        BatchedDecodeState(
+                MediaExtractor extractor,
+                AnalysisTypes.AnalysisWindow analysisWindow,
+                long startUs,
+                long endUs,
+                double analysisDuration,
+                int sampleRate,
+                int channels,
+                AudioFeatureExtractor accumulator,
+                NanoProfiler profiler,
+                AnalysisTypes.ProgressListener progress,
+                BooleanSupplier cancelled
+        ) {
+            this.extractor = extractor;
+            this.analysisWindow = analysisWindow;
+            this.startUs = startUs;
+            this.endUs = endUs;
+            this.analysisDuration = analysisDuration;
+            this.sampleRate = sampleRate;
+            this.channels = channels;
+            this.accumulator = accumulator;
+            this.profiler = profiler;
+            this.progress = progress;
+            this.cancelled = cancelled;
+        }
+
+        @Override
+        public void onInputBufferAvailable(MediaCodec codec, int index) {
+            long callbackCpuStarted = Debug.threadCpuTimeNanos();
+            try {
+                if (terminal.get()) return;
+                if (cancelled.getAsBoolean()) {
+                    fail(new IOException("Analysis cancelled"));
+                    return;
+                }
+                if (inputEnded) return;
+                ByteBuffer input = codec.getInputBuffer(index);
+                if (input == null) throw new IOException("Audio decoder returned no input buffer");
+                input.clear();
+                ArrayDeque<MediaCodec.BufferInfo> infos = new ArrayDeque<>();
+                ArrayDeque<Long> timestamps = new ArrayDeque<>();
+                int offset = 0;
+                boolean reachedEnd = false;
+                while (infos.size() < MAX_BATCH_ACCESS_UNITS) {
+                    long sampleTime = extractor.getSampleTime();
+                    if (sampleTime == -1 || sampleTime >= endUs) {
+                        reachedEnd = true;
+                        break;
+                    }
+                    long declaredSize = extractor.getSampleSize();
+                    if (declaredSize > input.capacity() - offset) {
+                        if (infos.isEmpty()) {
+                            throw new IOException(String.format(
+                                    java.util.Locale.US,
+                                    "Audio access unit %,d bytes exceeds codec input capacity %,d",
+                                    declaredSize, input.capacity()
+                            ));
+                        }
+                        break;
+                    }
+                    if (declaredSize < 0 && !infos.isEmpty()) break;
+                    long operationStarted = System.nanoTime();
+                    int sampleSize = extractor.readSampleData(input, offset);
+                    profiler.add("demux_read", System.nanoTime() - operationStarted);
+                    if (sampleSize < 0) {
+                        reachedEnd = true;
+                        break;
+                    }
+                    MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+                    info.set(offset, sampleSize, sampleTime, extractor.getSampleFlags());
+                    infos.add(info);
+                    timestamps.add(sampleTime);
+                    offset += sampleSize;
+                    operationStarted = System.nanoTime();
+                    extractor.advance();
+                    profiler.add("demux_advance", System.nanoTime() - operationStarted);
+                }
+                if (infos.isEmpty()) {
+                    if (!reachedEnd) {
+                        throw new IOException("Could not fill an audio codec input batch");
+                    }
+                    long operationStarted = System.nanoTime();
+                    codec.queueInputBuffer(
+                            index, 0, 0, endUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                    );
+                    profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
+                    inputEnded = true;
+                    return;
+                }
+                long operationStarted = System.nanoTime();
+                codec.queueInputBuffers(index, infos);
+                profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
+                long[] batchTimes = new long[timestamps.size()];
+                int timestampIndex = 0;
+                for (long timestamp : timestamps) batchTimes[timestampIndex++] = timestamp;
+                for (long timestamp : batchTimes) pendingInputTimes.add(timestamp);
+                if (decodedFramesPerAccessUnit == 0 && batchTimes.length >= 2) {
+                    decodedFramesPerAccessUnit = (int) Math.max(1, Math.round(
+                            (batchTimes[1] - batchTimes[0]) * sampleRate / 1_000_000.0
+                    ));
+                }
+                inputAccessUnits += infos.size();
+                inputBatches++;
+            } catch (Throwable error) {
+                fail(error);
+            } finally {
+                callbackCpuNanos += Debug.threadCpuTimeNanos() - callbackCpuStarted;
+            }
+        }
+
+        @Override
+        public void onOutputBufferAvailable(
+                MediaCodec codec,
+                int index,
+                MediaCodec.BufferInfo info
+        ) {
+            ArrayDeque<MediaCodec.BufferInfo> infos = new ArrayDeque<>();
+            infos.add(info);
+            handleOutputBuffers(codec, index, infos);
+        }
+
+        @Override
+        public void onOutputBuffersAvailable(
+                MediaCodec codec,
+                int index,
+                ArrayDeque<MediaCodec.BufferInfo> infos
+        ) {
+            handleOutputBuffers(codec, index, infos);
+        }
+
+        private void handleOutputBuffers(
+                MediaCodec codec,
+                int index,
+                ArrayDeque<MediaCodec.BufferInfo> infos
+        ) {
+            long callbackCpuStarted = Debug.threadCpuTimeNanos();
+            boolean outputEnded = false;
+            try {
+                if (terminal.get()) return;
+                ByteBuffer buffer = codec.getOutputBuffer(index);
+                boolean containsPcm = false;
+                for (MediaCodec.BufferInfo info : infos) {
+                    outputEnded |= (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
+                    if (info.size <= 0 || info.presentationTimeUs >= endUs) continue;
+                    if (buffer == null) {
+                        throw new IOException("Audio decoder returned no output buffer");
+                    }
+                    containsPcm = true;
+                    long operationStarted = System.nanoTime();
+                    float[] mono = pcmToMono(buffer, info.offset, info.size, channels, encoding);
+                    profiler.add("pcm_copy_and_downmix", System.nanoTime() - operationStarted);
+                    operationStarted = System.nanoTime();
+                    decodedPcmFrames += pushWithOriginalAccessUnitTimes(
+                            mono, info.presentationTimeUs
+                    );
+                    profiler.add("accumulator_push", System.nanoTime() - operationStarted);
+                    reportProgress(info.presentationTimeUs);
+                }
+                if (containsPcm) outputBatches++;
+            } catch (Throwable error) {
+                fail(error);
+            } finally {
+                try {
+                    long operationStarted = System.nanoTime();
+                    codec.releaseOutputBuffer(index, false);
+                    profiler.add("codec_output_release", System.nanoTime() - operationStarted);
+                } catch (Throwable error) {
+                    fail(error);
+                }
+                callbackCpuNanos += Debug.threadCpuTimeNanos() - callbackCpuStarted;
+            }
+            if (outputEnded) complete();
+        }
+
+        private long pushWithOriginalAccessUnitTimes(float[] mono, long outputTimeUs) {
+            int nominalFrames = decodedFramesPerAccessUnit;
+            if (nominalFrames <= 0) nominalFrames = mono.length;
+            int remaining = mono.length;
+            int offset = 0;
+            boolean first = true;
+            long keptFrames = 0;
+            while (remaining > 0) {
+                Long inputTimeUs = pendingInputTimes.poll();
+                if (inputTimeUs == null) {
+                    throw new IllegalStateException("Audio output exceeded queued access units");
+                }
+                outputAccessUnits++;
+                int length = Math.min(nominalFrames, remaining);
+                long presentationTimeUs = first ? outputTimeUs : inputTimeUs;
+                long remainingUs = endUs - presentationTimeUs;
+                int lengthToKeep = (int) Math.min(
+                        length,
+                        Math.max(0, (remainingUs * sampleRate + 999_999) / 1_000_000)
+                );
+                int end = offset + lengthToKeep;
+                if (lengthToKeep > 0) {
+                    accumulator.push(
+                            java.util.Arrays.copyOfRange(mono, offset, end),
+                            presentationTimeUs / 1_000_000.0 - analysisWindow.start(),
+                            sampleRate
+                    );
+                    keptFrames += lengthToKeep;
+                }
+                first = false;
+                offset += length;
+                remaining -= length;
+            }
+            return keptFrames;
+        }
+
+        private void reportProgress(long presentationTimeUs) {
+            long second = Math.max(0, (presentationTimeUs - startUs) / 1_000_000);
+            if (second == lastReportedSecond) return;
+            lastReportedSecond = second;
+            progress.onProgress(
+                    "audio",
+                    Math.min(0.80, 0.80 * second / analysisDuration),
+                    String.format(
+                            java.util.Locale.US,
+                            "Decoding batched PCM + resampling + per-frame FFT · %d / %.0f s",
+                            second,
+                            analysisDuration
+                    )
+            );
+        }
+
+        @Override
+        public void onOutputFormatChanged(MediaCodec codec, MediaFormat format) {
+            long callbackCpuStarted = Debug.threadCpuTimeNanos();
+            try {
+                sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+                channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+                if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                    encoding = format.getInteger(MediaFormat.KEY_PCM_ENCODING);
+                }
+            } catch (Throwable error) {
+                fail(error);
+            } finally {
+                callbackCpuNanos += Debug.threadCpuTimeNanos() - callbackCpuStarted;
+            }
+        }
+
+        @Override
+        public void onError(MediaCodec codec, MediaCodec.CodecException error) {
+            fail(error);
+        }
+
+        private void complete() {
+            if (terminal.compareAndSet(false, true)) completion.countDown();
+        }
+
+        private void fail(Throwable error) {
+            failure.compareAndSet(null, error);
+            if (terminal.compareAndSet(false, true)) completion.countDown();
+        }
+
+        void awaitCompletion() throws IOException {
+            try {
+                while (!completion.await(25, TimeUnit.MILLISECONDS)) {
+                    if (cancelled.getAsBoolean()) fail(new IOException("Analysis cancelled"));
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while decoding audio", error);
+            }
+            Throwable error = failure.get();
+            if (error == null) return;
+            if (error instanceof IOException ioError) throw ioError;
+            if (error instanceof RuntimeException runtimeError) throw runtimeError;
+            throw new IOException("Batched audio decode failed", error);
+        }
+    }
+
+    static String featureSha256(float[] features) {
+        MessageDigest digest = newSha256();
+        updateFloatDigest(digest, features);
+        return hexDigest(digest);
+    }
+
+    private static MessageDigest newSha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    private static void updateFloatDigest(MessageDigest digest, float[] values) {
+        ByteBuffer words = ByteBuffer.allocate(values.length * Integer.BYTES).order(ByteOrder.BIG_ENDIAN);
+        for (float value : values) {
+            words.putInt(Float.floatToIntBits(value));
+        }
+        digest.update(words.array());
+    }
+
+    private static String hexDigest(MessageDigest digest) {
+        StringBuilder result = new StringBuilder(64);
+        for (byte value : digest.digest()) result.append(String.format("%02x", value));
+        return result.toString();
     }
 
     private static float[] pcmToMono(ByteBuffer source, int offset, int size, int channels, int encoding)

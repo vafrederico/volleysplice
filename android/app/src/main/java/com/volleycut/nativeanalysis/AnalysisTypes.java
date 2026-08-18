@@ -2,8 +2,11 @@ package com.volleycut.nativeanalysis;
 
 import android.net.Uri;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public final class AnalysisTypes {
     public static final double MIN_ANALYSIS_WINDOW_SECONDS = 1.0;
@@ -36,6 +39,69 @@ public final class AnalysisTypes {
     public record VideoDecoderOptions(int operatingRate, int priority) {
         static VideoDecoderOptions defaults() {
             return new VideoDecoderOptions(240, 1);
+        }
+    }
+
+    public enum AudioDecoderMode {
+        AUTO("auto"),
+        SINGLE_ACCESS_UNIT("single"),
+        BATCHED_ACCESS_UNITS("batched");
+
+        private final String wireName;
+
+        AudioDecoderMode(String wireName) {
+            this.wireName = wireName;
+        }
+
+        static AudioDecoderMode fromWireName(String value) {
+            if (value == null || value.isBlank() || value.equalsIgnoreCase("single")) {
+                return SINGLE_ACCESS_UNIT;
+            }
+            if (value.equalsIgnoreCase("auto")) return AUTO;
+            if (value.equalsIgnoreCase("batched")) return BATCHED_ACCESS_UNITS;
+            throw new IllegalArgumentException("Invalid audio decoder mode: " + value);
+        }
+
+        String wireName() {
+            return wireName;
+        }
+    }
+
+    public record AnalysisStages(
+            boolean videoFeatures,
+            boolean audioFeatures,
+            boolean inference
+    ) {
+        static AnalysisStages all() {
+            return new AnalysisStages(true, true, true);
+        }
+
+        static AnalysisStages fromWireName(String value) {
+            if (value == null || value.isBlank() || value.equalsIgnoreCase("all")) return all();
+            Set<String> stages = new LinkedHashSet<>();
+            for (String part : value.toLowerCase(Locale.US).split(",")) {
+                String stage = part.trim();
+                if (!stage.isEmpty()) stages.add(stage);
+            }
+            if (stages.isEmpty() || stages.stream().anyMatch(
+                    stage -> !Set.of("video", "audio", "inference").contains(stage)
+            )) {
+                throw new IllegalArgumentException("Invalid analysis stages: " + value);
+            }
+            return new AnalysisStages(
+                    stages.contains("video"),
+                    stages.contains("audio"),
+                    stages.contains("inference")
+            );
+        }
+
+        String wireName() {
+            if (equals(all())) return "video,audio,inference";
+            List<String> stages = new java.util.ArrayList<>();
+            if (videoFeatures) stages.add("video");
+            if (audioFeatures) stages.add("audio");
+            if (inference) stages.add("inference");
+            return String.join(",", stages);
         }
     }
 
@@ -105,6 +171,15 @@ public final class AnalysisTypes {
             int codecOperatingRate,
             int codecPriority,
             String audioDecoder,
+            int audioCodecOperatingRate,
+            int audioCodecPriority,
+            boolean audioMultipleFramesSupported,
+            String audioDecoderMode,
+            long audioInputAccessUnits,
+            long audioInputBatches,
+            long audioOutputAccessUnits,
+            long audioOutputBatches,
+            String audioFeatureSha256,
             List<Interval> ranges,
             Map<String, Long> stageMilliseconds,
             Map<String, Double> profileMilliseconds,

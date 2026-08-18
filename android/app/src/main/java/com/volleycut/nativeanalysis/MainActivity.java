@@ -48,6 +48,9 @@ public final class MainActivity extends Activity {
     private static final String EXTRA_CODEC_OPERATING_RATE = "benchmark_codec_operating_rate";
     private static final String EXTRA_CODEC_PRIORITY = "benchmark_codec_priority";
     private static final String EXTRA_FEATURE_CACHE_MODE = "benchmark_feature_cache_mode";
+    private static final String EXTRA_STAGES = "benchmark_stages";
+    private static final String EXTRA_AUDIO_DECODER_MODE = "benchmark_audio_decoder_mode";
+    private static final String EXTRA_DURATION_MILLISECONDS = "benchmark_duration_milliseconds";
     private static final String BENCHMARK_RESULT_FILE = "benchmark-result.json";
     private static final int PICK_VIDEO = 10;
     private static final int ORANGE = Color.rgb(239, 91, 53);
@@ -63,6 +66,10 @@ public final class MainActivity extends Activity {
     private int sourceFrameLimit = FeatureSchema.BENCHMARK_SOURCE_FRAME_LIMIT;
     private AnalysisTypes.VideoDecoderOptions decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
     private NativeFeatureCache.Mode cacheMode = NativeFeatureCache.Mode.USE;
+    private AnalysisTypes.AnalysisStages benchmarkStages = AnalysisTypes.AnalysisStages.all();
+    private AnalysisTypes.AudioDecoderMode benchmarkAudioDecoderMode =
+            AnalysisTypes.AudioDecoderMode.SINGLE_ACCESS_UNIT;
+    private int benchmarkDurationMilliseconds;
     private AnalysisTypes.AnalysisResult lastResult;
     private TextView fileLabel;
     private TextView stageLabel;
@@ -270,6 +277,16 @@ public final class MainActivity extends Activity {
         cacheMode = NativeFeatureCache.Mode.fromWireName(
                 intent.getStringExtra(EXTRA_FEATURE_CACHE_MODE)
         );
+        benchmarkStages = AnalysisTypes.AnalysisStages.fromWireName(
+                intent.getStringExtra(EXTRA_STAGES)
+        );
+        benchmarkAudioDecoderMode = AnalysisTypes.AudioDecoderMode.fromWireName(
+                intent.getStringExtra(EXTRA_AUDIO_DECODER_MODE)
+        );
+        benchmarkDurationMilliseconds = Math.max(
+                0,
+                intent.getIntExtra(EXTRA_DURATION_MILLISECONDS, 0)
+        );
         useFeatureCache.setChecked(cacheMode != NativeFeatureCache.Mode.BYPASS);
         JSONObject running = new JSONObject();
         try {
@@ -280,11 +297,14 @@ public final class MainActivity extends Activity {
             running.put("codecOperatingRate", decoderOptions.operatingRate());
             running.put("codecPriority", decoderOptions.priority());
             running.put("featureCacheMode", cacheMode.wireName());
+            running.put("benchmarkStages", benchmarkStages.wireName());
+            running.put("audioDecoderMode", benchmarkAudioDecoderMode.wireName());
+            running.put("benchmarkDurationSeconds", benchmarkDurationMilliseconds / 1000.0);
         } catch (Exception impossible) {
             throw new IllegalStateException(impossible);
         }
         writeAutomationResult(running);
-        stageLabel.setText("automation · starting " + sourceFrameLimit + " source frames");
+        stageLabel.setText("automation · " + benchmarkStages.wireName());
         runAnalysis();
     }
 
@@ -302,6 +322,9 @@ public final class MainActivity extends Activity {
         limitSourceFrames.setChecked(true);
         decoderOptions = AnalysisTypes.VideoDecoderOptions.defaults();
         cacheMode = NativeFeatureCache.Mode.USE;
+        benchmarkStages = AnalysisTypes.AnalysisStages.all();
+        benchmarkAudioDecoderMode = AnalysisTypes.AudioDecoderMode.SINGLE_ACCESS_UNIT;
+        benchmarkDurationMilliseconds = 0;
         useFeatureCache.setChecked(true);
         fileLabel.setText(selectedUri.toString());
         analyzeButton.setEnabled(true);
@@ -338,6 +361,16 @@ public final class MainActivity extends Activity {
                 : (useFeatureCache.isChecked()
                         ? NativeFeatureCache.Mode.USE
                         : NativeFeatureCache.Mode.BYPASS);
+        AnalysisTypes.AnalysisStages requestedStages = writeAutomationOutput
+                ? benchmarkStages
+                : AnalysisTypes.AnalysisStages.all();
+        AnalysisTypes.AudioDecoderMode requestedAudioDecoderMode = writeAutomationOutput
+                ? benchmarkAudioDecoderMode
+                : AnalysisTypes.AudioDecoderMode.AUTO;
+        AnalysisTypes.AnalysisWindow requestedWindow = writeAutomationOutput
+                && benchmarkDurationMilliseconds > 0
+                ? new AnalysisTypes.AnalysisWindow(0, benchmarkDurationMilliseconds / 1000.0)
+                : null;
         executor.submit(() -> {
             try {
                 AnalysisTypes.AnalysisResult result = new AnalysisEngine(this).analyze(
@@ -346,6 +379,9 @@ public final class MainActivity extends Activity {
                         requestedSourceFrameLimit,
                         requestedDecoderOptions,
                         requestedCacheMode,
+                        requestedWindow,
+                        requestedStages,
+                        requestedAudioDecoderMode,
                         cancelled,
                         new AnalysisTypes.ProgressListener() {
                             @Override
@@ -371,6 +407,10 @@ public final class MainActivity extends Activity {
                     json.put("codecOperatingRate", requestedDecoderOptions.operatingRate());
                     json.put("codecPriority", requestedDecoderOptions.priority());
                     json.put("featureCacheMode", requestedCacheMode.wireName());
+                    json.put("benchmarkStages", requestedStages.wireName());
+                    json.put("requestedAudioDecoderMode", requestedAudioDecoderMode.wireName());
+                    json.put("benchmarkDurationSeconds",
+                            requestedWindow == null ? 0 : requestedWindow.end());
                     writeAutomationResult(json);
                     Log.i(BENCHMARK_TAG, String.format(Locale.US,
                             "RESULT runId=%s source=%s frames=%d videoMs=%d totalMs=%d",
@@ -432,6 +472,14 @@ public final class MainActivity extends Activity {
                 "Codec request: operating rate %d fps · priority %d\n",
                 result.codecOperatingRate(), result.codecPriority()));
         output.append("Audio decoder: ").append(result.audioDecoder()).append('\n');
+        output.append(String.format(Locale.US,
+                "Audio codec request: %,d samples/s · priority %d · multi-frame %s\n",
+                result.audioCodecOperatingRate(), result.audioCodecPriority(),
+                result.audioMultipleFramesSupported() ? "supported" : "unsupported"));
+        output.append(String.format(Locale.US,
+                "Audio decode: %s; input %,d AU / %,d batches; output %,d AU / %,d batches\n",
+                result.audioDecoderMode(), result.audioInputAccessUnits(), result.audioInputBatches(),
+                result.audioOutputAccessUnits(), result.audioOutputBatches()));
         NativeFeatureCache.CacheStats cache = result.featureCache();
         output.append(String.format(Locale.US,
                 "Feature cache: %s · video %s · audio %s · context %s · resumed %,d rows · %.1f MiB\n",
@@ -581,6 +629,15 @@ public final class MainActivity extends Activity {
             json.put("codecOperatingRate", result.codecOperatingRate());
             json.put("codecPriority", result.codecPriority());
             json.put("audioDecoder", result.audioDecoder());
+            json.put("audioCodecOperatingRate", result.audioCodecOperatingRate());
+            json.put("audioCodecPriority", result.audioCodecPriority());
+            json.put("audioMultipleFramesSupported", result.audioMultipleFramesSupported());
+            json.put("audioDecoderMode", result.audioDecoderMode());
+            json.put("audioInputAccessUnits", result.audioInputAccessUnits());
+            json.put("audioInputBatches", result.audioInputBatches());
+            json.put("audioOutputAccessUnits", result.audioOutputAccessUnits());
+            json.put("audioOutputBatches", result.audioOutputBatches());
+            json.put("audioFeatureSha256", result.audioFeatureSha256());
             NativeFeatureCache.CacheStats cache = result.featureCache();
             JSONObject cacheJson = new JSONObject();
             cacheJson.put("mode", cache.mode());
@@ -603,6 +660,13 @@ public final class MainActivity extends Activity {
                     videoMilliseconds > 0 ? result.sampleRows() / (videoMilliseconds / 1000) : 0);
             json.put("featureRealtimeRatio",
                     videoMilliseconds > 0 ? generatedVideoSeconds / (videoMilliseconds / 1000) : 0);
+            double audioMilliseconds = result.stageMilliseconds().getOrDefault(
+                    "audio_decode_and_features", 0L
+            );
+            json.put("audioRealtimeRatio",
+                    audioMilliseconds > 0
+                            ? result.analyzedDurationSeconds() / (audioMilliseconds / 1000)
+                            : 0);
             json.put("overallRealtimeRatio",
                     result.totalMilliseconds() > 0
                             ? result.analyzedDurationSeconds() / (result.totalMilliseconds() / 1000.0)

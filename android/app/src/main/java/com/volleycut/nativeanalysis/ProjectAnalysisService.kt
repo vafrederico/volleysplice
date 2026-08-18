@@ -179,6 +179,9 @@ class ProjectAnalysisService : Service() {
         put("decodedSourceFrames", result.decodedSourceFrames())
         put("decodedAudioFrames", result.decodedAudioFrames())
         put("audioFeatureFrames", result.audioFeatureFrames())
+        put("audioCodecOperatingRate", result.audioCodecOperatingRate())
+        put("audioCodecPriority", result.audioCodecPriority())
+        put("audioMultipleFramesSupported", result.audioMultipleFramesSupported())
         put("stageMilliseconds", JSONObject(result.stageMilliseconds()))
         put("featureCache", JSONObject().apply {
             put("visualHit", result.featureCache().visualHit())
