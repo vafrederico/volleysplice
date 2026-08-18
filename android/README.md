@@ -84,6 +84,20 @@ cd android
 .\benchmark.bat -VideoName "1080p60.mp4" -FrameLimit 1000 -Runs 3
 ```
 
+Select individual pipeline stages or combinations with `-Stages`. For example, this runs only
+fresh audio decode and feature generation over the first 60 seconds on a specific ADB transport:
+
+```powershell
+.\benchmark.ps1 -DeviceSerial "192.0.2.1:40461" -VideoName "1080p60.mp4" `
+  -Stages Audio -DurationSeconds 60 -CacheMode Bypass -Runs 5
+```
+
+Accepted stage plans are `All`, `Video`, `Audio`, `Inference`, `VideoAudio`,
+`VideoInference`, and `AudioInference`. `-DurationSeconds 0` uses the full selected scope.
+The source-frame limit applies only when video generation is selected. Inference without one or
+both feature stages loads those exact prerequisites from the matching feature cache and fails
+clearly when they are unavailable, keeping an inference-only measurement honest.
+
 Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppress the full JSON lines. Every successful run contributes to the median summary. The app writes `benchmarkStatus`, a unique `benchmarkRunId`, and either the normal result payload or structured failure details, so a stale result cannot be mistaken for the current run. `-FrameLimit` can extend a measurement when a 1,000-frame sample is too noisy. Use `-CacheMode Use`, `Bypass`, or `Refresh` to reuse, ignore, or replace the matching feature entry. The production configuration requests a 240 FPS codec operating rate at best-effort priority; pass `-OperatingRate -1 -CodecPriority -1` for the unhinted control.
 
 The 240 FPS operating-rate request was retained after a 5,000-frame 1080p60 A/B reduced median video-stage time from 29,102.5 ms to 19,749.0 ms (32.1%) with identical sampled timestamps and candidate ranges. Android uses this value for codec resource planning; it does not change source timestamps or the 4 Hz sampling schedule.

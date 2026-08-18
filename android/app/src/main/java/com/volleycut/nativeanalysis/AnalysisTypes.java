@@ -2,8 +2,11 @@ package com.volleycut.nativeanalysis;
 
 import android.net.Uri;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public final class AnalysisTypes {
     public static final double MIN_ANALYSIS_WINDOW_SECONDS = 1.0;
@@ -36,6 +39,44 @@ public final class AnalysisTypes {
     public record VideoDecoderOptions(int operatingRate, int priority) {
         static VideoDecoderOptions defaults() {
             return new VideoDecoderOptions(240, 1);
+        }
+    }
+
+    public record AnalysisStages(
+            boolean videoFeatures,
+            boolean audioFeatures,
+            boolean inference
+    ) {
+        static AnalysisStages all() {
+            return new AnalysisStages(true, true, true);
+        }
+
+        static AnalysisStages fromWireName(String value) {
+            if (value == null || value.isBlank() || value.equalsIgnoreCase("all")) return all();
+            Set<String> stages = new LinkedHashSet<>();
+            for (String part : value.toLowerCase(Locale.US).split(",")) {
+                String stage = part.trim();
+                if (!stage.isEmpty()) stages.add(stage);
+            }
+            if (stages.isEmpty() || stages.stream().anyMatch(
+                    stage -> !Set.of("video", "audio", "inference").contains(stage)
+            )) {
+                throw new IllegalArgumentException("Invalid analysis stages: " + value);
+            }
+            return new AnalysisStages(
+                    stages.contains("video"),
+                    stages.contains("audio"),
+                    stages.contains("inference")
+            );
+        }
+
+        String wireName() {
+            if (equals(all())) return "video,audio,inference";
+            List<String> stages = new java.util.ArrayList<>();
+            if (videoFeatures) stages.add("video");
+            if (audioFeatures) stages.add("audio");
+            if (inference) stages.add("inference");
+            return String.join(",", stages);
         }
     }
 
