@@ -18,6 +18,7 @@ import {
   DEFAULT_SUPPRESSION_SCOPE,
   effectiveKeptCutIds,
   materializeFinalCutIntervals,
+  MIN_CUT_SECONDS,
   nextFinalCutTime,
   parseCutDraft,
   playbackFocusCut,
@@ -27,6 +28,9 @@ import {
   suppressionSuggestionScope,
   totalFinalCutSeconds,
   suppressionSuggestionState,
+  setCutCoreEnd,
+  setCutCoreStart,
+  splitCutAt,
   type CutDraft,
   type CutDraftSeed,
   type EditableCut,
@@ -73,9 +77,11 @@ type CutEditorProps = {
 type ExportState = "idle" | "exporting" | "done" | "error";
 
 type BoundarySide = "start" | "end";
+type BoundaryEdge = "output" | "core";
 
 type BoundaryDrag = {
   pointerId: number;
+  edge: BoundaryEdge;
   side: BoundarySide;
   left: number;
   width: number;
@@ -168,7 +174,6 @@ export function CutEditor({
 }: CutEditorProps) {
   const analysisStart = initialAnalysis.analysisWindow.start;
   const analysisEnd = initialAnalysis.analysisWindow.end;
-  const analysisDuration = analysisEnd - analysisStart;
   const videoRef = useRef<HTMLVideoElement>(null);
   const detailRailRef = useRef<HTMLDivElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
@@ -603,8 +608,20 @@ export function CutEditor({
     seekTo(selected.keepStart, true, selected.id);
   }
 
-  function setBoundary(id: string, side: BoundarySide, value: number) {
+  function setKeepBoundary(id: string, side: BoundarySide, value: number) {
     updateCut(id, (cut) => {
+      if (cut.origin === "manual") {
+        if (side === "start") {
+          const start = roundTime(
+            Math.max(analysisStart, Math.min(cut.keepEnd - MIN_CUT_SECONDS, value)),
+          );
+          return { ...cut, coreStart: start, keepStart: start };
+        }
+        const end = roundTime(
+          Math.max(cut.keepStart + MIN_CUT_SECONDS, Math.min(analysisEnd, value)),
+        );
+        return { ...cut, coreEnd: end, keepEnd: end };
+      }
       if (side === "start") {
         return {
           ...cut,
@@ -622,7 +639,14 @@ export function CutEditor({
     });
   }
 
+  function setCoreBoundary(id: string, side: BoundarySide, value: number) {
+    updateDraft((current) => side === "start"
+      ? setCutCoreStart(current, id, value, analysisStart)
+      : setCutCoreEnd(current, id, value, analysisEnd));
+  }
+
   function beginBoundaryDrag(
+    edge: BoundaryEdge,
     side: BoundarySide,
     event: ReactPointerEvent<HTMLButtonElement>,
   ) {
@@ -632,6 +656,7 @@ export function CutEditor({
     const bounds = detailRailRef.current.getBoundingClientRect();
     boundaryDragRef.current = {
       pointerId: event.pointerId,
+      edge,
       side,
       left: bounds.left,
       width: bounds.width,
@@ -646,7 +671,11 @@ export function CutEditor({
     event.preventDefault();
     const ratio = Math.max(0, Math.min(1, (event.clientX - drag.left) / drag.width));
     const time = drag.windowStart + ratio * (drag.windowEnd - drag.windowStart);
-    setBoundary(selected.id, drag.side, time);
+    if (drag.edge === "core") {
+      setCoreBoundary(selected.id, drag.side, time);
+    } else {
+      setKeepBoundary(selected.id, drag.side, time);
+    }
   }
 
   function endBoundaryDrag(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -655,12 +684,33 @@ export function CutEditor({
     }
   }
 
-  function nudgeBoundary(side: BoundarySide, delta: number) {
+  function nudgeKeepBoundary(side: BoundarySide, delta: number) {
     if (!selected) return;
-    setBoundary(
+    setKeepBoundary(
       selected.id,
       side,
       (side === "start" ? selected.keepStart : selected.keepEnd) + delta,
+    );
+  }
+
+  function splitSelectedAtPlayhead() {
+    if (!selected) return;
+    const result = splitCutAt(
+      draft,
+      selected.id,
+      playbackTime,
+      analysisStart,
+      analysisEnd,
+    );
+    if (!result) {
+      setEditorMessage("Move the playhead inside the rally before splitting.");
+      return;
+    }
+    updateDraft(() => result.draft);
+    setSelectedSuppressionId("");
+    setSelectedId(result.newCut.id);
+    setEditorMessage(
+      `Split ${selected.id} at ${preciseTime(playbackTime)}. Both parts can now be trimmed independently.`,
     );
   }
 
@@ -1148,6 +1198,133 @@ export function CutEditor({
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setExportError(cause instanceof Error ? cause.message : String(cause));
     }
+  }
+
+  function renderOverviewRow(windowStart: number, windowEnd: number, rowIndex: number) {
+    const windowDuration = Math.max(0.001, windowEnd - windowStart);
+    const clip = (start: number, end: number) => ({
+      start: Math.max(windowStart, start),
+      end: Math.min(windowEnd, end),
+    });
+    const position = (start: number, end: number) => ({
+      left: `${timelinePercent(start - windowStart, windowDuration)}%`,
+      width: `${timelinePercent(end - start, windowDuration)}%`,
+    });
+    const playheadInRow = playbackTime >= windowStart &&
+      (rowIndex === 1 ? playbackTime <= windowEnd : playbackTime < windowEnd);
+
+    return <div className={styles.overviewRow} key={`${windowStart}-${windowEnd}`}>
+      <div
+        className={styles.overviewRail}
+        onPointerDown={(event) => beginTimelineSeek(event, windowStart, windowEnd)}
+        onPointerMove={moveTimelineSeek}
+        onPointerUp={endTimelineSeek}
+        onPointerCancel={cancelTimelineSeek}
+        onLostPointerCapture={cancelTimelineSeek}
+        onClickCapture={(event) => {
+          if (Date.now() > suppressTimelineClickUntilRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          suppressTimelineClickUntilRef.current = 0;
+        }}
+        role="group"
+        aria-label={`Marked game overview, ${rowIndex === 0 ? "first" : "second"} half`}
+      >
+        {overviewIgnoredIntervals.map((interval) => {
+          const segment = clip(interval.start, interval.end);
+          return segment.end > segment.start ? <span
+            key={interval.id}
+            className={styles.overviewIgnored}
+            style={position(segment.start, segment.end)}
+          /> : null;
+        })}
+        {overviewCuts.map((cut) => {
+          const segment = clip(cut.keepStart, cut.keepEnd);
+          if (segment.end <= segment.start) return null;
+          const before = clip(cut.keepStart, cut.coreStart);
+          const core = clip(cut.coreStart, cut.coreEnd);
+          const after = clip(cut.coreEnd, cut.keepEnd);
+          const innerPosition = (start: number, end: number) => ({
+            left: `${timelinePercent(start - segment.start, segment.end - segment.start)}%`,
+            width: `${timelinePercent(end - start, segment.end - segment.start)}%`,
+          });
+          return <button
+            type="button"
+            key={cut.id}
+            className={styles.overviewCut}
+            data-overview-cut-id={cut.id}
+            data-selected={cut.id === selected?.id || undefined}
+            data-included={cut.included || undefined}
+            data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
+            data-low-confidence={
+              cut.origin === "cached-label" &&
+              (isModelDisagreement(cut) ||
+                cut.confidence < draft.confidenceReviewThreshold) || undefined
+            }
+            data-disagreement={isModelDisagreement(cut) || undefined}
+            data-reviewed={reviewedCutIds.has(cut.id) || undefined}
+            data-origin={cut.origin}
+            style={position(segment.start, segment.end)}
+            onClick={() => selectCut(cut)}
+            aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}, ${Math.round(cut.confidence * 100)}% review confidence${reviewedCutIds.has(cut.id) ? ", reviewed" : ""}`}
+          >
+            {before.end > before.start && <span
+              className={styles.overviewPadding}
+              style={innerPosition(before.start, before.end)}
+            />}
+            {core.end > core.start && <span
+              className={styles.overviewCore}
+              style={innerPosition(core.start, core.end)}
+            />}
+            {after.end > after.start && <span
+              className={styles.overviewPadding}
+              style={innerPosition(after.start, after.end)}
+            />}
+          </button>;
+        })}
+        {suppressionSuggestions.map((suggestion) => {
+          const segment = clip(suggestion.start, suggestion.end);
+          if (segment.end <= segment.start) return null;
+          const state = suppressionSuggestionState(suggestion, draft);
+          return <button
+            type="button"
+            key={suggestion.id}
+            className={styles.overviewSuppression}
+            data-state={state}
+            data-selected={suggestion.id === selectedSuppression?.id || undefined}
+            style={position(segment.start, segment.end)}
+            onClick={(event) => {
+              event.stopPropagation();
+              selectSuppression(suggestion);
+            }}
+            aria-label={`${state === "suppressed" ? "Suppressed" : state === "edited-kept" ? "Edited rally—kept" : "Suggestion kept"}, ${preciseTime(suggestion.start)} to ${preciseTime(suggestion.end)}, ${Math.round(suggestion.score * 100)}% score`}
+            title={`${state === "suppressed" ? "Suppressed" : state === "edited-kept" ? "Edited rally—kept" : "Suggestion kept"} · ${preciseTime(suggestion.start)}–${preciseTime(suggestion.end)}`}
+          />;
+        })}
+        {finalIntervals.flatMap((interval) =>
+          (interval.joinedGaps ?? [])
+            .filter((gap) => activeMarkStart === null || gap.end >= activeMarkStart)
+            .map((gap) => {
+              const segment = clip(gap.start, gap.end);
+              return segment.end > segment.start ? <span
+                key={`joined-gap-${gap.start}-${gap.end}-${interval.cutIds.join("-")}`}
+                className={styles.overviewJoinedGap}
+                style={position(segment.start, segment.end)}
+                title={`Retained short gap · ${preciseTime(gap.start)} to ${preciseTime(gap.end)}`}
+              /> : null;
+            }),
+        )}
+        {playheadInRow && <span
+          className={styles.playhead}
+          style={{ left: `${timelinePercent(playbackTime - windowStart, windowDuration)}%` }}
+        />}
+      </div>
+      <div className={styles.overviewTimes}>
+        <span>{formatTime(windowStart)}</span>
+        <span>{formatTime((windowStart + windowEnd) / 2)}</span>
+        <span>{formatTime(windowEnd)}</span>
+      </div>
+    </div>;
   }
 
   return (
@@ -1674,129 +1851,17 @@ export function CutEditor({
               <span><i data-kind="ignored" /> Ignored source</span>
               <span><i data-kind="joined" /> Joined gap</span>
             </div>
-            <div
-              className={styles.overviewRail}
-              onPointerDown={(event) =>
-                beginTimelineSeek(event, analysisStart, analysisEnd)
-              }
-              onPointerMove={moveTimelineSeek}
-              onPointerUp={endTimelineSeek}
-              onPointerCancel={cancelTimelineSeek}
-              onLostPointerCapture={cancelTimelineSeek}
-              onClickCapture={(event) => {
-                if (Date.now() > suppressTimelineClickUntilRef.current) return;
-                event.preventDefault();
-                event.stopPropagation();
-                suppressTimelineClickUntilRef.current = 0;
-              }}
-              role="group"
-              aria-label="Marked game overview"
-            >
-              {overviewIgnoredIntervals.map((interval) => (
-                <span
-                  key={interval.id}
-                  className={styles.overviewIgnored}
-                  style={{
-                    left: `${timelinePercent(interval.start - analysisStart, analysisDuration)}%`,
-                    width: `${timelinePercent(interval.end - interval.start, analysisDuration)}%`,
-                  }}
-                />
-              ))}
-              {overviewCuts.map((cut) => (
-                <button
-                  type="button"
-                  key={cut.id}
-                  className={styles.overviewCut}
-                  data-overview-cut-id={cut.id}
-                  data-selected={cut.id === selected?.id || undefined}
-                  data-included={cut.included || undefined}
-                  data-ignored={cut.included && !effectiveKeptIds.has(cut.id) || undefined}
-                  data-low-confidence={
-                    cut.origin === "cached-label" &&
-                    (isModelDisagreement(cut) ||
-                      cut.confidence < draft.confidenceReviewThreshold) || undefined
-                  }
-                  data-disagreement={isModelDisagreement(cut) || undefined}
-                  data-reviewed={reviewedCutIds.has(cut.id) || undefined}
-                  data-origin={cut.origin}
-                  style={{
-                    left: `${timelinePercent(cut.keepStart - analysisStart, analysisDuration)}%`,
-                    width: `${timelinePercent(cut.keepEnd - cut.keepStart, analysisDuration)}%`,
-                  }}
-                  onClick={() => selectCut(cut)}
-                  aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}, ${Math.round(cut.confidence * 100)}% review confidence${reviewedCutIds.has(cut.id) ? ", reviewed" : ""}`}
-                >
-                  <span
-                    className={styles.overviewPadding}
-                    style={{
-                      left: 0,
-                      width: `${timelinePercent(cut.coreStart - cut.keepStart, cut.keepEnd - cut.keepStart)}%`,
-                    }}
-                  />
-                  <span
-                    className={styles.overviewCore}
-                    style={{
-                      left: `${timelinePercent(cut.coreStart - cut.keepStart, cut.keepEnd - cut.keepStart)}%`,
-                      width: `${timelinePercent(cut.coreEnd - cut.coreStart, cut.keepEnd - cut.keepStart)}%`,
-                    }}
-                  />
-                  <span
-                    className={styles.overviewPadding}
-                    style={{
-                      left: `${timelinePercent(cut.coreEnd - cut.keepStart, cut.keepEnd - cut.keepStart)}%`,
-                      width: `${timelinePercent(cut.keepEnd - cut.coreEnd, cut.keepEnd - cut.keepStart)}%`,
-                    }}
-                  />
-                </button>
-              ))}
-              {suppressionSuggestions.map((suggestion) => {
-                const state = suppressionSuggestionState(suggestion, draft);
-                return (
-                  <button
-                    type="button"
-                    key={suggestion.id}
-                    className={styles.overviewSuppression}
-                    data-state={state}
-                    data-selected={suggestion.id === selectedSuppression?.id || undefined}
-                    style={{
-                      left: `${timelinePercent(suggestion.start - analysisStart, analysisDuration)}%`,
-                      width: `${timelinePercent(suggestion.end - suggestion.start, analysisDuration)}%`,
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      selectSuppression(suggestion);
-                    }}
-                    aria-label={`${state === "suppressed" ? "Suppressed" : state === "edited-kept" ? "Edited rally—kept" : "Suggestion kept"}, ${preciseTime(suggestion.start)} to ${preciseTime(suggestion.end)}, ${Math.round(suggestion.score * 100)}% score`}
-                    title={`${state === "suppressed" ? "Suppressed" : state === "edited-kept" ? "Edited rally—kept" : "Suggestion kept"} · ${preciseTime(suggestion.start)}–${preciseTime(suggestion.end)}`}
-                  />
-                );
-              })}
-              {finalIntervals.flatMap((interval) =>
-                (interval.joinedGaps ?? [])
-                  .filter((gap) => activeMarkStart === null || gap.end >= activeMarkStart)
-                  .map((gap) => (
-                    <span
-                      key={`joined-gap-${gap.start}-${gap.end}-${interval.cutIds.join("-")}`}
-                      className={styles.overviewJoinedGap}
-                      style={{
-                        left: `${timelinePercent(gap.start - analysisStart, analysisDuration)}%`,
-                        width: `${timelinePercent(gap.end - gap.start, analysisDuration)}%`,
-                      }}
-                      title={`Retained short gap · ${preciseTime(gap.start)} to ${preciseTime(gap.end)}`}
-                    />
-                  )),
+            <div className={styles.overviewRows}>
+              {renderOverviewRow(
+                analysisStart,
+                (analysisStart + analysisEnd) / 2,
+                0,
               )}
-              <span
-                className={styles.playhead}
-                style={{
-                  left: `${timelinePercent(playbackTime - analysisStart, analysisDuration)}%`,
-                }}
-              />
-            </div>
-            <div className={styles.overviewTimes}>
-              <span>{formatTime(analysisStart)}</span>
-              <span>{formatTime((analysisStart + analysisEnd) / 2)}</span>
-              <span>{formatTime(analysisEnd)}</span>
+              {renderOverviewRow(
+                (analysisStart + analysisEnd) / 2,
+                analysisEnd,
+                1,
+              )}
             </div>
           </section>
         </div>
@@ -1905,7 +1970,7 @@ export function CutEditor({
                   width: `${timelinePercent(selected.coreEnd - selected.coreStart, focus.end - focus.start)}%`,
                 }}
               >
-                <small>INFERRED CORE</small>
+                <small>{selected.origin === "manual" ? "MANUAL RALLY" : "RALLY"}</small>
               </span>
               {selectedSuppression && (
                 <span
@@ -1928,14 +1993,29 @@ export function CutEditor({
                   </small>
                 </span>
               )}
-              {!selectedSuppression && <button
+              {!selectedSuppression && selected.origin === "cached-label" && <button
                 type="button"
                 className={`${styles.boundaryHandle} ${styles.startHandle}`}
                 style={{
                   left: `${timelinePercent(selected.keepStart - focus.start, focus.end - focus.start)}%`,
                 }}
-                aria-label={`Adjust kept start at ${preciseTime(selected.keepStart)}`}
-                onPointerDown={(event) => beginBoundaryDrag("start", event)}
+                aria-label={`Adjust output start at ${preciseTime(selected.keepStart)}`}
+                onPointerDown={(event) => beginBoundaryDrag("output", "start", event)}
+                onPointerMove={moveBoundary}
+                onPointerUp={endBoundaryDrag}
+                onPointerCancel={endBoundaryDrag}
+                onLostPointerCapture={endBoundaryDrag}
+              >
+                <i />
+              </button>}
+              {!selectedSuppression && selected.origin === "cached-label" && <button
+                type="button"
+                className={`${styles.boundaryHandle} ${styles.endHandle}`}
+                style={{
+                  left: `${timelinePercent(selected.keepEnd - focus.start, focus.end - focus.start)}%`,
+                }}
+                aria-label={`Adjust output end at ${preciseTime(selected.keepEnd)}`}
+                onPointerDown={(event) => beginBoundaryDrag("output", "end", event)}
                 onPointerMove={moveBoundary}
                 onPointerUp={endBoundaryDrag}
                 onPointerCancel={endBoundaryDrag}
@@ -1945,12 +2025,27 @@ export function CutEditor({
               </button>}
               {!selectedSuppression && <button
                 type="button"
-                className={`${styles.boundaryHandle} ${styles.endHandle}`}
+                className={`${styles.boundaryHandle} ${styles.coreHandle} ${styles.startHandle}`}
                 style={{
-                  left: `${timelinePercent(selected.keepEnd - focus.start, focus.end - focus.start)}%`,
+                  left: `${timelinePercent(selected.coreStart - focus.start, focus.end - focus.start)}%`,
                 }}
-                aria-label={`Adjust kept end at ${preciseTime(selected.keepEnd)}`}
-                onPointerDown={(event) => beginBoundaryDrag("end", event)}
+                aria-label={`Adjust rally start at ${preciseTime(selected.coreStart)}`}
+                onPointerDown={(event) => beginBoundaryDrag("core", "start", event)}
+                onPointerMove={moveBoundary}
+                onPointerUp={endBoundaryDrag}
+                onPointerCancel={endBoundaryDrag}
+                onLostPointerCapture={endBoundaryDrag}
+              >
+                <i />
+              </button>}
+              {!selectedSuppression && <button
+                type="button"
+                className={`${styles.boundaryHandle} ${styles.coreHandle} ${styles.endHandle}`}
+                style={{
+                  left: `${timelinePercent(selected.coreEnd - focus.start, focus.end - focus.start)}%`,
+                }}
+                aria-label={`Adjust rally end at ${preciseTime(selected.coreEnd)}`}
+                onPointerDown={(event) => beginBoundaryDrag("core", "end", event)}
                 onPointerMove={moveBoundary}
                 onPointerUp={endBoundaryDrag}
                 onPointerCancel={endBoundaryDrag}
@@ -1966,28 +2061,76 @@ export function CutEditor({
               />
             </div>
 
-            {!selectedSuppression && <div className={styles.boundaryControls}>
-              <fieldset>
-                <legend>Kept start</legend>
-                <output>{preciseTime(selected.keepStart)}</output>
-                <div>
-                  <button type="button" onClick={() => nudgeBoundary("start", -1)}>−1s</button>
-                  <button type="button" onClick={() => nudgeBoundary("start", -0.1)}>−0.1s</button>
-                  <button type="button" onClick={() => nudgeBoundary("start", 0.1)}>+0.1s</button>
-                  <button type="button" onClick={() => nudgeBoundary("start", 1)}>+1s</button>
+            {!selectedSuppression && <>
+              <div
+                className={styles.rallyRangeEditor}
+                data-tour="editor-change-duration"
+              >
+                <div className={styles.rallyRangeSummary}>
+                  <span>RALLY LENGTH</span>
+                  <output>
+                    {preciseTime(selected.coreStart)} – {preciseTime(selected.coreEnd)}
+                  </output>
                 </div>
-              </fieldset>
-              <fieldset>
-                <legend>Kept end</legend>
-                <output>{preciseTime(selected.keepEnd)}</output>
-                <div>
-                  <button type="button" onClick={() => nudgeBoundary("end", -1)}>−1s</button>
-                  <button type="button" onClick={() => nudgeBoundary("end", -0.1)}>−0.1s</button>
-                  <button type="button" onClick={() => nudgeBoundary("end", 0.1)}>+0.1s</button>
-                  <button type="button" onClick={() => nudgeBoundary("end", 1)}>+1s</button>
+                <p>
+                  Drag the orange handles to shorten or extend this rally. Its current padding follows the new edges.
+                </p>
+                <div className={styles.rallyEdgeActions}>
+                  <button
+                    type="button"
+                    disabled={playbackTime > selected.coreEnd - MIN_CUT_SECONDS}
+                    onClick={() => setCoreBoundary(selected.id, "start", playbackTime)}
+                  >
+                    Set rally start here
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.splitAction}
+                    data-tour="editor-split-rally"
+                    disabled={
+                      playbackTime < selected.coreStart + MIN_CUT_SECONDS ||
+                      playbackTime > selected.coreEnd - MIN_CUT_SECONDS
+                    }
+                    onClick={splitSelectedAtPlayhead}
+                  >
+                    Split at playhead
+                  </button>
+                  <button
+                    type="button"
+                    disabled={playbackTime < selected.coreStart + MIN_CUT_SECONDS}
+                    onClick={() => setCoreBoundary(selected.id, "end", playbackTime)}
+                  >
+                    Set rally end here
+                  </button>
                 </div>
-              </fieldset>
-            </div>}
+              </div>
+
+              {selected.origin === "cached-label" && <div className={styles.outputEdgeEditor}>
+                <p>OUTPUT EDGES <span>Rally + padding</span></p>
+                <div className={styles.boundaryControls}>
+                  <fieldset>
+                    <legend>Output start</legend>
+                    <output>{preciseTime(selected.keepStart)}</output>
+                    <div>
+                      <button type="button" onClick={() => nudgeKeepBoundary("start", -1)}>−1s</button>
+                      <button type="button" onClick={() => nudgeKeepBoundary("start", -0.1)}>−0.1s</button>
+                      <button type="button" onClick={() => nudgeKeepBoundary("start", 0.1)}>+0.1s</button>
+                      <button type="button" onClick={() => nudgeKeepBoundary("start", 1)}>+1s</button>
+                    </div>
+                  </fieldset>
+                  <fieldset>
+                    <legend>Output end</legend>
+                    <output>{preciseTime(selected.keepEnd)}</output>
+                    <div>
+                      <button type="button" onClick={() => nudgeKeepBoundary("end", -1)}>−1s</button>
+                      <button type="button" onClick={() => nudgeKeepBoundary("end", -0.1)}>−0.1s</button>
+                      <button type="button" onClick={() => nudgeKeepBoundary("end", 0.1)}>+0.1s</button>
+                      <button type="button" onClick={() => nudgeKeepBoundary("end", 1)}>+1s</button>
+                    </div>
+                  </fieldset>
+                </div>
+              </div>}
+            </>}
 
             <div className={styles.focusActions}>
               {selectedSuppression ? (

@@ -442,6 +442,11 @@
   user-select: none;
 }
 
+.overviewRows {
+  display: grid;
+  gap: 3px;
+}
+
 .overviewCut {
   position: absolute;
   z-index: 2;
@@ -1191,6 +1196,12 @@
   touch-action: none;
 }
 
+.coreHandle {
+  z-index: 7;
+  top: 25px;
+  height: 62px;
+}
+
 .startHandle {
   transform: translateX(-22px);
 }
@@ -1210,9 +1221,91 @@
   box-shadow: 0 0 0 2px #fff;
 }
 
+.coreHandle i {
+  top: 2px;
+  bottom: 2px;
+  background: var(--cut-orange);
+}
+
 .boundaryHandle:focus-visible {
   outline: 3px solid var(--cut-orange);
   outline-offset: -3px;
+}
+
+.rallyRangeEditor {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #c5c3ba;
+  background: #f8f7f2;
+}
+
+.rallyRangeSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rallyRangeSummary span,
+.outputEdgeEditor > p {
+  margin: 0;
+  color: var(--cut-orange);
+  font: 700 10px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: .8px;
+}
+
+.rallyRangeSummary output {
+  font: 700 14px "Atkinson Hyperlegible Mono", monospace;
+  text-align: right;
+}
+
+.rallyRangeEditor > p {
+  margin: 0;
+  color: var(--cut-muted);
+  font: 10px/1.45 "Atkinson Hyperlegible Mono", monospace;
+}
+
+.rallyEdgeActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.rallyEdgeActions button {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--cut-ink);
+  border-radius: 0;
+  background: #fff;
+  color: var(--cut-ink);
+  font: 600 10px/1.25 "Atkinson Hyperlegible Mono", monospace;
+  cursor: pointer;
+}
+
+.rallyEdgeActions .splitAction {
+  background: var(--cut-acid);
+}
+
+.rallyEdgeActions button:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+.outputEdgeEditor {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #ceccc3;
+}
+
+.outputEdgeEditor > p span {
+  color: var(--cut-muted);
+  font-weight: 500;
+}
+
+.outputEdgeEditor .boundaryControls {
+  margin-top: 8px;
 }
 
 .boundaryControls {
