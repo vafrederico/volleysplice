@@ -4,6 +4,7 @@ import { AndroidAppBanner } from "@/components/AndroidAppBanner";
 import { CutEditor } from "@/components/CutEditor";
 import { GuidedTour } from "@/components/GuidedTour";
 import { ProjectHeader } from "@/components/ProjectHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
 import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
 import {
@@ -1232,15 +1233,7 @@ export function App() {
         </section>
       )}
 
-      <footer className={styles.footer}>
-        <span>
-          Project metadata, generated features, predictions, and edit drafts
-          stay in this browser.
-        </span>
-        <span>
-          Local video bytes are never uploaded or copied into project storage.
-        </span>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

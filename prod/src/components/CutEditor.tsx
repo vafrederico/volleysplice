@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { GuidedTour } from "@/components/GuidedTour";
+import { SiteFooter } from "@/components/SiteFooter";
 import {
   activeSuppressionSuggestions,
   applyPaddingToCachedCuts,
@@ -2384,6 +2385,7 @@ export function CutEditor({
         </div>
       </section>
 
+      <SiteFooter />
       <GuidedTour stage="editor" />
     </main>
   );

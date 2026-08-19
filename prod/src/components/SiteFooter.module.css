@@ -1,0 +1,43 @@
+.footer {
+  margin-top: 70px;
+  padding: 30px 5vw 44px;
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  border-top: 1px solid #c5c3ba;
+  color: #77796f;
+  font: 500 10px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.copy {
+  display: grid;
+  gap: 5px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.links a {
+  color: #11130f;
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
+.links a:hover {
+  color: #ff5c35;
+}
+
+.links a:focus-visible {
+  outline: 3px solid #ff5c35;
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
