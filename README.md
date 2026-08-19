@@ -21,7 +21,7 @@ The second command creates a local `.venv` and installs NumPy plus headless Open
 
 ## Native Android app
 
-The [`android/`](android/) project ports video/audio feature extraction, inference, range editing, preview, and MP4 export to a native Pixel 10 Pro app. It targets API 37 on Android 17, replacing WebCodecs/WASM with Android `MediaCodec`, native OpenCV, in-app audio DSP, Jetpack Compose timelines, and Media3 playback/export. The current signed arm64 build is [`VolleyCut v0.10.2`](android/releases/VolleyCut-v0.10.2-arm64-release-signed.apk). See [`android/README.md`](android/README.md) for SDK setup, editor/export behavior, benchmark procedure, and parity caveats.
+The [`android/`](android/) project ports video/audio feature extraction, inference, range editing, preview, and MP4 export to a native Pixel 10 Pro app. It targets API 37 on Android 17, replacing WebCodecs/WASM with Android `MediaCodec`, native OpenCV, in-app audio DSP, Jetpack Compose timelines, and Media3 playback/export. The current signed arm64 build is [`VolleyCut v0.10.3`](android/releases/VolleyCut-v0.10.3-arm64-release-signed.apk). See [`android/README.md`](android/README.md) for SDK setup, editor/export behavior, benchmark procedure, and parity caveats.
 
 Set the durable media location in an ignored `.env.local` file. This machine currently uses `/mnt/freenas/volleycut`:
 
