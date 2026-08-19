@@ -13,8 +13,8 @@ android {
         applicationId = "com.volleycut.nativeanalysis"
         minSdk = 29
         targetSdk = providers.gradleProperty("volleycut.targetSdk").orElse("37").get().toInt()
-        versionCode = 15
-        versionName = "0.10.1"
+        versionCode = 16
+        versionName = "0.10.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

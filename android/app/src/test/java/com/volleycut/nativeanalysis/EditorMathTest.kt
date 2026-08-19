@@ -52,6 +52,76 @@ class EditorMathTest {
     }
 
     @Test
+    fun correctingCoreEdgesPreservesPerCutPaddingAndSurvivesGlobalPaddingChanges() {
+        val base = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            beforePaddingMs = 2_000,
+            afterPaddingMs = 2_000,
+            cuts = listOf(cut("R001", 10_000, 30_000).copy(
+                keepStartMs = 8_000,
+                keepEndMs = 32_000,
+            )),
+        )
+
+        val trimmed = EditorMath.setCoreRange(base, "R001", 12_000, 20_000, 0, 40_000)
+        assertEquals(12_000, trimmed.cuts.single().coreStartMs)
+        assertEquals(20_000, trimmed.cuts.single().coreEndMs)
+        assertEquals(10_000, trimmed.cuts.single().keepStartMs)
+        assertEquals(22_000, trimmed.cuts.single().keepEndMs)
+
+        val repadded = EditorMath.applyPadding(trimmed, 3_000, 1_000, 40_000)
+        assertEquals(9_000, repadded.cuts.single().keepStartMs)
+        assertEquals(21_000, repadded.cuts.single().keepEndMs)
+    }
+
+    @Test
+    fun splitCreatesIndependentlyEditablePartsWithTheirExistingPadding() {
+        val base = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            joinGapMs = 0,
+            cuts = listOf(cut("R001", 10_000, 30_000).copy(
+                keepStartMs = 8_000,
+                keepEndMs = 32_000,
+            )),
+        )
+
+        val split = EditorMath.splitCut(base, "R001", 20_000, 0, 40_000)!!
+        assertEquals(listOf("R001", "R002"), split.draft.cuts.map { it.id })
+        assertEquals(10_000, split.draft.cuts[0].coreStartMs)
+        assertEquals(20_000, split.draft.cuts[0].coreEndMs)
+        assertEquals(8_000, split.draft.cuts[0].keepStartMs)
+        assertEquals(22_000, split.draft.cuts[0].keepEndMs)
+        assertEquals(20_000, split.newCut.coreStartMs)
+        assertEquals(30_000, split.newCut.coreEndMs)
+        assertEquals(18_000, split.newCut.keepStartMs)
+        assertEquals(32_000, split.newCut.keepEndMs)
+
+        val shortenedLeft = EditorMath.setCoreEnd(split.draft, "R001", 15_000, 40_000)
+        val separated = EditorMath.setCoreStart(shortenedLeft, "R002", 25_000, 0)
+        assertEquals(
+            listOf(
+                FinalCutInterval(8_000, 17_000, listOf("R001")),
+                FinalCutInterval(23_000, 32_000, listOf("R002")),
+            ),
+            EditorMath.finalIntervals(separated),
+        )
+    }
+
+    @Test
+    fun splitRequiresRoomForBothParts() {
+        val draft = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            cuts = listOf(cut("R001", 10_000, 11_000)),
+        )
+
+        assertEquals(null, EditorMath.splitCut(draft, "R001", 10_050, 0, 20_000))
+        assertEquals(null, EditorMath.splitCut(draft, "R001", 10_950, 0, 20_000))
+    }
+
+    @Test
     fun fullyIgnoredCutIsNotEffective() {
         val draft = EditorDraft(
             sourceRevision = "fixture",

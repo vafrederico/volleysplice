@@ -2,7 +2,7 @@ import { isAndroidBrowser } from "@/lib/on-device/browser-support";
 
 import styles from "./AndroidAppBanner.module.css";
 
-const APK_FILENAME = "VolleyCut-v0.10.1-arm64-release-signed.apk";
+const APK_FILENAME = "VolleyCut-v0.10.2-arm64-release-signed.apk";
 const APK_URL = `${import.meta.env.BASE_URL}android/${APK_FILENAME}`;
 
 export function AndroidAppBanner() {
@@ -18,9 +18,14 @@ export function AndroidAppBanner() {
           experience.
         </p>
       </div>
-      <a className={styles.download} href={APK_URL} download={APK_FILENAME}>
+      <a
+        className={styles.download}
+        href={APK_URL}
+        download={APK_FILENAME}
+        aria-label="Download VolleyCut v0.10.2 signed ARM64 APK"
+      >
         <span>Download APK</span>
-        <small>v0.10.1 · ARM64 · SIGNED</small>
+        <small>v0.10.2 · ARM64 · SIGNED</small>
       </a>
     </aside>
   );
