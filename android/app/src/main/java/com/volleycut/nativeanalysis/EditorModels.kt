@@ -136,6 +136,11 @@ internal data class FinalCutInterval(
 
 internal data class DetailWindow(val startMs: Long, val endMs: Long)
 
+internal data class CutSplitResult(
+    val draft: EditorDraft,
+    val newCut: EditableCut,
+)
+
 internal data class MaterializationProvenance(
     val startMs: Long,
     val endMs: Long,
@@ -199,6 +204,97 @@ internal object EditorMath {
                 )
             },
         )
+    }
+
+    fun setCoreStart(
+        draft: EditorDraft,
+        cutId: String,
+        valueMs: Long,
+        minimumMs: Long,
+    ): EditorDraft = draft.copy(cuts = draft.cuts.map { cut ->
+        if (cut.id != cutId) return@map cut
+        val maximumStart = cut.coreEndMs - MIN_MARK_MS
+        if (maximumStart < minimumMs) return@map cut
+        val start = valueMs.coerceIn(minimumMs, maximumStart)
+        val beforePadding = cut.coreStartMs - cut.keepStartMs
+        cut.copy(
+            coreStartMs = start,
+            keepStartMs = (start - beforePadding).coerceAtLeast(minimumMs),
+        )
+    })
+
+    fun setCoreEnd(
+        draft: EditorDraft,
+        cutId: String,
+        valueMs: Long,
+        maximumMs: Long,
+    ): EditorDraft = draft.copy(cuts = draft.cuts.map { cut ->
+        if (cut.id != cutId) return@map cut
+        val minimumEnd = cut.coreStartMs + MIN_MARK_MS
+        if (minimumEnd > maximumMs) return@map cut
+        val end = valueMs.coerceIn(minimumEnd, maximumMs)
+        val afterPadding = cut.keepEndMs - cut.coreEndMs
+        cut.copy(
+            coreEndMs = end,
+            keepEndMs = (end + afterPadding).coerceAtMost(maximumMs),
+        )
+    })
+
+    fun setCoreRange(
+        draft: EditorDraft,
+        cutId: String,
+        startMs: Long,
+        endMs: Long,
+        minimumMs: Long,
+        maximumMs: Long,
+    ): EditorDraft {
+        if (maximumMs - minimumMs < MIN_MARK_MS) return draft
+        return draft.copy(cuts = draft.cuts.map { cut ->
+            if (cut.id != cutId) return@map cut
+            val start = startMs.coerceIn(minimumMs, maximumMs - MIN_MARK_MS)
+            val end = endMs.coerceIn(start + MIN_MARK_MS, maximumMs)
+            val beforePadding = cut.coreStartMs - cut.keepStartMs
+            val afterPadding = cut.keepEndMs - cut.coreEndMs
+            cut.copy(
+                coreStartMs = start,
+                coreEndMs = end,
+                keepStartMs = (start - beforePadding).coerceAtLeast(minimumMs),
+                keepEndMs = (end + afterPadding).coerceAtMost(maximumMs),
+            )
+        })
+    }
+
+    fun splitCut(
+        draft: EditorDraft,
+        cutId: String,
+        positionMs: Long,
+        minimumMs: Long,
+        maximumMs: Long,
+    ): CutSplitResult? {
+        val cutIndex = draft.cuts.indexOfFirst { it.id == cutId }
+        if (cutIndex < 0) return null
+        val cut = draft.cuts[cutIndex]
+        if (positionMs < cut.coreStartMs + MIN_MARK_MS ||
+            positionMs > cut.coreEndMs - MIN_MARK_MS
+        ) return null
+
+        val beforePadding = cut.coreStartMs - cut.keepStartMs
+        val afterPadding = cut.keepEndMs - cut.coreEndMs
+        val prefix = if (cut.origin == CutOrigin.INFERRED) "R" else "M"
+        val left = cut.copy(
+            coreEndMs = positionMs,
+            keepEndMs = (positionMs + afterPadding).coerceAtMost(maximumMs),
+        )
+        val right = cut.copy(
+            id = nextId(prefix, draft.cuts.map { it.id }),
+            coreStartMs = positionMs,
+            keepStartMs = (positionMs - beforePadding).coerceAtLeast(minimumMs),
+        )
+        val updatedCuts = draft.cuts.toMutableList().apply {
+            this[cutIndex] = left
+            add(cutIndex + 1, right)
+        }
+        return CutSplitResult(draft.copy(cuts = updatedCuts), right)
     }
 
     fun finalIntervals(
