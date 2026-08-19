@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AndroidAppBanner } from "@/components/AndroidAppBanner";
 import { CutEditor } from "@/components/CutEditor";
 import { GuidedTour } from "@/components/GuidedTour";
 import { ProjectHeader } from "@/components/ProjectHeader";
+import { cutDraftStorageKeys } from "@/lib/cut-draft";
 import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
 import {
+  type AnalysisWindow,
   MIN_ANALYSIS_WINDOW_SECONDS,
   normalizeAnalysisWindow,
-  type AnalysisWindow,
 } from "@/lib/on-device/analysis-window";
 import { deleteFeatureCachesForSource } from "@/lib/on-device/feature-cache";
 import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
@@ -42,7 +44,6 @@ import {
   sourceFileFingerprint,
   type VolleyCutProject,
 } from "@/lib/project-store";
-import { cutDraftStorageKeys } from "@/lib/cut-draft";
 
 import styles from "./App.module.css";
 
@@ -687,13 +688,16 @@ export function App() {
       ? `${queueIds.length} queued`
       : null;
   const projectHeader = (
-    <ProjectHeader
-      projects={projects}
-      selectedProjectId={selectedProjectId}
-      queueLabel={queueLabel}
-      onSelectProject={selectProject}
-      onDeleteProject={() => void removeSelectedProject()}
-    />
+    <>
+      <AndroidAppBanner />
+      <ProjectHeader
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        queueLabel={queueLabel}
+        onSelectProject={selectProject}
+        onDeleteProject={() => void removeSelectedProject()}
+      />
+    </>
   );
 
   const productAnalysis = useMemo<ProductAnalysis | null>(() => {

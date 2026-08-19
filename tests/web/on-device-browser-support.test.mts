@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  isAndroidBrowser,
   isChromeOnIosBrowser,
   isUnsupportedSafariBrowser,
 } from "../../lib/on-device/browser-support.ts";
@@ -22,6 +23,23 @@ test("local and production apps ship the same browser support policy", async () 
     readFile(prodSupportPath, "utf8"),
   ]);
   assert.equal(prodSource, rootSource);
+});
+
+test("Android user agents are selected for the native app offer", () => {
+  assert.equal(
+    isAndroidBrowser(
+      "Mozilla/5.0 (Linux; Android 17; Pixel 10 Pro) " +
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+    ),
+    true,
+  );
+  assert.equal(
+    isAndroidBrowser(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) " +
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile Safari/604.1",
+    ),
+    false,
+  );
 });
 
 test("desktop Safari on macOS is unsupported", () => {
