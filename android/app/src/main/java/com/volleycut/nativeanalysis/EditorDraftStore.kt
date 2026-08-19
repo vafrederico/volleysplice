@@ -52,6 +52,20 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         put("finalPreviewEnabled", draft.finalPreviewEnabled)
         put("playbackRate", draft.playbackRate.toDouble())
         put("confidenceReviewThreshold", draft.confidenceReviewThreshold.toDouble())
+        put("selectedSuppressionPolicy", draft.selectedSuppressionPolicy.wireName)
+        put("suppressionInitialBehavior", draft.suppressionInitialBehavior.wireName)
+        put("suppressionDecisionOverrides", JSONObject().apply {
+            draft.suppressionDecisionOverrides.toSortedMap().forEach { (id, decision) ->
+                put(id, decision.wireName)
+            }
+        })
+        put("suppressionScopeOverrides", JSONObject().apply {
+            draft.suppressionScopeOverrides.toSortedMap().forEach { (id, scope) ->
+                put(id, scope.wireName)
+            }
+        })
+        put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
+        put("suppressionContractVersion", draft.suppressionContractVersion)
         put("cuts", JSONArray().apply {
             draft.cuts.forEach { cut -> put(JSONObject().apply {
                 put("id", cut.id)
@@ -107,6 +121,21 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
                 ))
             }
         }
+        val overridesJson = json.optJSONObject("suppressionDecisionOverrides") ?: JSONObject()
+        val overrides = buildMap {
+            overridesJson.keys().forEach { id ->
+                SuppressionDecision.fromWireName(overridesJson.optString(id))?.let { put(id, it) }
+            }
+        }
+        val scopeOverridesJson = json.optJSONObject("suppressionScopeOverrides") ?: JSONObject()
+        val scopeOverrides = buildMap {
+            scopeOverridesJson.keys().forEach { id ->
+                SuppressionScope.fromWireName(scopeOverridesJson.optString(id))
+                    .takeIf { it != SuppressionScope.WHOLE_RALLY }
+                    ?.let { put(id, it) }
+            }
+        }
+        val touchedJson = json.optJSONArray("userTouchedCutIds") ?: JSONArray()
         val draft = EditorDraft(
             sourceRevision = json.getString("sourceRevision"),
             updatedAtMs = json.optLong("updatedAtMs"),
@@ -123,8 +152,23 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             confidenceReviewThreshold = json.optDouble("confidenceReviewThreshold", .7).toFloat(),
             cuts = cuts,
             ignoredIntervals = ignored,
+            selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.fromWireName(
+                json.optString("selectedSuppressionPolicy", "none"),
+            ),
+            suppressionInitialBehavior = SuppressionInitialBehavior.fromWireName(
+                json.optString("suppressionInitialBehavior", "disable-initially"),
+            ),
+            suppressionDecisionOverrides = overrides,
+            suppressionScopeOverrides = scopeOverrides,
+            userTouchedCutIds = buildSet {
+                for (index in 0 until touchedJson.length()) add(touchedJson.getString(index))
+            },
+            suppressionContractVersion = json.optString(
+                "suppressionContractVersion",
+                FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION,
+            ),
         )
-        return draft.takeIf { validate(it) }
+        return EditorMath.reconcileTouchedCuts(draft, seed).takeIf { validate(it) }
     }
 
     private fun validate(draft: EditorDraft): Boolean =
@@ -133,6 +177,8 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             draft.joinGapMs in 0..MAX_JOIN_GAP_MS &&
             draft.playbackRate in setOf(1f, 2f, 4f, 8f) &&
             draft.confidenceReviewThreshold in 0f..1f &&
+            draft.suppressionContractVersion == FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION &&
+            draft.userTouchedCutIds.all { id -> draft.cuts.any { it.id == id } } &&
             draft.cuts.all { cut ->
                 cut.keepStartMs in seed.gameStartMs..cut.coreStartMs &&
                     cut.coreStartMs < cut.coreEndMs &&

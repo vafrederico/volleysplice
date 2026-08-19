@@ -84,6 +84,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -93,6 +94,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -218,6 +220,8 @@ private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorS
     ranges = result.ranges().map {
         SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence(), it.agreement())
     },
+    productionComponents = result.productionComponents(),
+    suppression = result.suppression(),
 )
 
 private val Paper = Color(0xFFF7F4EE)
@@ -228,6 +232,7 @@ private val PaleGreen = Color(0xFF9ED5B5)
 private val Muted = Color(0xFF77736C)
 private val Rail = Color(0xFFE4E0D7)
 private val Danger = Color(0xFFB3261E)
+private val SuppressionRed = Color(0xFFD1242F)
 private val Warning = Color(0xFFE8A317)
 
 private fun EditableCut.isModelDisagreement(): Boolean =
@@ -799,6 +804,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 relinkingSource = relinkingSource,
                 relinkMessage = relinkMessage,
                 relinkFailed = relinkFailed,
+                onSuppressionAugmented = { updated ->
+                    projects = projects.map { if (it.id == updated.id) updated else it }
+                },
                 onRelink = {
                     relinkTargetId = selectedProject.id
                     relinkPicker.launch(arrayOf("video/*"))
@@ -1199,6 +1207,7 @@ private fun EditorScreen(
     relinkingSource: Boolean,
     relinkMessage: String?,
     relinkFailed: Boolean,
+    onSuppressionAugmented: (NativeProject) -> Unit,
     onRelink: () -> Unit,
     sourceControls: @Composable (EditorProjectSummary) -> Unit,
 ) {
@@ -1219,6 +1228,8 @@ private fun EditorScreen(
     var pendingExportIntervals by remember { mutableStateOf<List<FinalCutInterval>?>(null) }
     var feedbackExporting by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
+    var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
+    var suppressionPreparing by remember { mutableStateOf(false) }
 
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -1231,8 +1242,29 @@ private fun EditorScreen(
     val sortedCuts = draft.cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
     val selected = sortedCuts.firstOrNull { it.id == selectedId } ?: sortedCuts.firstOrNull()
     val selectedIndex = selected?.let { sortedCuts.indexOf(it) } ?: -1
-    val finalIntervals = EditorMath.finalIntervals(draft)
-    val effectiveIds = EditorMath.effectiveKeptIds(draft)
+    val finalMaterialization = EditorMath.materialize(draft, seed.suppression)
+    val finalIntervals = finalMaterialization.intervals
+    val effectiveIds = EditorMath.effectiveKeptIds(draft, seed.suppression)
+    val activeSuggestions = EditorMath.activeSuggestions(draft, seed.suppression)
+    val selectedSuggestion = activeSuggestions.firstOrNull { it.fragmentId() == selectedSuggestionId }
+    val selectedSuggestionIndex = selectedSuggestion?.let(activeSuggestions::indexOf) ?: -1
+    val appliedSuggestionCount = activeSuggestions.count {
+        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
+    }
+    val baselineTotalMs = EditorMath.totalFinalMs(EditorMath.finalIntervals(
+        draft.copy(selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.NONE),
+        seed.suppression,
+    ))
+    val suppressionPoliciesEqual = seed.suppression?.let { analysis ->
+        listOf(
+            SuppressionPolicyEngine.Policy.CONSERVATIVE,
+            SuppressionPolicyEngine.Policy.BALANCED,
+            SuppressionPolicyEngine.Policy.AGGRESSIVE,
+        ).map { policy ->
+            SuppressionPolicyEngine.active(analysis, policy)
+                .map { "${it.startMs()}:${it.endMs()}:${it.logicalId()}" }
+        }.distinct().size == 1
+    } == true
     val lowConfidence = sortedCuts.filter {
         it.origin == CutOrigin.INFERRED && it.included && it.id in effectiveIds &&
             (it.isModelDisagreement() || it.confidence < draft.confidenceReviewThreshold)
@@ -1246,16 +1278,20 @@ private fun EditorScreen(
     val visibleIgnoredIntervals = draft.ignoredIntervals.filter {
         it.endMs > seed.gameStartMs && it.startMs < seed.gameEndMs
     }
-    val detailWindow = EditorMath.detailWindow(
-        selected,
-        playbackPositionMs,
-        seed.durationMs,
-        seed.gameStartMs,
-        seed.gameEndMs,
+    val detailWindow = selectedSuggestion?.let { suggestion ->
+        val span = max(24_000L, suggestion.endMs() - suggestion.startMs() + 10_000L)
+        val center = (suggestion.startMs() + suggestion.endMs()) / 2
+        var start = max(seed.gameStartMs, center - span / 2)
+        val end = min(seed.gameEndMs, start + span)
+        start = max(seed.gameStartMs, end - span)
+        DetailWindow(start, end)
+    } ?: EditorMath.detailWindow(
+        selected, playbackPositionMs, seed.durationMs, seed.gameStartMs, seed.gameEndMs,
     )
 
     fun updateDraft(mutate: (EditorDraft) -> EditorDraft) {
-        draft = mutate(draft).copy(updatedAtMs = System.currentTimeMillis())
+        draft = EditorMath.reconcileTouchedCuts(mutate(draft), seed)
+            .copy(updatedAtMs = System.currentTimeMillis())
     }
 
     fun updateCut(id: String, mutate: (EditableCut) -> EditableCut) {
@@ -1268,6 +1304,17 @@ private fun EditorScreen(
         val target = positionMs.coerceIn(seed.gameStartMs, seed.gameEndMs)
         playbackPositionMs = target
         player.seekTo(target)
+    }
+
+    fun selectSuggestion(suggestion: AnalysisTypes.SuppressionSuggestion) {
+        player.pause()
+        previewEndMs = null
+        selectedSuggestionId = suggestion.fragmentId()
+        val parent = sortedCuts.firstOrNull { cut ->
+            cut.coreStartMs < suggestion.endMs() && suggestion.startMs() < cut.coreEndMs
+        }
+        parent?.let { selectedId = it.id }
+        seekTo(max(seed.gameStartMs, suggestion.startMs() - 2_000))
     }
 
     fun setBoundary(side: String, valueMs: Long) {
@@ -1461,12 +1508,13 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset this edit?") },
-            text = { Text("All boundary, keep/remove, manual-cut, and ignored-section changes will be discarded.") },
+            text = { Text("All boundary, keep/remove, suppression, manual-cut, and ignored-section changes will be discarded.") },
             confirmButton = {
                 TextButton(onClick = {
                     store.clear()
                     draft = EditorMath.newDraft(seed)
                     selectedId = draft.cuts.firstOrNull()?.id.orEmpty()
+                    selectedSuggestionId = null
                     confirmReset = false
                     message = "Restored inference ranges"
                 }) { Text("Reset") }
@@ -1522,6 +1570,98 @@ private fun EditorScreen(
             }
 
             SectionCard("OUTPUT", "Padding and retained short gaps") {
+                if (seed.suppression == null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Suppression suggestions", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Prepare from the saved feature cache; video and audio are not decoded again.",
+                                fontSize = 12.sp,
+                                color = Muted,
+                            )
+                        }
+                        OutlinedButton(
+                            enabled = !suppressionPreparing,
+                            onClick = {
+                                suppressionPreparing = true
+                                scope.launch {
+                                    val result = runCatching {
+                                        withContext(Dispatchers.IO) {
+                                            SuppressionAugmenter.augment(context, project)
+                                        }
+                                    }
+                                    suppressionPreparing = false
+                                    result.onSuccess {
+                                        onSuppressionAugmented(it)
+                                        message = "Suppression suggestions are ready"
+                                    }.onFailure {
+                                        message = it.message ?: "Could not prepare suppression suggestions"
+                                    }
+                                }
+                            },
+                        ) { Text(if (suppressionPreparing) "Preparing…" else "Prepare") }
+                    }
+                } else {
+                    Text("Suppression", fontWeight = FontWeight.SemiBold)
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        SuppressionPolicyEngine.Policy.values().forEach { policy ->
+                            FilterChip(
+                                selected = draft.selectedSuppressionPolicy == policy,
+                                onClick = {
+                                    updateDraft { it.copy(selectedSuppressionPolicy = policy) }
+                                    if (policy == SuppressionPolicyEngine.Policy.NONE) {
+                                        selectedSuggestionId = null
+                                    }
+                                },
+                                label = { Text(policy.label, fontSize = 11.sp) },
+                            )
+                        }
+                    }
+                    if (suppressionPoliciesEqual) {
+                        Text(
+                            "All three levels produce the same ${seed.suppression.suggestions().size} suggestions for this game.",
+                            fontSize = 11.sp,
+                            color = Muted,
+                        )
+                    }
+                    Text("New suggestions", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        SuppressionInitialBehavior.entries.forEach { behavior ->
+                            FilterChip(
+                                selected = draft.suppressionInitialBehavior == behavior,
+                                onClick = {
+                                    updateDraft { it.copy(suppressionInitialBehavior = behavior) }
+                                },
+                                label = { Text(behavior.label, fontSize = 11.sp) },
+                            )
+                        }
+                    }
+                    Text(
+                        if (draft.suppressionInitialBehavior == SuppressionInitialBehavior.HIGHLIGHT_ONLY) {
+                            "Untouched suggestions stay in the output until you choose Suppress."
+                        } else {
+                            "Untouched suggestions start disabled; edited ranges stay protected."
+                        },
+                        fontSize = 11.sp,
+                        color = Muted,
+                    )
+                    if (draft.selectedSuppressionPolicy != SuppressionPolicyEngine.Policy.NONE) {
+                        Text(
+                            "${draft.selectedSuppressionPolicy.label} · ${activeSuggestions.size} suggestions · $appliedSuggestionCount applied · ${compactTime(baselineTotalMs - totalFinalMs)} less",
+                            fontSize = 12.sp,
+                            color = Muted,
+                        )
+                        if (activeSuggestions.isEmpty()) {
+                            Text("No suppression suggestions for this game", color = Muted, fontSize = 12.sp)
+                        }
+                    }
+                }
                 PaddingControl("Before", draft.beforePaddingMs) { before ->
                     updateDraft { EditorMath.applyPadding(
                         it, before, it.afterPaddingMs, seed.durationMs,
@@ -1590,7 +1730,9 @@ private fun EditorScreen(
             )
 
             SectionCard("GAME WINDOW", "Tap a range · gray = joined gap", compact = true) {
-                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, disagreementCount, compact = true, onChange = { threshold ->
+                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, disagreementCount,
+                    suppressionCount = activeSuggestions.size,
+                    compact = true, onChange = { threshold ->
                     updateDraft { it.copy(confidenceReviewThreshold = threshold) }
                 }, onReviewNext = {
                     if (lowConfidence.isNotEmpty()) {
@@ -1603,6 +1745,12 @@ private fun EditorScreen(
                             "${next.id} was detected by only one model; validate or disable it"
                         } else "${next.id} has ${(next.confidence * 100).roundToInt()}% confidence"
                     }
+                }, onSuppressionNext = {
+                    EditorMath.nextSuppressionSuggestion(
+                        activeSuggestions,
+                        playbackPositionMs,
+                        selectedSuggestionId,
+                    )?.let(::selectSuggestion)
                 })
                 WholeTimeline(
                     windowStartMs = seed.gameStartMs,
@@ -1610,13 +1758,27 @@ private fun EditorScreen(
                     cuts = sortedCuts,
                     joinedGaps = joinedGaps,
                     ignored = visibleIgnoredIntervals,
+                    suggestions = activeSuggestions,
+                    appliedSuggestionIds = activeSuggestions.filter {
+                        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
+                    }.map { it.fragmentId() }.toSet(),
+                    selectedSuggestionId = selectedSuggestionId,
                     selectedId = selected?.id,
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
                     playheadMs = playbackPositionMs,
-                    onSeek = { time, id ->
-                        id?.let { selectedId = it }
-                        seekTo(time)
+                    onSeek = { time, id, suggestionId ->
+                        if (suggestionId != null) {
+                            val candidate = suggestionId
+                            activeSuggestions.firstOrNull { it.fragmentId() == candidate }
+                                ?.let(::selectSuggestion)
+                        } else {
+                            id?.let {
+                                selectedSuggestionId = null
+                                selectedId = it
+                            }
+                            seekTo(time)
+                        }
                     },
                 )
                 TimelineLabels(
@@ -1630,13 +1792,27 @@ private fun EditorScreen(
                     cuts = sortedCuts,
                     joinedGaps = joinedGaps,
                     ignored = visibleIgnoredIntervals,
+                    suggestions = activeSuggestions,
+                    appliedSuggestionIds = activeSuggestions.filter {
+                        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
+                    }.map { it.fragmentId() }.toSet(),
+                    selectedSuggestionId = selectedSuggestionId,
                     selectedId = selected?.id,
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
                     playheadMs = playbackPositionMs,
-                    onSeek = { time, id ->
-                        id?.let { selectedId = it }
-                        seekTo(time)
+                    onSeek = { time, id, suggestionId ->
+                        if (suggestionId != null) {
+                            val candidate = suggestionId
+                            activeSuggestions.firstOrNull { it.fragmentId() == candidate }
+                                ?.let(::selectSuggestion)
+                        } else {
+                            id?.let {
+                                selectedSuggestionId = null
+                                selectedId = it
+                            }
+                            seekTo(time)
+                        }
                     },
                 )
                 TimelineLabels(
@@ -1646,10 +1822,106 @@ private fun EditorScreen(
                 )
             }
 
+            if (selectedSuggestion != null) {
+                val effectiveDecision = EditorMath.suggestionEffectiveDecision(draft, selectedSuggestion)
+                val effectiveScope = EditorMath.suggestionEffectiveScope(draft, selectedSuggestion)
+                val explicitDecision = draft.suppressionDecisionOverrides[selectedSuggestion.logicalId()]
+                val protectedByEdit = explicitDecision == null && draft.userTouchedCutIds.any { id ->
+                    draft.cuts.firstOrNull { it.id == id }?.let { cut ->
+                        cut.coreStartMs < selectedSuggestion.endMs() &&
+                            selectedSuggestion.startMs() < cut.coreEndMs
+                    } == true
+                }
+                SectionCard(
+                    "SUPPRESSION SUGGESTION",
+                    "${selectedSuggestionIndex + 1} / ${activeSuggestions.size} · ${(selectedSuggestion.score() * 100).roundToInt()}% model score",
+                    compact = true,
+                ) {
+                    Text(
+                        "${preciseTime(selectedSuggestion.startMs())}–${preciseTime(selectedSuggestion.endMs())}",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        when {
+                            protectedByEdit -> "Edited rally—kept"
+                            effectiveDecision == SuppressionDecision.SUPPRESS ->
+                                if (effectiveScope == SuppressionScope.WHOLE_RALLY) {
+                                    "Whole rally suppressed"
+                                } else "Veto region suppressed"
+                            else -> "Suggestion kept"
+                        },
+                        color = if (effectiveDecision == SuppressionDecision.SUPPRESS) SuppressionRed else Muted,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text("Suppress scope", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        SuppressionScope.entries.forEach { scopeOption ->
+                            FilterChip(
+                                selected = effectiveScope == scopeOption,
+                                onClick = {
+                                    updateDraft { current -> current.copy(
+                                        suppressionScopeOverrides =
+                                            if (scopeOption == SuppressionScope.WHOLE_RALLY) {
+                                                current.suppressionScopeOverrides - selectedSuggestion.logicalId()
+                                            } else {
+                                                current.suppressionScopeOverrides +
+                                                    (selectedSuggestion.logicalId() to scopeOption)
+                                            },
+                                    ) }
+                                },
+                                label = { Text(scopeOption.label, fontSize = 11.sp) },
+                            )
+                        }
+                    }
+                    Text(
+                        if (effectiveScope == SuppressionScope.WHOLE_RALLY) {
+                            "Removes the entire inferred rally, including its padding."
+                        } else {
+                            "Removes only the red veto region; the rest of the rally stays."
+                        },
+                        color = Muted,
+                        fontSize = 11.sp,
+                    )
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SmallButton("Previous") {
+                            selectSuggestion(activeSuggestions[
+                                (selectedSuggestionIndex - 1 + activeSuggestions.size) % activeSuggestions.size
+                            ])
+                        }
+                        SmallButton("Next") {
+                            selectSuggestion(activeSuggestions[(selectedSuggestionIndex + 1) % activeSuggestions.size])
+                        }
+                        Button(onClick = {
+                            updateDraft { current -> current.copy(
+                                suppressionDecisionOverrides = current.suppressionDecisionOverrides +
+                                    (selectedSuggestion.logicalId() to SuppressionDecision.SUPPRESS),
+                            ) }
+                        }) { Text("Suppress") }
+                        OutlinedButton(onClick = {
+                            updateDraft { current -> current.copy(
+                                suppressionDecisionOverrides = current.suppressionDecisionOverrides +
+                                    (selectedSuggestion.logicalId() to SuppressionDecision.KEEP),
+                            ) }
+                        }) { Text("Keep") }
+                    }
+                }
+            }
+
             SectionCard(
                 "FOCUSED RANGE",
                 selected?.let {
-                    "${it.id} · ${if (it.origin == CutOrigin.MANUAL) "Manual" else "${it.modelAgreementLabel()} · ${(it.confidence * 100).roundToInt()}% review confidence"}"
+                    val hasSuggestion = activeSuggestions.any { suggestion ->
+                        it.coreStartMs < suggestion.endMs() && suggestion.startMs() < it.coreEndMs
+                    }
+                    "${it.id} · ${if (it.origin == CutOrigin.MANUAL) "Manual" else "${it.modelAgreementLabel()} · ${(it.confidence * 100).roundToInt()}% review confidence"}" +
+                        if (hasSuggestion) " · suppression suggestion" else ""
                 }
                     ?: "No range selected",
                 compact = true,
@@ -1680,7 +1952,15 @@ private fun EditorScreen(
                         effective = selected.id in effectiveIds,
                         lowConfidence = selected.isModelDisagreement() ||
                             selected.confidence < draft.confidenceReviewThreshold,
+                        suggestions = activeSuggestions,
+                        appliedSuggestionIds = activeSuggestions.filter {
+                            EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
+                        }.map { it.fragmentId() }.toSet(),
                         onSeek = ::seekTo,
+                        onSuggestionSelect = { id ->
+                            activeSuggestions.firstOrNull { it.fragmentId() == id }
+                                ?.let(::selectSuggestion)
+                        },
                         onStartChange = { setBoundary("start", it) },
                         onEndChange = { setBoundary("end", it) },
                     )
@@ -1868,13 +2148,20 @@ private fun SectionCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         label,
-                        Modifier.weight(1f),
                         color = Orange,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = .7.sp,
                     )
-                    Text(subtitle, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        subtitle,
+                        Modifier.weight(1f),
+                        color = Muted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.End,
+                    )
                 }
             } else {
                 Text(label, color = Orange, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
@@ -1934,9 +2221,11 @@ private fun ConfidenceControl(
     value: Float,
     count: Int,
     disagreementCount: Int,
+    suppressionCount: Int,
     compact: Boolean = false,
     onChange: (Float) -> Unit,
     onReviewNext: () -> Unit,
+    onSuppressionNext: () -> Unit,
 ) {
     if (compact) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1949,6 +2238,11 @@ private fun ConfidenceControl(
                 steps = 99,
             )
             SmallButton("Review $count", enabled = count > 0, onClick = onReviewNext)
+            SmallButton(
+                "Next suppression",
+                enabled = suppressionCount > 0,
+                onClick = onSuppressionNext,
+            )
         }
     } else {
         Column {
@@ -1956,6 +2250,9 @@ private fun ConfidenceControl(
                 Text("Review disagreements and confidence below ${(value * 100).roundToInt()}%", Modifier.weight(1f), fontSize = 13.sp)
                 Text("$disagreementCount disagreements · $count ranges", color = Muted, fontSize = 12.sp)
                 TextButton(enabled = count > 0, onClick = onReviewNext) { Text("Review next") }
+                TextButton(enabled = suppressionCount > 0, onClick = onSuppressionNext) {
+                    Text("Next suppression")
+                }
             }
             Slider(value = value, onValueChange = onChange, valueRange = 0f..1f, steps = 99)
         }
@@ -1969,11 +2266,14 @@ private fun WholeTimeline(
     cuts: List<EditableCut>,
     joinedGaps: List<JoinedGap>,
     ignored: List<IgnoredSourceInterval>,
+    suggestions: List<AnalysisTypes.SuppressionSuggestion>,
+    appliedSuggestionIds: Set<String>,
+    selectedSuggestionId: String?,
     selectedId: String?,
     effectiveIds: Set<String>,
     confidenceThreshold: Float,
     playheadMs: Long,
-    onSeek: (Long, String?) -> Unit,
+    onSeek: (Long, String?, String?) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
@@ -1988,17 +2288,28 @@ private fun WholeTimeline(
                 .height(34.dp)
                 .clip(RoundedCornerShape(9.dp))
                 .background(Rail)
-                .pointerInput(windowStartMs, windowEndMs, cuts) {
+                .semantics {
+                    contentDescription = if (suggestions.isEmpty()) "Game timeline"
+                    else "Game timeline with ${suggestions.size} suppression suggestions: " +
+                        suggestions.joinToString { suggestion ->
+                            "${preciseTime(suggestion.startMs())} to ${preciseTime(suggestion.endMs())}, " +
+                                if (suggestion.fragmentId() in appliedSuggestionIds) "Suppressed" else "Suggestion kept"
+                        }
+                }
+                .pointerInput(windowStartMs, windowEndMs, cuts, suggestions) {
                     detectTapGestures { offset ->
                         val time = timeAt(offset.x)
+                        val suggestion = suggestions.lastOrNull {
+                            time >= it.startMs() && time <= it.endMs()
+                        }
                         val cut = cuts.lastOrNull { time in it.keepStartMs..it.keepEndMs }
-                        onSeek(time, cut?.id)
+                        onSeek(time, cut?.id, suggestion?.fragmentId())
                     }
                 }
                 .pointerInput(windowStartMs, windowEndMs) {
                     detectHorizontalDragGestures(
-                        onDragStart = { onSeek(timeAt(it.x), null) },
-                        onHorizontalDrag = { change, _ -> change.consume(); onSeek(timeAt(change.position.x), null) },
+                        onDragStart = { onSeek(timeAt(it.x), null, null) },
+                        onHorizontalDrag = { change, _ -> change.consume(); onSeek(timeAt(change.position.x), null, null) },
                     )
                 },
         ) {
@@ -2008,7 +2319,14 @@ private fun WholeTimeline(
                 if (clippedEnd <= clippedStart) return@forEach
                 val x = xAt(clippedStart)
                 val width = max(1f, xAt(clippedEnd) - x)
-                drawRect(Danger.copy(alpha = .26f), Offset(x, 0f), Size(width, size.height))
+                drawRect(Color(0xFF4B4A47).copy(alpha = .28f), Offset(x, 0f), Size(width, size.height))
+                clipRect(x, 0f, x + width, size.height) {
+                    var hatch = x - size.height
+                    while (hatch < x + width) {
+                        drawLine(Color(0xFF4B4A47).copy(alpha = .5f), Offset(hatch, size.height), Offset(hatch + size.height, 0f), 2f)
+                        hatch += 10f
+                    }
+                }
             }
             joinedGaps.forEach { gap ->
                 val clippedStart = max(gap.startMs, windowStartMs)
@@ -2058,6 +2376,38 @@ private fun WholeTimeline(
                     drawRoundRect(Orange, Offset(x, 13f), Size(width, size.height - 26f), CornerRadius(7f), style = Stroke(4f))
                 }
             }
+            suggestions.forEach { suggestion ->
+                val clippedStart = max(suggestion.startMs(), windowStartMs)
+                val clippedEnd = min(suggestion.endMs(), windowEndMs)
+                if (clippedEnd <= clippedStart) return@forEach
+                val x = xAt(clippedStart)
+                val width = max(2f, xAt(clippedEnd) - x)
+                val applied = suggestion.fragmentId() in appliedSuggestionIds
+                if (applied) {
+                    drawRect(SuppressionRed.copy(alpha = .62f), Offset(x, 0f), Size(width, size.height))
+                } else {
+                    drawRect(
+                        SuppressionRed.copy(alpha = .2f), Offset(x, 0f), Size(width, size.height),
+                    )
+                    drawRect(
+                        SuppressionRed, Offset(x, 1f), Size(width, size.height - 2f),
+                        style = Stroke(3f),
+                    )
+                }
+                clipRect(x, 0f, x + width, size.height) {
+                    var hatch = x - size.height
+                    while (hatch < x + width) {
+                        drawLine(
+                            SuppressionRed.copy(alpha = if (applied) .95f else .55f),
+                            Offset(hatch, size.height), Offset(hatch + size.height, 0f), 2f,
+                        )
+                        hatch += 10f
+                    }
+                }
+                if (suggestion.fragmentId() == selectedSuggestionId) {
+                    drawRect(Color.White, Offset(x, 2f), Size(width, size.height - 4f), style = Stroke(3f))
+                }
+            }
             if (playheadMs in windowStartMs..windowEndMs) {
                 val playheadX = xAt(playheadMs)
                 drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
@@ -2073,7 +2423,10 @@ private fun FocusTimeline(
     playheadMs: Long,
     effective: Boolean,
     lowConfidence: Boolean,
+    suggestions: List<AnalysisTypes.SuppressionSuggestion>,
+    appliedSuggestionIds: Set<String>,
     onSeek: (Long) -> Unit,
+    onSuggestionSelect: (String) -> Unit,
     onStartChange: (Long) -> Unit,
     onEndChange: (Long) -> Unit,
 ) {
@@ -2088,7 +2441,20 @@ private fun FocusTimeline(
                 .fillMaxSize()
                 .clip(RoundedCornerShape(10.dp))
                 .background(Rail)
-                .pointerInput(window) { detectTapGestures { onSeek(timeAt(it.x)) } }
+                .semantics {
+                    contentDescription = "Focused timeline. " + suggestions.joinToString {
+                        "Suppression ${preciseTime(it.startMs())} to ${preciseTime(it.endMs())}, " +
+                            if (it.fragmentId() in appliedSuggestionIds) "Suppressed" else "Suggestion kept"
+                    }
+                }
+                .pointerInput(window, suggestions) {
+                    detectTapGestures { offset ->
+                        val time = timeAt(offset.x)
+                        suggestions.lastOrNull {
+                            time >= it.startMs() && time <= it.endMs()
+                        }?.let { onSuggestionSelect(it.fragmentId()) } ?: onSeek(time)
+                    }
+                }
                 .pointerInput(window) {
                     detectHorizontalDragGestures(
                         onDragStart = { onSeek(timeAt(it.x)) },
@@ -2117,6 +2483,29 @@ private fun FocusTimeline(
                 Size(max(2f, xAt(cut.coreEndMs) - xAt(cut.coreStartMs)), size.height - 66f),
                 CornerRadius(5f),
             )
+            suggestions.forEach { suggestion ->
+                val clippedStart = max(suggestion.startMs(), window.startMs)
+                val clippedEnd = min(suggestion.endMs(), window.endMs)
+                if (clippedEnd <= clippedStart) return@forEach
+                val x = xAt(clippedStart)
+                val width = max(2f, xAt(clippedEnd) - x)
+                val applied = suggestion.fragmentId() in appliedSuggestionIds
+                drawRect(
+                    SuppressionRed.copy(alpha = if (applied) .62f else .18f),
+                    Offset(x, 0f), Size(width, size.height),
+                )
+                drawRect(
+                    SuppressionRed, Offset(x, 1f), Size(width, size.height - 2f),
+                    style = Stroke(if (applied) 1f else 3f),
+                )
+                clipRect(x, 0f, x + width, size.height) {
+                    var hatch = x - size.height
+                    while (hatch < x + width) {
+                        drawLine(SuppressionRed.copy(alpha = .75f), Offset(hatch, size.height), Offset(hatch + size.height, 0f), 2f)
+                        hatch += 10f
+                    }
+                }
+            }
             val playheadX = xAt(playheadMs).coerceIn(0f, size.width)
             drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f)
         }
@@ -2258,8 +2647,8 @@ private fun SmallButton(label: String, enabled: Boolean = true, onClick: () -> U
 
 private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<FinalCutInterval>) =
     JSONObject().apply {
-        put("schemaVersion", 1)
-        put("method", "android-editor-v2")
+        put("schemaVersion", 2)
+        put("method", "android-editor-v3-suppression")
         put("sourceName", seed.displayName)
         put("sourceUri", seed.sourceUri)
         put("sourceDuration", seed.durationMs / 1_000.0)
@@ -2270,6 +2659,63 @@ private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<F
         put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)
         put("joinGapSeconds", draft.joinGapMs / 1_000.0)
         put("outputDuration", EditorMath.totalFinalMs(intervals) / 1_000.0)
+        put("policyContractVersion", draft.suppressionContractVersion)
+        put("selectedSuppressionPolicy", draft.selectedSuppressionPolicy.wireName)
+        put("recordedSuppressionPolicy", draft.selectedSuppressionPolicy.recordedPolicy)
+        put("suppressionInitialBehavior", draft.suppressionInitialBehavior.wireName)
+        put("defaultSuppressionScope", SuppressionScope.WHOLE_RALLY.wireName)
+        put("suppression", seed.suppression?.let { analysis -> JSONObject().apply {
+            put("modelId", analysis.modelId())
+            put("artifactSha256", analysis.artifactSha256())
+            put("weightsSha256", analysis.weightsSha256())
+            put("decoderVersion", analysis.decoderVersion())
+            put("productionComponents", JSONObject().apply {
+                put("allLabelsV2", JSONArray().apply {
+                    seed.productionComponents.allLabelsV2().forEach { interval ->
+                        put(JSONObject().apply {
+                            put("start", interval.start())
+                            put("end", interval.end())
+                            put("confidence", interval.confidence().toDouble())
+                        })
+                    }
+                })
+                put("previousProduction", JSONArray().apply {
+                    seed.productionComponents.previousProduction().forEach { interval ->
+                        put(JSONObject().apply {
+                            put("start", interval.start())
+                            put("end", interval.end())
+                            put("confidence", interval.confidence().toDouble())
+                        })
+                    }
+                })
+            })
+            put("suggestions", JSONArray().apply {
+                analysis.suggestions().forEach { suggestion -> put(JSONObject().apply {
+                    put("logicalId", suggestion.logicalId())
+                    put("fragmentId", suggestion.fragmentId())
+                    put("start", suggestion.startMs() / 1_000.0)
+                    put("end", suggestion.endMs() / 1_000.0)
+                    put("score", suggestion.score().toDouble())
+                    put("sourceProductionIds", JSONArray(suggestion.sourceProductionIds()))
+                    put("eligiblePolicyIds", JSONArray(suggestion.eligiblePolicyIds()))
+                    put("active", suggestion.eligiblePolicyIds().contains(draft.selectedSuppressionPolicy.wireName))
+                    put("explicitDecision", draft.suppressionDecisionOverrides[suggestion.logicalId()]?.wireName ?: JSONObject.NULL)
+                    put("effectiveDecision", EditorMath.suggestionEffectiveDecision(draft, suggestion).wireName)
+                    put("effectiveScope", EditorMath.suggestionEffectiveScope(draft, suggestion).wireName)
+                }) }
+            })
+            put("decisionOverrides", JSONObject().apply {
+                draft.suppressionDecisionOverrides.toSortedMap().forEach { (id, decision) ->
+                    put(id, decision.wireName)
+                }
+            })
+            put("scopeOverrides", JSONObject().apply {
+                draft.suppressionScopeOverrides.toSortedMap().forEach { (id, scope) ->
+                    put(id, scope.wireName)
+                }
+            })
+            put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
+        }} ?: JSONObject.NULL)
         put("ranges", JSONArray().apply {
             intervals.forEach { range -> put(JSONObject().apply {
                 put("start", range.startMs / 1_000.0)
@@ -2303,6 +2749,17 @@ private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<F
                 put("end", interval.endMs / 1_000.0)
                 put("reason", interval.reason)
             }) }
+        })
+        put("materializationProvenance", JSONArray().apply {
+            EditorMath.materialize(draft, seed.suppression).provenance.forEach { segment ->
+                put(JSONObject().apply {
+                    put("start", segment.startMs / 1_000.0)
+                    put("end", segment.endMs / 1_000.0)
+                    put("kind", segment.kind)
+                    put("cutIds", JSONArray(segment.cutIds))
+                    put("suggestionIds", JSONArray(segment.suggestionIds))
+                })
+            }
         })
     }
 
