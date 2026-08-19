@@ -40,7 +40,7 @@ Private by design:
 
 Rally suggestions are assistive and may not be perfect. Review the proposed ranges before exporting your final video.
 
-VolleyCut is designed for 64-bit Android phones running Android 10 or later.
+VolleyCut is designed for 64-bit Android phones running Android 14 or later.
 
 ## Suggested classification
 

@@ -6,133 +6,82 @@ Audited version: `0.10.3` (`versionCode` 17)
 
 ## Verdict
 
-**Not ready for Play submission yet.** The privacy architecture is unusually strong, the unit tests pass, and a release app bundle can be produced. Submission should wait until the Android compatibility errors, foreground-service timeout handling, legal link, release signing, and final release validation are resolved.
+The source-level release blockers found in the first audit are addressed. The app is still not an upload artifact until the final release build is signed, the foreground-service declaration/demo is completed, and the remaining supported-device validation is completed against this exact build.
 
-## Release blockers
+## Resolved findings
 
-### 1. Lint fails with 10 errors across the supported Android range
+### Android compatibility and lint
 
-`minSdk` is 29, but production code calls APIs introduced in Android 13–15. Android lint fails both debug and release checks.
+The release `minSdk` is now 34 (Android 14), the lowest platform required by the current implementation. This makes the Java 34 stream APIs and Java 33 byte-array conversion safe for every supported device. The Android 15 batched `MediaCodec.queueInputBuffers()` path remains explicitly API-gated and annotated. `MediaExtractor` sample flags are mapped to the separate `MediaCodec` input-flag bit field instead of being forwarded directly.
 
-Evidence:
+Checks after the fix:
 
-- `AnalysisEngine.java:363` and seven `SuppressionPolicyEngine.java` sites call `Stream.toList()`, available from API 34 without core-library desugaring.
-- `SuppressionModelRunner.java:70` calls `ByteArrayOutputStream.toString(Charset)`, available from API 33.
-- `NativeAudioDecoder.java:584` calls API-35 `MediaCodec.queueInputBuffers()`. Runtime routing appears to guard this batched path to API 35+, but lint cannot prove it; isolate or annotate the API-specific implementation.
-- `NativeAudioDecoder.java:559` forwards `MediaExtractor` sample flags where `MediaCodec` buffer flags are required.
+- `testDebugUnitTest`: passed
+- `lintDebug`: passed with 0 errors
+- `lintRelease`: passed with 0 errors
+- `assembleDebug`: passed
+- `assembleRelease`: passed and produced an unsigned APK
+- `bundleRelease`: passed and produced an unsigned AAB
 
-Impact: analysis or suppression preparation can fail on Android versions the Play listing would mark compatible, and the required lint gate is red.
+Lint still reports non-blocking warnings (mostly localization/`UseKtx` suggestions, dependency freshness, ARM64-only ChromeOS support, and two adaptive-icon monochrome suggestions). They do not indicate unsafe API calls or a failed release gate.
 
-Recommendation: replace Java stream terminal calls with `Collectors.toList()` or enable verified core-library desugaring; use `new String(output.toByteArray(), UTF_8)`; isolate API-35 batching behind a versioned implementation; and explicitly map extractor flags to codec flags. Run lint and device tests on API 29, 33, 34, 35, 36, and 37.
+### Foreground-service timeout handling
 
-### 2. Media-processing foreground services do not implement timeout cleanup
+`ProjectAnalysisService` and `ExportService` now override `onTimeout(int, int)`. On timeout they cancel active work, clear queued work, mark affected inference projects as errors or export jobs as failed, remove incomplete export files, release foreground state and wake locks, and call `stopSelf()`. This follows Android's [foreground-service timeout guidance](https://developer.android.com/develop/background-work/services/fgs/timeout).
 
-Both `ProjectAnalysisService` and `ExportService` use `mediaProcessing`. Android 15+ limits this foreground-service type to six hours in a rolling 24-hour window and calls `Service.onTimeout(...)` when the budget is exhausted. Neither service overrides the callback. Both wake locks allow up to 12 hours.
+`ProcessingTimeoutTracker` stores a bounded local history and total count. The editor refreshes from its package-scoped broadcast, shows an acknowledgement dialog with operation/source/time/detail, and posts a notification that links back to the editor. No video bytes or network service are involved.
 
-Impact: a long analysis/export queue can be terminated with a foreground-service timeout exception instead of cancelling cleanly. The two services also share the same six-hour app-wide media-processing budget.
+### Privacy, backup, and attribution
 
-Recommendation: implement `onTimeout(int, int)` in both services, atomically cancel active work, remove incomplete exports, release wake locks, update project state, and call `stopSelf()` within the callback window. Cap or explain long queues and test with Android's shortened timeout configuration.
+- The app footer now links to `https://volleycut.vafrederico.com/privacy.html`.
+- The footer's **Open source** action presents the required dependency/license attribution and links to the Apache 2.0 license.
+- `android:allowBackup="false"` is set, and `data_extraction_rules.xml` excludes the app root from both cloud backup and device transfer.
+- The privacy and terms pages cover both the Android app and production web app and use `volleycut@vafrederico.com`.
 
-### 3. The release AAB is unsigned
+### Benchmark surface
 
-`bundleRelease` produced `android/app/build/outputs/bundle/release/app-release.aab`, but `jarsigner -verify` reports `jar is unsigned`.
+`MainActivity` is no longer in the release manifest. It is overlaid only by the debug manifest (where it remains exported for the existing ADB benchmark harness), and benchmark buttons are compiled behind `BuildConfig.DEBUG`. Release users therefore have only the launcher editor surface.
 
-Impact: Play Console will not accept it as an upload artifact.
+### Media3 1.11.0 review
 
-Recommendation: use Play App Signing and sign the AAB with the private upload key. Do not commit the private key or passwords. Rebuild after all fixes, then have the key owner run:
+The project remains on Media3 `1.10.1`. The official [Media3 release notes](https://developer.android.com/jetpack/androidx/releases/media3) describe 1.11.0 additions and fixes primarily for HLS/DASH, sessions, Cast, Ktor/network data sources, and broader extractor/Transformer behavior. VolleyCut uses local progressive MP4 playback and Transformer/MP4 export, with no HLS, DASH, Cast, Ktor, MediaSession, or network data source. The release notes contain no CVE/security-fix entry. There is no feature or security requirement in this app that justifies taking the dependency upgrade without a dedicated export/playback regression pass, so 1.10.1 is intentionally retained.
 
-```powershell
-& "$env:JAVA_HOME\bin\jarsigner.exe" -verbose -sigalg SHA256withRSA -digestalg SHA-256 `
-  -keystore "C:\path\to\upload-key.jks" `
-  "app\build\outputs\bundle\release\app-release.aab" "UPLOAD_KEY_ALIAS"
-```
+## Remaining submission work
 
-Verify without exposing a password:
+### 1. Sign the final release artifact
 
-```powershell
-& "$env:JAVA_HOME\bin\jarsigner.exe" -verify -verbose -certs `
-  "app\build\outputs\bundle\release\app-release.aab"
-```
+The AAB produced by `bundleRelease` is unsigned. Use Play App Signing and have the key owner sign/upload it; do not commit a private key or password. The same final source build must be used for the signed APK/AAB and any checked-in or production download artifact.
 
-### 4. A privacy policy is not linked or shown inside the Android app
+### 2. Complete Play declarations and demonstration
 
-Current Play policy requires a privacy-policy URL in Play Console and a privacy-policy link or text in the app. The Android UI has neither.
+The manifest declares `mediaProcessing`. Play Console still requires the use-case, deferral/interruption impact, and a public or unlisted demonstration video for Android 14+ foreground services ([official requirements](https://support.google.com/googleplay/android-developer/answer/13392821)). Use the prepared answers in `play-console-answers.md` and record the demonstration with a rights-cleared, non-personal clip. The screenshot workflow intentionally did not open or relink a personal video.
 
-Impact: policy rejection even though no data is collected.
+### 3. Repeat device validation
 
-Recommendation: deploy `prod/public/privacy.html`, add an in-app **Privacy** entry that opens the HTTPS policy or displays the same text locally, and keep the Play Console Data safety answers consistent with it.
+Run a clean install and exercise choose/relink, analysis, interruption, editing, export, cancellation, project deletion, policy link, and open-source dialog on Android 14 through 17. Test the timeout path on Android 15 through 17 with Android's shortened foreground-service timeout configuration before release; Android 14 does not provide the `onTimeout` callback. Verify the app's supported ARM64 device catalog and the final signed artifact.
 
-### 5. Foreground-service Play declaration and demonstration video are still required
+Pixel 10 Pro validation completed on 2026-08-19 using the current debug build (`0.10.3-debug`, Android 17/API 37): the editor launched, the footer links rendered, the open-source dialog opened, the privacy link resolved to the browser, and the debug-only benchmark activity opened with no video selected. A short local video inference completed successfully. A larger local HEVC clip reached Android's shortened `mediaProcessing` timeout; after decoder/worker teardown fixes, the service stopped without a native crash, the project was marked `ERROR`, the timeout dialog reported the interruption count, and the timeout notification was posted. The test clip stayed on the device and was not used for submission screenshots or other release assets. The temporary device timeout override was removed after testing.
 
-The manifest correctly declares the `mediaProcessing` type and permission, but Play Console requires the use case, deferral/interruption impact, and a demonstration-video link.
+### 4. Refresh release assets
 
-Impact: the App content section cannot be completed without it.
+If the UI changes after the captured screenshots, recheck the eight Play screenshots. Build/sign the new version before replacing the existing signed APK in `android/releases/` or the production download copy.
 
-Recommendation: use the prepared text in `play-console-answers.md` and record the rights-cleared demonstration described there.
+## Known non-blocking trade-offs
 
-## High-priority hardening
-
-### Unnecessary exported benchmark activity
-
-`MainActivity` is exported even though it has no public intent filter and exists for benchmark/automation tools. It accepts a content URI and automation extras. Android security guidance is to set internal components `exported="false"`.
-
-Recommendation: make `MainActivity` non-exported. Keep only launcher `EditorActivity` exported, and continue validating all launcher inputs.
-
-### Backup behavior conflicts with the simplest privacy promise
-
-The manifest sets `allowBackup="true"`. Project JSON, selected-document URIs, filenames, edit decisions, and preferences are stored in app-private files. Depending on OS/device settings, some may be included in cloud backup or device-to-device transfer.
-
-Recommendation: either intentionally support backup with explicit `dataExtractionRules` and disclose it, or exclude project metadata, feature caches, temporary exports, and document URIs. The provided policy discloses current Android-controlled backup/transfer behavior.
-
-### Only ARM64 devices are supported
-
-The app bundle filters to `arm64-v8a`. This satisfies Play's 64-bit requirement but excludes x86_64 Chromebooks/emulators and all 32-bit devices.
-
-Recommendation: keep ARM64-only only if that is an intentional market decision. Otherwise test and add x86_64 and/or other supported ABIs through the app bundle.
-
-## Medium and low findings
-
-- `MainActivity` displays a hard-coded `target API 36` while the build currently targets API 37.
-- Lint reports missing monochrome adaptive-icon layers for themed icons.
-- User-facing strings are mostly hard-coded, so the app is effectively English-only and lint reports localization warnings.
-- The release bundle contains dependency version markers and some AndroidX licenses, but there is no user-facing open-source notices page. Add one before wider distribution to make attribution maintenance explicit.
-- Media3 1.11.0 is available while the project uses 1.10.1. Upgrade only after regression testing export and playback.
-- The app uses no custom network security configuration. This is acceptable because it does not request `INTERNET`.
+- The app intentionally ships arm64-v8a only; x86_64 ChromeOS/emulators are not supported.
+- The UI is English-only and still has localization lint warnings.
+- Adaptive icons do not yet include monochrome layers.
+- Media3, OpenCV, and `org.json` have newer versions available, but none is required for this release's supported feature set.
+- The release bundle is minified with R8.
 
 ## Positive findings
 
-- No `INTERNET`, broad storage, photo/video library, camera, microphone, location, contacts, advertising ID, SMS, Call Log, or all-files permission.
+- No `INTERNET`, broad storage, camera, microphone, location, contacts, advertising ID, SMS, Call Log, or all-files permission.
 - Selected media is accessed with Android's system document picker and persisted read grants.
 - No ads, analytics, accounts, payment SDKs, remote services, or WebView.
 - Export destinations are user-selected through Android's system picker.
-- Foreground services are non-exported, use immutable pending intents, show user-visible progress, and provide cancellation for export.
+- Foreground services are non-exported, use immutable pending intents, show progress, and provide cancellation for export.
 - Dynamic progress receivers are registered as not exported.
 - Failed/cancelled exports remove or truncate incomplete destinations.
-- R8 minification is enabled for release.
-- The build targets API 37, exceeding Play's API 36 requirement that begins 2026-08-31.
-- The app package is 64-bit compliant and uses modern uncompressed native libraries.
-- Unit tests completed successfully, including model, editor math, persistence, guided tour, and inference tests.
-- A real Pixel 10 Pro successfully installed and launched the signed `v0.10.3` release package on Android 17 while preserving the existing saved project.
-- Eight Play-compatible release screenshots were captured from a source-unavailable saved inference; they contain no video frames or thumbnails.
-
-## Commands and results
-
-- `testDebugUnitTest`: passed
-- `assembleDebug`: passed
-- `bundleRelease`: produced an unsigned AAB
-- `lintDebug` / `lintRelease`: failed with 10 errors and 42 warnings
-- Debug APK size: approximately 63.8 MB
-- Merged permissions: foreground service, media-processing foreground service, wake lock, notifications, and dependency-added network-state access; no internet permission
-
-## Required final verification
-
-1. Resolve every lint error and rerun unit tests and lint.
-2. Test clean install, first run, analysis, interruption, cancellation, relinking, editing, and export on the supported API matrix.
-3. Test the six-hour foreground-service timeout callback with a shortened device-config duration.
-4. Build the final release AAB and sign it with the upload key.
-5. Upload to Play internal testing and review the automated pre-launch report, device catalog, permissions, native-code warnings, and app size.
-6. Verify the privacy-policy URL is public, non-editable to visitors, and linked from the app.
-7. Complete Data safety, target audience, content rating, ads, app access, and foreground-service declarations.
-8. Record the foreground-service demonstration using only a rights-cleared non-personal clip.
-9. Recheck the prepared release screenshots if the UI changes before submission.
-10. If applicable, complete the 12-tester/14-day closed test and apply for production access.
+- The build targets API 37, exceeding the [Play target API 36 requirement](https://developer.android.com/google/play/requirements/target-sdk) for new apps and updates beginning August 31, 2026.
+- Unit tests and both debug/release lint checks pass after the fixes.

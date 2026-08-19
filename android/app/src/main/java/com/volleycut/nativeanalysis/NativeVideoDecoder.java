@@ -152,20 +152,19 @@ final class NativeVideoDecoder {
                     profiler.milliseconds()
             );
         } finally {
+            // MediaCodec callbacks can still be executing when cancellation interrupts the
+            // analysis thread. Drain the callback looper before touching the codec, extractor,
+            // or feature worker; releasing any of them first can race native decoder teardown.
+            if (codecThread != null) {
+                codecThread.quitSafely();
+                joinHandlerThread(codecThread);
+            }
             if (codec != null) {
                 try { codec.stop(); } catch (RuntimeException ignored) {}
                 codec.release();
             }
             if (featureWorker != null) featureWorker.close();
             extractor.release();
-            if (codecThread != null) {
-                codecThread.quitSafely();
-                try {
-                    codecThread.join();
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                }
-            }
         }
     }
 
@@ -246,7 +245,10 @@ final class NativeVideoDecoder {
                             codec.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                             inputEnded = true;
                         } else {
-                            codec.queueInputBuffer(inputIndex, 0, sampleSize, sampleTime, sampleFlags);
+                            codec.queueInputBuffer(
+                                    inputIndex, 0, sampleSize, sampleTime,
+                                    codecInputFlags(sampleFlags)
+                            );
                             profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
                             operationStarted = System.nanoTime();
                             extractor.advance();
@@ -684,6 +686,7 @@ final class NativeVideoDecoder {
                     inputEnded = true;
                     return;
                 }
+                sampleFlags = codecInputFlags(sampleFlags);
                 if (!materializedPresentationUs.contains(sampleTime)) {
                     sampleFlags |= MediaCodec.BUFFER_FLAG_DECODE_ONLY;
                     decodeOnlySourceFrames++;
@@ -1056,6 +1059,24 @@ final class NativeVideoDecoder {
         return -1;
     }
 
+    /** Join a codec callback thread without allowing executor cancellation to skip the join. */
+    private static void joinHandlerThread(HandlerThread thread) {
+        boolean interrupted = false;
+        try {
+            while (thread.isAlive()) {
+                try {
+                    thread.join(5_000);
+                } catch (InterruptedException error) {
+                    // shutdownNow() interrupts the analysis thread while callback teardown still
+                    // needs to finish. Preserve the flag after the callback thread is quiescent.
+                    interrupted = true;
+                }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
+    }
+
     private static int clamp(int value, int lower, int upper) {
         return Math.max(lower, Math.min(upper, value));
     }
@@ -1189,13 +1210,19 @@ final class NativeVideoDecoder {
         public void close() {
             closeRequested = true;
             if (thread.isAlive()) thread.interrupt();
-            try {
-                thread.join();
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
+            boolean interrupted = false;
+            while (thread.isAlive()) {
+                try {
+                    thread.join(5_000);
+                } catch (InterruptedException error) {
+                    // The analysis executor is interrupted during timeout cancellation, but the
+                    // OpenCV worker must still finish releasing native Mats before teardown.
+                    interrupted = true;
+                }
             }
             SampleTask pending;
             while ((pending = queue.poll()) != null) pending.release();
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
 
@@ -1203,6 +1230,13 @@ final class NativeVideoDecoder {
         void release() {
             if (rgba != null) rgba.release();
         }
+    }
+
+    /** MediaExtractor flags are not the same bit field as MediaCodec flags. */
+    private static int codecInputFlags(int extractorFlags) {
+        return (extractorFlags & MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME) != 0
+                ? MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
+                : 0;
     }
 
     private static final class InterruptedExceptionAsIo extends IOException {

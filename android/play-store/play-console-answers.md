@@ -70,7 +70,7 @@ Declared type: `mediaProcessing`
 
 **Impact if interrupted**
 
-"Interruption delays the requested result. Analysis checkpoints local feature work and can reuse it on a later run. Export cancellation removes the incomplete destination so the user is not left with a corrupt MP4."
+"Interruption delays the requested result. Android time-limit interruptions are recorded in the app, shown to the user, and posted as a notification; affected analysis projects are marked for retry and incomplete exports are removed. User cancellation also removes the incomplete destination so the user is not left with a corrupt MP4."
 
 **Required demonstration video**
 
@@ -82,6 +82,15 @@ Play requires a public or unlisted video link for each foreground-service use. R
 4. The user queueing an MP4 export, the export notification appearing, and the cancel control.
 
 No demonstration video was created during this audit because the requested screenshot workflow must not open or relink any video.
+
+For final device validation on an Android 15+ test device, Android documents a shortened timeout configuration. Enable the compatibility behavior for the installed package, set a short media-processing duration, start an analysis or export, and verify the in-app acknowledgement plus notification:
+
+```text
+adb shell am compat enable FGS_INTRODUCE_TIME_LIMITS com.volleycut.nativeanalysis
+adb shell device_config put activity_manager media_processing_fgs_timeout_duration 60000
+```
+
+Restore the test device after validation with `adb shell device_config delete activity_manager media_processing_fgs_timeout_duration`.
 
 ## App content declarations
 

@@ -26,7 +26,7 @@ In the production project flow, choose a recording and use the local preview to 
 - Target device: Pixel 10 Pro, arm64-v8a
 - `compileSdk`: 37
 - `targetSdk`: 37
-- `minSdk`: 29
+- `minSdk`: 34 (Android 14)
 - Android Gradle Plugin: 9.1.1
 - Gradle: 9.3.1
 - Java: 17 bytecode
