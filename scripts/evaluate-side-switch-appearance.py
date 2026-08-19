@@ -19,6 +19,7 @@ import numpy as np
 from analysis.artifacts import atomic_write_text
 from analysis.side_switch_appearance import (
     AppearanceAggregate,
+    COLOR_SPACE,
     aggregate_frames,
     appearance_features,
     create_hog,
@@ -535,4 +536,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
