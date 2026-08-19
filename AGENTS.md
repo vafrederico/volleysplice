@@ -37,9 +37,9 @@ release artifact, and production-web download synchronized:
 4. Replace the previous file in `android/releases/` with the newly signed APK,
    named `VolleyCut-v<version>-arm64-release-signed.apk`. Keep only signed APKs
    in this directory; never commit the unsigned build.
-5. Copy the exact same signed bytes to `prod/public/downloads/`. Update
-   `ANDROID_APK_FILENAME`, the visible version and accessible label in
-   `prod/src/components/ProjectHeader.tsx`, the APK SHA-256 in
+5. Copy the exact same signed bytes to `prod/public/android/`. Update
+   `APK_FILENAME`, the visible version, and the accessible download label in
+   `prod/src/components/AndroidAppBanner.tsx`, the APK SHA-256 in
    `prod/scripts/verify-build.mjs`, and the APK references in `README.md` and
    `prod/README.md`.
 6. Confirm the repository and production copies have identical SHA-256 hashes,
