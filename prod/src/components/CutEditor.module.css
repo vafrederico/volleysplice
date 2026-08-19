@@ -1300,6 +1300,49 @@
   font: 10px/1.5 "Atkinson Hyperlegible Mono", monospace;
 }
 
+.suppressionScopeControl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #d4c4c5;
+  background: #fff8f8;
+}
+
+.suppressionScopeControl legend {
+  padding: 0 5px;
+  color: #651019;
+  font: 700 10px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+
+.suppressionScopeOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.suppressionScopeOptions button {
+  min-width: 0;
+  padding: 8px 6px;
+  border-color: #d4c4c5;
+  background: #fff;
+  color: #651019;
+  font-size: 10px;
+}
+
+.suppressionScopeOptions button[data-active="true"] {
+  border-color: #94101c;
+  background: #bd1826;
+  color: #fff;
+}
+
+.suppressionScopeControl small {
+  color: #651019;
+  font: 10px/1.45 "Atkinson Hyperlegible Mono", monospace;
+}
+
 .emptyMessage {
   margin: 18px 0 0;
   color: var(--cut-muted);

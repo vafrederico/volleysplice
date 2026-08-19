@@ -8,7 +8,7 @@ import {
 } from "./on-device/suppression-policy.ts";
 import type { OnDeviceSuppression } from "./on-device/types.ts";
 
-export const CUT_DRAFT_VERSION = 9 as const;
+export const CUT_DRAFT_VERSION = 10 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -54,6 +54,7 @@ export type CutDraft = {
   reviewedCutIds: string[];
   selectedSuppressionPolicy: SuppressionPolicyId;
   suppressionDecisionOverrides: Record<string, "keep" | "suppress">;
+  suppressionScopeOverrides: Record<string, SuppressionScope>;
   userTouchedCutIds: string[];
   suppressionContractVersion: number;
   cuts: EditableCut[];
@@ -70,8 +71,23 @@ export type FinalCutInterval = {
 export type FinalCutProvenanceSegment = {
   start: number;
   end: number;
-  kind: "inferred-core" | "padding" | "joined-gap" | "manual";
+  kind:
+    | "inferred-core"
+    | "padding"
+    | "joined-gap"
+    | "manual"
+    | "suppression-whole-rally"
+    | "suppression-veto-region";
   cutIds: string[];
+  suggestionIds?: string[];
+};
+
+export const SUPPRESSION_SCOPE_IDS = ["whole-rally", "veto-region"] as const;
+export type SuppressionScope = (typeof SUPPRESSION_SCOPE_IDS)[number];
+export const DEFAULT_SUPPRESSION_SCOPE: SuppressionScope = "whole-rally";
+export const SUPPRESSION_SCOPE_LABELS: Record<SuppressionScope, string> = {
+  "whole-rally": "Whole rally",
+  "veto-region": "Veto region",
 };
 
 export type FinalCutMaterialization = {
@@ -141,7 +157,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 8, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -169,6 +185,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     reviewedCutIds: [],
     selectedSuppressionPolicy: "none",
     suppressionDecisionOverrides: {},
+    suppressionScopeOverrides: {},
     userTouchedCutIds: [],
     suppressionContractVersion:
       seed.suppressionContractVersion ?? SUPPRESSION_POLICY_CONTRACT_VERSION,
@@ -294,7 +311,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, 8, CUT_DRAFT_VERSION].includes(persistedVersion)
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, CUT_DRAFT_VERSION].includes(persistedVersion)
     ) {
       return null;
     }
@@ -332,6 +349,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         : "none",
       suppressionDecisionOverrides: persistedVersion >= 9
         ? persisted.suppressionDecisionOverrides
+        : {},
+      suppressionScopeOverrides: persistedVersion >= 10
+        ? persisted.suppressionScopeOverrides
         : {},
       userTouchedCutIds: persistedVersion >= 9
         ? persisted.userTouchedCutIds
@@ -417,6 +437,13 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       !Object.entries(value.suppressionDecisionOverrides).every(
         ([id, decision]) =>
           id.length > 0 && (decision === "keep" || decision === "suppress"),
+      ) ||
+      !value.suppressionScopeOverrides ||
+      typeof value.suppressionScopeOverrides !== "object" ||
+      Array.isArray(value.suppressionScopeOverrides) ||
+      !Object.entries(value.suppressionScopeOverrides).every(
+        ([id, scope]) =>
+          id.length > 0 && SUPPRESSION_SCOPE_IDS.includes(scope as SuppressionScope),
       ) ||
       !Array.isArray(value.userTouchedCutIds) ||
       !value.userTouchedCutIds.every((id) => typeof id === "string" && id.length > 0) ||
@@ -551,6 +578,13 @@ export function suppressionSuggestionState(
   return "suppressed";
 }
 
+export function suppressionSuggestionScope(
+  suggestion: SuppressionSuggestion,
+  draft: CutDraft,
+): SuppressionScope {
+  return draft.suppressionScopeOverrides[suggestion.logicalId] ?? DEFAULT_SUPPRESSION_SCOPE;
+}
+
 export function activeSuppressionSuggestions(
   draft: CutDraft,
   suppression?: Pick<OnDeviceSuppression, "suggestions">,
@@ -593,6 +627,29 @@ export function materializeFinalCutIntervals(
 ): FinalCutMaterialization {
   const appliedSuggestions = activeSuppressionSuggestions(draft, suppression)
     .filter((suggestion) => suppressionSuggestionState(suggestion, draft) === "suppressed");
+  const wholeRallySuggestions = appliedSuggestions.filter(
+    (suggestion) => suppressionSuggestionScope(suggestion, draft) === "whole-rally",
+  );
+  const vetoRegionSuggestions = appliedSuggestions.filter(
+    (suggestion) => suppressionSuggestionScope(suggestion, draft) === "veto-region",
+  );
+  const wholeRallyCutIds = new Set(
+    draft.cuts
+      .filter((cut) => cut.origin === "cached-label")
+      .filter((cut) => wholeRallySuggestions.some(
+        (suggestion) => cut.coreStart < suggestion.end && suggestion.start < cut.coreEnd,
+      ))
+      .map((cut) => cut.id),
+  );
+  const suppressionBarriers = [
+    ...vetoRegionSuggestions.map((suggestion) => ({
+      start: suggestion.start,
+      end: suggestion.end,
+    })),
+    ...draft.cuts
+      .filter((cut) => wholeRallyCutIds.has(cut.id))
+      .map((cut) => ({ start: cut.keepStart, end: cut.keepEnd })),
+  ];
   const provenance: FinalCutProvenanceSegment[] = [];
   const sourceIntervals: FinalCutInterval[] = [];
   for (const cut of draft.cuts) {
@@ -607,43 +664,56 @@ export function materializeFinalCutIntervals(
       });
       continue;
     }
+    if (wholeRallyCutIds.has(cut.id)) continue;
     const fragments = subtractRanges(
       { start: cut.coreStart, end: cut.coreEnd },
-      appliedSuggestions,
+      vetoRegionSuggestions,
     );
     for (const fragment of fragments) {
       const outerStart = Math.abs(fragment.start - cut.coreStart) < 0.000_5;
       const outerEnd = Math.abs(fragment.end - cut.coreEnd) < 0.000_5;
-      const start = roundTime(clamp(
+      const paddedStart = roundTime(clamp(
         outerStart ? cut.keepStart : fragment.start - draft.beforePaddingSeconds,
         draft.analysisStart,
         draft.analysisEnd,
       ));
-      const end = roundTime(clamp(
+      const paddedEnd = roundTime(clamp(
         outerEnd ? cut.keepEnd : fragment.end + draft.afterPaddingSeconds,
         draft.analysisStart,
         draft.analysisEnd,
       ));
-      if (end <= start) continue;
-      sourceIntervals.push({ start, end, cutIds: [cut.id] });
+      if (paddedEnd <= paddedStart) continue;
+      const hardClipped = subtractRanges(
+        { start: paddedStart, end: paddedEnd },
+        vetoRegionSuggestions,
+      );
+      hardClipped.forEach((interval) => {
+        if (interval.end > interval.start) {
+          sourceIntervals.push({
+            start: interval.start,
+            end: interval.end,
+            cutIds: [cut.id],
+          });
+        }
+      });
       provenance.push({
         start: fragment.start,
         end: fragment.end,
         kind: "inferred-core",
         cutIds: [cut.id],
       });
-      if (start < fragment.start) {
+      if (paddedStart < fragment.start) {
         provenance.push({
-          start,
+          start: paddedStart,
           end: fragment.start,
           kind: "padding",
           cutIds: [cut.id],
         });
       }
-      if (fragment.end < end) {
+      if (fragment.end < paddedEnd) {
         provenance.push({
           start: fragment.end,
-          end,
+          end: paddedEnd,
           kind: "padding",
           cutIds: [cut.id],
         });
@@ -651,13 +721,41 @@ export function materializeFinalCutIntervals(
     }
   }
 
+  appliedSuggestions.forEach((suggestion) => {
+    if (suppressionSuggestionScope(suggestion, draft) === "whole-rally") {
+      draft.cuts
+        .filter((cut) => wholeRallyCutIds.has(cut.id))
+        .filter((cut) => cut.coreStart < suggestion.end && suggestion.start < cut.coreEnd)
+        .forEach((cut) => {
+          provenance.push({
+            start: cut.keepStart,
+            end: cut.keepEnd,
+            kind: "suppression-whole-rally",
+            cutIds: [cut.id],
+            suggestionIds: [suggestion.logicalId],
+          });
+        });
+    } else {
+      provenance.push({
+        start: suggestion.start,
+        end: suggestion.end,
+        kind: "suppression-veto-region",
+        cutIds: [],
+        suggestionIds: [suggestion.logicalId],
+      });
+    }
+  });
+
   const joinGap = clamp(draft.joinGapSeconds, 0, MAX_JOIN_GAP_SECONDS);
   const merged = sourceIntervals
     .sort((left, right) => left.start - right.start || left.end - right.end)
     .reduce<FinalCutInterval[]>((intervals, interval) => {
       const previous = intervals.at(-1);
       const gap = previous ? interval.start - previous.end : Number.POSITIVE_INFINITY;
-      if (!previous || (gap > 0 && gap >= joinGap)) {
+      const crossesSuppression = previous !== undefined && gap > 0 && suppressionBarriers.some(
+        (barrier) => barrier.start < interval.start && previous.end < barrier.end,
+      );
+      if (!previous || (gap > 0 && (gap >= joinGap || crossesSuppression))) {
         intervals.push({ ...interval, cutIds: [...interval.cutIds] });
       } else {
         if (gap > 0) {
@@ -705,11 +803,14 @@ export function materializeFinalCutIntervals(
       ...(joinedGaps?.length ? { joinedGaps } : {}),
     };
   });
-  const visibleProvenance = provenance.flatMap((segment) => intervals.flatMap((interval) => {
-    const start = Math.max(segment.start, interval.start);
-    const end = Math.min(segment.end, interval.end);
-    return end > start ? [{ ...segment, start, end }] : [];
-  }));
+  const visibleProvenance = provenance.flatMap((segment) => {
+    if (segment.kind.startsWith("suppression-")) return [segment];
+    return intervals.flatMap((interval) => {
+      const start = Math.max(segment.start, interval.start);
+      const end = Math.min(segment.end, interval.end);
+      return end > start ? [{ ...segment, start, end }] : [];
+    });
+  });
   return { intervals, provenance: visibleProvenance };
 }
 

@@ -181,7 +181,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
         return {
           label: `WELCOME TOUR · 8 OF ${TOTAL_TOUR_STEPS}`,
           title: "Choose a suppression policy",
-          body: "Suppression levels automatically remove model ranges that look like false positives. None preserves the existing output; the available policy levels apply increasingly strong suggestions. Untouched suggestions are suppressed until you choose Keep while reviewing.",
+          body: "Suppression levels automatically remove model ranges that look like false positives. None preserves the existing output; the available policy levels apply increasingly strong suggestions. Untouched suggestions are suppressed until you choose Keep while reviewing. When a suggestion is selected, choose Whole rally to veto the inferred rally and padding, or Veto region to remove only the highlighted red span; Whole rally is the default.",
           action: "Next: padding",
         };
       case "editor-padding":

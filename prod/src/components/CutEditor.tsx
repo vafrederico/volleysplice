@@ -15,17 +15,22 @@ import {
   createCutDraft,
   cutDraftStorageKey,
   cutDraftStorageKeys,
+  DEFAULT_SUPPRESSION_SCOPE,
   effectiveKeptCutIds,
   materializeFinalCutIntervals,
   nextFinalCutTime,
   parseCutDraft,
   playbackFocusCut,
   PLAYBACK_RATES,
+  SUPPRESSION_SCOPE_IDS,
+  SUPPRESSION_SCOPE_LABELS,
+  suppressionSuggestionScope,
   totalFinalCutSeconds,
   suppressionSuggestionState,
   type CutDraft,
   type CutDraftSeed,
   type EditableCut,
+  type SuppressionScope,
 } from "@/lib/cut-draft";
 import { formatTime, timelinePercent } from "@/lib/edit-list";
 import {
@@ -318,6 +323,9 @@ export function CutEditor({
   const selectedSuppressionIndex = selectedSuppression
     ? suppressionSuggestions.findIndex((suggestion) => suggestion.id === selectedSuppression.id)
     : -1;
+  const selectedSuppressionScope = selectedSuppression
+    ? suppressionSuggestionScope(selectedSuppression, draft)
+    : DEFAULT_SUPPRESSION_SCOPE;
   const appliedSuppressionCount = suppressionSuggestions.filter(
     (suggestion) => suppressionSuggestionState(suggestion, draft) === "suppressed",
   ).length;
@@ -522,6 +530,30 @@ export function CutEditor({
       decision === "suppress"
         ? "Suggestion applied to the derived export. Manual ranges still win."
         : "Suggestion kept in the export and retained for review.",
+    );
+  }
+
+  function setSuppressionScope(
+    suggestion: SuppressionSuggestion,
+    scope: SuppressionScope,
+  ) {
+    updateDraft((current) => ({
+      ...current,
+      suppressionScopeOverrides: scope === DEFAULT_SUPPRESSION_SCOPE
+        ? Object.fromEntries(
+            Object.entries(current.suppressionScopeOverrides).filter(
+              ([id]) => id !== suggestion.logicalId,
+            ),
+          )
+        : {
+            ...current.suppressionScopeOverrides,
+            [suggestion.logicalId]: scope,
+          },
+    }));
+    setEditorMessage(
+      scope === "whole-rally"
+        ? "This suppression vetoes the whole inferred rally, including its padding."
+        : "This suppression vetoes only the highlighted region; the rest of the rally stays.",
     );
   }
 
@@ -929,7 +961,9 @@ export function CutEditor({
   function resetDraft() {
     if (!window.confirm("Discard every on-device correction for this analysis?")) return;
     try {
-      window.localStorage.removeItem(cutDraftStorageKey(seed.analysisId));
+      for (const key of cutDraftStorageKeys(seed.analysisId)) {
+        window.localStorage.removeItem(key);
+      }
     } catch {
       // The in-memory reset still succeeds if storage is unavailable.
     }
@@ -971,11 +1005,14 @@ export function CutEditor({
           : null,
         suggestions: initialAnalysis.suppression?.suggestions ?? [],
         decisionOverrides: draft.suppressionDecisionOverrides,
+        defaultSuppressionScope: DEFAULT_SUPPRESSION_SCOPE,
+        suppressionScopeOverrides: draft.suppressionScopeOverrides,
         userTouchedCutIds: draft.userTouchedCutIds,
         decisions: (initialAnalysis.suppression?.suggestions ?? []).map((suggestion) => ({
           suggestionId: suggestion.id,
           logicalId: suggestion.logicalId,
           state: suppressionSuggestionState(suggestion, draft),
+          scope: suppressionSuggestionScope(suggestion, draft),
         })),
       },
       finalIntervals,
@@ -1882,7 +1919,9 @@ export function CutEditor({
                 >
                   <small>
                     {suppressionSuggestionState(selectedSuppression, draft) === "suppressed"
-                      ? "SUPPRESSED"
+                      ? selectedSuppressionScope === "whole-rally"
+                        ? "WHOLE RALLY SUPPRESSED"
+                        : "VETO REGION SUPPRESSED"
                       : suppressionSuggestionState(selectedSuppression, draft) === "edited-kept"
                         ? "EDITED RALLY—KEPT"
                         : "SUGGESTION KEPT"}
@@ -1955,11 +1994,41 @@ export function CutEditor({
                 <>
                   <p className={styles.suppressionStateText}>
                     {suppressionSuggestionState(selectedSuppression, draft) === "suppressed"
-                      ? "This suggestion is currently removed from the derived export."
+                      ? selectedSuppressionScope === "whole-rally"
+                        ? "Whole rally suppressed, including its padding."
+                        : "Veto region suppressed; the rest of the rally stays."
                       : suppressionSuggestionState(selectedSuppression, draft) === "edited-kept"
                         ? "Kept because an overlapping inferred rally was already edited. Choose Suppress to override that protection."
                         : "You explicitly kept this suggestion in the export."}
                   </p>
+                  <fieldset className={styles.suppressionScopeControl}>
+                    <legend>Suppress scope</legend>
+                    <div
+                      className={styles.suppressionScopeOptions}
+                      role="group"
+                      aria-label="Suppression veto scope"
+                    >
+                      {SUPPRESSION_SCOPE_IDS.map((scope) => (
+                        <button
+                          type="button"
+                          key={scope}
+                          data-active={selectedSuppressionScope === scope || undefined}
+                          aria-pressed={selectedSuppressionScope === scope}
+                          title={scope === "whole-rally"
+                            ? "Veto the entire inferred rally, including padding"
+                            : "Veto only the highlighted suppression region"}
+                          onClick={() => setSuppressionScope(selectedSuppression, scope)}
+                        >
+                          {SUPPRESSION_SCOPE_LABELS[scope]}
+                        </button>
+                      ))}
+                    </div>
+                    <small>
+                      {selectedSuppressionScope === "whole-rally"
+                        ? "Removes the entire inferred rally, including its padding."
+                        : "Removes only the highlighted veto region; the rest of the rally stays."}
+                    </small>
+                  </fieldset>
                   <button
                     type="button"
                     className={styles.suppressAction}

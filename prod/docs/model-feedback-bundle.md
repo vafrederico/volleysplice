@@ -26,8 +26,9 @@ The bundle contains:
 - the untouched raw ranges from both production models, plus the held suppression artifact
   identity, probability trace, decoded events, and policy-eligible suggestion spans;
 - the full corrected editor ranges and ignored intervals;
-- the selected suppression policy, explicit and dormant decisions, touched inferred ranges, and
-  effective state of every suggestion; and
+- the selected suppression policy, explicit and dormant decisions, touched inferred ranges, the
+  default whole-rally suppression scope plus any per-suggestion veto-region overrides, and the
+  effective state and scope of every suggestion; and
 - explicit feedback labels, final padded/joined export intervals, and materialization provenance.
 
 The label contract is deliberately simple:

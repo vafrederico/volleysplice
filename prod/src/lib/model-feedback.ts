@@ -1,6 +1,8 @@
 import {
+  DEFAULT_SUPPRESSION_SCOPE,
   materializeFinalCutIntervals,
   suppressionSuggestionState,
+  suppressionSuggestionScope,
   type CutDraft,
   type EditableCut,
   type FinalCutInterval,
@@ -98,11 +100,14 @@ export type ModelFeedbackBundle = {
     suppression: {
       selectedPolicy: CutDraft["selectedSuppressionPolicy"];
       decisionOverrides: CutDraft["suppressionDecisionOverrides"];
+      defaultSuppressionScope: typeof DEFAULT_SUPPRESSION_SCOPE;
+      suppressionScopeOverrides: CutDraft["suppressionScopeOverrides"];
       userTouchedCutIds: string[];
       decisions: Array<{
         suggestionId: string;
         logicalId: string;
         state: ReturnType<typeof suppressionSuggestionState>;
+        scope: ReturnType<typeof suppressionSuggestionScope>;
       }>;
     };
     labels: {
@@ -306,11 +311,14 @@ export function createModelFeedbackBundle(
       suppression: {
         selectedPolicy: draft.selectedSuppressionPolicy,
         decisionOverrides: { ...draft.suppressionDecisionOverrides },
+        defaultSuppressionScope: DEFAULT_SUPPRESSION_SCOPE,
+        suppressionScopeOverrides: { ...draft.suppressionScopeOverrides },
         userTouchedCutIds: [...draft.userTouchedCutIds],
         decisions: allSuppressionSuggestions.map((suggestion) => ({
           suggestionId: suggestion.id,
           logicalId: suggestion.logicalId,
           state: suppressionSuggestionState(suggestion, draft),
+          scope: suppressionSuggestionScope(suggestion, draft),
         })),
       },
       labels: {
