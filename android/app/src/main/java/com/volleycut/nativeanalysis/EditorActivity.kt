@@ -107,7 +107,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.compose.ContentFrame
-import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
@@ -1110,7 +1110,10 @@ private fun NewProjectCard(
             }
         }
         if (selected?.media != null) {
-            Box(Modifier.guidedTourTarget("setup-window", guidedTourTargets)) {
+            Column(
+                Modifier.guidedTourTarget("setup-window", guidedTourTargets),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 GameWindowPicker(
                     selected = selected,
                     gameStartMs = gameStartMs,
@@ -1200,7 +1203,7 @@ private fun GameWindowPicker(
         ContentFrame(
             player = player,
             modifier = Modifier.fillMaxWidth().height(176.dp),
-            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
         )
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1923,7 +1926,7 @@ private fun EditorScreen(
                 ContentFrame(
                     player = player,
                     modifier = Modifier.fillMaxWidth().height(176.dp),
-                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
                 )
             }
             PlayerControls(
