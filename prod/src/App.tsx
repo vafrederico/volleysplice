@@ -48,12 +48,6 @@ import styles from "./App.module.css";
 
 type WorkState = "empty" | "opening" | "ready" | "error";
 
-const COURT_CENTERED_ROI: NormalizedRoi = {
-  x: 0.03,
-  y: 0.12,
-  width: 0.94,
-  height: 0.86,
-};
 const FULL_FRAME_ROI: NormalizedRoi = { x: 0, y: 0, width: 1, height: 1 };
 
 function compactBytes(bytes: number): string {
@@ -142,7 +136,7 @@ export function App() {
   const [file, setFile] = useState<File | null>(null);
   const [info, setInfo] = useState<OnDeviceMediaInfo | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [roi, setRoi] = useState<NormalizedRoi>(COURT_CENTERED_ROI);
+  const [roi, setRoi] = useState<NormalizedRoi>(FULL_FRAME_ROI);
   const [analysisWindow, setAnalysisWindow] = useState<AnalysisWindow>({
     start: 0,
     end: 0,
@@ -215,7 +209,7 @@ export function App() {
     replacePreviewUrl(null);
     setFile(null);
     setInfo(null);
-    setRoi(COURT_CENTERED_ROI);
+    setRoi(FULL_FRAME_ROI);
     setAnalysisWindow({ start: 0, end: 0 });
     setCandidateProgress(null);
     setError(null);
@@ -369,7 +363,7 @@ export function App() {
 
     setFile(selected);
     setInfo(null);
-    setRoi(COURT_CENTERED_ROI);
+    setRoi(FULL_FRAME_ROI);
     setAnalysisWindow({ start: 0, end: 0 });
     setError(null);
     resumePreviewAfterSeek.current = false;
@@ -1056,12 +1050,6 @@ export function App() {
                   <div className={styles.presetButtons}>
                     <button
                       type="button"
-                      onClick={() => setRoi(COURT_CENTERED_ROI)}
-                    >
-                      Court centered
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setRoi(FULL_FRAME_ROI)}
                     >
                       Full frame
@@ -1096,6 +1084,7 @@ export function App() {
                 </div>
                 <button
                   className={styles.analyzeButton}
+                  data-tour="source-create"
                   type="button"
                   onClick={createAndQueueProject}
                   disabled={

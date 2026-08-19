@@ -1280,7 +1280,10 @@ export function CutEditor({
             </div>
             <small>Padding applies to inferred cuts. Light gray gaps are retained when they are shorter than the join setting.</small>
           </div>
-          <label className={styles.cutPreviewToggle}>
+          <label
+            className={styles.cutPreviewToggle}
+            data-tour="editor-play-final-cut"
+          >
             <input
               type="checkbox"
               checked={cutPreviewEnabled}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import styles from "./GuidedTour.module.css";
 
-const TOUR_STORAGE_KEY = "volleycut:guided-tour:v6";
+const TOUR_STORAGE_KEY = "volleycut:guided-tour:v7";
 
 const EDITOR_STEPS = [
   "editor-header",
@@ -11,6 +11,7 @@ const EDITOR_STEPS = [
   "editor-suppression",
   "editor-padding",
   "editor-join-gaps",
+  "editor-play-final-cut",
   "editor-export-video",
   "editor-video",
   "editor-transport",
@@ -19,18 +20,23 @@ const EDITOR_STEPS = [
   "editor-marking",
   "editor-cuts",
 ] as const;
-const SOURCE_STEP_COUNT = 3;
+const SOURCE_STEP_COUNT = 4;
 const TOTAL_TOUR_STEPS = SOURCE_STEP_COUNT + EDITOR_STEPS.length;
 
 type TourState =
   | "source-select"
   | "source-camera"
   | "source-window"
+  | "source-create"
   | (typeof EDITOR_STEPS)[number]
   | "done"
   | "dismissed";
 type TourStage = "source" | "editor";
-type SourceStep = "source-select" | "source-camera" | "source-window";
+type SourceStep =
+  | "source-select"
+  | "source-camera"
+  | "source-window"
+  | "source-create";
 type EditorStep = (typeof EDITOR_STEPS)[number];
 
 function isEditorStep(state: TourState | null): state is EditorStep {
@@ -45,6 +51,7 @@ function readTourState(): TourState | null {
     return value === "source-select" ||
       value === "source-camera" ||
       value === "source-window" ||
+      value === "source-create" ||
       EDITOR_STEPS.some((step) => step === value) ||
       value === "done" ||
       value === "dismissed"
@@ -76,7 +83,8 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     stage === "source" &&
     (tourState === "source-select" ||
       tourState === "source-camera" ||
-      tourState === "source-window")
+      tourState === "source-window" ||
+      tourState === "source-create")
       ? tourState
       : null;
   const editorStep: EditorStep | null =
@@ -92,14 +100,18 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
           ? sourceReady
             ? "source-game-window"
             : "source-picker"
-          : "source-picker";
+          : sourceStep === "source-create"
+            ? sourceReady
+              ? "source-create"
+              : "source-picker"
+            : "source-picker";
 
   const copy = useMemo(() => {
     if (stage === "source" && sourceStep === "source-camera" && sourceReady) {
       return {
         label: `WELCOME TOUR · 2 OF ${TOTAL_TOUR_STEPS}`,
         title: "Set the camera viewport",
-        body: "The yellow FEATURE CROP box is the part of the video the models analyze. Keep the court and players inside it, excluding borders or neighboring courts when practical. Court centered and Full frame are quick presets; the x, y, width, and height sliders fine-tune the crop.",
+        body: "The yellow FEATURE CROP box is the part of the video the models analyze. New projects start with the full frame; keep the court and players inside it, then use the x, y, width, and height sliders to provide a tighter crop when needed. Full frame resets the crop.",
         action: "Next: start & end",
       };
     }
@@ -107,7 +119,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
       return {
         label: `WELCOME TOUR · 2 OF ${TOTAL_TOUR_STEPS}`,
         title: "Reveal the camera controls",
-        body: "Choose video to reveal the preview and camera viewport controls. The yellow FEATURE CROP box will show what the models analyze; keep the court and players inside it, then use the presets or sliders to refine the crop.",
+        body: "Choose video to reveal the preview and camera viewport controls. The yellow FEATURE CROP box will show what the models analyze; new projects start at full frame, and the sliders let you provide a tighter crop.",
         action: "Next: start & end",
       };
     }
@@ -115,8 +127,8 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
       return {
         label: `WELCOME TOUR · 3 OF ${TOTAL_TOUR_STEPS}`,
         title: "Choose the game start and end",
-        body: "Seek the preview, then use Set to playhead under Game start and Game end to copy the current time. Use full video to reset both boundaries. Only this analysis window generates features; Create project & queue inference starts local processing when you are ready.",
-        action: "Next: editor",
+        body: "Seek the preview, then use Set to playhead under Game start and Game end to copy the current time. Use full video to reset both boundaries. Only this analysis window generates features, so set it before continuing.",
+        action: "Next: create project",
       };
     }
     if (stage === "source" && sourceStep === "source-window") {
@@ -124,6 +136,14 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
         label: `WELCOME TOUR · 3 OF ${TOTAL_TOUR_STEPS}`,
         title: "Set the game window",
         body: "Choose video first to reveal the Game start and Game end controls. You will be able to seek the preview, copy the playhead into either boundary, reset to the full video, and then queue local analysis.",
+        action: "Next: create project",
+      };
+    }
+    if (stage === "source" && sourceStep === "source-create" && sourceReady) {
+      return {
+        label: `WELCOME TOUR · 4 OF ${TOTAL_TOUR_STEPS}`,
+        title: "Create the project and queue inference",
+        body: "When the camera crop and game start/end look right, click Create project & queue inference. Your source settings are saved on this device and local model analysis begins; the editor opens when the project is ready.",
         action: "Next: editor",
       };
     }
@@ -138,91 +158,98 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     switch (editorStep ?? "editor-header") {
       case "editor-source":
         return {
-          label: `WELCOME TOUR · 5 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 6 OF ${TOTAL_TOUR_STEPS}`,
           title: "Know what this video represents",
           body: "The top source bar names the local video and the inference that produced its ranges. The Project menu switches between saved videos; reconnect the source there when playback or export needs the original file.",
           action: "Next: final settings",
         };
       case "editor-header":
         return {
-          label: `WELCOME TOUR · 4 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 5 OF ${TOTAL_TOUR_STEPS}`,
           title: "Navigate projects from the header",
           body: "The VolleyCut header keeps project navigation in one place. Use the Project menu to switch saved videos, watch the queue status while inference runs, and delete the selected project when you no longer need its local data.",
           action: "Next: local source",
         };
       case "editor-settings":
         return {
-          label: `WELCOME TOUR · 6 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 7 OF ${TOTAL_TOUR_STEPS}`,
           title: "Build the final edit",
           body: "This panel is the control center for the final edit. It summarizes kept and removed time, previews the selected result, and contains the controls for suppression, padding, gap joining, playback, and exports.",
           action: "Next: suppression",
         };
       case "editor-suppression":
         return {
-          label: `WELCOME TOUR · 7 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 8 OF ${TOTAL_TOUR_STEPS}`,
           title: "Choose a suppression policy",
           body: "Suppression levels automatically remove model ranges that look like false positives. None preserves the existing output; the available policy levels apply increasingly strong suggestions. Untouched suggestions are suppressed until you choose Keep while reviewing.",
           action: "Next: padding",
         };
       case "editor-padding":
         return {
-          label: `WELCOME TOUR · 8 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 9 OF ${TOTAL_TOUR_STEPS}`,
           title: "Add padding around each cut",
           body: "The Before and After sliders add extra seconds around every inferred cut. Use them to keep context around a rally; the current values are shown beside each slider and are included in the final edit timing.",
           action: "Next: gap joining",
         };
       case "editor-join-gaps":
         return {
-          label: `WELCOME TOUR · 9 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 10 OF ${TOTAL_TOUR_STEPS}`,
           title: "Join short gaps between cuts",
           body: "Join gaps under controls when nearby kept ranges should become one continuous export. Light-gray gaps shorter than this threshold are retained; set it to Off when every gap should remain a cut.",
+          action: "Next: final-cut preview",
+        };
+      case "editor-play-final-cut":
+        return {
+          label: `WELCOME TOUR · 11 OF ${TOTAL_TOUR_STEPS}`,
+          title: "Preview only the final cut",
+          body: "Play final cut only skips removed rallies, ignored sections, and unselected gaps at or above the join threshold while the video plays. Turn it off when you need to review the complete analysis window.",
           action: "Next: export video",
         };
       case "editor-export-video":
         return {
-          label: `WELCOME TOUR · 10 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 12 OF ${TOTAL_TOUR_STEPS}`,
           title: "Export the final video",
           body: "This button creates the edited MP4 from the kept ranges, padding, suppression, and joined gaps. The export stays on this device at the original dimensions; reconnect the local source first if playback or export is unavailable.",
           action: "Next: video player",
         };
       case "editor-video":
         return {
-          label: `WELCOME TOUR · 11 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 13 OF ${TOTAL_TOUR_STEPS}`,
           title: "Watch the source video",
           body: "This is the original local video. The timecode is limited to the marked game window. Use the browser video controls to play, pause, and scrub while checking a model range against the footage.",
           action: "Next: transport controls",
         };
       case "editor-transport":
         return {
-          label: `WELCOME TOUR · 12 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 14 OF ${TOTAL_TOUR_STEPS}`,
           title: "Move frame by frame",
           body: "The transport buttons nudge the playhead by one second or one tenth of a second, and Play / Pause starts or stops playback. Playback speed changes how quickly the video runs without changing its saved boundaries.",
           action: "Next: game window",
         };
       case "editor-overview":
         return {
-          label: `WELCOME TOUR · 13 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 15 OF ${TOTAL_TOUR_STEPS}`,
           title: "Read the GAME WINDOW rail",
           body: "Tap or slide this overview to seek. Each colored range is a detected or added cut; select one to focus it below. Review next moves through low-confidence or one-model disagreement ranges, while the legend explains kept, suppressed, ignored, and joined sections.",
           action: "Next: focused range",
         };
       case "editor-focus":
         return {
-          label: `WELCOME TOUR · 14 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 16 OF ${TOTAL_TOUR_STEPS}`,
           title: "Refine the focused range",
           body: "The focused range shows its kept and inferred core boundaries. Drag the handles or use the small time buttons to adjust them, then Keep / Restore, Preview cut, Reset padding, or Mark reviewed. Previous and Next move through the cut list.",
           action: "Next: marking tools",
         };
       case "editor-marking":
         return {
-          label: `WELCOME TOUR · 15 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 17 OF ${TOTAL_TOUR_STEPS}`,
           title: "Add misses or ignore unusable footage",
           body: "Use Add a missed cut when the model missed a rally: mark its start, seek, then mark its end. Use Ignore source section for camera gaps or non-game footage; ignored time is excluded without becoming a negative label.",
           action: "Next: all cuts",
         };
       case "editor-cuts":
         return {
-          label: `WELCOME TOUR · 16 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 18 OF ${TOTAL_TOUR_STEPS}`,
           title: "Use the all-cuts list",
           body: "Each card is one model prediction or manual addition. Click the time card to focus it, then use Keep, Removed, or Ignored to decide whether it contributes to the final edit. Check badges identify ranges that still need review.",
           action: "Finish tour",
@@ -234,7 +261,9 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     if (
       stage === "source" &&
       !sourceReady &&
-      (tourState === "source-camera" || tourState === "source-window")
+      (tourState === "source-camera" ||
+        tourState === "source-window" ||
+        tourState === "source-create")
     ) {
       setHoldSourceSelect(false);
       writeTourState("source-select");
@@ -272,7 +301,9 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     stage === "source"
       ? tourState === "source-select" ||
         (sourceReady &&
-          (tourState === "source-camera" || tourState === "source-window"))
+          (tourState === "source-camera" ||
+            tourState === "source-window" ||
+            tourState === "source-create"))
       : editorStep !== null;
   const restartLabel =
     stage === "source" ? "Restart setup tour" : "Restart editor tour";
@@ -356,7 +387,9 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
           ? "source-camera"
           : sourceStep === "source-camera"
             ? "source-window"
-            : EDITOR_STEPS[0];
+            : sourceStep === "source-window"
+              ? "source-create"
+              : EDITOR_STEPS[0];
     writeTourState(nextState);
     setTourState(nextState);
   }
@@ -368,7 +401,9 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
         ? 1
         : sourceStep === "source-window"
           ? 2
-          : 0;
+          : sourceStep === "source-create"
+            ? 3
+            : 0;
   const sourceSelectBlocked =
     stage === "source" && sourceStep === "source-select" && !sourceReady;
   const spotlightStyle = targetRect
