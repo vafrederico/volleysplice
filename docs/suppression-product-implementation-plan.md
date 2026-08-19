@@ -40,6 +40,10 @@ or decoder:
   threshold, 0.5 s minimum live duration, 0.5 s bridge gap, 0.25 s short-event
   minimum, and 0.9 short-event threshold.
 - Do not use the later re-tuned decoder or either v3 candidate.
+- Keep the one-model-only eligibility gate for every suppression policy. The
+  [gate ablation](research/suppression-eligibility-gate-ablation-2026-08-18.md)
+  found that removing it collapses all policies to the same output and causes 75
+  complete plus 101 partial non-exempt rally losses at the held decoder.
 
 For each policy, build agreement components from the source-tagged raw production
 intervals. A component is protected as supported by both models when any interval
