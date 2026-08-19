@@ -59,12 +59,12 @@ VolleyCut is designed for 64-bit Android phones running Android 10 or later.
 
 ## Contact fields
 
-- Support email: `vafrederico@gmail.com`
-- Privacy policy: `https://internal.example/privacy.html`
-- Terms: `https://internal.example/terms.html`
-- Website: `https://internal.example`
+- Support email: `volleycut@vafrederico.com`
+- Privacy policy: `https://volleycut.vafrederico.com/privacy.html`
+- Terms: `https://volleycut.vafrederico.com/terms.html`
+- Website: `https://volleycut.vafrederico.com`
 
-The support email is taken from the repository author identity. Replace it before publication if a different public support address is preferred.
+The same privacy policy and terms cover both the Android app and browser-based web app.
 
 ## Screenshot order and alt text
 

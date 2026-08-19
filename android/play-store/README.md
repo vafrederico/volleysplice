@@ -21,8 +21,10 @@ The screenshots use the in-app tour to explain the real saved inference, setting
 
 After the production site is built and deployed, the expected URLs are:
 
-- `https://internal.example/privacy.html`
-- `https://internal.example/terms.html`
+- `https://volleycut.vafrederico.com/privacy.html`
+- `https://volleycut.vafrederico.com/terms.html`
+
+These are shared policies for the Android app and browser-based web app.
 
 The Android app still needs an in-app privacy link or privacy text before submission.
 
