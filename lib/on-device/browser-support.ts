@@ -2,6 +2,10 @@ function currentUserAgent(): string {
   return typeof navigator === "undefined" ? "" : navigator.userAgent;
 }
 
+export function isAndroidBrowser(userAgent = currentUserAgent()): boolean {
+  return /Android/i.test(userAgent);
+}
+
 function currentPlatform(): string {
   return typeof navigator === "undefined" ? "" : navigator.platform;
 }

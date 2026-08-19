@@ -1,0 +1,81 @@
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px clamp(16px, 5vw, 72px);
+  border-bottom: 1px solid #11130f;
+  color: #11130f;
+  background: #dfff35;
+}
+
+.message {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.eyebrow {
+  color: #405326;
+  font:
+    700 9px ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+  letter-spacing: 1.2px;
+}
+
+.message strong {
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.message p {
+  margin: 0;
+  color: #405326;
+  font:
+    500 10px / 1.45 ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+.download {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px;
+  border: 1px solid #11130f;
+  color: #dfff35;
+  background: #11130f;
+  font:
+    700 11px ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+  text-decoration: none;
+}
+
+.download:hover {
+  background: #2c3026;
+}
+
+.download small {
+  color: #b9d52b;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+@media (max-width: 560px) {
+  .banner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .download {
+    justify-content: space-between;
+  }
+}
