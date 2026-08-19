@@ -831,6 +831,18 @@ private fun ProjectHeaderBar(
     onDelete: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.PackageInfoFlags.of(0),
+            ).versionName
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        } ?: "unknown"
+    }
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(12.dp),
@@ -843,6 +855,13 @@ private fun ProjectHeaderBar(
                     contentDescription = "VolleyCut",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.width(116.dp).height(39.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "v$versionName",
+                    color = Muted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.weight(1f))
                 Text(

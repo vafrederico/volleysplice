@@ -13,6 +13,39 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 When the production app is served on port 3000, it is available through the
 reverse proxy at `https://internal.example`.
 
+## Android release signing
+
+Do not open PowerShell, a terminal window, or any other interactive process to sign
+an APK or request the release-keystore password. Build the unsigned release APK,
+provide the signing command, and ask the user to run it themselves. Never request,
+read, handle, store, or pass the keystore password.
+
+### Android version bumps and production downloads
+
+When publishing a new Android APK version, keep the Android package, checked-in
+release artifact, and production-web download synchronized:
+
+1. Increment both `versionCode` and `versionName` in
+   `android/app/build.gradle.kts`. Keep the debug `versionNameSuffix` so debug
+   installs report the corresponding `-debug` version.
+2. Build `assembleDebug` and `assembleRelease`. The release build is unsigned;
+   ask the user to sign that exact APK as described above.
+3. Verify the user-signed APK with `apksigner`, confirm its package version with
+   `aapt`, confirm that its signer certificate matches the established release
+   certificate, and confirm that its non-signature ZIP payload matches the
+   unsigned APK that was just built.
+4. Replace the previous file in `android/releases/` with the newly signed APK,
+   named `VolleyCut-v<version>-arm64-release-signed.apk`. Keep only signed APKs
+   in this directory; never commit the unsigned build.
+5. Copy the exact same signed bytes to `prod/public/downloads/`. Update
+   `ANDROID_APK_FILENAME`, the visible version and accessible label in
+   `prod/src/components/ProjectHeader.tsx`, the APK SHA-256 in
+   `prod/scripts/verify-build.mjs`, and the APK references in `README.md` and
+   `prod/README.md`.
+6. Confirm the repository and production copies have identical SHA-256 hashes,
+   run the Android build/tests and the production static build checks, and do not
+   start or serve the production app unless the user explicitly asks.
+
 ## Rally-model iteration ranking
 
 When comparing or selecting rally-model, decoder, threshold, padding, epoch, or seed

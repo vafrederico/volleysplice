@@ -98,6 +98,9 @@ curl -I https://volleycut.vafrederico.com
 
 ## Runtime contents
 
+- `public/downloads/VolleyCut-v0.10.1-arm64-release-signed.apk`: the signed
+  arm64 Android release offered from the production header. The production
+  build verifies its SHA-256 digest before it can be deployed.
 - `public/runtime/model-1ca43e38eefc.json`: the promoted all-labels v2 inference heads and decoders.
 - `public/runtime/model-9c92b8e9333f.json`: the previous production heads used by the two-model consensus pass.
 - `public/runtime/suppression-39eddf581639.json`: the held corrected suppression

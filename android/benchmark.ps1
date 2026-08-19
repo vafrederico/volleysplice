@@ -34,7 +34,7 @@ if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $bundledJdk "bin
 if (-not $env:ANDROID_HOME -and (Test-Path -LiteralPath $defaultAndroidSdk)) {
     $env:ANDROID_HOME = $defaultAndroidSdk
 }
-$packageName = "com.volleycut.nativeanalysis"
+$packageName = "com.volleycut.nativeanalysis.debug"
 $activityName = "$packageName/.MainActivity"
 $resultFile = "files/benchmark-result.json"
 $apkPath = Join-Path $PSScriptRoot "app\build\outputs\apk\debug\app-debug.apk"

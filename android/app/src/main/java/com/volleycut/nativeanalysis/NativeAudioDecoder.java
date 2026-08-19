@@ -364,6 +364,103 @@ final class NativeAudioDecoder {
         }
     }
 
+    static final class DecodedAccessUnitAssembler {
+        @FunctionalInterface
+        interface Consumer {
+            void accept(float[] frames, long presentationTimeUs);
+        }
+
+        private final ArrayDeque<Long> inputTimes = new ArrayDeque<>();
+        private int framesPerUnit;
+        private int encoderDelayFrames;
+        private int encoderPaddingFrames;
+        private float[] pendingFrames = new float[0];
+        private int pendingLength;
+        private int pendingTargetLength;
+        private long pendingTimeUs;
+        private boolean gaplessStartApplied;
+
+        void addInputTimes(long[] timestamps) {
+            for (long timestamp : timestamps) inputTimes.add(timestamp);
+        }
+
+        void setFramesPerUnit(int framesPerUnit) {
+            if (framesPerUnit <= 0 || this.framesPerUnit != 0) return;
+            this.framesPerUnit = framesPerUnit;
+            pendingFrames = new float[framesPerUnit];
+        }
+
+        void setGaplessTrimming(int encoderDelayFrames, int encoderPaddingFrames) {
+            this.encoderDelayFrames = Math.max(0, encoderDelayFrames);
+            this.encoderPaddingFrames = Math.max(0, encoderPaddingFrames);
+        }
+
+        int accept(
+                float[] frames,
+                long fallbackTimeUs,
+                int sampleRate,
+            Consumer consumer
+        ) {
+            if (frames.length == 0) return 0;
+            if (framesPerUnit == 0) {
+                consumer.accept(frames, takeTime(fallbackTimeUs));
+                return 1;
+            }
+            if (!gaplessStartApplied) {
+                int delayedUnits = (encoderDelayFrames + framesPerUnit - 1) / framesPerUnit;
+                for (int index = 0; index < delayedUnits && !inputTimes.isEmpty(); index++) {
+                    inputTimes.poll();
+                }
+                int partialFrames = encoderPaddingFrames % framesPerUnit;
+                pendingTargetLength = partialFrames == 0
+                        ? framesPerUnit
+                        : framesPerUnit - partialFrames;
+                gaplessStartApplied = true;
+            }
+            int emitted = 0;
+            int offset = 0;
+            while (offset < frames.length) {
+                if (pendingLength == 0) {
+                    long offsetUs = Math.round(offset * 1_000_000.0 / sampleRate);
+                    pendingTimeUs = takeTime(fallbackTimeUs + offsetUs);
+                }
+                int copied = Math.min(
+                        pendingTargetLength - pendingLength,
+                        frames.length - offset
+                );
+                System.arraycopy(frames, offset, pendingFrames, pendingLength, copied);
+                pendingLength += copied;
+                offset += copied;
+                if (pendingLength == pendingTargetLength) {
+                    consumer.accept(
+                            java.util.Arrays.copyOf(pendingFrames, pendingLength),
+                            pendingTimeUs
+                    );
+                    pendingLength = 0;
+                    pendingTargetLength = framesPerUnit;
+                    emitted++;
+                }
+            }
+            return emitted;
+        }
+
+        int flush(Consumer consumer) {
+            if (pendingLength == 0) return 0;
+            consumer.accept(java.util.Arrays.copyOf(pendingFrames, pendingLength), pendingTimeUs);
+            pendingLength = 0;
+            return 1;
+        }
+
+        int pendingInputTimeCount() {
+            return inputTimes.size();
+        }
+
+        private long takeTime(long fallbackTimeUs) {
+            Long inputTimeUs = inputTimes.poll();
+            return inputTimeUs == null ? fallbackTimeUs : inputTimeUs;
+        }
+    }
+
     private static final class BatchedDecodeState extends MediaCodec.Callback {
         private final MediaExtractor extractor;
         private final AnalysisTypes.AnalysisWindow analysisWindow;
@@ -377,7 +474,8 @@ final class NativeAudioDecoder {
         private final CountDownLatch completion = new CountDownLatch(1);
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
         private final AtomicBoolean terminal = new AtomicBoolean();
-        private final ArrayDeque<Long> pendingInputTimes = new ArrayDeque<>();
+        private final DecodedAccessUnitAssembler pcmAssembler =
+                new DecodedAccessUnitAssembler();
         private int sampleRate;
         private int channels;
         private int encoding = AudioFormat.ENCODING_PCM_16BIT;
@@ -388,7 +486,6 @@ final class NativeAudioDecoder {
         private long inputBatches;
         private long outputAccessUnits;
         private long outputBatches;
-        private int decodedFramesPerAccessUnit;
         private long callbackCpuNanos;
 
         BatchedDecodeState(
@@ -431,7 +528,6 @@ final class NativeAudioDecoder {
                 if (input == null) throw new IOException("Audio decoder returned no input buffer");
                 input.clear();
                 ArrayDeque<MediaCodec.BufferInfo> infos = new ArrayDeque<>();
-                ArrayDeque<Long> timestamps = new ArrayDeque<>();
                 int offset = 0;
                 boolean reachedEnd = false;
                 while (infos.size() < MAX_BATCH_ACCESS_UNITS) {
@@ -462,7 +558,6 @@ final class NativeAudioDecoder {
                     MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
                     info.set(offset, sampleSize, sampleTime, extractor.getSampleFlags());
                     infos.add(info);
-                    timestamps.add(sampleTime);
                     offset += sampleSize;
                     operationStarted = System.nanoTime();
                     extractor.advance();
@@ -481,16 +576,18 @@ final class NativeAudioDecoder {
                     return;
                 }
                 long operationStarted = System.nanoTime();
+                long[] batchTimes = new long[infos.size()];
+                int timestampIndex = 0;
+                for (MediaCodec.BufferInfo info : infos) {
+                    batchTimes[timestampIndex++] = info.presentationTimeUs;
+                }
                 codec.queueInputBuffers(index, infos);
                 profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
-                long[] batchTimes = new long[timestamps.size()];
-                int timestampIndex = 0;
-                for (long timestamp : timestamps) batchTimes[timestampIndex++] = timestamp;
-                for (long timestamp : batchTimes) pendingInputTimes.add(timestamp);
-                if (decodedFramesPerAccessUnit == 0 && batchTimes.length >= 2) {
-                    decodedFramesPerAccessUnit = (int) Math.max(1, Math.round(
+                pcmAssembler.addInputTimes(batchTimes);
+                if (batchTimes.length >= 2) {
+                    pcmAssembler.setFramesPerUnit((int) Math.max(1, Math.round(
                             (batchTimes[1] - batchTimes[0]) * sampleRate / 1_000_000.0
-                    ));
+                    )));
                 }
                 inputAccessUnits += infos.size();
                 inputBatches++;
@@ -543,13 +640,21 @@ final class NativeAudioDecoder {
                     float[] mono = pcmToMono(buffer, info.offset, info.size, channels, encoding);
                     profiler.add("pcm_copy_and_downmix", System.nanoTime() - operationStarted);
                     operationStarted = System.nanoTime();
-                    decodedPcmFrames += pushWithOriginalAccessUnitTimes(
-                            mono, info.presentationTimeUs
+                    pcmAssembler.accept(
+                            mono,
+                            info.presentationTimeUs,
+                            sampleRate,
+                            this::pushOutputAccessUnit
                     );
                     profiler.add("accumulator_push", System.nanoTime() - operationStarted);
                     reportProgress(info.presentationTimeUs);
                 }
                 if (containsPcm) outputBatches++;
+                if (outputEnded) {
+                    long operationStarted = System.nanoTime();
+                    pcmAssembler.flush(this::pushOutputAccessUnit);
+                    profiler.add("accumulator_push", System.nanoTime() - operationStarted);
+                }
             } catch (Throwable error) {
                 fail(error);
             } finally {
@@ -565,40 +670,22 @@ final class NativeAudioDecoder {
             if (outputEnded) complete();
         }
 
-        private long pushWithOriginalAccessUnitTimes(float[] mono, long outputTimeUs) {
-            int nominalFrames = decodedFramesPerAccessUnit;
-            if (nominalFrames <= 0) nominalFrames = mono.length;
-            int remaining = mono.length;
-            int offset = 0;
-            boolean first = true;
-            long keptFrames = 0;
-            while (remaining > 0) {
-                Long inputTimeUs = pendingInputTimes.poll();
-                if (inputTimeUs == null) {
-                    throw new IllegalStateException("Audio output exceeded queued access units");
-                }
-                outputAccessUnits++;
-                int length = Math.min(nominalFrames, remaining);
-                long presentationTimeUs = first ? outputTimeUs : inputTimeUs;
-                long remainingUs = endUs - presentationTimeUs;
-                int lengthToKeep = (int) Math.min(
-                        length,
-                        Math.max(0, (remainingUs * sampleRate + 999_999) / 1_000_000)
-                );
-                int end = offset + lengthToKeep;
-                if (lengthToKeep > 0) {
-                    accumulator.push(
-                            java.util.Arrays.copyOfRange(mono, offset, end),
-                            presentationTimeUs / 1_000_000.0 - analysisWindow.start(),
-                            sampleRate
-                    );
-                    keptFrames += lengthToKeep;
-                }
-                first = false;
-                offset += length;
-                remaining -= length;
+        private void pushOutputAccessUnit(float[] mono, long presentationTimeUs) {
+            int framesToKeep = outputFramesToKeep(
+                    mono.length, presentationTimeUs, endUs, sampleRate
+            );
+            if (framesToKeep != mono.length) {
+                mono = java.util.Arrays.copyOf(mono, framesToKeep);
             }
-            return keptFrames;
+            if (mono.length > 0) {
+                accumulator.push(
+                        mono,
+                        presentationTimeUs / 1_000_000.0 - analysisWindow.start(),
+                        sampleRate
+                );
+            }
+            decodedPcmFrames += mono.length;
+            outputAccessUnits++;
         }
 
         private void reportProgress(long presentationTimeUs) {
@@ -623,6 +710,14 @@ final class NativeAudioDecoder {
             try {
                 sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
                 channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+                pcmAssembler.setGaplessTrimming(
+                        format.containsKey(MediaFormat.KEY_ENCODER_DELAY)
+                                ? format.getInteger(MediaFormat.KEY_ENCODER_DELAY)
+                                : 0,
+                        format.containsKey(MediaFormat.KEY_ENCODER_PADDING)
+                                ? format.getInteger(MediaFormat.KEY_ENCODER_PADDING)
+                                : 0
+                );
                 if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
                     encoding = format.getInteger(MediaFormat.KEY_PCM_ENCODING);
                 }
@@ -662,6 +757,19 @@ final class NativeAudioDecoder {
             if (error instanceof RuntimeException runtimeError) throw runtimeError;
             throw new IOException("Batched audio decode failed", error);
         }
+    }
+
+    static int outputFramesToKeep(
+            int decodedFrames,
+            long presentationTimeUs,
+            long endUs,
+            int sampleRate
+    ) {
+        long remainingUs = endUs - presentationTimeUs;
+        return (int) Math.min(
+                decodedFrames,
+                Math.max(0, (remainingUs * sampleRate + 999_999) / 1_000_000)
+        );
     }
 
     static String featureSha256(float[] features) {

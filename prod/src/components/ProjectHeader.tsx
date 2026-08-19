@@ -1,5 +1,9 @@
 import type { VolleyCutProject } from "@/lib/project-store";
-import { runtimeAssetUrl } from "@/lib/runtime-assets";
+import {
+  ANDROID_APK_FILENAME,
+  androidApkUrl,
+  runtimeAssetUrl,
+} from "@/lib/runtime-assets";
 
 import styles from "./ProjectHeader.module.css";
 
@@ -39,6 +43,14 @@ export function ProjectHeader({
         {/* biome-ignore lint/performance/noImgElement: This standalone Vite app ships a local pre-sized logo without an image optimizer. */}
         <img src={runtimeAssetUrl("volleycut-logo.png")} alt="VolleyCut" />
         <span>LOCAL CUT</span>
+        <a
+          className={styles.androidDownload}
+          href={androidApkUrl()}
+          download={ANDROID_APK_FILENAME}
+          aria-label="Download VolleyCut 0.10.1 for Android"
+        >
+          ANDROID APK · v0.10.1
+        </a>
       </span>
       <div className={styles.projectControls}>
         {queueLabel && (
