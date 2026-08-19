@@ -28,7 +28,7 @@ const expectedHashes = new Map([
   ],
   [
     "runtime/libswresample.mjs",
-    "e3d6b06c569a65448079a5bc026cba1e3cfe732e2c43bf6901fe32dc759825fd",
+    "022782d1e08e483d8c67de30f68177eff5904998c410df028f26e342c793ae48",
   ],
   [
     "runtime/libswresample.wasm",
