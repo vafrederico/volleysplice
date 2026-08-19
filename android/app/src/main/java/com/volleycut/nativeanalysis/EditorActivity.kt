@@ -573,6 +573,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     ProjectAnalysisService.enqueue(context, queued.id)
                 }
+                GuidedTourStore.moveToEditor(context)
             } catch (error: Exception) {
                 inference = inference.copy(
                     running = false,
@@ -689,6 +690,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     val queueCount = projects.count {
         it.status == ProjectStatus.QUEUED || it.status == ProjectStatus.ANALYZING
     }
+    val guidedTourTargets = remember { GuidedTourTargets() }
+    var guidedTourRestartSignal by remember { mutableIntStateOf(0) }
     val projectControls: @Composable (EditorProjectSummary?) -> Unit = { editorSummary ->
         ProjectHeaderBar(
             projects = projects,
@@ -718,11 +721,24 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 relinkFailed = false
             },
             onDelete = { selectedProject?.let { confirmDelete = it } },
+            onRestartTour = {
+                GuidedTourStore.restart(
+                    context,
+                    if (creatingNew) GuidedTourStage.SETUP else GuidedTourStage.EDITOR,
+                )
+                guidedTourRestartSignal++
+            },
         )
     }
 
     if (creatingNew || selectedProject == null) {
-        ProjectShell(projectControls = { projectControls(null) }) {
+        ProjectShell(
+            projectControls = { projectControls(null) },
+            guidedTourStage = GuidedTourStage.SETUP,
+            guidedTourTargets = guidedTourTargets,
+            sourceReady = selectedSource?.media != null,
+            guidedTourRestartSignal = guidedTourRestartSignal,
+        ) {
             NewProjectCard(
                 selected = selectedSource,
                 preparing = preparingSource,
@@ -754,6 +770,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     inference = InferenceUiState(detail = "Feature cache cleared")
                 },
                 onBenchmark = { context.startActivity(Intent(context, MainActivity::class.java)) },
+                guidedTourTargets = guidedTourTargets,
             )
         }
     } else if (selectedProject.status != ProjectStatus.READY) {
@@ -813,6 +830,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     relinkPicker.launch(arrayOf("video/*"))
                 },
                 sourceControls = projectControls,
+                guidedTourTargets = guidedTourTargets,
+                guidedTourRestartSignal = guidedTourRestartSignal,
             )
         }
     }
@@ -830,6 +849,7 @@ private fun ProjectHeaderBar(
     onSelect: (NativeProject) -> Unit,
     onNew: () -> Unit,
     onDelete: () -> Unit,
+    onRestartTour: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -911,6 +931,7 @@ private fun ProjectHeaderBar(
                         }
                     }
                 }
+                TextButton(onClick = onRestartTour) { Text("? Tour") }
                 if (selected != null && !creatingNew) {
                     TextButton(onClick = onDelete) { Text("Delete", color = Danger) }
                 }
@@ -1022,6 +1043,7 @@ private fun NewProjectCard(
     onUseCache: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onBenchmark: () -> Unit,
+    guidedTourTargets: GuidedTourTargets? = null,
 ) {
     SectionCard(
         "NEW PROJECT",
@@ -1037,24 +1059,31 @@ private fun NewProjectCard(
             Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedButton(enabled = !preparing, onClick = onSelect) { Text("Choose video") }
+            OutlinedButton(
+                enabled = !preparing,
+                onClick = onSelect,
+                modifier = Modifier.guidedTourTarget("setup-source", guidedTourTargets),
+            ) { Text("Choose video") }
             Button(
                 enabled = selected?.media != null && !preparing && gameEndMs - gameStartMs >= 1_000,
                 onClick = onQueue,
+                modifier = Modifier.guidedTourTarget("setup-create", guidedTourTargets),
             ) {
                 Text(if (preparing) "Creating…" else "Create & queue")
             }
         }
         if (selected?.media != null) {
-            GameWindowPicker(
-                selected = selected,
-                gameStartMs = gameStartMs,
-                gameEndMs = gameEndMs,
-                enabled = !preparing,
-                onGameStart = onGameStart,
-                onGameEnd = onGameEnd,
-                onFullVideo = onFullVideo,
-            )
+            Box(Modifier.guidedTourTarget("setup-window", guidedTourTargets)) {
+                GameWindowPicker(
+                    selected = selected,
+                    gameStartMs = gameStartMs,
+                    gameEndMs = gameEndMs,
+                    enabled = !preparing,
+                    onGameStart = onGameStart,
+                    onGameEnd = onGameEnd,
+                    onFullVideo = onFullVideo,
+                )
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -1196,19 +1225,33 @@ private fun GameWindowPicker(
 @Composable
 private fun ProjectShell(
     projectControls: @Composable () -> Unit,
+    guidedTourStage: GuidedTourStage? = null,
+    guidedTourTargets: GuidedTourTargets? = null,
+    sourceReady: Boolean = false,
+    guidedTourRestartSignal: Int = 0,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Scaffold(containerColor = Paper) { scaffoldPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(scaffoldPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            projectControls()
-            content()
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(containerColor = Paper) { scaffoldPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(scaffoldPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                projectControls()
+                content()
+            }
+        }
+        if (guidedTourStage != null && guidedTourTargets != null) {
+            GuidedTour(
+                stage = guidedTourStage,
+                targets = guidedTourTargets,
+                sourceReady = sourceReady,
+                restartSignal = guidedTourRestartSignal,
+            )
         }
     }
 }
@@ -1230,6 +1273,8 @@ private fun EditorScreen(
     onSuppressionAugmented: (NativeProject) -> Unit,
     onRelink: () -> Unit,
     sourceControls: @Composable (EditorProjectSummary) -> Unit,
+    guidedTourTargets: GuidedTourTargets,
+    guidedTourRestartSignal: Int,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1576,26 +1621,29 @@ private fun EditorScreen(
         )
     }
 
-    Scaffold(containerColor = Paper) { scaffoldPadding ->
-        Column(
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(containerColor = Paper) { scaffoldPadding ->
+            Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(scaffoldPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            sourceControls(
-                EditorProjectSummary(
-                    width = seed.width,
-                    height = seed.height,
-                    sourceDurationMs = seed.durationMs,
-                    outputDurationMs = totalFinalMs,
-                    kept = effectiveIds.size,
-                    removed = removedCount,
-                    ignored = ignoredCutCount,
-                ),
-            )
+            ) {
+                Box(Modifier.guidedTourTarget("editor-header", guidedTourTargets)) {
+                    sourceControls(
+                        EditorProjectSummary(
+                            width = seed.width,
+                            height = seed.height,
+                            sourceDurationMs = seed.durationMs,
+                            outputDurationMs = totalFinalMs,
+                            kept = effectiveIds.size,
+                            removed = removedCount,
+                            ignored = ignoredCutCount,
+                        ),
+                    )
+                }
 
             if (sourceAvailable == false || relinkMessage != null) {
                 SectionCard(
@@ -1622,8 +1670,16 @@ private fun EditorScreen(
                 }
             }
 
-            SectionCard("OUTPUT", "Padding and retained short gaps") {
-                if (seed.suppression == null) {
+            SectionCard(
+                "OUTPUT",
+                "Padding and retained short gaps",
+                modifier = Modifier.guidedTourTarget("editor-output", guidedTourTargets),
+            ) {
+                Column(
+                    Modifier.guidedTourTarget("editor-suppression", guidedTourTargets),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (seed.suppression == null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Suppression suggestions", fontWeight = FontWeight.SemiBold)
@@ -1715,29 +1771,37 @@ private fun EditorScreen(
                         }
                     }
                 }
-                PaddingControl("Before", draft.beforePaddingMs) { before ->
-                    updateDraft { EditorMath.applyPadding(
-                        it, before, it.afterPaddingMs, seed.durationMs,
-                        seed.gameStartMs, seed.gameEndMs,
-                    ) }
                 }
-                PaddingControl("After", draft.afterPaddingMs) { after ->
-                    updateDraft { EditorMath.applyPadding(
-                        it, it.beforePaddingMs, after, seed.durationMs,
-                        seed.gameStartMs, seed.gameEndMs,
-                    ) }
+                Column(Modifier.guidedTourTarget("editor-padding", guidedTourTargets)) {
+                    PaddingControl("Before", draft.beforePaddingMs) { before ->
+                        updateDraft { EditorMath.applyPadding(
+                            it, before, it.afterPaddingMs, seed.durationMs,
+                            seed.gameStartMs, seed.gameEndMs,
+                        ) }
+                    }
+                    PaddingControl("After", draft.afterPaddingMs) { after ->
+                        updateDraft { EditorMath.applyPadding(
+                            it, it.beforePaddingMs, after, seed.durationMs,
+                            seed.gameStartMs, seed.gameEndMs,
+                        ) }
+                    }
                 }
-                PaddingControl("Join gaps under", draft.joinGapMs) { joinGap ->
-                    updateDraft { it.copy(joinGapMs = joinGap.coerceIn(0, MAX_JOIN_GAP_MS)) }
-                    message = if (joinGap == 0L) "Short-gap joining disabled"
-                    else "Keeping export gaps shorter than ${String.format(Locale.US, "%.1f", joinGap / 1_000.0)} seconds"
+                Box(Modifier.guidedTourTarget("editor-join-gaps", guidedTourTargets)) {
+                    PaddingControl("Join gaps under", draft.joinGapMs) { joinGap ->
+                        updateDraft { it.copy(joinGapMs = joinGap.coerceIn(0, MAX_JOIN_GAP_MS)) }
+                        message = if (joinGap == 0L) "Short-gap joining disabled"
+                        else "Keeping export gaps shorter than ${String.format(Locale.US, "%.1f", joinGap / 1_000.0)} seconds"
+                    }
                 }
                 Text(
                     "Padding applies to inferred ranges. Gray gaps shorter than this setting remain in preview and export.",
                     fontSize = 11.sp,
                     color = Muted,
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.guidedTourTarget("editor-final-preview", guidedTourTargets),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text("Play final cut only", fontWeight = FontWeight.SemiBold)
                         Text("Skip removed, ignored, and gaps at or above the join setting", fontSize = 12.sp, color = Muted)
@@ -1755,7 +1819,10 @@ private fun EditorScreen(
                 }
             }
 
-            Card(colors = CardDefaults.cardColors(containerColor = Color.Black)) {
+            Card(
+                modifier = Modifier.guidedTourTarget("editor-video", guidedTourTargets),
+                colors = CardDefaults.cardColors(containerColor = Color.Black),
+            ) {
                 ContentFrame(
                     player = player,
                     modifier = Modifier.fillMaxWidth().height(176.dp),
@@ -1780,9 +1847,15 @@ private fun EditorScreen(
                 },
                 onSeekBy = { seekTo(player.currentPosition + it) },
                 onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
+                modifier = Modifier.guidedTourTarget("editor-transport", guidedTourTargets),
             )
 
-            SectionCard("GAME WINDOW", "Tap a range · gray = joined gap", compact = true) {
+            SectionCard(
+                "GAME WINDOW",
+                "Tap a range · gray = joined gap",
+                compact = true,
+                modifier = Modifier.guidedTourTarget("editor-overview", guidedTourTargets),
+            ) {
                 ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, disagreementCount,
                     suppressionCount = activeSuggestions.size,
                     compact = true, onChange = { threshold ->
@@ -1978,6 +2051,7 @@ private fun EditorScreen(
                 }
                     ?: "No range selected",
                 compact = true,
+                modifier = Modifier.guidedTourTarget("editor-focus", guidedTourTargets),
             ) {
                 if (selected == null) {
                     Text("Add a missed cut at the current playhead to begin.", color = Muted)
@@ -2057,6 +2131,7 @@ private fun EditorScreen(
                                 seed.gameEndMs,
                             ) }
                         },
+                        modifier = Modifier.guidedTourTarget("editor-trim", guidedTourTargets),
                     )
                     if (selected.origin == CutOrigin.INFERRED) {
                         Text("OUTPUT EDGES (RALLY + PADDING)", fontSize = 11.sp, color = Muted)
@@ -2104,6 +2179,7 @@ private fun EditorScreen(
                     message = "Added ${cut.id} from ${preciseTime(cut.keepStartMs)} to ${preciseTime(cut.keepEndMs)}"
                 },
                 onMessage = { message = it },
+                modifier = Modifier.guidedTourTarget("editor-marking", guidedTourTargets),
             )
 
             if (message.isNotBlank()) {
@@ -2128,7 +2204,11 @@ private fun EditorScreen(
                 }
             }
 
-            SectionCard("ALL CUTS", "${effectiveIds.size} kept · $ignoredCutCount fully ignored") {
+            SectionCard(
+                "ALL CUTS",
+                "${effectiveIds.size} kept · $ignoredCutCount fully ignored",
+                modifier = Modifier.guidedTourTarget("editor-cuts", guidedTourTargets),
+            ) {
                 sortedCuts.forEachIndexed { index, cut ->
                     val state = when {
                         !cut.included -> "Removed"
@@ -2166,7 +2246,11 @@ private fun EditorScreen(
                 }
             }
 
-            SectionCard("EXPORT", "MP4 video + training feedback JSON") {
+            SectionCard(
+                "EXPORT",
+                "MP4 video + training feedback JSON",
+                modifier = Modifier.guidedTourTarget("editor-export", guidedTourTargets),
+            ) {
                 Text(
                     "${finalIntervals.size} merged ranges · ${compactTime(totalFinalMs)} output",
                     fontWeight = FontWeight.SemiBold,
@@ -2224,8 +2308,14 @@ private fun EditorScreen(
                     Text("Benchmark tools")
                 }
             }
-            Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(20.dp))
+            }
         }
+        GuidedTour(
+            GuidedTourStage.EDITOR,
+            guidedTourTargets,
+            restartSignal = guidedTourRestartSignal,
+        )
     }
 }
 
@@ -2233,10 +2323,14 @@ private fun EditorScreen(
 private fun SectionCard(
     label: String,
     subtitle: String,
+    modifier: Modifier = Modifier,
     compact: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+    ) {
         Column(
             Modifier.fillMaxWidth().padding(if (compact) 10.dp else 14.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 10.dp),
@@ -2278,8 +2372,9 @@ private fun PlayerControls(
     onToggle: () -> Unit,
     onSeekBy: (Long) -> Unit,
     onRate: (Float) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(preciseTime(positionMs), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
             Text(" / ${preciseTime(durationMs)}", fontFamily = FontFamily.Monospace, color = Muted)
@@ -2666,13 +2761,14 @@ private fun RallyRangeSlider(
     cut: EditableCut,
     window: DetailWindow,
     onRangeChange: (Long, Long) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val sliderWindow = remember(cut.id) { window }
     val windowStart = sliderWindow.startMs.toFloat()
     val windowEnd = sliderWindow.endMs
         .coerceAtLeast(sliderWindow.startMs + MIN_MARK_MS)
         .toFloat()
-    Column {
+    Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Rally length", fontSize = 12.sp, color = Muted)
             Spacer(Modifier.weight(1f))
@@ -2707,8 +2803,10 @@ private fun MarkingTools(
     onDraft: ((EditorDraft) -> EditorDraft) -> Unit,
     onManualCompleted: (EditableCut) -> Unit,
     onMessage: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    SectionCard("ADD A MISSED CUT", draft.pendingManualStartMs?.let { "Started ${preciseTime(it)}" } ?: "Find the first frame") {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionCard("ADD A MISSED CUT", draft.pendingManualStartMs?.let { "Started ${preciseTime(it)}" } ?: "Find the first frame") {
         Text("Seek, mark the start, then seek and mark the end.", fontSize = 12.sp, color = Muted)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
@@ -2737,7 +2835,7 @@ private fun MarkingTools(
             }
         }
     }
-    SectionCard("IGNORE SOURCE SECTION", draft.pendingIgnoreStartMs?.let { "Started ${preciseTime(it)}" } ?: "Exclude unusable footage") {
+        SectionCard("IGNORE SOURCE SECTION", draft.pendingIgnoreStartMs?.let { "Started ${preciseTime(it)}" } ?: "Exclude unusable footage") {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             listOf("non-game-content", "camera-gap", "partial-rally", "boundary-ambiguous").forEach { reason ->
                 FilterChip(
@@ -2770,6 +2868,7 @@ private fun MarkingTools(
             if (draft.pendingIgnoreStartMs != null) {
                 OutlinedButton(onClick = { onDraft { it.copy(pendingIgnoreStartMs = null) } }) { Text("Cancel") }
             }
+        }
         }
     }
 }
