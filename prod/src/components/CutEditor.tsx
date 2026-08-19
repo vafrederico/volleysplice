@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { GuidedTour } from "@/components/GuidedTour";
 import {
   activeSuppressionSuggestions,
   applyPaddingToCachedCuts,
@@ -1116,7 +1117,11 @@ export function CutEditor({
     <main className={styles.page}>
       {header}
 
-      <section className={styles.sourcePicker} aria-label="Local inference source">
+      <section
+        className={styles.sourcePicker}
+        data-tour="editor-source"
+        aria-label="Local inference source"
+      >
         <div className={styles.sourceMeta}>
           <span>LOCAL VIDEO</span>
           <strong>{initialAnalysis.sourceFilename}</strong>
@@ -1145,7 +1150,11 @@ export function CutEditor({
       {sourceError && <p className={styles.sourceError}>{sourceError}</p>}
 
       <section className={styles.editorShell}>
-        <aside className={styles.summaryCard} aria-label="Final edit settings">
+        <aside
+          className={styles.summaryCard}
+          data-tour="editor-settings"
+          aria-label="Final edit settings"
+        >
           <div className={styles.summaryStats}>
             <span>FINAL EDIT LIST</span>
             <strong>{formatTime(keptSeconds)}</strong>
@@ -1156,7 +1165,7 @@ export function CutEditor({
               <p>Duration includes padding and joined short gaps; ignored time is excluded</p>
             </div>
           </div>
-          <div className={styles.suppressionControls}>
+          <div className={styles.suppressionControls} data-tour="editor-suppression">
             <div>
               <span>FALSE-POSITIVE SUPPRESSION</span>
               <strong>
@@ -1216,41 +1225,43 @@ export function CutEditor({
             )}
           </div>
           <div className={styles.paddingControls}>
-            <div className={styles.paddingControl}>
-              <label htmlFor="cut-padding-before">
-                <span>Before</span>
-                <output>{draft.beforePaddingSeconds.toFixed(1)}s</output>
-              </label>
-              <input
-                id="cut-padding-before"
-                aria-label="Padding before each inferred cut"
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={draft.beforePaddingSeconds}
-                onChange={(event) => setGlobalPadding("before", Number(event.currentTarget.value))}
-              />
-              <div><span>0s</span><span>10s</span></div>
+            <div className={styles.paddingPair} data-tour="editor-padding">
+              <div className={styles.paddingControl}>
+                <label htmlFor="cut-padding-before">
+                  <span>Before</span>
+                  <output>{draft.beforePaddingSeconds.toFixed(1)}s</output>
+                </label>
+                <input
+                  id="cut-padding-before"
+                  aria-label="Padding before each inferred cut"
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  value={draft.beforePaddingSeconds}
+                  onChange={(event) => setGlobalPadding("before", Number(event.currentTarget.value))}
+                />
+                <div><span>0s</span><span>10s</span></div>
+              </div>
+              <div className={styles.paddingControl}>
+                <label htmlFor="cut-padding-after">
+                  <span>After</span>
+                  <output>{draft.afterPaddingSeconds.toFixed(1)}s</output>
+                </label>
+                <input
+                  id="cut-padding-after"
+                  aria-label="Padding after each inferred cut"
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  value={draft.afterPaddingSeconds}
+                  onChange={(event) => setGlobalPadding("after", Number(event.currentTarget.value))}
+                />
+                <div><span>0s</span><span>10s</span></div>
+              </div>
             </div>
-            <div className={styles.paddingControl}>
-              <label htmlFor="cut-padding-after">
-                <span>After</span>
-                <output>{draft.afterPaddingSeconds.toFixed(1)}s</output>
-              </label>
-              <input
-                id="cut-padding-after"
-                aria-label="Padding after each inferred cut"
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={draft.afterPaddingSeconds}
-                onChange={(event) => setGlobalPadding("after", Number(event.currentTarget.value))}
-              />
-              <div><span>0s</span><span>10s</span></div>
-            </div>
-            <div className={styles.paddingControl}>
+            <div className={styles.paddingControl} data-tour="editor-join-gaps">
               <label htmlFor="cut-join-gap">
                 <span>Join gaps under</span>
                 <output>{draft.joinGapSeconds.toFixed(1)}s</output>
@@ -1300,6 +1311,7 @@ export function CutEditor({
             <button
               type="button"
               className={styles.exportButton}
+              data-tour="editor-export-video"
               disabled={
                 exportState === "exporting" || finalIntervals.length === 0 || !localExportSupported
               }
@@ -1405,6 +1417,7 @@ export function CutEditor({
         <div className={styles.playerColumn}>
           <div
             className={styles.videoStage}
+            data-tour="editor-video"
             style={{ aspectRatio: `${initialAnalysis.width} / ${initialAnalysis.height}` }}
           >
             {initialAnalysis.videoUrl ? (
@@ -1522,7 +1535,7 @@ export function CutEditor({
             </div>
           </div>
 
-          <div className={styles.transport}>
+          <div className={styles.transport} data-tour="editor-transport">
             <button type="button" onClick={() => seekTo(playbackTime - 1)}>−1s</button>
             <button type="button" onClick={() => seekTo(playbackTime - 0.1)}>−0.1s</button>
             <button
@@ -1551,7 +1564,7 @@ export function CutEditor({
             </select>
           </label>
 
-          <section className={styles.overviewSection}>
+          <section className={styles.overviewSection} data-tour="editor-overview">
             <div className={styles.sectionHeading}>
               <div>
                 <span>GAME WINDOW</span>
@@ -1750,7 +1763,11 @@ export function CutEditor({
 
       </section>
 
-      <section className={styles.focusEditor} aria-label="Focused range editor">
+      <section
+        className={styles.focusEditor}
+        data-tour="editor-focus"
+        aria-label="Focused range editor"
+      >
         <div className={styles.focusHeader}>
           <div>
             <span>FOCUSED RANGE</span>
@@ -1996,7 +2013,7 @@ export function CutEditor({
         )}
       </section>
 
-      <section className={styles.markingTools}>
+      <section className={styles.markingTools} data-tour="editor-marking">
         <div className={styles.markingCard}>
           <div>
             <span>ADD A MISSED CUT</span>
@@ -2106,7 +2123,7 @@ export function CutEditor({
         </section>
       )}
 
-      <section className={styles.cutList}>
+      <section className={styles.cutList} data-tour="editor-cuts">
         <div className={styles.sectionHeading}>
           <div><span>ALL CUTS</span><strong>Model predictions and manual additions</strong></div>
           <small>{keptCount} kept · {fullyIgnoredCount} fully ignored</small>
@@ -2151,6 +2168,8 @@ export function CutEditor({
           ))}
         </div>
       </section>
+
+      <GuidedTour stage="editor" />
     </main>
   );
 }

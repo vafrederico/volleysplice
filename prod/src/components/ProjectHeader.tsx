@@ -34,7 +34,7 @@ export function ProjectHeader({
   onDeleteProject,
 }: ProjectHeaderProps) {
   return (
-    <header className={styles.header}>
+    <header className={styles.header} data-tour="editor-header">
       <span className={styles.brand}>
         {/* biome-ignore lint/performance/noImgElement: This standalone Vite app ships a local pre-sized logo without an image optimizer. */}
         <img src={runtimeAssetUrl("volleycut-logo.png")} alt="VolleyCut" />

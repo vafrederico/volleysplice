@@ -1,0 +1,196 @@
+.spotlight {
+  position: fixed;
+  z-index: 1000;
+  border: 2px solid #ff5c35;
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 9999px rgba(17, 19, 15, 0.42),
+    0 0 0 6px rgba(255, 92, 53, 0.2),
+    0 12px 28px rgba(17, 19, 15, 0.25);
+  pointer-events: none;
+  transition:
+    top 0.2s ease,
+    left 0.2s ease,
+    width 0.2s ease,
+    height 0.2s ease;
+}
+
+.dialog {
+  position: fixed;
+  right: clamp(16px, 4vw, 64px);
+  bottom: 22px;
+  z-index: 1001;
+  width: min(430px, calc(100vw - 32px));
+  padding: 25px 27px 20px;
+  border: 1px solid #11130f;
+  color: #11130f;
+  background: #fff;
+  box-shadow: 9px 9px 0 #11130f;
+  pointer-events: auto;
+}
+
+.launcher {
+  position: fixed;
+  left: clamp(16px, 4vw, 64px);
+  bottom: 22px;
+  z-index: 1001;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid #11130f;
+  color: #11130f;
+  background: #fff;
+  box-shadow: 5px 5px 0 #11130f;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.launcher span {
+  display: inline-grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 50%;
+  color: #11130f;
+  background: #dfff35;
+  font:
+    700 12px ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+.close {
+  position: absolute;
+  top: 10px;
+  right: 11px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #aaa9a0;
+  color: #11130f;
+  background: #f3f0e7;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.kicker {
+  display: block;
+  padding-right: 30px;
+  color: #ff5c35;
+  font:
+    700 9px ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+  letter-spacing: 1.4px;
+}
+
+.dialog h2 {
+  margin: 9px 28px 10px 0;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+}
+
+.dialog p {
+  margin: 0;
+  color: #565950;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.progress {
+  display: flex;
+  width: 100%;
+  gap: 4px;
+  margin-top: 19px;
+}
+
+.progress i {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 4px;
+  background: #d7d5cc;
+}
+
+.progress i[data-active="true"] {
+  background: #ff5c35;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 17px;
+}
+
+.skip,
+.next {
+  min-height: 39px;
+  padding: 9px 13px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.skip {
+  border: 0;
+  border-bottom: 1px solid #77796f;
+  color: #686b62;
+  background: transparent;
+}
+
+.next {
+  border: 1px solid #11130f;
+  color: #11130f;
+  background: #dfff35;
+}
+
+.next:disabled {
+  border-color: #aaa9a0;
+  color: #85877e;
+  background: #e4e2da;
+  cursor: not-allowed;
+}
+
+.skip:focus-visible,
+.next:focus-visible,
+.close:focus-visible,
+.launcher:focus-visible {
+  outline: 3px solid #ff5c35;
+  outline-offset: 2px;
+}
+
+.escapeHint {
+  display: block;
+  margin-top: 13px;
+  color: #85877e;
+  font:
+    9px ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+@media (max-width: 560px) {
+  .dialog {
+    right: 16px;
+    bottom: 16px;
+    padding: 21px 19px 17px;
+    box-shadow: 6px 6px 0 #11130f;
+  }
+
+  .dialog p {
+    font-size: 12px;
+  }
+
+  .launcher {
+    left: 16px;
+    bottom: 16px;
+  }
+}

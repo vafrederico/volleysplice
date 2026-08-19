@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CutEditor } from "@/components/CutEditor";
+import { GuidedTour } from "@/components/GuidedTour";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
 import {
@@ -883,7 +884,7 @@ export function App() {
           )}
           {error && <p className={styles.error}>{error}</p>}
 
-          <section className={styles.importCard}>
+          <section className={styles.importCard} data-tour="source-picker">
             <div>
               <p>STEP 01 · NEW PROJECT SOURCE</p>
               <h2>{file?.name ?? "Choose a volleyball video"}</h2>
@@ -910,7 +911,7 @@ export function App() {
           </section>
 
           {info && previewUrl && (
-            <section className={styles.workspace}>
+            <section className={styles.workspace} data-tour="source-workspace">
               <div className={styles.viewer}>
                 <div
                   className={styles.videoStage}
@@ -983,7 +984,11 @@ export function App() {
                   Keep the court and players inside the box. Exclude static
                   borders, stands, or neighboring courts when practical.
                 </p>
-                <section className={styles.gameWindow} aria-labelledby="game-window-heading">
+                <section
+                  className={styles.gameWindow}
+                  data-tour="source-game-window"
+                  aria-labelledby="game-window-heading"
+                >
                   <div className={styles.gameWindowHeading}>
                     <div>
                       <span>ANALYSIS WINDOW</span>
@@ -1047,42 +1052,47 @@ export function App() {
                       : " · full source"}
                   </strong>
                 </section>
-                <div className={styles.presetButtons}>
-                  <button
-                    type="button"
-                    onClick={() => setRoi(COURT_CENTERED_ROI)}
-                  >
-                    Court centered
-                  </button>
-                  <button type="button" onClick={() => setRoi(FULL_FRAME_ROI)}>
-                    Full frame
-                  </button>
-                </div>
-                <div className={styles.roiGrid}>
-                  {(["x", "y", "width", "height"] as const).map((field) => (
-                    <label key={field}>
-                      <span>
-                        {field} <output>{Math.round(roi[field] * 100)}%</output>
-                      </span>
-                      <input
-                        aria-label={`Feature crop ${field}`}
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={roi[field]}
-                        onChange={(event) =>
-                          setRoi(
-                            clampRoi({
-                              ...roi,
-                              [field]: Number(event.currentTarget.value),
-                            }),
-                          )
-                        }
-                        disabled={busy}
-                      />
-                    </label>
-                  ))}
+                <div data-tour="source-camera">
+                  <div className={styles.presetButtons}>
+                    <button
+                      type="button"
+                      onClick={() => setRoi(COURT_CENTERED_ROI)}
+                    >
+                      Court centered
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRoi(FULL_FRAME_ROI)}
+                    >
+                      Full frame
+                    </button>
+                  </div>
+                  <div className={styles.roiGrid}>
+                    {(["x", "y", "width", "height"] as const).map((field) => (
+                      <label key={field}>
+                        <span>
+                          {field} <output>{Math.round(roi[field] * 100)}%</output>
+                        </span>
+                        <input
+                          aria-label={`Feature crop ${field}`}
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={roi[field]}
+                          onChange={(event) =>
+                            setRoi(
+                              clampRoi({
+                                ...roi,
+                                [field]: Number(event.currentTarget.value),
+                              }),
+                            )
+                          }
+                          disabled={busy}
+                        />
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <button
                   className={styles.analyzeButton}
@@ -1105,6 +1115,11 @@ export function App() {
               </aside>
             </section>
           )}
+
+          <GuidedTour
+            stage="source"
+            sourceReady={Boolean(info && previewUrl)}
+          />
         </>
       )}
 
