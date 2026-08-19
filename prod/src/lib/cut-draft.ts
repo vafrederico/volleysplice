@@ -14,6 +14,7 @@ export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const MAX_CUT_PADDING_SECONDS = 10;
 export const MAX_JOIN_GAP_SECONDS = 10;
+export const MIN_CUT_SECONDS = 0.1;
 export const PLAYBACK_RATES = [1, 2, 4, 8] as const;
 
 export type CutOrigin = "cached-label" | "manual";
@@ -68,6 +69,11 @@ export type FinalCutInterval = {
   joinedGaps?: Array<{ start: number; end: number }>;
 };
 
+export type CutSplitResult = {
+  draft: CutDraft;
+  newCut: EditableCut;
+};
+
 export type FinalCutProvenanceSegment = {
   start: number;
   end: number;
@@ -119,6 +125,30 @@ function finiteTime(value: unknown): value is number {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
+}
+
+function nextCutId(prefix: string, cuts: readonly EditableCut[]): string {
+  const used = new Set(cuts.map((cut) => cut.id));
+  for (let index = 1; index < 10_000; index += 1) {
+    const candidate = `${prefix}${String(index).padStart(3, "0")}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${prefix}${Date.now()}`;
+}
+
+function withTouchedCachedCuts(draft: CutDraft, ids: readonly string[]): CutDraft {
+  const cachedIds = new Set(
+    draft.cuts
+      .filter((cut) => cut.origin === "cached-label")
+      .map((cut) => cut.id),
+  );
+  const touched = ids.filter((id) => cachedIds.has(id));
+  return touched.length === 0
+    ? draft
+    : {
+        ...draft,
+        userTouchedCutIds: [...new Set([...draft.userTouchedCutIds, ...touched])],
+      };
 }
 
 function hashText(value: string): string {
@@ -493,7 +523,7 @@ export function applyPaddingToCachedCuts(
     beforePaddingSeconds: before,
     afterPaddingSeconds: after,
     cuts: draft.cuts.map((cut) =>
-      cut.origin === "cached-label" && !draft.userTouchedCutIds.includes(cut.id)
+      cut.origin === "cached-label"
         ? {
             ...cut,
             keepStart: roundTime(
@@ -506,6 +536,117 @@ export function applyPaddingToCachedCuts(
         : cut,
     ),
   };
+}
+
+export function setCutCoreStart(
+  draft: CutDraft,
+  cutId: string,
+  value: number,
+  minimum = draft.analysisStart,
+): CutDraft {
+  if (!Number.isFinite(value)) return draft;
+  const cuts = draft.cuts.map((cut) => {
+    if (cut.id !== cutId) return cut;
+    const maximumStart = cut.coreEnd - MIN_CUT_SECONDS;
+    if (maximumStart < minimum) return cut;
+    const start = roundTime(clamp(value, minimum, maximumStart));
+    const beforePadding = cut.coreStart - cut.keepStart;
+    return {
+      ...cut,
+      coreStart: start,
+      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
+    };
+  });
+  return withTouchedCachedCuts({ ...draft, cuts }, [cutId]);
+}
+
+export function setCutCoreEnd(
+  draft: CutDraft,
+  cutId: string,
+  value: number,
+  maximum = draft.analysisEnd,
+): CutDraft {
+  if (!Number.isFinite(value)) return draft;
+  const cuts = draft.cuts.map((cut) => {
+    if (cut.id !== cutId) return cut;
+    const minimumEnd = cut.coreStart + MIN_CUT_SECONDS;
+    if (minimumEnd > maximum) return cut;
+    const end = roundTime(clamp(value, minimumEnd, maximum));
+    const afterPadding = cut.keepEnd - cut.coreEnd;
+    return {
+      ...cut,
+      coreEnd: end,
+      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+    };
+  });
+  return withTouchedCachedCuts({ ...draft, cuts }, [cutId]);
+}
+
+export function setCutCoreRange(
+  draft: CutDraft,
+  cutId: string,
+  startValue: number,
+  endValue: number,
+  minimum = draft.analysisStart,
+  maximum = draft.analysisEnd,
+): CutDraft {
+  if (
+    !Number.isFinite(startValue) ||
+    !Number.isFinite(endValue) ||
+    maximum - minimum < MIN_CUT_SECONDS
+  ) return draft;
+  const cuts = draft.cuts.map((cut) => {
+    if (cut.id !== cutId) return cut;
+    const start = roundTime(clamp(startValue, minimum, maximum - MIN_CUT_SECONDS));
+    const end = roundTime(clamp(endValue, start + MIN_CUT_SECONDS, maximum));
+    const beforePadding = cut.coreStart - cut.keepStart;
+    const afterPadding = cut.keepEnd - cut.coreEnd;
+    return {
+      ...cut,
+      coreStart: start,
+      coreEnd: end,
+      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
+      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+    };
+  });
+  return withTouchedCachedCuts({ ...draft, cuts }, [cutId]);
+}
+
+export function splitCutAt(
+  draft: CutDraft,
+  cutId: string,
+  value: number,
+  minimum = draft.analysisStart,
+  maximum = draft.analysisEnd,
+): CutSplitResult | null {
+  if (!Number.isFinite(value)) return null;
+  const cutIndex = draft.cuts.findIndex((cut) => cut.id === cutId);
+  if (cutIndex < 0) return null;
+  const cut = draft.cuts[cutIndex];
+  const position = roundTime(value);
+  if (
+    position < cut.coreStart + MIN_CUT_SECONDS ||
+    position > cut.coreEnd - MIN_CUT_SECONDS
+  ) return null;
+
+  const beforePadding = cut.coreStart - cut.keepStart;
+  const afterPadding = cut.keepEnd - cut.coreEnd;
+  const prefix = cut.origin === "cached-label" ? "R" : "M";
+  const left: EditableCut = {
+    ...cut,
+    coreEnd: position,
+    keepEnd: roundTime(Math.min(maximum, position + afterPadding)),
+  };
+  const right: EditableCut = {
+    ...cut,
+    id: nextCutId(prefix, draft.cuts),
+    coreStart: position,
+    keepStart: roundTime(Math.max(minimum, position - beforePadding)),
+  };
+  const cuts = [...draft.cuts];
+  cuts.splice(cutIndex, 1, left, right);
+  const nextDraft = withTouchedCachedCuts({ ...draft, cuts }, [left.id, right.id]);
+  return { draft: nextDraft, newCut: right };
 }
 
 export function playbackFocusCut(

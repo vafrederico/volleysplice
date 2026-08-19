@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import styles from "./GuidedTour.module.css";
 
-const TOUR_STORAGE_KEY = "volleycut:guided-tour:v7";
+const TOUR_STORAGE_KEY = "volleycut:guided-tour:v8";
 
 const EDITOR_STEPS = [
   "editor-header",
@@ -17,6 +17,8 @@ const EDITOR_STEPS = [
   "editor-transport",
   "editor-overview",
   "editor-focus",
+  "editor-change-duration",
+  "editor-split-rally",
   "editor-marking",
   "editor-cuts",
 ] as const;
@@ -230,26 +232,40 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
         return {
           label: `WELCOME TOUR · 15 OF ${TOTAL_TOUR_STEPS}`,
           title: "Read the GAME WINDOW rail",
-          body: "Tap or slide this overview to seek. Each colored range is a detected or added cut; select one to focus it below. Review next moves through low-confidence or one-model disagreement ranges, while the legend explains kept, suppressed, ignored, and joined sections.",
+          body: "The two rows show the first and second halves of the game, giving each rally more horizontal space on small screens. Tap or slide either row to seek, or select a colored range to focus it below. Review next moves through low-confidence or one-model disagreement ranges.",
           action: "Next: focused range",
         };
       case "editor-focus":
         return {
           label: `WELCOME TOUR · 16 OF ${TOTAL_TOUR_STEPS}`,
           title: "Refine the focused range",
-          body: "The focused range shows its kept and inferred core boundaries. Drag the handles or use the small time buttons to adjust them, then Keep / Restore, Preview cut, Reset padding, or Mark reviewed. Previous and Next move through the cut list.",
+          body: "The focused timeline enlarges the selected rally. Blue shows the output including padding, while the inner rally is marked separately. Use Previous and Next to move through the cut list, and Keep / Restore, Preview cut, Reset padding, or Mark reviewed to finish reviewing it.",
+          action: "Next: change duration",
+        };
+      case "editor-change-duration":
+        return {
+          label: `WELCOME TOUR · 17 OF ${TOTAL_TOUR_STEPS}`,
+          title: "Change a rally's duration",
+          body: "Drag either orange handle to shorten or extend the rally. For frame-accurate edits, seek with the player or transport controls and choose Set rally start here or Set rally end here. Existing padding follows the corrected rally edges; Output edges adjust only the surrounding padding.",
+          action: "Next: split a rally",
+        };
+      case "editor-split-rally":
+        return {
+          label: `WELCOME TOUR · 18 OF ${TOTAL_TOUR_STEPS}`,
+          title: "Split one rally into two",
+          body: "Move the playhead to the point where the rallies should separate, then choose Split at playhead. VolleyCut creates two ranges with the same padding and selects the new second part, so each side can be trimmed, kept, or removed independently.",
           action: "Next: marking tools",
         };
       case "editor-marking":
         return {
-          label: `WELCOME TOUR · 17 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 19 OF ${TOTAL_TOUR_STEPS}`,
           title: "Add misses or ignore unusable footage",
           body: "Use Add a missed cut when the model missed a rally: mark its start, seek, then mark its end. Use Ignore source section for camera gaps or non-game footage; ignored time is excluded without becoming a negative label.",
           action: "Next: all cuts",
         };
       case "editor-cuts":
         return {
-          label: `WELCOME TOUR · 18 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 20 OF ${TOTAL_TOUR_STEPS}`,
           title: "Use the all-cuts list",
           body: "Each card is one model prediction or manual addition. Click the time card to focus it, then use Keep, Removed, or Ignored to decide whether it contributes to the final edit. Check badges identify ranges that still need review.",
           action: "Finish tour",

@@ -57,6 +57,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -1336,7 +1337,7 @@ private fun EditorScreen(
         seekTo(max(seed.gameStartMs, suggestion.startMs() - 2_000))
     }
 
-    fun setBoundary(side: String, valueMs: Long) {
+    fun setKeepBoundary(side: String, valueMs: Long) {
         val cut = selected ?: return
         updateCut(cut.id) { current ->
             if (current.origin == CutOrigin.MANUAL) {
@@ -1352,6 +1353,39 @@ private fun EditorScreen(
             } else {
                 current.copy(keepEndMs = valueMs.coerceIn(current.coreEndMs, seed.gameEndMs))
             }
+        }
+    }
+
+    fun setCoreBoundary(side: String, valueMs: Long) {
+        val cut = selected ?: return
+        updateDraft { current ->
+            if (side == "start") {
+                EditorMath.setCoreStart(current, cut.id, valueMs, seed.gameStartMs)
+            } else {
+                EditorMath.setCoreEnd(current, cut.id, valueMs, seed.gameEndMs)
+            }
+        }
+    }
+
+    fun splitSelectedAtPlayhead() {
+        val cut = selected ?: return
+        var split: CutSplitResult? = null
+        updateDraft { current ->
+            EditorMath.splitCut(
+                current,
+                cut.id,
+                playbackPositionMs,
+                seed.gameStartMs,
+                seed.gameEndMs,
+            )?.also { split = it }?.draft ?: current
+        }
+        val created = split?.newCut
+        if (created == null) {
+            message = "Move the playhead inside the rally before splitting"
+        } else {
+            selectedSuggestionId = null
+            selectedId = created.id
+            message = "Split ${cut.id} at ${preciseTime(playbackPositionMs)}; both parts can now be trimmed independently"
         }
     }
 
@@ -1980,14 +2014,58 @@ private fun EditorScreen(
                             activeSuggestions.firstOrNull { it.fragmentId() == id }
                                 ?.let(::selectSuggestion)
                         },
-                        onStartChange = { setBoundary("start", it) },
-                        onEndChange = { setBoundary("end", it) },
+                        onStartChange = { setKeepBoundary("start", it) },
+                        onEndChange = { setKeepBoundary("end", it) },
                     )
-                    BoundaryControls("Kept start", selected.keepStartMs) { delta ->
-                        setBoundary("start", selected.keepStartMs + delta)
+                    Text(
+                        if (selected.origin == CutOrigin.INFERRED) {
+                            "Set the green rally edges first. Padding stays outside them."
+                        } else {
+                            "Set this manual rally's exact start and end."
+                        },
+                        fontSize = 12.sp,
+                        color = Muted,
+                    )
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            enabled = playbackPositionMs <= selected.coreEndMs - MIN_MARK_MS,
+                            onClick = { setCoreBoundary("start", playbackPositionMs) },
+                        ) { Text("Set rally start here") }
+                        Button(
+                            enabled = playbackPositionMs >= selected.coreStartMs + MIN_MARK_MS &&
+                                playbackPositionMs <= selected.coreEndMs - MIN_MARK_MS,
+                            onClick = ::splitSelectedAtPlayhead,
+                        ) { Text("Split at playhead") }
+                        OutlinedButton(
+                            enabled = playbackPositionMs >= selected.coreStartMs + MIN_MARK_MS,
+                            onClick = { setCoreBoundary("end", playbackPositionMs) },
+                        ) { Text("Set rally end here") }
                     }
-                    BoundaryControls("Kept end", selected.keepEndMs) { delta ->
-                        setBoundary("end", selected.keepEndMs + delta)
+                    RallyRangeSlider(
+                        cut = selected,
+                        window = detailWindow,
+                        onRangeChange = { startMs, endMs ->
+                            updateDraft { current -> EditorMath.setCoreRange(
+                                current,
+                                selected.id,
+                                startMs,
+                                endMs,
+                                seed.gameStartMs,
+                                seed.gameEndMs,
+                            ) }
+                        },
+                    )
+                    if (selected.origin == CutOrigin.INFERRED) {
+                        Text("OUTPUT EDGES (RALLY + PADDING)", fontSize = 11.sp, color = Muted)
+                        BoundaryControls("Output start", selected.keepStartMs) { delta ->
+                            setKeepBoundary("start", selected.keepStartMs + delta)
+                        }
+                        BoundaryControls("Output end", selected.keepEndMs) { delta ->
+                            setKeepBoundary("end", selected.keepEndMs + delta)
+                        }
                     }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = {
@@ -2580,6 +2658,45 @@ private fun BoundaryControls(label: String, valueMs: Long, onNudge: (Long) -> Un
             listOf(-1_000L to "−1s", -100L to "−0.1s", 100L to "+0.1s", 1_000L to "+1s")
                 .forEach { (delta, labelText) -> SmallButton(labelText) { onNudge(delta) } }
         }
+    }
+}
+
+@Composable
+private fun RallyRangeSlider(
+    cut: EditableCut,
+    window: DetailWindow,
+    onRangeChange: (Long, Long) -> Unit,
+) {
+    val sliderWindow = remember(cut.id) { window }
+    val windowStart = sliderWindow.startMs.toFloat()
+    val windowEnd = sliderWindow.endMs
+        .coerceAtLeast(sliderWindow.startMs + MIN_MARK_MS)
+        .toFloat()
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Rally length", fontSize = 12.sp, color = Muted)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${preciseTime(cut.coreStartMs)} – ${preciseTime(cut.coreEndMs)}",
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        RangeSlider(
+            value = cut.coreStartMs.toFloat()..cut.coreEndMs.toFloat(),
+            onValueChange = { range ->
+                onRangeChange(range.start.roundToLong(), range.endInclusive.roundToLong())
+            },
+            valueRange = windowStart..windowEnd,
+            modifier = Modifier.fillMaxWidth().semantics {
+                contentDescription = "Adjust rally start and end"
+            },
+        )
+        Text(
+            "Drag either handle to shorten or extend this rally before padding.",
+            fontSize = 11.sp,
+            color = Muted,
+        )
     }
 }
 
