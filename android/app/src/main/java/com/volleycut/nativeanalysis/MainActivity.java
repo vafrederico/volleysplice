@@ -136,7 +136,11 @@ public final class MainActivity extends Activity {
         title.setPadding(0, dp(8), 0, dp(5));
         root.addView(title);
         root.addView(text(
-                "Pixel 10 Pro on Android 17 · target API 36\nNative MediaCodec + native OpenCV · no WebCodecs, JavaScript, or WASM",
+                String.format(
+                        Locale.US,
+                        "Pixel 10 Pro on Android 17 · target API %d\nNative MediaCodec + native OpenCV · no WebCodecs, JavaScript, or WASM",
+                        getApplicationInfo().targetSdkVersion
+                ),
                 15, Color.DKGRAY
         ));
 

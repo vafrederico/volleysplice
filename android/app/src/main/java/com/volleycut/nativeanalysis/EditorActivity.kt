@@ -107,7 +107,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.compose.ContentFrame
-import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
@@ -370,6 +370,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             }.toMap(),
         )
     }
+    var timeoutSnapshot by remember {
+        mutableStateOf(ProcessingTimeoutTracker.snapshot(context))
+    }
 
     fun reloadProjects(
         preferredId: String? = selectedProjectId,
@@ -587,9 +590,14 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         }
     }
 
+    val appContext = context
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == ProcessingTimeoutTracker.ACTION_UPDATED) {
+                    timeoutSnapshot = ProcessingTimeoutTracker.snapshot(appContext)
+                    return
+                }
                 if (intent?.action == ExportService.ACTION_PROGRESS) {
                     exportQueueCount = intent.getIntExtra(
                         ExportService.EXTRA_QUEUE_COUNT,
@@ -654,6 +662,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             context,
             receiver,
             IntentFilter().apply {
+                addAction(ProcessingTimeoutTracker.ACTION_UPDATED)
                 addAction(ProjectAnalysisService.ACTION_UPDATE)
                 addAction(ExportService.ACTION_PROGRESS)
             },
@@ -684,6 +693,30 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 }) { Text("Delete", color = Danger) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+        )
+    }
+
+    timeoutSnapshot.unacknowledged.maxByOrNull { it.sequence }?.let { event ->
+        val source = event.sourceName?.let { " for $it" }.orEmpty()
+        AlertDialog(
+            onDismissRequest = {
+                ProcessingTimeoutTracker.acknowledgeThrough(context, event.sequence)
+                timeoutSnapshot = ProcessingTimeoutTracker.snapshot(context)
+            },
+            title = { Text("Processing stopped by Android") },
+            text = {
+                Text(
+                    "Android stopped ${event.operation.label}$source after its background time limit " +
+                        "at ${event.displayTime()}.\n\n${event.detail}\n\n" +
+                        "Recorded interruptions: ${timeoutSnapshot.totalCount}.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    ProcessingTimeoutTracker.acknowledgeThrough(context, event.sequence)
+                    timeoutSnapshot = ProcessingTimeoutTracker.snapshot(context)
+                }) { Text("Acknowledge") }
+            },
         )
     }
 
@@ -769,7 +802,11 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     cacheBytes = 0
                     inference = InferenceUiState(detail = "Feature cache cleared")
                 },
-                onBenchmark = { context.startActivity(Intent(context, MainActivity::class.java)) },
+                onBenchmark = if (BuildConfig.DEBUG) {
+                    { context.startActivity(Intent(context, MainActivity::class.java)) }
+                } else {
+                    null
+                },
                 guidedTourTargets = guidedTourTargets,
             )
         }
@@ -1042,7 +1079,7 @@ private fun NewProjectCard(
     onFullVideo: () -> Unit,
     onUseCache: (Boolean) -> Unit,
     onClearCache: () -> Unit,
-    onBenchmark: () -> Unit,
+    onBenchmark: (() -> Unit)?,
     guidedTourTargets: GuidedTourTargets? = null,
 ) {
     SectionCard(
@@ -1073,7 +1110,10 @@ private fun NewProjectCard(
             }
         }
         if (selected?.media != null) {
-            Box(Modifier.guidedTourTarget("setup-window", guidedTourTargets)) {
+            Column(
+                Modifier.guidedTourTarget("setup-window", guidedTourTargets),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 GameWindowPicker(
                     selected = selected,
                     gameStartMs = gameStartMs,
@@ -1114,7 +1154,9 @@ private fun NewProjectCard(
             TextButton(enabled = !preparing && queueCount == 0 && cacheBytes > 0, onClick = onClearCache) {
                 Text("Clear ${formatBytes(cacheBytes)} feature cache")
             }
-            TextButton(enabled = !preparing, onClick = onBenchmark) { Text("Benchmark tools") }
+            if (onBenchmark != null) {
+                TextButton(enabled = !preparing, onClick = onBenchmark) { Text("Benchmark tools") }
+            }
         }
     }
 }
@@ -1161,7 +1203,7 @@ private fun GameWindowPicker(
         ContentFrame(
             player = player,
             modifier = Modifier.fillMaxWidth().height(176.dp),
-            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
         )
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1243,6 +1285,7 @@ private fun ProjectShell(
             ) {
                 projectControls()
                 content()
+                LegalFooter()
             }
         }
         if (guidedTourStage != null && guidedTourTargets != null) {
@@ -1253,6 +1296,63 @@ private fun ProjectShell(
                 restartSignal = guidedTourRestartSignal,
             )
         }
+    }
+}
+
+private const val PRIVACY_POLICY_URL = "https://volleycut.vafrederico.com/privacy.html"
+private const val APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0"
+
+@Composable
+private fun LegalFooter() {
+    val context = LocalContext.current
+    var showNotices by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+            }
+        }) { Text("Privacy") }
+        Text("·", color = Muted)
+        TextButton(onClick = { showNotices = true }) { Text("Open source") }
+    }
+    if (showNotices) {
+        AlertDialog(
+            onDismissRequest = { showNotices = false },
+            title = { Text("Open-source notices") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        "VolleyCut includes the following open-source components. " +
+                            "Their licenses remain available to you under their original terms.",
+                    )
+                    Text("AndroidX and Jetpack Compose — Apache License 2.0")
+                    Text("AndroidX Media3 1.10.1 — Apache License 2.0")
+                    Text("OpenCV 4.12.0 — Apache License 2.0")
+                    Text("Kotlin runtime — Apache License 2.0")
+                    Text(
+                        "The Android system, device codecs, and other platform components are " +
+                            "provided under their respective system licenses.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                    )
+                    TextButton(onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(APACHE_LICENSE_URL)))
+                        }
+                    }) { Text("View Apache License 2.0") }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showNotices = false }) { Text("Close") }
+            },
+        )
     }
 }
 
@@ -1826,7 +1926,7 @@ private fun EditorScreen(
                 ContentFrame(
                     player = player,
                     modifier = Modifier.fillMaxWidth().height(176.dp),
-                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
                 )
             }
             PlayerControls(
@@ -2304,11 +2404,14 @@ private fun EditorScreen(
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { confirmReset = true }) { Text("Reset editor") }
-                TextButton(onClick = { context.startActivity(Intent(context, MainActivity::class.java)) }) {
-                    Text("Benchmark tools")
+                if (BuildConfig.DEBUG) {
+                    TextButton(onClick = { context.startActivity(Intent(context, MainActivity::class.java)) }) {
+                        Text("Benchmark tools")
+                    }
                 }
             }
-                Spacer(Modifier.height(20.dp))
+            LegalFooter()
+            Spacer(Modifier.height(20.dp))
             }
         }
         GuidedTour(
