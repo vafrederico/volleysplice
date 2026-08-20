@@ -354,6 +354,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch v2 | Adaptive near/far color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a separately selected temporal toggle decoder | Retained research/review ranking; not production. The selected `SIDE34-V2` classifier uses the raw combined family and the selected decoder is a no-op. See [`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md). |
 | Side-switch v3 cadence + LOWRES12 | Seven-point opportunity decoder plus 12 detector-free HSV/motion/blur/edge features from three 192×108 early-rally frames on each side of a gap | Implemented and rejected for automatic use. The source-held-out selected decoder reached 7.59% exact-gap F1; ±4 cadence-only reached 12.12% exact and 42.42% at ±2 scoring tolerance. No browser/Android port. See [`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md). |
 | Side-switch v4 MULTIFRAME-NORMALIZED19 | Seven 256×144 frames per rally, early-set net-height calibration, piecewise court normalization, camera-translation compensation, and broad/tight multi-frame near/far palettes | Positive research result but rejected for automatic use. Raw-phone exact-gap F1 improved from 7.59% to 16.67%, while ±2-tolerant F1 improved from 32.91% to 41.67%. No browser/Android port. See [`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md). |
+| Side-switch v5 PLAYER-ORIENTATION22 | Six retained v4 scalars plus 16 motion-component player-palette, proposal-support, and quality features; whole-set score-zero team anchors feed an optional parity decoder | Best visual research result but rejected for automatic use. Raw-phone exact-gap F1 improved from 16.67% to 27.85% and row AP from 26.92% to 43.40%. Validation selected orientation weight zero, so the persistence stage is a no-op. No browser/Android port. See [`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -418,6 +419,23 @@ side separation, before/after palette instability, global appearance change,
 minimum/change foreground coverage, maximum normalized camera shift, and minimum
 alignment response. Exact implementation: [`side_switch_v4.py`](analysis/side_switch_v4.py);
 extraction: [`extract-side-switch-v4.py`](scripts/extract-side-switch-v4.py).
+
+### Side-switch v5 player-isolated orientation profile
+
+`PLAYER-ORIENTATION22` inherits v4's seven 256×144 frames and frozen court geometry but
+extracts every rally in the set. Adaptive temporal-difference components are filtered by
+area, aspect, dimensions, and lower-court position; overlapping boxes are suppressed and
+at most six player-like proposals remain per frame. Proposal palettes use temporal,
+motion, and weak saturation weights, then soft near/far assignment from proposal-foot
+position around normalized `y=0.63`.
+
+The 22 classifier inputs retain six v4 appearance/quality scalars and add same/swapped
+player-palette costs, swap/flip evidence, side separation, palette instability, player
+appearance change, proposal coverage/count, and near/far support. The first three
+score-zero rallies also pool team-side palette anchors. A research decoder carries
+orientation parity and flips it after selection, but validation selected orientation
+weight zero. Exact implementation: [`side_switch_v5.py`](analysis/side_switch_v5.py);
+extraction: [`extract-side-switch-v5.py`](scripts/extract-side-switch-v5.py).
 
 ## Rebuild and parity acceptance
 

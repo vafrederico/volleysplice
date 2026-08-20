@@ -684,6 +684,24 @@ All destinations are immutable. V4 improves the retrospective raw-phone result o
 but remains below automatic-use requirements, so it also has no production port. See the
 [v4 decision record](../docs/research/side-switch-specialist-v4-2026-08-20.md).
 
+Side-switch v5 keeps v4 geometry and extracts player-like motion components from every
+rally in the set. The classifier uses player-isolated near/far palettes and proposal
+quality. The optional decoder anchors team sides from the first three score-zero rallies
+and carries parity across switches; validation selected orientation weight zero.
+
+V5 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v5.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v5-provenance.py
+```
+
+All destinations are immutable. V5 is the best visual side-switch result but remains
+below automatic-use precision, so it has no production port. See the
+[v5 decision record](../docs/research/side-switch-specialist-v5-2026-08-20.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is

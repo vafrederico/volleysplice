@@ -236,6 +236,15 @@ raw-phone exact-gap F1 from 7.59% to 16.67%, but remains far below automatic-use
 requirements. It is research-only and has no TypeScript/Java port. See
 [`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md).
 
+V5 isolates up to six player-like motion components per frame and forms near/far team
+palettes from proposal-foot position. A whole-set decoder can compare every rally with
+team-side anchors pooled from the first three score-zero rallies and carry orientation
+parity across selected switches. Validation selected orientation weight zero, making the
+state path a no-op, while player isolation improved raw-phone exact F1 to 27.85% and row
+AP to 43.40%. Exact precision is still only 25.00%, so v5 remains research-only with no
+production port. See
+[`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

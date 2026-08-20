@@ -96,6 +96,8 @@ side-switch v3 cadence/low-resolution ranker and the v1 no-blur counterfactual b
 their promotion gates and are tracked there as research only; neither is a shipped model.
 The v4 multi-frame, court-normalized side-identity study improves on v3 but also remains
 research-only because its exact precision is still 16.22%.
+The v5 player-isolation study improves exact precision to 25.00%; persistent orientation
+was a validation-selected no-op, and v5 also remains research-only.
 
 ### Setup
 
