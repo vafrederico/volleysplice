@@ -33,6 +33,7 @@ class ProjectAnalysisService : Service() {
     private var activeCancellation: AtomicBoolean? = null
     private var workerRunning = false
     private var foreground = false
+    @Volatile private var timedOut = false
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
@@ -46,6 +47,7 @@ class ProjectAnalysisService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (timedOut) return START_NOT_STICKY
         when (intent?.action) {
             ACTION_DELETE -> intent.getStringExtra(EXTRA_PROJECT_ID)?.let(::deleteProject)
             ACTION_ENQUEUE -> intent.getStringExtra(EXTRA_PROJECT_ID)?.let(::enqueueProject)
@@ -84,7 +86,7 @@ class ProjectAnalysisService : Service() {
     }
 
     private fun drainQueue() {
-        while (true) {
+        while (!timedOut) {
             val projectId = synchronized(this) {
                 val next = if (queue.isEmpty()) null else queue.removeFirst()
                 if (next == null) {
@@ -146,9 +148,13 @@ class ProjectAnalysisService : Service() {
             }
         } catch (error: Exception) {
             if (NativeProjectStore.get(this, projectId) != null) {
-                if (cancelled.get()) {
+                if (cancelled.get() && !timedOut) {
                     NativeProjectStore.updateStatus(this, projectId, ProjectStatus.QUEUED)
                     broadcast(projectId, ProjectStatus.QUEUED, 0.0, "queued", "Inference interrupted; ready to resume")
+                } else if (timedOut) {
+                    val detail = "Android stopped project inference after its background time limit. Retry when the app is ready."
+                    NativeProjectStore.updateStatus(this, projectId, ProjectStatus.ERROR, detail)
+                    broadcast(projectId, ProjectStatus.ERROR, 0.0, "timeout", detail)
                 } else {
                     val message = error.message ?: error.javaClass.simpleName
                     NativeProjectStore.updateStatus(this, projectId, ProjectStatus.ERROR, message)
@@ -273,6 +279,41 @@ class ProjectAnalysisService : Service() {
 
     @Synchronized
     private fun finishForeground() {
+        if (foreground) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            foreground = false
+        }
+        if (wakeLock?.isHeld == true) wakeLock?.release()
+        stopSelf()
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        val projectId = synchronized(this) {
+            timedOut = true
+            activeCancellation?.set(true)
+            activeProjectId
+        }
+        val affectedIds = synchronized(this) {
+            (queue.toList() + listOfNotNull(projectId)).distinct().also {
+                queue.clear()
+                queuedIds.clear()
+                workerRunning = false
+            }
+        }
+        val detail = "Android stopped project inference after its background time limit. Retry when the app is ready."
+        affectedIds.forEach { affectedId ->
+            NativeProjectStore.updateStatus(this, affectedId, ProjectStatus.ERROR, detail)
+            broadcast(affectedId, ProjectStatus.ERROR, 0.0, "timeout", detail)
+        }
+        val project = projectId?.let { NativeProjectStore.get(this, it) }
+        ProcessingTimeoutTracker.record(
+            context = this,
+            operation = MediaProcessingOperation.INFERENCE,
+            projectId = project?.id,
+            sourceName = project?.source?.name,
+            detail = detail,
+        )
+        executor.shutdownNow()
         if (foreground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             foreground = false

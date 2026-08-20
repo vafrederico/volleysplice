@@ -11,7 +11,9 @@ android {
 
     defaultConfig {
         applicationId = "com.volleycut.nativeanalysis"
-        minSdk = 29
+        // Media processing uses the modern foreground-service timeout callback.
+        // Android 14 is the minimum supported platform for the release build.
+        minSdk = 34
         targetSdk = providers.gradleProperty("volleycut.targetSdk").orElse("37").get().toInt()
         versionCode = 17
         versionName = "0.10.3"
@@ -32,6 +34,7 @@ android {
         }
         release {
             isMinifyEnabled = true
+            ndk.debugSymbolLevel = "SYMBOL_TABLE"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -46,6 +49,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

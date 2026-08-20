@@ -12,6 +12,8 @@ import android.os.Debug;
 import android.os.Handler;
 import android.os.HandlerThread;
 
+import androidx.annotation.RequiresApi;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -106,8 +108,9 @@ final class NativeAudioDecoder {
                         ? "Batched audio decoding requires Android 15 or newer"
                         : "The selected audio decoder does not support multiple frames");
             }
-            if (decoderMode == AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS
-                    || decoderMode == AnalysisTypes.AudioDecoderMode.AUTO && batchingAvailable) {
+            if (Build.VERSION.SDK_INT >= 35
+                    && (decoderMode == AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS
+                    || decoderMode == AnalysisTypes.AudioDecoderMode.AUTO && batchingAvailable)) {
                 return decodeBatched(
                         extractor, codec, inputFormat, analysisWindow, analysisTimes,
                         startUs, endUs, analysisDuration, sampleRate, codecOperatingRate,
@@ -152,7 +155,10 @@ final class NativeAudioDecoder {
                             codec.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                             inputEnded = true;
                         } else {
-                            codec.queueInputBuffer(inputIndex, 0, sampleSize, sampleTime, sampleFlags);
+                            codec.queueInputBuffer(
+                                    inputIndex, 0, sampleSize, sampleTime,
+                                    codecInputFlags(sampleFlags)
+                            );
                             inputAccessUnits++;
                             profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
                             operationStarted = System.nanoTime();
@@ -262,6 +268,7 @@ final class NativeAudioDecoder {
         }
     }
 
+    @RequiresApi(35)
     private Result decodeBatched(
             MediaExtractor extractor,
             MediaCodec codec,
@@ -356,11 +363,25 @@ final class NativeAudioDecoder {
             );
         } finally {
             codecThread.quitSafely();
-            try {
-                codecThread.join(5_000);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
+            joinHandlerThread(codecThread);
+        }
+    }
+
+    /** Join a codec callback thread without allowing executor cancellation to skip the join. */
+    private static void joinHandlerThread(HandlerThread thread) {
+        boolean interrupted = false;
+        try {
+            while (thread.isAlive()) {
+                try {
+                    thread.join(5_000);
+                } catch (InterruptedException error) {
+                    // shutdownNow() interrupts the analysis thread while callback teardown still
+                    // needs to finish. Preserve the flag after the callback thread is quiescent.
+                    interrupted = true;
+                }
             }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
 
@@ -461,6 +482,7 @@ final class NativeAudioDecoder {
         }
     }
 
+    @RequiresApi(35)
     private static final class BatchedDecodeState extends MediaCodec.Callback {
         private final MediaExtractor extractor;
         private final AnalysisTypes.AnalysisWindow analysisWindow;
@@ -556,7 +578,12 @@ final class NativeAudioDecoder {
                         break;
                     }
                     MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-                    info.set(offset, sampleSize, sampleTime, extractor.getSampleFlags());
+                    info.set(
+                            offset,
+                            sampleSize,
+                            sampleTime,
+                            codecInputFlags(extractor.getSampleFlags())
+                    );
                     infos.add(info);
                     offset += sampleSize;
                     operationStarted = System.nanoTime();
@@ -798,6 +825,13 @@ final class NativeAudioDecoder {
         StringBuilder result = new StringBuilder(64);
         for (byte value : digest.digest()) result.append(String.format("%02x", value));
         return result.toString();
+    }
+
+    /** MediaExtractor flags are not the same bit field as MediaCodec flags. */
+    private static int codecInputFlags(int extractorFlags) {
+        return (extractorFlags & MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME) != 0
+                ? MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
+                : 0;
     }
 
     private static float[] pcmToMono(ByteBuffer source, int offset, int size, int channels, int encoding)

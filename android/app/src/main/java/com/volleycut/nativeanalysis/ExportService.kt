@@ -70,6 +70,7 @@ class ExportService : Service() {
     private var outputWriteMode = "uninitialized"
     private var wakeLock: PowerManager.WakeLock? = null
     private var foreground = false
+    @Volatile private var timedOut = false
 
     override fun onCreate() {
         super.onCreate()
@@ -80,6 +81,7 @@ class ExportService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (timedOut) return START_NOT_STICKY
         if (intent?.action == ACTION_CANCEL) {
             cancelExport(intent.getStringExtra(EXTRA_JOB_ID))
             return START_NOT_STICKY
@@ -442,6 +444,7 @@ class ExportService : Service() {
             currentJob?.let(::add)
             addAll(queue)
         }
+        val activeId = currentJob?.id
         handler.removeCallbacksAndMessages(null)
         transformer?.cancel()
         temporaryFile?.delete()
@@ -449,7 +452,9 @@ class ExportService : Service() {
         currentJob = null
         queue.clear()
         abandoned.forEach { job ->
-            deleteIncompleteDestination(job.destination)
+            // A queued job has not opened its destination and must not delete
+            // a pre-existing document selected by the user.
+            if (job.id == activeId) deleteIncompleteDestination(job.destination)
             broadcast(job, "cancelled", 0, "Export service stopped", null)
         }
         pendingJobs.set(0)
@@ -459,6 +464,44 @@ class ExportService : Service() {
 
     private fun releaseWakeLock() {
         if (wakeLock?.isHeld == true) wakeLock?.release()
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        timedOut = true
+        val affectedJobs = buildList {
+            currentJob?.let(::add)
+            addAll(queue)
+        }
+        val active = currentJob
+        val detail = "Android stopped video export after its background time limit. Queue the export again when the app is ready."
+        handler.removeCallbacks(progressPoll)
+        transformer?.cancel()
+        temporaryFile?.delete()
+        temporaryFile = null
+        transformer = null
+        currentJob = null
+        destination = null
+        queue.clear()
+        affectedJobs.forEach { job ->
+            // Queued jobs have not opened their destination yet; only remove
+            // the active job's partially written document.
+            if (job.id == active?.id) deleteIncompleteDestination(job.destination)
+            broadcast(job, "failed", 0, detail, null)
+        }
+        pendingJobs.set(0)
+        ProcessingTimeoutTracker.record(
+            context = this,
+            operation = MediaProcessingOperation.EXPORT,
+            projectId = active?.projectId ?: affectedJobs.firstOrNull()?.projectId,
+            sourceName = active?.sourceName ?: affectedJobs.firstOrNull()?.sourceName,
+            detail = detail,
+        )
+        if (foreground) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            foreground = false
+        }
+        releaseWakeLock()
+        stopSelf()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
