@@ -46,6 +46,16 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 SDK 37 is the default, so no Gradle property overrides are needed. Install the Android 17 SDK Platform 37.0 and Build-Tools 37.0.0 before building from the command line.
 
+To create and sign an Android App Bundle for Play Console, build the unsigned bundle and then have the key owner run the signing helper locally:
+
+```powershell
+cd android
+.\gradlew.bat bundleRelease
+.\sign-aab.ps1 app\build\outputs\bundle\release\app-release.aab
+```
+
+The helper uses the same default keystore and `volleycut-release` alias as `sign-apk.ps1`, prompts for the keystore password directly through `jarsigner`, writes `app-release-signed.aab`, and verifies the result. If Play App Signing uses a separate upload key, pass its location and alias with `-KeystorePath` and `-KeyAlias`. Never put a keystore password on the command line or commit a keystore.
+
 ## Native editor and export
 
 Run full inference, then tap **Open native cut editor**. The editor uses the unpadded inferred ranges as its immutable cores and provides:
