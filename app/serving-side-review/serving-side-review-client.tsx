@@ -387,6 +387,7 @@ function unavailable(reportPath: string, loadError?: string) {
         <Brand className={styles.brand} label="Serving-side review" priority />
         <nav>
           <Link href="/">Rally model review ↗</Link>
+          <Link href="/serving-side-results">Model results ↗</Link>
           <Link href="/side-switch-review">Side-switch review ↗</Link>
         </nav>
       </header>
@@ -662,6 +663,7 @@ function LoadedServingSideReview({
         <Brand className={styles.brand} label="Serving-side review" priority />
         <nav>
           <Link href="/">Rally model review ↗</Link>
+          <Link href="/serving-side-results">Model results ↗</Link>
           <Link href="/side-switch-review">Side-switch review ↗</Link>
           <Link href="/suppression-review">Suppression review ↗</Link>
         </nav>

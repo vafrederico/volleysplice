@@ -865,6 +865,7 @@ export function ReviewEditor({
           <Link href="/label">Open labeling station →</Link>
           <Link href="/side-switch-review">Review side switches →</Link>
           <Link href="/serving-side-review">Review serving side →</Link>
+          <Link href="/serving-side-results">Serving-side model results →</Link>
           <div className="project-state">
             <i /> {initialAnalysis ? `${videoOptions.length} videos ready` : "Demo mode"}
           </div>
