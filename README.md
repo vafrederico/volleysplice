@@ -1,198 +1,163 @@
 # VolleyCut
 
-VolleyCut is an AI-assisted volleyball video editor. This feasibility-stage implementation supports a no-model audiovisual heuristic, trained rally classifiers, blind Sol prelabels, a shared comparison UI, and a dedicated gold-label workstation.
+VolleyCut is a local-first volleyball video editor that finds likely rallies, lets a
+human correct the proposed cuts, and exports the retained footage. Video analysis and
+editing run on the user's device; production inference does not upload source media.
 
-Every suggestion source requires review. Heuristic and trained-model confidence values are not calibrated probabilities and should not be treated as exact serve-contact, end-of-play, or scoring decisions.
+The repository contains three distinct surfaces:
 
-The deployed inference design is specified in [`MODEL_ARCHITECTURE.md`](MODEL_ARCHITECTURE.md),
-feature generation and experimental feature status in
-[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md), and trained-model lineage—including the
-source video files used to fit each model—in [`MODELS.md`](MODELS.md).
+| Surface | Purpose | Status |
+| --- | --- | --- |
+| [`prod/`](prod/) | Static browser application for local analysis, review, and MP4 export | Production web client |
+| [`android/`](android/) | Native on-device analysis, editor, and MP4 exporter | Production Android client |
+| Root Next.js/Python workspace | Labeling, comparison, diagnostics, model feedback, training, and evaluation | Internal model lab |
 
-## Prerequisites
+Model suggestions and confidence scores are review aids, not semantic truth or calibrated
+probabilities. Inspect every proposed boundary, especially single-model disagreements and
+optional suppression suggestions, before exporting.
 
-- Node.js and npm.
-- Python 3 with `venv` support.
-- FFmpeg and FFprobe, including H.264 encoding support.
+## Production clients
 
-## Install
+### Browser
+
+The production web app is a standalone Vite application with no API routes, media
+catalog, server database, or upload path. A user selects a local video, marks the game
+window, runs the two-model production ensemble, reviews and edits the inferred ranges,
+and exports MP4 or JSON output. Optional suppression suggestions are visible,
+configurable, and reversible; they are off by default.
+
+Features, inference results, projects, and edit drafts persist in browser storage. The
+source video itself is not copied into that storage, so playback or export after a
+restart requires reconnecting the same file. Model-feedback JSON can be exported for
+future training without embedding video bytes.
+
+Requirements are Node.js 24 and a current Chrome or Edge browser, or Safari 26 on
+iOS/macOS:
+
+```bash
+cd prod
+npm install
+npm run dev
+```
+
+For a verified static production build:
+
+```bash
+cd prod
+npm ci
+npm run build
+npm run preview
+```
+
+See [`prod/README.md`](prod/README.md) for browser support, HTTPS/LAN setup, persistent
+project behavior, export details, runtime assets, and deployment.
+
+### Android
+
+The native app performs video/audio feature extraction, production inference, editing,
+draft persistence, source relinking, model-feedback export, and exact-boundary MP4 export
+without a network permission. It targets the Pixel 10 Pro and packages `arm64-v8a`.
+
+The current checked-in release is
+[`VolleyCut v0.10.3`](android/releases/VolleyCut-v0.10.3-arm64-release-signed.apk). See
+[`android/README.md`](android/README.md) for the SDK requirements, debug build/install
+workflow, editor behavior, benchmarks, cache behavior, and native-versus-browser parity
+caveats.
+
+## Production model contract
+
+The deployed system samples the selected game window at 4 Hz, generates 104 base
+audiovisual features, gathers five temporal contexts into 520 model inputs, and runs two
+independent rally/serve/dead-state bundles. Their overlapping intervals are unioned, and
+one-model-only regions remain visible as review-priority disagreements. A separate held
+suppression model can propose reversible removals from eligible disagreement regions.
+
+The following documents are the maintained contracts:
+
+- [`MODEL_ARCHITECTURE.md`](MODEL_ARCHITECTURE.md) — inference heads, decoders,
+  production ensemble, and suppression policy;
+- [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) — exact production feature formulas,
+  historical profiles, research-only features, and rebuild/parity requirements;
+- [`MODELS.md`](MODELS.md) — trained artifacts, feature profiles, exact fitting videos,
+  comparison predecessors, changes, and disposition;
+- [`docs/model-ranking-metric.md`](docs/model-ranking-metric.md) — canonical
+  `F1_padP_coreR` selection and reporting contract.
+
+## Internal model lab
+
+The repository root is an internal NAS-backed development application, not the public
+production client. It hosts the gold-label workstation, model/source comparison views,
+model-feedback import, suppression and side-switch review, on-device experiments, and
+the Python training/evaluation toolchain.
+
+### Setup
+
+Requirements are Node.js and npm, Python 3 with `venv`, and FFmpeg/FFprobe with H.264
+support.
 
 ```bash
 npm install
 npm run analysis:setup
-```
-
-The second command creates a local `.venv` and installs NumPy plus headless OpenCV. Both `.venv` and all generated video artifacts are ignored by Git.
-
-## Native Android app
-
-The [`android/`](android/) project ports video/audio feature extraction, inference, range editing, preview, and MP4 export to a native Pixel 10 Pro app. It targets API 37 on Android 17, replacing WebCodecs/WASM with Android `MediaCodec`, native OpenCV, in-app audio DSP, Jetpack Compose timelines, and Media3 playback/export. The current signed arm64 build is [`VolleyCut v0.10.3`](android/releases/VolleyCut-v0.10.3-arm64-release-signed.apk). See [`android/README.md`](android/README.md) for SDK setup, editor/export behavior, benchmark procedure, and parity caveats.
-
-Set the durable media location in an ignored `.env.local` file. This machine currently uses `/mnt/freenas/volleycut`:
-
-```bash
 cp .env.example .env.local
-# Edit VOLLEYCUT_DATA_ROOT in .env.local.
 ```
 
-The default proxy backend is portable FFmpeg/libx264. On a Linux host with Intel VAAPI and the pinned Jellyfin image already available, `VOLLEYCUT_PROXY_BACKEND=jellyfin-vaapi` enables an opt-in Docker-backed hardware path without changing host group membership. See `.env.example` for the corresponding pinned image setting.
+Set `VOLLEYCUT_DATA_ROOT` in the ignored `.env.local`. Configure
+`VOLLEYCUT_LABELING_WORKSPACE`, `VOLLEYCUT_INTAKE_WORKSPACE`, or
+`VOLLEYCUT_MODEL_FEEDBACK_ROOT` when those stores are not under the default data root.
+Large source media, feature caches, labels, and trained artifacts remain outside Git.
+`.env.example` documents the optional no-beach workspaces, proxy acceleration, and LAN
+development origins.
 
-## Analyze a recording with the no-model heuristic
-
-Put a source recording under `$VOLLEYCUT_DATA_ROOT/raw/`, then run:
-
-```bash
-npm run analyze-no-model -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv
-```
-
-Optional arguments include:
-
-```bash
-npm run analyze-no-model -- /mnt/freenas/volleycut/raw/indoor/my-set.mkv \
-  --title "Indoor practice — set 1" \
-  --id indoor-practice-set-1 \
-  --analysis-fps 4
-```
-
-Each run creates an immutable, ignored directory:
-
-```text
-$VOLLEYCUT_DATA_ROOT/analyses/<analysis-id>/
-  analysis.json
-  court-preview.jpg
-  proxy.mp4
-```
-
-Existing IDs are never overwritten. The app opens the most recently modified valid analysis by default and provides a dataset picker for switching between every valid run. The selected analysis is stored in the URL, so a review can be bookmarked. To try the whole flow without a real recording:
-
-```bash
-npm run fixture:analysis
-npm run analyze-no-model -- /mnt/freenas/volleycut/raw/synthetic/synthetic-two-bursts.mp4
-```
-
-Refresh the external dataset inventory at any point with:
-
-```bash
-npm run dataset:status
-```
-
-The report is written to `$VOLLEYCUT_DATA_ROOT/manifests/status.md` and summarizes raw-download and analysis progress without tracking media in Git.
-
-To analyze every complete source listed in the external `manifests/sources.json`, while safely skipping existing analyses and incomplete downloads:
-
-```bash
-npm run analyze-no-model:dataset
-```
-
-Evaluate generated intervals against a completed label manifest with:
-
-```bash
-npm run evaluate:labels -- \
-  --labels /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/pilot-gold-v1.json \
-  --parameter-search
-```
-
-The optional parameter search is diagnostic: it includes a leave-one-source-group-out result, but nine short segments are not enough evidence to change production thresholds without a larger held-out label pack.
-
-`--labels` also accepts a directory of full-video `*.labels.json` documents.
-
-The first pilot evaluation and its prioritized improvement plan are documented in [`docs/research/analysis-vs-pilot-gold-2026-08-09.md`](docs/research/analysis-vs-pilot-gold-2026-08-09.md).
-
-After changing court validation or rally decoding, create immutable analyses from the existing proxies without transcoding the videos again:
-
-```bash
-npm run reanalyze-no-model:dataset
-```
-
-This writes suffixed analysis directories, hard-links their proxies when supported, and recomputes motion only when the validated court region changed. The full-video ground-truth comparison that selected analyzer v2 is documented in [`docs/research/full-video-ground-truth-analyzer-v2-2026-08-10.md`](docs/research/full-video-ground-truth-analyzer-v2-2026-08-10.md).
-
-Run a saved learned model over every full-video manifest entry and evaluate the practical
-0–3 second crop-padding tradeoff with:
-
-```bash
-npm run infer:model-dataset -- \
-  --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-percentile-v1
-
-# Materialize the frozen v4+v5 fusion and all persisted specialist iterations.
-npm run infer:dual-serve-fusion-dataset
-npm run infer:specialist-model-dataset
-
-npm run evaluate:model-padding -- \
-  --model-version full-percentile-v1 \
-  --padding-seconds 0 1 2 3 \
-  --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-model-padding-v1.json
-```
-
-Padding is applied only to the hypothetical exported crops. The report preserves the core
-model intervals, merges overlapping padded crops, and separates train, validation/tuning,
-and held-out test results.
-
-Rally-model iterations are ranked by **Padded P/Core R F1**
-(`F1_padP_coreR`): precision compares the padded model export with equally padded human
-labels, while recall compares that same padded model export with the core human labels.
-See the [model iteration ranking metric](docs/model-ranking-metric.md) for the exact
-interval, aggregation, and split-discipline contract. This is not chronological event F1.
-Every iteration report includes the four symmetric before/after padding cases of
-0, 1, 2, and 3 seconds; the primary rank uses the predeclared target-padding case.
-
-## Review locally
+Start the internal application with:
 
 ```bash
 npm run dev -- --hostname 0.0.0.0
 ```
 
-Open `http://<host-lan-ip>:3000` from another machine. The Next.js development allowlist automatically includes this host's active non-loopback IPv4 interfaces so dev chunks and HMR work over the LAN. If you use a custom DNS name or reverse proxy, add its hostname (without a scheme or port) to the optional comma-separated `VOLLEYCUT_DEV_ORIGINS` setting.
+Use the printed LAN address. Important routes include:
 
-The review screen provides:
+- `/label` — prepared-task gold labeling with production and blind-AI reference tracks;
+- `/model-feedback` — inspect production web/Android feedback bundles and optionally
+  link their source video;
+- `/suppression-review` — visually audit learned suppression behavior;
+- `/side-switch-review` and `/serving-side-review` — review the current side/serve
+  diagnostics;
+- `/on-device`, `/on-device-batch`, `/audio-benchmark`, and `/video-benchmark` —
+  internal parity and performance tools.
 
-- A video picker for the nine prepared full recordings.
-- A per-video source picker for human reference labels, blind Sol prelabels,
-  no-model heuristic versions, and every available trained-model inference.
-- Stacked timelines on one video clock, including the labeling workstation's
-  vertical playhead and click-to-seek behavior.
-- Explicit training, validation/tuning, and evaluation-only badges for each
-  trained model and recording.
-- Proxy video playback and byte-range seeking.
-- Suggested activity intervals with uncalibrated confidence.
-- Detected court-line overlays and a court diagnostic image.
-- Include/exclude decisions.
-- Configurable pre-roll and post-roll.
-- A merged edit decision list, so overlapping padding is counted only once.
-- Per-model core, padded, and Padded P/Core R F1 metrics plus export-duration cost.
-- Explicit warnings for missing audio, fallback court regions, low camera stability, and zero detected rallies.
+The exact labeling boundary policy, optional hard negatives, ignored intervals, court
+geometry, side switches, sparse cues, and save workflow are documented in
+[`docs/labeling-guide.md`](docs/labeling-guide.md).
 
-Open `/model-feedback` (or use **Import model feedback** in the LAB header) to inspect the
-`*.model-feedback.json` files exported by either the production web editor or the native Android
-editor. The importer validates and decodes source-aligned feature matrices and probability traces,
-then shows initial ranges, correction labels, ignored intervals, and final exports on one clock.
+## Model-development workflow
 
-The feedback JSON can be saved to `$VOLLEYCUT_MODEL_FEEDBACK_ROOT` without linking a source file
-and reopened from the **NAS feedback library** picker at the top of the page. A source is optional
-and can be linked in two ways:
+1. Prepare immutable proxy/tasks and label the complete recordings in `/label`. Keep
+   human labels distinct from production or blind-AI prelabels.
+2. Mark ambiguous time as `ignoredIntervals`; record valid confusing dead time as
+   `hardNegatives`. Ignored time is outside both fitting and evaluation.
+3. Freeze source-group-aware fitting and development/validation scopes. Do not use the
+   protected test split to select features, models, seeds, thresholds, decoders, or
+   padding.
+4. Generate features under an immutable profile from
+   [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md), then train and evaluate with the exact
+   label/manifest revision.
+5. Rank comparable iterations by the predeclared product-padding
+   `F1_padP_coreR` case. Always report symmetric 0, 1, 2, and 3 second padding
+   sensitivity using the canonical short-gap and ignored-interval rules.
+6. Register every durable artifact or report-only training study in
+   [`MODELS.md`](MODELS.md), including exact fitting videos and what changed from the
+   predecessor it was intended to improve or compare against.
+7. Before promotion, update both production clients and prove model/schema/cache and
+   interval parity with the checked-in golden tests.
 
-- **Local only** selects a video through the browser. The app checks its size and, when Web Crypto
-  is available, its sampled fingerprint. The object URL disappears when the tab reloads.
-- **Server path** accepts an optional absolute path readable by the dev server. When supplied, the
-  server verifies size and the sampled fingerprint, stores the bundle and link under
-  `$VOLLEYCUT_MODEL_FEEDBACK_ROOT` (default `$VOLLEYCUT_DATA_ROOT/model-feedback`), and exposes the
-  source through an opaque byte-range media URL. The video itself is never copied into the import
-  store.
+[`analysis/README.md`](analysis/README.md) contains the full Python command reference for
+feature extraction, labeling manifests, training, inference, and research experiments.
+Retained experiment decisions live under [`docs/research/`](docs/research/); they are
+historical evidence, not the production specification.
 
-Generated videos are served only through an allowlisted local media route. Original source recordings are never exposed by that route.
+## Verification
 
-## What the analyzer currently does
-
-1. Uses FFprobe to inspect the source.
-2. Uses FFmpeg to normalize rotation, timestamps, frame rate, color format, and audio into a low-resolution H.264 proxy.
-3. Builds a temporal-median representative frame and uses edge plus Hough-line detection to estimate a court activity region.
-4. Samples proxy frames at 4 fps, compensates small camera translations, and measures motion inside that region.
-5. Measures mono audio energy when audio is available.
-6. Combines normalized motion and supporting audio into activity scores.
-7. Applies hysteresis, bridges at most 0.75 seconds of inactivity, filters short noise, and adds no automatic ending tail before producing review candidates.
-
-The line detector currently estimates a rectangular activity region from stable line segments; it does not yet solve full court calibration or distinguish court lines from every similar gym marking. Severely bottom-cropped estimates fall back to a broad activity region. Audio can support a visual candidate but cannot create one by itself.
-
-## Tests
+Run the root model-lab checks with:
 
 ```bash
 npm test
@@ -200,53 +165,46 @@ npm run lint
 npm run build
 ```
 
-The tests cover analysis catalog loading, interval merging and clamping, timeline formatting, synthetic activity segmentation, signal normalization, and detected/fallback court regions. The generated fixture provides a codec-level smoke test for the full pipeline.
-
-Open `/label` for the local gold-label workstation. Its batch-aware selector loads full-corpus or pilot tasks, streams their exact NAS proxies, seeds fresh full-corpus tasks from the production model, shows blind Sol labels on a separate read-only reference timeline, displays ready/saved progress, and resumes atomically saved drafts; local file pickers remain available as a fallback. It supports precise rally/ignored/hard-negative intervals and exports resumable or completed labels. See [`docs/labeling-guide.md`](docs/labeling-guide.md).
-
-## Rally-analysis baseline
-
-The worktree now includes a CPU-only v0 that can normalize and validate recordings, train a temporal rally classifier, infer rally intervals into `analysis.json`, and evaluate an untouched test split. It can be exercised before real video arrives with:
+Verify the production browser independently because it has its own dependencies and
+build contract:
 
 ```bash
-npm run analysis:setup
-npm run test:analysis
-.venv/bin/python -m analysis smoke
+cd prod
+npm ci
+npm run build
 ```
 
-See [`analysis/README.md`](analysis/README.md) for the annotation contract and end-to-end commands. Research, licensing, camera-fit findings, and adoption decisions are indexed under [`docs/research/`](docs/research/).
+Android unit/build commands and device prerequisites are maintained in
+[`android/README.md`](android/README.md). Release signing is intentionally separate from
+the normal automated build workflow.
 
-Run one saved model across every video in a manifest with the resumable dataset command:
+## Repository layout
 
-```bash
-npm run infer:model-dataset -- \
-  --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-percentile-v1
-```
+- `prod/` — standalone static production browser client and checked-in runtime assets;
+- `android/` — native Android client, tests, and signed release artifact;
+- `app/`, `components/`, `lib/` — internal Next.js model lab and local NAS routes;
+- `analysis/` — Python/FFmpeg feature, model, inference, and evaluation implementation;
+- `scripts/` — dataset, experiment, parity, export, and reporting entry points;
+- `tests/` — web/model golden fixtures and integration tests;
+- `docs/` — maintained contracts, labeling guide, implementation plans, and research;
+- `public/on-device/` and `android/app/src/main/assets/` — internal/native model and
+  parity assets;
+- `data/` — small checked-in reports/fixtures plus ignored local fallback outputs;
+- external `$VOLLEYCUT_*` roots — source videos, proxies, labels, feature caches,
+  analyses, models, and feedback bundles.
 
-Completed immutable runs are skipped, incomplete destinations are rejected, and new results
-appear in the comparison UI automatically.
+## Known constraints
 
-## Project layout
-
-- `analysis/` — Python/FFmpeg feasibility pipeline and tests.
-- `app/` — Next.js application and private local media route.
-- `components/` — interactive review editor.
-- `lib/` — analysis validation, local catalogs, and edit-decision calculations.
-- `$VOLLEYCUT_DATA_ROOT/raw/` — external source recordings organized by surface.
-- `$VOLLEYCUT_DATA_ROOT/analyses/` — immutable heuristic and trained-model inference runs.
-- `$VOLLEYCUT_LABELING_WORKSPACE/` — proxies, Sol candidates, labels, manifests, models, and reports.
-- `data/` — ignored fallback storage when external roots are unset.
-- `docs/research/` — retained feasibility, model, and source-reuse research.
-- `docs/labeling-guide.md` — exact boundary policy, keyboard workflow, and label validation/import.
-- `docs/analysis-format.md` — versioned processing/UI contract.
-
-## Current limitations
-
-- Supported footage is still intended to be stationary, landscape, full-court video from behind an end line.
-- Motion is not equivalent to live play; warmups, celebrations, walking, neighboring courts, and camera movement can create false candidates.
-- Quiet or visually subtle rallies can be missed.
-- Grass, beach ropes, cropped views, and dense indoor floor markings can cause the court detector to use the fallback region.
-- YouTube downloading, upload UI, background jobs, rendered exports, player tracking, and action labels are not implemented yet.
-- Corrections currently live only in browser state; persistent edit revisions are a later milestone.
-
-The product should favor retaining extra footage over deleting live play. Always inspect every proposed boundary before export work is added.
+- The current statistical feature models do not explicitly detect the ball, players,
+  net, score, touches, actions, or team identity.
+- Stationary, landscape, full-court footage remains the strongest input. Camera motion,
+  cropped courts, neighboring play, walking, setup, retrieval, and celebrations are
+  important confusing cases and require review.
+- Quiet or visually subtle rallies can still be missed. The two-model union favors
+  retaining extra footage over silently deleting live play.
+- Browser and Android media decoders can produce small feature-distribution differences;
+  use the parity tests and platform reports rather than assuming byte-identical front
+  ends.
+- The browser client intentionally keeps source video local and therefore cannot reopen
+  playback/export until the original file is reconnected. Android similarly depends on
+  a valid document grant or explicit relinking.

@@ -26,7 +26,7 @@ its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
 file or origin-private storage before iOS sharing. JSON edit-list export is also available.
 For model improvement, the editor can additionally download a versioned model-feedback JSON
-containing the retained 90-column base feature matrix, source timestamps, probability traces,
+containing the retained 104-column base feature matrix, source timestamps, probability traces,
 untouched initial inference ranges, corrected ranges, explicit false-positive and false-negative
 labels, ignored intervals, and finalized export ranges. Video bytes are never included. New
 projects retain a sampled source fingerprint, so an identical raw video can be reconnected after
