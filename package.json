@@ -38,6 +38,7 @@
     "extract:serving-side-v2-protected": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/extract-serving-side-v2-features.py --protected-test",
     "evaluate:serving-side-v2-protected": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-v2-protected.py",
     "evaluate:serving-side-v2-abstention": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-v2-abstention.py",
+    "extract:serving-side-serve-gate": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/extract-serving-side-serve-gate.py",
     "infer:serving-side-v2-all-videos": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-serving-side-v2-all-videos.py",
     "evaluate:highres-embeddings": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-highres-embeddings.py",
     "prepare:ball-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/prepare-ball-presence-pilot.py",

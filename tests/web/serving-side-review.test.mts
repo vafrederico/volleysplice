@@ -50,7 +50,7 @@ test("serving-side review defaults to the NAS report and decision files", () => 
       getServingSideResultsEvaluationPath(),
       path.join(
         DEFAULT_SERVING_SIDE_DIRECTORY,
-        "serving-side-specialist-v2-all-video-inference.json",
+        "serving-side-specialist-v2-dual-serve-gate-all-video-inference.json",
       ),
     );
     assert.equal(
@@ -222,6 +222,7 @@ test("serving-side result review joins frozen human and model decisions", async 
       kind: "volleycut-serving-side-specialist-v2-protected-test-evaluation",
       createdAt: "2026-08-20T14:00:00.000Z",
       modelFingerprint: "a".repeat(64),
+      serveGateFingerprint: "b".repeat(64),
       featureFamily: "court-flow-recording-rank",
       threshold: 0.51,
       sources: {
@@ -234,6 +235,29 @@ test("serving-side result review joins frozen human and model decisions", async 
           recordingId: "indoor-test-video",
           decision: "near",
           prediction: "far",
+          servePrediction: "not-serve",
+          finalPrediction: "not-serve",
+          serveEvidence: {
+            serveAnchor: 10,
+            heads: {
+              allLabelsV2: {
+                modelId: "model-v2",
+                threshold: 0.85,
+                peakProbability: 0.7,
+                peakTime: 10,
+                crossesThreshold: false,
+                nearestDetection: null,
+              },
+              previousProduction: {
+                modelId: "model-previous",
+                threshold: 0.85,
+                peakProbability: 0.8,
+                peakTime: 10.25,
+                crossesThreshold: false,
+                nearestDetection: null,
+              },
+            },
+          },
           nearProbability: 0.49,
         },
         {
@@ -241,6 +265,33 @@ test("serving-side result review joins frozen human and model decisions", async 
           recordingId: "indoor-test-video",
           decision: "far",
           prediction: "far",
+          servePrediction: "serve",
+          finalPrediction: "far",
+          serveEvidence: {
+            serveAnchor: 30,
+            heads: {
+              allLabelsV2: {
+                modelId: "model-v2",
+                threshold: 0.85,
+                peakProbability: 0.9,
+                peakTime: 30,
+                crossesThreshold: true,
+                nearestDetection: {
+                  time: 30.25,
+                  confidence: 0.9,
+                  distanceSeconds: 0.25,
+                },
+              },
+              previousProduction: {
+                modelId: "model-previous",
+                threshold: 0.85,
+                peakProbability: 0.8,
+                peakTime: 30,
+                crossesThreshold: false,
+                nearestDetection: null,
+              },
+            },
+          },
           nearProbability: 0.2,
         },
       ],
@@ -262,6 +313,10 @@ test("serving-side result review joins frozen human and model decisions", async 
 
     const result = await loadServingSideResults();
     assert.equal(result.results.length, 2);
+    assert.equal(result.serveGateMetrics.missedServes, 1);
+    assert.equal(result.results[0].finalPrediction, "not-serve");
+    assert.equal(result.metrics.nearRecall, 0);
+    assert.equal(result.metrics.accuracy, 0.5);
     assert.deepEqual(
       result.results.map((row) => ({
         human: row.human,

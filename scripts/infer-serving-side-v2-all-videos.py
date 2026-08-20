@@ -21,9 +21,12 @@ ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
 DEFAULT_MODEL = ROOT / "models/serving-side-specialist-v2/model.json"
 DEFAULT_DEVELOPMENT = ROOT / "features/serving-side-v2/development.json"
 DEFAULT_PROTECTED = ROOT / "features/serving-side-v2/protected-test.json"
+DEFAULT_SERVE_EVIDENCE = (
+    ROOT / "features/serving-side-serve-gate-v1/all-reviewed.json"
+)
 DEFAULT_OUTPUT = (
     ROOT
-    / "reports/serving-side/serving-side-specialist-v2-all-video-inference.json"
+    / "reports/serving-side/serving-side-specialist-v2-dual-serve-gate-all-video-inference.json"
 )
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
@@ -89,6 +92,7 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
     model_path = args.model.resolve()
     development_path = args.development_dataset.resolve()
     protected_path = args.protected_dataset.resolve()
+    serve_evidence_path = args.serve_evidence.resolve()
     output = args.output.resolve()
     if output.exists():
         raise FileExistsError(f"refusing to overwrite all-video inference: {output}")
@@ -96,6 +100,7 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
     model_payload = _load(model_path)
     development = _load(development_path)
     protected = _load(protected_path)
+    serve_evidence = _load(serve_evidence_path)
     if model_payload.get("kind") != "volleycut-serving-side-specialist-v2":
         raise ValueError("unexpected frozen model kind")
     if development.get("scope") != "development":
@@ -109,6 +114,25 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
     for source in ("servingSideReport", "reviewDecisions"):
         if development["sources"][source]["sha256"] != protected["sources"][source]["sha256"]:
             raise ValueError(f"feature banks bind different {source} artifacts")
+    if serve_evidence.get("kind") != "volleycut-serving-side-production-serve-gate-v1":
+        raise ValueError("unexpected production serve-gate evidence kind")
+    if (
+        serve_evidence.get("sources", {})
+        .get("servingSideReport", {})
+        .get("sha256")
+        != development["sources"]["servingSideReport"]["sha256"]
+    ):
+        raise ValueError("serve-gate evidence binds a different serving-side report")
+    raw_serve_rows = serve_evidence.get("rows")
+    if not isinstance(raw_serve_rows, list):
+        raise ValueError("serve-gate evidence rows are invalid")
+    serve_by_rally = {
+        str(row.get("rallyId")): row
+        for row in raw_serve_rows
+        if isinstance(row, Mapping) and isinstance(row.get("rallyId"), str)
+    }
+    if len(serve_by_rally) != len(raw_serve_rows):
+        raise ValueError("serve-gate evidence has invalid or duplicate rally IDs")
 
     development_rows = development.get("rows")
     protected_rows = protected.get("rows")
@@ -129,6 +153,8 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
     rally_ids = [str(row["rallyId"]) for row in rows]
     if len(set(rally_ids)) != len(rally_ids):
         raise ValueError("duplicate rally IDs found across feature banks")
+    if any(rally_id not in serve_by_rally for rally_id in rally_ids):
+        raise ValueError("serve-gate evidence does not cover every side prediction")
 
     parameters = model_payload["model"]
     if parameters.get("family") == "class-balanced-logistic":
@@ -162,16 +188,60 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
             "path": str(protected_path),
             "sha256": _sha256(protected_path),
         },
+        "serveGateEvidence": {
+            "path": str(serve_evidence_path),
+            "sha256": _sha256(serve_evidence_path),
+        },
         "implementation": {
             "path": str(Path(__file__).resolve().relative_to(REPOSITORY_ROOT)),
             "sha256": _sha256(Path(__file__).resolve()),
         },
     }
+    predictions = []
+    for row, probability, guess in zip(rows, probabilities, predicted, strict=True):
+        side_prediction = "near" if guess else "far"
+        evidence = serve_by_rally[str(row["rallyId"])]
+        serve_prediction = evidence.get("prediction")
+        heads = evidence.get("heads")
+        if (
+            serve_prediction not in {"serve", "not-serve"}
+            or not isinstance(heads, Mapping)
+        ):
+            raise ValueError(f"invalid serve-gate row for {row['rallyId']}")
+        predictions.append(
+            {
+                "rallyId": row["rallyId"],
+                "recordingId": row["recordingId"],
+                "environment": row["environment"],
+                "split": row["sourceSplit"],
+                "decision": row["decision"],
+                "nearProbability": float(probability),
+                "prediction": side_prediction,
+                "servePrediction": serve_prediction,
+                "finalPrediction": (
+                    side_prediction if serve_prediction == "serve" else "not-serve"
+                ),
+                "serveEvidence": {
+                    "serveAnchor": evidence.get("serveAnchor"),
+                    "heads": heads,
+                },
+                "evaluationRole": (
+                    "protected-test"
+                    if row["sourceSplit"] == "test"
+                    else "development-in-sample"
+                ),
+            }
+        )
+    serve_count = sum(
+        prediction["servePrediction"] == "serve" for prediction in predictions
+    )
     result = {
         "schemaVersion": 1,
-        "kind": "volleycut-serving-side-specialist-v2-all-video-inference",
+        "kind": "volleycut-serving-side-specialist-v2-dual-serve-gate-all-video-inference",
         "createdAt": datetime.now(UTC).isoformat(),
         "modelFingerprint": model_payload["fingerprint"],
+        "serveGateFingerprint": serve_evidence["gateFingerprint"],
+        "serveGate": serve_evidence["gate"],
         "threshold": model.threshold,
         "featureFamily": model_payload["featureFamily"],
         "modelFamily": parameters["family"],
@@ -192,32 +262,17 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
             "recordingIds": recording_ids,
             "developmentRows": len(development_indices),
             "protectedTestRows": len(protected_indices),
+            "servePredictions": serve_count,
+            "notServePredictions": len(predictions) - serve_count,
         },
-        "predictions": [
-            {
-                "rallyId": row["rallyId"],
-                "recordingId": row["recordingId"],
-                "environment": row["environment"],
-                "split": row["sourceSplit"],
-                "decision": row["decision"],
-                "nearProbability": float(probability),
-                "prediction": "near" if guess else "far",
-                "evaluationRole": (
-                    "protected-test"
-                    if row["sourceSplit"] == "test"
-                    else "development-in-sample"
-                ),
-            }
-            for row, probability, guess in zip(
-                rows, probabilities, predicted, strict=True
-            )
-        ],
+        "predictions": predictions,
         "dataPolicy": {
             "coverage": "every video with at least one clear near/far review decision",
             "unclear": "excluded because the frozen binary model has no unclear class",
             "development": "predictions are from the final model fitted on development; metrics are in-sample diagnostics",
             "protectedTest": "predictions retain the single frozen held-out evaluation",
             "candidateConditioned": True,
+            "serveGate": "frozen production thresholds; neither serving-side labels nor protected-test outcomes selected the gate",
         },
         "sources": sources,
     }
@@ -237,6 +292,7 @@ def _parser() -> argparse.ArgumentParser:
         "--development-dataset", type=Path, default=DEFAULT_DEVELOPMENT
     )
     parser.add_argument("--protected-dataset", type=Path, default=DEFAULT_PROTECTED)
+    parser.add_argument("--serve-evidence", type=Path, default=DEFAULT_SERVE_EVIDENCE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     return parser
 

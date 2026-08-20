@@ -22,6 +22,8 @@ type OutcomeFilter =
   | "correct"
   | "near-as-far"
   | "far-as-near"
+  | "serve-as-not-serve"
+  | "not-serve-as-serve"
   | "not-serve";
 
 type Props = {
@@ -39,6 +41,8 @@ const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
   { value: "correct", label: "Correct" },
   { value: "near-as-far", label: "Near recall misses" },
   { value: "far-as-near", label: "Far recall misses" },
+  { value: "serve-as-not-serve", label: "Serve gate misses" },
+  { value: "not-serve-as-serve", label: "False serves" },
   { value: "not-serve", label: "Not a serve" },
 ];
 
@@ -85,14 +89,18 @@ function matchesOutcome(
   result: ServingSideResult,
   outcome: OutcomeFilter,
 ): boolean {
-  if (outcome === "wrong")
-    return result.human !== "not-serve" && !result.correct;
-  if (outcome === "correct")
-    return result.human !== "not-serve" && result.correct;
+  if (outcome === "wrong") return !result.correct;
+  if (outcome === "correct") return result.correct;
   if (outcome === "near-as-far")
-    return result.human === "near" && result.prediction === "far";
+    return result.human === "near" && result.finalPrediction !== "near";
   if (outcome === "far-as-near")
-    return result.human === "far" && result.prediction === "near";
+    return result.human === "far" && result.finalPrediction !== "far";
+  if (outcome === "serve-as-not-serve")
+    return (
+      result.human !== "not-serve" && result.servePrediction === "not-serve"
+    );
+  if (outcome === "not-serve-as-serve")
+    return result.human === "not-serve" && result.servePrediction === "serve";
   if (outcome === "not-serve") return result.human === "not-serve";
   return true;
 }
@@ -109,13 +117,21 @@ function recordingMetrics(rows: ServingSideResult[]) {
   return {
     rows: near.length + far.length,
     notServes: rows.filter((row) => row.human === "not-serve").length,
-    nearRecallMisses: near.filter((row) => row.prediction === "far").length,
-    farRecallMisses: far.filter((row) => row.prediction === "near").length,
+    serveGateMisses: rows.filter(
+      (row) => row.human !== "not-serve" && row.servePrediction === "not-serve",
+    ).length,
+    falseServes: rows.filter(
+      (row) => row.human === "not-serve" && row.servePrediction === "serve",
+    ).length,
+    nearRecallMisses: near.filter((row) => row.finalPrediction !== "near")
+      .length,
+    farRecallMisses: far.filter((row) => row.finalPrediction !== "far").length,
     nearRecall: near.length
-      ? near.filter((row) => row.prediction === "near").length / near.length
+      ? near.filter((row) => row.finalPrediction === "near").length /
+        near.length
       : 0,
     farRecall: far.length
-      ? far.filter((row) => row.prediction === "far").length / far.length
+      ? far.filter((row) => row.finalPrediction === "far").length / far.length
       : 0,
   };
 }
@@ -124,10 +140,10 @@ function aggregateMetrics(rows: ServingSideResult[]) {
   const near = rows.filter((row) => row.human === "near");
   const far = rows.filter((row) => row.human === "far");
   const nearRecall = near.length
-    ? near.filter((row) => row.prediction === "near").length / near.length
+    ? near.filter((row) => row.finalPrediction === "near").length / near.length
     : 0;
   const farRecall = far.length
-    ? far.filter((row) => row.prediction === "far").length / far.length
+    ? far.filter((row) => row.finalPrediction === "far").length / far.length
     : 0;
   return {
     balancedAccuracy: (nearRecall + farRecall) / 2,
@@ -184,7 +200,7 @@ function ResultTimeline({
           <strong>Full-video result map</strong>
           <span>
             Red marks are mistakes; green marks are correct; amber marks are
-            labeled not a serve.
+            correctly rejected non-serves.
           </span>
         </div>
         <span>{formatTime(duration)}</span>
@@ -215,11 +231,11 @@ function ResultTimeline({
             type="button"
             className={styles.timelineEvent}
             data-outcome={
-              row.human === "not-serve"
-                ? "not-serve"
-                : row.correct
-                  ? "correct"
-                  : "wrong"
+              row.correct
+                ? row.human === "not-serve"
+                  ? "not-serve"
+                  : "correct"
+                : "wrong"
             }
             data-selected={row.rallyId === selectedId ? "true" : "false"}
             style={{ left: `${Math.min(100, (row.start / duration) * 100)}%` }}
@@ -227,7 +243,7 @@ function ResultTimeline({
               event.stopPropagation();
               onSelect(row.rallyId);
             }}
-            title={`${formatTime(row.start)} · human ${row.human} · model ${row.prediction}`}
+            title={`${formatTime(row.start)} · human ${row.human} · model ${row.finalPrediction}`}
             aria-label={`Select ${row.rallyId}`}
             key={row.rallyId}
           />
@@ -269,7 +285,7 @@ function LoadedResults({
           ...row,
           human,
           humanCorrected: human !== row.originalHuman,
-          correct: human !== "not-serve" && human === row.prediction,
+          correct: human === row.finalPrediction,
         };
       }),
     [correctionState.corrections, data.results],
@@ -280,13 +296,12 @@ function LoadedResults({
         const rows = results.filter(
           (row) => row.recordingId === recording.recordingId,
         );
-        const sideRows = rows.filter((row) => row.human !== "not-serve");
-        const correct = sideRows.filter((row) => row.correct).length;
+        const correct = rows.filter((row) => row.correct).length;
         return {
           ...recording,
           rows: rows.length,
           correct,
-          errors: sideRows.length - correct,
+          errors: rows.length - correct,
         };
       }),
     [data.recordings, results],
@@ -414,8 +429,7 @@ function LoadedResults({
           ...row,
           human: updatedHuman,
           humanCorrected: updatedHuman !== row.originalHuman,
-          correct:
-            updatedHuman !== "not-serve" && updatedHuman === row.prediction,
+          correct: updatedHuman === row.finalPrediction,
         };
         if (!matchesOutcome(updatedRow, outcome)) {
           setOutcome(updatedHuman === "not-serve" ? "not-serve" : "all");
@@ -517,19 +531,20 @@ function LoadedResults({
           </h1>
           <p className={base.intro}>
             Compare the completed human near/far label with the specialist’s
-            frozen prediction at each serve. Start on mistakes, then inspect the
-            source video around the serve anchor. Development videos are marked
-            in-sample; the test video remains protected held-out.
+            frozen prediction at each candidate. Start on mistakes, then inspect
+            the source video around the serve anchor. Development videos are
+            marked in-sample; the test video remains protected held-out.
           </p>
           <p className={base.sourceLine}>
-            {recordings.length} videos · {results.length} reviewed serves ·
-            model {data.modelFingerprint.slice(0, 12)}…
+            {recordings.length} videos · {results.length} reviewed candidates ·
+            side model {data.modelFingerprint.slice(0, 12)}… · serve gate{" "}
+            {data.serveGateFingerprint.slice(0, 12)}…
           </p>
         </div>
         <div className={base.heroMetric}>
           <span>
             {isAllVideoInference
-              ? "All clear-label serves"
+              ? "Final side + serve gate"
               : "All held-out recordings"}
           </span>
           <strong>{percentage(overallMetrics.balancedAccuracy)}</strong>
@@ -539,7 +554,10 @@ function LoadedResults({
             {percentage(overallMetrics.farRecall)}
           </b>
           {isAllVideoInference && (
-            <b>29 development videos in-sample · 1 protected held-out</b>
+            <b>
+              serve P {percentage(data.serveGateMetrics.precision)} · serve R{" "}
+              {percentage(data.serveGateMetrics.recall)}
+            </b>
           )}
         </div>
       </header>
@@ -557,12 +575,12 @@ function LoadedResults({
           <strong data-tone="warning">{localMetrics.notServes}</strong>
         </div>
         <div>
-          <span>Near recall misses</span>
-          <strong data-tone="warning">{localMetrics.nearRecallMisses}</strong>
+          <span>Serve gate misses</span>
+          <strong data-tone="warning">{localMetrics.serveGateMisses}</strong>
         </div>
         <div>
-          <span>Far recall misses</span>
-          <strong data-tone="warning">{localMetrics.farRecallMisses}</strong>
+          <span>False serves</span>
+          <strong data-tone="warning">{localMetrics.falseServes}</strong>
         </div>
         <div>
           <span>Near recall</span>
@@ -580,7 +598,10 @@ function LoadedResults({
         <div className={base.filterHeading}>
           <span className={base.panelKicker}>01 / VIDEO</span>
           <strong>Choose a result set</strong>
-          <small>Recall miss = human side predicted as the opposite side</small>
+          <small>
+            Mistake = final near, far, or not-serve prediction differs from the
+            current human label
+          </small>
         </div>
         <label>
           <span>Environment</span>
@@ -645,7 +666,7 @@ function LoadedResults({
           <header>
             <div>
               <span className={base.panelKicker}>RESULT QUEUE</span>
-              <strong>{filteredRows.length} serves</strong>
+              <strong>{filteredRows.length} candidates</strong>
             </div>
             <small>{outcome.replaceAll("-", " ")}</small>
           </header>
@@ -667,11 +688,13 @@ function LoadedResults({
                 <span className={base.queueMain}>
                   <strong>{formatTime(row.start)}</strong>
                   <small>
-                    human {row.human} → model {row.prediction}
+                    human {row.human} → model {row.finalPrediction}
                   </small>
                 </span>
                 <span className={base.queueScore}>
-                  {percentage(confidence(row), 0)}
+                  {row.servePrediction === "not-serve"
+                    ? "NO SERVE"
+                    : percentage(confidence(row), 0)}
                   <i data-decision={row.correct ? row.human : "unclear"} />
                 </span>
               </button>
@@ -716,7 +739,9 @@ function LoadedResults({
                 className={styles.verdict}
                 data-correct={selected.correct ? "true" : "false"}
                 data-not-serve={
-                  selected.human === "not-serve" ? "true" : "false"
+                  selected.correct && selected.human === "not-serve"
+                    ? "true"
+                    : "false"
                 }
               >
                 <div>
@@ -728,26 +753,26 @@ function LoadedResults({
                       : "frozen review decision"}
                   </small>
                 </div>
-                <div className={styles.arrow} aria-hidden="true">
-                  →
+                <div>
+                  <span>Is this a serve?</span>
+                  <strong>{selected.servePrediction}</strong>
+                  <small>either production head must pass</small>
                 </div>
                 <div>
-                  <span>Model prediction</span>
-                  <strong>{selected.prediction}</strong>
-                  <small>{percentage(confidence(selected))} confidence</small>
+                  <span>Serving side</span>
+                  <strong>
+                    {selected.servePrediction === "serve"
+                      ? selected.prediction
+                      : "not applied"}
+                  </strong>
+                  <small>
+                    {percentage(confidence(selected))} side confidence
+                  </small>
                 </div>
                 <div className={styles.outcome}>
                   <span>Outcome</span>
-                  <strong>
-                    {selected.human === "not-serve"
-                      ? "Not a serve"
-                      : selected.correct
-                        ? "Correct"
-                        : "Wrong"}
-                  </strong>
-                  <small>
-                    near probability {percentage(selected.nearProbability)}
-                  </small>
+                  <strong>{selected.correct ? "Correct" : "Wrong"}</strong>
+                  <small>final prediction {selected.finalPrediction}</small>
                 </div>
               </section>
 
@@ -843,12 +868,12 @@ function LoadedResults({
                   className={styles.videoVerdict}
                   data-correct={selected.correct ? "true" : "false"}
                   data-not-serve={
-                    selected.human === "not-serve" ? "true" : "false"
+                    selected.correct && selected.human === "not-serve"
+                      ? "true"
+                      : "false"
                   }
                 >
-                  {selected.human === "not-serve"
-                    ? "HUMAN: NOT A SERVE"
-                    : `HUMAN ${selected.human} · MODEL ${selected.prediction}`}
+                  {`HUMAN ${selected.human} · MODEL ${selected.finalPrediction}`}
                 </span>
               </div>
 
@@ -908,6 +933,43 @@ function LoadedResults({
                 }}
                 onSeek={seek}
               />
+
+              <section className={styles.probabilityPanel}>
+                <header>
+                  <div>
+                    <span className={base.panelKicker}>
+                      PRODUCTION SERVE HEADS
+                    </span>
+                    <strong>Is this a serve?</strong>
+                  </div>
+                  <strong>{selected.servePrediction}</strong>
+                </header>
+                <div className={styles.serveHeadScores}>
+                  {(
+                    [
+                      ["All-labels V2", selected.serveEvidence.allLabelsV2],
+                      [
+                        "Previous production",
+                        selected.serveEvidence.previousProduction,
+                      ],
+                    ] as const
+                  ).map(([label, evidence]) => (
+                    <article key={label}>
+                      <span>{label}</span>
+                      <strong>{percentage(evidence.peakProbability, 2)}</strong>
+                      <small>
+                        peak {formatTime(evidence.peakTime)} · threshold{" "}
+                        {percentage(evidence.threshold)} ·{" "}
+                        {evidence.crossesThreshold ? "passes" : "below"}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+                <small className={styles.gateNote}>
+                  Maximum source-aligned score within ±1 second of the candidate
+                  anchor. Either head passing marks this as a serve.
+                </small>
+              </section>
 
               <section className={styles.probabilityPanel}>
                 <header>

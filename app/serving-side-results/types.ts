@@ -1,5 +1,19 @@
 export type ServingSideResultSide = "near" | "far";
 export type ServingSideHumanLabel = ServingSideResultSide | "not-serve";
+export type ServingSideServePrediction = "serve" | "not-serve";
+
+export type ServingSideServeHeadEvidence = {
+  modelId: string;
+  threshold: number;
+  peakProbability: number;
+  peakTime: number;
+  crossesThreshold: boolean;
+  nearestDetection: null | {
+    time: number;
+    confidence: number;
+    distanceSeconds: number;
+  };
+};
 
 export type ServingSideResult = {
   rallyId: string;
@@ -16,11 +30,32 @@ export type ServingSideResult = {
   originalHuman: ServingSideResultSide;
   humanCorrected: boolean;
   prediction: ServingSideResultSide;
+  servePrediction: ServingSideServePrediction;
+  finalPrediction: ServingSideHumanLabel;
+  serveEvidence: {
+    serveAnchor: number;
+    allLabelsV2: ServingSideServeHeadEvidence;
+    previousProduction: ServingSideServeHeadEvidence;
+  };
   nearProbability: number;
   correct: boolean;
   notes: string | null;
   tags: string[];
   features: Record<string, number | null>;
+};
+
+export type ServingSideServeGateMetrics = {
+  rows: number;
+  humanServes: number;
+  humanNotServes: number;
+  trueServes: number;
+  falseServes: number;
+  missedServes: number;
+  trueNotServes: number;
+  precision: number;
+  recall: number;
+  specificity: number;
+  accuracy: number;
 };
 
 export type ServingSideResultRecording = {
@@ -60,9 +95,11 @@ export type ServingSideResultsData = {
   kind: string;
   createdAt: string;
   modelFingerprint: string;
+  serveGateFingerprint: string;
   selectedFeatureSet: string;
   threshold: number;
   metrics: ServingSideResultMetrics;
+  serveGateMetrics: ServingSideServeGateMetrics;
   correctionState: ServingSideCorrectionState;
   recordings: ServingSideResultRecording[];
   results: ServingSideResult[];

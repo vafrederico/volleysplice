@@ -7,6 +7,8 @@ import type {
   ServingSideResultMetrics,
   ServingSideResultRecording,
   ServingSideResultsData,
+  ServingSideServeHeadEvidence,
+  ServingSideServePrediction,
 } from "@/app/serving-side-results/types";
 
 import {
@@ -20,7 +22,7 @@ import {
 } from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v2-all-video-inference.json";
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v2-dual-serve-gate-all-video-inference.json";
 
 export class ServingSideResultsError extends Error {}
 
@@ -81,6 +83,81 @@ function side(value: unknown, label: string): "near" | "far" {
   return value;
 }
 
+function servePrediction(
+  value: unknown,
+  label: string,
+): ServingSideServePrediction {
+  if (value !== "serve" && value !== "not-serve") {
+    throw new ServingSideResultsError(`${label} is not serve or not-serve`);
+  }
+  return value;
+}
+
+function probability(value: unknown, label: string): number {
+  const result = finiteNumber(value, label);
+  if (result < 0 || result > 1) {
+    throw new ServingSideResultsError(`${label} is outside [0, 1]`);
+  }
+  return result;
+}
+
+function serveHeadEvidence(
+  value: unknown,
+  label: string,
+): ServingSideServeHeadEvidence {
+  if (!isRecord(value)) {
+    throw new ServingSideResultsError(`${label} is unavailable`);
+  }
+  const threshold = probability(value.threshold, `${label} threshold`);
+  const peakProbability = probability(
+    value.peakProbability,
+    `${label} peak probability`,
+  );
+  const crossesThreshold = value.crossesThreshold;
+  if (
+    typeof crossesThreshold !== "boolean" ||
+    crossesThreshold !== peakProbability >= threshold
+  ) {
+    throw new ServingSideResultsError(`${label} threshold decision is invalid`);
+  }
+  let nearestDetection: ServingSideServeHeadEvidence["nearestDetection"] = null;
+  if (value.nearestDetection !== null) {
+    if (!isRecord(value.nearestDetection)) {
+      throw new ServingSideResultsError(
+        `${label} nearest detection is invalid`,
+      );
+    }
+    const distanceSeconds = finiteNumber(
+      value.nearestDetection.distanceSeconds,
+      `${label} nearest detection distance`,
+    );
+    if (distanceSeconds < 0) {
+      throw new ServingSideResultsError(
+        `${label} nearest detection distance is negative`,
+      );
+    }
+    nearestDetection = {
+      time: finiteNumber(
+        value.nearestDetection.time,
+        `${label} nearest detection time`,
+      ),
+      confidence: probability(
+        value.nearestDetection.confidence,
+        `${label} nearest detection confidence`,
+      ),
+      distanceSeconds,
+    };
+  }
+  return {
+    modelId: requiredString(value.modelId, `${label} model id`, /^model-/),
+    threshold,
+    peakProbability,
+    peakTime: finiteNumber(value.peakTime, `${label} peak time`),
+    crossesThreshold,
+    nearestDetection,
+  };
+}
+
 function sha256(content: Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -137,21 +214,24 @@ function ratio(numerator: number, denominator: number): number {
 function metricsForResults(
   results: ServingSideResult[],
 ): ServingSideResultMetrics {
+  const sideResults = results.filter((row) => row.human !== "not-serve");
   const nearNear = results.filter(
-    (row) => row.human === "near" && row.prediction === "near",
+    (row) => row.human === "near" && row.finalPrediction === "near",
   ).length;
   const nearFar = results.filter(
-    (row) => row.human === "near" && row.prediction === "far",
+    (row) => row.human === "near" && row.finalPrediction === "far",
   ).length;
   const farNear = results.filter(
-    (row) => row.human === "far" && row.prediction === "near",
+    (row) => row.human === "far" && row.finalPrediction === "near",
   ).length;
   const farFar = results.filter(
-    (row) => row.human === "far" && row.prediction === "far",
+    (row) => row.human === "far" && row.finalPrediction === "far",
   ).length;
-  const nearRecall = ratio(nearNear, nearNear + nearFar);
-  const farRecall = ratio(farFar, farFar + farNear);
-  const rows = nearNear + nearFar + farNear + farFar;
+  const humanNear = sideResults.filter((row) => row.human === "near").length;
+  const humanFar = sideResults.filter((row) => row.human === "far").length;
+  const nearRecall = ratio(nearNear, humanNear);
+  const farRecall = ratio(farFar, humanFar);
+  const rows = sideResults.length;
   return {
     rows,
     accuracy: ratio(nearNear + farFar, rows),
@@ -160,6 +240,34 @@ function metricsForResults(
     nearRecall,
     farPrecision: ratio(farFar, farFar + nearFar),
     farRecall,
+  };
+}
+
+function serveMetricsForResults(results: ServingSideResult[]) {
+  const trueServes = results.filter(
+    (row) => row.human !== "not-serve" && row.servePrediction === "serve",
+  ).length;
+  const falseServes = results.filter(
+    (row) => row.human === "not-serve" && row.servePrediction === "serve",
+  ).length;
+  const missedServes = results.filter(
+    (row) => row.human !== "not-serve" && row.servePrediction === "not-serve",
+  ).length;
+  const trueNotServes = results.filter(
+    (row) => row.human === "not-serve" && row.servePrediction === "not-serve",
+  ).length;
+  return {
+    rows: results.length,
+    humanServes: trueServes + missedServes,
+    humanNotServes: falseServes + trueNotServes,
+    trueServes,
+    falseServes,
+    missedServes,
+    trueNotServes,
+    precision: ratio(trueServes, trueServes + falseServes),
+    recall: ratio(trueServes, trueServes + missedServes),
+    specificity: ratio(trueNotServes, trueNotServes + falseServes),
+    accuracy: ratio(trueServes + trueNotServes, results.length),
   };
 }
 
@@ -313,6 +421,41 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
         `Near probability ${rallyId} is outside [0, 1]`,
       );
     }
+    const modelServePrediction = servePrediction(
+      prediction.servePrediction,
+      `serve prediction ${rallyId}`,
+    );
+    const finalPrediction =
+      modelServePrediction === "serve" ? model : "not-serve";
+    if (prediction.finalPrediction !== finalPrediction) {
+      throw new ServingSideResultsError(
+        `Final prediction ${rallyId} disagrees with its serve gate`,
+      );
+    }
+    if (!isRecord(prediction.serveEvidence)) {
+      throw new ServingSideResultsError(
+        `Serve evidence ${rallyId} is unavailable`,
+      );
+    }
+    const heads = prediction.serveEvidence.heads;
+    if (!isRecord(heads)) {
+      throw new ServingSideResultsError(
+        `Serve heads ${rallyId} are unavailable`,
+      );
+    }
+    const serveAnchor = finiteNumber(
+      prediction.serveEvidence.serveAnchor,
+      `serve evidence anchor ${rallyId}`,
+    );
+    if (
+      Math.abs(
+        serveAnchor - finiteNumber(rally.start, `rally start ${rallyId}`),
+      ) > 1e-6
+    ) {
+      throw new ServingSideResultsError(
+        `Serve evidence ${rallyId} is misaligned`,
+      );
+    }
     return {
       rallyId,
       recordingId,
@@ -330,8 +473,21 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       originalHuman,
       humanCorrected: human !== originalHuman,
       prediction: model,
+      servePrediction: modelServePrediction,
+      finalPrediction,
+      serveEvidence: {
+        serveAnchor,
+        allLabelsV2: serveHeadEvidence(
+          heads.allLabelsV2,
+          `all-labels V2 serve evidence ${rallyId}`,
+        ),
+        previousProduction: serveHeadEvidence(
+          heads.previousProduction,
+          `previous-production serve evidence ${rallyId}`,
+        ),
+      },
       nearProbability,
-      correct: human !== "not-serve" && human === model,
+      correct: human === finalPrediction,
       notes: typeof rally.notes === "string" ? rally.notes : null,
       tags: Array.isArray(rally.tags)
         ? rally.tags.filter((tag): tag is string => typeof tag === "string")
@@ -354,8 +510,7 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
           `Evaluation recording ${recordingId} has no media entry`,
         );
       }
-      const sideRows = rows.filter((row) => row.human !== "not-serve");
-      const correct = sideRows.filter((row) => row.correct).length;
+      const correct = rows.filter((row) => row.correct).length;
       return {
         recordingId,
         environment: rows[0].environment,
@@ -373,7 +528,7 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
             : `${recordingId}.mp4`,
         rows: rows.length,
         correct,
-        errors: sideRows.length - correct,
+        errors: rows.length - correct,
       };
     })
     .sort((left, right) => {
@@ -407,12 +562,18 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       "model fingerprint",
       /^[a-f0-9]{64}$/,
     ),
+    serveGateFingerprint: requiredString(
+      evaluation.serveGateFingerprint,
+      "serve-gate fingerprint",
+      /^[a-f0-9]{64}$/,
+    ),
     selectedFeatureSet: requiredString(
       evaluation.selectedFeatureSet ?? evaluation.featureFamily,
       "selected feature set",
     ),
     threshold: finiteNumber(evaluation.threshold, "model threshold"),
     metrics: metricsForResults(results),
+    serveGateMetrics: serveMetricsForResults(results),
     correctionState: {
       schemaVersion: 1,
       reportKind: requiredString(report.kind, "report kind"),

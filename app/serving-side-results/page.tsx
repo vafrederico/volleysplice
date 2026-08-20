@@ -49,6 +49,8 @@ export default async function ServingSideResultsPage({ searchParams }: Props) {
       requested.outcome === "wrong" ||
       requested.outcome === "near-as-far" ||
       requested.outcome === "far-as-near" ||
+      requested.outcome === "serve-as-not-serve" ||
+      requested.outcome === "not-serve-as-serve" ||
       requested.outcome === "not-serve"
         ? requested.outcome
         : "wrong";
