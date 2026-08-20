@@ -21,9 +21,11 @@ const DEFAULT_SERVING_SIDE_DIRECTORY =
 test("serving-side review defaults to the NAS report and decision files", () => {
   const previousReport = process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
   const previousDecisions = process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
+  const previousEvaluation = process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
   try {
     delete process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
     delete process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
+    delete process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
     assert.equal(
       getServingSideReviewReportPath(),
       path.join(
@@ -38,6 +40,13 @@ test("serving-side review defaults to the NAS report and decision files", () => 
         "serving-side-review-decisions-full-nas-v1.json",
       ),
     );
+    assert.equal(
+      getServingSideResultsEvaluationPath(),
+      path.join(
+        DEFAULT_SERVING_SIDE_DIRECTORY,
+        "serving-side-specialist-v2-all-video-inference.json",
+      ),
+    );
   } finally {
     if (previousReport === undefined) {
       delete process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
@@ -48,6 +57,11 @@ test("serving-side review defaults to the NAS report and decision files", () => 
       delete process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
     } else {
       process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS = previousDecisions;
+    }
+    if (previousEvaluation === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION = previousEvaluation;
     }
   }
 });

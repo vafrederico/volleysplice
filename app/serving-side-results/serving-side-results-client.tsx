@@ -62,6 +62,10 @@ function videoUrl(recordingId: string): string {
   return `/api/review-media/serving-side/${encodeURIComponent(recordingId)}`;
 }
 
+function evaluationRole(split: string): string {
+  return split === "test" ? "protected held-out" : "development · in-sample";
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -271,6 +275,7 @@ function LoadedResults({
     [recordingRows],
   );
   const duration = Math.max(recording?.durationSeconds ?? 1, 1);
+  const isAllVideoInference = data.kind.endsWith("all-video-inference");
 
   const selectResult = useCallback((rallyId: string) => {
     setSelectedId(rallyId);
@@ -363,14 +368,19 @@ function LoadedResults({
 
       <header className={base.hero}>
         <div>
-          <p className={base.eyebrow}>FROZEN HELD-OUT EVALUATION · PER VIDEO</p>
+          <p className={base.eyebrow}>
+            {isAllVideoInference
+              ? "FROZEN MODEL INFERENCE · ALL AVAILABLE VIDEOS"
+              : "FROZEN HELD-OUT EVALUATION · PER VIDEO"}
+          </p>
           <h1>
             See every <em>model mistake.</em>
           </h1>
           <p className={base.intro}>
             Compare the completed human near/far label with the specialist’s
             frozen prediction at each serve. Start on mistakes, then inspect the
-            source video around the serve anchor.
+            source video around the serve anchor. Development videos are marked
+            in-sample; the test video remains protected held-out.
           </p>
           <p className={base.sourceLine}>
             {data.recordings.length} videos · {data.results.length} held-out
@@ -378,13 +388,20 @@ function LoadedResults({
           </p>
         </div>
         <div className={base.heroMetric}>
-          <span>All held-out recordings</span>
+          <span>
+            {isAllVideoInference
+              ? "All clear-label serves"
+              : "All held-out recordings"}
+          </span>
           <strong>{percentage(data.metrics.balancedAccuracy)}</strong>
           <small>balanced accuracy</small>
           <b>
             near recall {percentage(data.metrics.nearRecall)} · far recall{" "}
             {percentage(data.metrics.farRecall)}
           </b>
+          {isAllVideoInference && (
+            <b>29 development videos in-sample · 1 protected held-out</b>
+          )}
         </div>
       </header>
 
@@ -457,7 +474,8 @@ function LoadedResults({
           >
             {visibleRecordings.map((item) => (
               <option value={item.recordingId} key={item.recordingId}>
-                {item.split} · {item.recordingId} · {item.errors} wrong
+                {evaluationRole(item.split)} · {item.recordingId} ·{" "}
+                {item.errors} wrong
               </option>
             ))}
           </select>
@@ -533,7 +551,7 @@ function LoadedResults({
               <header className={base.inspectorHeader}>
                 <div>
                   <p className={base.eyebrow}>
-                    {selected.environment} · {selected.split} ·{" "}
+                    {selected.environment} · {evaluationRole(selected.split)} ·{" "}
                     {selected.correct ? "correct" : "mistake"}
                   </p>
                   <h2>{selected.rallyId}</h2>

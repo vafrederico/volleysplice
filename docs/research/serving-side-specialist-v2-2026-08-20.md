@@ -37,6 +37,7 @@ Implementation:
 - [`scripts/extract-serving-side-v2-features.py`](../../scripts/extract-serving-side-v2-features.py)
 - [`scripts/train-serving-side-v2.py`](../../scripts/train-serving-side-v2.py)
 - [`scripts/evaluate-serving-side-v2-protected.py`](../../scripts/evaluate-serving-side-v2-protected.py)
+- [`scripts/infer-serving-side-v2-all-videos.py`](../../scripts/infer-serving-side-v2-all-videos.py)
 
 The model bundle records the feature version, ordered 82-feature signature, offsets,
 resize, development dataset hash, and SHA-256 of the extractor/model implementation.
@@ -109,6 +110,7 @@ direction, not a precise estimate of all-camera production performance.
 | `models/serving-side-specialist-v2/model.json` | `76a924e8d5c1d8a035e54a2606be30be861b7bc8690c59ddcce77b114bf6f6e9` |
 | `reports/serving-side/serving-side-specialist-v2-development.json` | `8401f9b7e45a88b583be9d8ed246f13f62b82404313d850c0256d1ecedce2c6a` |
 | `reports/serving-side/serving-side-specialist-v2-protected-test.json` | `7ce17b0ae146607c3c1cc75c4aa2850aa1aa5ddc4a6e31f4f652345b9fffe887` |
+| `reports/serving-side/serving-side-specialist-v2-all-video-inference.json` | `26628904765367165ee0516d7b349f39149c4f70bd375cbd62c1feacdb96fe5b` |
 
 All paths are relative to
 `/mnt/freenas/volleycut/labeling-v1-2026-08-09/`.
@@ -125,7 +127,17 @@ npm run train:serving-side-v2
 # Run only after selection is frozen. Do not repeat for model selection.
 npm run extract:serving-side-v2-protected
 npm run evaluate:serving-side-v2-protected
+
+# Apply the already-frozen model to every clear-labeled serve in all 30 videos.
+npm run infer:serving-side-v2-all-videos
 ```
+
+The all-video review artifact contains 1,129 predictions: 1,090 development
+predictions from the final development-fitted model and the 39 protected predictions.
+Its development metrics are explicitly in-sample diagnostics. The results UI uses
+this artifact for coverage and labels each video `development · in-sample` or
+`protected held-out` rather than presenting the combined 89.40% balanced accuracy as
+an independent evaluation.
 
 ## Next step
 
