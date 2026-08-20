@@ -122,7 +122,9 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `dead-state-transition-audio-normalized-v2-no-legacy`; `…-v5-no-legacy-final` | Global dead-state transition, F104 without legacy audio | Compared with v1; disabled legacy audio while retaining visual and new audio. v5 is the same learned weights finalized. | v5 became dead-state head in previous production. |
 | `dead-state-global-audio-normalized-v1-full-final`; `…-v2-full-final` | Algebraic inverse-rally dead-state control, F104 | Compared with transition-trained dead-state heads; uses global inverse-rally targets. v2 is the same learned weights with final re-export metadata. | Research control; not promoted. |
 | `side-switch-specialist-v1` | Side-switch marker, SIDE36; fit `SIDE4`, selected on `GOLD-V2` | First dedicated learned side-switch ranker; compared against marker heuristics rather than a prior trained side-switch model. | Rejected for automatic use; retained for review ranking. |
+| `side-switch-specialist-v1-no-blurry-beach-2026-08-20` | Counterfactual side-switch marker, SIDE36; fit `SIDE3-NO-BLUR`, same historical selection/evaluation protocol | Exact v1 refit after removing only `beach-source-02`; selected `appearance-context`, L2 1.0, threshold 0.432488. | Rejected; primary raw F1 fell 17.57%→17.02%, ROC AUC 0.538→0.524, and AP 0.110→0.106. Retained only as the blur-exclusion diagnostic. |
 | `side-switch-specialist-v2` | Side-switch marker, SIDE34-V2; class-balanced logistic; fit `SIDE-V2-T5`, select threshold/decoder on `SIDE-V2-V2`, confirm once on `SIDE-V2-E4` | Compared with v1 on the same four confirmation recordings. Replaced gap/context-heavy v1 inputs with adaptive near/far assignment costs, frame consistency, color moments, derived stability interactions, and unlabeled recording-bound normalization candidates. L2/family used grouped OOF selection; validation selected a no-op temporal decoder. | Retained research/review ranking, not automatic scoring. Same-scope v1→v2 F1 19.05%→32.73%, ROC AUC 0.590→0.796, AP 0.124→0.373; v2 precision remains 20.45%. |
+| `side-switch-v3-on-device` | Planned cadence opportunity plus compact local visual ranker; one set per recording, start score 0, seven-point cadence, default ±2 rally-gap candidate margin | Will compare cadence-only with cadence-plus-visual placement. Candidate windows tolerate re-dos, missed/incorrect rally markers, and early/late player switches; no reliable candidate is a valid output. | Preregistered research plan; no model artifact or production promotion. `beach-source-02` is forbidden from every new fit due to halfway blur. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -146,6 +148,16 @@ and records every source video's full-file SHA-256, sampled fingerprint, feedbac
 split role, label-map identity, development dataset hash, and evaluation hash. The full
 decision and metric record is
 [`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md).
+
+The v1 blur-exclusion counterfactual has fingerprint
+`cf761aaaea6f87ec9c5ad0be2320145c728d08d4b85cc71eeef9d89bd61393ae`.
+Its model, dataset, and evaluation SHA-256 values and the controlled comparison are in
+[`side-switch-v1-blur-exclusion-counterfactual-2026-08-20.md`](docs/research/side-switch-v1-blur-exclusion-counterfactual-2026-08-20.md).
+All future side-switch fitting must apply
+[`validate_side_switch_fit_recordings`](analysis/side_switch_training_policy.py) before
+preprocessing or selection. Historical `SIDE4` remains unchanged so its lineage stays
+truthful; v3 and later fitting must exclude `beach-source-02` from weights,
+preprocessing, thresholds, margins, and decoder choices.
 
 ### No-beach full-gold refits
 
@@ -304,6 +316,7 @@ sets are separate even when listed on the same model row.
 | `ENV2-ALL11` | Fit: union of `ENV1-GRASS6` and `ENV2-INDOOR5` |
 | `FEEDBACK16` | Fit: `ENV2-ALL11` plus `project-cmh0xj`, `project-kqx9c`, `project-qkf86k`, `project-vxcbv3`, `project-yf69sz` |
 | `SIDE4` | Fit: `beach-beach-source-02`, `beach-beach-source-01`, `grass-grass-source-01`, `grass-grass-source-09` |
+| `SIDE3-NO-BLUR` | Counterfactual fit: `beach-beach-source-01`, `grass-grass-source-01`, `grass-grass-source-09`; only `beach-beach-source-02` is removed from historical `SIDE4` |
 | `SIDE-V2-T5` | Fit: `raw-no-backup-PXL_20260816_164327879`, `raw-no-backup-PXL_20260816_171720964`, `raw-no-backup-PXL_20260816_190429172`, `raw-no-backup-PXL_20260816_180646590`, `raw-no-backup-PXL_20260816_183701800` |
 | `SIDE-V2-V2` | Threshold and decoder selection only: `raw-no-backup-PXL_20260816_210449857`, `raw-no-backup-PXL_20260816_193307688` |
 | `SIDE-V2-E4` | Confirmation evaluation only: `raw-no-backup-PXL_20260816_160023210`, `raw-no-backup-PXL_20260816_161923155`, `raw-no-backup-PXL_20260816_203801418`, `raw-no-backup-PXL_20260816_212717581` |

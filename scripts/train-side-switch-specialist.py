@@ -38,6 +38,7 @@ from analysis.side_switch_specialist import (
     reviewed_events,
     select_threshold,
 )
+from analysis.side_switch_training_policy import validate_side_switch_fit_recordings
 
 
 DEFAULT_ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
@@ -222,11 +223,30 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             "training requires one saved review decision for every generated marker"
         )
 
-    train_rows = [
+    eligible_train_rows = [
         row
         for row in rows
         if row.split == "train" and row.environment in {"beach", "grass"}
     ]
+    excluded_fit_recording_ids = tuple(sorted(set(args.exclude_fit_recording)))
+    unknown_exclusions = sorted(
+        set(excluded_fit_recording_ids)
+        - {row.recording_id for row in eligible_train_rows}
+    )
+    if unknown_exclusions:
+        raise ValueError(
+            "fit exclusions are not eligible training recordings: "
+            + ", ".join(unknown_exclusions)
+        )
+    train_rows = [
+        row
+        for row in eligible_train_rows
+        if row.recording_id not in excluded_fit_recording_ids
+    ]
+    if excluded_fit_recording_ids:
+        validate_side_switch_fit_recordings(
+            tuple(sorted({row.recording_id for row in train_rows}))
+        )
     validation_rows = [
         row
         for row in rows
@@ -360,6 +380,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         },
         "dataPolicy": {
             "train": "split=train and environment in {beach,grass}",
+            "excludedFitRecordingIds": list(excluded_fit_recording_ids),
             "validation": "split=validation and non-indoor environment",
             "specialistEvaluation": (
                 "split in {challenge,non-training,test} and non-indoor environment"
@@ -369,6 +390,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         },
         "counts": {
             "review": review_counts,
+            "eligibleTrainBeforeExclusion": _row_counts(eligible_train_rows),
             "train": _row_counts(train_rows),
             "validation": _row_counts(validation_rows),
             "specialistEvaluation": _row_counts(specialist_evaluation_rows),
@@ -495,6 +517,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--decisions", type=Path, default=DEFAULT_DECISIONS)
     parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     parser.add_argument("--evaluation-output", type=Path, default=DEFAULT_EVALUATION)
+    parser.add_argument(
+        "--exclude-fit-recording",
+        action="append",
+        default=[],
+        help=(
+            "recording ID to remove from fitting and grouped model-family selection; "
+            "repeat for multiple IDs"
+        ),
+    )
     return parser
 
 
