@@ -195,6 +195,20 @@ The specialist runner and policy are implemented in
 and
 [`android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java`](android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java).
 
+## Research serving-side specialist
+
+`serving-side-specialist-v1` is a separate candidate-conditioned research model. At a
+known rally/serve anchor it maps 38 existing whole-half, baseline-band, and HOG inputs
+to a near-side probability; the validation-selected threshold converts that score to
+fixed camera-space `near` or `far`. It does not detect rallies, track team identity, or
+update a scoreboard, and it is not present in browser or Android production inference.
+
+The deterministic NumPy trainer and model contract are implemented in
+[`analysis/serving_side_specialist.py`](analysis/serving_side_specialist.py) and
+[`scripts/train-serving-side-specialist.py`](scripts/train-serving-side-specialist.py).
+The non-promotion decision and held-out results are recorded in
+[`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

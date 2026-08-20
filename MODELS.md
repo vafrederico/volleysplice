@@ -39,8 +39,9 @@ Validation and protected-test video is never a training source merely because a 
 shows a metric for it. A later final refit that intentionally includes former
 development data must register a new source set and artifact.
 
-This registry includes named linear heads, adapters, and learned suppression/side-switch
-classifiers. It excludes fixed decoders and heuristics, third-party pretrained backbones
+This registry includes named linear heads, adapters, and learned suppression,
+side-switch, and serving-side classifiers. It excludes fixed decoders and heuristics,
+third-party pretrained backbones
 that VolleyCut did not train, cached feature matrices, and predictions. YOLOX, MobileNet,
 and DINOv2 are therefore mentioned only where VolleyCut trained a downstream head or ran
 a model study.
@@ -57,6 +58,7 @@ a model study.
 | `F90+serve` | 451 | F90 plus one cross-fitted serve-contact probability |
 | `F90+peaks` | 454 | F90 plus four decoded serve-peak-window features |
 | `SIDE36` | 36 | Separate side-switch marker appearance/context signature |
+| `SERVSIDE38` | 38 | Nineteen serving-side motion/palette/HOG scalars plus paired missingness indicators |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -121,6 +123,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `dead-state-transition-audio-normalized-v2-no-legacy`; `…-v5-no-legacy-final` | Global dead-state transition, F104 without legacy audio | Compared with v1; disabled legacy audio while retaining visual and new audio. v5 is the same learned weights finalized. | v5 became dead-state head in previous production. |
 | `dead-state-global-audio-normalized-v1-full-final`; `…-v2-full-final` | Algebraic inverse-rally dead-state control, F104 | Compared with transition-trained dead-state heads; uses global inverse-rally targets. v2 is the same learned weights with final re-export metadata. | Research control; not promoted. |
 | `side-switch-specialist-v1` | Side-switch marker, SIDE36; fit `SIDE4`, selected on `GOLD-V2` | First dedicated learned side-switch ranker; compared against marker heuristics rather than a prior trained side-switch model. | Rejected for automatic use; retained for review ranking. |
+| `serving-side-specialist-v1` | Camera-space serving side, SERVSIDE38; fit six declared train recordings, threshold selected on two validation recordings | First reviewed near/far classifier using the existing whole-half, baseline-band, and HOG evidence bank; compared with the nine fixed signed-score variants. | Research baseline only: 90.41% raw balanced accuracy, but 62.30% on the single protected-test indoor recording. Model SHA-256 `97356fe4ad38…`; see [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
