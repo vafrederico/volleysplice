@@ -40,3 +40,4 @@ Research notes are decision records, not product guarantees. Availability was ch
 ## Related context
 
 - [Volleyball video app feasibility](./volleyball-video-app-feasibility.md) — broader product and capture feasibility. This predates the deeper source audit above.
+- [Full-NAS serving-side and side-switch diagnostics — 2026-08-19](./full-nas-side-diagnostics-2026-08-19.md) — deduplicated 30-recording NAS corpus, candidate-only non-training review, and report/UI contract.

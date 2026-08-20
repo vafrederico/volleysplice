@@ -3,23 +3,20 @@ import path from "node:path";
 import type { Metadata } from "next";
 
 import {
-  getSideSwitchReviewReportPath,
-  loadSideSwitchReviewState,
-} from "@/lib/server/side-switch-review";
+  getServingSideReviewReportPath,
+  loadServingSideReviewState,
+} from "@/lib/server/serving-side-review";
 
-import { SideSwitchReviewClient } from "./side-switch-review-client";
-import type {
-  AppearanceReport,
-  SideSwitchRecording,
-} from "./types";
+import { ServingSideReviewClient } from "./serving-side-review-client";
+import type { ServingRecording, ServingReport } from "./types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Side-switch appearance review · VolleyCut",
+  title: "Serving-side review · VolleyCut",
   description:
-    "Review label-only appearance evidence for detecting volleyball side switches.",
+    "Review interpretable serving-side evidence across the NAS video corpus.",
   robots: { index: false, follow: false },
 };
 
@@ -32,40 +29,50 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function loadRecordings(
-  report: AppearanceReport,
-): Promise<SideSwitchRecording[]> {
-  const eventsByRecording = new Map<string, number>();
-  for (const event of report.events) {
-    const current = eventsByRecording.get(event.recordingId) ?? 0;
-    eventsByRecording.set(
-      event.recordingId,
-      Math.max(current, event.gapEnd, event.transitionTime),
+  report: ServingReport,
+): Promise<ServingRecording[]> {
+  const rallyEnds = new Map<string, number>();
+  for (const rally of report.rallies) {
+    rallyEnds.set(
+      rally.recordingId,
+      Math.max(rallyEnds.get(rally.recordingId) ?? 0, rally.end, rally.start),
     );
   }
-
   return Promise.all(
     report.labels.files.map(async (file) => {
-      const fallbackDuration = (eventsByRecording.get(file.recordingId) ?? 0) + 5;
-      const labelPath = path.join(
-        path.resolve(report.labels.directory),
-        `${file.recordingId}.labels.json`,
-      );
+      const fallbackDuration = (rallyEnds.get(file.recordingId) ?? 0) + 5;
+      if (file.durationSeconds && file.videoFilename) {
+        return {
+          recordingId: file.recordingId,
+          environment: file.environment,
+          durationSeconds: file.durationSeconds,
+          videoFilename: file.videoFilename,
+          sourceType: file.sourceType,
+          targetStatus: file.targetStatus,
+        };
+      }
+      const labelPath = file.path
+        ? path.resolve(report.labels.directory, path.basename(file.path))
+        : "";
       try {
-        const payload = JSON.parse(await readFile(labelPath, "utf8")) as unknown;
-        const recording = isRecord(payload) && isRecord(payload.recording)
-          ? payload.recording
-          : null;
+        const payload = JSON.parse(
+          await readFile(labelPath, "utf8"),
+        ) as unknown;
+        const recording =
+          isRecord(payload) && isRecord(payload.recording)
+            ? payload.recording
+            : null;
         return {
           recordingId: file.recordingId,
           environment: file.environment,
           durationSeconds: finiteNumber(
-            recording?.durationSeconds ?? file.durationSeconds,
+            recording?.durationSeconds,
             fallbackDuration,
           ),
           videoFilename:
             typeof recording?.videoFilename === "string"
               ? recording.videoFilename
-              : file.videoFilename ?? `${file.recordingId}.mp4`,
+              : (file.videoFilename ?? `${file.recordingId}.mp4`),
           sourceType: file.sourceType,
           targetStatus: file.targetStatus,
         };
@@ -83,30 +90,36 @@ async function loadRecordings(
   );
 }
 
-function clientReport(report: AppearanceReport): AppearanceReport {
+function clientReport(report: ServingReport): ServingReport {
   return {
     ...report,
     labels: {
       ...report.labels,
       directory: path.basename(report.labels.directory),
+      manifest: report.labels.manifest
+        ? path.basename(report.labels.manifest)
+        : null,
       files: report.labels.files.map((file) => ({
         ...file,
         path: file.path ? path.basename(file.path) : null,
+        videoPath: file.videoPath ? path.basename(file.videoPath) : undefined,
       })),
     },
   };
 }
 
-export default async function SideSwitchReviewPage() {
-  const sourcePath = getSideSwitchReviewReportPath();
+export default async function ServingSideReviewPage() {
+  const sourcePath = getServingSideReviewReportPath();
   try {
-    const report = JSON.parse(await readFile(sourcePath, "utf8")) as AppearanceReport;
+    const report = JSON.parse(
+      await readFile(sourcePath, "utf8"),
+    ) as ServingReport;
     const recordings = await loadRecordings(report);
-    let initialDecisions: Record<string, "switch" | "no-switch" | "unclear"> = {};
+    let initialDecisions: Record<string, "near" | "far" | "unclear"> = {};
     let initialSavedAt: string | null = null;
     let decisionLoadError: string | undefined;
     try {
-      const state = await loadSideSwitchReviewState();
+      const state = await loadServingSideReviewState();
       if (
         state.reportKind === report.kind &&
         state.reportCreatedAt === report.createdAt
@@ -115,10 +128,11 @@ export default async function SideSwitchReviewPage() {
         initialSavedAt = state.savedAt;
       }
     } catch (error) {
-      decisionLoadError = error instanceof Error ? error.message : String(error);
+      decisionLoadError =
+        error instanceof Error ? error.message : String(error);
     }
     return (
-      <SideSwitchReviewClient
+      <ServingSideReviewClient
         report={clientReport(report)}
         recordings={recordings}
         reportPath={path.basename(sourcePath)}
@@ -129,7 +143,7 @@ export default async function SideSwitchReviewPage() {
     );
   } catch (error) {
     return (
-      <SideSwitchReviewClient
+      <ServingSideReviewClient
         report={null}
         recordings={[]}
         reportPath={sourcePath}

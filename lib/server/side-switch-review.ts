@@ -8,9 +8,9 @@ const DEFAULT_REPORT_PATH = path.join(
   DEFAULT_LABELING_WORKSPACE,
   "reports",
   "side-switch",
-  "appearance-diagnostic-all-v1.json",
+  "appearance-diagnostic-full-nas-v1.json",
 );
-const DEFAULT_DECISIONS_FILENAME = "appearance-review-decisions-v1.json";
+const DEFAULT_DECISIONS_FILENAME = "appearance-review-decisions-full-nas-v1.json";
 
 const DECISION_VALUES = new Set(["switch", "no-switch", "unclear"]);
 

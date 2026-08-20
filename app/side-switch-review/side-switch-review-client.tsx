@@ -27,7 +27,7 @@ type SideSwitchReviewClientProps = {
   loadError?: string;
 };
 
-type EventFilter = "all" | "switch" | "control" | "insufficient";
+type EventFilter = "all" | "switch" | "control" | "candidate" | "insufficient";
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const FEATURE_DEFINITIONS: Array<{
@@ -61,6 +61,7 @@ const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
   { value: "all", label: "All events" },
   { value: "switch", label: "Labeled switches" },
   { value: "control", label: "No-switch controls" },
+  { value: "candidate", label: "Candidate-only gaps" },
   { value: "insufficient", label: "Insufficient windows" },
 ];
 
@@ -82,12 +83,16 @@ function percentage(value: number | null | undefined, digits = 1): string {
     : "—";
 }
 
-function eventKind(event: AppearanceEvent): "switch" | "control" {
-  return event.label === 1 ? "switch" : "control";
+function eventKind(event: AppearanceEvent): "switch" | "control" | "candidate" {
+  if (event.label === 1) return "switch";
+  if (event.label === 0) return "control";
+  return "candidate";
 }
 
 function eventKindLabel(event: AppearanceEvent): string {
-  return event.label === 1 ? "Labeled switch" : "No-switch control";
+  if (event.label === 1) return "Labeled switch";
+  if (event.label === 0) return "No-switch control";
+  return "Candidate-only gap";
 }
 
 function statusLabel(status: AppearanceEvent["status"]): string {
@@ -125,6 +130,7 @@ function recordingDuration(
 function eventFilterMatches(event: AppearanceEvent, filter: EventFilter): boolean {
   if (filter === "switch") return event.label === 1;
   if (filter === "control") return event.label === 0;
+  if (filter === "candidate") return event.label === null;
   if (filter === "insufficient") return event.status !== "ok";
   return true;
 }
@@ -138,7 +144,7 @@ function featureMetric(
 }
 
 function eventVideoUrl(recordingId: string): string {
-  return `/api/labeling/tasks/${encodeURIComponent(recordingId)}/video`;
+  return `/api/review-media/side-switch/${encodeURIComponent(recordingId)}`;
 }
 
 function savedTime(value: string | null): string {
@@ -421,7 +427,7 @@ function LoadedSideSwitchReview({
   const [recordingId, setRecordingId] = useState("all");
   const [eventFilter, setEventFilter] = useState<EventFilter>("all");
   const [selectedEventId, setSelectedEventId] = useState(
-    () => allEvents.find((event) => event.label === 1)?.eventId ?? allEvents[0]?.eventId ?? "",
+    () => allEvents.find((event) => event.label !== null)?.eventId ?? allEvents[0]?.eventId ?? "",
   );
   const [currentTime, setCurrentTime] = useState(0);
   const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>(
@@ -582,6 +588,7 @@ function LoadedSideSwitchReview({
         <Brand className={styles.brand} label="Side-switch review" priority />
         <nav>
           <Link href="/">Rally model review ↗</Link>
+          <Link href="/serving-side-review">Serving-side review ↗</Link>
           <Link href="/suppression-review">Suppression review ↗</Link>
         </nav>
       </header>
@@ -624,6 +631,10 @@ function LoadedSideSwitchReview({
         <div>
           <span>No-switch controls</span>
           <strong>{compactNumber(report.summary.negatives)}</strong>
+        </div>
+        <div>
+          <span>Candidate-only gaps</span>
+          <strong data-tone="warning">{compactNumber(report.summary.candidateEvents ?? 0)}</strong>
         </div>
         <div>
           <span>Insufficient windows</span>
@@ -754,7 +765,7 @@ function LoadedSideSwitchReview({
               <header className={styles.inspectorHeader}>
                 <div>
                   <p className={styles.eyebrow}>
-                    {selectedEvent.environment} · {eventKindLabel(selectedEvent)} · {statusLabel(selectedEvent.status)}
+                    {selectedEvent.environment} · {eventKindLabel(selectedEvent)} · {selectedEvent.targetStatus} · {statusLabel(selectedEvent.status)}
                   </p>
                   <h2>{selectedEvent.eventId}</h2>
                 </div>
@@ -775,8 +786,8 @@ function LoadedSideSwitchReview({
                   <strong>{formatTime(selectedEvent.gapStart)}–{formatTime(selectedEvent.gapEnd)}</strong>
                 </div>
                 <div>
-                  <span>Sample status</span>
-                  <strong>{statusLabel(selectedEvent.status)}</strong>
+                  <span>Target status</span>
+                  <strong>{selectedEvent.targetStatus}</strong>
                 </div>
                 <div>
                   <span>Appearance distance</span>
@@ -825,8 +836,8 @@ function LoadedSideSwitchReview({
                   <span className={styles.panelKicker}>NAS-BACKED REVIEW · NOT GOLD LABELING</span>
                   <strong>Does the visible team appearance change across this gap?</strong>
                   <small>
-                    Decisions are automatically saved to the NAS review file. They are review evidence,
-                    not gold labeling.
+                    Decisions are automatically saved to the NAS review file. Candidate-only gaps have
+                    no gold switch target; they are included for out-of-training validation.
                   </small>
                 </div>
                 <div className={styles.decisionButtons}>

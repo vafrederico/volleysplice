@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 
 from analysis.artifacts import atomic_write_text
+from analysis.nas_video_corpus import load_manifest, manifest_path_record, manifest_target_status
 from analysis.serving_side import (
     FAR_SIDE,
     NEAR_SIDE,
@@ -101,19 +102,24 @@ class RallyLabel:
     end: float
     notes: str | None
     tags: tuple[str, ...]
+    target_status: str
 
 
 @dataclass(frozen=True)
 class RecordingLabels:
-    label_path: Path
+    label_path: Path | None
     recording_id: str
     environment: str
     source_group: str
     split: str
+    source_type: str
+    target_status: str
     video_path: Path
+    video_filename: str
     duration_seconds: float
     roi: tuple[float, float, float, float] | None
     rallies: tuple[RallyLabel, ...]
+    candidate_source: dict[str, Any]
 
 
 def _sha256(path: Path) -> str:
@@ -156,6 +162,14 @@ def load_recording_labels(path: Path) -> RecordingLabels:
         video = (path.parent / video).resolve()
     else:
         video = video.resolve()
+    annotation = payload.get("annotation", {})
+    target_status = (
+        "gold"
+        if annotation.get("status") == "complete"
+        else "reviewed-draft"
+        if annotation.get("continuousVideoReviewed") is True
+        else "candidate-only"
+    )
     rallies: list[RallyLabel] = []
     previous_end = -1.0
     for index, row in enumerate(payload["rallies"], start=1):
@@ -169,7 +183,7 @@ def load_recording_labels(path: Path) -> RecordingLabels:
         tags = row.get("tags", [])
         if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
             raise ValueError(f"{recording_id}.rallies[{index}].tags must be strings")
-        rallies.append(RallyLabel(index, start, end, notes, tuple(tags)))
+        rallies.append(RallyLabel(index, start, end, notes, tuple(tags), target_status))
         previous_end = end
     duration = _finite(recording["durationSeconds"], f"{recording_id}.durationSeconds")
     return RecordingLabels(
@@ -178,10 +192,55 @@ def load_recording_labels(path: Path) -> RecordingLabels:
         environment=str(recording.get("environment", "unknown")),
         source_group=str(recording.get("sourceGroup", "unknown")),
         split=str(recording.get("split", "unknown")),
+        source_type="label-directory",
+        target_status=target_status,
         video_path=video,
+        video_filename=str(recording.get("videoFilename", video.name)),
         duration_seconds=duration,
         roi=_read_roi(recording.get("roi"), f"{recording_id}.recording.roi"),
         rallies=tuple(rallies),
+        candidate_source={
+            "kind": "label-document",
+            "annotationStatus": annotation.get("status"),
+            "continuousVideoReviewed": annotation.get("continuousVideoReviewed"),
+        },
+    )
+
+
+def load_manifest_record(record: dict[str, Any]) -> RecordingLabels:
+    recording_id = str(record["recordingId"])
+    target_status = manifest_target_status(record)
+    rallies: list[RallyLabel] = []
+    previous_end = -1.0
+    for index, row in enumerate(record["rallies"], start=1):
+        start = _finite(row["start"], f"{recording_id}.rallies[{index}].start")
+        end = _finite(row["end"], f"{recording_id}.rallies[{index}].end")
+        if start < 0 or start >= end or start < previous_end:
+            raise ValueError(f"{recording_id} contains an invalid rally interval")
+        notes = row.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            notes = None
+        tags = row.get("tags", [])
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError(f"{recording_id}.rallies[{index}].tags must be strings")
+        rallies.append(RallyLabel(index, start, end, notes, tuple(tags), target_status))
+        previous_end = end
+    label_path_value = record.get("labelPath")
+    label_path = Path(label_path_value).expanduser().resolve() if isinstance(label_path_value, str) else None
+    return RecordingLabels(
+        label_path=label_path,
+        recording_id=recording_id,
+        environment=str(record.get("environment", "unknown")),
+        source_group=str(record.get("sourceGroup", "unknown")),
+        split=str(record.get("split", "unknown")),
+        source_type=str(record.get("sourceType", "manifest")),
+        target_status=target_status,
+        video_path=manifest_path_record(record),
+        video_filename=str(record.get("videoFilename", manifest_path_record(record).name)),
+        duration_seconds=_finite(record["durationSeconds"], f"{recording_id}.durationSeconds"),
+        roi=_read_roi(record.get("roi"), f"{recording_id}.recording.roi"),
+        rallies=tuple(rallies),
+        candidate_source=(record.get("candidateSource") if isinstance(record.get("candidateSource"), dict) else {}),
     )
 
 
@@ -301,6 +360,9 @@ def analyze_rally(
         "environment": recording.environment,
         "sourceGroup": recording.source_group,
         "split": recording.split,
+        "sourceType": recording.source_type,
+        "targetStatus": recording.target_status,
+        "candidateSource": recording.candidate_source,
         "rallyIndex": rally.index,
         "start": _round(rally.start, 5),
         "end": _round(rally.end, 5),
@@ -482,14 +544,31 @@ def _class_metrics(rows: Sequence[dict[str, Any]], variant: str, decision_margin
     }
 
 
-def summarize_metrics(rows: Sequence[dict[str, Any]], decision_margin: float) -> dict[str, Any]:
-    scopes: list[tuple[str, Sequence[dict[str, Any]]]] = [("pooled", rows)]
+def summarize_metrics(
+    rows: Sequence[dict[str, Any]],
+    decision_margin: float,
+    target_statuses: set[str] | None = None,
+) -> dict[str, Any]:
+    eligible = [
+        row
+        for row in rows
+        if target_statuses is None
+        or str(row.get("targetStatus", "gold")) in target_statuses
+    ]
+    scopes: list[tuple[str, Sequence[dict[str, Any]]]] = [("pooled", eligible)]
     for key, values in (
-        ("environment", sorted({str(row["environment"]) for row in rows})),
-        ("split", sorted({str(row["split"]) for row in rows})),
+        ("environment", sorted({str(row["environment"]) for row in eligible})),
+        ("split", sorted({str(row["split"]) for row in eligible})),
+        ("sourceType", sorted({str(row.get("sourceType", "unknown")) for row in eligible})),
+        ("targetStatus", sorted({str(row.get("targetStatus", "gold")) for row in eligible})),
     ):
         for value in values:
-            scopes.append((f"{key}:{value}", [row for row in rows if str(row[key]) == value]))
+            scopes.append(
+                (
+                    f"{key}:{value}",
+                    [row for row in eligible if str(row.get(key, "unknown")) == value],
+                )
+            )
     return {
         scope: {
             "rows": len(scoped_rows),
@@ -509,12 +588,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Evaluate serving-side variants from current rally labels and weak note cues."
     )
-    parser.add_argument("--labels-dir", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--labels-dir", type=Path)
+    source.add_argument("--corpus-manifest", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--environments",
         nargs="+",
-        default=["beach", "grass", "indoor"],
+        default=["beach", "grass", "indoor", "broadcast", "unknown"],
         choices=("beach", "grass", "indoor", "broadcast", "unknown"),
     )
     parser.add_argument("--split-fraction", type=float, default=0.5)
@@ -529,7 +610,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     arguments = build_parser().parse_args()
-    labels_dir = arguments.labels_dir.expanduser().resolve()
+    labels_dir = arguments.labels_dir.expanduser().resolve() if arguments.labels_dir else None
+    manifest_path = arguments.corpus_manifest.expanduser().resolve() if arguments.corpus_manifest else None
     output = arguments.output.expanduser().resolve()
     if output.exists():
         raise FileExistsError(f"refusing to overwrite existing report: {output}")
@@ -537,10 +619,15 @@ def main() -> int:
         raise ValueError("--split-fraction must be between 0.1 and 0.9")
     if not 0 <= arguments.decision_margin < 1:
         raise ValueError("--decision-margin must be between 0 and 1")
-    label_paths = sorted(labels_dir.glob("*.labels.json"))
-    if not label_paths:
-        raise FileNotFoundError(f"no label documents found in {labels_dir}")
-    recordings = [load_recording_labels(path) for path in label_paths]
+    if manifest_path:
+        manifest = load_manifest(manifest_path)
+        recordings = [load_manifest_record(record) for record in manifest["records"]]
+    else:
+        assert labels_dir is not None
+        label_paths = sorted(labels_dir.glob("*.labels.json"))
+        if not label_paths:
+            raise FileNotFoundError(f"no label documents found in {labels_dir}")
+        recordings = [load_recording_labels(path) for path in label_paths]
     recordings = [item for item in recordings if item.environment in arguments.environments]
     if not recordings:
         raise ValueError("no recordings matched --environments")
@@ -580,22 +667,40 @@ def main() -> int:
             capture.release()
 
     target_rows = [
-        row for row in rows if row.get("weakTarget", {}).get("side") in SIDE_VALUES
+        row
+        for row in rows
+        if row.get("weakTarget", {}).get("side") in SIDE_VALUES
+        and row.get("targetStatus", "gold") != "candidate-only"
     ]
+    evaluation_statuses = {"gold", "reviewed-draft"}
+    statuses = sorted({str(row.get("targetStatus", "gold")) for row in rows})
+    metrics_by_status = {
+        status: summarize_metrics(rows, arguments.decision_margin, {status})
+        for status in statuses
+        if status != "candidate-only"
+    }
+    labels_directory = str(labels_dir) if labels_dir else str(manifest_path.parent)
     report = {
         "schemaVersion": 1,
         "kind": EXPERIMENT_KIND,
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "labels": {
-            "directory": str(labels_dir),
+            "directory": labels_directory,
+            "manifest": str(manifest_path) if manifest_path else None,
             "files": [
                 {
                     "recordingId": recording.recording_id,
                     "environment": recording.environment,
                     "sourceGroup": recording.source_group,
                     "split": recording.split,
-                    "path": str(recording.label_path),
-                    "sha256": _sha256(recording.label_path),
+                    "sourceType": recording.source_type,
+                    "targetStatus": recording.target_status,
+                    "path": str(recording.label_path) if recording.label_path else None,
+                    "sha256": _sha256(recording.label_path) if recording.label_path and recording.label_path.is_file() else None,
+                    "videoPath": str(recording.video_path),
+                    "videoFilename": recording.video_filename,
+                    "durationSeconds": recording.duration_seconds,
+                    "candidateSource": recording.candidate_source,
                     "rallies": len(recording.rallies),
                 }
                 for recording in recordings
@@ -618,6 +723,8 @@ def main() -> int:
                 "conflicting cues and far-side-or-outside notes",
             ],
             "decisionMargin": arguments.decision_margin,
+            "corpusScope": "full NAS manifest" if manifest_path else "label directory",
+            "evaluationTargetStatuses": sorted(evaluation_statuses),
             "thresholdsAreDiagnostic": True,
         },
         "variants": VARIANT_DEFINITIONS,
@@ -626,6 +733,14 @@ def main() -> int:
             "rallies": len(rows),
             "targetableRallies": len(target_rows),
             "unknownRallies": len(rows) - len(target_rows),
+            "targetStatusCounts": {
+                status: sum(row.get("targetStatus", "gold") == status for row in rows)
+                for status in statuses
+            },
+            "sourceTypeCounts": {
+                source_type: sum(row.get("sourceType") == source_type for row in rows)
+                for source_type in sorted({str(row.get("sourceType", "unknown")) for row in rows})
+            },
             "targetSides": {
                 side: sum(row.get("weakTarget", {}).get("side") == side for row in rows)
                 for side in SIDE_VALUES
@@ -642,7 +757,8 @@ def main() -> int:
                 status: sum(row.get("status") == status for row in rows)
                 for status in sorted({str(row.get("status")) for row in rows})
             },
-            "metrics": summarize_metrics(rows, arguments.decision_margin),
+            "metrics": summarize_metrics(rows, arguments.decision_margin, evaluation_statuses),
+            "metricsByTargetStatus": metrics_by_status,
         },
         "rallies": rows,
     }

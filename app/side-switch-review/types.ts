@@ -19,8 +19,13 @@ export type AppearanceEvent = {
   eventId: string;
   recordingId: string;
   environment: string;
-  label: 0 | 1;
+  label: 0 | 1 | null;
   source: string;
+  targetStatus: string;
+  sourceType: string;
+  sourceGroup: string;
+  split: string;
+  candidateSource?: Record<string, unknown>;
   transitionTime: number;
   gapStart: number;
   gapEnd: number;
@@ -67,8 +72,16 @@ export type AppearanceReport = {
     files: Array<{
       recordingId: string;
       environment: string;
-      path: string;
-      sha256: string;
+      sourceGroup?: string;
+      split?: string;
+      sourceType?: string;
+      targetStatus?: string;
+      path: string | null;
+      sha256: string | null;
+      videoPath?: string;
+      videoFilename?: string;
+      durationSeconds?: number;
+      candidateSource?: Record<string, unknown>;
       rallies: number;
       sideSwitches: number;
     }>;
@@ -82,6 +95,9 @@ export type AppearanceReport = {
     edgeMarginSeconds: number;
     positiveSource: string;
     negativeSource: string;
+    candidateSource?: string;
+    evaluationTargetStatuses?: string[];
+    corpusScope?: string;
     personProposal: string;
     colorRepresentation: string;
     thresholdsAreDiagnostic: boolean;
@@ -91,8 +107,12 @@ export type AppearanceReport = {
     events: number;
     positives: number;
     negatives: number;
+    candidateEvents?: number;
+    targetStatusCounts?: Record<string, number>;
+    sourceTypeCounts?: Record<string, number>;
     statuses: Record<string, number>;
     metrics: Record<string, AppearanceScope>;
+    metricsByTargetStatus?: Record<string, Record<string, AppearanceScope>>;
   };
   events: AppearanceEvent[];
 };
@@ -102,6 +122,8 @@ export type SideSwitchRecording = {
   environment: string;
   durationSeconds: number;
   videoFilename: string;
+  sourceType?: string;
+  targetStatus?: string;
 };
 
 export type ReviewDecision = "switch" | "no-switch" | "unclear";

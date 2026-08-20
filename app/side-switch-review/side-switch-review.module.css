@@ -139,7 +139,7 @@
 .summaryStrip {
   margin: 0 4vw;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   border: 1px solid var(--ink);
   background: #fff;
   box-shadow: 7px 7px 0 var(--ink);
@@ -408,6 +408,18 @@
   border-left-color: rgba(40, 120, 92, 0.45);
 }
 
+.queueItem[data-kind="candidate"]:not([data-active="true"]) {
+  border-left-color: rgba(193, 138, 36, 0.5);
+}
+
+.queueItem[data-kind="near"]:not([data-active="true"]) {
+  border-left-color: rgba(40, 120, 92, 0.45);
+}
+
+.queueItem[data-kind="far"]:not([data-active="true"]) {
+  border-left-color: rgba(50, 121, 168, 0.45);
+}
+
 .queueIndex {
   color: var(--muted);
   font: 9px "Atkinson Hyperlegible Mono", monospace;
@@ -471,6 +483,14 @@
 
 .queueScore i[data-decision="unclear"] {
   background: #c18a24;
+}
+
+.queueScore i[data-decision="near"] {
+  background: var(--green);
+}
+
+.queueScore i[data-decision="far"] {
+  background: var(--blue);
 }
 
 .emptyQueue {
@@ -562,6 +582,18 @@
 
 .eventSummary[data-kind="switch"] strong:last-child {
   color: var(--green);
+}
+
+.eventSummary[data-kind="candidate"] strong:last-child {
+  color: #a85a00;
+}
+
+.eventSummary[data-kind="near"] strong:last-child {
+  color: var(--green);
+}
+
+.eventSummary[data-kind="far"] strong:last-child {
+  color: var(--blue);
 }
 
 .videoStage {
@@ -675,6 +707,18 @@
 
 .overviewEvent[data-kind="switch"] {
   background: var(--green);
+}
+
+.overviewEvent[data-kind="candidate"] {
+  background: #c18a24;
+}
+
+.overviewEvent[data-kind="near"] {
+  background: var(--green);
+}
+
+.overviewEvent[data-kind="far"] {
+  background: var(--blue);
 }
 
 .overviewEvent[data-status="insufficient-window"] {
@@ -846,6 +890,16 @@
 .decisionButtons button[data-decision="no-switch"][data-active="true"] {
   border-color: #82d0a9;
   background: #82d0a9;
+}
+
+.decisionButtons button[data-decision="near"][data-active="true"] {
+  border-color: #82d0a9;
+  background: #82d0a9;
+}
+
+.decisionButtons button[data-decision="far"][data-active="true"] {
+  border-color: #8fc4e8;
+  background: #8fc4e8;
 }
 
 .decisionButtons button[data-decision="unclear"][data-active="true"] {
