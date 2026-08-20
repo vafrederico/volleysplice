@@ -101,10 +101,15 @@ three additional exact events, but do not solve the rally-count/cadence alignmen
 - Evaluation:
   `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-specialist-v4-multiframe-normalized-evaluation.json`
   (`7ebb29e2a0aa3b815caefe351be028c0e1b36f7ac78638154ff9d3f72c2f74a5`)
+- Provenance:
+  `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-v4-provenance.json`
+  (`bd7841b73427f292c864ae5e070bf54a94a276114e93ac335c4949cd8e0e90d1`)
 
 The feature artifact was hashed and frozen before model fitting. A separate provenance
 artifact binds the implementation revision, transitive full-file hashes for all 21
 videos, inherited v3 label identity, and every selected v4 artifact.
+The bound implementation revision is
+`c53a0159e39c9f8f4bdb5b0fb9a2e593f340fa64`.
 
 ## Next dependency
 

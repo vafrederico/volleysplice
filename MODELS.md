@@ -176,6 +176,9 @@ The selected v4 fingerprint is
 Its feature/model/development/evaluation SHA-256 values, v3 comparison, and non-promotion
 decision are in
 [`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md).
+The immutable v4 provenance manifest has SHA-256
+`bd7841b73427f292c864ae5e070bf54a94a276114e93ac335c4949cd8e0e90d1`
+and binds implementation revision `c53a0159e39c9f8f4bdb5b0fb9a2e593f340fa64`.
 
 ### No-beach full-gold refits
 
