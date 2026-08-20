@@ -165,6 +165,9 @@ The selected v3 fingerprint is
 The feature/model/development/evaluation SHA-256 values, complete ±1 through ±4
 sensitivity, and non-promotion decision are in
 [`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md).
+The immutable 21-video provenance manifest has SHA-256
+`9bcc8d33f3a268f991d311a719205b5657544c23943096629c18e3ca70ba598e`
+and binds implementation revision `ecadbdd1cbfb4c0d88455a0bd329a495b17ce2d3`.
 
 ### No-beach full-gold refits
 

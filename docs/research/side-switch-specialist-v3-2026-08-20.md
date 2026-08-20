@@ -108,9 +108,15 @@ milestones. Re-anchoring cannot recover until the first visual placement is reli
 - Evaluation:
   `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-specialist-v3-reanchored-capped6-evaluation.json`
   (`c9cfa932718295abafd273b844bba71fdc833d31360bb24fd3a30dc04280ac7c`)
+- Provenance:
+  `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-v3-provenance.json`
+  (`9bcc8d33f3a268f991d311a719205b5657544c23943096629c18e3ca70ba598e`)
 
 The deployable model/decoder fingerprint is
 `54a31e37b0b89883582a4070d54fd72e76424ce3852b6a8662ef83ae8ab29621`.
+The provenance manifest binds implementation revision
+`ecadbdd1cbfb4c0d88455a0bd329a495b17ce2d3`, all 21 source videos by full-file
+SHA-256, the source manifest and decision map, and every selected artifact above.
 
 The pre-correction fixed-grid diagnostic remains immutable at
 `models/side-switch-specialist-v3/` and
