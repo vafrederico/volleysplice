@@ -5,6 +5,7 @@ import unittest
 from analysis.side_switch_training_policy import (
     SIDE_SWITCH_CADENCE_POINTS,
     SIDE_SWITCH_DEFAULT_RALLY_MARGIN,
+    SIDE_SWITCH_MAX_OPPORTUNITIES,
     SIDE_SWITCH_ONE_SET_PER_RECORDING,
     SIDE_SWITCH_RECORDING_START_POINT,
     SideSwitchTrainingPolicyError,
@@ -20,6 +21,7 @@ class SideSwitchTrainingPolicyTests(unittest.TestCase):
         self.assertEqual(SIDE_SWITCH_RECORDING_START_POINT, 0)
         self.assertEqual(SIDE_SWITCH_CADENCE_POINTS, 7)
         self.assertEqual(SIDE_SWITCH_DEFAULT_RALLY_MARGIN, 2)
+        self.assertEqual(SIDE_SWITCH_MAX_OPPORTUNITIES, 6)
         self.assertEqual(expected_switch_point_totals(41), (7, 14, 21, 28, 35))
 
     def test_rally_proxy_uses_inclusive_candidate_margins(self) -> None:
@@ -30,6 +32,9 @@ class SideSwitchTrainingPolicyTests(unittest.TestCase):
 
     def test_candidate_window_opens_before_nominal_gap(self) -> None:
         self.assertEqual(expected_switch_gap_windows(6), ((5, 6),))
+
+    def test_candidate_windows_respect_one_set_opportunity_cap(self) -> None:
+        self.assertEqual(len(expected_switch_gap_windows(70, rally_margin=4)), 6)
 
     def test_rally_margin_validation(self) -> None:
         with self.assertRaisesRegex(SideSwitchTrainingPolicyError, "cannot be negative"):

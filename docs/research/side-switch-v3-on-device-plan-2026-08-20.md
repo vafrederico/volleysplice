@@ -30,10 +30,11 @@ development. The completed appearance review also has 88 switch-containing candi
 decisions across 22 recordings; removing the six positive windows from the blurry video
 leaves 82 reviewed positive windows across 21 recordings.
 
-Exact markers and reviewed windows must not be double-counted. Where both exist, exact
-`sideSwitches` are the canonical event time/count labels and reviewed candidate decisions
-are observability/candidate labels. Candidate-only raw recordings use the reviewed
-switch-containing window as the available event supervision.
+Exact markers and reviewed windows must not be double-counted. Exact `sideSwitches`
+supply timing provenance, but a completed visual review may explicitly invalidate an
+incorrect marker. Duplicate exact markers in one rally gap collapse to one event.
+Candidate-only raw recordings use the reviewed switch-containing window as the available
+event supervision.
 
 An initial alignment audit found that 31 of the 37 retained exact markers occur after a
 labeled rally count divisible by seven. The six exceptions are concentrated in a few
@@ -100,3 +101,15 @@ Report separately:
 
 The model remains research-only until the cadence baseline, visual uplift, and on-device
 parity all pass on the new confirmation scope.
+
+## Execution result
+
+V3 was implemented and executed on 2026-08-20. The experiment added the requested ±4
+margin with monotonic one-to-one assignment for overlapping windows, re-anchored after a
+selected switch, and capped each set at six opportunities. The 12-input detector-free
+192×108 visual ranker failed on the source-held-out raw-phone evaluation: selected
+exact-gap F1 was 7.59%. Cadence-only ±4 reached 12.12% exact F1 and 42.42% when scoring
+within ±2 rallies; cadence-plus-visual reached 7.59% and 32.91%, respectively. It was not
+ported to browser or Android. See the completed
+[`side-switch-specialist-v3-2026-08-20.md`](side-switch-specialist-v3-2026-08-20.md)
+decision record.

@@ -639,16 +639,30 @@ development-dataset, and evaluation artifacts. The retained result is review-ran
 research, not a production automatic scorer. See the
 [v2 decision record](../docs/research/side-switch-specialist-v2-2026-08-20.md).
 
-Future on-device side-switch work uses the frozen policy in
+Side-switch v3 uses the frozen policy in
 [`side_switch_training_policy.py`](side_switch_training_policy.py): every recording is
-one set beginning at score zero, score cadence is seven, and each score milestone is
-projected to an inclusive ±2-rally candidate window rather than asserted as an event.
-This accounts for re-dos, missed/incorrect rally markers, and early/late switches. Every
-new trainer must call `validate_side_switch_fit_recordings` before fitting so the blurry
+one set beginning at score zero, cadence is seven points, and candidate margins ±1
+through ±4 are tested rather than asserting an event at an exact rally index. The v3
+decoder re-anchors after selection, permits no switch, uses one-to-one assignment in
+overlapping ±4 windows, and caps a set at six opportunities. Every new trainer must call
+`validate_side_switch_fit_recordings` before fitting so the blurry
 `beach-source-02` recording cannot influence preprocessing or model selection.
 The historical v1 trainer also accepts repeatable `--exclude-fit-recording` arguments for
-controlled counterfactuals. See the
-[v3 on-device plan](../docs/research/side-switch-v3-on-device-plan-2026-08-20.md) and
+controlled counterfactuals.
+
+V3 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v3.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v3.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v3.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v3-provenance.py
+```
+
+All destinations are immutable. V3 failed its source-held-out promotion gate, so the
+Python reference was not ported into production TypeScript/Java. See the
+[v3 decision record](../docs/research/side-switch-specialist-v3-2026-08-20.md),
+[v3 on-device plan](../docs/research/side-switch-v3-on-device-plan-2026-08-20.md), and
 [v1 blur-exclusion result](../docs/research/side-switch-v1-blur-exclusion-counterfactual-2026-08-20.md).
 
 ## Ball-presence feasibility pilot

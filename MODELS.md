@@ -58,6 +58,7 @@ a model study.
 | `F90+peaks` | 454 | F90 plus four decoded serve-peak-window features |
 | `SIDE36` | 36 | Separate side-switch marker appearance/context signature |
 | `SIDE34-V2` | 34 | 17 adaptive side-conditioned/derived marker features plus one missingness indicator per scalar; separate from production F104 |
+| `LOWRES12` | 12 | Detector-free 192×108 HSV assignment, motion, blur, luma, and edge changes for side-switch v3 |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -124,7 +125,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-specialist-v1` | Side-switch marker, SIDE36; fit `SIDE4`, selected on `GOLD-V2` | First dedicated learned side-switch ranker; compared against marker heuristics rather than a prior trained side-switch model. | Rejected for automatic use; retained for review ranking. |
 | `side-switch-specialist-v1-no-blurry-beach-2026-08-20` | Counterfactual side-switch marker, SIDE36; fit `SIDE3-NO-BLUR`, same historical selection/evaluation protocol | Exact v1 refit after removing only `beach-source-02`; selected `appearance-context`, L2 1.0, threshold 0.432488. | Rejected; primary raw F1 fell 17.57%→17.02%, ROC AUC 0.538→0.524, and AP 0.110→0.106. Retained only as the blur-exclusion diagnostic. |
 | `side-switch-specialist-v2` | Side-switch marker, SIDE34-V2; class-balanced logistic; fit `SIDE-V2-T5`, select threshold/decoder on `SIDE-V2-V2`, confirm once on `SIDE-V2-E4` | Compared with v1 on the same four confirmation recordings. Replaced gap/context-heavy v1 inputs with adaptive near/far assignment costs, frame consistency, color moments, derived stability interactions, and unlabeled recording-bound normalization candidates. L2/family used grouped OOF selection; validation selected a no-op temporal decoder. | Retained research/review ranking, not automatic scoring. Same-scope v1→v2 F1 19.05%→32.73%, ROC AUC 0.590→0.796, AP 0.124→0.373; v2 precision remains 20.45%. |
-| `side-switch-v3-on-device` | Planned cadence opportunity plus compact local visual ranker; one set per recording, start score 0, seven-point cadence, default ±2 rally-gap candidate margin | Will compare cadence-only with cadence-plus-visual placement. Candidate windows tolerate re-dos, missed/incorrect rally markers, and early/late player switches; no reliable candidate is a valid output. | Preregistered research plan; no model artifact or production promotion. `beach-source-02` is forbidden from every new fit due to halfway blur. |
+| `side-switch-specialist-v3-reanchored-capped6` | Side-switch gap, LOWRES12; fit `SIDE-V3-T6`, select L2/threshold/decoder on `SIDE-V3-V4`, retrospectively evaluate `SIDE-V3-E11` | Detector-free 192×108 HSV/motion/blur/edge ranker plus seven-point opportunity decoder. Evaluated ±1/±2/±3/±4 margins; overlapping ±4 windows use monotonic one-to-one assignment. Decoder re-anchors after selection and caps a set at six opportunities. | Rejected; source-held-out exact-gap F1 7.59%, ±2-tolerant F1 32.91%. Cadence-only ±4 reached 12.12% exact and 42.42% ±2-tolerant F1. No browser/Android port. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -158,6 +159,12 @@ All future side-switch fitting must apply
 preprocessing or selection. Historical `SIDE4` remains unchanged so its lineage stays
 truthful; v3 and later fitting must exclude `beach-source-02` from weights,
 preprocessing, thresholds, margins, and decoder choices.
+
+The selected v3 fingerprint is
+`54a31e37b0b89883582a4070d54fd72e76424ce3852b6a8662ef83ae8ab29621`.
+The feature/model/development/evaluation SHA-256 values, complete ±1 through ±4
+sensitivity, and non-promotion decision are in
+[`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md).
 
 ### No-beach full-gold refits
 
@@ -320,6 +327,9 @@ sets are separate even when listed on the same model row.
 | `SIDE-V2-T5` | Fit: `raw-no-backup-PXL_20260816_164327879`, `raw-no-backup-PXL_20260816_171720964`, `raw-no-backup-PXL_20260816_190429172`, `raw-no-backup-PXL_20260816_180646590`, `raw-no-backup-PXL_20260816_183701800` |
 | `SIDE-V2-V2` | Threshold and decoder selection only: `raw-no-backup-PXL_20260816_210449857`, `raw-no-backup-PXL_20260816_193307688` |
 | `SIDE-V2-E4` | Confirmation evaluation only: `raw-no-backup-PXL_20260816_160023210`, `raw-no-backup-PXL_20260816_161923155`, `raw-no-backup-PXL_20260816_203801418`, `raw-no-backup-PXL_20260816_212717581` |
+| `SIDE-V3-T6` | Fit/model-family selection: `beach-beach-source-01`, `grass-grass-source-02`, `grass-grass-source-06`, `grass-grass-source-01`, `grass-grass-source-05`, `grass-grass-source-09` |
+| `SIDE-V3-V4` | Threshold/decoder selection only: `grass-grass-source-03`, `grass-grass-source-04`, `grass-grass-source-08`, `grass-grass-source-10` |
+| `SIDE-V3-E11` | Retrospective evaluation only: all 11 `raw-no-backup-PXL_20260816_*` recordings in `FROZEN_RECORDING_SPLIT`; source group is disjoint from `SIDE-V3-T6` and `SIDE-V3-V4` |
 
 ## Rebuild checklist
 

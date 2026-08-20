@@ -352,7 +352,7 @@ is accepted, and browser/Android parity is implemented.
 | Ball presence/trajectory | Full-frame or tiled detector outputs and proposed trajectory/interactions | Rejected/skipped because the detector failed the precision/recall and environment gates. See [`minimum-ball-presence-pilot-2026-08-11.md`](docs/research/minimum-ball-presence-pilot-2026-08-11.md). |
 | Side-switch v1 appearance context | Seven marker-level appearance/detection-change values, before/after count/box/score/coverage summaries, gap duration, and paired missingness indicators | Rejected for automatic use; retained as a 36-input review-ranking baseline. This is a separate marker pipeline, not part of the 104 base columns. See [`side-switch-specialist-v1-2026-08-20.md`](docs/research/side-switch-specialist-v1-2026-08-20.md). |
 | Side-switch v2 | Adaptive near/far color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a separately selected temporal toggle decoder | Retained research/review ranking; not production. The selected `SIDE34-V2` classifier uses the raw combined family and the selected decoder is a no-op. See [`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md). |
-| Side-switch v3 cadence opportunity | One-set/start-at-zero seven-point score cadence projected to inclusive rally-gap margins, followed by sparse low-resolution visual ranking | Planned on-device research; not production. Cadence creates candidate windows rather than forced events because re-dos, missed/incorrect rally markers, and early/late player switches can move the observed gap. The default development margin is ±2 rally gaps. See [`side-switch-v3-on-device-plan-2026-08-20.md`](docs/research/side-switch-v3-on-device-plan-2026-08-20.md). |
+| Side-switch v3 cadence + LOWRES12 | Seven-point opportunity decoder plus 12 detector-free HSV/motion/blur/edge features from three 192×108 early-rally frames on each side of a gap | Implemented and rejected for automatic use. The source-held-out selected decoder reached 7.59% exact-gap F1; ±4 cadence-only reached 12.12% exact and 42.42% at ±2 scoring tolerance. No browser/Android port. See [`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -388,6 +388,18 @@ the raw combined family. Gap duration is audit context only and is excluded from
 v2 learned feature set. The exact implementation is
 [`side_switch_v2.py`](analysis/side_switch_v2.py); extraction is
 [`extract-side-switch-v2.py`](scripts/extract-side-switch-v2.py).
+
+### Side-switch v3 low-resolution profile
+
+`LOWRES12` is separate from both the production rally matrix and `SIDE34-V2`. For each
+reviewed inter-rally gap it samples three frames from the first 2.4 seconds of the rally
+before and after, applies the recording ROI, and resizes to 192×108. The 12 ordered
+inputs are same/swapped assignment costs, swap margin, orientation-flip evidence,
+minimum/change motion coverage, before/after within-rally frame change, global appearance
+change, minimum log blur, luma change, and edge-density change. There is no person
+detector or neural feature extractor. Exact implementation:
+[`side_switch_v3.py`](analysis/side_switch_v3.py); extraction:
+[`extract-side-switch-v3.py`](scripts/extract-side-switch-v3.py).
 
 ## Rebuild and parity acceptance
 

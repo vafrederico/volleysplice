@@ -218,15 +218,15 @@ lineage, and metrics are in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md),
 [`MODELS.md`](MODELS.md), and
 [`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md).
 
-The planned on-device v3 architecture changes the problem from all-gap rare-event
-classification to local opportunity ranking. Each recording is one set beginning at
-score zero; official switch opportunities occur every seven total points. Because rally
-count is only a noisy score proxy, v3 searches a bounded ±2-rally margin, permits no
-selection, and uses low-resolution visual evidence to place an observed switch. Re-dos,
-missed or incorrect rally markers, and early/late player switches are explicit evaluation
-slices. The plan is preregistered in
-[`side-switch-v3-on-device-plan-2026-08-20.md`](docs/research/side-switch-v3-on-device-plan-2026-08-20.md)
-and is not yet a production component.
+V3 implements local opportunity ranking with a detector-free 12-input linear head over
+192×108 rally frames. Each recording is one set beginning at score zero; the decoder
+starts from a seven-point opportunity, searches margins ±1 through ±4, uses monotonic
+one-to-one assignment for overlapping ±4 windows, re-anchors after a selected switch,
+permits no selection, and caps the set at six opportunities. It failed source-held-out
+evaluation: selected exact-gap F1 is 7.59%, and the ±4 visual sensitivity is identical.
+The implementation and artifacts remain research-only; no TypeScript/Java port or
+production component was created. See
+[`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md).
 
 ## Production inference and export flow
 

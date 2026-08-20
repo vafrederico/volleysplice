@@ -4,7 +4,8 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
-- [Side-switch v3 on-device plan — 2026-08-20](./side-switch-v3-on-device-plan-2026-08-20.md) — one-set/start-zero seven-point cadence, rally-gap margins for re-dos and marker/player timing errors, exact-versus-window label precedence, low-cost visual ranking, and the frozen blur exclusion.
+- [Side-switch specialist v3 — 2026-08-20](./side-switch-specialist-v3-2026-08-20.md) — completed detector-free 192×108 feature extraction, source-separated training, re-anchored/capped cadence decoding, ±1 through requested ±4 sensitivity, immutable artifacts, and non-promotion result.
+- [Side-switch v3 on-device plan — 2026-08-20](./side-switch-v3-on-device-plan-2026-08-20.md) — preregistered one-set/start-zero cadence, rally-gap margins, label precedence, low-cost visual ranking, and blur exclusion; superseded by the completed v3 decision above.
 - [Side-switch v1 blur-exclusion counterfactual — 2026-08-20](./side-switch-v1-blur-exclusion-counterfactual-2026-08-20.md) — exact v1 refit without the blurry beach recording, immutable artifacts, unchanged evaluation scopes, primary metric regression, and non-promotion decision.
 - [Side-switch specialist v2 — 2026-08-20](./side-switch-specialist-v2-2026-08-20.md) — adaptive near/far color assignment, frame-consistency and robust-normalization feature families, frozen recording-held-out evaluation, exact v1 comparison, no-op decoder result, immutable artifacts, and retained review-ranking decision.
 - [Production two-model ensemble with disagreement review — 2026-08-15](./production-ensemble-review-evaluation-2026-08-15.md) — exact old-production plus all-labels-v2 union evaluation, oracle disagreement-review simulation, required 0–3 second `F1_padP_coreR` sensitivity, protected-test diagnostic, and the boundary-provenance follow-up.

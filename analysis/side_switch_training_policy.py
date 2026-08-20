@@ -7,6 +7,7 @@ SIDE_SWITCH_CADENCE_POINTS = 7
 SIDE_SWITCH_RECORDING_START_POINT = 0
 SIDE_SWITCH_ONE_SET_PER_RECORDING = True
 SIDE_SWITCH_DEFAULT_RALLY_MARGIN = 2
+SIDE_SWITCH_MAX_OPPORTUNITIES = 6
 SIDE_SWITCH_FIT_EXCLUSIONS = {
     "beach-source-02": (
         "image becomes blurry roughly halfway through the recording; exclude from "
@@ -63,7 +64,7 @@ def expected_switch_gap_windows(
         )
         for point_total in expected_switch_point_totals(
             completed_rallies + rally_margin
-        )
+        )[:SIDE_SWITCH_MAX_OPPORTUNITIES]
     )
 
 

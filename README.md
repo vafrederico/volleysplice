@@ -91,9 +91,9 @@ model-feedback import, suppression and side-switch review, on-device experiments
 the Python training/evaluation toolchain. The retained side-switch v2 specialist is a
 research/review-ranking artifact and is not part of either production client; its exact
 features and lineage are registered in
-[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and [`MODELS.md`](MODELS.md). The planned
-on-device v3 cadence/local-ranking architecture and the rejected v1 no-blur
-counterfactual are tracked there as research only; neither is a shipped model.
+[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and [`MODELS.md`](MODELS.md). The implemented
+side-switch v3 cadence/low-resolution ranker and the v1 no-blur counterfactual both failed
+their promotion gates and are tracked there as research only; neither is a shipped model.
 
 ### Setup
 
