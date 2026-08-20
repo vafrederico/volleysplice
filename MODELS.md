@@ -201,8 +201,9 @@ Its pinned third-party detector and feature/model/development/evaluation hashes,
 localization runtime audit, ablation, source-group comparison, and non-promotion
 decision are in
 [`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md).
-The immutable v6 provenance manifest has SHA-256 `PROVENANCE_SHA256_PENDING` and binds
-implementation revision `IMPLEMENTATION_REVISION_PENDING`.
+The immutable v6 provenance manifest has SHA-256
+`28541061320879877cb348355f92c6a1a80980b3fda754513667b1574c0e2fc5` and binds
+implementation revision `2cccddb7420bf845f99162fb09c841edca4a1d58`.
 
 ### No-beach full-gold refits
 

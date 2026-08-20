@@ -208,7 +208,7 @@ crossing.
   `3abf18c01bff4c68bcbc805d45d302407a7495ad6dfaefb0a78ba856b56a41d4`.
 - Fixed-prototype diagnostic fingerprint:
   `df1f9498c21c27b10602baa0632a967fde59bde54afa8d5a2dc0fcf2653e0e33`.
-- Implementation revision: `IMPLEMENTATION_REVISION_PENDING`.
+- Implementation revision: `2cccddb7420bf845f99162fb09c841edca4a1d58`.
 - Provenance:
   `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-v6-provenance.json`,
-  SHA-256 `PROVENANCE_SHA256_PENDING`.
+  SHA-256 `28541061320879877cb348355f92c6a1a80980b3fda754513667b1574c0e2fc5`.
