@@ -190,9 +190,12 @@ support a review and labeling pass, not a production side-map flip threshold.
 The development app now exposes this report at `/side-switch-review`. It provides recording and
 environment filters, a scrollable event queue, ranged video playback through the prepared proxy,
 full-recording and transition-window timelines, per-event feature values and pooled metrics, and
-browser-local `switch`/`no-switch`/`unclear` decisions that can be exported without mutating the
-gold labels. The local review state is deliberately separate from the research report and from
-completed label documents.
+`switch`/`no-switch`/`unclear` review decisions. Decisions are automatically debounced to the
+NAS-backed `appearance-review-decisions-v1.json` file through a development API, with a manual
+retry button; they remain separate from the research report and completed label documents.
+
+The first serving-side variants built from the existing rally starts and weak note cues are
+documented in [`serving-side-existing-label-variants-2026-08-19.md`](serving-side-existing-label-variants-2026-08-19.md).
 
 ## Label changes needed for later versions
 
