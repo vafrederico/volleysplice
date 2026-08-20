@@ -184,10 +184,10 @@ test("serving-side result review joins frozen human and model decisions", async 
       },
     })}\n`;
     const evaluation = `${JSON.stringify({
-      kind: "volleycut-serving-side-specialist-evaluation-v1",
+      kind: "volleycut-serving-side-specialist-v2-protected-test-evaluation",
       createdAt: "2026-08-20T14:00:00.000Z",
       modelFingerprint: "a".repeat(64),
-      selectedFeatureSet: "full-existing-bank",
+      featureFamily: "court-flow-recording-rank",
       threshold: 0.51,
       sources: {
         servingSideReport: { sha256: sha256(report) },
@@ -209,16 +209,14 @@ test("serving-side result review joins frozen human and model decisions", async 
           nearProbability: 0.2,
         },
       ],
-      heldOutAll: {
-        overall: {
-          rows: 2,
-          accuracy: 0.5,
-          balancedAccuracy: 0.5,
-          nearPrecision: 0,
-          nearRecall: 0,
-          farPrecision: 0.5,
-          farRecall: 1,
-        },
+      metrics: {
+        rows: 2,
+        accuracy: 0.5,
+        balancedAccuracy: 0.5,
+        nearPrecision: 0,
+        nearRecall: 0,
+        farPrecision: 0.5,
+        farRecall: 1,
       },
     })}\n`;
     await Promise.all([

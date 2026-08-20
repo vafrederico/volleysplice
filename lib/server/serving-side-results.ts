@@ -15,7 +15,7 @@ import {
 } from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v1-evaluation.json";
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v2-protected-test.json";
 
 export class ServingSideResultsError extends Error {}
 
@@ -300,7 +300,11 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     });
 
   const heldOutAll = evaluation.heldOutAll;
-  const overall = isRecord(heldOutAll) ? heldOutAll.overall : null;
+  const overall = isRecord(evaluation.metrics)
+    ? evaluation.metrics
+    : isRecord(heldOutAll)
+      ? heldOutAll.overall
+      : null;
   const resultMetrics = metrics(overall);
   if (resultMetrics.rows !== results.length) {
     throw new ServingSideResultsError(
@@ -317,7 +321,7 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       /^[a-f0-9]{64}$/,
     ),
     selectedFeatureSet: requiredString(
-      evaluation.selectedFeatureSet,
+      evaluation.selectedFeatureSet ?? evaluation.featureFamily,
       "selected feature set",
     ),
     threshold: finiteNumber(evaluation.threshold, "model threshold"),
