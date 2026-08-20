@@ -50,7 +50,7 @@ The project remains on Media3 `1.10.1`. The official [Media3 release notes](http
 
 ### 1. Sign the final release artifact
 
-The AAB produced by `bundleRelease` is unsigned. Use Play App Signing and have the key owner sign/upload it; do not commit a private key or password. The same final source build must be used for the signed APK/AAB and any checked-in or production download artifact.
+The AAB produced by `bundleRelease` is unsigned. Use Play App Signing and have the key owner run `android/sign-aab.ps1` locally before uploading it; do not commit a private key or password. The same final source build must be used for the signed APK/AAB and any checked-in or production download artifact.
 
 ### 2. Complete Play declarations and demonstration
 
