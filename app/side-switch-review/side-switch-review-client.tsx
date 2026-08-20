@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Brand } from "@/components/brand";
 import { formatTime } from "@/lib/edit-list";
@@ -21,10 +21,14 @@ type SideSwitchReviewClientProps = {
   report: AppearanceReport | null;
   recordings: SideSwitchRecording[];
   reportPath: string;
+  initialDecisions: Record<string, ReviewDecision>;
+  initialSavedAt: string | null;
+  decisionLoadError?: string;
   loadError?: string;
 };
 
 type EventFilter = "all" | "switch" | "control" | "insufficient";
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const FEATURE_DEFINITIONS: Array<{
   key: AppearanceFeature;
@@ -135,6 +139,12 @@ function featureMetric(
 
 function eventVideoUrl(recordingId: string): string {
   return `/api/labeling/tasks/${encodeURIComponent(recordingId)}/video`;
+}
+
+function savedTime(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleTimeString();
 }
 
 function OverviewTimeline({
@@ -395,10 +405,16 @@ function LoadedSideSwitchReview({
   report,
   recordings,
   reportPath,
+  initialDecisions,
+  initialSavedAt,
+  decisionLoadError,
 }: {
   report: AppearanceReport;
   recordings: SideSwitchRecording[];
   reportPath: string;
+  initialDecisions: Record<string, ReviewDecision>;
+  initialSavedAt: string | null;
+  decisionLoadError?: string;
 }) {
   const allEvents = report.events;
   const [environment, setEnvironment] = useState("all");
@@ -408,9 +424,17 @@ function LoadedSideSwitchReview({
     () => allEvents.find((event) => event.label === 1)?.eventId ?? allEvents[0]?.eventId ?? "",
   );
   const [currentTime, setCurrentTime] = useState(0);
-  const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>({});
-  const [storageReady, setStorageReady] = useState(false);
+  const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>(
+    initialDecisions,
+  );
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(
+    decisionLoadError ? "error" : initialSavedAt ? "saved" : "idle",
+  );
+  const [saveError, setSaveError] = useState<string | null>(decisionLoadError ?? null);
+  const [lastSavedAt, setLastSavedAt] = useState(initialSavedAt);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const skipInitialDecisionSave = useRef(true);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const environments = useMemo(
     () => [...new Set(recordings.map((recording) => recording.environment))].sort(),
@@ -450,29 +474,64 @@ function LoadedSideSwitchReview({
   const reviewedCount = Object.keys(decisions).length;
   const pooledAreaMetric = featureMetric(report, "playerPaletteArea");
 
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem("volleycut-side-switch-review-v1");
-      if (stored) {
-        const parsed = JSON.parse(stored) as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          setDecisions(parsed as Record<string, ReviewDecision>);
+  const saveDecisionsToNas = useCallback(
+    async (values: Record<string, ReviewDecision>) => {
+      setSaveStatus("saving");
+      setSaveError(null);
+      try {
+        const response = await fetch("/api/side-switch-review/decisions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            reportKind: report.kind,
+            reportCreatedAt: report.createdAt,
+            decisions: values,
+          }),
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          error?: unknown;
+          savedAt?: unknown;
+        } | null;
+        if (!response.ok) {
+          throw new Error(
+            typeof payload?.error === "string"
+              ? payload.error
+              : `Save failed with HTTP ${response.status}`,
+          );
         }
+        const savedAt = typeof payload?.savedAt === "string"
+          ? payload.savedAt
+          : new Date().toISOString();
+        setLastSavedAt(savedAt);
+        setSaveStatus("saved");
+      } catch (error) {
+        setSaveStatus("error");
+        setSaveError(error instanceof Error ? error.message : String(error));
       }
-    } catch {
-      // Local review state is optional and should never block video inspection.
-    } finally {
-      setStorageReady(true);
-    }
-  }, []);
+    },
+    [report.createdAt, report.kind],
+  );
 
   useEffect(() => {
-    if (!storageReady) return;
-    window.localStorage.setItem(
-      "volleycut-side-switch-review-v1",
-      JSON.stringify(decisions),
-    );
-  }, [decisions, storageReady]);
+    if (skipInitialDecisionSave.current) {
+      skipInitialDecisionSave.current = false;
+      return;
+    }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSaveStatus("saving");
+    setSaveError(null);
+    saveTimerRef.current = setTimeout(() => {
+      void saveDecisionsToNas(decisions);
+    }, 350);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [decisions, saveDecisionsToNas]);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (filteredEvents.some((event) => event.eventId === selectedEventId)) return;
@@ -510,35 +569,6 @@ function LoadedSideSwitchReview({
   function setDecision(decision: ReviewDecision) {
     if (!selectedEvent) return;
     setDecisions((current) => ({ ...current, [selectedEvent.eventId]: decision }));
-  }
-
-  function exportDecisions() {
-    const reviewed = allEvents
-      .filter((event) => decisions[event.eventId])
-      .map((event) => ({
-        eventId: event.eventId,
-        recordingId: event.recordingId,
-        environment: event.environment,
-        transitionTime: event.transitionTime,
-        sourceLabel: event.label === 1 ? "switch" : "no-switch-control",
-        decision: decisions[event.eventId],
-      }));
-    const payload = {
-      schemaVersion: 1,
-      reportKind: report.kind,
-      reportCreatedAt: report.createdAt,
-      sourceReport: reportPath,
-      decisions: reviewed,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `volleycut-side-switch-review-${new Date().toISOString().replaceAll(":", "-")}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   const currentScope = selectedEvent?.environment ?? "pooled";
@@ -602,7 +632,7 @@ function LoadedSideSwitchReview({
           </strong>
         </div>
         <div>
-          <span>Local decisions</span>
+          <span>Reviewed decisions</span>
           <strong>{compactNumber(reviewedCount)}</strong>
         </div>
       </section>
@@ -792,9 +822,12 @@ function LoadedSideSwitchReview({
 
               <section className={styles.decisionPanel}>
                 <div>
-                  <span className={styles.panelKicker}>LOCAL REVIEW · NOT GOLD LABELING</span>
+                  <span className={styles.panelKicker}>NAS-BACKED REVIEW · NOT GOLD LABELING</span>
                   <strong>Does the visible team appearance change across this gap?</strong>
-                  <small>Saved in this browser only. Export the reviewed rows when ready for a labeling pass.</small>
+                  <small>
+                    Decisions are automatically saved to the NAS review file. They are review evidence,
+                    not gold labeling.
+                  </small>
                 </div>
                 <div className={styles.decisionButtons}>
                   {(["switch", "no-switch", "unclear"] as ReviewDecision[]).map((decision) => (
@@ -808,9 +841,20 @@ function LoadedSideSwitchReview({
                       {decision === "switch" ? "Visible switch" : decision === "no-switch" ? "No switch" : "Unclear"}
                     </button>
                   ))}
-                  <button type="button" className={styles.exportButton} onClick={exportDecisions}>
-                    Export {reviewedCount} decisions
+                  <button
+                    type="button"
+                    className={styles.saveButton}
+                    onClick={() => void saveDecisionsToNas(decisions)}
+                    disabled={saveStatus === "saving"}
+                  >
+                    {saveStatus === "saving" ? "Saving…" : "Save to NAS"}
                   </button>
+                  <span className={styles.saveStatus} data-status={saveStatus}>
+                    {saveStatus === "saving" && "Saving to NAS…"}
+                    {saveStatus === "saved" && `Saved ${savedTime(lastSavedAt)}`}
+                    {saveStatus === "error" && `Save failed: ${saveError ?? "unknown error"}`}
+                    {saveStatus === "idle" && "Not saved yet"}
+                  </span>
                 </div>
               </section>
 
@@ -863,6 +907,9 @@ export function SideSwitchReviewClient({
   report,
   recordings,
   reportPath,
+  initialDecisions,
+  initialSavedAt,
+  decisionLoadError,
   loadError,
 }: SideSwitchReviewClientProps) {
   if (!report) return <UnavailableReview reportPath={reportPath} loadError={loadError} />;
@@ -871,6 +918,9 @@ export function SideSwitchReviewClient({
       report={report}
       recordings={recordings}
       reportPath={reportPath}
+      initialDecisions={initialDecisions}
+      initialSavedAt={initialSavedAt}
+      decisionLoadError={decisionLoadError}
     />
   );
 }

@@ -853,11 +853,31 @@
   background: #f4c35b;
 }
 
-.decisionButtons .exportButton {
+.decisionButtons .saveButton {
   margin-left: 6px;
   border-color: #aeb0a7;
   background: transparent;
   color: #fff;
+}
+
+.decisionButtons .saveButton:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.saveStatus {
+  align-self: center;
+  max-width: 240px;
+  color: #bfc1b7;
+  font: 8px/1.35 "Atkinson Hyperlegible Mono", monospace;
+}
+
+.saveStatus[data-status="saved"] {
+  color: #82d0a9;
+}
+
+.saveStatus[data-status="error"] {
+  color: #f4c35b;
 }
 
 .featureGrid {
@@ -1204,7 +1224,11 @@
     justify-content: start;
   }
 
-  .decisionButtons .exportButton {
+  .decisionButtons .saveButton {
     margin-left: 0;
+  }
+
+  .saveStatus {
+    flex-basis: 100%;
   }
 }

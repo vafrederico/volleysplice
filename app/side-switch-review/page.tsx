@@ -2,20 +2,16 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Metadata } from "next";
 
+import {
+  getSideSwitchReviewReportPath,
+  loadSideSwitchReviewState,
+} from "@/lib/server/side-switch-review";
+
 import { SideSwitchReviewClient } from "./side-switch-review-client";
 import type {
   AppearanceReport,
   SideSwitchRecording,
 } from "./types";
-
-const DEFAULT_LABELING_WORKSPACE =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09";
-const DEFAULT_REPORT = path.join(
-  DEFAULT_LABELING_WORKSPACE,
-  "reports",
-  "side-switch",
-  "appearance-diagnostic-all-v1.json",
-);
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,13 +22,6 @@ export const metadata: Metadata = {
     "Review label-only appearance evidence for detecting volleyball side switches.",
   robots: { index: false, follow: false },
 };
-
-function reportPath(): string {
-  return path.resolve(
-    /* turbopackIgnore: true */
-    process.env.VOLLEYCUT_SIDE_SWITCH_REPORT ?? DEFAULT_REPORT,
-  );
-}
 
 function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -105,15 +94,33 @@ function clientReport(report: AppearanceReport): AppearanceReport {
 }
 
 export default async function SideSwitchReviewPage() {
-  const sourcePath = reportPath();
+  const sourcePath = getSideSwitchReviewReportPath();
   try {
     const report = JSON.parse(await readFile(sourcePath, "utf8")) as AppearanceReport;
     const recordings = await loadRecordings(report);
+    let initialDecisions: Record<string, "switch" | "no-switch" | "unclear"> = {};
+    let initialSavedAt: string | null = null;
+    let decisionLoadError: string | undefined;
+    try {
+      const state = await loadSideSwitchReviewState();
+      if (
+        state.reportKind === report.kind &&
+        state.reportCreatedAt === report.createdAt
+      ) {
+        initialDecisions = state.decisions;
+        initialSavedAt = state.savedAt;
+      }
+    } catch (error) {
+      decisionLoadError = error instanceof Error ? error.message : String(error);
+    }
     return (
       <SideSwitchReviewClient
         report={clientReport(report)}
         recordings={recordings}
         reportPath={path.basename(sourcePath)}
+        initialDecisions={initialDecisions}
+        initialSavedAt={initialSavedAt}
+        decisionLoadError={decisionLoadError}
       />
     );
   } catch (error) {
@@ -123,6 +130,8 @@ export default async function SideSwitchReviewPage() {
         recordings={[]}
         reportPath={sourcePath}
         loadError={error instanceof Error ? error.message : String(error)}
+        initialDecisions={{}}
+        initialSavedAt={null}
       />
     );
   }
