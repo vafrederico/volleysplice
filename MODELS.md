@@ -221,8 +221,9 @@ V6 experimental fingerprint is
 Complete feature/model/evaluation hashes, suppression-leakage audit, attribution,
 and non-promotion constraints are in
 [`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md).
-The immutable provenance manifest has SHA-256 `PROVENANCE_SHA256_PENDING` and binds
-implementation revision `IMPLEMENTATION_REVISION_PENDING`.
+The immutable provenance manifest has SHA-256
+`174fe3980cdd55fa14dda00c7e27d1b01882f303ec3ece6b6d709276e88643e7` and binds
+implementation revision `5221c74f51356e993ebfcad8326469fd6bb80124`.
 
 ### No-beach full-gold refits
 

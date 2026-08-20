@@ -263,7 +263,7 @@ All paths are under
   `dc5ea15a4455ac06af9e1d71d81dbd0fbe1886e2b2d0eb708d60f1ab9647e5dd`;
 - selected V6 experimental fingerprint:
   `5909cfb20b975f416973b42bd7426e7b4c5fa42e4441caa2dd83c76d50937032`;
-- implementation revision: `IMPLEMENTATION_REVISION_PENDING`; and
+- implementation revision: `5221c74f51356e993ebfcad8326469fd6bb80124`; and
 - provenance:
   `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-production-state-v1-provenance.json`,
-  SHA-256 `PROVENANCE_SHA256_PENDING`.
+  SHA-256 `174fe3980cdd55fa14dda00c7e27d1b01882f303ec3ece6b6d709276e88643e7`.
