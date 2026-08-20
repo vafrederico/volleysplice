@@ -1,11 +1,11 @@
 import {
-  DEFAULT_SUPPRESSION_SCOPE,
-  materializeFinalCutIntervals,
-  suppressionSuggestionState,
-  suppressionSuggestionScope,
   type CutDraft,
+  DEFAULT_SUPPRESSION_SCOPE,
   type EditableCut,
   type FinalCutInterval,
+  materializeFinalCutIntervals,
+  suppressionSuggestionScope,
+  suppressionSuggestionState,
 } from "./cut-draft.ts";
 import {
   ALL_LABELS_V2_BUNDLE_SHA256,
@@ -26,6 +26,12 @@ export type EncodedNumericArray = {
   dataType: "float32" | "float64";
   shape: number[];
   data: string;
+};
+
+type EncodedServeOutput = {
+  modelId: string;
+  probabilities: EncodedNumericArray;
+  detections: Array<{ time: number; confidence: number }>;
 };
 
 type FeedbackRange = {
@@ -77,6 +83,10 @@ export type ModelFeedbackBundle = {
       serve: EncodedNumericArray;
       deadState: EncodedNumericArray;
     };
+    componentServeOutputs?: {
+      allLabelsV2: EncodedServeOutput;
+      previousProduction: EncodedServeOutput;
+    };
     productionComponents: ProductAnalysis["productionComponents"];
     suppression: null | {
       modelId: string;
@@ -86,7 +96,9 @@ export type ModelFeedbackBundle = {
       policyContractVersion: number;
       timestamps: EncodedNumericArray;
       probabilities: EncodedNumericArray;
-      decodedIntervals: NonNullable<ProductAnalysis["suppression"]>["decodedIntervals"];
+      decodedIntervals: NonNullable<
+        ProductAnalysis["suppression"]
+      >["decodedIntervals"];
       suggestions: NonNullable<ProductAnalysis["suppression"]>["suggestions"];
     };
   };
@@ -118,7 +130,9 @@ export type ModelFeedbackBundle = {
     };
   };
   finalExportIntervals: FinalCutInterval[];
-  finalExportProvenance: ReturnType<typeof materializeFinalCutIntervals>["provenance"];
+  finalExportProvenance: ReturnType<
+    typeof materializeFinalCutIntervals
+  >["provenance"];
   warnings: string[];
 };
 
@@ -203,7 +217,15 @@ export function createModelFeedbackBundle(
       "Base features are unavailable because this analysis predates model-feedback capture; inference and corrections are still included.",
     );
   }
-  const materialized = materializeFinalCutIntervals(draft, analysis.suppression);
+  if (!analysis.productionServeOutputs) {
+    warnings.push(
+      "Per-component serve-head outputs are unavailable because this analysis predates their retention; the V2 probability trace remains included.",
+    );
+  }
+  const materialized = materializeFinalCutIntervals(
+    draft,
+    analysis.suppression,
+  );
   const allSuppressionSuggestions = analysis.suppression?.suggestions ?? [];
 
   return {
@@ -271,10 +293,48 @@ export function createModelFeedbackBundle(
           analysis.probabilities.deadState.length,
         ]),
       },
+      componentServeOutputs: analysis.productionServeOutputs
+        ? {
+            allLabelsV2: {
+              modelId: ALL_LABELS_V2_MODEL_ID,
+              probabilities: encodeNumericArray(
+                analysis.productionServeOutputs.allLabelsV2.probabilities,
+                [
+                  analysis.productionServeOutputs.allLabelsV2.probabilities
+                    .length,
+                ],
+              ),
+              detections:
+                analysis.productionServeOutputs.allLabelsV2.detections.map(
+                  (detection) => ({ ...detection }),
+                ),
+            },
+            previousProduction: {
+              modelId: PREVIOUS_PRODUCTION_MODEL_ID,
+              probabilities: encodeNumericArray(
+                analysis.productionServeOutputs.previousProduction
+                  .probabilities,
+                [
+                  analysis.productionServeOutputs.previousProduction
+                    .probabilities.length,
+                ],
+              ),
+              detections:
+                analysis.productionServeOutputs.previousProduction.detections.map(
+                  (detection) => ({ ...detection }),
+                ),
+            },
+          }
+        : undefined,
       productionComponents: analysis.productionComponents
         ? {
-            allLabelsV2: analysis.productionComponents.allLabelsV2.map((range) => ({ ...range })),
-            previousProduction: analysis.productionComponents.previousProduction.map((range) => ({ ...range })),
+            allLabelsV2: analysis.productionComponents.allLabelsV2.map(
+              (range) => ({ ...range }),
+            ),
+            previousProduction:
+              analysis.productionComponents.previousProduction.map((range) => ({
+                ...range,
+              })),
           }
         : undefined,
       suppression: analysis.suppression
@@ -287,10 +347,13 @@ export function createModelFeedbackBundle(
             timestamps: encodeNumericArray(analysis.inferenceTimes, [
               analysis.inferenceTimes.length,
             ]),
-            probabilities: encodeNumericArray(analysis.suppression.probabilities, [
-              analysis.suppression.probabilities.length,
-            ]),
-            decodedIntervals: analysis.suppression.decodedIntervals.map((range) => ({ ...range })),
+            probabilities: encodeNumericArray(
+              analysis.suppression.probabilities,
+              [analysis.suppression.probabilities.length],
+            ),
+            decodedIntervals: analysis.suppression.decodedIntervals.map(
+              (range) => ({ ...range }),
+            ),
             suggestions: analysis.suppression.suggestions.map((suggestion) => ({
               ...suggestion,
               sourceProductionIds: [...suggestion.sourceProductionIds],

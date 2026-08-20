@@ -103,10 +103,22 @@ export type OnDeviceInterval = {
   end: number;
   confidence: number;
   included: boolean;
-  agreement?:
-    | "both-models"
-    | "all-labels-v2-only"
-    | "previous-production-only";
+  agreement?: "both-models" | "all-labels-v2-only" | "previous-production-only";
+};
+
+export type OnDeviceServeDetection = {
+  time: number;
+  confidence: number;
+};
+
+export type OnDeviceServeOutput = {
+  probabilities: Float32Array;
+  detections: OnDeviceServeDetection[];
+};
+
+export type ProductionServeOutputs = {
+  allLabelsV2: OnDeviceServeOutput;
+  previousProduction: OnDeviceServeOutput;
 };
 
 export type OnDeviceSuppression = {
@@ -135,5 +147,6 @@ export type OnDeviceAnalysis = {
     allLabelsV2: OnDeviceInterval[];
     previousProduction: OnDeviceInterval[];
   };
+  productionServeOutputs?: ProductionServeOutputs;
   suppression?: OnDeviceSuppression;
 };

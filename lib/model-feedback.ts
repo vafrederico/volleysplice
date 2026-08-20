@@ -92,6 +92,10 @@ export type ParsedModelFeedback = {
     rallyProbabilities: Float32Array;
     serveProbabilities: Float32Array;
     deadStateProbabilities: Float32Array;
+    componentServeOutputs: null | {
+      allLabelsV2: ParsedServeOutput;
+      previousProduction: ParsedServeOutput;
+    };
   };
   corrections: {
     updatedAt: string;
@@ -109,6 +113,12 @@ export type ParsedModelFeedback = {
   };
   finalExportIntervals: FinalFeedbackRange[];
   warnings: string[];
+};
+
+export type ParsedServeOutput = {
+  modelId: string;
+  probabilities: Float32Array;
+  detections: Array<{ time: number; confidence: number }>;
 };
 
 export class ModelFeedbackValidationError extends Error {}
@@ -535,6 +545,69 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
     deadStateProbabilities,
     "bundle.initialInference.probabilities.deadState",
   );
+  const componentServeOutputs = (() => {
+    if (inference.componentServeOutputs === undefined) return null;
+    const outputs = object(
+      inference.componentServeOutputs,
+      "bundle.initialInference.componentServeOutputs",
+    );
+    const componentModelIds = new Set(components.map(({ modelId }) => modelId));
+    const parseOutput = (value: unknown, field: string): ParsedServeOutput => {
+      const output = object(value, field);
+      const modelId = string(output.modelId, `${field}.modelId`);
+      if (!componentModelIds.has(modelId)) {
+        fail(
+          `${field}.modelId`,
+          "must identify an initial-inference component",
+        );
+      }
+      const probabilities = decodeNumericArray(
+        output.probabilities,
+        `${field}.probabilities`,
+        "float32",
+        [inferenceRows],
+      ) as Float32Array;
+      validateProbabilities(probabilities, `${field}.probabilities`);
+      if (!Array.isArray(output.detections)) {
+        fail(`${field}.detections`, "must be an array");
+      }
+      const detections = output.detections.map((value, index) => {
+        const detection = object(value, `${field}.detections[${index}]`);
+        const time = nonNegative(
+          detection.time,
+          `${field}.detections[${index}].time`,
+        );
+        const confidence = number(
+          detection.confidence,
+          `${field}.detections[${index}].confidence`,
+        );
+        if (time > duration) {
+          fail(
+            `${field}.detections[${index}].time`,
+            "must be within the source",
+          );
+        }
+        if (confidence < 0 || confidence > 1) {
+          fail(
+            `${field}.detections[${index}].confidence`,
+            "must be between 0 and 1",
+          );
+        }
+        return { time, confidence };
+      });
+      return { modelId, probabilities, detections };
+    };
+    return {
+      allLabelsV2: parseOutput(
+        outputs.allLabelsV2,
+        "bundle.initialInference.componentServeOutputs.allLabelsV2",
+      ),
+      previousProduction: parseOutput(
+        outputs.previousProduction,
+        "bundle.initialInference.componentServeOutputs.previousProduction",
+      ),
+    };
+  })();
 
   const corrections = object(root.corrections, "bundle.corrections");
   const correctedValue = corrections.correctedRanges;
@@ -630,6 +703,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       rallyProbabilities,
       serveProbabilities,
       deadStateProbabilities,
+      componentServeOutputs,
     },
     corrections: {
       updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),

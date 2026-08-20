@@ -41,5 +41,6 @@ export type ProductAnalysis = {
     deadState: Float32Array;
   };
   productionComponents?: OnDeviceAnalysis["productionComponents"];
+  productionServeOutputs?: OnDeviceAnalysis["productionServeOutputs"];
   suppression?: OnDeviceAnalysis["suppression"];
 };

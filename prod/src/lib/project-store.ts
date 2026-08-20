@@ -1,22 +1,22 @@
-import type {
-  NormalizedRoi,
-  OnDeviceAnalysis,
-  OnDeviceMediaInfo,
-} from "./on-device/types.ts";
 import {
+  type AnalysisWindow,
   fullAnalysisWindow,
   isFullAnalysisWindow,
   normalizeAnalysisWindow,
-  type AnalysisWindow,
 } from "./on-device/analysis-window.ts";
 import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
-import { SUPPRESSION_POLICY_CONTRACT_VERSION } from "./on-device/suppression-policy.ts";
 import {
   SUPPRESSION_ARTIFACT_SHA256,
   SUPPRESSION_DECODER_VERSION,
   SUPPRESSION_MODEL_ID,
   SUPPRESSION_WEIGHTS_SHA256,
 } from "./on-device/suppression-model.ts";
+import { SUPPRESSION_POLICY_CONTRACT_VERSION } from "./on-device/suppression-policy.ts";
+import type {
+  NormalizedRoi,
+  OnDeviceAnalysis,
+  OnDeviceMediaInfo,
+} from "./on-device/types.ts";
 
 const DATABASE_NAME = "volleycut-projects";
 const DATABASE_VERSION = 1;
@@ -112,7 +112,7 @@ const SOURCE_FINGERPRINT_SAMPLE_BYTES = 1024 * 1024;
 
 function hex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes), (value) =>
-    value.toString(16).padStart(2, "0")
+    value.toString(16).padStart(2, "0"),
   ).join("");
 }
 
@@ -123,15 +123,16 @@ function hex(bytes: ArrayBuffer): string {
 export async function sourceFileFingerprint(file: File): Promise<string> {
   const wholeFile = file.size <= SOURCE_FINGERPRINT_SAMPLE_BYTES * 2;
   const first = new Uint8Array(
-    await file.slice(
-      0,
-      wholeFile ? file.size : SOURCE_FINGERPRINT_SAMPLE_BYTES,
-    ).arrayBuffer(),
+    await file
+      .slice(0, wholeFile ? file.size : SOURCE_FINGERPRINT_SAMPLE_BYTES)
+      .arrayBuffer(),
   );
   const last = wholeFile
     ? new Uint8Array(0)
     : new Uint8Array(
-        await file.slice(file.size - SOURCE_FINGERPRINT_SAMPLE_BYTES).arrayBuffer(),
+        await file
+          .slice(file.size - SOURCE_FINGERPRINT_SAMPLE_BYTES)
+          .arrayBuffer(),
       );
   const payload = new Uint8Array(8 + first.length + last.length);
   new DataView(payload.buffer).setBigUint64(0, BigInt(file.size), true);
@@ -146,7 +147,10 @@ export function projectId(
   info: OnDeviceMediaInfo,
   requestedWindow: AnalysisWindow = fullAnalysisWindow(info.duration),
 ): string {
-  const analysisWindow = normalizeAnalysisWindow(requestedWindow, info.duration);
+  const analysisWindow = normalizeAnalysisWindow(
+    requestedWindow,
+    info.duration,
+  );
   const windowIdentity = isFullAnalysisWindow(analysisWindow, info.duration)
     ? ""
     : `\u0000${analysisWindow.start}\u0000${analysisWindow.end}`;
@@ -176,7 +180,7 @@ export async function sourceCanReconnectFile(
   if (sourceMatchesFile(source, file)) return true;
   if (!source.fingerprint || source.size !== file.size) return false;
   try {
-    return source.fingerprint === await sourceFileFingerprint(file);
+    return source.fingerprint === (await sourceFileFingerprint(file));
   } catch {
     return false;
   }
@@ -221,7 +225,10 @@ function validRoi(value: unknown): value is NormalizedRoi {
   );
 }
 
-function validAnalysisWindow(value: unknown, duration: number): value is AnalysisWindow {
+function validAnalysisWindow(
+  value: unknown,
+  duration: number,
+): value is AnalysisWindow {
   if (!value || typeof value !== "object") return false;
   const window = value as Partial<AnalysisWindow>;
   return (
@@ -243,6 +250,40 @@ function validInterval(value: unknown): boolean {
     interval.end > interval.start &&
     finite(interval.confidence) &&
     typeof interval.included === "boolean"
+  );
+}
+
+function validServeOutput(value: unknown, rows: number): boolean {
+  if (!value || typeof value !== "object") return false;
+  const output = value as Record<string, unknown>;
+  return (
+    output.probabilities instanceof Float32Array &&
+    output.probabilities.length === rows &&
+    !output.probabilities.some(
+      (probability) =>
+        !Number.isFinite(probability) || probability < 0 || probability > 1,
+    ) &&
+    Array.isArray(output.detections) &&
+    output.detections.every((candidate) => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const detection = candidate as Record<string, unknown>;
+      return (
+        finite(detection.time) &&
+        detection.time >= 0 &&
+        finite(detection.confidence) &&
+        detection.confidence >= 0 &&
+        detection.confidence <= 1
+      );
+    })
+  );
+}
+
+function validProductionServeOutputs(value: unknown, rows: number): boolean {
+  if (!value || typeof value !== "object") return false;
+  const outputs = value as Record<string, unknown>;
+  return (
+    validServeOutput(outputs.allLabelsV2, rows) &&
+    validServeOutput(outputs.previousProduction, rows)
   );
 }
 
@@ -274,8 +315,9 @@ function validSuppression(value: unknown, rows: number): boolean {
         Array.isArray(suggestion.sourceProductionIds) &&
         suggestion.sourceProductionIds.every((id) => typeof id === "string") &&
         Array.isArray(suggestion.eligiblePolicyIds) &&
-        suggestion.eligiblePolicyIds.every((id) =>
-          id === "conservative" || id === "balanced" || id === "aggressive"
+        suggestion.eligiblePolicyIds.every(
+          (id) =>
+            id === "conservative" || id === "balanced" || id === "aggressive",
         )
       );
     }) &&
@@ -288,7 +330,8 @@ function validAnalysis(value: unknown): value is OnDeviceAnalysis {
   const analysis = value as Partial<OnDeviceAnalysis>;
   const featureNames = analysis.featureNames;
   const featureValues = analysis.featureValues;
-  const featuresMissing = featureNames === undefined && featureValues === undefined;
+  const featuresMissing =
+    featureNames === undefined && featureValues === undefined;
   const featuresValid =
     Array.isArray(featureNames) &&
     featureNames.length > 0 &&
@@ -327,7 +370,14 @@ function validAnalysis(value: unknown): value is OnDeviceAnalysis {
       (Array.isArray(analysis.productionComponents.allLabelsV2) &&
         analysis.productionComponents.allLabelsV2.every(validInterval) &&
         Array.isArray(analysis.productionComponents.previousProduction) &&
-        analysis.productionComponents.previousProduction.every(validInterval))) &&
+        analysis.productionComponents.previousProduction.every(
+          validInterval,
+        ))) &&
+    (analysis.productionServeOutputs === undefined ||
+      validProductionServeOutputs(
+        analysis.productionServeOutputs,
+        analysis.times.length,
+      )) &&
     (analysis.suppression === undefined ||
       validSuppression(analysis.suppression, analysis.times.length))
   );
@@ -376,15 +426,18 @@ export function normalizeStoredProject(
     project.analysisWindow,
     project.info.duration,
   );
-  const normalizedProject = project.analysisWindow &&
-      project.analysisWindow.start === analysisWindow.start &&
-      project.analysisWindow.end === analysisWindow.end
-    ? project
-    : { ...project, analysisWindow };
+  const normalizedProject =
+    project.analysisWindow &&
+    project.analysisWindow.start === analysisWindow.start &&
+    project.analysisWindow.end === analysisWindow.end
+      ? project
+      : { ...project, analysisWindow };
   if (
     normalizedProject.analysis &&
     (normalizedProject.analysis.modelId !== PRODUCTION_ENSEMBLE_MODEL_ID ||
-      normalizedProject.analysis.intervals.some((interval) => !interval.agreement))
+      normalizedProject.analysis.intervals.some(
+        (interval) => !interval.agreement,
+      ))
   ) {
     return {
       ...normalizedProject,
@@ -394,7 +447,10 @@ export function normalizeStoredProject(
         "The production model ensemble changed. Reconnect the source to run current inference; compatible cached features will be reused.",
     };
   }
-  if (normalizedProject.status === "queued" || normalizedProject.status === "analyzing") {
+  if (
+    normalizedProject.status === "queued" ||
+    normalizedProject.status === "analyzing"
+  ) {
     return {
       ...normalizedProject,
       status: "waiting",

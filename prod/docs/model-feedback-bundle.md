@@ -22,7 +22,9 @@ The bundle contains:
 - the base audiovisual feature matrix and source-relative timestamps used to construct the model
   inputs;
 - the initial production-ensemble ranges and timestamped rally, serve, and dead-state probability
-  traces (the producing component is identified by `probabilityModelId`);
+  traces (the backward-compatible primary traces are produced by `probabilityModelId`);
+- both production components' serve-probability traces and decoded serve contacts under
+  `initialInference.componentServeOutputs`;
 - the untouched raw ranges from both production models, plus the held suppression artifact
   identity, probability trace, decoded events, and policy-eligible suggestion spans;
 - the full corrected editor ranges and ignored intervals;
@@ -65,6 +67,12 @@ def decode_array(payload):
 times = decode_array(bundle["features"]["timestamps"])
 features = decode_array(bundle["features"]["values"])
 rally_probability = decode_array(bundle["initialInference"]["probabilities"]["rally"])
+all_labels_serve_probability = decode_array(
+    bundle["initialInference"]["componentServeOutputs"]["allLabelsV2"]["probabilities"]
+)
+previous_serve_contacts = bundle["initialInference"]["componentServeOutputs"][
+    "previousProduction"
+]["detections"]
 ```
 
 ## Pairing with raw video
