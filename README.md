@@ -102,6 +102,10 @@ The v6 quantized-person/adaptive-prototype study improves raw-phone row AP to 45
 regresses candidate-window exact F1 to 24.10%; it is not promoted and v5 remains the
 best event-level side-switch artifact. The 59-gap V5/V6 proposal union is available in
 `/side-switch-review` because the earlier heuristic marker seeds are not exhaustive.
+The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
+raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
+accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
+gates fail, and suppression is excluded for target/data overlap.
 
 ### Setup
 

@@ -356,6 +356,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch v4 MULTIFRAME-NORMALIZED19 | Seven 256×144 frames per rally, early-set net-height calibration, piecewise court normalization, camera-translation compensation, and broad/tight multi-frame near/far palettes | Positive research result but rejected for automatic use. Raw-phone exact-gap F1 improved from 7.59% to 16.67%, while ±2-tolerant F1 improved from 32.91% to 41.67%. No browser/Android port. See [`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md). |
 | Side-switch v5 PLAYER-ORIENTATION22 | Six retained v4 scalars plus 16 motion-component player-palette, proposal-support, and quality features; whole-set score-zero team anchors feed an optional parity decoder | Best event-level research result but not promoted for automatic use. Candidate-window exact-gap F1 improved from 16.67% to 27.85% and row AP from 26.92% to 43.40%. Validation selected orientation weight zero, so the persistence stage is a no-op. Its 44 selected proposals are reviewable; no browser/Android port. See [`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md). |
 | Side-switch v6 DETECTED-ADAPTIVE29 | Six retained v4 scalars, 20 player-localization/torso-palette inputs from a pinned 3.48 MB block-int8 MediaPipe person detector, and three confidence-gated adaptive team-prototype values | Positive row-ranking but negative candidate-window event result; not promoted. Raw-phone row AP improves from 43.40% to 45.47%, while exact F1 falls from 27.85% to 24.10% and ±2-tolerant F1 falls from 45.57% to 40.96%. Its 48 selected proposals are reviewable; no browser/Android port. See [`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md). |
+| Side-switch production-state/serve grounding | Twenty soft reductions from the two shipped production bundles plus optional two-second serve-anchored V5/V6 appearance windows; suppression scores are diagnostic-only | V5 original appearance + ten state/gating inputs is a positive exploratory result (exact F1 27.85%→30.14%); V6 and serve-grounded appearance are rejected. No production/UI port. See [`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -462,6 +463,24 @@ prototypes fixed. Exact implementation:
 [`extract-side-switch-v6.py`](scripts/extract-side-switch-v6.py). The third-party model,
 license, feature rows, both fitted heads, and evaluation are bound by the v6 provenance
 artifact.
+
+### Side-switch production-state and serve-grounding profile
+
+`PRODUCTION-STATE20` is computed after the existing F104 production analysis. Ten
+state/gating inputs summarize adjacent component support, minimum rally confidence,
+decoded live fraction in the gap, ensemble-max rally/dead-state mean and peak values,
+and gap duration. Ten serve/anchor inputs summarize adjacent serve support/confidence,
+source-start alignment, and time from the preceding decoded end to the next serve.
+
+The alternate appearance view samples a two-second window from 1.25 seconds before to
+0.75 seconds after a production serve anchor. Two-head contacts within one second are
+confidence-combined; fallback proceeds through one-head serve, ensemble-component start,
+then source start. The selected V5 view retains original whole-rally appearance and uses
+only the ten state/gating inputs. The suppression specialist is never a declared input:
+its target included side switches and its fitting recordings overlap all frozen roles.
+Exact implementation: [`side_switch_production_state.py`](analysis/side_switch_production_state.py),
+extraction: [`extract-side-switch-production-state.py`](scripts/extract-side-switch-production-state.py),
+and fitting/evaluation: [`train-side-switch-production-state.py`](scripts/train-side-switch-production-state.py).
 
 ## Rebuild and parity acceptance
 

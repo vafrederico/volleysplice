@@ -260,6 +260,17 @@ full-video accuracy; the 59-gap V5/V6 proposal union is attached to stable event
 the development review UI. See
 [`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md).
 
+The production-state follow-up reuses both shipped bundles' rally, serve, dead-state,
+decoded-range, and agreement outputs after ordinary on-device analysis. A 20-scalar
+bank can be appended to V5/V6, and an alternate appearance path samples around the
+production serve anchor. Validation selects original V5 appearance plus ten soft
+state/gating inputs, improving retrospective exact F1 to 30.14% while remaining far
+below automatic-use quality. Hard agreement/serve gates and every V6 variant are
+rejected. The suppression head is quarantined because it was trained with explicit
+side-switch positives and overlaps all experiment roles. No shipped inference graph is
+changed. See
+[`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

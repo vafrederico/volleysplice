@@ -62,6 +62,8 @@ a model study.
 | `MULTIFRAME-NORMALIZED19` | 19 | Seven-frame 256×144 court-normalized broad/tight side identity, motion, and alignment-quality profile for side-switch v4 |
 | `PLAYER-ORIENTATION22` | 22 | Six v4 carry-forward scalars plus 16 motion-component player identity, proposal support, and quality inputs for side-switch v5 |
 | `DETECTED-ADAPTIVE29` | 29 | Six v4 carry-forward scalars, 20 quantized-person torso identity/localization inputs, and three adaptive whole-set team-orientation inputs for side-switch v6 |
+| `PRODUCTION-STATE20` | 20 | Ten rally/dead-state/agreement/gap inputs plus ten serve-anchor/support inputs reduced from the two shipped production bundles; side-switch add-on, not part of F104 |
+| `PLAYER-ORIENTATION22+STATE10` | 32 | Validation-selected V5 production-state view: frozen V5 appearance plus the ten state/gating inputs; suppression excluded |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -132,6 +134,8 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-specialist-v4-multiframe-normalized` | Side-switch gap, MULTIFRAME-NORMALIZED19; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces three fixed-band frames with seven-frame side palettes, first-seven-rally net calibration, piecewise vertical normalization, broad/tight scale pooling, and camera-translation compensation. Cadence/decoder policy is unchanged. | Positive feature result but rejected for automatic use. Exact F1 7.59%→16.67%, ±2-tolerant F1 32.91%→41.67%, and raw-phone row AP 18.41%→26.92%. Still only 6/37 exact predictions correct; no browser/Android port. |
 | `side-switch-specialist-v5-player-orientation` | Side-switch gap, PLAYER-ORIENTATION22; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Adds player-like motion-component proposals, soft foot-position side assignment, first-three-rally team anchors, and optional persistent orientation parity. Validation selected L2 1.0, ±1 margin, distance 0.25, and orientation weight zero. | Best event-level research result but not promoted for automatic use. Candidate-window exact F1 16.67%→27.85%, ±2-tolerant F1 41.67%→45.57%, and row AP 26.92%→43.40%. Its 44 selected proposals are exposed in `/side-switch-review`; no browser/Android port. |
 | `side-switch-specialist-v6-detected-adaptive`; bundled `detectedFixedPrototypeAblation` | Side-switch gap, DETECTED-ADAPTIVE29 selected head and 26-input fixed-prototype ablation; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces v5 motion blobs with the frozen 3.48 MB block-int8 OpenCV Zoo MediaPipe person localizer, torso palettes, and three-frame consistency; adds confidence-gated online team-prototype updates. The Apache-2.0 detector is a third-party frozen input, not a VolleyCut-trained model. | Negative candidate-window event result; not promoted. Raw-phone row AP rises 43.40%→45.47%, but exact F1 falls 27.85%→24.10% and ±2-tolerant F1 falls 45.57%→40.96%. Its 48 selected proposals are exposed in `/side-switch-review`; no browser/Android port. |
+| `side-switch-v5-production-state-v1` | Side-switch gap, PLAYER-ORIENTATION22+STATE10; frozen split and common V5/V6 decoder geometry | Compares original and production-serve-grounded V5 appearance with soft summaries of the two shipped rally/serve/dead-state bundles. Validation selects original appearance plus the ten state/gating inputs. Suppression scores are structurally quarantined. | Positive exploratory review-ranking result, not promoted. Exact precision/F1 improve 25.00%/27.85%→28.95%/30.14% while proposals fall 44→38; ±2 F1 moves 45.57%→46.58%, but exact per-recording count accuracy falls 3/11→0/11. No runtime/UI port. |
+| `side-switch-v6-production-state-v1` | Side-switch gap, validation-selected serve-grounded DETECTED-ADAPTIVE29+PRODUCTION-STATE20 | Same production-state/serve-grounding ablation applied to V6; all eight candidates tie on validation exact F1 and AP selects grounded+combined. | Rejected. Exact F1 falls 24.10%→17.91%, ±2 F1 40.96%→38.81%, and row AP 45.47%→36.23%; frozen V6 remains unchanged. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -208,6 +212,17 @@ reviewable without changing the frozen artifacts; see
 The immutable v6 provenance manifest has SHA-256
 `28541061320879877cb348355f92c6a1a80980b3fda754513667b1574c0e2fc5` and binds
 implementation revision `2cccddb7420bf845f99162fb09c841edca4a1d58`.
+
+The production-state experiment reuses the exact shipped production head artifacts
+and the frozen V5/V6 split. Its selected exploratory V5 fingerprint is
+`dc5ea15a4455ac06af9e1d71d81dbd0fbe1886e2b2d0eb708d60f1ab9647e5dd`; the rejected
+V6 experimental fingerprint is
+`5909cfb20b975f416973b42bd7426e7b4c5fa42e4441caa2dd83c76d50937032`.
+Complete feature/model/evaluation hashes, suppression-leakage audit, attribution,
+and non-promotion constraints are in
+[`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md).
+The immutable provenance manifest has SHA-256 `PROVENANCE_SHA256_PENDING` and binds
+implementation revision `IMPLEMENTATION_REVISION_PENDING`.
 
 ### No-beach full-gold refits
 

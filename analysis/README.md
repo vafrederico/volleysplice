@@ -727,6 +727,30 @@ proposal union is available in the
 [review UI](../docs/research/side-switch-v5-v6-review-ui-2026-08-20.md). See the
 [v6 decision record](../docs/research/side-switch-specialist-v6-2026-08-20.md).
 
+The production-state follow-up replays both shipped production bundles over the
+available F104 matrices, derives soft rally/serve/dead-state context, and creates
+optional serve-anchored V5/V6 appearance views. Suppression is retained only as a
+quarantined diagnostic because its targets and fitting recordings overlap this task.
+
+Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-production-state.py prepare
+# Run the documented V5/V6 grounded extraction and four augment commands.
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py freeze --family v5
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py evaluate --family v5
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py attribute --family v5
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py freeze --family v6
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py evaluate --family v6
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py attribute --family v6
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-production-state-provenance.py
+```
+
+V5 original appearance plus the ten state/gating inputs is a positive exploratory
+review-ranking result; V6 and serve-grounded appearance are not promoted. See the
+[production-state decision record](../docs/research/side-switch-production-state-experiment-2026-08-20.md)
+for exact commands, hashes, attribution, and guardrails.
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
