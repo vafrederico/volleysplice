@@ -33,8 +33,8 @@ const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
   { value: "wrong", label: "Mistakes" },
   { value: "all", label: "All" },
   { value: "correct", label: "Correct" },
-  { value: "near-as-far", label: "Near → far" },
-  { value: "far-as-near", label: "Far → near" },
+  { value: "near-as-far", label: "Near recall misses" },
+  { value: "far-as-near", label: "Far recall misses" },
 ];
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -92,13 +92,12 @@ function confidence(result: ServingSideResult): number {
 }
 
 function recordingMetrics(rows: ServingSideResult[]) {
-  const correct = rows.filter((row) => row.correct).length;
   const near = rows.filter((row) => row.human === "near");
   const far = rows.filter((row) => row.human === "far");
   return {
     rows: rows.length,
-    errors: rows.length - correct,
-    accuracy: rows.length ? correct / rows.length : 0,
+    nearRecallMisses: near.filter((row) => row.prediction === "far").length,
+    farRecallMisses: far.filter((row) => row.prediction === "near").length,
     nearRecall: near.length
       ? near.filter((row) => row.prediction === "near").length / near.length
       : 0,
@@ -398,12 +397,12 @@ function LoadedResults({
           <strong>{localMetrics.rows}</strong>
         </div>
         <div>
-          <span>Mistakes</span>
-          <strong data-tone="warning">{localMetrics.errors}</strong>
+          <span>Near recall misses</span>
+          <strong data-tone="warning">{localMetrics.nearRecallMisses}</strong>
         </div>
         <div>
-          <span>Accuracy</span>
-          <strong>{percentage(localMetrics.accuracy)}</strong>
+          <span>Far recall misses</span>
+          <strong data-tone="warning">{localMetrics.farRecallMisses}</strong>
         </div>
         <div>
           <span>Near recall</span>
@@ -425,7 +424,7 @@ function LoadedResults({
         <div className={base.filterHeading}>
           <span className={base.panelKicker}>01 / VIDEO</span>
           <strong>Choose a result set</strong>
-          <small>Test video is listed first</small>
+          <small>Recall miss = human side predicted as the opposite side</small>
         </div>
         <label>
           <span>Environment</span>
@@ -473,7 +472,11 @@ function LoadedResults({
                 onClick={() => setOutcome(item.value)}
                 key={item.value}
               >
-                {item.label}
+                {item.label} ·{" "}
+                {
+                  recordingRows.filter((row) => matchesOutcome(row, item.value))
+                    .length
+                }
               </button>
             ))}
           </div>
