@@ -297,6 +297,57 @@ def reviewed_rallies(
     return rows, counts
 
 
+def apply_review_corrections(
+    report: Mapping[str, Any],
+    decisions: Mapping[str, Any],
+    corrections: Mapping[str, Any],
+    *,
+    base_decision_sha256: str,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Apply the NAS correction overlay before building a feature dataset.
+
+    Side corrections replace the reviewed decision. A ``not-serve`` correction
+    removes that rally from the serving-side training/evaluation universe.
+    """
+    if (
+        corrections.get("schemaVersion") != 1
+        or corrections.get("reportKind") != report.get("kind")
+        or corrections.get("reportCreatedAt") != report.get("createdAt")
+        or corrections.get("baseDecisionSha256") != base_decision_sha256
+    ):
+        raise ServingSideSpecialistError(
+            "serving-side corrections belong to a different label revision"
+        )
+    raw_decisions = decisions.get("decisions")
+    raw_corrections = corrections.get("corrections")
+    if not isinstance(raw_decisions, Mapping) or not isinstance(
+        raw_corrections, Mapping
+    ):
+        raise ServingSideSpecialistError(
+            "serving-side correction payload has an invalid schema"
+        )
+    effective_decisions = dict(raw_decisions)
+    counts = {"applied": 0, "near": 0, "far": 0, "notServe": 0}
+    for rally_id, correction in raw_corrections.items():
+        original = raw_decisions.get(rally_id)
+        if not isinstance(rally_id, str) or original not in DECISIONS:
+            raise ServingSideSpecialistError(
+                f"serving-side correction targets an unknown or unclear rally: {rally_id}"
+            )
+        if correction == "not-serve":
+            effective_decisions.pop(rally_id, None)
+            counts["notServe"] += 1
+        elif correction in DECISIONS:
+            effective_decisions[rally_id] = correction
+            counts[str(correction)] += 1
+        else:
+            raise ServingSideSpecialistError(
+                f"invalid serving-side correction for {rally_id}"
+            )
+        counts["applied"] += 1
+    return {**decisions, "decisions": effective_decisions}, counts
+
+
 def matrix_for(rows: Sequence[ReviewedRally], feature_set: str) -> np.ndarray:
     if not rows:
         return np.empty((0, len(feature_names(feature_set))), dtype=np.float64)

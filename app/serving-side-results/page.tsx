@@ -22,6 +22,7 @@ type Props = {
   searchParams: Promise<{
     video?: string | string[];
     outcome?: string | string[];
+    rally?: string | string[];
   }>;
 };
 
@@ -30,27 +31,38 @@ export default async function ServingSideResultsPage({ searchParams }: Props) {
   const requested = await searchParams;
   try {
     const data = await loadServingSideResults();
+    const requestedRally =
+      typeof requested.rally === "string"
+        ? (data.results.find((result) => result.rallyId === requested.rally) ??
+          null)
+        : null;
     const requestedRecordingId =
       typeof requested.video === "string" &&
       data.recordings.some(
         (recording) => recording.recordingId === requested.video,
       )
         ? requested.video
-        : null;
+        : (requestedRally?.recordingId ?? null);
     const requestedOutcome =
       requested.outcome === "all" ||
       requested.outcome === "correct" ||
       requested.outcome === "wrong" ||
       requested.outcome === "near-as-far" ||
-      requested.outcome === "far-as-near"
+      requested.outcome === "far-as-near" ||
+      requested.outcome === "not-serve"
         ? requested.outcome
         : "wrong";
+    const requestedRallyId =
+      requestedRally?.recordingId === requestedRecordingId
+        ? requestedRally.rallyId
+        : null;
     return (
       <ServingSideResultsClient
         data={data}
         evaluationPath={path.basename(evaluationPath)}
         initialRecordingId={requestedRecordingId}
         initialOutcome={requestedOutcome}
+        initialRallyId={requestedRallyId}
       />
     );
   } catch (error) {
@@ -60,6 +72,7 @@ export default async function ServingSideResultsPage({ searchParams }: Props) {
         evaluationPath={evaluationPath}
         initialRecordingId={null}
         initialOutcome="wrong"
+        initialRallyId={null}
         loadError={error instanceof Error ? error.message : String(error)}
       />
     );

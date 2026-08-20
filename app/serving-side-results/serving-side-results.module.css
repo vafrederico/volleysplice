@@ -43,6 +43,15 @@
   color: #28785c;
 }
 
+.verdict[data-not-serve="true"] {
+  border-color: #a36510;
+  box-shadow: 5px 5px 0 #a36510;
+}
+
+.verdict[data-not-serve="true"] .outcome strong {
+  color: #a36510;
+}
+
 .arrow {
   display: grid;
   place-items: center;
@@ -51,6 +60,91 @@
   font:
     24px "Atkinson Hyperlegible Mono",
     monospace;
+}
+
+.correctionPanel {
+  margin: 14px 0 18px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(360px, auto);
+  gap: 12px 18px;
+  align-items: center;
+  border: 1px solid #aaa89f;
+  background: #eeeae0;
+}
+
+.correctionPanel > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.correctionPanel span,
+.correctionPanel small,
+.correctionPanel output {
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+
+.correctionPanel span {
+  color: #77796f;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.correctionPanel strong {
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.correctionPanel small {
+  color: #61645b;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.correctionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.correctionButtons button {
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid #888980;
+  border-radius: 0;
+  background: #fff;
+  color: #161813;
+  font:
+    10px "Atkinson Hyperlegible Mono",
+    monospace;
+  cursor: pointer;
+}
+
+.correctionButtons button[data-active="true"] {
+  color: #d7ff45;
+  background: #161813;
+}
+
+.correctionButtons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.correctionPanel output {
+  grid-column: 1 / -1;
+  color: #61645b;
+  font-size: 9px;
+  text-align: right;
+}
+
+.correctionPanel output[data-status="error"] {
+  color: #b62f23;
+}
+
+.correctionPanel output[data-status="saved"] {
+  color: #28785c;
 }
 
 .videoVerdict {
@@ -69,6 +163,10 @@
 
 .videoVerdict[data-correct="false"] {
   background: #b62f23;
+}
+
+.videoVerdict[data-not-serve="true"] {
+  background: #a36510;
 }
 
 .seekButtons {
@@ -162,8 +260,12 @@
   cursor: pointer;
 }
 
-.timelineEvent[data-correct="false"] {
+.timelineEvent[data-outcome="wrong"] {
   background: #e14536;
+}
+
+.timelineEvent[data-outcome="not-serve"] {
+  background: #c98018;
 }
 
 .timelineEvent[data-selected="true"] {
@@ -207,6 +309,10 @@
 
 .timelineLegend span[data-tone="wrong"]::before {
   background: #e14536;
+}
+
+.timelineLegend span[data-tone="not-serve"]::before {
+  background: #c98018;
 }
 
 .timelineLegend span[data-tone="selected"]::before {
@@ -376,6 +482,14 @@
 
   .detailGrid {
     grid-template-columns: 1fr;
+  }
+
+  .correctionPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .correctionButtons {
+    justify-content: flex-start;
   }
 }
 

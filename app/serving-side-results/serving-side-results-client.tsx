@@ -9,6 +9,8 @@ import { formatTime } from "@/lib/edit-list";
 import base from "../side-switch-review/side-switch-review.module.css";
 import styles from "./serving-side-results.module.css";
 import type {
+  ServingSideCorrectionState,
+  ServingSideHumanLabel,
   ServingSideResult,
   ServingSideResultRecording,
   ServingSideResultsData,
@@ -19,13 +21,15 @@ type OutcomeFilter =
   | "wrong"
   | "correct"
   | "near-as-far"
-  | "far-as-near";
+  | "far-as-near"
+  | "not-serve";
 
 type Props = {
   data: ServingSideResultsData | null;
   evaluationPath: string;
   initialRecordingId: string | null;
   initialOutcome: OutcomeFilter;
+  initialRallyId: string | null;
   loadError?: string;
 };
 
@@ -35,6 +39,7 @@ const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
   { value: "correct", label: "Correct" },
   { value: "near-as-far", label: "Near recall misses" },
   { value: "far-as-near", label: "Far recall misses" },
+  { value: "not-serve", label: "Not a serve" },
 ];
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -80,12 +85,15 @@ function matchesOutcome(
   result: ServingSideResult,
   outcome: OutcomeFilter,
 ): boolean {
-  if (outcome === "wrong") return !result.correct;
-  if (outcome === "correct") return result.correct;
+  if (outcome === "wrong")
+    return result.human !== "not-serve" && !result.correct;
+  if (outcome === "correct")
+    return result.human !== "not-serve" && result.correct;
   if (outcome === "near-as-far")
     return result.human === "near" && result.prediction === "far";
   if (outcome === "far-as-near")
     return result.human === "far" && result.prediction === "near";
+  if (outcome === "not-serve") return result.human === "not-serve";
   return true;
 }
 
@@ -99,7 +107,8 @@ function recordingMetrics(rows: ServingSideResult[]) {
   const near = rows.filter((row) => row.human === "near");
   const far = rows.filter((row) => row.human === "far");
   return {
-    rows: rows.length,
+    rows: near.length + far.length,
+    notServes: rows.filter((row) => row.human === "not-serve").length,
     nearRecallMisses: near.filter((row) => row.prediction === "far").length,
     farRecallMisses: far.filter((row) => row.prediction === "near").length,
     nearRecall: near.length
@@ -108,6 +117,22 @@ function recordingMetrics(rows: ServingSideResult[]) {
     farRecall: far.length
       ? far.filter((row) => row.prediction === "far").length / far.length
       : 0,
+  };
+}
+
+function aggregateMetrics(rows: ServingSideResult[]) {
+  const near = rows.filter((row) => row.human === "near");
+  const far = rows.filter((row) => row.human === "far");
+  const nearRecall = near.length
+    ? near.filter((row) => row.prediction === "near").length / near.length
+    : 0;
+  const farRecall = far.length
+    ? far.filter((row) => row.prediction === "far").length / far.length
+    : 0;
+  return {
+    balancedAccuracy: (nearRecall + farRecall) / 2,
+    nearRecall,
+    farRecall,
   };
 }
 
@@ -158,7 +183,8 @@ function ResultTimeline({
         <div>
           <strong>Full-video result map</strong>
           <span>
-            Red marks are mistakes; green marks are correct predictions.
+            Red marks are mistakes; green marks are correct; amber marks are
+            labeled not a serve.
           </span>
         </div>
         <span>{formatTime(duration)}</span>
@@ -188,7 +214,13 @@ function ResultTimeline({
           <button
             type="button"
             className={styles.timelineEvent}
-            data-correct={row.correct ? "true" : "false"}
+            data-outcome={
+              row.human === "not-serve"
+                ? "not-serve"
+                : row.correct
+                  ? "correct"
+                  : "wrong"
+            }
             data-selected={row.rallyId === selectedId ? "true" : "false"}
             style={{ left: `${Math.min(100, (row.start / duration) * 100)}%` }}
             onClick={(event) => {
@@ -208,6 +240,7 @@ function ResultTimeline({
       <div className={styles.timelineLegend}>
         <span data-tone="wrong">mistake</span>
         <span data-tone="correct">correct</span>
+        <span data-tone="not-serve">not a serve</span>
         <span data-tone="selected">selected</span>
       </div>
     </section>
@@ -219,45 +252,90 @@ function LoadedResults({
   evaluationPath,
   initialRecordingId,
   initialOutcome,
+  initialRallyId,
 }: Omit<Props, "data" | "loadError"> & { data: ServingSideResultsData }) {
+  const [correctionState, setCorrectionState] =
+    useState<ServingSideCorrectionState>(data.correctionState);
+  const [correctionStatus, setCorrectionStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [correctionError, setCorrectionError] = useState("");
+  const results = useMemo(
+    () =>
+      data.results.map((row) => {
+        const human =
+          correctionState.corrections[row.rallyId] ?? row.originalHuman;
+        return {
+          ...row,
+          human,
+          humanCorrected: human !== row.originalHuman,
+          correct: human !== "not-serve" && human === row.prediction,
+        };
+      }),
+    [correctionState.corrections, data.results],
+  );
+  const recordings = useMemo(
+    () =>
+      data.recordings.map((recording) => {
+        const rows = results.filter(
+          (row) => row.recordingId === recording.recordingId,
+        );
+        const sideRows = rows.filter((row) => row.human !== "not-serve");
+        const correct = sideRows.filter((row) => row.correct).length;
+        return {
+          ...recording,
+          rows: rows.length,
+          correct,
+          errors: sideRows.length - correct,
+        };
+      }),
+    [data.recordings, results],
+  );
   const defaultRecording =
-    data.recordings.find(
+    recordings.find(
       (recording) => recording.recordingId === initialRecordingId,
     ) ??
-    data.recordings[0] ??
+    recordings[0] ??
     null;
   const [environment, setEnvironment] = useState("all");
   const [recordingId, setRecordingId] = useState(
     defaultRecording?.recordingId ?? "",
   );
-  const [outcome, setOutcome] = useState<OutcomeFilter>(initialOutcome);
-  const [selectedId, setSelectedId] = useState("");
+  const initialRally = data.results.find(
+    (row) => row.rallyId === initialRallyId,
+  );
+  const [outcome, setOutcome] = useState<OutcomeFilter>(
+    initialRally && !matchesOutcome(initialRally, initialOutcome)
+      ? "all"
+      : initialOutcome,
+  );
+  const [selectedId, setSelectedId] = useState(initialRallyId ?? "");
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const environments = useMemo(
-    () => [...new Set(data.recordings.map((row) => row.environment))].sort(),
-    [data.recordings],
+    () => [...new Set(recordings.map((row) => row.environment))].sort(),
+    [recordings],
   );
   const visibleRecordings = useMemo(
     () =>
-      data.recordings.filter(
+      recordings.filter(
         (recording) =>
           environment === "all" || recording.environment === environment,
       ),
-    [data.recordings, environment],
+    [environment, recordings],
   );
   const recording =
-    data.recordings.find((row) => row.recordingId === recordingId) ??
+    recordings.find((row) => row.recordingId === recordingId) ??
     visibleRecordings[0] ??
     null;
   const recordingRows = useMemo(
     () =>
-      data.results
+      results
         .filter((row) => row.recordingId === recording?.recordingId)
         .sort((left, right) => left.start - right.start),
-    [data.results, recording?.recordingId],
+    [recording?.recordingId, results],
   );
   const filteredRows = useMemo(
     () => recordingRows.filter((row) => matchesOutcome(row, outcome)),
@@ -274,6 +352,7 @@ function LoadedResults({
     () => recordingMetrics(recordingRows),
     [recordingRows],
   );
+  const overallMetrics = useMemo(() => aggregateMetrics(results), [results]);
   const duration = Math.max(recording?.durationSeconds ?? 1, 1);
   const isAllVideoInference = data.kind.endsWith("all-video-inference");
 
@@ -293,6 +372,65 @@ function LoadedResults({
       if (next) setSelectedId(next.rallyId);
     },
     [filteredRows, selectedIndex],
+  );
+
+  const saveHumanCorrection = useCallback(
+    async (row: ServingSideResult, human: ServingSideHumanLabel | null) => {
+      const corrections = { ...correctionState.corrections };
+      if (human === null || human === row.originalHuman) {
+        delete corrections[row.rallyId];
+      } else {
+        corrections[row.rallyId] = human;
+      }
+      setCorrectionStatus("saving");
+      setCorrectionError("");
+      try {
+        const response = await fetch("/api/serving-side-results/corrections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            reportKind: correctionState.reportKind,
+            reportCreatedAt: correctionState.reportCreatedAt,
+            baseDecisionSha256: correctionState.baseDecisionSha256,
+            corrections,
+          }),
+        });
+        const payload = (await response.json()) as
+          | ServingSideCorrectionState
+          | { error?: string };
+        if (!response.ok || !("corrections" in payload)) {
+          throw new Error(
+            "error" in payload && payload.error
+              ? payload.error
+              : "Correction could not be saved",
+          );
+        }
+        setCorrectionState(payload);
+        setCorrectionStatus("saved");
+        const updatedHuman =
+          payload.corrections[row.rallyId] ?? row.originalHuman;
+        const updatedRow = {
+          ...row,
+          human: updatedHuman,
+          humanCorrected: updatedHuman !== row.originalHuman,
+          correct:
+            updatedHuman !== "not-serve" && updatedHuman === row.prediction,
+        };
+        if (!matchesOutcome(updatedRow, outcome)) {
+          setOutcome(updatedHuman === "not-serve" ? "not-serve" : "all");
+        }
+        setSelectedId(row.rallyId);
+      } catch (error) {
+        setCorrectionStatus("error");
+        setCorrectionError(
+          error instanceof Error
+            ? error.message
+            : "Correction could not be saved",
+        );
+      }
+    },
+    [correctionState, outcome],
   );
 
   const seek = useCallback(
@@ -333,12 +471,13 @@ function LoadedResults({
     const parameters = new URLSearchParams();
     parameters.set("video", recording.recordingId);
     parameters.set("outcome", outcome);
+    if (selected) parameters.set("rally", selected.rallyId);
     window.history.replaceState(
       null,
       "",
       `/serving-side-results?${parameters}`,
     );
-  }, [outcome, recording]);
+  }, [outcome, recording, selected]);
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -383,8 +522,8 @@ function LoadedResults({
             in-sample; the test video remains protected held-out.
           </p>
           <p className={base.sourceLine}>
-            {data.recordings.length} videos · {data.results.length} held-out
-            serves · model {data.modelFingerprint.slice(0, 12)}…
+            {recordings.length} videos · {results.length} reviewed serves ·
+            model {data.modelFingerprint.slice(0, 12)}…
           </p>
         </div>
         <div className={base.heroMetric}>
@@ -393,11 +532,11 @@ function LoadedResults({
               ? "All clear-label serves"
               : "All held-out recordings"}
           </span>
-          <strong>{percentage(data.metrics.balancedAccuracy)}</strong>
+          <strong>{percentage(overallMetrics.balancedAccuracy)}</strong>
           <small>balanced accuracy</small>
           <b>
-            near recall {percentage(data.metrics.nearRecall)} · far recall{" "}
-            {percentage(data.metrics.farRecall)}
+            near recall {percentage(overallMetrics.nearRecall)} · far recall{" "}
+            {percentage(overallMetrics.farRecall)}
           </b>
           {isAllVideoInference && (
             <b>29 development videos in-sample · 1 protected held-out</b>
@@ -410,8 +549,12 @@ function LoadedResults({
         aria-label="Selected video metrics"
       >
         <div>
-          <span>Video serves</span>
+          <span>Side labels</span>
           <strong>{localMetrics.rows}</strong>
+        </div>
+        <div>
+          <span>Not serves</span>
+          <strong data-tone="warning">{localMetrics.notServes}</strong>
         </div>
         <div>
           <span>Near recall misses</span>
@@ -431,10 +574,6 @@ function LoadedResults({
           <span>Far recall</span>
           <strong>{percentage(localMetrics.farRecall)}</strong>
         </div>
-        <div>
-          <span>Queue shown</span>
-          <strong>{filteredRows.length}</strong>
-        </div>
       </section>
 
       <section className={base.filterPanel} aria-label="Result filters">
@@ -450,7 +589,7 @@ function LoadedResults({
             onChange={(event) => {
               const nextEnvironment = event.target.value;
               setEnvironment(nextEnvironment);
-              const nextRecording = data.recordings.find(
+              const nextRecording = recordings.find(
                 (candidate) =>
                   nextEnvironment === "all" ||
                   candidate.environment === nextEnvironment,
@@ -552,7 +691,11 @@ function LoadedResults({
                 <div>
                   <p className={base.eyebrow}>
                     {selected.environment} · {evaluationRole(selected.split)} ·{" "}
-                    {selected.correct ? "correct" : "mistake"}
+                    {selected.human === "not-serve"
+                      ? "not a serve"
+                      : selected.correct
+                        ? "correct"
+                        : "mistake"}
                   </p>
                   <h2>{selected.rallyId}</h2>
                 </div>
@@ -572,11 +715,18 @@ function LoadedResults({
               <section
                 className={styles.verdict}
                 data-correct={selected.correct ? "true" : "false"}
+                data-not-serve={
+                  selected.human === "not-serve" ? "true" : "false"
+                }
               >
                 <div>
                   <span>Human label</span>
                   <strong>{selected.human}</strong>
-                  <small>completed review decision</small>
+                  <small>
+                    {selected.humanCorrected
+                      ? `corrected · frozen ${selected.originalHuman}`
+                      : "frozen review decision"}
+                  </small>
                 </div>
                 <div className={styles.arrow} aria-hidden="true">
                   →
@@ -588,11 +738,78 @@ function LoadedResults({
                 </div>
                 <div className={styles.outcome}>
                   <span>Outcome</span>
-                  <strong>{selected.correct ? "Correct" : "Wrong"}</strong>
+                  <strong>
+                    {selected.human === "not-serve"
+                      ? "Not a serve"
+                      : selected.correct
+                        ? "Correct"
+                        : "Wrong"}
+                  </strong>
                   <small>
                     near probability {percentage(selected.nearProbability)}
                   </small>
                 </div>
+              </section>
+
+              <section className={styles.correctionPanel}>
+                <div>
+                  <span>Correct the human label</span>
+                  <strong>
+                    {selected.humanCorrected
+                      ? `Corrected from ${selected.originalHuman} to ${selected.human}`
+                      : `Frozen label: ${selected.originalHuman}`}
+                  </strong>
+                  <small>
+                    Saved as a NAS correction overlay; the frozen training label
+                    and model artifact remain unchanged.
+                  </small>
+                </div>
+                <div className={styles.correctionButtons}>
+                  <button
+                    type="button"
+                    data-active={selected.human === "near" ? "true" : "false"}
+                    disabled={correctionStatus === "saving"}
+                    onClick={() => saveHumanCorrection(selected, "near")}
+                  >
+                    Human is near
+                  </button>
+                  <button
+                    type="button"
+                    data-active={selected.human === "far" ? "true" : "false"}
+                    disabled={correctionStatus === "saving"}
+                    onClick={() => saveHumanCorrection(selected, "far")}
+                  >
+                    Human is far
+                  </button>
+                  <button
+                    type="button"
+                    data-active={
+                      selected.human === "not-serve" ? "true" : "false"
+                    }
+                    disabled={correctionStatus === "saving"}
+                    onClick={() => saveHumanCorrection(selected, "not-serve")}
+                  >
+                    Not a serve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      correctionStatus === "saving" || !selected.humanCorrected
+                    }
+                    onClick={() => saveHumanCorrection(selected, null)}
+                  >
+                    Restore frozen
+                  </button>
+                </div>
+                <output data-status={correctionStatus} aria-live="polite">
+                  {correctionStatus === "saving"
+                    ? "Saving to NAS…"
+                    : correctionStatus === "saved"
+                      ? `Saved · ${Object.keys(correctionState.corrections).length} corrections`
+                      : correctionStatus === "error"
+                        ? correctionError
+                        : `${Object.keys(correctionState.corrections).length} saved corrections`}
+                </output>
               </section>
 
               <div className={base.videoStage}>
@@ -625,8 +842,13 @@ function LoadedResults({
                 <span
                   className={styles.videoVerdict}
                   data-correct={selected.correct ? "true" : "false"}
+                  data-not-serve={
+                    selected.human === "not-serve" ? "true" : "false"
+                  }
                 >
-                  HUMAN {selected.human} · MODEL {selected.prediction}
+                  {selected.human === "not-serve"
+                    ? "HUMAN: NOT A SERVE"
+                    : `HUMAN ${selected.human} · MODEL ${selected.prediction}`}
                 </span>
               </div>
 
@@ -756,7 +978,8 @@ function LoadedResults({
         <span>Frozen evaluation</span>
         <code>{evaluationPath}</code>
         <span>
-          Human labels and report features are SHA-256-bound to this evaluation.
+          Frozen labels and report features are SHA-256-bound; corrections stay
+          separate and label-revision-bound.
         </span>
       </footer>
     </main>
@@ -768,6 +991,7 @@ export function ServingSideResultsClient({
   evaluationPath,
   initialRecordingId,
   initialOutcome,
+  initialRallyId,
   loadError,
 }: Props) {
   if (!data) return unavailable(evaluationPath, loadError);
@@ -777,6 +1001,7 @@ export function ServingSideResultsClient({
       evaluationPath={evaluationPath}
       initialRecordingId={initialRecordingId}
       initialOutcome={initialOutcome}
+      initialRallyId={initialRallyId}
     />
   );
 }

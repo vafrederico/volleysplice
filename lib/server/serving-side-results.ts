@@ -10,6 +10,11 @@ import type {
 } from "@/app/serving-side-results/types";
 
 import {
+  loadServingSideCorrectionState,
+  type ServingSideCorrectionState,
+} from "./serving-side-corrections.ts";
+
+import {
   getServingSideReviewDecisionPath,
   getServingSideReviewReportPath,
 } from "./serving-side-review.ts";
@@ -125,6 +130,39 @@ function numericFeatures(value: unknown): Record<string, number | null> {
   );
 }
 
+function ratio(numerator: number, denominator: number): number {
+  return denominator ? numerator / denominator : 0;
+}
+
+function metricsForResults(
+  results: ServingSideResult[],
+): ServingSideResultMetrics {
+  const nearNear = results.filter(
+    (row) => row.human === "near" && row.prediction === "near",
+  ).length;
+  const nearFar = results.filter(
+    (row) => row.human === "near" && row.prediction === "far",
+  ).length;
+  const farNear = results.filter(
+    (row) => row.human === "far" && row.prediction === "near",
+  ).length;
+  const farFar = results.filter(
+    (row) => row.human === "far" && row.prediction === "far",
+  ).length;
+  const nearRecall = ratio(nearNear, nearNear + nearFar);
+  const farRecall = ratio(farFar, farFar + farNear);
+  const rows = nearNear + nearFar + farNear + farFar;
+  return {
+    rows,
+    accuracy: ratio(nearNear + farFar, rows),
+    balancedAccuracy: (nearRecall + farRecall) / 2,
+    nearPrecision: ratio(nearNear, nearNear + farNear),
+    nearRecall,
+    farPrecision: ratio(farFar, farFar + nearFar),
+    farRecall,
+  };
+}
+
 export async function loadServingSideResults(): Promise<ServingSideResultsData> {
   const evaluationPath = getServingSideResultsEvaluationPath();
   const reportPath = getServingSideReviewReportPath();
@@ -156,6 +194,14 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       "A serving-side result artifact contains invalid JSON",
     );
   }
+  let storedCorrections: ServingSideCorrectionState;
+  try {
+    storedCorrections = await loadServingSideCorrectionState();
+  } catch (error) {
+    throw new ServingSideResultsError(
+      `The human-label correction overlay could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   if (!isRecord(evaluation) || !isRecord(report) || !isRecord(review)) {
     throw new ServingSideResultsError(
       "A serving-side result artifact has an invalid schema",
@@ -181,6 +227,22 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     );
   }
   const decisions = review.decisions;
+  const baseDecisionSha256 = sha256(decisionBuffer);
+  const hasStoredCorrectionIdentity =
+    storedCorrections.reportKind !== null ||
+    storedCorrections.reportCreatedAt !== null ||
+    storedCorrections.baseDecisionSha256 !== null ||
+    Object.keys(storedCorrections.corrections).length > 0;
+  if (
+    hasStoredCorrectionIdentity &&
+    (storedCorrections.reportKind !== report.kind ||
+      storedCorrections.reportCreatedAt !== report.createdAt ||
+      storedCorrections.baseDecisionSha256 !== baseDecisionSha256)
+  ) {
+    throw new ServingSideResultsError(
+      "The human-label corrections belong to a different frozen label revision",
+    );
+  }
 
   const rallyById = new Map(
     objectArray(report.rallies, "report rallies").map((rally) => [
@@ -203,6 +265,21 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     evaluation.predictions,
     "evaluation predictions",
   );
+  for (const [rallyId, correction] of Object.entries(
+    storedCorrections.corrections,
+  )) {
+    if (
+      !rallyById.has(rallyId) ||
+      (decisions[rallyId] !== "near" && decisions[rallyId] !== "far") ||
+      (correction !== "near" &&
+        correction !== "far" &&
+        correction !== "not-serve")
+    ) {
+      throw new ServingSideResultsError(
+        `Human-label correction ${rallyId} is not bound to a clear reviewed rally`,
+      );
+    }
+  }
   const results: ServingSideResult[] = predictions.map((prediction) => {
     const rallyId = requiredString(prediction.rallyId, "prediction rally id");
     const recordingId = requiredString(
@@ -215,12 +292,17 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
         `Prediction ${rallyId} is not bound to its source rally`,
       );
     }
-    const human = side(decisions[rallyId], `human decision ${rallyId}`);
-    if (side(prediction.decision, `evaluation decision ${rallyId}`) !== human) {
+    const originalHuman = side(decisions[rallyId], `human decision ${rallyId}`);
+    if (
+      side(prediction.decision, `evaluation decision ${rallyId}`) !==
+      originalHuman
+    ) {
       throw new ServingSideResultsError(
         `Prediction ${rallyId} disagrees with the frozen human decision`,
       );
     }
+    const correction = storedCorrections.corrections[rallyId];
+    const human = correction ?? originalHuman;
     const model = side(prediction.prediction, `model prediction ${rallyId}`);
     const nearProbability = finiteNumber(
       prediction.nearProbability,
@@ -245,9 +327,11 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       start: finiteNumber(rally.start, `rally start ${rallyId}`),
       end: finiteNumber(rally.end, `rally end ${rallyId}`),
       human,
+      originalHuman,
+      humanCorrected: human !== originalHuman,
       prediction: model,
       nearProbability,
-      correct: human === model,
+      correct: human !== "not-serve" && human === model,
       notes: typeof rally.notes === "string" ? rally.notes : null,
       tags: Array.isArray(rally.tags)
         ? rally.tags.filter((tag): tag is string => typeof tag === "string")
@@ -270,7 +354,8 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
           `Evaluation recording ${recordingId} has no media entry`,
         );
       }
-      const correct = rows.filter((row) => row.correct).length;
+      const sideRows = rows.filter((row) => row.human !== "not-serve");
+      const correct = sideRows.filter((row) => row.correct).length;
       return {
         recordingId,
         environment: rows[0].environment,
@@ -288,14 +373,16 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
             : `${recordingId}.mp4`,
         rows: rows.length,
         correct,
-        errors: rows.length - correct,
+        errors: sideRows.length - correct,
       };
     })
     .sort((left, right) => {
       if (left.split === "test" && right.split !== "test") return -1;
       if (right.split === "test" && left.split !== "test") return 1;
+      const leftSideRows = left.correct + left.errors;
+      const rightSideRows = right.correct + right.errors;
       const accuracyDelta =
-        left.correct / left.rows - right.correct / right.rows;
+        ratio(left.correct, leftSideRows) - ratio(right.correct, rightSideRows);
       return accuracyDelta || left.recordingId.localeCompare(right.recordingId);
     });
 
@@ -305,8 +392,8 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     : isRecord(heldOutAll)
       ? heldOutAll.overall
       : null;
-  const resultMetrics = metrics(overall);
-  if (resultMetrics.rows !== results.length) {
+  const artifactMetrics = metrics(overall);
+  if (artifactMetrics.rows !== results.length) {
     throw new ServingSideResultsError(
       "Evaluation metrics and prediction rows have different counts",
     );
@@ -325,7 +412,15 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       "selected feature set",
     ),
     threshold: finiteNumber(evaluation.threshold, "model threshold"),
-    metrics: resultMetrics,
+    metrics: metricsForResults(results),
+    correctionState: {
+      schemaVersion: 1,
+      reportKind: requiredString(report.kind, "report kind"),
+      reportCreatedAt: requiredString(report.createdAt, "report timestamp"),
+      baseDecisionSha256,
+      savedAt: storedCorrections.savedAt,
+      corrections: storedCorrections.corrections,
+    },
     recordings,
     results,
   };

@@ -1,4 +1,5 @@
 export type ServingSideResultSide = "near" | "far";
+export type ServingSideHumanLabel = ServingSideResultSide | "not-serve";
 
 export type ServingSideResult = {
   rallyId: string;
@@ -11,7 +12,9 @@ export type ServingSideResult = {
   rallyIndex: number;
   start: number;
   end: number;
-  human: ServingSideResultSide;
+  human: ServingSideHumanLabel;
+  originalHuman: ServingSideResultSide;
+  humanCorrected: boolean;
   prediction: ServingSideResultSide;
   nearProbability: number;
   correct: boolean;
@@ -44,6 +47,15 @@ export type ServingSideResultMetrics = {
   farRecall: number;
 };
 
+export type ServingSideCorrectionState = {
+  schemaVersion: 1;
+  reportKind: string;
+  reportCreatedAt: string;
+  baseDecisionSha256: string;
+  savedAt: string | null;
+  corrections: Record<string, ServingSideHumanLabel>;
+};
+
 export type ServingSideResultsData = {
   kind: string;
   createdAt: string;
@@ -51,6 +63,7 @@ export type ServingSideResultsData = {
   selectedFeatureSet: string;
   threshold: number;
   metrics: ServingSideResultMetrics;
+  correctionState: ServingSideCorrectionState;
   recordings: ServingSideResultRecording[];
   results: ServingSideResult[];
 };

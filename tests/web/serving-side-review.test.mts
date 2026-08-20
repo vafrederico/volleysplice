@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  getServingSideCorrectionPath,
+  saveServingSideCorrections,
+} from "../../lib/server/serving-side-corrections.ts";
+import {
   getServingSideResultsEvaluationPath,
   loadServingSideResults,
 } from "../../lib/server/serving-side-results.ts";
@@ -22,10 +26,12 @@ test("serving-side review defaults to the NAS report and decision files", () => 
   const previousReport = process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
   const previousDecisions = process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
   const previousEvaluation = process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
+  const previousCorrections = process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
   try {
     delete process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
     delete process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
     delete process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
+    delete process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
     assert.equal(
       getServingSideReviewReportPath(),
       path.join(
@@ -47,6 +53,13 @@ test("serving-side review defaults to the NAS report and decision files", () => 
         "serving-side-specialist-v2-all-video-inference.json",
       ),
     );
+    assert.equal(
+      getServingSideCorrectionPath(),
+      path.join(
+        DEFAULT_SERVING_SIDE_DIRECTORY,
+        "serving-side-result-label-corrections-v1.json",
+      ),
+    );
   } finally {
     if (previousReport === undefined) {
       delete process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
@@ -62,6 +75,11 @@ test("serving-side review defaults to the NAS report and decision files", () => 
       delete process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
     } else {
       process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION = previousEvaluation;
+    }
+    if (previousCorrections === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = previousCorrections;
     }
   }
 });
@@ -133,13 +151,16 @@ test("serving-side result review joins frozen human and model decisions", async 
   const reportPath = path.join(temporary, "report.json");
   const decisionPath = path.join(temporary, "decisions.json");
   const evaluationPath = path.join(temporary, "evaluation.json");
+  const correctionPath = path.join(temporary, "corrections.json");
   const previousReport = process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
   const previousDecisions = process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
   const previousEvaluation = process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
+  const previousCorrections = process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
   try {
     process.env.VOLLEYCUT_SERVING_SIDE_REPORT = reportPath;
     process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS = decisionPath;
     process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION = evaluationPath;
+    process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = correctionPath;
     assert.equal(getServingSideResultsEvaluationPath(), evaluationPath);
 
     const report = `${JSON.stringify({
@@ -266,6 +287,42 @@ test("serving-side result review joins frozen human and model decisions", async 
       errors: 1,
     });
 
+    const correctedState = await saveServingSideCorrections({
+      schemaVersion: 1,
+      reportKind: "volleycut-serving-side-report-test-v1",
+      reportCreatedAt: "2026-08-20T12:00:00.000Z",
+      baseDecisionSha256: sha256(decisions),
+      corrections: {
+        "indoor-test-video:rally:1": "not-serve",
+      },
+    });
+    assert.equal(
+      correctedState.corrections["indoor-test-video:rally:1"],
+      "not-serve",
+    );
+    const corrected = await loadServingSideResults();
+    assert.deepEqual(
+      corrected.results.map((row) => ({
+        human: row.human,
+        originalHuman: row.originalHuman,
+        humanCorrected: row.humanCorrected,
+      })),
+      [
+        {
+          human: "not-serve",
+          originalHuman: "near",
+          humanCorrected: true,
+        },
+        {
+          human: "far",
+          originalHuman: "far",
+          humanCorrected: false,
+        },
+      ],
+    );
+    assert.equal(corrected.metrics.rows, 1);
+    assert.equal(corrected.metrics.accuracy, 1);
+
     await writeFile(
       decisionPath,
       decisions.replace(
@@ -293,6 +350,11 @@ test("serving-side result review joins frozen human and model decisions", async 
       delete process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION;
     } else {
       process.env.VOLLEYCUT_SERVING_SIDE_EVALUATION = previousEvaluation;
+    }
+    if (previousCorrections === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = previousCorrections;
     }
     await rm(temporary, { recursive: true, force: true });
   }

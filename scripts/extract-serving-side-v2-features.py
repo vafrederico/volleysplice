@@ -16,7 +16,7 @@ import numpy as np
 
 from analysis.artifacts import atomic_write_text
 from analysis.serving_side import crop_roi
-from analysis.serving_side_specialist import reviewed_rallies
+from analysis.serving_side_specialist import apply_review_corrections, reviewed_rallies
 from analysis.serving_side_v2 import (
     FEATURE_NAMES,
     FEATURE_VERSION,
@@ -28,8 +28,16 @@ from analysis.side_switch_appearance import read_frame
 
 
 ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
-DEFAULT_REPORT = ROOT / "reports/serving-side/serving-side-existing-label-variants-full-nas-v2.json"
-DEFAULT_DECISIONS = ROOT / "reports/serving-side/serving-side-review-decisions-full-nas-v1.json"
+DEFAULT_REPORT = (
+    ROOT
+    / "reports/serving-side/serving-side-existing-label-variants-full-nas-v2.json"
+)
+DEFAULT_DECISIONS = (
+    ROOT / "reports/serving-side/serving-side-review-decisions-full-nas-v1.json"
+)
+DEFAULT_CORRECTIONS = (
+    ROOT / "reports/serving-side/serving-side-result-label-corrections-v1.json"
+)
 DEFAULT_DEVELOPMENT = ROOT / "features/serving-side-v2/development.json"
 DEFAULT_PROTECTED = ROOT / "features/serving-side-v2/protected-test.json"
 REPORT_SHA256 = "611d698961534740b3b07624a2ade1d574de4e06b8bf5ce701b641b4690fc35b"
@@ -37,6 +45,7 @@ DECISIONS_SHA256 = "1066edcf9579d3c92157a8504dbe5d798023ebb3ff4605e0dad9e451c970
 RESIZE = (192, 108)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 IMPLEMENTATION_PATHS = (
+    REPOSITORY_ROOT / "analysis/serving_side_specialist.py",
     REPOSITORY_ROOT / "analysis/serving_side_v2.py",
     Path(__file__).resolve(),
 )
@@ -110,7 +119,24 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
     if report_hash != REPORT_SHA256 or decisions_hash != DECISIONS_SHA256:
         raise ValueError("review sources do not match the frozen serving-side v1 hashes")
     report, decisions = _load(report_path), _load(decisions_path)
+    corrections_path = args.corrections.resolve()
+    correction_source = None
+    correction_counts = {"applied": 0, "near": 0, "far": 0, "notServe": 0}
+    if corrections_path.exists():
+        correction_hash = _sha256(corrections_path)
+        decisions, correction_counts = apply_review_corrections(
+            report,
+            decisions,
+            _load(corrections_path),
+            base_decision_sha256=decisions_hash,
+        )
+        correction_source = {
+            "path": str(corrections_path),
+            "sha256": correction_hash,
+        }
     reviewed, review_counts = reviewed_rallies(report, decisions)
+    review_counts["notServe"] = correction_counts["notServe"]
+    review_counts["missing"] -= correction_counts["notServe"]
     wanted = [row for row in reviewed if (row.split == "test") == args.protected_test]
     if not wanted:
         raise ValueError("selected extraction scope has no clear reviewed rows")
@@ -179,6 +205,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         "offsetsSeconds": list(OFFSETS_SECONDS),
         "resize": {"width": RESIZE[0], "height": RESIZE[1]},
         "reviewCounts": review_counts,
+        "correctionCounts": correction_counts,
         "rows": output_rows,
         "counts": {
             "rows": len(output_rows),
@@ -189,6 +216,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         },
         "dataPolicy": {
             "unclear": "excluded",
+            "notServeCorrections": "excluded",
             "protectedTestIncluded": args.protected_test,
             "recordingRanks": "computed from unlabeled feature values within each recording",
             "fallbackGeometry": "top/bottom 32% of the recording ROI; camera-relative, not metric court calibration",
@@ -196,6 +224,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         "sources": {
             "servingSideReport": {"path": str(report_path), "sha256": report_hash},
             "reviewDecisions": {"path": str(decisions_path), "sha256": decisions_hash},
+            "humanLabelCorrections": correction_source,
             "files": [
                 {
                     "recordingId": recording_id,
@@ -223,6 +252,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serving-report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--decisions", type=Path, default=DEFAULT_DECISIONS)
+    parser.add_argument("--corrections", type=Path, default=DEFAULT_CORRECTIONS)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--protected-test", action="store_true")
     return parser

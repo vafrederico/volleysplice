@@ -8,6 +8,7 @@ from analysis.serving_side_specialist import (
     ReviewedRally,
     ServingSideModel,
     ServingSideSpecialistError,
+    apply_review_corrections,
     binary_metrics,
     fit_specialist,
     grouped_cross_fit,
@@ -145,6 +146,44 @@ class ServingSideSpecialistTests(unittest.TestCase):
             reviewed_rallies(
                 report, {**decisions, "reportCreatedAt": "yesterday"}
             )
+
+    def test_corrections_override_sides_and_exclude_not_serves(self) -> None:
+        report = {
+            "kind": "serving-side",
+            "createdAt": "today",
+            "rallies": [
+                {"rallyId": "one", "recordingId": "r1"},
+                {"rallyId": "two", "recordingId": "r1"},
+            ],
+        }
+        decisions = {
+            "reportKind": "serving-side",
+            "reportCreatedAt": "today",
+            "decisions": {"one": "near", "two": "far"},
+        }
+        corrected, correction_counts = apply_review_corrections(
+            report,
+            decisions,
+            {
+                "schemaVersion": 1,
+                "reportKind": "serving-side",
+                "reportCreatedAt": "today",
+                "baseDecisionSha256": "frozen-sha",
+                "corrections": {"one": "far", "two": "not-serve"},
+            },
+            base_decision_sha256="frozen-sha",
+        )
+
+        rows, review_counts = reviewed_rallies(report, corrected)
+
+        self.assertEqual(
+            [(row.rally_id, row.decision) for row in rows], [("one", "far")]
+        )
+        self.assertEqual(
+            correction_counts,
+            {"applied": 2, "near": 0, "far": 1, "notServe": 1},
+        )
+        self.assertEqual(review_counts["missing"], 1)
 
 
 if __name__ == "__main__":
