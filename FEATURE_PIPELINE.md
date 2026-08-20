@@ -353,6 +353,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch v1 appearance context | Seven marker-level appearance/detection-change values, before/after count/box/score/coverage summaries, gap duration, and paired missingness indicators | Rejected for automatic use; retained as a 36-input review-ranking baseline. This is a separate marker pipeline, not part of the 104 base columns. See [`side-switch-specialist-v1-2026-08-20.md`](docs/research/side-switch-specialist-v1-2026-08-20.md). |
 | Side-switch v2 | Adaptive near/far color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a separately selected temporal toggle decoder | Retained research/review ranking; not production. The selected `SIDE34-V2` classifier uses the raw combined family and the selected decoder is a no-op. See [`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md). |
 | Side-switch v3 cadence + LOWRES12 | Seven-point opportunity decoder plus 12 detector-free HSV/motion/blur/edge features from three 192×108 early-rally frames on each side of a gap | Implemented and rejected for automatic use. The source-held-out selected decoder reached 7.59% exact-gap F1; ±4 cadence-only reached 12.12% exact and 42.42% at ±2 scoring tolerance. No browser/Android port. See [`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md). |
+| Side-switch v4 MULTIFRAME-NORMALIZED19 | Seven 256×144 frames per rally, early-set net-height calibration, piecewise court normalization, camera-translation compensation, and broad/tight multi-frame near/far palettes | Positive research result but rejected for automatic use. Raw-phone exact-gap F1 improved from 7.59% to 16.67%, while ±2-tolerant F1 improved from 32.91% to 41.67%. No browser/Android port. See [`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -400,6 +401,23 @@ change, minimum log blur, luma change, and edge-density change. There is no pers
 detector or neural feature extractor. Exact implementation:
 [`side_switch_v3.py`](analysis/side_switch_v3.py); extraction:
 [`extract-side-switch-v3.py`](scripts/extract-side-switch-v3.py).
+
+### Side-switch v4 multi-frame normalized profile
+
+`MULTIFRAME-NORMALIZED19` inherits v3's immutable labels and recording split but replaces
+`LOWRES12`. Seven 256×144 frames span 8% through 92% of each rally. Long horizontal lines
+from the first seven rallies estimate a recording-level foreground-net height, and a
+piecewise vertical remap places that divider at `y=0.5`. Upper-frame phase correlation
+compensates global translation before temporal-difference weighting. Joint hue/saturation
+and value palettes are pooled across all frames in broad overlapping and tight disjoint
+near/far bands.
+
+The 19 ordered inputs are broad and tight same/swapped assignment costs, swap margins,
+orientation-flip evidence, mean swap margin, cross-scale disagreement, minimum/change
+side separation, before/after palette instability, global appearance change,
+minimum/change foreground coverage, maximum normalized camera shift, and minimum
+alignment response. Exact implementation: [`side_switch_v4.py`](analysis/side_switch_v4.py);
+extraction: [`extract-side-switch-v4.py`](scripts/extract-side-switch-v4.py).
 
 ## Rebuild and parity acceptance
 

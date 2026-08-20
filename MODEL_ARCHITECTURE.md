@@ -228,6 +228,14 @@ The implementation and artifacts remain research-only; no TypeScript/Java port o
 production component was created. See
 [`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md).
 
+V4 keeps that cadence decoder fixed and replaces only visual representation. It samples
+seven 256×144 frames across each adjacent rally, calibrates net height from the first
+seven rallies, normalizes the net to a stable vertical coordinate, compensates camera
+translation, and compares broad/tight multi-frame side palettes. This improves
+raw-phone exact-gap F1 from 7.59% to 16.67%, but remains far below automatic-use
+requirements. It is research-only and has no TypeScript/Java port. See
+[`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

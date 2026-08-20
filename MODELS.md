@@ -59,6 +59,7 @@ a model study.
 | `SIDE36` | 36 | Separate side-switch marker appearance/context signature |
 | `SIDE34-V2` | 34 | 17 adaptive side-conditioned/derived marker features plus one missingness indicator per scalar; separate from production F104 |
 | `LOWRES12` | 12 | Detector-free 192×108 HSV assignment, motion, blur, luma, and edge changes for side-switch v3 |
+| `MULTIFRAME-NORMALIZED19` | 19 | Seven-frame 256×144 court-normalized broad/tight side identity, motion, and alignment-quality profile for side-switch v4 |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -126,6 +127,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-specialist-v1-no-blurry-beach-2026-08-20` | Counterfactual side-switch marker, SIDE36; fit `SIDE3-NO-BLUR`, same historical selection/evaluation protocol | Exact v1 refit after removing only `beach-source-02`; selected `appearance-context`, L2 1.0, threshold 0.432488. | Rejected; primary raw F1 fell 17.57%→17.02%, ROC AUC 0.538→0.524, and AP 0.110→0.106. Retained only as the blur-exclusion diagnostic. |
 | `side-switch-specialist-v2` | Side-switch marker, SIDE34-V2; class-balanced logistic; fit `SIDE-V2-T5`, select threshold/decoder on `SIDE-V2-V2`, confirm once on `SIDE-V2-E4` | Compared with v1 on the same four confirmation recordings. Replaced gap/context-heavy v1 inputs with adaptive near/far assignment costs, frame consistency, color moments, derived stability interactions, and unlabeled recording-bound normalization candidates. L2/family used grouped OOF selection; validation selected a no-op temporal decoder. | Retained research/review ranking, not automatic scoring. Same-scope v1→v2 F1 19.05%→32.73%, ROC AUC 0.590→0.796, AP 0.124→0.373; v2 precision remains 20.45%. |
 | `side-switch-specialist-v3-reanchored-capped6` | Side-switch gap, LOWRES12; fit `SIDE-V3-T6`, select L2/threshold/decoder on `SIDE-V3-V4`, retrospectively evaluate `SIDE-V3-E11` | Detector-free 192×108 HSV/motion/blur/edge ranker plus seven-point opportunity decoder. Evaluated ±1/±2/±3/±4 margins; overlapping ±4 windows use monotonic one-to-one assignment. Decoder re-anchors after selection and caps a set at six opportunities. | Rejected; source-held-out exact-gap F1 7.59%, ±2-tolerant F1 32.91%. Cadence-only ±4 reached 12.12% exact and 42.42% ±2-tolerant F1. No browser/Android port. |
+| `side-switch-specialist-v4-multiframe-normalized` | Side-switch gap, MULTIFRAME-NORMALIZED19; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces three fixed-band frames with seven-frame side palettes, first-seven-rally net calibration, piecewise vertical normalization, broad/tight scale pooling, and camera-translation compensation. Cadence/decoder policy is unchanged. | Positive feature result but rejected for automatic use. Exact F1 7.59%→16.67%, ±2-tolerant F1 32.91%→41.67%, and raw-phone row AP 18.41%→26.92%. Still only 6/37 exact predictions correct; no browser/Android port. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -168,6 +170,12 @@ sensitivity, and non-promotion decision are in
 The immutable 21-video provenance manifest has SHA-256
 `9bcc8d33f3a268f991d311a719205b5657544c23943096629c18e3ca70ba598e`
 and binds implementation revision `ecadbdd1cbfb4c0d88455a0bd329a495b17ce2d3`.
+
+The selected v4 fingerprint is
+`54447d6dbb3db1c2ab281f3cfef0e5ef05e4cfa374cae21aa6f287508e9a98ae`.
+Its feature/model/development/evaluation SHA-256 values, v3 comparison, and non-promotion
+decision are in
+[`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md).
 
 ### No-beach full-gold refits
 

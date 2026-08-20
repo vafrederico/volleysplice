@@ -94,6 +94,8 @@ features and lineage are registered in
 [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and [`MODELS.md`](MODELS.md). The implemented
 side-switch v3 cadence/low-resolution ranker and the v1 no-blur counterfactual both failed
 their promotion gates and are tracked there as research only; neither is a shipped model.
+The v4 multi-frame, court-normalized side-identity study improves on v3 but also remains
+research-only because its exact precision is still 16.22%.
 
 ### Setup
 

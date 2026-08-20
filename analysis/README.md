@@ -665,6 +665,25 @@ Python reference was not ported into production TypeScript/Java. See the
 [v3 on-device plan](../docs/research/side-switch-v3-on-device-plan-2026-08-20.md), and
 [v1 blur-exclusion result](../docs/research/side-switch-v1-blur-exclusion-counterfactual-2026-08-20.md).
 
+Side-switch v4 changes only the visual representation requested after v3. It samples
+seven frames throughout each rally, calibrates foreground-net height from the first seven
+rallies, applies court-relative vertical normalization and camera-translation
+compensation, and pools broad/tight near/far side palettes. Labels, split, cadence,
+candidate margins, re-anchoring, and maximum opportunity count remain unchanged.
+
+V4 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v4.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v4.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v4.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v4-provenance.py
+```
+
+All destinations are immutable. V4 improves the retrospective raw-phone result over v3
+but remains below automatic-use requirements, so it also has no production port. See the
+[v4 decision record](../docs/research/side-switch-specialist-v4-2026-08-20.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
