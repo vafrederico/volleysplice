@@ -8,7 +8,7 @@ const DEFAULT_REPORT_PATH = path.join(
   DEFAULT_LABELING_WORKSPACE,
   "reports",
   "serving-side",
-  "serving-side-existing-label-variants-full-nas-v1.json",
+  "serving-side-existing-label-variants-full-nas-v2.json",
 );
 const DEFAULT_DECISIONS_FILENAME =
   "serving-side-review-decisions-full-nas-v1.json";

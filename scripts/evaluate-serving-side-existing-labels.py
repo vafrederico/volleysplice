@@ -38,7 +38,7 @@ from analysis.serving_side import (
 from analysis.side_switch_appearance import create_hog, read_frame
 
 
-EXPERIMENT_KIND = "volleycut-serving-side-existing-label-variants-v1"
+EXPERIMENT_KIND = "volleycut-serving-side-existing-label-variants-v2"
 SIDE_VALUES = (NEAR_SIDE, FAR_SIDE)
 VARIANT_DEFINITIONS: dict[str, dict[str, Any]] = {
     "pixelMotion": {
@@ -681,7 +681,7 @@ def main() -> int:
     }
     labels_directory = str(labels_dir) if labels_dir else str(manifest_path.parent)
     report = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "kind": EXPERIMENT_KIND,
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "labels": {
@@ -742,14 +742,14 @@ def main() -> int:
                 for source_type in sorted({str(row.get("sourceType", "unknown")) for row in rows})
             },
             "targetSides": {
-                side: sum(row.get("weakTarget", {}).get("side") == side for row in rows)
+                side: sum(row.get("weakTarget", {}).get("side") == side for row in target_rows)
                 for side in SIDE_VALUES
             },
             "targetStrengths": {
                 strength: sum(
                     row.get("weakTarget", {}).get("side") in SIDE_VALUES
                     and row.get("weakTarget", {}).get("strength") == strength
-                    for row in rows
+                    for row in target_rows
                 )
                 for strength in ("strong", "medium", "weak")
             },

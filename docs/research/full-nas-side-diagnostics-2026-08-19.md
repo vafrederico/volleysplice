@@ -74,7 +74,7 @@ and 0.75-second edge margin.
 The completed report paths are:
 
 ```text
-/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-existing-label-variants-full-nas-v1.json
+/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-existing-label-variants-full-nas-v2.json
 /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/appearance-diagnostic-full-nas-v1.json
 ```
 
@@ -88,6 +88,28 @@ Both queues stream video through a report-indexed development media route, so
 raw no-backup MP4s do not need to be registered as prepared labeling tasks.
 Decisions are debounced and atomically saved to NAS review files; they do not
 mutate labels or research reports.
+
+The completed NAS run produced these headline counts:
+
+- side switch: 1,096 windows total; 41 labeled positives, 625 labeled controls,
+  and 430 candidate-only windows; all but one window produced usable frame
+  features;
+- serving side: 1,424 rally rows total; 121 weak targets in the evaluation
+  universe (70 near, 51 far), 739 candidate-only rows, and no frame errors.
+
+On the serving-side evaluation universe (completed labels plus reviewed drafts),
+`motionPaletteHog` reached 0.835 directional accuracy and 0.823 balanced
+accuracy at 0.802 decision coverage. The completed-label-only result remained
+0.833 directional accuracy, 0.822 balanced accuracy, and 0.800 decision
+coverage. The reviewed-draft intake source contributes only one strict weak
+target, so it is not evidence of generalization. The 739 candidate-only rows
+are scored and reviewable but have no accuracy number until someone validates
+them in the UI.
+
+For side switching, the pooled labeled/draft diagnostic had 666 evaluable
+windows (41 positives, 625 controls); area-weighted player palette reached
+0.722 ROC AUC. The completed-label-only subset reproduced the earlier 0.744
+ROC AUC. Candidate-only gaps are intentionally excluded from both numbers.
 
 ## Labels needed next
 
@@ -125,7 +147,7 @@ PYTHONPATH=. .venv/bin/python scripts/evaluate-side-switch-appearance.py \
 
 PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-existing-labels.py \
   --corpus-manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-nas-video-corpus-v1.json \
-  --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-existing-label-variants-full-nas-v1.json \
+  --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-existing-label-variants-full-nas-v2.json \
   --environments beach grass indoor unknown
 ```
 
@@ -133,4 +155,3 @@ Future iterations should build a new manifest/report filename, retain the
 candidate source model IDs in `candidateSource`, and compare the same source
 scope and target-status filters. They should not overwrite this report or
 promote candidate-only review decisions to gold labels automatically.
-
