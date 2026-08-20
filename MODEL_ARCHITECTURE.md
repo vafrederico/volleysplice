@@ -245,6 +245,18 @@ AP to 43.40%. Exact precision is still only 25.00%, so v5 remains research-only 
 production port. See
 [`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md).
 
+V6 replaces those motion proposals with a pinned 3.48 MB block-int8 MediaPipe person
+localizer. Three frames per rally run through four overlapping ownership tiles; pose
+landmarks define torso palettes, and v4 net geometry maps hip positions to canonical
+near/far sides. Team palettes start from the first three score-zero rallies and update
+online only when localization, assignment, and side-separation quality agree. The full
+29-input classifier and a separately fitted 26-input fixed-prototype ablation share the
+same cadence decoder search. Validation again selects orientation weight zero. Although
+raw-phone row AP improves from 43.40% to 45.47%, exact F1 falls to 24.10% and ±2-tolerant
+F1 falls to 40.96%; both v6 variants select the same 48 events. V6 is rejected, has no
+production port, and v5 remains the best event-level research artifact. See
+[`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

@@ -98,6 +98,9 @@ The v4 multi-frame, court-normalized side-identity study improves on v3 but also
 research-only because its exact precision is still 16.22%.
 The v5 player-isolation study improves exact precision to 25.00%; persistent orientation
 was a validation-selected no-op, and v5 also remains research-only.
+The v6 quantized-person/adaptive-prototype study improves raw-phone row AP to 45.47% but
+regresses exact F1 to 24.10%; it is tracked as a rejected research result and v5 remains
+the best event-level side-switch artifact.
 
 ### Setup
 

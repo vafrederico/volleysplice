@@ -61,6 +61,7 @@ a model study.
 | `LOWRES12` | 12 | Detector-free 192×108 HSV assignment, motion, blur, luma, and edge changes for side-switch v3 |
 | `MULTIFRAME-NORMALIZED19` | 19 | Seven-frame 256×144 court-normalized broad/tight side identity, motion, and alignment-quality profile for side-switch v4 |
 | `PLAYER-ORIENTATION22` | 22 | Six v4 carry-forward scalars plus 16 motion-component player identity, proposal support, and quality inputs for side-switch v5 |
+| `DETECTED-ADAPTIVE29` | 29 | Six v4 carry-forward scalars, 20 quantized-person torso identity/localization inputs, and three adaptive whole-set team-orientation inputs for side-switch v6 |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -129,7 +130,8 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-specialist-v2` | Side-switch marker, SIDE34-V2; class-balanced logistic; fit `SIDE-V2-T5`, select threshold/decoder on `SIDE-V2-V2`, confirm once on `SIDE-V2-E4` | Compared with v1 on the same four confirmation recordings. Replaced gap/context-heavy v1 inputs with adaptive near/far assignment costs, frame consistency, color moments, derived stability interactions, and unlabeled recording-bound normalization candidates. L2/family used grouped OOF selection; validation selected a no-op temporal decoder. | Retained research/review ranking, not automatic scoring. Same-scope v1→v2 F1 19.05%→32.73%, ROC AUC 0.590→0.796, AP 0.124→0.373; v2 precision remains 20.45%. |
 | `side-switch-specialist-v3-reanchored-capped6` | Side-switch gap, LOWRES12; fit `SIDE-V3-T6`, select L2/threshold/decoder on `SIDE-V3-V4`, retrospectively evaluate `SIDE-V3-E11` | Detector-free 192×108 HSV/motion/blur/edge ranker plus seven-point opportunity decoder. Evaluated ±1/±2/±3/±4 margins; overlapping ±4 windows use monotonic one-to-one assignment. Decoder re-anchors after selection and caps a set at six opportunities. | Rejected; source-held-out exact-gap F1 7.59%, ±2-tolerant F1 32.91%. Cadence-only ±4 reached 12.12% exact and 42.42% ±2-tolerant F1. No browser/Android port. |
 | `side-switch-specialist-v4-multiframe-normalized` | Side-switch gap, MULTIFRAME-NORMALIZED19; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces three fixed-band frames with seven-frame side palettes, first-seven-rally net calibration, piecewise vertical normalization, broad/tight scale pooling, and camera-translation compensation. Cadence/decoder policy is unchanged. | Positive feature result but rejected for automatic use. Exact F1 7.59%→16.67%, ±2-tolerant F1 32.91%→41.67%, and raw-phone row AP 18.41%→26.92%. Still only 6/37 exact predictions correct; no browser/Android port. |
-| `side-switch-specialist-v5-player-orientation` | Side-switch gap, PLAYER-ORIENTATION22; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Adds player-like motion-component proposals, soft foot-position side assignment, first-three-rally team anchors, and optional persistent orientation parity. Validation selected L2 1.0, ±1 margin, distance 0.25, and orientation weight zero. | Best visual research result but rejected for automatic use. Exact F1 16.67%→27.85%, ±2-tolerant F1 41.67%→45.57%, and row AP 26.92%→43.40%. Exact precision remains 25.00%; no browser/Android port. |
+| `side-switch-specialist-v5-player-orientation` | Side-switch gap, PLAYER-ORIENTATION22; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Adds player-like motion-component proposals, soft foot-position side assignment, first-three-rally team anchors, and optional persistent orientation parity. Validation selected L2 1.0, ±1 margin, distance 0.25, and orientation weight zero. | Best event-level research result but rejected for automatic use. Exact F1 16.67%→27.85%, ±2-tolerant F1 41.67%→45.57%, and row AP 26.92%→43.40%. Exact precision remains 25.00%; no browser/Android port. |
+| `side-switch-specialist-v6-detected-adaptive`; bundled `detectedFixedPrototypeAblation` | Side-switch gap, DETECTED-ADAPTIVE29 selected head and 26-input fixed-prototype ablation; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces v5 motion blobs with the frozen 3.48 MB block-int8 OpenCV Zoo MediaPipe person localizer, torso palettes, and three-frame consistency; adds confidence-gated online team-prototype updates. The Apache-2.0 detector is a third-party frozen input, not a VolleyCut-trained model. | Negative event result; not promoted. Raw-phone row AP rises 43.40%→45.47%, but exact F1 falls 27.85%→24.10% and ±2-tolerant F1 falls 45.57%→40.96%. The adaptive and fixed-prototype variants select the same 48 events; no browser/Android port. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -190,6 +192,17 @@ result, and v4 comparison are in
 The immutable v5 provenance manifest has SHA-256
 `479ac49e1aefa0d0e4af841834b9a434575250ec566c58a86e3f57884c01b148`
 and binds implementation revision `d0ac779a42d0672cfed29ec1d8fe0239fbd9e2bc`.
+
+The selected v6 fingerprint is
+`3abf18c01bff4c68bcbc805d45d302407a7495ad6dfaefb0a78ba856b56a41d4`;
+the independently fitted fixed-prototype diagnostic fingerprint is
+`df1f9498c21c27b10602baa0632a967fde59bde54afa8d5a2dc0fcf2653e0e33`.
+Its pinned third-party detector and feature/model/development/evaluation hashes,
+localization runtime audit, ablation, source-group comparison, and non-promotion
+decision are in
+[`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md).
+The immutable v6 provenance manifest has SHA-256 `PROVENANCE_SHA256_PENDING` and binds
+implementation revision `IMPLEMENTATION_REVISION_PENDING`.
 
 ### No-beach full-gold refits
 

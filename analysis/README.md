@@ -702,6 +702,28 @@ All destinations are immutable. V5 is the best visual side-switch result but rem
 below automatic-use precision, so it has no production port. See the
 [v5 decision record](../docs/research/side-switch-specialist-v5-2026-08-20.md).
 
+Side-switch v6 replaces v5's motion components with the pinned 3.48 MB block-int8
+OpenCV Zoo MediaPipe person localizer. It samples three frames per rally, runs four
+overlapping ownership tiles, pools landmark-defined torso palettes, and keeps at most
+two detections per canonical court side. Confidence-gated online team prototypes add
+three adaptive orientation inputs. A separately fitted 26-input ablation holds the
+score-zero prototypes fixed.
+
+V6 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/install-side-switch-player-detector.py
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v6.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v6.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v6.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v6-provenance.py
+```
+
+Every destination is immutable, and the trainer pins the extracted feature SHA before
+the first fit. V6 improves raw-phone row AP but regresses exact and tolerant event F1,
+so it is rejected with no production port. See the
+[v6 decision record](../docs/research/side-switch-specialist-v6-2026-08-20.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
