@@ -156,6 +156,44 @@ The next no-label experiment should improve person proposals or compare a second
 adding a learned classifier. The report remains an external diagnostic artifact; no production
 threshold was selected.
 
+## All completed recordings run
+
+The same label-only protocol was then run across all nine completed recordings, adding the three
+indoor recordings as no-switch controls. This produced 335 windows: 26 labeled switches, 309
+unmarked controls, and one insufficient window. The command was:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/evaluate-side-switch-appearance.py \
+  --labels-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/completed/full-v1 \
+  --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/appearance-diagnostic-all-v1.json \
+  --environments beach grass indoor \
+  --samples-per-side 2 \
+  --minimum-gap-seconds 8
+```
+
+The expanded pooled diagnostics were:
+
+| Variant | Usable events | Coverage | ROC-AUC | Average precision |
+| --- | ---: | ---: | ---: | ---: |
+| `full-frame-control` | 334 | 99.7% | 0.582 | 0.168 |
+| `player-palette-equal` | 296 | 88.4% | 0.736 | 0.149 |
+| `player-palette-area` | 296 | 88.4% | 0.744 | 0.149 |
+| `player-palette-area-plus-geometry` | 296 | 88.4% | 0.714 | 0.126 |
+
+The indoor set has no positive switch labels, so it supplies false-positive context rather than
+an AUC. It contributed 110 controls. Beach HOG coverage remains the main weakness: only 35/68
+beach windows had usable player palettes, while grass coverage was 151/157 and indoor coverage
+was complete. The area-weighted palette remains the best pooled raw discriminator, but average
+precision is still low because the control set is much larger than the switch set. These results
+support a review and labeling pass, not a production side-map flip threshold.
+
+The development app now exposes this report at `/side-switch-review`. It provides recording and
+environment filters, a scrollable event queue, ranged video playback through the prepared proxy,
+full-recording and transition-window timelines, per-event feature values and pooled metrics, and
+browser-local `switch`/`no-switch`/`unclear` decisions that can be exported without mutating the
+gold labels. The local review state is deliberately separate from the research report and from
+completed label documents.
+
 ## Label changes needed for later versions
 
 ### Minimal additions for a stronger switch detector
