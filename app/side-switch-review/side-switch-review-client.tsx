@@ -60,6 +60,8 @@ const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
   { value: "insufficient", label: "Insufficient windows" },
 ];
 
+const OVERVIEW_TICK_RATIOS = [0, 0.2, 0.4, 0.6, 0.8, 1];
+
 function compactNumber(value: number): string {
   return value.toLocaleString("en-US");
 }
@@ -160,9 +162,9 @@ function OverviewTimeline({
         <span>{formatTime(duration)}</span>
       </div>
       <div className={styles.overviewAxis}>
-        {Array.from({ length: 6 }, (_, index) => (
-          <span key={`overview-tick-${index}`}>
-            {formatTime((duration * index) / 5)}
+        {OVERVIEW_TICK_RATIOS.map((ratio) => (
+          <span key={`overview-tick-${ratio}`}>
+            {formatTime(duration * ratio)}
           </span>
         ))}
       </div>

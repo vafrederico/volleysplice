@@ -90,6 +90,20 @@ async function loadRecordings(
   );
 }
 
+function clientReport(report: AppearanceReport): AppearanceReport {
+  return {
+    ...report,
+    labels: {
+      ...report.labels,
+      directory: path.basename(report.labels.directory),
+      files: report.labels.files.map((file) => ({
+        ...file,
+        path: path.basename(file.path),
+      })),
+    },
+  };
+}
+
 export default async function SideSwitchReviewPage() {
   const sourcePath = reportPath();
   try {
@@ -97,9 +111,9 @@ export default async function SideSwitchReviewPage() {
     const recordings = await loadRecordings(report);
     return (
       <SideSwitchReviewClient
-        report={report}
+        report={clientReport(report)}
         recordings={recordings}
-        reportPath={sourcePath}
+        reportPath={path.basename(sourcePath)}
       />
     );
   } catch (error) {
