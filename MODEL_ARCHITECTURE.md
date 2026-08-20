@@ -1,9 +1,12 @@
 # VolleyCut production model architecture
 
-This document covers audiovisual feature extraction, learned-model inference, temporal
-model decoding, ensemble composition, and the suppression safety policy. It does not
-describe the broader editor, project-storage, playback, video-decoding, or export-encoding
-architecture.
+This document summarizes audiovisual feature extraction and specifies learned-model
+inference, temporal model decoding, ensemble composition, and the suppression safety
+policy. The normative feature formulas, version profiles, and production/research split
+are in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). Trained artifacts, fitting sources,
+and predecessor changes are registered in [`MODELS.md`](MODELS.md). This document does
+not describe the broader editor, project-storage, playback, video-decoding, or
+export-encoding architecture.
 
 VolleyCut's production model is a lightweight, on-device audiovisual signal-processing
 system. It does not explicitly detect the volleyball, players, net, score, or named

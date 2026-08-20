@@ -4,6 +4,11 @@ VolleyCut is an AI-assisted volleyball video editor. This feasibility-stage impl
 
 Every suggestion source requires review. Heuristic and trained-model confidence values are not calibrated probabilities and should not be treated as exact serve-contact, end-of-play, or scoring decisions.
 
+The deployed inference design is specified in [`MODEL_ARCHITECTURE.md`](MODEL_ARCHITECTURE.md),
+feature generation and experimental feature status in
+[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md), and trained-model lineage—including the
+source video files used to fit each model—in [`MODELS.md`](MODELS.md).
+
 ## Prerequisites
 
 - Node.js and npm.
