@@ -532,6 +532,21 @@
   font-size: 9px;
 }
 
+.navigationButtons kbd,
+.decisionButtons kbd,
+.shortcutLegend kbd {
+  min-width: 18px;
+  padding: 2px 4px;
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.16);
+  font: 8px "Atkinson Hyperlegible Mono", monospace;
+  text-align: center;
+}
+
+.navigationButtons kbd {
+  margin-inline: 4px 1px;
+}
+
 .navigationButtons button:disabled {
   color: #aaa;
   cursor: not-allowed;
@@ -635,6 +650,52 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reviewToolbar {
+  min-height: 45px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #bbb9b0;
+  border-top: 0;
+  background: #f8f7f2;
+}
+
+.speedControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font: 8px "Atkinson Hyperlegible Mono", monospace;
+  text-transform: uppercase;
+}
+
+.speedControl select {
+  min-height: 29px;
+  padding: 4px 25px 4px 8px;
+  border: 1px solid #aaa89f;
+  border-radius: 0;
+  background: #fff;
+  color: var(--ink);
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.shortcutLegend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px 12px;
+}
+
+.shortcutLegend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font: 8px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .timelineBlock,
@@ -873,6 +934,9 @@
 .decisionButtons button {
   min-height: 32px;
   padding: 7px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   border: 1px solid #64675d;
   border-radius: 0;
   background: #30332d;
@@ -885,6 +949,10 @@
   border-color: var(--acid);
   background: var(--acid);
   color: var(--ink);
+}
+
+.decisionButtons kbd {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .decisionButtons button[data-decision="no-switch"][data-active="true"] {
@@ -1268,6 +1336,15 @@
   .navigationButtons {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .reviewToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .shortcutLegend {
+    justify-content: flex-start;
   }
 
   .featureGrid {

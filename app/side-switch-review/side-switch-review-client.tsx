@@ -66,6 +66,7 @@ const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
 ];
 
 const OVERVIEW_TICK_RATIOS = [0, 0.2, 0.4, 0.6, 0.8, 1];
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 function compactNumber(value: number): string {
   return value.toLocaleString("en-US");
@@ -112,6 +113,23 @@ function featureValue(
 
 function boundedTime(value: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number.isFinite(value) ? value : 0));
+}
+
+function reviewStartTime(event: AppearanceEvent): number {
+  const beforeTimes = event.beforeTimes.filter((time) => Number.isFinite(time));
+  return beforeTimes.length > 0
+    ? Math.min(...beforeTimes)
+    : event.transitionTime;
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "SELECT" ||
+    target.tagName === "TEXTAREA"
+  );
 }
 
 function percentageAt(value: number, start: number, end: number): number {
@@ -430,6 +448,7 @@ function LoadedSideSwitchReview({
     () => allEvents.find((event) => event.label !== null)?.eventId ?? allEvents[0]?.eventId ?? "",
   );
   const [currentTime, setCurrentTime] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>(
     initialDecisions,
   );
@@ -479,6 +498,34 @@ function LoadedSideSwitchReview({
   const selectedDecision = selectedEvent ? decisions[selectedEvent.eventId] : undefined;
   const reviewedCount = Object.keys(decisions).length;
   const pooledAreaMetric = featureMetric(report, "playerPaletteArea");
+
+  const nextUnreviewedEvent = useMemo(() => {
+    if (!filteredEvents.length) return null;
+    const startIndex = selectedIndex >= 0 ? selectedIndex : -1;
+    for (let offset = 1; offset <= filteredEvents.length; offset += 1) {
+      const candidate = filteredEvents[(startIndex + offset) % filteredEvents.length];
+      if (
+        candidate &&
+        candidate.eventId !== selectedEvent?.eventId &&
+        decisions[candidate.eventId] === undefined
+      ) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [decisions, filteredEvents, selectedEvent?.eventId, selectedIndex]);
+
+  const moveToNextUnreviewed = useCallback(() => {
+    if (nextUnreviewedEvent) setSelectedEventId(nextUnreviewedEvent.eventId);
+  }, [nextUnreviewedEvent]);
+
+  const setDecision = useCallback(
+    (decision: ReviewDecision) => {
+      if (!selectedEvent) return;
+      setDecisions((current) => ({ ...current, [selectedEvent.eventId]: decision }));
+    },
+    [selectedEvent],
+  );
 
   const saveDecisionsToNas = useCallback(
     async (values: Record<string, ReviewDecision>) => {
@@ -546,12 +593,49 @@ function LoadedSideSwitchReview({
 
   useEffect(() => {
     if (!selectedEvent) return;
-    const target = boundedTime(selectedEvent.transitionTime, duration);
+    const target = boundedTime(reviewStartTime(selectedEvent), duration);
     setCurrentTime(target);
     if (videoRef.current && videoRef.current.readyState >= 1) {
       videoRef.current.currentTime = target;
     }
   }, [duration, selectedEvent]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "j") {
+        event.preventDefault();
+        moveToNextUnreviewed();
+      } else if (key === "v") {
+        event.preventDefault();
+        setDecision("switch");
+      } else if (key === "n") {
+        event.preventDefault();
+        setDecision("no-switch");
+      } else if (key === "u") {
+        event.preventDefault();
+        setDecision("unclear");
+      }
+    }
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [moveToNextUnreviewed, setDecision]);
 
   function seek(time: number) {
     const target = boundedTime(time, duration);
@@ -570,11 +654,6 @@ function LoadedSideSwitchReview({
       Math.min(filteredEvents.length - 1, selectedIndex + direction),
     );
     setSelectedEventId(filteredEvents[nextIndex]?.eventId ?? "");
-  }
-
-  function setDecision(decision: ReviewDecision) {
-    if (!selectedEvent) return;
-    setDecisions((current) => ({ ...current, [selectedEvent.eventId]: decision }));
   }
 
   const currentScope = selectedEvent?.environment ?? "pooled";
@@ -772,7 +851,14 @@ function LoadedSideSwitchReview({
                 <div className={styles.navigationButtons}>
                   <button type="button" disabled={selectedIndex <= 0} onClick={() => moveSelection(-1)}>← Previous</button>
                   <span>{selectedIndex + 1} / {filteredEvents.length}</span>
-                  <button type="button" disabled={selectedIndex < 0 || selectedIndex >= filteredEvents.length - 1} onClick={() => moveSelection(1)}>Next →</button>
+                  <button
+                    type="button"
+                    disabled={!nextUnreviewedEvent}
+                    onClick={moveToNextUnreviewed}
+                    title="Next unreviewed event (J)"
+                  >
+                    Next unreviewed <kbd>J</kbd> →
+                  </button>
                 </div>
               </header>
 
@@ -804,8 +890,10 @@ function LoadedSideSwitchReview({
                   preload="metadata"
                   src={eventVideoUrl(selectedEvent.recordingId)}
                   onLoadedMetadata={(event) => {
-                    event.currentTarget.currentTime = boundedTime(selectedEvent.transitionTime, duration);
-                    setCurrentTime(boundedTime(selectedEvent.transitionTime, duration));
+                    const startTime = boundedTime(reviewStartTime(selectedEvent), duration);
+                    event.currentTarget.currentTime = startTime;
+                    event.currentTarget.playbackRate = playbackRate;
+                    setCurrentTime(startTime);
                   }}
                   onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
                   aria-label={`Video review for ${selectedEvent.recordingId}`}
@@ -814,6 +902,31 @@ function LoadedSideSwitchReview({
                 </video>
                 <span className={styles.videoTime}>{formatTime(currentTime)}</span>
                 <span className={styles.videoLabel}>{selectedRecording?.videoFilename ?? selectedEvent.recordingId}</span>
+              </div>
+
+              <div className={styles.reviewToolbar}>
+                <label className={styles.speedControl}>
+                  <span>Playback speed</span>
+                  <select
+                    value={playbackRate}
+                    onChange={(event) => setPlaybackRate(Number(event.target.value))}
+                    aria-label="Video playback speed"
+                  >
+                    {PLAYBACK_RATES.map((rate) => (
+                      <option value={rate} key={rate}>{rate}×</option>
+                    ))}
+                  </select>
+                </label>
+                <div
+                  className={styles.shortcutLegend}
+                  role="group"
+                  aria-label="Keyboard shortcuts"
+                >
+                  <span><kbd>J</kbd> next unreviewed</span>
+                  <span><kbd>V</kbd> visible switch</span>
+                  <span><kbd>N</kbd> no switch</span>
+                  <span><kbd>U</kbd> unclear</span>
+                </div>
               </div>
 
               <OverviewTimeline
@@ -850,6 +963,7 @@ function LoadedSideSwitchReview({
                       key={decision}
                     >
                       {decision === "switch" ? "Visible switch" : decision === "no-switch" ? "No switch" : "Unclear"}
+                      <kbd>{decision === "switch" ? "V" : decision === "no-switch" ? "N" : "U"}</kbd>
                     </button>
                   ))}
                   <button
