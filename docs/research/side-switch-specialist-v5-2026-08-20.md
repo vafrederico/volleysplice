@@ -135,11 +135,16 @@ PCA with direct score-zero team anchors before its SHA was frozen and fitting be
 - Evaluation:
   `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-specialist-v5-player-orientation-evaluation.json`
   (`9905ff138f6aba82a299fe7b1665e92a32c91ca24737928c2f034e2e9bbf92d8`)
+- Provenance:
+  `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-v5-provenance.json`
+  (`479ac49e1aefa0d0e4af841834b9a434575250ec566c58a86e3f57884c01b148`)
 
 The selected feature artifact was hashed and frozen before model fitting. A separate
 provenance artifact binds the implementation revision, inherited full-file hashes for all
 21 videos, v4 label/geometry identity, the rejected pre-fit diagnostic, and every
 selected v5 artifact.
+The bound implementation revision is
+`d0ac779a42d0672cfed29ec1d8fe0239fbd9e2bc`.
 
 ## Next dependency
 

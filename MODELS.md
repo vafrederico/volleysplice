@@ -187,6 +187,9 @@ The selected v5 fingerprint is
 Its feature/model/development/evaluation hashes, pre-fit diagnostic, orientation no-op
 result, and v4 comparison are in
 [`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md).
+The immutable v5 provenance manifest has SHA-256
+`479ac49e1aefa0d0e4af841834b9a434575250ec566c58a86e3f57884c01b148`
+and binds implementation revision `d0ac779a42d0672cfed29ec1d8fe0239fbd9e2bc`.
 
 ### No-beach full-gold refits
 
