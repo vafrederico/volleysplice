@@ -16,6 +16,9 @@ const DEFAULT_REPORT_DIRECTORY = path.join(
   "reports",
   "side-switch",
 );
+const DEFAULT_MODEL_DIRECTORY = path.join(DEFAULT_LABELING_WORKSPACE, "models");
+
+export type ProposalArtifactFormat = "specialist" | "production-state-v1";
 
 export type ProposalArtifactSource = {
   modelId: SideSwitchProposalModel;
@@ -23,6 +26,8 @@ export type ProposalArtifactSource = {
   detail: string;
   evaluationPath: string;
   featurePath: string;
+  format?: ProposalArtifactFormat;
+  modelPath?: string;
 };
 
 type LoadedProposalLayer = {
@@ -60,6 +65,35 @@ export function getSideSwitchProposalArtifactSources(): ProposalArtifactSource[]
         path.join(
           DEFAULT_REPORT_DIRECTORY,
           "side-switch-v5-player-orientation-features.json",
+        ),
+      ),
+    },
+    {
+      format: "production-state-v1",
+      modelId: "v5-state",
+      label: "V5 + state · production heads",
+      detail:
+        "Original V5 appearance with soft production rally and dead-state context",
+      evaluationPath: configuredPath(
+        process.env.VOLLEYCUT_SIDE_SWITCH_V5_STATE_EVALUATION,
+        path.join(
+          DEFAULT_REPORT_DIRECTORY,
+          "side-switch-v5-production-state-v1-evaluation.json",
+        ),
+      ),
+      featurePath: configuredPath(
+        process.env.VOLLEYCUT_SIDE_SWITCH_V5_STATE_FEATURES,
+        path.join(
+          DEFAULT_REPORT_DIRECTORY,
+          "side-switch-v5-production-state-v1-features.json",
+        ),
+      ),
+      modelPath: configuredPath(
+        process.env.VOLLEYCUT_SIDE_SWITCH_V5_STATE_MODEL,
+        path.join(
+          DEFAULT_MODEL_DIRECTORY,
+          "side-switch-v5-production-state-v1",
+          "model.json",
         ),
       ),
     },
@@ -141,16 +175,31 @@ async function readJsonObject(
   };
 }
 
-async function loadProposalLayer(
+type ProposalArtifactContract = {
+  decoder: Record<string, unknown>;
+  modelArtifact: JsonArtifact | null;
+  scoreField: "score" | "selectedScore";
+};
+
+function featureBinding(
+  evaluation: Record<string, unknown>,
+  key: "features" | "originalFeatures",
+): Record<string, unknown> | null {
+  if (!isRecord(evaluation.sources)) return null;
+  const value = evaluation.sources[key];
+  return isRecord(value) ? value : null;
+}
+
+function validateSpecialistArtifacts(
   source: ProposalArtifactSource,
-  reportEventIds: ReadonlySet<string>,
-): Promise<LoadedProposalLayer> {
-  const [evaluationArtifact, featureArtifact] = await Promise.all([
-    readJsonObject(source.evaluationPath, `${source.modelId} evaluation`),
-    readJsonObject(source.featurePath, `${source.modelId} features`),
-  ]);
-  const evaluation = evaluationArtifact.value;
-  const features = featureArtifact.value;
+  evaluation: Record<string, unknown>,
+  features: Record<string, unknown>,
+): ProposalArtifactContract {
+  if (source.modelId !== "v5" && source.modelId !== "v6") {
+    throw new SideSwitchProposalArtifactError(
+      `${source.modelId} cannot use the specialist artifact contract`,
+    );
+  }
   const expectedVersion = Number(source.modelId.slice(1));
   const expectedEvaluationKind = `volleycut-side-switch-specialist-evaluation-${source.modelId}`;
   const expectedFeatureKind = `volleycut-side-switch-features-${source.modelId}`;
@@ -167,10 +216,120 @@ async function loadProposalLayer(
       `${source.modelId} artifacts have an incompatible schema`,
     );
   }
-  const featureSource =
-    isRecord(evaluation.sources) && isRecord(evaluation.sources.features)
-      ? evaluation.sources.features
-      : null;
+  return {
+    decoder: evaluation.selectedDecoder,
+    modelArtifact: null,
+    scoreField: "score",
+  };
+}
+
+function validateProductionStateArtifacts(
+  source: ProposalArtifactSource,
+  evaluation: Record<string, unknown>,
+  features: Record<string, unknown>,
+  modelArtifact: JsonArtifact | null,
+  featureSha256: string,
+): ProposalArtifactContract {
+  if (source.modelId !== "v5-state" || !modelArtifact) {
+    throw new SideSwitchProposalArtifactError(
+      `${source.modelId} production-state layer has no model artifact`,
+    );
+  }
+  const model = modelArtifact.value;
+  if (
+    evaluation.schemaVersion !== 1 ||
+    evaluation.kind !==
+      "volleycut-side-switch-production-state-evaluation-v1" ||
+    evaluation.family !== "v5" ||
+    !Array.isArray(evaluation.predictions) ||
+    features.schemaVersion !== 1 ||
+    features.kind !==
+      "volleycut-side-switch-production-state-augmented-features-v1" ||
+    features.family !== "v5" ||
+    !Array.isArray(features.rows) ||
+    model.schemaVersion !== 1 ||
+    model.kind !== "volleycut-side-switch-production-state-specialist-v1" ||
+    model.family !== "v5" ||
+    !isRecord(model.classifier) ||
+    !isRecord(model.decoder)
+  ) {
+    throw new SideSwitchProposalArtifactError(
+      `${source.modelId} artifacts have an incompatible schema`,
+    );
+  }
+  const selectedCandidate = requiredString(
+    evaluation.selectedCandidate,
+    "production-state selected candidate",
+  );
+  const appearanceMode = requiredString(
+    features.appearanceMode,
+    "production-state appearance mode",
+  );
+  if (
+    model.selectedCandidate !== selectedCandidate ||
+    !selectedCandidate.startsWith(`${appearanceMode}:`)
+  ) {
+    throw new SideSwitchProposalArtifactError(
+      `${source.modelId} model, evaluation, and appearance view disagree`,
+    );
+  }
+  if (evaluation.modelSha256 !== modelArtifact.sha256) {
+    throw new SideSwitchProposalArtifactError(
+      `${source.modelId} evaluation does not bind the supplied model SHA-256`,
+    );
+  }
+  const modelFeatureSource = featureBinding(model, "originalFeatures");
+  if (!modelFeatureSource || modelFeatureSource.sha256 !== featureSha256) {
+    throw new SideSwitchProposalArtifactError(
+      `${source.modelId} model does not bind the supplied feature SHA-256`,
+    );
+  }
+  return {
+    decoder: {
+      threshold: model.classifier.threshold,
+      candidateMargin: model.decoder.candidateMargin,
+    },
+    modelArtifact,
+    scoreField: "selectedScore",
+  };
+}
+
+async function loadProposalLayer(
+  source: ProposalArtifactSource,
+  reportEventIds: ReadonlySet<string>,
+): Promise<LoadedProposalLayer> {
+  const format = source.format ?? "specialist";
+  const [evaluationArtifact, featureArtifact, loadedModelArtifact] =
+    await Promise.all([
+      readJsonObject(source.evaluationPath, `${source.modelId} evaluation`),
+      readJsonObject(source.featurePath, `${source.modelId} features`),
+      format === "production-state-v1" && source.modelPath
+        ? readJsonObject(source.modelPath, `${source.modelId} model`)
+        : Promise.resolve(null),
+    ]);
+  const evaluation = evaluationArtifact.value;
+  const features = featureArtifact.value;
+  const contract =
+    format === "production-state-v1"
+      ? validateProductionStateArtifacts(
+          source,
+          evaluation,
+          features,
+          loadedModelArtifact,
+          featureArtifact.sha256,
+        )
+      : validateSpecialistArtifacts(source, evaluation, features);
+  const featureRows = features.rows;
+  const predictions = evaluation.predictions;
+  if (!Array.isArray(featureRows) || !Array.isArray(predictions)) {
+    throw new SideSwitchProposalArtifactError(
+      `${source.modelId} artifacts have no row arrays`,
+    );
+  }
+  const featureSource = featureBinding(
+    evaluation,
+    format === "production-state-v1" ? "originalFeatures" : "features",
+  );
   if (!featureSource || featureSource.sha256 !== featureArtifact.sha256) {
     throw new SideSwitchProposalArtifactError(
       `${source.modelId} evaluation does not bind the supplied feature SHA-256`,
@@ -178,7 +337,7 @@ async function loadProposalLayer(
   }
 
   const sourceIdsByEvaluationEvent = new Map<string, string[]>();
-  for (const rawRow of features.rows) {
+  for (const rawRow of featureRows) {
     if (!isRecord(rawRow)) {
       throw new SideSwitchProposalArtifactError(
         `${source.modelId} features contain an invalid row`,
@@ -208,7 +367,7 @@ async function loadProposalLayer(
   const attachedEvaluationEvents = new Set<string>();
   const selectedAttachedEvaluationEvents = new Set<string>();
   let selectedEvents = 0;
-  for (const rawPrediction of evaluation.predictions) {
+  for (const rawPrediction of predictions) {
     if (!isRecord(rawPrediction)) {
       throw new SideSwitchProposalArtifactError(
         `${source.modelId} evaluation contains an invalid prediction`,
@@ -231,7 +390,7 @@ async function loadProposalLayer(
         `gapOrder for ${evaluationEventId}`,
       ),
       score: finiteNumber(
-        rawPrediction.score,
+        rawPrediction[contract.scoreField],
         `score for ${evaluationEventId}`,
       ),
       selected: rawPrediction.selectedPrediction,
@@ -258,7 +417,7 @@ async function loadProposalLayer(
     }
   }
 
-  const decoder = evaluation.selectedDecoder;
+  const decoder = contract.decoder;
   return {
     layer: {
       modelId: source.modelId,
@@ -273,12 +432,14 @@ async function loadProposalLayer(
       evaluationSha256: evaluationArtifact.sha256,
       featureFilename: path.basename(source.featurePath),
       featureSha256: featureArtifact.sha256,
+      modelFilename: source.modelPath ? path.basename(source.modelPath) : null,
+      modelSha256: contract.modelArtifact?.sha256 ?? null,
       threshold: finiteNumber(decoder.threshold, "selected decoder threshold"),
       candidateMargin: nonNegativeInteger(
         decoder.candidateMargin,
         "selected decoder candidate margin",
       ),
-      evaluatedEvents: evaluation.predictions.length,
+      evaluatedEvents: predictions.length,
       selectedEvents,
       attachedEvents: attachedEvaluationEvents.size,
       selectedAttachedEvents: selectedAttachedEvaluationEvents.size,

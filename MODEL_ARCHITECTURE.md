@@ -256,8 +256,9 @@ raw-phone row AP improves from 43.40% to 45.47%, candidate-window exact F1 falls
 24.10% and ±2-tolerant F1 falls to 40.96%; both v6 variants select the same 48 events.
 V6 is not promoted, has no production port, and v5 remains the best event-level research
 artifact. These event metrics are candidate-window agreement rather than exhaustive
-full-video accuracy; the 59-gap V5/V6 proposal union is attached to stable event IDs in
-the development review UI. See
+full-video accuracy; the 61-gap V5/V5-state/V6 proposal union is attached to stable
+event IDs and rendered as three aligned recording timelines in the development review
+UI. See
 [`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md).
 
 The production-state follow-up reuses both shipped bundles' rally, serve, dead-state,
@@ -267,8 +268,8 @@ production serve anchor. Validation selects original V5 appearance plus ten soft
 state/gating inputs, improving retrospective exact F1 to 30.14% while remaining far
 below automatic-use quality. Hard agreement/serve gates and every V6 variant are
 rejected. The suppression head is quarantined because it was trained with explicit
-side-switch positives and overlaps all experiment roles. No shipped inference graph is
-changed. See
+side-switch positives and overlaps all experiment roles. The selected V5-state outputs
+are reviewable, but no shipped inference graph is changed. See
 [`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md).
 
 ## Production inference and export flow

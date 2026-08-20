@@ -196,9 +196,10 @@ head after production analysis has already run. It requires no new video decode,
 neural model, or F104 extraction. The serve-grounded appearance path would also be
 on-device feasible, but it did not pass this comparison and should not be ported.
 
-No TypeScript/Java runtime or review-UI layer is added in this experiment. That work
-should wait for exhaustive review of the current V5/V6 proposal union and the new
-V5-state proposals.
+No browser/Java inference runtime is added. A subsequent review-only integration now
+attaches the 38 frozen V5-state proposals without recomputing inference and renders
+V5, V5-state, and V6 as separate recording timelines. See
+[`side-switch-v5-v6-review-ui-2026-08-20.md`](side-switch-v5-v6-review-ui-2026-08-20.md).
 
 ## Reproduction
 

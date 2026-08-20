@@ -1,4 +1,4 @@
-export const SIDE_SWITCH_PROPOSAL_MODELS = ["v5", "v6"] as const;
+export const SIDE_SWITCH_PROPOSAL_MODELS = ["v5", "v5-state", "v6"] as const;
 
 export type SideSwitchProposalModel =
   (typeof SIDE_SWITCH_PROPOSAL_MODELS)[number];
@@ -21,6 +21,8 @@ export type SideSwitchProposalLayer = {
   evaluationSha256: string;
   featureFilename: string;
   featureSha256: string;
+  modelFilename: string | null;
+  modelSha256: string | null;
   threshold: number;
   candidateMargin: number;
   evaluatedEvents: number;

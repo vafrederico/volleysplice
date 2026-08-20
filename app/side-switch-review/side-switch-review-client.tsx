@@ -35,8 +35,25 @@ type SideSwitchReviewClientProps = {
 };
 
 type EventFilter = "all" | "switch" | "unmarked" | "candidate" | "insufficient";
-type ProposalFilter = "all" | "any" | "v5" | "v6" | "both" | "disagreement";
+type ProposalFilter =
+  | "all"
+  | "any"
+  | "multiple"
+  | "disagreement"
+  | SideSwitchProposalModel;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+const MODEL_SHORT_LABELS: Record<SideSwitchProposalModel, string> = {
+  v5: "V5",
+  "v5-state": "V5 + state",
+  v6: "V6",
+};
+
+const MODEL_BADGE_LABELS: Record<SideSwitchProposalModel, string> = {
+  v5: "V5",
+  "v5-state": "V5+S",
+  v6: "V6",
+};
 
 const FEATURE_DEFINITIONS: Array<{
   key: AppearanceFeature;
@@ -74,11 +91,12 @@ const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
 ];
 
 const PROPOSAL_FILTERS: Array<{ value: ProposalFilter; label: string }> = [
-  { value: "any", label: "V5 or V6" },
+  { value: "any", label: "Any variant" },
   { value: "v5", label: "V5 proposals" },
+  { value: "v5-state", label: "V5 + state proposals" },
   { value: "v6", label: "V6 proposals" },
-  { value: "both", label: "Both models" },
-  { value: "disagreement", label: "Model disagreement" },
+  { value: "multiple", label: "2+ variants" },
+  { value: "disagreement", label: "Variant disagreement" },
   { value: "all", label: "All gaps" },
 ];
 
@@ -190,26 +208,20 @@ function proposalFilterMatches(
 ): boolean {
   if (filter === "all") return true;
   const proposals = eventProposals(event, proposalBundle);
-  const v5 = proposals.v5?.selected === true;
-  const v6 = proposals.v6?.selected === true;
-  if (filter === "v5") return v5;
-  if (filter === "v6") return v6;
-  if (filter === "both") return v5 && v6;
-  if (filter === "disagreement") return v5 !== v6;
-  return v5 || v6;
-}
-
-function proposalTone(
-  event: AppearanceEvent,
-  proposalBundle: SideSwitchProposalBundle,
-): "both" | "v5" | "v6" | "none" {
-  const proposals = eventProposals(event, proposalBundle);
-  const v5 = proposals.v5?.selected === true;
-  const v6 = proposals.v6?.selected === true;
-  if (v5 && v6) return "both";
-  if (v5) return "v5";
-  if (v6) return "v6";
-  return "none";
+  const loadedModels = proposalBundle.layers.map((layer) => layer.modelId);
+  const selectedCount = loadedModels.filter(
+    (modelId) => proposals[modelId]?.selected === true,
+  ).length;
+  if (filter === "any") return selectedCount > 0;
+  if (filter === "multiple") return selectedCount >= 2;
+  if (filter === "disagreement") {
+    return (
+      loadedModels.length >= 2 &&
+      selectedCount > 0 &&
+      selectedCount < loadedModels.length
+    );
+  }
+  return proposals[filter]?.selected === true;
 }
 
 function featureMetric(
@@ -230,7 +242,7 @@ function savedTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleTimeString();
 }
 
-function OverviewTimeline({
+function VariantTimelines({
   events,
   proposalBundle,
   duration,
@@ -248,66 +260,113 @@ function OverviewTimeline({
   onSeek: (time: number) => void;
 }) {
   return (
-    <div className={styles.timelineBlock}>
+    <section
+      className={styles.timelineBlock}
+      aria-label="Side-switch variant timelines"
+    >
       <div className={styles.timelineHeading}>
         <div>
-          <strong>Recording overview</strong>
+          <strong>Variant timelines</strong>
           <span>
-            Every review gap in this recording, including V5/V6 proposals
+            One aligned proposal rail per model variant for this recording
           </span>
         </div>
         <span>{formatTime(duration)}</span>
       </div>
-      <div className={styles.overviewAxis}>
-        {OVERVIEW_TICK_RATIOS.map((ratio) => (
-          <span key={`overview-tick-${ratio}`}>
-            {formatTime(duration * ratio)}
-          </span>
-        ))}
+      <div className={styles.variantTimelineAxis}>
+        <span aria-hidden="true" />
+        <div className={styles.overviewAxis}>
+          {OVERVIEW_TICK_RATIOS.map((ratio) => (
+            <span key={`overview-tick-${ratio}`}>
+              {formatTime(duration * ratio)}
+            </span>
+          ))}
+        </div>
       </div>
-      <div
-        className={styles.overviewRail}
-        onClick={(event) => {
-          const bounds = event.currentTarget.getBoundingClientRect();
-          onSeek(
-            boundedTime(
-              ((event.clientX - bounds.left) / bounds.width) * duration,
-              duration,
-            ),
+      <div className={styles.variantTimelineRows}>
+        {proposalBundle.layers.map((layer) => {
+          const scopedCount = events.filter(
+            (item) => eventProposals(item, proposalBundle)[layer.modelId],
+          ).length;
+          const selectedCount = events.filter(
+            (item) =>
+              eventProposals(item, proposalBundle)[layer.modelId]?.selected ===
+              true,
+          ).length;
+          return (
+            <div
+              className={styles.variantTimelineRow}
+              data-model={layer.modelId}
+              key={layer.modelId}
+            >
+              <div className={styles.variantTimelineLabel}>
+                <strong>{layer.label}</strong>
+                <span>
+                  {selectedCount} proposals · {scopedCount} scored gaps
+                </span>
+              </div>
+              <div
+                className={styles.overviewRail}
+                onClick={(event) => {
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  onSeek(
+                    boundedTime(
+                      ((event.clientX - bounds.left) / bounds.width) * duration,
+                      duration,
+                    ),
+                  );
+                }}
+                role="presentation"
+              >
+                {events.map((item) => {
+                  const proposal = eventProposals(item, proposalBundle)[
+                    layer.modelId
+                  ];
+                  return (
+                    <button
+                      type="button"
+                      className={styles.variantEvent}
+                      data-kind={eventKind(item)}
+                      data-proposed={proposal?.selected ? "true" : "false"}
+                      data-scoped={proposal ? "true" : "false"}
+                      data-status={item.status}
+                      data-selected={
+                        item.eventId === selectedEventId ? "true" : "false"
+                      }
+                      style={{
+                        left: `${percentageAt(item.transitionTime, 0, duration)}%`,
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelect(item.eventId);
+                      }}
+                      title={`${layer.label} · ${proposal?.selected ? "proposal" : proposal ? "not selected" : "outside model scope"} · ${eventKindLabel(item)} · ${formatTime(item.transitionTime)}`}
+                      aria-label={`Select ${item.eventId} on the ${layer.label} timeline`}
+                      key={item.eventId}
+                    />
+                  );
+                })}
+                <span
+                  className={styles.overviewPlayhead}
+                  style={{ left: `${percentageAt(currentTime, 0, duration)}%` }}
+                />
+              </div>
+            </div>
           );
-        }}
-        role="presentation"
-      >
-        {events.map((item) => (
-          <button
-            type="button"
-            className={styles.overviewEvent}
-            data-kind={eventKind(item)}
-            data-proposal={proposalTone(item, proposalBundle)}
-            data-status={item.status}
-            data-selected={item.eventId === selectedEventId ? "true" : "false"}
-            style={{ left: `${(item.transitionTime / duration) * 100}%` }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect(item.eventId);
-            }}
-            title={`${eventKindLabel(item)} · ${formatTime(item.transitionTime)} · ${proposalTone(item, proposalBundle) === "none" ? "no selected model proposal" : `${proposalTone(item, proposalBundle).toUpperCase()} proposal`}`}
-            aria-label={`Select ${item.eventId}`}
-            key={item.eventId}
-          />
-        ))}
-        <span
-          className={styles.overviewPlayhead}
-          style={{ left: `${(currentTime / duration) * 100}%` }}
-        />
+        })}
+        {proposalBundle.layers.length === 0 && (
+          <p className={styles.emptyVariantTimelines}>
+            No proposal variant could be loaded for this recording.
+          </p>
+        )}
       </div>
       <div className={styles.timelineLegend}>
-        <span data-tone="switch">prior switch marker</span>
-        <span data-tone="control">other review gap</span>
-        <span data-tone="proposal">V5/V6 proposal outline</span>
+        <span data-tone="proposal">solid variant proposal</span>
+        <span data-tone="switch">thin prior switch marker</span>
+        <span data-tone="control">other scored gap</span>
         <span data-tone="selected">selected event</span>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -483,7 +542,7 @@ function ProposalBadges({
       {SIDE_SWITCH_PROPOSAL_MODELS.map((modelId) =>
         proposals[modelId]?.selected ? (
           <b data-model={modelId} key={modelId}>
-            {modelId.toUpperCase()}
+            {MODEL_BADGE_LABELS[modelId]}
           </b>
         ) : null,
       )}
@@ -502,7 +561,7 @@ function ModelProposalPanel({
   return (
     <section
       className={styles.proposalPanel}
-      aria-label="V5 and V6 model proposals"
+      aria-label="Side-switch model variant proposals"
     >
       <header>
         <div>
@@ -560,7 +619,9 @@ function ModelProposalPanel({
         })}
         {proposalBundle.errors.map((error) => (
           <article className={styles.proposalError} key={error.modelId}>
-            <strong>{error.modelId.toUpperCase()} layer unavailable</strong>
+            <strong>
+              {MODEL_SHORT_LABELS[error.modelId]} layer unavailable
+            </strong>
             <small>{error.message}</small>
           </article>
         ))}
@@ -889,16 +950,16 @@ function LoadedSideSwitchReview({
       <header className={styles.hero}>
         <div>
           <p className={styles.eyebrow}>
-            V5 + V6 PROPOSAL AUDIT · {report.protocol.personProposal}
+            V5 + V5 STATE + V6 PROPOSAL AUDIT · {report.protocol.personProposal}
           </p>
           <h1>
             Find the <em>side flip.</em>
           </h1>
           <p className={styles.intro}>
-            Review every switch proposed by the V5 and V6 specialists against
-            the source video. Earlier switch markers came from heuristic review;
-            they are useful seeds, not an exhaustive truth set, so an unmarked
-            proposal can still be a real switch.
+            Review every switch proposed by V5, the production-state V5 variant,
+            and V6 against the source video. Earlier switch markers came from
+            heuristic review; they are useful seeds, not an exhaustive truth
+            set, so an unmarked proposal can still be a real switch.
           </p>
           <p className={styles.sourceLine}>
             {report.summary.recordings} recordings · {report.summary.events}{" "}
@@ -907,17 +968,24 @@ function LoadedSideSwitchReview({
           </p>
         </div>
         <div className={styles.heroMetric}>
-          <span>V5/V6 proposal union</span>
+          <span>Three-variant proposal union</span>
           <strong>{compactNumber(proposedEventCount)}</strong>
-          <small>unique gaps selected by either specialist</small>
+          <small>unique gaps selected by any loaded variant</small>
           <b>
-            {compactNumber(layerByModel.v5?.selectedAttachedEvents ?? 0)} V5 ·{" "}
-            {compactNumber(layerByModel.v6?.selectedAttachedEvents ?? 0)} V6
+            {proposalBundle.layers
+              .map(
+                (layer) =>
+                  `${compactNumber(layer.selectedAttachedEvents)} ${MODEL_SHORT_LABELS[layer.modelId]}`,
+              )
+              .join(" · ")}
           </b>
         </div>
       </header>
 
-      <section className={styles.summaryStrip} aria-label="Diagnostic summary">
+      <section
+        className={`${styles.summaryStrip} ${styles.variantSummaryStrip}`}
+        aria-label="Diagnostic summary"
+      >
         <div>
           <span>Recordings</span>
           <strong>{compactNumber(report.summary.recordings)}</strong>
@@ -939,6 +1007,14 @@ function LoadedSideSwitchReview({
           </strong>
         </div>
         <div>
+          <span>V5 + state proposals</span>
+          <strong data-tone="model-v5-state">
+            {compactNumber(
+              layerByModel["v5-state"]?.selectedAttachedEvents ?? 0,
+            )}
+          </strong>
+        </div>
+        <div>
           <span>V6 proposals</span>
           <strong data-tone="model-v6">
             {compactNumber(layerByModel.v6?.selectedAttachedEvents ?? 0)}
@@ -956,8 +1032,8 @@ function LoadedSideSwitchReview({
           <strong>Model proposals are discovery candidates</strong>
           <p>
             Prior <code>sideSwitches</code> markers and unmarked heuristic gaps
-            are context, not exhaustive positive/negative labels. V5 and V6 are
-            shown as independent layers; decide from the video whether a
+            are context, not exhaustive positive/negative labels. Every model
+            variant has an independent timeline; decide from the video whether a
             physical side switch occurs.
           </p>
         </div>
@@ -969,8 +1045,13 @@ function LoadedSideSwitchReview({
           <div>
             <dt>Model scope</dt>
             <dd>
-              {layerByModel.v5?.attachedEvents ?? 0} V5 ·{" "}
-              {layerByModel.v6?.attachedEvents ?? 0} V6 gaps
+              {proposalBundle.layers
+                .map(
+                  (layer) =>
+                    `${layer.attachedEvents} ${MODEL_SHORT_LABELS[layer.modelId]}`,
+                )
+                .join(" · ")}{" "}
+              gaps
             </dd>
           </div>
           <div>
@@ -984,7 +1065,8 @@ function LoadedSideSwitchReview({
         <section className={styles.layerWarning} role="status">
           {proposalBundle.errors.map((error) => (
             <span key={error.modelId}>
-              {error.modelId.toUpperCase()} could not be loaded: {error.message}
+              {MODEL_SHORT_LABELS[error.modelId]} could not be loaded:{" "}
+              {error.message}
             </span>
           ))}
         </section>
@@ -1086,7 +1168,6 @@ function LoadedSideSwitchReview({
                   event.eventId === selectedEvent?.eventId ? "true" : "false"
                 }
                 data-kind={eventKind(event)}
-                data-proposal={proposalTone(event, proposalBundle)}
                 onClick={() => selectEvent(event.eventId)}
                 key={event.eventId}
               >
@@ -1264,7 +1345,7 @@ function LoadedSideSwitchReview({
                 </div>
               </div>
 
-              <OverviewTimeline
+              <VariantTimelines
                 events={selectedRecordingEvents}
                 proposalBundle={proposalBundle}
                 duration={duration}
@@ -1364,7 +1445,7 @@ function LoadedSideSwitchReview({
                   <span>Interpretation guardrail</span>
                   <strong>
                     {selectedEvent.status === "ok"
-                      ? "Compare the video with both model layers. A selected proposal or high score is evidence, not a decision."
+                      ? "Compare the video across all model variant layers. A selected proposal or high score is evidence, not a decision."
                       : (selectedEvent.error ??
                         "No valid before/after feature pair was available.")}
                   </strong>
@@ -1388,8 +1469,8 @@ function LoadedSideSwitchReview({
         <span>Source report</span>
         <code>{reportPath}</code>
         <span>
-          V5/V6 predictions are attached without changing the report identity,
-          so existing review decisions remain intact.
+          V5, V5 + state, and V6 predictions are attached without changing the
+          report identity, so existing review decisions remain intact.
         </span>
       </footer>
     </main>

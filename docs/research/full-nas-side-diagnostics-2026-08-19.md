@@ -84,7 +84,7 @@ The development app exposes both report queues:
 
 - `/serving-side-review` — near/far/unclear review for every rally candidate;
 - `/side-switch-review` — switch/no-switch/unclear review for every report gap,
-  with V5/V6 proposal, intersection, and disagreement layers.
+  with separate V5, V5-state, and V6 timelines plus union/shared/disagreement filters.
 
 Both queues stream video through a report-indexed development media route, so
 raw no-backup MP4s do not need to be registered as prepared labeling tasks.

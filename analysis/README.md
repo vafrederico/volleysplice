@@ -722,8 +722,8 @@ PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v6-provenance.py
 Every destination is immutable, and the trainer pins the extracted feature SHA before
 the first fit. V6 improves raw-phone row AP but regresses exact and tolerant event F1,
 so it is not promoted and has no production port. V5/V6 event metrics are conditioned
-on reviewed rally-gap candidates rather than exhaustive full-video truth; their 59-gap
-proposal union is available in the
+on reviewed rally-gap candidates rather than exhaustive full-video truth. Adding the
+selected V5-state layer yields a 61-gap three-variant proposal union in the
 [review UI](../docs/research/side-switch-v5-v6-review-ui-2026-08-20.md). See the
 [v6 decision record](../docs/research/side-switch-specialist-v6-2026-08-20.md).
 
@@ -747,7 +747,8 @@ PYTHONPATH=. .venv/bin/python scripts/build-side-switch-production-state-provena
 ```
 
 V5 original appearance plus the ten state/gating inputs is a positive exploratory
-review-ranking result; V6 and serve-grounded appearance are not promoted. See the
+review-ranking result and is shown on its own review timeline; V6 and serve-grounded
+appearance are not promoted. See the
 [production-state decision record](../docs/research/side-switch-production-state-experiment-2026-08-20.md)
 for exact commands, hashes, attribution, and guardrails.
 
