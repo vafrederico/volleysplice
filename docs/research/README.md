@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch specialist v2 — 2026-08-20](./side-switch-specialist-v2-2026-08-20.md) — adaptive near/far color assignment, frame-consistency and robust-normalization feature families, frozen recording-held-out evaluation, exact v1 comparison, no-op decoder result, immutable artifacts, and retained review-ranking decision.
 - [Production two-model ensemble with disagreement review — 2026-08-15](./production-ensemble-review-evaluation-2026-08-15.md) — exact old-production plus all-labels-v2 union evaluation, oracle disagreement-review simulation, required 0–3 second `F1_padP_coreR` sensitivity, protected-test diagnostic, and the boundary-provenance follow-up.
 - [Environment-specialist rally-model experiment — 2026-08-14](./environment-specialist-experiment-2026-08-14.md) — production-architecture all-label, grass-only, and indoor-only refits; leakage-safe indoor evaluation; walking/retrieval hard-negative diagnostic; complete 19-video inference coverage; and UI rollout.
 - [All-model `F1_padP_coreR` ranking and rally-score export sweep — 2026-08-13](./all-models-f1-padp-corer-score-thresholds-2026-08-13.md) — validation-only ranking of 32 complete model outputs, required 0–3 second padding sensitivity, and inclusive 0.50–0.90 rally-score export filters using the current label-document ignored-range revision.

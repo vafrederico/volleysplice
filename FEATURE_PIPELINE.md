@@ -351,11 +351,42 @@ is accepted, and browser/Android parity is implemented.
 | DINOv2 temporal representation | Pinned DINOv2 ViT-S/14 `[T,10,384]` pooled tokens at 4 Hz plus audiovisual boundary heads | Retained research; passed its development gate, but no checkpoint was published and protected test remained unopened. See [`dinov2-temporal-execution-2026-08-13.md`](docs/research/dinov2-temporal-execution-2026-08-13.md). |
 | Ball presence/trajectory | Full-frame or tiled detector outputs and proposed trajectory/interactions | Rejected/skipped because the detector failed the precision/recall and environment gates. See [`minimum-ball-presence-pilot-2026-08-11.md`](docs/research/minimum-ball-presence-pilot-2026-08-11.md). |
 | Side-switch v1 appearance context | Seven marker-level appearance/detection-change values, before/after count/box/score/coverage summaries, gap duration, and paired missingness indicators | Rejected for automatic use; retained as a 36-input review-ranking baseline. This is a separate marker pipeline, not part of the 104 base columns. See [`side-switch-specialist-v1-2026-08-20.md`](docs/research/side-switch-specialist-v1-2026-08-20.md). |
-| Side-switch v2 | Side-conditioned color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a temporal toggle decoder | Planned only. See [`side-switch-v2-execution-handoff-2026-08-20.md`](docs/research/side-switch-v2-execution-handoff-2026-08-20.md). |
+| Side-switch v2 | Adaptive near/far color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a separately selected temporal toggle decoder | Retained research/review ranking; not production. The selected `SIDE34-V2` classifier uses the raw combined family and the selected decoder is a no-op. See [`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
 [`future-feature-experiment-backlog-2026-08-12.md`](docs/research/future-feature-experiment-backlog-2026-08-12.md).
+
+### Side-switch v2 marker profile
+
+`SIDE34-V2` is separate from the production 104/520 rally matrix. Each inter-rally
+candidate samples four frames on each side of its midpoint within an 8-second flank and
+a 0.75-second edge margin. OpenCV HOG proposals run at at most 1,280 pixels wide and
+are restricted to normalized central-court bounds. Unlabeled weighted two-means over
+the complete recording's candidate-frame foot positions sets the near/far divider;
+event-local fits shrink toward that recording value so zoom and moderate reframing do
+not rely on a fixed pixel boundary. Sparse local geometry falls back to the recording
+calibration and is exposed through coverage features.
+
+The 17 scalar base columns are:
+
+- `paletteDistanceMean`, `paletteDistanceMinimum`,
+  `paletteDistanceDisagreement`, `playerMinusBackgroundEvidence`,
+  `geometryStability`, `paletteByGeometryStability`, and
+  `areaPaletteByGeometryStability`;
+- `sideSameAssignmentCostMedian`, `sideSwappedAssignmentCostMedian`,
+  `sideSwapMarginMedian`, `sideSwapMarginLowerQuartile`,
+  `sideSwapSupportFraction`, `sideSwapMarginVariance`,
+  `sideUsablePairCount`, `sideMinimumCoverage`,
+  `colorMomentFlipEvidenceMedian`, and `swapMarginByGeometryStability`.
+
+Each scalar is paired with a missingness indicator, yielding 34 ordered classifier
+inputs. The feature artifact also carries per-recording median/MAD variants and an
+unlabeled color-moment orientation coordinate, but grouped development selection chose
+the raw combined family. Gap duration is audit context only and is excluded from every
+v2 learned feature set. The exact implementation is
+[`side_switch_v2.py`](analysis/side_switch_v2.py); extraction is
+[`extract-side-switch-v2.py`](scripts/extract-side-switch-v2.py).
 
 ## Rebuild and parity acceptance
 

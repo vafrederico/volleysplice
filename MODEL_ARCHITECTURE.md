@@ -195,6 +195,29 @@ The specialist runner and policy are implemented in
 and
 [`android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java`](android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java).
 
+## Research-only side-switch specialist
+
+Side-switch classification is a separate candidate-marker pipeline and is not part of
+the production rally ensemble. `side-switch-specialist-v2` applies a class-balanced
+logistic head to 34 inputs: 17 adaptive near/far and derived appearance scalars, each
+paired with a missingness indicator. The extractor calibrates court depth without team
+labels, first across the full candidate sequence and then locally with shrinkage, so
+moderate zoom and camera-distance changes do not rely on one fixed pixel divider.
+
+The optional temporal stage is a Viterbi decoder over rally order. Its state carries
+near/far orientation parity and the previous switch position; candidate settings can
+penalize close switches, reward orientation-consistent toggles, or add a switch prior.
+Validation selected all of these settings as zero, so the frozen v2 decoder is an exact
+no-op over static threshold decisions. It is retained in the artifact and reported
+separately to preserve the negative decoder result.
+
+V2 improves same-scope v1 confirmation ranking, but its 20.45% precision is not suitable
+for automatic score tracking. It remains a research/review-ranking artifact. Indoor is
+fixed to no-switch and excluded from specialist selection and metrics. Exact features,
+lineage, and metrics are in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md),
+[`MODELS.md`](MODELS.md), and
+[`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

@@ -57,6 +57,7 @@ a model study.
 | `F90+serve` | 451 | F90 plus one cross-fitted serve-contact probability |
 | `F90+peaks` | 454 | F90 plus four decoded serve-peak-window features |
 | `SIDE36` | 36 | Separate side-switch marker appearance/context signature |
+| `SIDE34-V2` | 34 | 17 adaptive side-conditioned/derived marker features plus one missingness indicator per scalar; separate from production F104 |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -121,6 +122,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `dead-state-transition-audio-normalized-v2-no-legacy`; `…-v5-no-legacy-final` | Global dead-state transition, F104 without legacy audio | Compared with v1; disabled legacy audio while retaining visual and new audio. v5 is the same learned weights finalized. | v5 became dead-state head in previous production. |
 | `dead-state-global-audio-normalized-v1-full-final`; `…-v2-full-final` | Algebraic inverse-rally dead-state control, F104 | Compared with transition-trained dead-state heads; uses global inverse-rally targets. v2 is the same learned weights with final re-export metadata. | Research control; not promoted. |
 | `side-switch-specialist-v1` | Side-switch marker, SIDE36; fit `SIDE4`, selected on `GOLD-V2` | First dedicated learned side-switch ranker; compared against marker heuristics rather than a prior trained side-switch model. | Rejected for automatic use; retained for review ranking. |
+| `side-switch-specialist-v2` | Side-switch marker, SIDE34-V2; class-balanced logistic; fit `SIDE-V2-T5`, select threshold/decoder on `SIDE-V2-V2`, confirm once on `SIDE-V2-E4` | Compared with v1 on the same four confirmation recordings. Replaced gap/context-heavy v1 inputs with adaptive near/far assignment costs, frame consistency, color moments, derived stability interactions, and unlabeled recording-bound normalization candidates. L2/family used grouped OOF selection; validation selected a no-op temporal decoder. | Retained research/review ranking, not automatic scoring. Same-scope v1→v2 F1 19.05%→32.73%, ROC AUC 0.590→0.796, AP 0.124→0.373; v2 precision remains 20.45%. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -128,6 +130,22 @@ the complete names are
 `dead-state-transition-audio-normalized-v4-full-final`,
 `dead-state-transition-audio-normalized-v5-no-legacy-final`, and
 `dead-state-global-audio-normalized-v2-full-final`.
+
+The v2 side-switch implementation revision is
+`9382fb932fdd873f7b6e0907645a97add2e5fa05`. Its model SHA-256 is
+`376425c2d70d3e2418de9592e376e40a6f2a6c5b398ac9f8f65278c0839b3216`,
+its stable deployable fingerprint is
+`b24265fdac554eece6d8e1e446290be1797e9f3669005fa4f1c392fb72c1671f`,
+and its feature artifact SHA-256 is
+`8cad75f8800ca84544751980420ccd6bdf7ddac0ab61f0450eb6c5dcf1a6f321`.
+The immutable provenance artifact at
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-v2-provenance.json`
+has SHA-256
+`3b97b66745b9cddf236448022dc49f33565809fb28a53af6d1cc3452b712caa4`
+and records every source video's full-file SHA-256, sampled fingerprint, feedback hash,
+split role, label-map identity, development dataset hash, and evaluation hash. The full
+decision and metric record is
+[`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md).
 
 ### No-beach full-gold refits
 
@@ -286,6 +304,9 @@ sets are separate even when listed on the same model row.
 | `ENV2-ALL11` | Fit: union of `ENV1-GRASS6` and `ENV2-INDOOR5` |
 | `FEEDBACK16` | Fit: `ENV2-ALL11` plus `project-cmh0xj`, `project-kqx9c`, `project-qkf86k`, `project-vxcbv3`, `project-yf69sz` |
 | `SIDE4` | Fit: `beach-beach-source-02`, `beach-beach-source-01`, `grass-grass-source-01`, `grass-grass-source-09` |
+| `SIDE-V2-T5` | Fit: `raw-no-backup-PXL_20260816_164327879`, `raw-no-backup-PXL_20260816_171720964`, `raw-no-backup-PXL_20260816_190429172`, `raw-no-backup-PXL_20260816_180646590`, `raw-no-backup-PXL_20260816_183701800` |
+| `SIDE-V2-V2` | Threshold and decoder selection only: `raw-no-backup-PXL_20260816_210449857`, `raw-no-backup-PXL_20260816_193307688` |
+| `SIDE-V2-E4` | Confirmation evaluation only: `raw-no-backup-PXL_20260816_160023210`, `raw-no-backup-PXL_20260816_161923155`, `raw-no-backup-PXL_20260816_203801418`, `raw-no-backup-PXL_20260816_212717581` |
 
 ## Rebuild checklist
 

@@ -88,7 +88,10 @@ The following documents are the maintained contracts:
 The repository root is an internal NAS-backed development application, not the public
 production client. It hosts the gold-label workstation, model/source comparison views,
 model-feedback import, suppression and side-switch review, on-device experiments, and
-the Python training/evaluation toolchain.
+the Python training/evaluation toolchain. The retained side-switch v2 specialist is a
+research/review-ranking artifact and is not part of either production client; its exact
+features and lineage are registered in
+[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and [`MODELS.md`](MODELS.md).
 
 ### Setup
 

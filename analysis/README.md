@@ -618,6 +618,27 @@ signature:
 These paths remain research-only. The first audio ablation favored the legacy-audio local
 transition head and did not support promoting the new band features. See the
 [end-boundary/dead-state experiment](../docs/research/end-and-dead-state-audio-experiment-2026-08-12.md).
+
+## Side-switch specialist v2
+
+The v2 marker pipeline is separate from rally feature extraction. It first creates one
+immutable, decision-free feature artifact over the preregistered raw recording split,
+then freezes model family/L2, static threshold, and decoder settings before the separate
+evaluation command can materialize confirmation decisions:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v2.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v2.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v2.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v2-provenance.py
+```
+
+Every command refuses to overwrite its durable NAS destination. The provenance command
+verifies full-file SHA-256 for all 11 source videos and binds the feature, model,
+development-dataset, and evaluation artifacts. The retained result is review-ranking
+research, not a production automatic scorer. See the
+[v2 decision record](../docs/research/side-switch-specialist-v2-2026-08-20.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
