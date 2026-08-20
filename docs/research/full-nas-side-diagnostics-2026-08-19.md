@@ -62,8 +62,10 @@ targets merely because an unvalidated note happens to contain a matching word.
 
 ### Side switching
 
-For completed and reviewed-draft labels, positives come from `sideSwitches` and
-controls come from unmarked inter-rally gaps of at least eight seconds. For
+For completed and reviewed-draft labels, seed positives come from `sideSwitches` and
+legacy comparison rows come from unmarked inter-rally gaps of at least eight seconds.
+Those unmarked gaps are not confirmed no-switch negatives: the marker inventory was
+created through heuristic-guided review and is not exhaustive. For
 candidate-only recordings, every eligible gap is a review candidate with no
 binary target. The existing OpenCV HOG person proposal and player-palette
 features are run on two frames per side of each gap, with an eight-second flank
@@ -81,8 +83,8 @@ The completed report paths are:
 The development app exposes both report queues:
 
 - `/serving-side-review` — near/far/unclear review for every rally candidate;
-- `/side-switch-review` — switch/no-switch/unclear review for labeled controls
-  and candidate-only gaps.
+- `/side-switch-review` — switch/no-switch/unclear review for every report gap,
+  with V5/V6 proposal, intersection, and disagreement layers.
 
 Both queues stream video through a report-indexed development media route, so
 raw no-backup MP4s do not need to be registered as prepared labeling tasks.
@@ -91,8 +93,8 @@ mutate labels or research reports.
 
 The completed NAS run produced these headline counts:
 
-- side switch: 1,096 windows total; 41 labeled positives, 625 labeled controls,
-  and 430 candidate-only windows; all but one window produced usable frame
+- side switch: 1,096 windows total; 41 prior marker windows, 625 previously
+  unmarked heuristic gaps, and 430 candidate-only windows; all but one produced usable frame
   features;
 - serving side: 1,424 rally rows total; 121 weak targets in the evaluation
   universe (70 near, 51 far), 739 candidate-only rows, and no frame errors.
@@ -106,10 +108,12 @@ target, so it is not evidence of generalization. The 739 candidate-only rows
 are scored and reviewable but have no accuracy number until someone validates
 them in the UI.
 
-For side switching, the pooled labeled/draft diagnostic had 666 evaluable
-windows (41 positives, 625 controls); area-weighted player palette reached
-0.722 ROC AUC. The completed-label-only subset reproduced the earlier 0.744
-ROC AUC. Candidate-only gaps are intentionally excluded from both numbers.
+For side switching, the pooled labeled/draft diagnostic had 666 seed-comparison
+windows (41 prior markers, 625 previously unmarked gaps); area-weighted player
+palette reached 0.722 ROC AUC. The completed-label-only subset reproduced the
+earlier 0.744 ROC AUC. These are agreement diagnostics against a non-exhaustive
+heuristic seed grouping, not exhaustive switch accuracy. Candidate-only gaps are
+intentionally excluded from both numbers.
 
 ## Labels needed next
 

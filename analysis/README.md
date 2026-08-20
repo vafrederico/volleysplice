@@ -721,7 +721,10 @@ PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v6-provenance.py
 
 Every destination is immutable, and the trainer pins the extracted feature SHA before
 the first fit. V6 improves raw-phone row AP but regresses exact and tolerant event F1,
-so it is rejected with no production port. See the
+so it is not promoted and has no production port. V5/V6 event metrics are conditioned
+on reviewed rally-gap candidates rather than exhaustive full-video truth; their 59-gap
+proposal union is available in the
+[review UI](../docs/research/side-switch-v5-v6-review-ui-2026-08-20.md). See the
 [v6 decision record](../docs/research/side-switch-specialist-v6-2026-08-20.md).
 
 ## Ball-presence feasibility pilot

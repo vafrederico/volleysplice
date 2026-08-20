@@ -3,7 +3,8 @@
 ## Decision
 
 V5 validates motion-component player isolation as the strongest visual improvement so
-far, but it is **not promoted** to browser or Android inference. On the retrospective
+far, but it is **not promoted** to browser or Android inference. Its decoded proposals
+are now exposed in the review UI because earlier marker seeds are not exhaustive. On the retrospective
 raw-phone evaluation, exact-gap F1 improves from v4's 16.67% to 27.85%, raw row AP from
 26.92% to 43.40%, and exact precision from 16.22% to 25.00%. Absolute precision remains
 too low for automatic score tracking.
@@ -79,7 +80,7 @@ classifier/decoder fingerprint is
 | Exact F1 | 82.35% | **97.14%** |
 | Exact switch-count recordings | 2/4 | **3/4** |
 
-### Retrospective raw-phone evaluation
+### Retrospective raw-phone candidate-window evaluation
 
 | Scoring tolerance | Model | Predictions | Precision | Recall | F1 |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -90,7 +91,8 @@ classifier/decoder fingerprint is
 | ±2 rallies | V4 | 37 | 40.54% | 42.86% | 41.67% |
 | ±2 rallies | V5 selected | 44 | **40.91%** | **51.43%** | **45.57%** |
 
-V5 predicts the exact switch count in 3 of 11 evaluation recordings, compared with 2 of
+These values measure agreement with the reviewed rally-gap candidate inventory, not
+exhaustive full-video precision/recall. V5 predicts the exact switch count in 3 of 11 evaluation recordings, compared with 2 of
 11 for v4. It exactly matches 11 of 35 labeled switches, 15 within ±1 rally, and 18
 within ±2 rallies.
 
@@ -148,7 +150,9 @@ The bound implementation revision is
 
 ## Next dependency
 
-Player isolation materially improves ranking, but 33 of 44 exact predictions remain
-false positives and 24 of 35 switches remain exact misses. The next independent change
+Player isolation materially improves ranking, but 33 of 44 exact predictions disagree
+with the existing candidate-window review decision and 24 of 35 reviewed switches remain
+exact misses. Those disagreements are reviewable in `/side-switch-review`; they are not
+automatically confirmed physical false positives. The next independent change
 should address scored-point progression and re-dos rather than adding more visual model
 capacity or choosing the retrospectively better wider margin.

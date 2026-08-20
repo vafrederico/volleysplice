@@ -6,20 +6,18 @@ import {
   getSideSwitchReviewReportPath,
   loadSideSwitchReviewState,
 } from "@/lib/server/side-switch-review";
+import { loadSideSwitchReviewProposalBundle } from "@/lib/server/side-switch-review-proposals";
 
 import { SideSwitchReviewClient } from "./side-switch-review-client";
-import type {
-  AppearanceReport,
-  SideSwitchRecording,
-} from "./types";
+import type { AppearanceReport, SideSwitchRecording } from "./types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Side-switch appearance review · VolleyCut",
+  title: "Side-switch model review · VolleyCut",
   description:
-    "Review label-only appearance evidence for detecting volleyball side switches.",
+    "Review V5 and V6 side-switch model proposals against volleyball footage.",
   robots: { index: false, follow: false },
 };
 
@@ -45,16 +43,20 @@ async function loadRecordings(
 
   return Promise.all(
     report.labels.files.map(async (file) => {
-      const fallbackDuration = (eventsByRecording.get(file.recordingId) ?? 0) + 5;
+      const fallbackDuration =
+        (eventsByRecording.get(file.recordingId) ?? 0) + 5;
       const labelPath = path.join(
         path.resolve(report.labels.directory),
         `${file.recordingId}.labels.json`,
       );
       try {
-        const payload = JSON.parse(await readFile(labelPath, "utf8")) as unknown;
-        const recording = isRecord(payload) && isRecord(payload.recording)
-          ? payload.recording
-          : null;
+        const payload = JSON.parse(
+          await readFile(labelPath, "utf8"),
+        ) as unknown;
+        const recording =
+          isRecord(payload) && isRecord(payload.recording)
+            ? payload.recording
+            : null;
         return {
           recordingId: file.recordingId,
           environment: file.environment,
@@ -65,7 +67,7 @@ async function loadRecordings(
           videoFilename:
             typeof recording?.videoFilename === "string"
               ? recording.videoFilename
-              : file.videoFilename ?? `${file.recordingId}.mp4`,
+              : (file.videoFilename ?? `${file.recordingId}.mp4`),
           sourceType: file.sourceType,
           targetStatus: file.targetStatus,
         };
@@ -100,9 +102,17 @@ function clientReport(report: AppearanceReport): AppearanceReport {
 export default async function SideSwitchReviewPage() {
   const sourcePath = getSideSwitchReviewReportPath();
   try {
-    const report = JSON.parse(await readFile(sourcePath, "utf8")) as AppearanceReport;
-    const recordings = await loadRecordings(report);
-    let initialDecisions: Record<string, "switch" | "no-switch" | "unclear"> = {};
+    const report = JSON.parse(
+      await readFile(sourcePath, "utf8"),
+    ) as AppearanceReport;
+    const [recordings, proposalBundle] = await Promise.all([
+      loadRecordings(report),
+      loadSideSwitchReviewProposalBundle(
+        new Set(report.events.map((event) => event.eventId)),
+      ),
+    ]);
+    let initialDecisions: Record<string, "switch" | "no-switch" | "unclear"> =
+      {};
     let initialSavedAt: string | null = null;
     let decisionLoadError: string | undefined;
     try {
@@ -115,12 +125,14 @@ export default async function SideSwitchReviewPage() {
         initialSavedAt = state.savedAt;
       }
     } catch (error) {
-      decisionLoadError = error instanceof Error ? error.message : String(error);
+      decisionLoadError =
+        error instanceof Error ? error.message : String(error);
     }
     return (
       <SideSwitchReviewClient
         report={clientReport(report)}
         recordings={recordings}
+        proposalBundle={proposalBundle}
         reportPath={path.basename(sourcePath)}
         initialDecisions={initialDecisions}
         initialSavedAt={initialSavedAt}
@@ -132,6 +144,7 @@ export default async function SideSwitchReviewPage() {
       <SideSwitchReviewClient
         report={null}
         recordings={[]}
+        proposalBundle={{ layers: [], byEventId: {}, errors: [] }}
         reportPath={sourcePath}
         loadError={error instanceof Error ? error.message : String(error)}
         initialDecisions={{}}

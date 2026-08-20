@@ -2,11 +2,12 @@
 
 ## Decision
 
-Do not promote v6. The requested person-localization and adaptive-team-prototype
+Do not currently promote v6. The requested person-localization and adaptive-team-prototype
 changes are implemented, trained, and evaluated, but the frozen raw-phone result is
 worse than v5 at the event level. V5 remains the best side-switch research artifact;
 neither model is suitable for automatic scoring or included in browser/Android
-production inference.
+production inference. V5/V6 decoded proposals are nevertheless exposed in the review UI
+because the earlier heuristic marker inventory is not exhaustive.
 
 V6 does produce the best raw-phone row ranking so far: AP rises from v5's 43.40% to
 45.47%. That gain does not survive the validation-selected threshold and cadence
@@ -127,7 +128,7 @@ orientation weight `0.0`, with threshold `0.43328154932136753`.
 | V6 fixed-prototype ablation | 57.41% | 84.21% | 94.12% | 88.89% | 94.44% | 94.44% |
 | V6 detected + adaptive selected | 58.51% | 84.21% | 94.12% | 88.89% | 94.44% | 94.44% |
 
-### Retrospective raw-phone confirmation
+### Retrospective raw-phone candidate-window confirmation
 
 | Candidate | Row AP | Predictions | Exact P | Exact R | Exact F1 | ±1 F1 | ±2 F1 | Exact-count sets |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -136,9 +137,12 @@ orientation weight `0.0`, with threshold `0.43328154932136753`.
 | V6 fixed-prototype ablation | 44.67% | 48 | 20.83% | 28.57% | 24.10% | 33.73% | 40.96% | 4/11 |
 | V6 detected + adaptive selected | 45.47% | 48 | 20.83% | 28.57% | 24.10% | 33.73% | 40.96% | 4/11 |
 
-The full v6 model has 10 exact true positives, 38 false positives, and 25 false
-negatives. At ±2 tolerance it has 17 matches, 31 false positives, and 18 false
-negatives. Better row AP with worse decoded F1 indicates that the validation-selected
+Relative to the existing candidate-window review decisions, the full v6 model has 10
+exact matches to reviewed switches, 38 predictions on gaps reviewed as no-switch, and
+25 reviewed-switch misses. At ±2 tolerance it has 17 matches, 31 review-decision
+mismatches, and 18 misses. These conventional metrics are candidate-conditioned and do
+not establish exhaustive full-video precision/recall; the proposal mismatches remain
+reviewable rather than being treated as confirmed physical false positives. Better row AP with worse decoded F1 indicates that the validation-selected
 threshold/count policy does not transfer to the raw-phone source group.
 
 ### Candidate-margin sensitivity
