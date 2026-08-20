@@ -66,7 +66,7 @@ const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
 ];
 
 const OVERVIEW_TICK_RATIOS = [0, 0.2, 0.4, 0.6, 0.8, 1];
-const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2, 4];
 
 function compactNumber(value: number): string {
   return value.toLocaleString("en-US");
@@ -519,6 +519,12 @@ function LoadedSideSwitchReview({
     if (nextUnreviewedEvent) setSelectedEventId(nextUnreviewedEvent.eventId);
   }, [nextUnreviewedEvent]);
 
+  const moveToPrevious = useCallback(() => {
+    if (selectedIndex <= 0) return;
+    const previousEvent = filteredEvents[selectedIndex - 1];
+    if (previousEvent) setSelectedEventId(previousEvent.eventId);
+  }, [filteredEvents, selectedIndex]);
+
   const setDecision = useCallback(
     (decision: ReviewDecision) => {
       if (!selectedEvent) return;
@@ -621,6 +627,9 @@ function LoadedSideSwitchReview({
       if (key === "j") {
         event.preventDefault();
         moveToNextUnreviewed();
+      } else if (key === "p") {
+        event.preventDefault();
+        moveToPrevious();
       } else if (key === "v") {
         event.preventDefault();
         setDecision("switch");
@@ -635,7 +644,7 @@ function LoadedSideSwitchReview({
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [moveToNextUnreviewed, setDecision]);
+  }, [moveToNextUnreviewed, moveToPrevious, setDecision]);
 
   function seek(time: number) {
     const target = boundedTime(time, duration);
@@ -645,15 +654,6 @@ function LoadedSideSwitchReview({
 
   function selectEvent(eventId: string) {
     setSelectedEventId(eventId);
-  }
-
-  function moveSelection(direction: -1 | 1) {
-    if (!filteredEvents.length) return;
-    const nextIndex = Math.max(
-      0,
-      Math.min(filteredEvents.length - 1, selectedIndex + direction),
-    );
-    setSelectedEventId(filteredEvents[nextIndex]?.eventId ?? "");
   }
 
   const currentScope = selectedEvent?.environment ?? "pooled";
@@ -849,7 +849,7 @@ function LoadedSideSwitchReview({
                   <h2>{selectedEvent.eventId}</h2>
                 </div>
                 <div className={styles.navigationButtons}>
-                  <button type="button" disabled={selectedIndex <= 0} onClick={() => moveSelection(-1)}>← Previous</button>
+                  <button type="button" disabled={selectedIndex <= 0} onClick={moveToPrevious}>← Previous <kbd>P</kbd></button>
                   <span>{selectedIndex + 1} / {filteredEvents.length}</span>
                   <button
                     type="button"
@@ -923,6 +923,7 @@ function LoadedSideSwitchReview({
                   aria-label="Keyboard shortcuts"
                 >
                   <span><kbd>J</kbd> next unreviewed</span>
+                  <span><kbd>P</kbd> previous</span>
                   <span><kbd>V</kbd> visible switch</span>
                   <span><kbd>N</kbd> no switch</span>
                   <span><kbd>U</kbd> unclear</span>
