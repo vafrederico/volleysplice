@@ -165,6 +165,19 @@ function modelConfidence(result: ServingSideFlightReviewResult): number {
     : 1 - result.probabilityNear;
 }
 
+function choiceLabel(value: string): string {
+  return value.replaceAll("-", " ");
+}
+
+function annotationSummary(annotation: ServingSideFlightAnnotation): string {
+  return [
+    `server ${choiceLabel(annotation.serverVisibility)}`,
+    `contact ${choiceLabel(annotation.contactTiming)}`,
+    `ball ${choiceLabel(annotation.ballFlightVisibility)}`,
+    `motion ${choiceLabel(annotation.motionDirection)}`,
+  ].join(" · ");
+}
+
 function draftFor(annotation: ServingSideFlightAnnotation | undefined): Draft {
   if (!annotation) return { ...EMPTY_DRAFT };
   return {
@@ -328,6 +341,14 @@ function LoadedReview({
     ? annotationState.annotations[selected.rallyId]
     : undefined;
   const completedDraft = savableDraft(draft);
+  const reviewScopeRows = rows.filter((row) => {
+    if (outcome === "mistakes" && row.correct) return false;
+    if (outcome === "correct" && !row.correct) return false;
+    return recordingId === "all" || row.recordingId === recordingId;
+  });
+  const savedInScope = reviewScopeRows.filter(
+    (row) => annotationState.annotations[row.rallyId],
+  ).length;
 
   const move = useCallback(
     (offset: number) => {
@@ -537,16 +558,27 @@ function LoadedReview({
         <div className={base.filterChoices}>
           <span>Review state</span>
           <div>
-            {(["unreviewed", "all", "reviewed"] as const).map((value) => (
-              <button
-                type="button"
-                data-active={reviewFilter === value ? "true" : "false"}
-                onClick={() => setReviewFilter(value)}
-                key={value}
-              >
-                {value}
-              </button>
-            ))}
+            <button
+              type="button"
+              data-active={reviewFilter === "unreviewed" ? "true" : "false"}
+              onClick={() => setReviewFilter("unreviewed")}
+            >
+              Unreviewed · {reviewScopeRows.length - savedInScope}
+            </button>
+            <button
+              type="button"
+              data-active={reviewFilter === "reviewed" ? "true" : "false"}
+              onClick={() => setReviewFilter("reviewed")}
+            >
+              Saved labels · {savedInScope}
+            </button>
+            <button
+              type="button"
+              data-active={reviewFilter === "all" ? "true" : "false"}
+              onClick={() => setReviewFilter("all")}
+            >
+              All · {reviewScopeRows.length}
+            </button>
           </div>
         </div>
       </section>
@@ -558,7 +590,9 @@ function LoadedReview({
               <span className={base.panelKicker}>REVIEW QUEUE</span>
               <strong>{filteredRows.length} examples</strong>
             </div>
-            <small>{reviewFilter}</small>
+            <small>
+              {reviewFilter === "reviewed" ? "saved labels" : reviewFilter}
+            </small>
           </header>
           <div className={base.queueList}>
             {filteredRows.map((row, index) => {
@@ -585,11 +619,16 @@ function LoadedReview({
                       {formatTime(row.start)} · human {row.human} → model{" "}
                       {row.prediction}
                     </small>
+                    {reviewed && (
+                      <small className={styles.savedQueueLabels}>
+                        {annotationSummary(
+                          annotationState.annotations[row.rallyId]!,
+                        )}
+                      </small>
+                    )}
                   </span>
                   <span className={styles.reviewBadge} data-reviewed={reviewed}>
-                    {reviewed
-                      ? "REVIEWED"
-                      : percentage(modelConfidence(row), 0)}
+                    {reviewed ? "SAVED" : percentage(modelConfidence(row), 0)}
                   </span>
                 </button>
               );
@@ -736,6 +775,60 @@ function LoadedReview({
                     </small>
                   )}
                 </header>
+
+                {currentAnnotation && (
+                  <section className={styles.savedLabelsPanel}>
+                    <header>
+                      <div>
+                        <span>Saved labels</span>
+                        <strong>Edit the choices below, then save again</strong>
+                      </div>
+                      <time dateTime={currentAnnotation.reviewedAt}>
+                        {new Date(
+                          currentAnnotation.reviewedAt,
+                        ).toLocaleString()}
+                      </time>
+                    </header>
+                    <dl>
+                      <div>
+                        <dt>Server</dt>
+                        <dd>
+                          {choiceLabel(currentAnnotation.serverVisibility)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Contact</dt>
+                        <dd>{choiceLabel(currentAnnotation.contactTiming)}</dd>
+                      </div>
+                      <div>
+                        <dt>Exact contact</dt>
+                        <dd>
+                          {currentAnnotation.correctedServeAnchorSeconds ===
+                          null
+                            ? "not set"
+                            : formatTime(
+                                currentAnnotation.correctedServeAnchorSeconds,
+                              )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Ball flight</dt>
+                        <dd>
+                          {choiceLabel(currentAnnotation.ballFlightVisibility)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Motion</dt>
+                        <dd>
+                          {choiceLabel(currentAnnotation.motionDirection)}
+                        </dd>
+                      </div>
+                    </dl>
+                    {currentAnnotation.notes && (
+                      <p>Note: {currentAnnotation.notes}</p>
+                    )}
+                  </section>
+                )}
 
                 <ChoiceGroup
                   legend="Server visibility"
