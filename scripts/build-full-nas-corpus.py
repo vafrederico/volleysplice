@@ -51,6 +51,36 @@ def resolve_video(label_path: Path, value: Any) -> Path:
     return (label_path.parent / video).resolve() if not video.is_absolute() else video.resolve()
 
 
+def source_ignored_intervals(
+    value: Any, *, duration: float, where: str
+) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{where} must be an array")
+    result: list[dict[str, Any]] = []
+    previous_end = -1.0
+    for index, row in enumerate(value):
+        item_where = f"{where}[{index}]"
+        if not isinstance(row, dict):
+            raise ValueError(f"{item_where} must be an object")
+        start = finite(row.get("start"), f"{item_where}.start")
+        end = finite(row.get("end"), f"{item_where}.end")
+        reason = row.get("reason")
+        if (
+            start < 0
+            or start >= end
+            or end > duration
+            or start < previous_end
+            or not isinstance(reason, str)
+            or not reason
+        ):
+            raise ValueError(f"{item_where} is invalid or overlaps")
+        result.append({"start": start, "end": end, "reason": reason})
+        previous_end = end
+    return result
+
+
 def label_record(
     path: Path,
     *,
@@ -61,6 +91,9 @@ def label_record(
     payload = json.loads(path.read_text(encoding="utf-8"))
     recording = payload["recording"]
     recording_id = str(recording["id"])
+    duration = finite(
+        recording["durationSeconds"], f"{recording_id}.durationSeconds"
+    )
     rallies = []
     for index, rally in enumerate(payload.get("rallies", []), start=1):
         notes = rally.get("notes")
@@ -92,10 +125,13 @@ def label_record(
         "labelSha256": sha256(path),
         "videoPath": str(resolve_video(path, recording.get("video"))),
         "videoFilename": str(recording.get("videoFilename", "")),
-        "durationSeconds": finite(
-            recording["durationSeconds"], f"{recording_id}.durationSeconds"
-        ),
+        "durationSeconds": duration,
         "roi": recording.get("roi"),
+        "ignoredIntervals": source_ignored_intervals(
+            payload.get("ignoredIntervals"),
+            duration=duration,
+            where=f"{recording_id}.ignoredIntervals",
+        ),
         "rallies": rallies,
         "sideSwitches": switches,
         "candidateSource": {
@@ -135,6 +171,7 @@ def feedback_record(video_path: Path, feedback_path: Path) -> dict[str, Any]:
     source = payload["source"]
     inference = payload["initialInference"]
     media = source.get("media", {})
+    duration = finite(media["duration"], f"{video_path.name}.duration")
     roi = source.get("featureRoi")
     ranges = []
     for index, row in enumerate(inference.get("ranges", []), start=1):
@@ -165,8 +202,13 @@ def feedback_record(video_path: Path, feedback_path: Path) -> dict[str, Any]:
         "labelSha256": sha256(feedback_path),
         "videoPath": str(video_path.resolve()),
         "videoFilename": video_path.name,
-        "durationSeconds": finite(media["duration"], f"{video_path.name}.duration"),
+        "durationSeconds": duration,
         "roi": roi,
+        "ignoredIntervals": source_ignored_intervals(
+            payload.get("corrections", {}).get("ignoredIntervals"),
+            duration=duration,
+            where=f"{video_path.name}.corrections.ignoredIntervals",
+        ),
         "rallies": ranges,
         "sideSwitches": [],
         "candidateSource": {
@@ -181,6 +223,9 @@ def feedback_record(video_path: Path, feedback_path: Path) -> dict[str, Any]:
             "featureRoi": roi,
             "initialRangeCount": len(ranges),
             "finalExportIntervalCount": len(payload.get("finalExportIntervals", [])),
+            "ignoredIntervalCount": len(
+                payload.get("corrections", {}).get("ignoredIntervals", [])
+            ),
         },
         "priority": 30,
     }
@@ -262,6 +307,7 @@ def main() -> int:
         "scope": "all-discovered-deduplicated-NAS-video-sources",
         "notes": [
             "Candidate-only rows are for manual validation and are excluded from gold metrics.",
+            "Every consumer must treat ignoredIntervals as outside the training and evaluation universe.",
             "The raw source directory is named volleycut-raw-no-backup (singular) on this NAS.",
         ],
         "roots": roots,

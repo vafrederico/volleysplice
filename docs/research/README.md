@@ -42,5 +42,9 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 - [Volleyball video app feasibility](./volleyball-video-app-feasibility.md) — broader product and capture feasibility. This predates the deeper source audit above.
 - [Full-NAS serving-side and side-switch diagnostics — 2026-08-19](./full-nas-side-diagnostics-2026-08-19.md) — deduplicated 30-recording NAS corpus, candidate-only non-training review, and report/UI contract.
+- [Serving-side review freeze — 2026-08-20](./serving-side-review-freeze-2026-08-20.md) — complete 1,424-rally near/far/ignore review, immutable source hashes, split counts, and modeling guardrails.
+- [Serving-side specialist v1 — 2026-08-20](./serving-side-specialist-v1-2026-08-20.md) — deterministic existing-feature baseline, recording-grouped selection, strong raw result, protected indoor regression, immutable artifacts, and non-promotion decision.
+- [Serving-side specialist v2 — 2026-08-20](./serving-side-specialist-v2-2026-08-20.md) — court-relative phase-aware optical flow, grouped logistic-versus-boosted comparison, immutable feature/model pipeline, and 94.84% protected balanced accuracy.
+- [Serving-side hybrid serve gate — 2026-08-21](./serving-side-hybrid-serve-gate-2026-08-21.md) — conservative both-model production-rally recovery for serve-head misses, review routing, current-label tradeoffs, and immutable NAS artifacts.
 - [Side-switch specialist v1 — 2026-08-20](./side-switch-specialist-v1-2026-08-20.md) — complete-marker review freeze, recording-separated train/validation/evaluation protocol, existing-feature specialist, immutable NAS artifacts, and non-promotion result.
 - [Side-switch v2 execution handoff — 2026-08-20](./side-switch-v2-execution-handoff-2026-08-20.md) — frozen raw recording split, decision-file binding, planned side-conditioned and temporal features, and immutable execution contract.

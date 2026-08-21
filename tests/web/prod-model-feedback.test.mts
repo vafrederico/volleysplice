@@ -9,14 +9,18 @@ import {
   createModelFeedbackBundle,
   modelFeedbackFilename,
 } from "../../prod/src/lib/model-feedback.ts";
-import { PRODUCTION_ENSEMBLE_MODEL_ID } from "../../prod/src/lib/on-device/ensemble.ts";
-import { SUPPRESSION_POLICY_CONTRACT_VERSION } from "../../prod/src/lib/on-device/suppression-policy.ts";
+import {
+  ALL_LABELS_V2_MODEL_ID,
+  PREVIOUS_PRODUCTION_MODEL_ID,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
+} from "../../prod/src/lib/on-device/ensemble.ts";
 import {
   SUPPRESSION_ARTIFACT_SHA256,
   SUPPRESSION_DECODER_VERSION,
   SUPPRESSION_MODEL_ID,
   SUPPRESSION_WEIGHTS_SHA256,
 } from "../../prod/src/lib/on-device/suppression-model.ts";
+import { SUPPRESSION_POLICY_CONTRACT_VERSION } from "../../prod/src/lib/on-device/suppression-policy.ts";
 import type { ProductAnalysis } from "../../prod/src/lib/product-analysis.ts";
 
 const analysis: ProductAnalysis = {
@@ -87,20 +91,34 @@ const analysis: ProductAnalysis = {
     deadState: new Float32Array([0.3, 0.7]),
   },
   productionComponents: {
-    allLabelsV2: [{
-      id: "AV2-001",
-      start: 5,
-      end: 8,
-      confidence: 0.8,
-      included: true,
-    }],
-    previousProduction: [{
-      id: "PP-001",
-      start: 12,
-      end: 15,
-      confidence: 0.6,
-      included: true,
-    }],
+    allLabelsV2: [
+      {
+        id: "AV2-001",
+        start: 5,
+        end: 8,
+        confidence: 0.8,
+        included: true,
+      },
+    ],
+    previousProduction: [
+      {
+        id: "PP-001",
+        start: 12,
+        end: 15,
+        confidence: 0.6,
+        included: true,
+      },
+    ],
+  },
+  productionServeOutputs: {
+    allLabelsV2: {
+      probabilities: new Float32Array([0.2, 0.8]),
+      detections: [{ time: 5.25, confidence: 0.91 }],
+    },
+    previousProduction: {
+      probabilities: new Float32Array([0.4, 0.7]),
+      detections: [{ time: 5.5, confidence: 0.88 }],
+    },
   },
   suppression: {
     modelId: SUPPRESSION_MODEL_ID,
@@ -109,23 +127,27 @@ const analysis: ProductAnalysis = {
     decoderVersion: SUPPRESSION_DECODER_VERSION,
     policyContractVersion: SUPPRESSION_POLICY_CONTRACT_VERSION,
     probabilities: new Float32Array([0.2, 0.95]),
-    decodedIntervals: [{
-      id: "S001",
-      start: 12.5,
-      end: 13.5,
-      confidence: 0.95,
-      included: true,
-    }],
-    suggestions: [{
-      id: "suppression-logical-12500-13500",
-      logicalId: "suppression-logical",
-      suppressionEventId: "S001-12500-13500",
-      start: 12.5,
-      end: 13.5,
-      score: 0.95,
-      sourceProductionIds: ["PP-001"],
-      eligiblePolicyIds: ["conservative", "balanced", "aggressive"],
-    }],
+    decodedIntervals: [
+      {
+        id: "S001",
+        start: 12.5,
+        end: 13.5,
+        confidence: 0.95,
+        included: true,
+      },
+    ],
+    suggestions: [
+      {
+        id: "suppression-logical-12500-13500",
+        logicalId: "suppression-logical",
+        suppressionEventId: "S001-12500-13500",
+        start: 12.5,
+        end: 13.5,
+        score: 0.95,
+        sourceProductionIds: ["PP-001"],
+        eligiblePolicyIds: ["conservative", "balanced", "aggressive"],
+      },
+    ],
     identicalPolicyResults: true,
   },
 };
@@ -205,12 +227,17 @@ test("model feedback preserves initial inference and classifies corrections", ()
     bundle.corrections.labels.discardedManualRanges.map(({ id }) => id),
     ["M002"],
   );
-  assert.equal(bundle.initialInference.suppression?.artifactSha256, SUPPRESSION_ARTIFACT_SHA256);
-  assert.deepEqual(bundle.corrections.suppression.decisions, [{
-    suggestionId: "suppression-logical-12500-13500",
-    logicalId: "suppression-logical",
-    state: "dormant",
-  }]);
+  assert.equal(
+    bundle.initialInference.suppression?.artifactSha256,
+    SUPPRESSION_ARTIFACT_SHA256,
+  );
+  assert.deepEqual(bundle.corrections.suppression.decisions, [
+    {
+      suggestionId: "suppression-logical-12500-13500",
+      logicalId: "suppression-logical",
+      state: "dormant",
+    },
+  ]);
   assert.ok(bundle.finalExportProvenance.length > 0);
 });
 
@@ -228,6 +255,24 @@ test("model feedback encodes source-aligned features as little-endian base64", (
   assert.deepEqual(bundle.features?.timestamps.shape, [2]);
   assert.deepEqual(bundle.features?.values.shape, [2, 2]);
   assert.deepEqual(bundle.initialInference.timestamps.shape, [2]);
+  assert.equal(
+    bundle.initialInference.componentServeOutputs?.allLabelsV2.modelId,
+    ALL_LABELS_V2_MODEL_ID,
+  );
+  assert.equal(
+    bundle.initialInference.componentServeOutputs?.previousProduction.modelId,
+    PREVIOUS_PRODUCTION_MODEL_ID,
+  );
+  assert.deepEqual(
+    bundle.initialInference.componentServeOutputs?.allLabelsV2.probabilities
+      .shape,
+    [2],
+  );
+  assert.deepEqual(
+    bundle.initialInference.componentServeOutputs?.previousProduction
+      .detections,
+    [{ time: 5.5, confidence: 0.88 }],
+  );
   const bytes = Buffer.from(bundle.features!.values.data, "base64");
   assert.equal(bytes.readFloatLE(0), 1.25);
   assert.equal(bytes.readFloatLE(4), -2.5);

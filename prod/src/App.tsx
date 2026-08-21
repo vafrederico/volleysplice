@@ -6,12 +6,12 @@ import { GuidedTour } from "@/components/GuidedTour";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
-import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
 import {
   type AnalysisWindow,
   MIN_ANALYSIS_WINDOW_SECONDS,
   normalizeAnalysisWindow,
 } from "@/lib/on-device/analysis-window";
+import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
 import { deleteFeatureCachesForSource } from "@/lib/on-device/feature-cache";
 import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
@@ -285,7 +285,8 @@ export function App() {
     if (
       !project?.analysis ||
       project.status !== "ready" ||
-      project.analysis.suppression ||
+      (project.analysis.suppression &&
+        project.analysis.productionServeOutputs) ||
       !project.analysis.featureNames ||
       !project.analysis.featureValues ||
       suppressionAugmentingRef.current.has(project.id)
@@ -309,7 +310,7 @@ export function App() {
       .catch((cause) => {
         if (active) {
           setError(
-            `Suppression suggestions could not be added from cached features: ${cause instanceof Error ? cause.message : String(cause)}`,
+            `Production inference details could not be refreshed from cached features: ${cause instanceof Error ? cause.message : String(cause)}`,
           );
         }
       })
@@ -722,22 +723,27 @@ export function App() {
       rallies: selectedProject.analysis.intervals,
       ignoredIntervals: [
         ...(selectedProject.analysisWindow.start > 0
-          ? [{
-              start: 0,
-              end: selectedProject.analysisWindow.start,
-              reason: "outside-game-window",
-            }]
+          ? [
+              {
+                start: 0,
+                end: selectedProject.analysisWindow.start,
+                reason: "outside-game-window",
+              },
+            ]
           : []),
         ...(selectedProject.analysisWindow.end < selectedProject.info.duration
-          ? [{
-              start: selectedProject.analysisWindow.end,
-              end: selectedProject.info.duration,
-              reason: "outside-game-window",
-            }]
+          ? [
+              {
+                start: selectedProject.analysisWindow.end,
+                end: selectedProject.info.duration,
+                reason: "outside-game-window",
+              },
+            ]
           : []),
       ],
       features:
-        selectedProject.analysis.featureNames && selectedProject.analysis.featureValues
+        selectedProject.analysis.featureNames &&
+        selectedProject.analysis.featureValues
           ? {
               times: selectedProject.analysis.times,
               values: selectedProject.analysis.featureValues,
@@ -753,6 +759,7 @@ export function App() {
         deadState: selectedProject.analysis.deadStateProbabilities,
       },
       productionComponents: selectedProject.analysis.productionComponents,
+      productionServeOutputs: selectedProject.analysis.productionServeOutputs,
       suppression: selectedProject.analysis.suppression,
     };
   }, [selectedProject, selectedVideoUrl]);
@@ -991,7 +998,9 @@ export function App() {
                   <div className={styles.gameWindowHeading}>
                     <div>
                       <span>ANALYSIS WINDOW</span>
-                      <strong id="game-window-heading">Mark game start &amp; end</strong>
+                      <strong id="game-window-heading">
+                        Mark game start &amp; end
+                      </strong>
                     </div>
                     <button
                       type="button"
@@ -1013,15 +1022,24 @@ export function App() {
                         aria-label="Game start in seconds"
                         type="number"
                         min="0"
-                        max={Math.max(0, analysisWindow.end - MIN_ANALYSIS_WINDOW_SECONDS)}
+                        max={Math.max(
+                          0,
+                          analysisWindow.end - MIN_ANALYSIS_WINDOW_SECONDS,
+                        )}
                         step="0.1"
                         value={analysisWindow.start}
                         onChange={(event) =>
-                          setGameBoundary("start", event.currentTarget.valueAsNumber)
+                          setGameBoundary(
+                            "start",
+                            event.currentTarget.valueAsNumber,
+                          )
                         }
                       />
                       <output>{preciseTime(analysisWindow.start)}</output>
-                      <button type="button" onClick={() => markGameBoundary("start")}>
+                      <button
+                        type="button"
+                        onClick={() => markGameBoundary("start")}
+                      >
                         Set to playhead
                       </button>
                     </label>
@@ -1035,18 +1053,26 @@ export function App() {
                         step="0.1"
                         value={analysisWindow.end}
                         onChange={(event) =>
-                          setGameBoundary("end", event.currentTarget.valueAsNumber)
+                          setGameBoundary(
+                            "end",
+                            event.currentTarget.valueAsNumber,
+                          )
                         }
                       />
                       <output>{preciseTime(analysisWindow.end)}</output>
-                      <button type="button" onClick={() => markGameBoundary("end")}>
+                      <button
+                        type="button"
+                        onClick={() => markGameBoundary("end")}
+                      >
                         Set to playhead
                       </button>
                     </label>
                   </div>
                   <strong className={styles.gameWindowSummary}>
-                    {formatDuration(analysisWindow.end - analysisWindow.start)} analyzed
-                    {analysisWindow.end - analysisWindow.start < info.duration - 0.05
+                    {formatDuration(analysisWindow.end - analysisWindow.start)}{" "}
+                    analyzed
+                    {analysisWindow.end - analysisWindow.start <
+                    info.duration - 0.05
                       ? ` · ${formatDuration(info.duration - (analysisWindow.end - analysisWindow.start))} skipped`
                       : " · full source"}
                   </strong>
@@ -1064,7 +1090,8 @@ export function App() {
                     {(["x", "y", "width", "height"] as const).map((field) => (
                       <label key={field}>
                         <span>
-                          {field} <output>{Math.round(roi[field] * 100)}%</output>
+                          {field}{" "}
+                          <output>{Math.round(roi[field] * 100)}%</output>
                         </span>
                         <input
                           aria-label={`Feature crop ${field}`}

@@ -75,6 +75,7 @@ const RALLY_FILTERS: Array<{ value: RallyFilter; label: string }> = [
 ];
 
 const OVERVIEW_TICK_RATIOS = [0, 0.2, 0.4, 0.6, 0.8, 1];
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2, 4];
 
 function compactNumber(value: number): string {
   return value.toLocaleString("en-US");
@@ -132,6 +133,16 @@ function metricFor(
 
 function boundedTime(value: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number.isFinite(value) ? value : 0));
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "SELECT" ||
+    target.tagName === "TEXTAREA"
+  );
 }
 
 function percentageAt(value: number, start: number, end: number): number {
@@ -376,6 +387,8 @@ function unavailable(reportPath: string, loadError?: string) {
         <Brand className={styles.brand} label="Serving-side review" priority />
         <nav>
           <Link href="/">Rally model review ↗</Link>
+          <Link href="/serving-side-results">Model results ↗</Link>
+          <Link href="/serving-side-flight-review">Flight error review ↗</Link>
           <Link href="/side-switch-review">Side-switch review ↗</Link>
         </nav>
       </header>
@@ -417,6 +430,7 @@ function LoadedServingSideReview({
       "",
   );
   const [currentTime, setCurrentTime] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [decisions, setDecisions] =
     useState<Record<string, ServingDecision>>(initialDecisions);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(
@@ -480,6 +494,46 @@ function LoadedServingSideReview({
     report.summary.metrics[`environment:${selectedRally.environment}`]
       ? `environment:${selectedRally.environment}`
       : "pooled";
+
+  const nextUnreviewedRally = useMemo(() => {
+    if (!filteredRallies.length) return null;
+    const startIndex = selectedIndex >= 0 ? selectedIndex : -1;
+    for (let offset = 1; offset <= filteredRallies.length; offset += 1) {
+      const candidate =
+        filteredRallies[(startIndex + offset) % filteredRallies.length];
+      if (
+        candidate &&
+        candidate.rallyId !== selectedRally?.rallyId &&
+        decisions[candidate.rallyId] === undefined
+      ) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [decisions, filteredRallies, selectedIndex, selectedRally?.rallyId]);
+
+  const moveToNextUnreviewed = useCallback(() => {
+    if (nextUnreviewedRally) {
+      setSelectedRallyId(nextUnreviewedRally.rallyId);
+    }
+  }, [nextUnreviewedRally]);
+
+  const moveToPrevious = useCallback(() => {
+    if (selectedIndex <= 0) return;
+    const previousRally = filteredRallies[selectedIndex - 1];
+    if (previousRally) setSelectedRallyId(previousRally.rallyId);
+  }, [filteredRallies, selectedIndex]);
+
+  const setDecision = useCallback(
+    (decision: ServingDecision) => {
+      if (!selectedRally) return;
+      setDecisions((current) => ({
+        ...current,
+        [selectedRally.rallyId]: decision,
+      }));
+    },
+    [selectedRally],
+  );
 
   const saveDecisionsToNas = useCallback(
     async (values: Record<string, ServingDecision>) => {
@@ -558,27 +612,50 @@ function LoadedServingSideReview({
       videoRef.current.currentTime = target;
   }, [duration, selectedRally]);
 
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "j") {
+        event.preventDefault();
+        moveToNextUnreviewed();
+      } else if (key === "p") {
+        event.preventDefault();
+        moveToPrevious();
+      } else if (key === "f") {
+        event.preventDefault();
+        setDecision("far");
+      } else if (key === "n") {
+        event.preventDefault();
+        setDecision("near");
+      } else if (key === "i") {
+        event.preventDefault();
+        setDecision("unclear");
+      }
+    }
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [moveToNextUnreviewed, moveToPrevious, setDecision]);
+
   function seek(time: number) {
     const target = boundedTime(time, duration);
     setCurrentTime(target);
     if (videoRef.current) videoRef.current.currentTime = target;
-  }
-
-  function moveSelection(direction: -1 | 1) {
-    if (!filteredRallies.length) return;
-    const index = Math.max(
-      0,
-      Math.min(filteredRallies.length - 1, selectedIndex + direction),
-    );
-    setSelectedRallyId(filteredRallies[index]?.rallyId ?? "");
-  }
-
-  function setDecision(decision: ServingDecision) {
-    if (!selectedRally) return;
-    setDecisions((current) => ({
-      ...current,
-      [selectedRally.rallyId]: decision,
-    }));
   }
 
   return (
@@ -587,6 +664,8 @@ function LoadedServingSideReview({
         <Brand className={styles.brand} label="Serving-side review" priority />
         <nav>
           <Link href="/">Rally model review ↗</Link>
+          <Link href="/serving-side-results">Model results ↗</Link>
+          <Link href="/serving-side-flight-review">Flight error review ↗</Link>
           <Link href="/side-switch-review">Side-switch review ↗</Link>
           <Link href="/suppression-review">Suppression review ↗</Link>
         </nav>
@@ -825,22 +904,20 @@ function LoadedServingSideReview({
                   <button
                     type="button"
                     disabled={selectedIndex <= 0}
-                    onClick={() => moveSelection(-1)}
+                    onClick={moveToPrevious}
                   >
-                    ← Previous
+                    ← Previous <kbd>P</kbd>
                   </button>
                   <span>
                     {selectedIndex + 1} / {filteredRallies.length}
                   </span>
                   <button
                     type="button"
-                    disabled={
-                      selectedIndex < 0 ||
-                      selectedIndex >= filteredRallies.length - 1
-                    }
-                    onClick={() => moveSelection(1)}
+                    disabled={!nextUnreviewedRally}
+                    onClick={moveToNextUnreviewed}
+                    title="Next unreviewed rally (J)"
                   >
-                    Next →
+                    Next unreviewed <kbd>J</kbd> →
                   </button>
                 </div>
               </header>
@@ -882,6 +959,7 @@ function LoadedServingSideReview({
                       selectedRally.start,
                       duration,
                     );
+                    event.currentTarget.playbackRate = playbackRate;
                     setCurrentTime(boundedTime(selectedRally.start, duration));
                   }}
                   onTimeUpdate={(event) =>
@@ -898,6 +976,46 @@ function LoadedServingSideReview({
                   {selectedRecording?.videoFilename ??
                     selectedRally.recordingId}
                 </span>
+              </div>
+
+              <div className={styles.reviewToolbar}>
+                <label className={styles.speedControl}>
+                  <span>Playback speed</span>
+                  <select
+                    value={playbackRate}
+                    onChange={(event) =>
+                      setPlaybackRate(Number(event.target.value))
+                    }
+                    aria-label="Video playback speed"
+                  >
+                    {PLAYBACK_RATES.map((rate) => (
+                      <option value={rate} key={rate}>
+                        {rate}×
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div
+                  className={styles.shortcutLegend}
+                  role="group"
+                  aria-label="Keyboard shortcuts"
+                >
+                  <span>
+                    <kbd>J</kbd> next unreviewed
+                  </span>
+                  <span>
+                    <kbd>P</kbd> previous
+                  </span>
+                  <span>
+                    <kbd>F</kbd> far
+                  </span>
+                  <span>
+                    <kbd>N</kbd> near
+                  </span>
+                  <span>
+                    <kbd>I</kbd> ignore
+                  </span>
+                </div>
               </div>
 
               <OverviewTimeline
@@ -943,7 +1061,14 @@ function LoadedServingSideReview({
                           ? "Near side"
                           : decision === "far"
                             ? "Far side"
-                            : "Unclear"}
+                            : "Ignore"}
+                        <kbd>
+                          {decision === "near"
+                            ? "N"
+                            : decision === "far"
+                              ? "F"
+                              : "I"}
+                        </kbd>
                       </button>
                     ),
                   )}

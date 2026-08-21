@@ -180,6 +180,44 @@ test("feedback importer accepts suppression-era schema version two bundles", () 
   assert.equal(imported.schemaVersion, 2);
 });
 
+test("feedback importer retains both production serve-head outputs", () => {
+  const current = fixture();
+  current.schemaVersion = 2;
+  current.initialInference.components.push({
+    modelId: "model-b",
+    bundleSha256: "def",
+  });
+  Object.assign(current.initialInference, {
+    componentServeOutputs: {
+      allLabelsV2: {
+        modelId: "model-a",
+        probabilities: encoded([0.2, 0.8], "float32", [2]),
+        detections: [{ time: 5.25, confidence: 0.91 }],
+      },
+      previousProduction: {
+        modelId: "model-b",
+        probabilities: encoded([0.4, 0.7], "float32", [2]),
+        detections: [{ time: 5.5, confidence: 0.88 }],
+      },
+    },
+  });
+
+  const imported = parseModelFeedback(current);
+
+  assert.deepEqual(
+    Array.from(
+      imported.initialInference.componentServeOutputs!.allLabelsV2
+        .probabilities,
+    ),
+    Array.from(new Float32Array([0.2, 0.8])),
+  );
+  assert.deepEqual(
+    imported.initialInference.componentServeOutputs!.previousProduction
+      .detections,
+    [{ time: 5.5, confidence: 0.88 }],
+  );
+});
+
 test("feedback importer rejects malformed numeric array shapes", () => {
   const malformed = fixture();
   malformed.features.values.shape = [4, 1];

@@ -7,11 +7,8 @@ import {
   PRODUCTION_ENSEMBLE_MODEL_ID,
 } from "./ensemble.ts";
 import { contextualizeFeatures } from "./feature-math.ts";
+import type { OnDeviceModelBundle } from "./model.ts";
 import { loadOnDeviceModelBundle, runOnDeviceModel } from "./model.ts";
-import {
-  SUPPRESSION_POLICY_CONTRACT_VERSION,
-  buildSuppressionSuggestions,
-} from "./suppression-policy.ts";
 import {
   loadSuppressionModelBundle,
   runSuppressionModel,
@@ -21,14 +18,17 @@ import {
   SUPPRESSION_WEIGHTS_SHA256,
   type SuppressionModelBundle,
 } from "./suppression-model.ts";
+import {
+  buildSuppressionSuggestions,
+  SUPPRESSION_POLICY_CONTRACT_VERSION,
+} from "./suppression-policy.ts";
 import type {
   BaseFeatureSequence,
   OnDeviceAnalysis,
   OnDeviceInterval,
 } from "./types.ts";
-import type { OnDeviceModelBundle } from "./model.ts";
 
-type ProductionRuntimeModels = {
+export type ProductionRuntimeModels = {
   allLabels: OnDeviceModelBundle;
   previousProduction: OnDeviceModelBundle;
   suppression: SuppressionModelBundle;
@@ -36,7 +36,9 @@ type ProductionRuntimeModels = {
 
 let runtimeModelsPromise: Promise<ProductionRuntimeModels> | null = null;
 
-async function fetchJson(asset: Parameters<typeof runtimeAssetUrl>[0]): Promise<unknown> {
+async function fetchJson(
+  asset: Parameters<typeof runtimeAssetUrl>[0],
+): Promise<unknown> {
   const response = await fetch(runtimeAssetUrl(asset));
   if (!response.ok) {
     throw new Error(`Could not load ${asset} (${response.status}).`);
@@ -99,8 +101,24 @@ export async function runProductionInferenceFromFeatures(
   sequence: BaseFeatureSequence,
   analysisWindow: AnalysisWindow,
 ): Promise<OnDeviceAnalysis> {
-  const contextual = contextualizeFeatures(sequence.times, sequence.values, sequence.names);
   const models = await loadProductionRuntimeModels();
+  return runProductionInferenceWithLoadedModels(
+    sequence,
+    analysisWindow,
+    models,
+  );
+}
+
+export function runProductionInferenceWithLoadedModels(
+  sequence: BaseFeatureSequence,
+  analysisWindow: AnalysisWindow,
+  models: ProductionRuntimeModels,
+): OnDeviceAnalysis {
+  const contextual = contextualizeFeatures(
+    sequence.times,
+    sequence.values,
+    sequence.names,
+  );
   validateFeatureSignature(contextual.names, models);
   const allLabelsInference = runOnDeviceModel(
     models.allLabels,
@@ -124,7 +142,10 @@ export async function runProductionInferenceFromFeatures(
     previousProductionInference.rallies,
     analysisWindow,
   );
-  const intervals = mergeProductionModelIntervals(allLabelsV2, previousProduction)
+  const intervals = mergeProductionModelIntervals(
+    allLabelsV2,
+    previousProduction,
+  )
     .map((interval) => ({
       ...interval,
       start: Math.max(analysisWindow.start, interval.start),
@@ -165,6 +186,20 @@ export async function runProductionInferenceFromFeatures(
     serveProbabilities: allLabelsInference.probabilities.serve,
     deadStateProbabilities: allLabelsInference.probabilities.deadState,
     productionComponents: { allLabelsV2, previousProduction },
+    productionServeOutputs: {
+      allLabelsV2: {
+        probabilities: allLabelsInference.probabilities.serve,
+        detections: allLabelsInference.serves.map((detection) => ({
+          ...detection,
+        })),
+      },
+      previousProduction: {
+        probabilities: previousProductionInference.probabilities.serve,
+        detections: previousProductionInference.serves.map((detection) => ({
+          ...detection,
+        })),
+      },
+    },
     suppression: {
       modelId: SUPPRESSION_MODEL_ID,
       artifactSha256: SUPPRESSION_ARTIFACT_SHA256,
@@ -183,7 +218,13 @@ export async function augmentStoredAnalysisWithSuppression(
   analysis: OnDeviceAnalysis,
   analysisWindow: AnalysisWindow,
 ): Promise<OnDeviceAnalysis | null> {
-  if (analysis.productionComponents && analysis.suppression) return analysis;
+  if (
+    analysis.productionComponents &&
+    analysis.productionServeOutputs &&
+    analysis.suppression
+  ) {
+    return analysis;
+  }
   if (!analysis.featureNames || !analysis.featureValues) return null;
   return runProductionInferenceFromFeatures(
     {
