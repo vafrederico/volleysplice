@@ -859,6 +859,15 @@ function LoadedReview({
                   <button type="button" onClick={() => seek(currentTime - 1)}>
                     −1s
                   </button>
+                  <button
+                    type="button"
+                    className={styles.quickButton}
+                    disabled={saveStatus === "saving"}
+                    title="Save visible server, correct anchor, visible ball flight, and agreeing direction, then advance"
+                    onClick={() => save(cleanVisibleDraft, true)}
+                  >
+                    Mark clean visible + next
+                  </button>
                   <button type="button" onClick={() => seek(selected.start)}>
                     Go to anchor
                   </button>
@@ -1074,15 +1083,6 @@ function LoadedReview({
                       Clear review
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className={styles.quickButton}
-                    disabled={saveStatus === "saving"}
-                    title="Save visible server, correct anchor, visible ball flight, and agreeing direction, then advance"
-                    onClick={() => save(cleanVisibleDraft, true)}
-                  >
-                    Mark clean visible + next
-                  </button>
                   <button
                     type="button"
                     className={styles.saveButton}

@@ -150,6 +150,18 @@
   background: #161813;
 }
 
+.videoToolbar .quickButton {
+  color: #fff;
+  border-color: #28785c;
+  background: #28785c;
+  font-weight: 700;
+}
+
+.videoToolbar .quickButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .annotationPanel {
   margin-top: 18px;
   border: 1px solid #aaa89f;
