@@ -66,10 +66,25 @@ Do not rely on conversation history as the only record.
   - Test group-balanced fitting or a conservative baseline/new-model blend only on
     development data.
 - [ ] **Confidence-based review routing**
-  - Refit calibration/abstention for the selected current model; do not reuse the
+  - [x] Refit calibration/abstention for the selected current model; do not reuse the
     stale base-v2 operating point.
   - Add an uncertain-case queue to the existing results/review UI only after the
     operating point is frozen on development data.
+
+Confidence-routing predeclaration (recorded before evaluation):
+
+- Calibrate the correction-clean fixed-flight cross-fit probabilities only; do not
+  change or reselect the side classifier.
+- Compare identity calibration with nested leave-one-source-group-out Platt
+  calibration at L2 0.01, 0.1, 1, and 10. Select by lower pooled Brier score, then
+  lower log loss, lower worst-source-group Brier score, and the simpler candidate.
+- Fit the deployable calibrator on all development cross-fit predictions only.
+- Select raw-score abstention bands at 94%, 95%, 96%, 97%, and 98% pooled precision
+  for both emitted sides, with at least 50 emitted rows per side. Existing near/far
+  decisions may only become abstentions; they may never flip sides.
+- Use the predeclared 95% target for the initial UI uncertainty queue. Report its
+  coverage, review fraction, all-row per-side recall, selective accuracy, and every
+  source-group slice. Do not change this choice after seeing protected-test results.
 
 ## Required evaluation contract
 
@@ -215,3 +230,26 @@ Source-group-balanced fitting result (development only):
 Exact next action: commit the group-balance rejection, recalibrate the current
 fixed-flight cross-fit probabilities, predeclare useful review-coverage targets, and
 freeze confidence/abstention operating points before changing the review UI.
+
+Fixed-flight calibration and abstention result (development only):
+
+- Evaluation artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-calibration-abstention-development.json`,
+  SHA-256 `68e6429e104f1cd76464eb2c786ceebc88406301b6743d6e1236d26227393c77`.
+- Identity calibration won with Brier 0.05438, log loss 0.20347, and 10-bin ECE
+  0.03863. Every nested Platt candidate had worse pooled Brier and log loss, so raw
+  fixed-flight probabilities remain the calibrated deployment representation.
+- The predeclared 95% policy freezes raw thresholds far `< 0.3121748737`, review
+  `[0.3121748737, 0.5028396704)`, and near `>= 0.5028396704` around the existing
+  0.4783744762 decision cutoff. It never changes a near decision to far or vice versa.
+- It sends 40 of 1,027 rows (3.895%) to review, retains 96.105% coverage, and reaches
+  95.137% selective accuracy. Emitted near precision is 95.132%; emitted far
+  precision is 95.142%. All-row near recall is 92.505% and far recall is 90.385%.
+- Sensitivity: the 94%, 96%, 97%, and 98% precision targets review 1.558%, 11.295%,
+  17.624%, and 43.817% of development rows, respectively. The 95% target remains
+  frozen for the initial UI queue.
+
+Exact next action: bind the UI queue only to a matching model fingerprint. The current
+all-video UI artifact uses the older court-flow v4 model, while this policy is bound to
+the selected fixed-flight fingerprint `85bc3325fbd43abba6ba3726ac091dc6a3a1eafc68d63d979cb2a7450eb49e06`.
+Generate matching all-video fixed-flight inference or a separately audited v4 policy;
+never silently apply these thresholds to the mismatched v4 probabilities.
