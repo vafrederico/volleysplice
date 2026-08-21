@@ -332,6 +332,108 @@ miss, never a partial reuse. The browser implementation is in
 [`feature-cache.ts`](prod/src/lib/on-device/feature-cache.ts); Android uses
 [`NativeFeatureCache.java`](android/app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java).
 
+## Production-target serving-side pipeline
+
+The next production serving-side path is `serving-side-fixed-flight-v3` followed by
+`serving-side-hybrid-serve-gate-v2`. It is already the source of the
+`/serving-side-results` workflow. Browser and Android deployment still require an
+artifact export, implementation parity, and mobile runtime acceptance; until those
+steps pass, these columns remain separate from the deployed F104/520 rally schema.
+
+The pipeline is candidate-conditioned. It runs at a saved rally/serve anchor and has
+two independent parts:
+
+1. a 237-input visual model always estimates physical camera-space serving side as
+   `near` or `far`; and
+2. a deterministic hybrid gate decides whether that side should be exposed as a serve,
+   marked for review, or hidden as `not-serve`.
+
+The gate is composition policy, not an input to or refit of the side model.
+
+### Court-flow bank: 82 inputs
+
+`serving-side-court-flow-v2` samples eight ROI-cropped frames at offsets
+`[-1.25, -0.75, -0.35, -0.10, 0.10, 0.30, 0.55, 0.85]` seconds from the anchor.
+Farnebäck optical flow is computed for declared pairs, the median full-frame flow is
+subtracted as translation compensation, and residual motion of at least one pixel is
+morphologically opened before being summarized. Near/far masks use annotated service-
+zone anchors when available and otherwise use the top and bottom 32% ROI-relative
+end bands.
+
+The ordered bank expands as follows:
+
+- phases `pre`, `contact`, and `post`, each with nine statistics for both `near` and
+  `far`: `flowMean`, `flowP90`, `activeFraction`, `largestComponentFraction`,
+  `componentCountDensity`, `centroidX`, `centroidY`, `flowX`, and `flowY`;
+- five per-phase `nearMinusFar` differences: `flowMean`, `flowP90`,
+  `activeFraction`, `largestComponentFraction`, and `componentCountDensity`;
+- for each zone, `contactMinusPre` changes in flow mean, active fraction, and largest-
+  component fraction, plus `postMinusContact` changes in flow mean and active
+  fraction; and
+- three contact-change near-minus-far interactions for flow mean, active fraction,
+  and largest-component fraction.
+
+That gives `3 × (2 × 9 + 5) + 2 × 5 + 3 = 82` values.
+
+### Fixed-flight bank: 155 inputs
+
+`serving-side-concentrated-flight-grid-v1` samples nine ROI-cropped 192×108 frames at
+`[-0.15, 0.05, 0.20, 0.35, 0.55, 0.80, 1.10, 1.40, 1.75]` seconds from the anchor.
+It computes eight Farnebäck flow fields and robustly fits an affine camera-flow field
+over normalized image coordinates. One trimmed refit retains the 75% smallest
+residuals, allowing translation, rotation, and zoom to be removed. Residual flow is
+normalized by frame dimensions; residual magnitude is normalized by the frame
+diagonal. Motion energy is `max(magnitude - max(0.00075, p90(magnitude)), 0)`.
+
+The eight frame pairs are averaged into `launch` (pairs 0–2), `early` (3–5), and
+`late` (6–7). For each phase, the 4×6 grid emits:
+
+- 24 normalized cell-energy fractions;
+- four energy-weighted vertical-flow values, one per grid row; and
+- 15 global values: `energyMean`, `activeFraction`, `centroidX`, `centroidY`,
+  `spreadX`, `spreadY`, normalized `entropy`, `largestComponentFraction`, `flowX`,
+  `flowY`, `divergence`, `bottomMinusTop`, `smallComponentEnergyFraction`,
+  `smallComponentCentroidY`, and `smallComponentFlowY`.
+
+Each of `launchToEarly` and `earlyToLate` then emits changes in nine of those global
+values—vertical centroid/spread, entropy, vertical flow, divergence, bottom-minus-top,
+and the three small-component values—plus four row-energy changes. The count is
+`3 × (24 + 4 + 15) + 2 × (9 + 4) = 155`.
+
+This concentrated residual-motion representation is an interpretable flight proxy,
+not a claim that a ball or server was directly detected. Small connected components
+mean at most four pixels or 0.25% of the frame, whichever is larger.
+
+### Ranking, concatenation, and target
+
+All 82 court-flow and 155 fixed-flight values are converted independently to tied
+percentile ranks within their recording. A singleton rank is 0.5. The two banks are
+concatenated in that order to form `SERVSIDE237-FLIGHT`. The class-balanced logistic
+model uses median imputation, per-column mean/standard-deviation scaling, L2 `0.1`,
+and a learned near-side threshold of `0.4783744762021848`; lower scores are `far`.
+No audio or human visibility/contact annotation is an input to this side classifier.
+
+The exact generated order is defined by
+[`analysis/serving_side_v2.py`](analysis/serving_side_v2.py) and
+[`analysis/serving_side_flight.py`](analysis/serving_side_flight.py). The authoritative
+237-name order, fitted imputation/scaling vectors, weights, bias, and threshold are in
+the versioned development evaluation artifact registered in [`MODELS.md`](MODELS.md).
+
+### Hybrid serve gate
+
+At the same source-aligned anchor, both deployed production serve heads are inspected
+within ±1 second. If either head reaches its unchanged decoded threshold of `0.85`,
+the side is exposed with decision source `serve-head`. If both miss, the anchor is
+tested against the exact overlap-union production rally intervals. Containment inside
+a `both-models` interval exposes the side with decision source
+`production-rally-recovery` and mandatory review. All other candidates are
+`not-serve`. Side-score uncertainty independently requests review at near probability
+`[0.3121748736511044, 0.5028396703865513)`.
+
+Production-rally agreement and serve-head scores are gate evidence, not additional
+members of the 237-input side feature vector. The gate does not create, delete, or
+move production rally intervals.
+
 ## Research-only feature registry
 
 Research-only columns must not be added to the production schema or model bundle until
@@ -353,8 +455,8 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch v1 appearance context | Seven marker-level appearance/detection-change values, before/after count/box/score/coverage summaries, gap duration, and paired missingness indicators | Rejected for automatic use; retained as a 36-input review-ranking baseline. This is a separate marker pipeline, not part of the 104 base columns. See [`side-switch-specialist-v1-2026-08-20.md`](docs/research/side-switch-specialist-v1-2026-08-20.md). |
 | Side-switch v2 | Side-conditioned color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a temporal toggle decoder | Planned only. See [`side-switch-v2-execution-handoff-2026-08-20.md`](docs/research/side-switch-v2-execution-handoff-2026-08-20.md). |
 | Serving-side v1 existing bank | Nineteen rally-anchor scalars covering near/far whole-half and baseline-band motion/palette change, HOG occupancy/change, and signed margins; paired missingness yields 38 model inputs | Retained research baseline, not production. Strong raw-camera behavior did not hold on the protected indoor recording. This is a separate rally-candidate pipeline, not part of the 104 production base columns. See [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |
-| Serving-side fixed-flight v3 | 82 court-flow within-recording ranks plus 155 ranks from nine fixed-anchor frames at 192×108 on a 4×6 residual-motion grid, yielding 237 inputs | Selected correction-clean serving-side model and current results-UI inference source. Development selection used leave-one-source-group-out predictions; the protected recording was excluded until after the model and 95% abstention policy were frozen. The completed 24-row uncertainty review is versioned separately and confirms labels without changing features or targets. See [`serving-side-improvement-todo.md`](docs/research/serving-side-improvement-todo.md). |
-| Serving-side hybrid serve gate v2 | Two frozen production serve-head anchor scores plus exact decoded production rally-interval containment and agreement provenance | Results-UI policy only. Either serve head passes immediately; otherwise an anchor inside a both-model production rally interval recovers the fixed-flight side and requires review. This post-hoc all-video policy does not modify serving-side features, targets, or model weights. See [`serving-side-hybrid-serve-gate-2026-08-21.md`](docs/research/serving-side-hybrid-serve-gate-2026-08-21.md). |
+| Serving-side fixed-flight v3 | 82 court-flow within-recording ranks plus 155 ranks from nine fixed-anchor frames at 192×108 on a 4×6 residual-motion grid, yielding 237 inputs | Selected correction-clean production target and current results-UI inference source; deployment parity remains pending. Development selection used leave-one-source-group-out predictions; the protected recording was excluded until after the model and 95% review policy were frozen. The completed 24-row uncertainty review is versioned separately and confirms labels without changing features or targets. See the production-target contract above and [`serving-side-improvement-todo.md`](docs/research/serving-side-improvement-todo.md). |
+| Serving-side hybrid serve gate v2 | Two frozen production serve-head anchor scores plus exact decoded production rally-interval containment and agreement provenance | Selected composition policy for the next production serving-side path. Either serve head passes immediately; otherwise an anchor inside a both-model production rally interval recovers the fixed-flight side and requires review. This post-hoc all-video policy does not modify serving-side features, targets, weights, or production rally intervals. See [`serving-side-hybrid-serve-gate-2026-08-21.md`](docs/research/serving-side-hybrid-serve-gate-2026-08-21.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in

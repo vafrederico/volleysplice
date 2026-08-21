@@ -125,8 +125,8 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `dead-state-global-audio-normalized-v1-full-final`; `…-v2-full-final` | Algebraic inverse-rally dead-state control, F104 | Compared with transition-trained dead-state heads; uses global inverse-rally targets. v2 is the same learned weights with final re-export metadata. | Research control; not promoted. |
 | `side-switch-specialist-v1` | Side-switch marker, SIDE36; fit `SIDE4`, selected on `GOLD-V2` | First dedicated learned side-switch ranker; compared against marker heuristics rather than a prior trained side-switch model. | Rejected for automatic use; retained for review ranking. |
 | `serving-side-specialist-v1` | Camera-space serving side, SERVSIDE38; fit six declared train recordings, threshold selected on two validation recordings | First reviewed near/far classifier using the existing whole-half, baseline-band, and HOG evidence bank; compared with the nine fixed signed-score variants. | Research baseline only: 90.41% raw balanced accuracy, but 62.30% on the single protected-test indoor recording. Model SHA-256 `97356fe4ad38…`; see [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |
-| `serving-side-fixed-flight-v3` | Camera-space serving side, SERVSIDE237-FLIGHT; correction-clean development fit with leave-one-source-group-out selection | Adds fixed-anchor residual-motion grid ranks to the court-flow bank; compared with the correction-clean court-flow baseline, trajectory/high-resolution variants, quality mixtures, and group-balanced fits. | Selected for the serving-side results UI: 94.12% development source-group macro balanced accuracy and 94.05% pooled balanced accuracy. Final fingerprint `85bc3325fbd4…`; the frozen 95% precision review band routes 3.90% of development cross-fit rows. The later 24-row assisted uncertainty review confirmed every current human label, so no refit was required. See [`serving-side-improvement-todo.md`](docs/research/serving-side-improvement-todo.md). |
-| `serving-side-hybrid-serve-gate-v2` | Results-UI serve decision; two frozen production serve heads plus both-model production rally containment | Compared with the serve-head-only UI gate; recovers a side only when both serve heads miss and the saved anchor is inside a rally interval supported by both production models. | Assisted review policy, not a trained model or production-rally promotion. It recovers 34 of 56 current true-serve gate misses while adding one false serve; all 35 recovered candidates require review. See [`serving-side-hybrid-serve-gate-2026-08-21.md`](docs/research/serving-side-hybrid-serve-gate-2026-08-21.md). |
+| `serving-side-fixed-flight-v3` | Camera-space serving side, SERVSIDE237-FLIGHT; correction-clean development fit with leave-one-source-group-out selection | Adds fixed-anchor residual-motion grid ranks to the court-flow bank; compared with the correction-clean court-flow baseline, trajectory/high-resolution variants, quality mixtures, and group-balanced fits. | Selected next-production serving-side model and current results-UI source: 94.12% development source-group macro balanced accuracy and 94.05% pooled balanced accuracy. Final fingerprint `85bc3325fbd4…`; the frozen 95% precision review band routes 3.90% of development cross-fit rows. Browser/Android artifact export and parity remain deployment requirements. The later 24-row assisted uncertainty review confirmed every current human label, so no refit was required. See the production-target contract below. |
+| `serving-side-hybrid-serve-gate-v2` | Next-production serving-side composition; two frozen production serve heads plus both-model production rally containment | Compared with the serve-head-only UI gate; recovers a side only when both serve heads miss and the saved anchor is inside a rally interval supported by both production models. | Selected policy to ship with fixed-flight v3. It is deterministic composition, not another trained head, and does not change production rally ranges. It recovers 34 of 56 current true-serve gate misses while adding one false serve; all 35 recovered candidates require review. Browser/Android integration and parity remain pending. See the production-target contract below. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -134,6 +134,77 @@ the complete names are
 `dead-state-transition-audio-normalized-v4-full-final`,
 `dead-state-transition-audio-normalized-v5-no-legacy-final`, and
 `dead-state-global-audio-normalized-v2-full-final`.
+
+### Next-production serving-side contract
+
+The serving-side production target is the indivisible composition
+`serving-side-fixed-flight-v3` + `serving-side-hybrid-serve-gate-v2`. Do not deploy
+fixed-flight v3 with the older serve-head-only gate, and do not describe the hybrid
+gate as a learned replacement for either production serve head.
+
+The learned side model is one deterministic class-balanced logistic regression:
+
+- Target: physical camera-space `near=1`, `far=0` at a saved serve/rally anchor.
+- Inputs: `SERVSIDE237-FLIGHT`, ordered as 82 tied within-recording court-flow ranks
+  followed by 155 tied within-recording concentrated-flight ranks. The formulas and
+  generated order are specified in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md).
+- Fit universe: 1,027 correction-clean rows from 28 recordings and nine development
+  source groups: 507 near and 520 far. Fifteen source-quality-affected rows and all
+  current `not-serve`/unclear rows are excluded. The protected recording was not used
+  for fitting, feature/candidate selection, calibration, or threshold selection.
+- Parameters: median imputation, per-column mean/standard-deviation scaling,
+  class-balanced sample weights, L2 `0.1`, 237 weights, and one bias.
+- Output: `sigmoid(clamp(z, -30, 30))` is the near-side score. Scores at or above
+  `0.4783744762021848` emit `near`; lower scores emit `far`.
+- Calibration/review: identity calibration won. Automatic far is below
+  `0.3121748736511044`; `[0.3121748736511044, 0.5028396703865513)` requires review;
+  automatic near begins at `0.5028396703865513`. The review band does not flip the
+  underlying side decision.
+- Identity: model fingerprint
+  `85bc3325fbd43abba6ba3726ac091dc6a3a1eafc68d63d979cb2a7450eb49e06`.
+
+Development cross-fit metrics at the learned side threshold are 94.1186% source-group
+macro balanced accuracy, 94.0483% pooled balanced accuracy, 85.8289% worst-source-
+group balanced accuracy, and 94.0604% accuracy. Near precision/recall are
+94.7791%/93.0966%; far precision/recall are 93.3837%/95.0000%. At the frozen 95%
+review operating point, selective accuracy is 95.1368%, coverage is 96.1052%, and
+3.8948% of development rows require side-score review.
+
+The hybrid serving decision is evaluated after the side score:
+
+1. Inspect both frozen production serve heads inside ±1 second of the source-aligned
+   anchor. Either head reaching its unchanged `0.85` threshold emits the side with
+   source `serve-head`.
+2. If both heads miss, emit the side only when the anchor is contained in an
+   overlap-connected production rally interval marked `both-models`. Record source
+   `production-rally-recovery` and require review.
+3. Otherwise emit `not-serve` with source `none`.
+
+On the current corrected-label 1,114-row results universe, the hybrid gate has
+99.6324% serve precision and 98.0108% serve recall. It reduces missed serves from 56
+to 22, recovers 35 rows (34 true serves and one false serve), and the side model is
+correct on 30/34 recovered true serves. These are post-hoc assisted all-video results,
+including a historically opened protected recording; they establish the selected
+product behavior but are not clean held-out evidence for future model selection.
+
+Authoritative artifacts are immutable NAS JSON documents:
+
+| Role | Path | SHA-256 |
+| --- | --- | --- |
+| Development feature bank | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v3/development.json` | `c4ddf9f94bec00ba0fa62f8267dc166fdeeb6f9419180acad2e7eadf4910af7d` |
+| Fitted model, 237 names/parameters, selection, and development predictions | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-development.json` | `c867e8a2a141a5231fb1ceb5a0ba289457ac353fab6a9115dc672b84046f2414` |
+| Frozen calibration/review policy | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-calibration-abstention-development.json` | `68e6429e104f1cd76464eb2c786ceebc88406301b6743d6e1236d26227393c77` |
+| All-video development/unprotected features | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v4/all-reviewed-inference.json` | `8bdf003a2fbb1295609e6051e14767614c4915006fcb2cfcac764d25bfdcb895` |
+| Post-selection protected features | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v4/protected-test.json` | `58fdb6b0aa7c57fc77ec4393334daf1637f5175b8d11b86e5b6c7e417308ce2e` |
+| Hybrid gate evidence | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-serve-gate-v2/all-reviewed.json` | `9ac4071f125030b0a8f1de037e48aa48b73f30f71fa6df8a302b70ed2db5344f` |
+| Composed all-video inference consumed by the UI | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-hybrid-serve-gate-all-video-inference-v2.json` | `a7135cd509df3b0063e4634c99d314afb06d1df5552e292b5c17339a1671e722` |
+
+The hybrid gate fingerprint is
+`21395cc10390eefd14e120b3d7078191ddc9bb7ba1b6852fa4471658a7ff7af0`.
+Detailed iteration history and the post-hoc limitation are retained in
+[`serving-side-improvement-todo.md`](docs/research/serving-side-improvement-todo.md)
+and
+[`serving-side-hybrid-serve-gate-2026-08-21.md`](docs/research/serving-side-hybrid-serve-gate-2026-08-21.md).
 
 ### No-beach full-gold refits
 
