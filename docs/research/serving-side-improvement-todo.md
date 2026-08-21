@@ -55,6 +55,10 @@ Do not rely on conversation history as the only record.
   - Train and cross-fit visible and flight/offscreen specialists without source-group
     leakage.
   - Acquire offscreen-far labels before trusting a two-sided offscreen specialist.
+  - [x] Train and group-cross-fit inference-time visibility and contact-quality
+    classifiers on the weighted reviewed sample.
+  - [ ] Run a nested side-mixture evaluation in which the held source group's human
+    quality labels are excluded from both gating and side-specialist training.
 - [ ] **Slice guardrails and blending**
   - Keep source-group macro BA as the primary ranking metric.
   - Report pooled BA, worst-group BA, every environment/source group, and weighted
@@ -149,6 +153,24 @@ Patch-size ablation predeclaration and result:
   candidate and use the established 20% reference for the next quality-signal study
   to avoid post-hoc cherry-picking.
 
-Exact next action: commit the completed crop ablation and weighted-quality tooling,
-run `npm run evaluate:serving-side-quality-signals`, record both quality classifiers,
-then execute the nested visibility/contact mixture without waiting for user input.
+Quality-signal result (development reviewed sample):
+
+- Evaluation artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-quality-v1-development.json`,
+  SHA-256 `457698f1da4e7429eb16be691c579077559533dfa7bbf02fe670a8b4dcf48c82`.
+- Visibility target: 119 observed visible vs 58 partial/offscreen reviews (3 unclear
+  excluded), representing weighted populations 779.60 vs 222.40. Selected 52 absolute
+  20%-patch features at L2 1.0: 71.4056% supported-group macro BA, 56.6480% pooled
+  BA, 42.6730% worst-supported-group BA, and weighted Brier 0.22369.
+- Contact target: 123 observed on-anchor vs 57 early/late reviews, representing
+  weighted populations 855.83 vs 171.17. Selected 82 v2 ranks at L2 0.1: 69.1101%
+  macro BA, 67.2159% pooled BA, 33.1081% worst-group BA, Brier 0.20346.
+- These signals are too weak and uneven to trust as standalone decisions. Continue
+  only with soft/nested gating and require side-model guardrails to improve.
+- Offscreen-far human support remains zero. No two-sided offscreen specialist may be
+  claimed or production-promoted.
+
+Exact next action: implement and evaluate a nested visibility mixture. For every held
+source group, exclude that group's quality annotations from its gate and from all
+inner gate predictions used to train side specialists. Compare the fixed baseline,
+quality probabilities appended as features, and conservative 25/50/75/100% blends
+of a v2 visible specialist with a flight-motion degraded-visibility specialist.
