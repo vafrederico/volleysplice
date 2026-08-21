@@ -59,7 +59,7 @@ Do not rely on conversation history as the only record.
     classifiers on the weighted reviewed sample.
   - [x] Run a nested side-mixture evaluation in which the held source group's human
     quality labels are excluded from both gating and side-specialist training.
-- [ ] **Slice guardrails and blending**
+- [x] **Slice guardrails and blending**
   - Keep source-group macro BA as the primary ranking metric.
   - Report pooled BA, worst-group BA, every environment/source group, and weighted
     visibility/contact slices for every selected comparison.
@@ -198,3 +198,20 @@ Exact next action: commit the rejected mixture iteration, then execute slice gua
 compare ordinary class-balanced fitting with source-group-balanced fitting and
 predeclared conservative probability blends. Keep the frozen fixed-flight baseline
 unless macro and worst-group guardrails improve meaningfully.
+
+Source-group-balanced fitting result (development only):
+
+- Evaluation artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-group-balance-v1-development.json`,
+  SHA-256 `3806af957e1b62462f6142a89a07d869a243802f8ef80c0e04f073290c0c5bf0`.
+- Tested equal total weight per training source group at L2 0.01, 0.1, 1, and 10,
+  plus fixed-baseline blends of 25%, 50%, and 75% for each weighted model (100% is
+  the pure weighted candidate).
+- The exact fixed-flight baseline remained selected at 94.1186% macro BA, 94.0483%
+  pooled BA, and 85.8289% worst-group BA.
+- Best weighted blend was L2 0.1 / 75% at 93.8639% macro BA and 93.5528% pooled BA.
+  Best pure weighted candidate was L2 0.1 at 93.3845% macro BA, 93.1879% pooled BA,
+  and 80.7487% worst-group BA. Reject group balancing and all blends.
+
+Exact next action: commit the group-balance rejection, recalibrate the current
+fixed-flight cross-fit probabilities, predeclare useful review-coverage targets, and
+freeze confidence/abstention operating points before changing the review UI.

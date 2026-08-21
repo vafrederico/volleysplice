@@ -53,6 +53,7 @@
     "evaluate:serving-side-selective-highres-ablation": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-selective-highres-ablation.py",
     "evaluate:serving-side-quality-signals": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-quality-signals.py",
     "evaluate:serving-side-quality-mixture": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-quality-mixture.py",
+    "evaluate:serving-side-group-balance": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-group-balance.py",
     "infer:serving-side-v2-all-videos": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-serving-side-v2-all-videos.py",
     "evaluate:highres-embeddings": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-highres-embeddings.py",
     "prepare:ball-pilot": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/prepare-ball-presence-pilot.py",
