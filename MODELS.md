@@ -63,6 +63,7 @@ a model study.
 | `PLAYER-ORIENTATION22` | 22 | Six v4 carry-forward scalars plus 16 motion-component player identity, proposal support, and quality inputs for side-switch v5 |
 | `DETECTED-ADAPTIVE29` | 29 | Six v4 carry-forward scalars, 20 quantized-person torso identity/localization inputs, and three adaptive whole-set team-orientation inputs for side-switch v6 |
 | `PRODUCTION-STATE20` | 20 | Ten rally/dead-state/agreement/gap inputs plus ten serve-anchor/support inputs reduced from the two shipped production bundles; side-switch add-on, not part of F104 |
+| `PRODUCTION-CONTEXT19` | 19 | Nine rally/dead-state/agreement inputs plus all ten serve-anchor/support inputs from the shipped production bundles; excludes raw gap duration and suppression |
 | `PLAYER-ORIENTATION22+STATE10` | 32 | Validation-selected V5 production-state view: frozen V5 appearance plus the ten state/gating inputs; suppression excluded |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
@@ -136,6 +137,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-specialist-v6-detected-adaptive`; bundled `detectedFixedPrototypeAblation` | Side-switch gap, DETECTED-ADAPTIVE29 selected head and 26-input fixed-prototype ablation; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces v5 motion blobs with the frozen 3.48 MB block-int8 OpenCV Zoo MediaPipe person localizer, torso palettes, and three-frame consistency; adds confidence-gated online team-prototype updates. The Apache-2.0 detector is a third-party frozen input, not a VolleyCut-trained model. | Negative candidate-window event result; not promoted. Raw-phone row AP rises 43.40%→45.47%, but exact F1 falls 27.85%→24.10% and ±2-tolerant F1 falls 45.57%→40.96%. Its 48 selected proposals are exposed in `/side-switch-review`; no browser/Android port. |
 | `side-switch-v5-production-state-v1` | Side-switch gap, PLAYER-ORIENTATION22+STATE10; frozen split and common V5/V6 decoder geometry | Compares original and production-serve-grounded V5 appearance with soft summaries of the two shipped rally/serve/dead-state bundles. Validation selects original appearance plus the ten state/gating inputs. Suppression scores are structurally quarantined. | Positive exploratory review-ranking result, not promoted. Exact precision/F1 improve 25.00%/27.85%→28.95%/30.14% while proposals fall 44→38; ±2 F1 moves 45.57%→46.58%, but exact per-recording count accuracy falls 3/11→0/11. Its 38 proposals are exposed as a separate `/side-switch-review` timeline; no inference-runtime port. |
 | `side-switch-v5-no-cadence-v1` | Side-switch gap, validation-selected PLAYER-ORIENTATION22+STATE10; same frozen split and rows as V5-state | Refits the V5 base/state heads, verifies exact learned-parameter parity with the cadence model, and replaces seven-point candidate windows, re-anchoring, spacing, and the six-event cap with independent all-gap thresholding. L2, threshold, and feature-view selection remain development-only. | Positive causal diagnostic, not promoted. Exact recall/F1 improve 31.43%/30.14%→80.00%/44.44%, retaining all 11 cadence true positives and recovering 17 more, but proposals rise 38→91 and false positives 27→63. Research artifact only; no review UI or inference-runtime port. |
+| `side-switch-v5-peak-cleanup-v1` | Frozen no-cadence V5-state head plus PRODUCTION-CONTEXT19 auxiliary head and cadence-free peak/count decoder | Compares eight locked combinations of adjacent/time NMS, a soft post-six logit penalty, and soft production-context log odds. There is no cadence, re-anchoring, hard count cap, production hard gate, or suppression input. Validation selects adjacent-gap peaks plus context weight 0.25. | Research-only mixed result. Selected output cuts proposals 91→60 and raises ±2 F1 47.62%→56.84%, but exact F1 is flat at 44.21%. The locked local-peak+soft-count ablation reaches 49.48% exact and 57.73% ±2 F1 at 62 proposals but cannot replace the validation winner. Production context does not transfer; no review UI/runtime port. |
 | `side-switch-v6-production-state-v1` | Side-switch gap, validation-selected serve-grounded DETECTED-ADAPTIVE29+PRODUCTION-STATE20 | Same production-state/serve-grounding ablation applied to V6; all eight candidates tie on validation exact F1 and AP selects grounded+combined. | Rejected. Exact F1 falls 24.10%→17.91%, ±2 F1 40.96%→38.81%, and row AP 45.47%→36.23%; frozen V6 remains unchanged. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
@@ -236,6 +238,16 @@ audit, and non-promotion constraints are in
 The immutable provenance manifest has SHA-256
 `b0a6d21df15c4c5f7f968efa600836bd1b13c6d72791ce746c0c89c7725d64e2` and binds
 implementation revision `b7c732d61b2d242ee50f28af1686f9fab73d6a21`.
+
+The peak/count/context follow-up inherits that exact no-cadence model and evaluates
+eight validation-locked cleanup families. Its selected fingerprint is
+`d37839e0031facd6913d904fd7c81624b7f3d9ce57567a1b2f182d3c0aac0190`.
+Complete grids, hard-versus-soft production semantics, all retrospective ablations,
+and non-promotion constraints are in
+[`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
+The immutable provenance manifest has SHA-256
+`0782d18b53741ba8f63270986c432278ac2d43ff7d8088babfe349acd07d47f9` and binds
+implementation revision `8926e69e12bee18b4fd64cea92f621ede81bc201`.
 
 ### No-beach full-gold refits
 

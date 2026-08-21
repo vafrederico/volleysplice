@@ -13,6 +13,13 @@ appearance scoring followed by validation-selected local peak/cluster suppressio
 if useful, a soft whole-set count prior. It should not make the next opportunity depend
 on whether the preceding candidate was selected.
 
+That follow-up is now complete. Adjacent-gap local peak suppression transfers to the
+retrospective scope, raising exact F1 to 48.15% while reducing proposals from 91 to 73.
+The locked local-peak + soft-count diagnostic reaches 49.48% exact F1 with 62 proposals,
+but needs confirmation on newly reviewed games because validation preferred peak
+suppression without the count penalty. See
+[`side-switch-v5-peak-cleanup-2026-08-20.md`](side-switch-v5-peak-cleanup-2026-08-20.md).
+
 ## Controlled question
 
 The experiment asks one narrow question: does the seven-point opportunity path cause

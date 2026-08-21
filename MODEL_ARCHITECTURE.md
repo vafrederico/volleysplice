@@ -282,6 +282,18 @@ suppression, or count cap. This isolates a real cadence failure but is not a pro
 decoder; no shipped graph changes. See
 [`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md).
 
+The cleanup follow-up keeps that frozen probability stream and compares eight
+cadence-free post-decoders. Score-ranked adjacent/time NMS removes local duplicates;
+a soft count prior adds increasing logit cost only after six outputs and never imposes
+a hard cap. A separate 19-input head summarizes production rally/dead/serve context,
+excluding raw gap duration, and contributes soft log odds rather than eligibility.
+Local peaks transfer to raw-phone data, while the production-context validation gain
+does not: the selected peak+context variant cuts proposals 91→60 but leaves exact F1
+flat at 44.21%. The locked peak+soft-count diagnostic reaches 49.48% exact and 57.73%
+±2 F1 at 62 proposals, but cannot replace the validation winner. Neither is promoted
+or ported. See
+[`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

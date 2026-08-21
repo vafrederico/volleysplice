@@ -30,6 +30,13 @@ coupling is suppressing true switches, but independent thresholding emits too ma
 proposals for automatic use. See
 [`side-switch-v5-no-cadence-2026-08-20.md`](side-switch-v5-no-cadence-2026-08-20.md).
 
+A second follow-up isolates 19 production-derived values in a separate soft context
+head, excludes raw gap duration, and combines its log odds with V5 scoring without a
+gate. Its small validation cleanup does not transfer: adding it to local peaks lowers
+retrospective exact F1 from 48.15% to 44.21%. This further rules out a hard production
+veto; the stable cleanup is local peak suppression. See
+[`side-switch-v5-peak-cleanup-2026-08-20.md`](side-switch-v5-peak-cleanup-2026-08-20.md).
+
 ## Question and constraints
 
 The experiment tested whether outputs already computed by the on-device production

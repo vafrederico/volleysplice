@@ -112,6 +112,12 @@ can cascade errors: exact recall rises 31.43%→80.00% and F1 30.14%→44.44%, r
 all cadence true positives, but proposals rise 38→91. It is tracked as a research-only
 decoder diagnostic; the next iteration needs appearance-local cluster suppression or a
 soft count prior before any on-device promotion.
+The follow-up confirms adjacent-gap peak suppression as the stable cleanup: its locked
+raw-phone ablation raises exact F1 to 48.15%. Peak suppression plus a soft post-six
+penalty reaches 49.48% exact/57.73% ±2 F1 at 62 proposals, but needs confirmation on
+new labels. A separate production rally/dead/serve context head wins historical
+validation but fails to improve retrospective exact F1, so production outputs remain
+soft features rather than eligibility gates.
 
 ### Setup
 

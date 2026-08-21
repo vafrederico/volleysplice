@@ -358,6 +358,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch v6 DETECTED-ADAPTIVE29 | Six retained v4 scalars, 20 player-localization/torso-palette inputs from a pinned 3.48 MB block-int8 MediaPipe person detector, and three confidence-gated adaptive team-prototype values | Positive row-ranking but negative candidate-window event result; not promoted. Raw-phone row AP improves from 43.40% to 45.47%, while exact F1 falls from 27.85% to 24.10% and ±2-tolerant F1 falls from 45.57% to 40.96%. Its 48 selected proposals are reviewable; no browser/Android port. See [`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md). |
 | Side-switch production-state/serve grounding | Twenty soft reductions from the two shipped production bundles plus optional two-second serve-anchored V5/V6 appearance windows; suppression scores are diagnostic-only | V5 original appearance + ten state/gating inputs is a positive exploratory result (exact F1 27.85%→30.14%) exposed as its own `/side-switch-review` timeline; V6 and serve-grounded appearance are rejected. No inference-runtime port. See [`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md). |
 | Side-switch V5 no-cadence decoder | Reuses the frozen V5/V5-state rows and refitted linear heads; scores every reviewed inter-rally gap independently with no seven-point opportunity centers, re-anchoring, spacing, or count cap | Positive causal diagnostic, not production. Exact recall/F1 improve from 31.43%/30.14% to 80.00%/44.44%, but independent outputs rise from 38 to 91. The learned head parameters exactly match the cadence control, isolating the decoder effect. See [`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md). |
+| Side-switch V5 peak/count/context cleanup | Frozen no-cadence V5-state probabilities, adjacent/time local-peak NMS, soft post-six count penalties, and a 19-input production rally/dead/serve context head that excludes raw gap duration | Mixed research result, not production. Local peaks transfer and the locked local-peak+soft-count ablation reaches 49.48% exact/57.73% ±2 F1 at 62 proposals. Soft production context wins historical validation but fails to improve retrospective exact F1. No hard gate, suppression input, review UI, or runtime port. See [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -495,6 +496,23 @@ exactly; only the decoder-specific threshold differs. Exact implementation:
 [`side_switch_no_cadence.py`](analysis/side_switch_no_cadence.py), fitting/evaluation:
 [`train-side-switch-v5-no-cadence.py`](scripts/train-side-switch-v5-no-cadence.py), and
 provenance: [`build-side-switch-v5-no-cadence-provenance.py`](scripts/build-side-switch-v5-no-cadence-provenance.py).
+
+### Side-switch V5 peak/count/context cleanup
+
+`PRODUCTION-CONTEXT19` contains the nine production-derived state inputs other than raw
+gap duration plus all ten serve support/confidence/anchor inputs. A separate linear
+head converts them to soft compatibility log odds. Those log odds can be added to the
+frozen V5-state log odds at weights 0.25, 0.5, or 1.0, but are never thresholded as a
+hard gate. Suppression remains outside every feature signature.
+
+The decoder also compares score-ranked non-maximum suppression at adjacent gap order
+and 0/30/60-second separation, plus post-six logit penalties 0.25/0.5/1.0. The count
+penalty is not a cap: strong later candidates remain eligible. No choice establishes a
+later search window, so there is no cadence or re-anchoring. Exact implementation:
+[`side_switch_peak_cleanup.py`](analysis/side_switch_peak_cleanup.py),
+fitting/evaluation: [`train-side-switch-v5-peak-cleanup.py`](scripts/train-side-switch-v5-peak-cleanup.py),
+and provenance:
+[`build-side-switch-v5-peak-cleanup-provenance.py`](scripts/build-side-switch-v5-peak-cleanup-provenance.py).
 
 ## Rebuild and parity acceptance
 

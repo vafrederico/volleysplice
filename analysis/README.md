@@ -769,6 +769,25 @@ rise from 38 to 91. The result demonstrates harmful cadence coupling and remains
 research-only; no browser/Android inference port or review timeline is added. See the
 [no-cadence decision record](../docs/research/side-switch-v5-no-cadence-2026-08-20.md).
 
+The peak/count/context cleanup compares eight validation-locked post-decoders over that
+frozen probability stream. Adjacent/time non-maximum suppression never establishes a
+later window; the count prior penalizes only selections after six and is not a cap. A
+separate 19-input head uses production rally/dead/serve context without raw gap
+duration, adds soft log odds, and never gates eligibility. Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-peak-cleanup.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-peak-cleanup.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v5-peak-cleanup-provenance.py \
+  --implementation-revision 8926e69
+```
+
+Local peaks transfer, and the locked peak+soft-count diagnostic reaches 49.48% exact
+and 57.73% ±2 F1 at 62 proposals. Soft production context removes candidates but does
+not improve retrospective exact F1, so it is not a gate or promoted cleanup layer. No
+browser/Android port or review timeline is added. See the
+[peak-cleanup decision record](../docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
