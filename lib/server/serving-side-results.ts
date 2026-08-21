@@ -22,7 +22,7 @@ import {
 } from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v3-dual-serve-gate-all-video-inference-v2.json";
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v4-dual-serve-gate-all-video-inference-v3.json";
 
 export class ServingSideResultsError extends Error {}
 

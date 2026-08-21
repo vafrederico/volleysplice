@@ -50,7 +50,7 @@ test("serving-side review defaults to the NAS report and decision files", () => 
       getServingSideResultsEvaluationPath(),
       path.join(
         DEFAULT_SERVING_SIDE_DIRECTORY,
-        "serving-side-specialist-v3-dual-serve-gate-all-video-inference-v2.json",
+        "serving-side-specialist-v4-dual-serve-gate-all-video-inference-v3.json",
       ),
     );
     assert.equal(

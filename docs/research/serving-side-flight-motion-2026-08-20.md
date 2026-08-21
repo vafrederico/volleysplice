@@ -1,10 +1,69 @@
 # Serving-side concentrated flight-motion experiment — 2026-08-20
 
+## Completed review, final-label retrain, and temporal follow-up — 2026-08-21
+
+The failure-mode review is complete. All 61 current flight-model errors and all
+119 still-valid stratified correct controls have annotations. The frozen weighted
+report reconstructs the full 1,027-row development population from those 180 rows;
+13 older annotations remain available but are outside this sampling design.
+
+The final correction overlay contains 20 decisions: four near, eight far, and eight
+not-serve. Base v4 and flight v3 were rebuilt from those labels. The eight non-serves
+are excluded from fitting, while the separate all-reviewed inference bank retains
+them for the production serve gate and results UI. The camera-impact exclusion for
+`raw-no-backup-PXL_20260816_164327879` remains in force.
+
+| Final-label model | Rows | Source-group macro BA | Pooled BA | Worst-group BA |
+| --- | ---: | ---: | ---: | ---: |
+| Base v4 | 1,067 | 89.91% | 89.16% | 78.88% |
+| **Flight v3 fixed anchor** | **1,027** | **94.12%** | **94.05%** | **85.83%** |
+
+The completed two-phase review estimates 94.06% overall accuracy for flight v3.
+Visibility is the largest identified slice gap: visible 96.41%, partial 94.15%, and
+offscreen 55.34%. The offscreen sample contains only human-near examples, so it does
+not estimate offscreen far performance. Contact timing is similarly diagnostic:
+on-anchor 97.08%, before-anchor 81.31%, and after-anchor 76.62%.
+
+An inference-safe temporal experiment extracted the same 192×108 4×6 flight features
+at fixed shifts of -1s, 0s, and +1s for every development row. The best temporal
+candidate concatenated all three windows. It improved pooled BA from 94.05% to
+94.35%, before-anchor accuracy from 81.31% to 87.15%, and after-anchor accuracy from
+76.62% to 82.47%. It nevertheless reduced the primary mean source-group BA from
+94.12% to 93.82%, reduced worst-group BA from 85.83% to 81.42%, and reduced on-anchor
+accuracy from 97.08% to 96.03%. The fixed-center candidate therefore remains
+selected. The useful follow-up is an inference-time contact-quality or anchor-search
+head that routes only likely misaligned examples, not unconditional concatenation.
+
+The all-video v4 inference artifact contains 1,114 rows across all 30 videos: 1,075
+development candidates and the unchanged 39-row protected bank. The results UI now
+defaults to this artifact. Selection did not reopen or use the protected split.
+
+### Final-review NAS artifacts
+
+All paths are relative to
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `reports/serving-side/serving-side-result-label-corrections-v1.json` | `82fd8a7d46472cccb88561ca5eb03ef6fb54cf97eed89e9efa31f416636b5253` |
+| `reports/serving-side/serving-side-flight-error-annotations-v2.json` | `bb8fba35457aea1fba0d00520cefe0a75f4a877b006f4625010bf7868cca3bf5` |
+| `reports/serving-side/serving-side-flight-v2-reviewed-slices-v1.json` | `4c96624991cc757b41bced5bcda9633e0b97660410edc7555d4d000fe032787b` |
+| `features/serving-side-v4/development.json` | `e9712a956e50111940a37e04c8ebc69e8514138714a1e192b0fd1030a055979a` |
+| `models/serving-side-specialist-v4/model.json` | `85b8d55fc544b9afd36e73c406baa1bed64ad74c8455a0e18745318c5ffa5453` |
+| `reports/serving-side/serving-side-specialist-v4-development.json` | `925e7c8f6f1f288365265c99595f803c197d1ade57b5b3956cd8449be7a8eb30` |
+| `features/serving-side-flight-v3/development.json` | `c4ddf9f94bec00ba0fa62f8267dc166fdeeb6f9419180acad2e7eadf4910af7d` |
+| `reports/serving-side/serving-side-flight-v3-development.json` | `c867e8a2a141a5231fb1ceb5a0ba289457ac353fab6a9115dc672b84046f2414` |
+| `features/serving-side-temporal-flight-v1/development.json` | `7fce86c2ab48c3660a706a7d1bbf04bcdac8ff2b7a10565dac9e69eae2218018` |
+| `reports/serving-side/serving-side-temporal-flight-v2-development.json` | `ed0d118dc127429090a91f8b2974607badf0b70bc75c4e7c9b629cd367bd9fc2` |
+| `features/serving-side-v4/all-reviewed-inference.json` | `f6a8f23fdc55c703e62095f5afdec2e571f841dd949cb6a7af1cebb7af321421` |
+| `reports/serving-side/serving-side-specialist-v4-dual-serve-gate-all-video-inference-v3.json` | `3ef7449f1f97f0b7f1dcebea4718311e61bed2495d33682cd4135d669dcc3623` |
+
 ## Corrected-label retrain — 2026-08-21
 
-The v1 result below is preserved as the original experiment record. It is now
-superseded by a correction-clean retrain that applies all 19 saved human-label
-corrections and excludes source-quality failures before fitting or scoring.
+The v1 result below is preserved as the original experiment record. This section
+documents the intermediate 19-correction retrain; the completed 20-correction
+retrain above supersedes it. Both exclude source-quality failures before fitting or
+scoring.
 
 `raw-no-backup-PXL_20260816_164327879` was hit by a ball at 6:57. The canonical
 feedback bundle now marks `[417.0, 978.7967]` as
@@ -41,7 +100,7 @@ annotations were migrated by rally ID. The two omitted annotations were for
 post-impact rallies 42 and 46 in the damaged recording.
 
 After all 61 v2 mistakes were reviewed, a separate correct-control cohort was
-frozen for visibility-slice estimation. It samples 120 of the 967 correct
+frozen for visibility-slice estimation. It originally sampled 120 of the 967 correct
 out-of-source-group predictions across all 51 non-empty combinations of
 environment, source group, human side, and model-confidence band. Every stratum
 receives at least one row; the remaining allocation is proportional by largest
@@ -50,7 +109,9 @@ sampling weight so later visible/partial/offscreen metrics can recover the
 development population mixture. Selection within a stratum is deterministic
 from the evaluation SHA-256 and rally ID. The review UI exposes this exact
 cohort as **Correct controls** and saves its labels in the existing
-evaluation-bound annotation artifact.
+evaluation-bound annotation artifact. The final not-serve correction removes one
+control, leaving 119 valid controls and 966 current correct predictions; the final
+weighted report recalculates the affected stratum weight.
 
 ### Corrected NAS artifacts
 
@@ -250,7 +311,10 @@ failure-mode annotations remain accessible through **Saved labels** even when a 
 correction changes an example from mistake to correct. This is a corrected review of
 frozen predictions, not a claim that the model has been retrained.
 
-Successor feature extractors must prefer `correctedServeAnchorSeconds` when present.
-Visibility and direction annotations are evaluation slices and mixture-of-experts
-targets, not input features at inference time. The immutable v1 feature artifact above
-remains unchanged.
+`correctedServeAnchorSeconds` is a supervision target for a future anchor-quality or
+contact-localization head. Side-model selection must not substitute it only on the
+outcome-dependent reviewed subset, because production inference does not have that
+human correction and the review sample was selected from prior predictions.
+Visibility and direction annotations are evaluation slices and possible
+mixture-of-experts targets, not input features at inference time. The immutable v1
+feature artifact above remains unchanged.
