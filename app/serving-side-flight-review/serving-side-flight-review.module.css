@@ -434,6 +434,7 @@
 }
 
 .saveButton,
+.quickButton,
 .secondaryButton,
 .completed button {
   min-height: 38px;
@@ -452,6 +453,11 @@
   background: #d7ff45;
 }
 
+.quickButton {
+  color: #fff;
+  background: #28785c;
+}
+
 .secondaryButton,
 .completed button {
   color: #161813;
@@ -459,6 +465,7 @@
 }
 
 .saveButton:disabled,
+.quickButton:disabled,
 .secondaryButton:disabled {
   cursor: not-allowed;
   opacity: 0.45;

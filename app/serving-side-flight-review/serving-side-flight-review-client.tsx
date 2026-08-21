@@ -387,6 +387,14 @@ function LoadedReview({
     ? annotationState.annotations[selected.rallyId]
     : undefined;
   const completedDraft = savableDraft(draft);
+  const cleanVisibleDraft: SavedDraft = {
+    serverVisibility: "visible",
+    contactTiming: "on-anchor",
+    correctedServeAnchorSeconds: null,
+    ballFlightVisibility: "visible",
+    motionDirection: "matches-human-side",
+    notes: draft.notes,
+  };
   const reviewScopeRows = rows.filter((row) => {
     if (!matchesOutcome(row, outcome, controlIds)) return false;
     return recordingId === "all" || row.recordingId === recordingId;
@@ -420,8 +428,12 @@ function LoadedReview({
   );
 
   const save = useCallback(
-    async (annotation: SavedDraft | null) => {
+    async (annotation: SavedDraft | null, advanceAfterSave = false) => {
       if (!selected) return;
+      const nextId =
+        advanceAfterSave && filteredRows.length > 1
+          ? filteredRows[(selectedIndex + 1) % filteredRows.length]?.rallyId
+          : null;
       setSaveStatus("saving");
       setSaveError("");
       try {
@@ -448,6 +460,7 @@ function LoadedReview({
           );
         }
         setAnnotationState(payload);
+        if (nextId) setSelectedId(nextId);
         setSaveStatus("saved");
       } catch (error) {
         setSaveStatus("error");
@@ -456,7 +469,12 @@ function LoadedReview({
         );
       }
     },
-    [data.experimentSha256, selected],
+    [
+      data.experimentSha256,
+      filteredRows,
+      selected,
+      selectedIndex,
+    ],
   );
 
   useEffect(() => {
@@ -1056,6 +1074,15 @@ function LoadedReview({
                       Clear review
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className={styles.quickButton}
+                    disabled={saveStatus === "saving"}
+                    title="Save visible server, correct anchor, visible ball flight, and agreeing direction, then advance"
+                    onClick={() => save(cleanVisibleDraft, true)}
+                  >
+                    Mark clean visible + next
+                  </button>
                   <button
                     type="button"
                     className={styles.saveButton}
