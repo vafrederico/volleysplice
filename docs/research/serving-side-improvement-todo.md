@@ -49,7 +49,7 @@ Do not rely on conversation history as the only record.
   - [x] Freeze and evaluate the first 20%-of-short-edge / 96x96 patch candidate.
   - [x] Run the predeclared patch-size ablation. The effect was size-sensitive, so
     regional high-resolution features are not production-promoted.
-- [ ] **Visibility-aware mixture**
+- [x] **Visibility-aware mixture**
   - Derive an inference-time visibility/contact-quality signal; never use human
     visibility directly as an inference input.
   - Train and cross-fit visible and flight/offscreen specialists without source-group
@@ -57,7 +57,7 @@ Do not rely on conversation history as the only record.
   - Acquire offscreen-far labels before trusting a two-sided offscreen specialist.
   - [x] Train and group-cross-fit inference-time visibility and contact-quality
     classifiers on the weighted reviewed sample.
-  - [ ] Run a nested side-mixture evaluation in which the held source group's human
+  - [x] Run a nested side-mixture evaluation in which the held source group's human
     quality labels are excluded from both gating and side-specialist training.
 - [ ] **Slice guardrails and blending**
   - Keep source-group macro BA as the primary ranking metric.
@@ -174,3 +174,27 @@ source group, exclude that group's quality annotations from its gate and from al
 inner gate predictions used to train side specialists. Compare the fixed baseline,
 quality probabilities appended as features, and conservative 25/50/75/100% blends
 of a v2 visible specialist with a flight-motion degraded-visibility specialist.
+
+Nested quality-mixture result (development only):
+
+- Evaluation artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-quality-mixture-v1-development.json`,
+  SHA-256 `a8482616299f1ffbcf8f4daeebf38569df3be79f7a64332ee5ba75d05158cef6`.
+- All gate predictions used by an outer fold excluded that outer source group's
+  annotations. Inner training-group predictions excluded both the outer group and
+  their own group. The artifact records every exclusion/fold audit.
+- Best candidate appended only the nested visibility probability to the fixed
+  baseline: 94.1325% macro BA, 94.1395% pooled BA, 85.8289% worst-group BA,
+  and 94.1577% accuracy versus baseline 94.1186%, 94.0483%, 85.8289%, and
+  94.0604%. It fixed 3 baseline errors and introduced 2 regressions.
+- Visibility-specialist blends at 25%, 50%, 75%, and 100% regressed macro BA to
+  93.9084%, 93.4099%, 93.0368%, and 92.3403%. Reject the specialist mixture.
+- Contact-only and combined appended-quality candidates tied the visibility append
+  at the thresholded prediction level. The gain is too small and the gates too weak
+  for production promotion. Keep the fixed-flight baseline as the operational model.
+- Weighted slices: visible improved from 96.41% to 96.79%; offscreen did not change;
+  before-anchor did not change; after-anchor improved from 76.62% to 77.79%.
+
+Exact next action: commit the rejected mixture iteration, then execute slice guardrails:
+compare ordinary class-balanced fitting with source-group-balanced fitting and
+predeclared conservative probability blends. Keep the frozen fixed-flight baseline
+unless macro and worst-group guardrails improve meaningfully.
