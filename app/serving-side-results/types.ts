@@ -1,6 +1,16 @@
 export type ServingSideResultSide = "near" | "far";
 export type ServingSideHumanLabel = ServingSideResultSide | "not-serve";
 export type ServingSideServePrediction = "serve" | "not-serve";
+export type ServingSideReviewRecommendation = "near" | "far" | "review";
+
+export type ServingSideReviewPolicy = {
+  precisionTarget: number;
+  farThreshold: number;
+  nearThreshold: number;
+  developmentCoverage: number;
+  developmentReviewFraction: number;
+  developmentSelectiveAccuracy: number;
+};
 
 export type ServingSideServeHeadEvidence = {
   modelId: string;
@@ -38,6 +48,7 @@ export type ServingSideResult = {
     previousProduction: ServingSideServeHeadEvidence;
   };
   nearProbability: number;
+  reviewRecommendation: ServingSideReviewRecommendation | null;
   correct: boolean;
   notes: string | null;
   tags: string[];
@@ -98,6 +109,7 @@ export type ServingSideResultsData = {
   serveGateFingerprint: string;
   selectedFeatureSet: string;
   threshold: number;
+  reviewPolicy: ServingSideReviewPolicy | null;
   metrics: ServingSideResultMetrics;
   serveGateMetrics: ServingSideServeGateMetrics;
   correctionState: ServingSideCorrectionState;

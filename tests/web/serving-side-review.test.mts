@@ -50,7 +50,7 @@ test("serving-side review defaults to the NAS report and decision files", () => 
       getServingSideResultsEvaluationPath(),
       path.join(
         DEFAULT_SERVING_SIDE_DIRECTORY,
-        "serving-side-specialist-v4-dual-serve-gate-all-video-inference-v3.json",
+        "serving-side-flight-v3-dual-serve-gate-all-video-inference-v1.json",
       ),
     );
     assert.equal(
@@ -225,6 +225,18 @@ test("serving-side result review joins frozen human and model decisions", async 
       serveGateFingerprint: "b".repeat(64),
       featureFamily: "court-flow-recording-rank",
       threshold: 0.51,
+      reviewPolicy: {
+        kind: "development-selected-abstention-band",
+        precisionTarget: 0.95,
+        farThreshold: 0.3,
+        nearThreshold: 0.55,
+        modelFingerprint: "a".repeat(64),
+        developmentMetrics: {
+          coverage: 0.8,
+          reviewFraction: 0.2,
+          selectiveAccuracy: 0.95,
+        },
+      },
       sources: {
         servingSideReport: { sha256: sha256(report) },
         reviewDecisions: { sha256: sha256(decisions) },
@@ -259,6 +271,7 @@ test("serving-side result review joins frozen human and model decisions", async 
             },
           },
           nearProbability: 0.49,
+          reviewRecommendation: "review",
         },
         {
           rallyId: "indoor-test-video:rally:2",
@@ -293,6 +306,7 @@ test("serving-side result review joins frozen human and model decisions", async 
             },
           },
           nearProbability: 0.2,
+          reviewRecommendation: "far",
         },
       ],
       metrics: {
@@ -315,6 +329,8 @@ test("serving-side result review joins frozen human and model decisions", async 
     assert.equal(result.results.length, 2);
     assert.equal(result.serveGateMetrics.missedServes, 1);
     assert.equal(result.results[0].finalPrediction, "not-serve");
+    assert.equal(result.results[0].reviewRecommendation, "review");
+    assert.equal(result.reviewPolicy?.developmentReviewFraction, 0.2);
     assert.equal(result.metrics.nearRecall, 0);
     assert.equal(result.metrics.accuracy, 0.5);
     assert.deepEqual(
@@ -387,11 +403,7 @@ test("serving-side result review joins frozen human and model decisions", async 
     };
     bakedEvaluation.predictions[0]!.decision = "far";
     await Promise.all([
-      writeFile(
-        evaluationPath,
-        `${JSON.stringify(bakedEvaluation)}\n`,
-        "utf8",
-      ),
+      writeFile(evaluationPath, `${JSON.stringify(bakedEvaluation)}\n`, "utf8"),
       saveServingSideCorrections({
         schemaVersion: 1,
         reportKind: "volleycut-serving-side-report-test-v1",

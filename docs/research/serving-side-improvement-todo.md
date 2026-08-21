@@ -65,10 +65,10 @@ Do not rely on conversation history as the only record.
     visibility/contact slices for every selected comparison.
   - Test group-balanced fitting or a conservative baseline/new-model blend only on
     development data.
-- [ ] **Confidence-based review routing**
+- [x] **Confidence-based review routing**
   - [x] Refit calibration/abstention for the selected current model; do not reuse the
     stale base-v2 operating point.
-  - Add an uncertain-case queue to the existing results/review UI only after the
+  - [x] Add an uncertain-case queue to the existing results/review UI only after the
     operating point is frozen on development data.
 
 Confidence-routing predeclaration (recorded before evaluation):
@@ -283,3 +283,42 @@ Exact next action: switch the serving-side results loader to the matching all-vi
 artifact, expose its frozen review policy in the typed server payload, add an
 `uncertain` outcome queue and confidence-band explanation, then exercise correction
 persistence and URL navigation in browser/tests.
+
+Uncertainty review UI result:
+
+- `/serving-side-results` now defaults to the matching fixed-flight all-video
+  inference artifact and refuses a review policy whose fingerprint or thresholds do
+  not bind to that model.
+- The typed server loader independently recomputes every row's `far`, `near`, or
+  `review` recommendation and rejects disagreement with the NAS artifact.
+- The page exposes an `Uncertain · review` outcome filter with per-video counts,
+  amber timeline marks, queue badges, the frozen 31.217%–50.284% near-probability
+  band, and the 95% development operating-point context. URL selection/navigation and
+  the existing NAS human-correction overlay remain intact.
+- The real loader returned 1,114 rows, 30 recordings, and 24 uncertainty cases under
+  fingerprint `85bc3325fbd43abba6ba3726ac091dc6a3a1eafc68d63d979cb2a7450eb49e06`.
+- Focused server/correction tests, TypeScript, and Biome checks pass. A LAN HTTP render
+  of the uncertainty URL returned the expected filter, selected rally, and review
+  band, and the source-video endpoint returned HTTP 200. The collaborative preview's
+  snapshot/evaluate operations timed out despite successful navigation, so the HTTP
+  render was used as the live-page check.
+
+Exact next action: run the complete analysis test suite and production build, record
+any unrelated pre-existing failures separately, commit the UI iteration, and close
+this roadmap checkpoint without opening the protected results for further selection.
+
+Final verification:
+
+- `npm run test:analysis`: 546 tests passed, 4 skipped.
+- Focused serving-side web tests: 3 passed, including NAS correction round-trip and
+  frozen artifact joins.
+- `npx tsc --noEmit` and targeted Biome checks passed.
+- `npm run build` completed all 22 static pages and dynamic routes. It retained two
+  existing Turbopack dynamic-filesystem tracing warnings in `serving-side-review.ts`
+  and `side-switch-review.ts`; neither warning originates in this iteration.
+- The broader web suite's serving-side tests passed. Three unrelated existing
+  suppression/model-feedback assertions failed and were not changed here.
+
+Roadmap checkpoint complete. Resume from the saved artifacts and this file for any
+future active-learning labels or another development-only model iteration; do not use
+the protected slice to choose that iteration.

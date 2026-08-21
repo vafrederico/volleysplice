@@ -7,6 +7,7 @@ import type {
   ServingSideResultMetrics,
   ServingSideResultRecording,
   ServingSideResultsData,
+  ServingSideReviewPolicy,
   ServingSideServeHeadEvidence,
   ServingSideServePrediction,
 } from "@/app/serving-side-results/types";
@@ -22,7 +23,7 @@ import {
 } from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v4-dual-serve-gate-all-video-inference-v3.json";
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-dual-serve-gate-all-video-inference-v1.json";
 
 export class ServingSideResultsError extends Error {}
 
@@ -99,6 +100,54 @@ function probability(value: unknown, label: string): number {
     throw new ServingSideResultsError(`${label} is outside [0, 1]`);
   }
   return result;
+}
+
+function reviewPolicy(
+  value: unknown,
+  modelFingerprint: string,
+  centerThreshold: number,
+): ServingSideReviewPolicy | null {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value)) {
+    throw new ServingSideResultsError("evaluation review policy is invalid");
+  }
+  const farThreshold = probability(value.farThreshold, "review far threshold");
+  const nearThreshold = probability(
+    value.nearThreshold,
+    "review near threshold",
+  );
+  if (
+    value.kind !== "development-selected-abstention-band" ||
+    value.modelFingerprint !== modelFingerprint ||
+    farThreshold > centerThreshold ||
+    nearThreshold < centerThreshold ||
+    farThreshold > nearThreshold ||
+    !isRecord(value.developmentMetrics)
+  ) {
+    throw new ServingSideResultsError(
+      "evaluation review policy is not bound to its side model",
+    );
+  }
+  return {
+    precisionTarget: probability(
+      value.precisionTarget,
+      "review precision target",
+    ),
+    farThreshold,
+    nearThreshold,
+    developmentCoverage: probability(
+      value.developmentMetrics.coverage,
+      "review development coverage",
+    ),
+    developmentReviewFraction: probability(
+      value.developmentMetrics.reviewFraction,
+      "review development fraction",
+    ),
+    developmentSelectiveAccuracy: probability(
+      value.developmentMetrics.selectiveAccuracy,
+      "review development selective accuracy",
+    ),
+  };
 }
 
 function serveHeadEvidence(
@@ -373,6 +422,17 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     evaluation.predictions,
     "evaluation predictions",
   );
+  const modelFingerprint = requiredString(
+    evaluation.modelFingerprint,
+    "model fingerprint",
+    /^[a-f0-9]{64}$/,
+  );
+  const centerThreshold = probability(evaluation.threshold, "model threshold");
+  const frozenReviewPolicy = reviewPolicy(
+    evaluation.reviewPolicy,
+    modelFingerprint,
+    centerThreshold,
+  );
   for (const [rallyId, correction] of Object.entries(
     storedCorrections.corrections,
   )) {
@@ -427,6 +487,21 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     if (nearProbability < 0 || nearProbability > 1) {
       throw new ServingSideResultsError(
         `Near probability ${rallyId} is outside [0, 1]`,
+      );
+    }
+    const expectedReviewRecommendation = frozenReviewPolicy
+      ? nearProbability < frozenReviewPolicy.farThreshold
+        ? "far"
+        : nearProbability >= frozenReviewPolicy.nearThreshold
+          ? "near"
+          : "review"
+      : null;
+    if (
+      frozenReviewPolicy &&
+      prediction.reviewRecommendation !== expectedReviewRecommendation
+    ) {
+      throw new ServingSideResultsError(
+        `Review recommendation ${rallyId} disagrees with the frozen policy`,
       );
     }
     const modelServePrediction = servePrediction(
@@ -495,6 +570,7 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
         ),
       },
       nearProbability,
+      reviewRecommendation: expectedReviewRecommendation,
       correct: human === finalPrediction,
       notes: typeof rally.notes === "string" ? rally.notes : null,
       tags: Array.isArray(rally.tags)
@@ -565,11 +641,7 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
   return {
     kind: requiredString(evaluation.kind, "evaluation kind"),
     createdAt: requiredString(evaluation.createdAt, "evaluation timestamp"),
-    modelFingerprint: requiredString(
-      evaluation.modelFingerprint,
-      "model fingerprint",
-      /^[a-f0-9]{64}$/,
-    ),
+    modelFingerprint,
     serveGateFingerprint: requiredString(
       evaluation.serveGateFingerprint,
       "serve-gate fingerprint",
@@ -579,7 +651,8 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       evaluation.selectedFeatureSet ?? evaluation.featureFamily,
       "selected feature set",
     ),
-    threshold: finiteNumber(evaluation.threshold, "model threshold"),
+    threshold: centerThreshold,
+    reviewPolicy: frozenReviewPolicy,
     metrics: metricsForResults(results),
     serveGateMetrics: serveMetricsForResults(results),
     correctionState: {

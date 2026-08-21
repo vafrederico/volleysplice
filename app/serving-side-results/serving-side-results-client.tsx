@@ -20,6 +20,7 @@ type OutcomeFilter =
   | "all"
   | "wrong"
   | "correct"
+  | "uncertain"
   | "near-as-far"
   | "far-as-near"
   | "serve-as-not-serve"
@@ -37,6 +38,7 @@ type Props = {
 
 const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
   { value: "wrong", label: "Mistakes" },
+  { value: "uncertain", label: "Uncertain · review" },
   { value: "all", label: "All" },
   { value: "correct", label: "Correct" },
   { value: "near-as-far", label: "Near recall misses" },
@@ -91,6 +93,7 @@ function matchesOutcome(
 ): boolean {
   if (outcome === "wrong") return !result.correct;
   if (outcome === "correct") return result.correct;
+  if (outcome === "uncertain") return result.reviewRecommendation === "review";
   if (outcome === "near-as-far")
     return result.human === "near" && result.finalPrediction !== "near";
   if (outcome === "far-as-near")
@@ -117,6 +120,8 @@ function recordingMetrics(rows: ServingSideResult[]) {
   return {
     rows: near.length + far.length,
     notServes: rows.filter((row) => row.human === "not-serve").length,
+    uncertain: rows.filter((row) => row.reviewRecommendation === "review")
+      .length,
     serveGateMisses: rows.filter(
       (row) => row.human !== "not-serve" && row.servePrediction === "not-serve",
     ).length,
@@ -201,7 +206,7 @@ function ResultTimeline({
           <strong>Full-video result map</strong>
           <span>
             Red marks are mistakes; green marks are correct; amber marks are
-            correctly rejected non-serves.
+            review-band predictions or correctly rejected non-serves.
           </span>
         </div>
         <span>{formatTime(duration)}</span>
@@ -232,11 +237,13 @@ function ResultTimeline({
             type="button"
             className={styles.timelineEvent}
             data-outcome={
-              row.correct
-                ? row.human === "not-serve"
-                  ? "not-serve"
-                  : "correct"
-                : "wrong"
+              row.reviewRecommendation === "review"
+                ? "uncertain"
+                : row.correct
+                  ? row.human === "not-serve"
+                    ? "not-serve"
+                    : "correct"
+                  : "wrong"
             }
             data-selected={row.rallyId === selectedId ? "true" : "false"}
             style={{ left: `${Math.min(100, (row.start / duration) * 100)}%` }}
@@ -258,6 +265,7 @@ function ResultTimeline({
         <span data-tone="wrong">mistake</span>
         <span data-tone="correct">correct</span>
         <span data-tone="not-serve">not a serve</span>
+        <span data-tone="uncertain">uncertain</span>
         <span data-tone="selected">selected</span>
       </div>
     </section>
@@ -542,6 +550,13 @@ function LoadedResults({
             side model {data.modelFingerprint.slice(0, 12)}… · serve gate{" "}
             {data.serveGateFingerprint.slice(0, 12)}…
           </p>
+          {data.reviewPolicy && (
+            <p className={base.sourceLine}>
+              Frozen {percentage(data.reviewPolicy.precisionTarget, 0)} review
+              policy · {percentage(data.reviewPolicy.developmentReviewFraction)}{" "}
+              development review fraction
+            </p>
+          )}
         </div>
         <div className={base.heroMetric}>
           <span>
@@ -575,6 +590,10 @@ function LoadedResults({
         <div>
           <span>Not serves</span>
           <strong data-tone="warning">{localMetrics.notServes}</strong>
+        </div>
+        <div>
+          <span>Uncertain</span>
+          <strong data-tone="warning">{localMetrics.uncertain}</strong>
         </div>
         <div>
           <span>Serve gate misses</span>
@@ -696,7 +715,9 @@ function LoadedResults({
                 <span className={base.queueScore}>
                   {row.servePrediction === "not-serve"
                     ? "NO SERVE"
-                    : percentage(confidence(row), 0)}
+                    : row.reviewRecommendation === "review"
+                      ? "REVIEW"
+                      : percentage(confidence(row), 0)}
                   <i data-decision={row.correct ? row.human : "unclear"} />
                 </span>
               </button>
@@ -772,9 +793,20 @@ function LoadedResults({
                   </small>
                 </div>
                 <div className={styles.outcome}>
-                  <span>Outcome</span>
-                  <strong>{selected.correct ? "Correct" : "Wrong"}</strong>
-                  <small>final prediction {selected.finalPrediction}</small>
+                  <span>Outcome · review policy</span>
+                  <strong>
+                    {selected.reviewRecommendation === "review"
+                      ? "Review"
+                      : selected.correct
+                        ? "Correct"
+                        : "Wrong"}
+                  </strong>
+                  <small>
+                    final prediction {selected.finalPrediction}
+                    {selected.reviewRecommendation === "review"
+                      ? " · uncertain side score"
+                      : " · automatic side score"}
+                  </small>
                 </div>
               </section>
 
@@ -983,10 +1015,30 @@ function LoadedResults({
                 </header>
                 <div className={styles.probabilityLabels}>
                   <span>Far</span>
-                  <span>threshold {percentage(data.threshold, 2)}</span>
+                  <span>
+                    {data.reviewPolicy
+                      ? "review " +
+                        percentage(data.reviewPolicy.farThreshold, 1) +
+                        "–" +
+                        percentage(data.reviewPolicy.nearThreshold, 1)
+                      : "threshold " + percentage(data.threshold, 2)}
+                  </span>
                   <span>Near</span>
                 </div>
                 <div className={styles.probabilityRail}>
+                  {data.reviewPolicy && (
+                    <span
+                      className={styles.reviewBand}
+                      style={{
+                        left: data.reviewPolicy.farThreshold * 100 + "%",
+                        width:
+                          (data.reviewPolicy.nearThreshold -
+                            data.reviewPolicy.farThreshold) *
+                            100 +
+                          "%",
+                      }}
+                    />
+                  )}
                   <span
                     className={styles.threshold}
                     style={{ left: `${data.threshold * 100}%` }}
@@ -997,6 +1049,19 @@ function LoadedResults({
                     style={{ left: `${selected.nearProbability * 100}%` }}
                   />
                 </div>
+                {data.reviewPolicy && (
+                  <small className={styles.gateNote}>
+                    {selected.reviewRecommendation === "review"
+                      ? "Review recommended: this score is inside the development-frozen uncertainty band."
+                      : "Automatic " +
+                        selected.reviewRecommendation +
+                        " decision: this score is outside the uncertainty band."}{" "}
+                    Development coverage{" "}
+                    {percentage(data.reviewPolicy.developmentCoverage)} at{" "}
+                    {percentage(data.reviewPolicy.developmentSelectiveAccuracy)}{" "}
+                    selective accuracy.
+                  </small>
+                )}
               </section>
 
               <section className={styles.detailGrid}>

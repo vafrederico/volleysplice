@@ -46,6 +46,7 @@ export default async function ServingSideResultsPage({ searchParams }: Props) {
     const requestedOutcome =
       requested.outcome === "all" ||
       requested.outcome === "correct" ||
+      requested.outcome === "uncertain" ||
       requested.outcome === "wrong" ||
       requested.outcome === "near-as-far" ||
       requested.outcome === "far-as-near" ||
