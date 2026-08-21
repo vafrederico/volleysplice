@@ -378,6 +378,37 @@ test("serving-side result review joins frozen human and model decisions", async 
     assert.equal(corrected.metrics.rows, 1);
     assert.equal(corrected.metrics.accuracy, 1);
 
+    const bakedEvaluation = JSON.parse(evaluation) as {
+      sources: Record<string, unknown>;
+      predictions: Array<Record<string, unknown>>;
+    };
+    bakedEvaluation.sources.humanLabelCorrections = {
+      sha256: "c".repeat(64),
+    };
+    bakedEvaluation.predictions[0]!.decision = "far";
+    await Promise.all([
+      writeFile(
+        evaluationPath,
+        `${JSON.stringify(bakedEvaluation)}\n`,
+        "utf8",
+      ),
+      saveServingSideCorrections({
+        schemaVersion: 1,
+        reportKind: "volleycut-serving-side-report-test-v1",
+        reportCreatedAt: "2026-08-20T12:00:00.000Z",
+        baseDecisionSha256: sha256(decisions),
+        corrections: {
+          "indoor-test-video:rally:1": "far",
+          "indoor-test-video:rally:2": "not-serve",
+        },
+      }),
+    ]);
+    const extendedCorrections = await loadServingSideResults();
+    assert.deepEqual(
+      extendedCorrections.results.map((row) => row.human),
+      ["far", "not-serve"],
+    );
+
     await writeFile(
       decisionPath,
       decisions.replace(
