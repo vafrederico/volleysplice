@@ -349,6 +349,11 @@ function LoadedReview({
   const savedInScope = reviewScopeRows.filter(
     (row) => annotationState.annotations[row.rallyId],
   ).length;
+  const savedForRecording = rows.filter(
+    (row) =>
+      (recordingId === "all" || row.recordingId === recordingId) &&
+      annotationState.annotations[row.rallyId],
+  ).length;
 
   const move = useCallback(
     (offset: number) => {
@@ -487,7 +492,11 @@ function LoadedReview({
           </p>
           <p className={base.sourceLine}>
             {data.configuration} · {data.featureFamily} · L2 {data.l2} ·{" "}
-            {evaluationPath}
+            {evaluationPath} · {data.labelCorrectionsApplied} current side-label{" "}
+            {data.labelCorrectionsApplied === 1 ? "correction" : "corrections"}
+            {data.correctedNotServesExcluded > 0
+              ? ` · ${data.correctedNotServesExcluded} corrected non-serves excluded`
+              : ""}
           </p>
         </div>
         <div className={base.heroMetric}>
@@ -568,9 +577,12 @@ function LoadedReview({
             <button
               type="button"
               data-active={reviewFilter === "reviewed" ? "true" : "false"}
-              onClick={() => setReviewFilter("reviewed")}
+              onClick={() => {
+                setOutcome("all");
+                setReviewFilter("reviewed");
+              }}
             >
-              Saved labels · {savedInScope}
+              Saved labels · {savedForRecording}
             </button>
             <button
               type="button"
@@ -616,8 +628,11 @@ function LoadedReview({
                   <span className={base.queueMain}>
                     <strong>{row.recordingId}</strong>
                     <small>
-                      {formatTime(row.start)} · human {row.human} → model{" "}
-                      {row.prediction}
+                      {formatTime(row.start)} · human {row.human}
+                      {row.humanCorrected
+                        ? ` (frozen ${row.originalHuman})`
+                        : ""}
+                      {" → "}model {row.prediction}
                     </small>
                     {reviewed && (
                       <small className={styles.savedQueueLabels}>
@@ -676,7 +691,11 @@ function LoadedReview({
                 <div>
                   <span>Human side</span>
                   <strong>{selected.human}</strong>
-                  <small>correction-clean label</small>
+                  <small>
+                    {selected.humanCorrected
+                      ? `current NAS correction · frozen ${selected.originalHuman}`
+                      : "frozen correction-clean label"}
+                  </small>
                 </div>
                 <div>
                   <span>New model</span>

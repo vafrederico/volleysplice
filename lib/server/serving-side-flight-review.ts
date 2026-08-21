@@ -16,7 +16,11 @@ import type {
   ServingSideFlightReviewResult,
 } from "@/app/serving-side-flight-review/types";
 
-import { getServingSideReviewReportPath } from "./serving-side-review.ts";
+import { loadServingSideCorrectionState } from "./serving-side-corrections.ts";
+import {
+  getServingSideReviewDecisionPath,
+  getServingSideReviewReportPath,
+} from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
   "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v1-development.json";
@@ -53,6 +57,9 @@ type ExperimentIdentity = {
   createdAt: string;
   sha256: string;
   predictionDigest: string;
+  reportKind: string;
+  reportCreatedAt: string;
+  baseDecisionSha256: string;
   validRallyIds: Set<string>;
   durationByRecording: Map<string, number>;
 };
@@ -336,14 +343,19 @@ async function readReviewInputs(): Promise<{
 }> {
   let evaluationText: string;
   let reportText: string;
+  let decisionText: string;
   try {
-    [evaluationText, reportText] = await Promise.all([
+    [evaluationText, reportText, decisionText] = await Promise.all([
       readFile(
         /* turbopackIgnore: true */ getServingSideFlightEvaluationPath(),
         "utf8",
       ),
       readFile(
         /* turbopackIgnore: true */ getServingSideReviewReportPath(),
+        "utf8",
+      ),
+      readFile(
+        /* turbopackIgnore: true */ getServingSideReviewDecisionPath(),
         "utf8",
       ),
     ]);
@@ -408,6 +420,12 @@ async function readReviewInputs(): Promise<{
       ),
       sha256: sha256(evaluationText),
       predictionDigest: predictionDigest(candidate),
+      reportKind: requiredString(report.kind, "serving-side report kind"),
+      reportCreatedAt: requiredString(
+        report.createdAt,
+        "serving-side report creation time",
+      ),
+      baseDecisionSha256: sha256(decisionText),
       validRallyIds,
       durationByRecording,
     },
@@ -465,9 +483,59 @@ function selectedMetrics(candidate: Record<string, unknown>) {
   };
 }
 
+function ratio(numerator: number, denominator: number): number {
+  return denominator ? numerator / denominator : 0;
+}
+
+function correctedMetrics(results: ServingSideFlightReviewResult[]) {
+  const nearNear = results.filter(
+    (row) => row.human === "near" && row.prediction === "near",
+  ).length;
+  const nearFar = results.filter(
+    (row) => row.human === "near" && row.prediction === "far",
+  ).length;
+  const farNear = results.filter(
+    (row) => row.human === "far" && row.prediction === "near",
+  ).length;
+  const farFar = results.filter(
+    (row) => row.human === "far" && row.prediction === "far",
+  ).length;
+  const nearRows = nearNear + nearFar;
+  const farRows = farNear + farFar;
+  const nearRecall = ratio(nearNear, nearRows);
+  const farRecall = ratio(farFar, farRows);
+  return {
+    rows: results.length,
+    accuracy: ratio(nearNear + farFar, results.length),
+    balancedAccuracy: (nearRecall + farRecall) / 2,
+    nearPrecision: ratio(nearNear, nearNear + farNear),
+    nearRecall,
+    farPrecision: ratio(farFar, farFar + nearFar),
+    farRecall,
+  };
+}
+
 export async function loadServingSideFlightReview(): Promise<ServingSideFlightReviewData> {
   const { evaluation, report, identity } = await readReviewInputs();
-  const annotationState = await loadAnnotationStateForIdentity(identity);
+  const [annotationState, correctionState] = await Promise.all([
+    loadAnnotationStateForIdentity(identity),
+    loadServingSideCorrectionState(),
+  ]);
+  const hasCorrectionIdentity =
+    correctionState.reportKind !== null ||
+    correctionState.reportCreatedAt !== null ||
+    correctionState.baseDecisionSha256 !== null ||
+    Object.keys(correctionState.corrections).length > 0;
+  if (
+    hasCorrectionIdentity &&
+    (correctionState.reportKind !== identity.reportKind ||
+      correctionState.reportCreatedAt !== identity.reportCreatedAt ||
+      correctionState.baseDecisionSha256 !== identity.baseDecisionSha256)
+  ) {
+    throw new ServingSideFlightReviewError(
+      "The current human-label corrections belong to another label revision",
+    );
+  }
   const candidate = selectedCandidate(evaluation);
   const rallyById = new Map(
     objectArray(report.rallies, "serving-side rallies").map((rally) => [
@@ -484,10 +552,12 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
       file,
     ]),
   );
+  let correctedNotServesExcluded = 0;
+  let labelCorrectionsApplied = 0;
   const results: ServingSideFlightReviewResult[] = objectArray(
     evaluation.selectedPredictions,
     "selected flight predictions",
-  ).map((prediction) => {
+  ).flatMap((prediction) => {
     const rallyId = requiredString(prediction.rallyId, "prediction rally id");
     const recordingId = requiredString(
       prediction.recordingId,
@@ -499,16 +569,26 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
         `Flight prediction ${rallyId} is not bound to its reviewed rally`,
       );
     }
-    const human = side(prediction.decision, `prediction ${rallyId} human side`);
+    const originalHuman = side(
+      prediction.decision,
+      `prediction ${rallyId} human side`,
+    );
     const model = side(
       prediction.prediction,
       `prediction ${rallyId} model side`,
     );
-    if (prediction.correct !== (human === model)) {
+    if (prediction.correct !== (originalHuman === model)) {
       throw new ServingSideFlightReviewError(
         `Flight prediction ${rallyId} has an inconsistent outcome`,
       );
     }
+    const correction = correctionState.corrections[rallyId];
+    if (correction === "not-serve") {
+      correctedNotServesExcluded += 1;
+      return [];
+    }
+    const human = correction ?? originalHuman;
+    if (human !== originalHuman) labelCorrectionsApplied += 1;
     const environment = requiredString(
       prediction.environment,
       `prediction ${rallyId} environment`,
@@ -525,22 +605,26 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
         `Flight prediction ${rallyId} disagrees with source metadata`,
       );
     }
-    return {
-      rallyId,
-      recordingId,
-      environment,
-      sourceGroup,
-      split: requiredString(rally.split, `rally ${rallyId} split`),
-      start: finiteNumber(rally.start, `rally ${rallyId} start`),
-      end: finiteNumber(rally.end, `rally ${rallyId} end`),
-      human,
-      prediction: model,
-      probabilityNear: probability(
-        prediction.probabilityNear,
-        `prediction ${rallyId} near probability`,
-      ),
-      correct: human === model,
-    };
+    return [
+      {
+        rallyId,
+        recordingId,
+        environment,
+        sourceGroup,
+        split: requiredString(rally.split, `rally ${rallyId} split`),
+        start: finiteNumber(rally.start, `rally ${rallyId} start`),
+        end: finiteNumber(rally.end, `rally ${rallyId} end`),
+        human,
+        originalHuman,
+        humanCorrected: human !== originalHuman,
+        prediction: model,
+        probabilityNear: probability(
+          prediction.probabilityNear,
+          `prediction ${rallyId} near probability`,
+        ),
+        correct: human === model,
+      },
+    ];
   });
   const grouped = new Map<string, ServingSideFlightReviewResult[]>();
   for (const result of results) {
@@ -578,6 +662,7 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
     })
     .sort((left, right) => left.recordingId.localeCompare(right.recordingId));
 
+  const frozenMetrics = selectedMetrics(candidate);
   return {
     kind: identity.kind,
     createdAt: identity.createdAt,
@@ -592,7 +677,10 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
       "selected feature family",
     ),
     l2: finiteNumber(candidate.l2, "selected L2"),
-    metrics: selectedMetrics(candidate),
+    labelCorrectionsApplied,
+    correctedNotServesExcluded,
+    metrics: correctedMetrics(results),
+    frozenMetrics,
     annotationState,
     recordings,
     results,

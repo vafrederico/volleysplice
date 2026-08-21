@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -57,16 +58,22 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
   );
   const evaluationPath = path.join(temporary, "evaluation.json");
   const reportPath = path.join(temporary, "report.json");
+  const decisionPath = path.join(temporary, "decisions.json");
+  const correctionPath = path.join(temporary, "corrections.json");
   const annotationPath = path.join(temporary, "annotations.json");
   const previousEvaluation =
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
   const previousAnnotations =
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS;
   const previousReport = process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
+  const previousDecisions = process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
+  const previousCorrections = process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
   try {
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION = evaluationPath;
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS = annotationPath;
     process.env.VOLLEYCUT_SERVING_SIDE_REPORT = reportPath;
+    process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS = decisionPath;
+    process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = correctionPath;
     const evaluation = {
       schemaVersion: 1,
       kind: "volleycut-serving-side-flight-development-evaluation-v1",
@@ -146,9 +153,20 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
         },
       ],
     };
+    const decisionsText = `${JSON.stringify({
+      schemaVersion: 1,
+      reportKind: report.kind,
+      reportCreatedAt: report.createdAt,
+      savedAt: "2026-08-20T19:30:00.000Z",
+      decisions: {
+        "video-one:rally:1": "near",
+        "video-one:rally:2": "far",
+      },
+    })}\n`;
     await Promise.all([
       writeFile(evaluationPath, `${JSON.stringify(evaluation)}\n`, "utf8"),
       writeFile(reportPath, `${JSON.stringify(report)}\n`, "utf8"),
+      writeFile(decisionPath, decisionsText, "utf8"),
     ]);
 
     const loaded = await loadServingSideFlightReview();
@@ -156,6 +174,29 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
     assert.equal(loaded.results.filter((row) => !row.correct).length, 1);
     assert.equal(loaded.recordings[0]?.errors, 1);
     assert.deepEqual(loaded.annotationState.annotations, {});
+
+    await writeFile(
+      correctionPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        reportKind: report.kind,
+        reportCreatedAt: report.createdAt,
+        baseDecisionSha256: createHash("sha256")
+          .update(decisionsText)
+          .digest("hex"),
+        savedAt: "2026-08-20T20:30:00.000Z",
+        corrections: { "video-one:rally:1": "far" },
+      })}\n`,
+      "utf8",
+    );
+    const corrected = await loadServingSideFlightReview();
+    assert.equal(corrected.results[0]?.originalHuman, "near");
+    assert.equal(corrected.results[0]?.human, "far");
+    assert.equal(corrected.results[0]?.humanCorrected, true);
+    assert.equal(corrected.results[0]?.correct, true);
+    assert.equal(corrected.results.filter((row) => !row.correct).length, 0);
+    assert.equal(corrected.labelCorrectionsApplied, 1);
+    assert.equal(corrected.metrics.accuracy, 1);
 
     const saved = await saveServingSideFlightAnnotation({
       schemaVersion: 1,
@@ -181,6 +222,28 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
       saved,
     );
     assert.deepEqual(JSON.parse(await readFile(annotationPath, "utf8")), saved);
+
+    await writeFile(
+      correctionPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        reportKind: report.kind,
+        reportCreatedAt: report.createdAt,
+        baseDecisionSha256: createHash("sha256")
+          .update(decisionsText)
+          .digest("hex"),
+        savedAt: "2026-08-20T20:45:00.000Z",
+        corrections: {
+          "video-one:rally:1": "far",
+          "video-one:rally:2": "not-serve",
+        },
+      })}\n`,
+      "utf8",
+    );
+    const withNotServe = await loadServingSideFlightReview();
+    assert.equal(withNotServe.results.length, 1);
+    assert.equal(withNotServe.correctedNotServesExcluded, 1);
+    assert.equal(withNotServe.metrics.rows, 1);
 
     await assert.rejects(
       saveServingSideFlightAnnotation({
@@ -231,6 +294,16 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
       delete process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
     } else {
       process.env.VOLLEYCUT_SERVING_SIDE_REPORT = previousReport;
+    }
+    if (previousDecisions === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS = previousDecisions;
+    }
+    if (previousCorrections === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = previousCorrections;
     }
     await rm(temporary, { recursive: true, force: true });
   }

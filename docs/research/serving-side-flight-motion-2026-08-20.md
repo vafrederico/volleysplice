@@ -170,6 +170,14 @@ visibility, whether visible direction agrees with the human side, notes, and the
 server-generated review time. Camera pan and zoom are intentionally not human labels;
 the residual-flow pipeline estimates camera motion directly.
 
+The review loader overlays the current, identity-bound human-label correction file on
+the frozen out-of-source-group predictions. Corrected near/far decisions immediately
+update the review outcome and displayed metrics; corrected non-serves leave the side
+evaluation universe. The frozen decision remains visible for audit, and saved
+failure-mode annotations remain accessible through **Saved labels** even when a label
+correction changes an example from mistake to correct. This is a corrected review of
+frozen predictions, not a claim that the model has been retrained.
+
 Successor feature extractors must prefer `correctedServeAnchorSeconds` when present.
 Visibility and direction annotations are evaluation slices and mixture-of-experts
 targets, not input features at inference time. The immutable v1 feature artifact above

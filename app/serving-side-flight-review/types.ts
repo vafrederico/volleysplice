@@ -42,6 +42,8 @@ export type ServingSideFlightReviewResult = {
   start: number;
   end: number;
   human: FlightReviewSide;
+  originalHuman: FlightReviewSide;
+  humanCorrected: boolean;
   prediction: FlightReviewSide;
   probabilityNear: number;
   correct: boolean;
@@ -66,7 +68,18 @@ export type ServingSideFlightReviewData = {
   configuration: string;
   featureFamily: string;
   l2: number;
+  labelCorrectionsApplied: number;
+  correctedNotServesExcluded: number;
   metrics: {
+    rows: number;
+    accuracy: number;
+    balancedAccuracy: number;
+    nearPrecision: number;
+    nearRecall: number;
+    farPrecision: number;
+    farRecall: number;
+  };
+  frozenMetrics: {
     rows: number;
     accuracy: number;
     balancedAccuracy: number;
