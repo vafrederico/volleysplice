@@ -16,6 +16,10 @@ import cv2
 
 from analysis.artifacts import atomic_write_text
 from analysis.serving_side import crop_roi
+from analysis.serving_side_exclusions import (
+    load_source_quality_exclusions,
+    samples_touch_source_exclusion,
+)
 from analysis.serving_side_flight import (
     FEATURE_VERSION,
     OFFSETS_SECONDS,
@@ -40,6 +44,10 @@ DEFAULT_DECISIONS = (
 )
 DEFAULT_CORRECTIONS = (
     ROOT / "reports/serving-side/serving-side-result-label-corrections-v1.json"
+)
+DEFAULT_SOURCE_EXCLUSIONS = (
+    ROOT
+    / "reports/serving-side/serving-side-source-quality-exclusions-v1.json"
 )
 DEFAULT_V2_DATASET = ROOT / "features/serving-side-v2/development.json"
 DEFAULT_OUTPUT = ROOT / "features/serving-side-flight-v1/development.json"
@@ -115,6 +123,8 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
     report_path = args.serving_report.resolve()
     decisions_path = args.decisions.resolve()
     corrections_path = args.corrections.resolve()
+    source_exclusions_path = args.source_exclusions.resolve()
+    source_exclusions_hash = _sha256(source_exclusions_path)
     v2_path = args.v2_dataset.resolve()
     output_path = args.output.resolve()
     if output_path.exists():
@@ -142,6 +152,18 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         for row in reviewed
         if row.split != "test" and row.source_group not in protected_source_groups
     ]
+    source_exclusions = load_source_quality_exclusions(source_exclusions_path)
+    before_source_exclusions = len(wanted)
+    wanted = [
+        row
+        for row in wanted
+        if not samples_touch_source_exclusion(
+            source_exclusions,
+            row.recording_id,
+            [float(row.rally["start"]) + offset for offset in OFFSETS_SECONDS],
+        )
+    ]
+    source_quality_excluded = before_source_exclusions - len(wanted)
     if not wanted or any(row.split == "test" for row in wanted):
         raise ValueError("flight extraction must contain development rows only")
     if args.limit_per_recording is not None:
@@ -281,6 +303,8 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
     )
     if _sha256(corrections_path) != correction_hash:
         raise RuntimeError("correction overlay changed during flight extraction")
+    if _sha256(source_exclusions_path) != source_exclusions_hash:
+        raise RuntimeError("source exclusions changed during flight extraction")
     if args.limit_per_recording is None and len(output_rows) != len(wanted):
         raise AssertionError("flight extraction did not cover every development row")
     payload = {
@@ -299,6 +323,7 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             "sourceGroups": len({row["sourceGroup"] for row in output_rows}),
             "near": sum(row["label"] for row in output_rows),
             "far": sum(1 - row["label"] for row in output_rows),
+            "sourceQualityExcluded": source_quality_excluded,
         },
         "reviewCounts": review_counts,
         "correctionCounts": correction_counts,
@@ -308,6 +333,7 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             "unclear": "excluded",
             "notServeCorrections": "excluded",
             "sideCorrections": "applied",
+            "sourceQualityIntervals": "any row whose flight sample touches an excluded interval is excluded",
             "serveAnchor": "authoritative rally.start from the reviewed source",
             "limitPerRecording": args.limit_per_recording,
         },
@@ -323,6 +349,10 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             "humanLabelCorrections": {
                 "path": str(corrections_path),
                 "sha256": correction_hash,
+            },
+            "sourceQualityExclusions": {
+                "path": str(source_exclusions_path),
+                "sha256": source_exclusions_hash,
             },
             "v2DevelopmentDataset": {
                 "path": str(v2_path),
@@ -360,6 +390,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serving-report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--decisions", type=Path, default=DEFAULT_DECISIONS)
     parser.add_argument("--corrections", type=Path, default=DEFAULT_CORRECTIONS)
+    parser.add_argument(
+        "--source-exclusions", type=Path, default=DEFAULT_SOURCE_EXCLUSIONS
+    )
     parser.add_argument("--v2-dataset", type=Path, default=DEFAULT_V2_DATASET)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit-per-recording", type=int)

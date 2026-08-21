@@ -16,16 +16,21 @@ import type {
   ServingSideFlightReviewResult,
 } from "@/app/serving-side-flight-review/types";
 
-import { loadServingSideCorrectionState } from "./serving-side-corrections.ts";
+import {
+  getServingSideCorrectionPath,
+  loadServingSideCorrectionState,
+} from "./serving-side-corrections.ts";
 import {
   getServingSideReviewDecisionPath,
   getServingSideReviewReportPath,
 } from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v1-development.json";
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v2-development.json";
+const DEFAULT_SOURCE_EXCLUSIONS_PATH =
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-source-quality-exclusions-v1.json";
 const DEFAULT_ANNOTATION_FILENAME =
-  "serving-side-flight-error-annotations-v1.json";
+  "serving-side-flight-error-annotations-v2.json";
 const ANNOTATION_KIND =
   "volleycut-serving-side-flight-error-annotations-v1" as const;
 const RALLY_ID_PATTERN = /^[A-Za-z0-9:_-]+$/;
@@ -51,6 +56,11 @@ const MOTION_DIRECTION = new Set<MotionDirectionAssessment>([
   "opposes-human-side",
   "unclear",
 ]);
+const FLIGHT_SAMPLE_OFFSETS_SECONDS = [
+  -0.15, 0.05, 0.2, 0.35, 0.55, 0.8, 1.1, 1.4, 1.75,
+] as const;
+
+type SourceQualityInterval = { start: number; end: number; reason: string };
 
 type ExperimentIdentity = {
   kind: string;
@@ -134,6 +144,115 @@ export function getServingSideFlightAnnotationPath(): string {
         path.dirname(getServingSideFlightEvaluationPath()),
         DEFAULT_ANNOTATION_FILENAME,
       );
+}
+
+export function getServingSideSourceExclusionsPath(): string {
+  return configuredPath(
+    process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS,
+    DEFAULT_SOURCE_EXCLUSIONS_PATH,
+  );
+}
+
+async function loadSourceQualityExclusions(): Promise<
+  Map<string, SourceQualityInterval[]>
+> {
+  let value: unknown;
+  try {
+    value = JSON.parse(
+      await readFile(
+        /* turbopackIgnore: true */ getServingSideSourceExclusionsPath(),
+        "utf8",
+      ),
+    ) as unknown;
+  } catch {
+    throw new ServingSideFlightReviewError(
+      "The serving-side source-quality exclusions could not be read",
+    );
+  }
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    value.kind !== "volleycut-serving-side-source-quality-exclusions-v1"
+  ) {
+    throw new ServingSideFlightReviewError(
+      "The serving-side source-quality exclusions are invalid",
+    );
+  }
+  const result = new Map<string, SourceQualityInterval[]>();
+  for (const [recordIndex, record] of objectArray(
+    value.records,
+    "source-quality records",
+  ).entries()) {
+    const recordingId = requiredString(
+      record.recordingId,
+      `source-quality record ${recordIndex} recording id`,
+    );
+    const duration = finiteNumber(
+      record.durationSeconds,
+      `source-quality record ${recordingId} duration`,
+    );
+    if (duration <= 0 || result.has(recordingId)) {
+      throw new ServingSideFlightReviewError(
+        `Source-quality record ${recordingId} is invalid or duplicated`,
+      );
+    }
+    let previousEnd = -1;
+    const intervals = objectArray(
+      record.intervals,
+      `source-quality record ${recordingId} intervals`,
+    ).map((interval, intervalIndex) => {
+      const start = finiteNumber(
+        interval.start,
+        `source-quality interval ${recordingId}:${intervalIndex} start`,
+      );
+      const end = finiteNumber(
+        interval.end,
+        `source-quality interval ${recordingId}:${intervalIndex} end`,
+      );
+      const reason = requiredString(
+        interval.reason,
+        `source-quality interval ${recordingId}:${intervalIndex} reason`,
+      );
+      if (start < 0 || start >= end || end > duration || start < previousEnd) {
+        throw new ServingSideFlightReviewError(
+          `Source-quality interval ${recordingId}:${intervalIndex} is invalid or overlaps`,
+        );
+      }
+      previousEnd = end;
+      return { start, end, reason };
+    });
+    result.set(recordingId, intervals);
+  }
+  return result;
+}
+
+function flightSamplesTouchSourceExclusion(
+  exclusions: Map<string, SourceQualityInterval[]>,
+  recordingId: string,
+  anchor: number,
+): boolean {
+  return (exclusions.get(recordingId) ?? []).some((interval) =>
+    FLIGHT_SAMPLE_OFFSETS_SECONDS.some((offset) => {
+      const sample = anchor + offset;
+      return interval.start <= sample && sample < interval.end;
+    }),
+  );
+}
+
+async function currentCorrectionSha256(): Promise<string | null> {
+  try {
+    return sha256(
+      await readFile(
+        /* turbopackIgnore: true */ getServingSideCorrectionPath(),
+        "utf8",
+      ),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new ServingSideFlightReviewError(
+      "The current serving-side correction revision could not be read",
+    );
+  }
 }
 
 function sha256(content: string | Buffer): string {
@@ -517,10 +636,13 @@ function correctedMetrics(results: ServingSideFlightReviewResult[]) {
 
 export async function loadServingSideFlightReview(): Promise<ServingSideFlightReviewData> {
   const { evaluation, report, identity } = await readReviewInputs();
-  const [annotationState, correctionState] = await Promise.all([
-    loadAnnotationStateForIdentity(identity),
-    loadServingSideCorrectionState(),
-  ]);
+  const [annotationState, correctionState, correctionSha256, sourceExclusions] =
+    await Promise.all([
+      loadAnnotationStateForIdentity(identity),
+      loadServingSideCorrectionState(),
+      currentCorrectionSha256(),
+      loadSourceQualityExclusions(),
+    ]);
   const hasCorrectionIdentity =
     correctionState.reportKind !== null ||
     correctionState.reportCreatedAt !== null ||
@@ -537,6 +659,18 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
     );
   }
   const candidate = selectedCandidate(evaluation);
+  const evaluationSources = isRecord(evaluation.sources)
+    ? evaluation.sources
+    : {};
+  const evaluationCorrectionSource = isRecord(
+    evaluationSources.humanLabelCorrections,
+  )
+    ? evaluationSources.humanLabelCorrections
+    : null;
+  const labelCorrectionsBakedIn =
+    evaluationCorrectionSource?.sha256 === correctionSha256
+      ? Object.keys(correctionState.corrections).length
+      : 0;
   const rallyById = new Map(
     objectArray(report.rallies, "serving-side rallies").map((rally) => [
       requiredString(rally.rallyId, "serving-side rally id"),
@@ -554,6 +688,7 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
   );
   let correctedNotServesExcluded = 0;
   let labelCorrectionsApplied = 0;
+  let sourceQualityExcluded = 0;
   const results: ServingSideFlightReviewResult[] = objectArray(
     evaluation.selectedPredictions,
     "selected flight predictions",
@@ -581,6 +716,13 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
       throw new ServingSideFlightReviewError(
         `Flight prediction ${rallyId} has an inconsistent outcome`,
       );
+    }
+    const start = finiteNumber(rally.start, `rally ${rallyId} start`);
+    if (
+      flightSamplesTouchSourceExclusion(sourceExclusions, recordingId, start)
+    ) {
+      sourceQualityExcluded += 1;
+      return [];
     }
     const correction = correctionState.corrections[rallyId];
     if (correction === "not-serve") {
@@ -612,7 +754,7 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
         environment,
         sourceGroup,
         split: requiredString(rally.split, `rally ${rallyId} split`),
-        start: finiteNumber(rally.start, `rally ${rallyId} start`),
+        start,
         end: finiteNumber(rally.end, `rally ${rallyId} end`),
         human,
         originalHuman,
@@ -678,7 +820,9 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
     ),
     l2: finiteNumber(candidate.l2, "selected L2"),
     labelCorrectionsApplied,
+    labelCorrectionsBakedIn,
     correctedNotServesExcluded,
+    sourceQualityExcluded,
     metrics: correctedMetrics(results),
     frozenMetrics,
     annotationState,

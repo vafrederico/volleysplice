@@ -494,8 +494,14 @@ function LoadedReview({
             {data.configuration} · {data.featureFamily} · L2 {data.l2} ·{" "}
             {evaluationPath} · {data.labelCorrectionsApplied} current side-label{" "}
             {data.labelCorrectionsApplied === 1 ? "correction" : "corrections"}
+            {data.labelCorrectionsBakedIn > 0
+              ? ` · ${data.labelCorrectionsBakedIn} label corrections baked into this model`
+              : ""}
             {data.correctedNotServesExcluded > 0
               ? ` · ${data.correctedNotServesExcluded} corrected non-serves excluded`
+              : ""}
+            {data.sourceQualityExcluded > 0
+              ? ` · ${data.sourceQualityExcluded} source-quality exclusions`
               : ""}
           </p>
         </div>

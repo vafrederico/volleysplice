@@ -12,6 +12,7 @@ import type {
 } from "@/app/serving-side-results/types";
 
 import {
+  getServingSideCorrectionPath,
   loadServingSideCorrectionState,
   type ServingSideCorrectionState,
 } from "./serving-side-corrections.ts";
@@ -22,7 +23,7 @@ import {
 } from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v2-dual-serve-gate-all-video-inference.json";
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-specialist-v3-dual-serve-gate-all-video-inference-v2.json";
 
 export class ServingSideResultsError extends Error {}
 
@@ -164,7 +165,7 @@ function sha256(content: Buffer): string {
 
 function sourceHash(
   evaluation: Record<string, unknown>,
-  source: "servingSideReport" | "reviewDecisions",
+  source: "servingSideReport" | "reviewDecisions" | "humanLabelCorrections",
 ): string {
   const sources = evaluation.sources;
   if (!isRecord(sources) || !isRecord(sources[source])) {
@@ -303,8 +304,18 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     );
   }
   let storedCorrections: ServingSideCorrectionState;
+  let storedCorrectionSha256: string | null = null;
   try {
     storedCorrections = await loadServingSideCorrectionState();
+    try {
+      storedCorrectionSha256 = sha256(
+        await readFile(
+          /* turbopackIgnore: true */ getServingSideCorrectionPath(),
+        ),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   } catch (error) {
     throw new ServingSideResultsError(
       `The human-label correction overlay could not be read: ${error instanceof Error ? error.message : String(error)}`,
@@ -401,15 +412,24 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       );
     }
     const originalHuman = side(decisions[rallyId], `human decision ${rallyId}`);
-    if (
-      side(prediction.decision, `evaluation decision ${rallyId}`) !==
-      originalHuman
-    ) {
-      throw new ServingSideResultsError(
-        `Prediction ${rallyId} disagrees with the frozen human decision`,
-      );
-    }
     const correction = storedCorrections.corrections[rallyId];
+    const evaluationHuman = side(
+      prediction.decision,
+      `evaluation decision ${rallyId}`,
+    );
+    if (evaluationHuman !== originalHuman) {
+      if (
+        (correction !== "near" && correction !== "far") ||
+        evaluationHuman !== correction ||
+        storedCorrectionSha256 === null ||
+        sourceHash(evaluation, "humanLabelCorrections") !==
+          storedCorrectionSha256
+      ) {
+        throw new ServingSideResultsError(
+          `Prediction ${rallyId} disagrees with both the frozen and bound corrected human decisions`,
+        );
+      }
+    }
     const human = correction ?? originalHuman;
     const model = side(prediction.prediction, `model prediction ${rallyId}`);
     const nearProbability = finiteNumber(

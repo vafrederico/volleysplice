@@ -365,6 +365,12 @@ def evaluate(args: argparse.Namespace) -> Mapping[str, Any]:
         selected_values, _labels(rows), l2=selected_key[1]
     )
     final_model = replace(final_model, threshold=selected_threshold)
+    final_parameters = final_model.to_dict()
+    final_fingerprint = hashlib.sha256(
+        json.dumps(
+            final_parameters, sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
     top_weights = sorted(
         (
             {
@@ -423,6 +429,14 @@ def evaluate(args: argparse.Namespace) -> Mapping[str, Any]:
         "tuningLeaderboard": tuning,
         "pairedAgainstCorrectionCleanV2": paired,
         "selectedTopWeights": top_weights,
+        "finalModel": {
+            "fingerprint": final_fingerprint,
+            "configuration": selected_configuration,
+            "featureFamily": selected_key[0],
+            "featureNames": selected_names,
+            "parameters": final_parameters,
+            "trainingRows": len(rows),
+        },
         "selectedPredictions": [
             {
                 "rallyId": row["rallyId"],

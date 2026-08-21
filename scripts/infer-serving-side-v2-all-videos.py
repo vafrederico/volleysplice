@@ -192,6 +192,12 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
             "path": str(serve_evidence_path),
             "sha256": _sha256(serve_evidence_path),
         },
+        "humanLabelCorrections": development.get("sources", {}).get(
+            "humanLabelCorrections"
+        ),
+        "sourceQualityExclusions": development.get("sources", {}).get(
+            "sourceQualityExclusions"
+        ),
         "implementation": {
             "path": str(Path(__file__).resolve().relative_to(REPOSITORY_ROOT)),
             "sha256": _sha256(Path(__file__).resolve()),

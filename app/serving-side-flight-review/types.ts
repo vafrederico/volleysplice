@@ -69,7 +69,9 @@ export type ServingSideFlightReviewData = {
   featureFamily: string;
   l2: number;
   labelCorrectionsApplied: number;
+  labelCorrectionsBakedIn: number;
   correctedNotServesExcluded: number;
+  sourceQualityExcluded: number;
   metrics: {
     rows: number;
     accuracy: number;

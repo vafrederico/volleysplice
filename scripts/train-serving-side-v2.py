@@ -165,7 +165,12 @@ def train(args: argparse.Namespace) -> Mapping[str, Any]:
     if model_dir.exists() or evaluation_path.exists():
         raise FileExistsError("refusing to overwrite a frozen v2 model or evaluation")
     dataset = _load(dataset_path)
-    if dataset.get("scope") != "development" or dataset.get("dataPolicy", {}).get("protectedTestIncluded") is not False:
+    if (
+        dataset.get("scope") != "development"
+        or dataset.get("dataPolicy", {}).get("protectedTestIncluded") is not False
+        or dataset.get("dataPolicy", {}).get("trainingEligible") is False
+        or dataset.get("dataPolicy", {}).get("notServeCorrections") != "excluded"
+    ):
         raise ValueError("model selection requires a development-only feature artifact")
     rows = dataset.get("rows")
     if not isinstance(rows, list) or not rows or any(row.get("sourceSplit") == "test" for row in rows):

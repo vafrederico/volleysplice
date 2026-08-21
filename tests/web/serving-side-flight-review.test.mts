@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   getServingSideFlightAnnotationPath,
   getServingSideFlightEvaluationPath,
+  getServingSideSourceExclusionsPath,
   loadServingSideFlightReview,
   saveServingSideFlightAnnotation,
 } from "../../lib/server/serving-side-flight-review.ts";
@@ -20,21 +21,31 @@ test("flight review defaults to versioned NAS evaluation and annotations", () =>
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
   const previousAnnotations =
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS;
+  const previousSourceExclusions =
+    process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
   try {
     delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
     delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS;
+    delete process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
     assert.equal(
       getServingSideFlightEvaluationPath(),
       path.join(
         DEFAULT_SERVING_SIDE_DIRECTORY,
-        "serving-side-flight-v1-development.json",
+        "serving-side-flight-v2-development.json",
       ),
     );
     assert.equal(
       getServingSideFlightAnnotationPath(),
       path.join(
         DEFAULT_SERVING_SIDE_DIRECTORY,
-        "serving-side-flight-error-annotations-v1.json",
+        "serving-side-flight-error-annotations-v2.json",
+      ),
+    );
+    assert.equal(
+      getServingSideSourceExclusionsPath(),
+      path.join(
+        DEFAULT_SERVING_SIDE_DIRECTORY,
+        "serving-side-source-quality-exclusions-v1.json",
       ),
     );
   } finally {
@@ -49,6 +60,12 @@ test("flight review defaults to versioned NAS evaluation and annotations", () =>
       process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS =
         previousAnnotations;
     }
+    if (previousSourceExclusions === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS =
+        previousSourceExclusions;
+    }
   }
 });
 
@@ -61,6 +78,7 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
   const decisionPath = path.join(temporary, "decisions.json");
   const correctionPath = path.join(temporary, "corrections.json");
   const annotationPath = path.join(temporary, "annotations.json");
+  const sourceExclusionPath = path.join(temporary, "source-exclusions.json");
   const previousEvaluation =
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
   const previousAnnotations =
@@ -68,12 +86,15 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
   const previousReport = process.env.VOLLEYCUT_SERVING_SIDE_REPORT;
   const previousDecisions = process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS;
   const previousCorrections = process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
+  const previousSourceExclusions =
+    process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
   try {
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION = evaluationPath;
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS = annotationPath;
     process.env.VOLLEYCUT_SERVING_SIDE_REPORT = reportPath;
     process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS = decisionPath;
     process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = correctionPath;
+    process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS = sourceExclusionPath;
     const evaluation = {
       schemaVersion: 1,
       kind: "volleycut-serving-side-flight-development-evaluation-v1",
@@ -167,12 +188,23 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
       writeFile(evaluationPath, `${JSON.stringify(evaluation)}\n`, "utf8"),
       writeFile(reportPath, `${JSON.stringify(report)}\n`, "utf8"),
       writeFile(decisionPath, decisionsText, "utf8"),
+      writeFile(
+        sourceExclusionPath,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          kind: "volleycut-serving-side-source-quality-exclusions-v1",
+          createdAt: "2026-08-20T19:45:00.000Z",
+          records: [],
+        })}\n`,
+        "utf8",
+      ),
     ]);
 
     const loaded = await loadServingSideFlightReview();
     assert.equal(loaded.results.length, 2);
     assert.equal(loaded.results.filter((row) => !row.correct).length, 1);
     assert.equal(loaded.recordings[0]?.errors, 1);
+    assert.equal(loaded.sourceQualityExcluded, 0);
     assert.deepEqual(loaded.annotationState.annotations, {});
 
     await writeFile(
@@ -278,6 +310,29 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
       annotation: null,
     });
     assert.deepEqual(cleared.annotations, {});
+
+    await writeFile(
+      sourceExclusionPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        kind: "volleycut-serving-side-source-quality-exclusions-v1",
+        createdAt: "2026-08-20T21:00:00.000Z",
+        records: [
+          {
+            recordingId: "video-one",
+            durationSeconds: 100,
+            intervals: [
+              { start: 29, end: 36, reason: "camera-hit-rotated-view" },
+            ],
+          },
+        ],
+      })}\n`,
+      "utf8",
+    );
+    const sourceFiltered = await loadServingSideFlightReview();
+    assert.equal(sourceFiltered.sourceQualityExcluded, 1);
+    assert.equal(sourceFiltered.results.length, 1);
+    assert.equal(sourceFiltered.correctedNotServesExcluded, 0);
   } finally {
     if (previousEvaluation === undefined) {
       delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
@@ -304,6 +359,12 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
       delete process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
     } else {
       process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = previousCorrections;
+    }
+    if (previousSourceExclusions === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS =
+        previousSourceExclusions;
     }
     await rm(temporary, { recursive: true, force: true });
   }

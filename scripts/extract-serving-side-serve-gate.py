@@ -25,6 +25,10 @@ from analysis.production_serve_gate import (
     load_production_serve_head,
     sha256,
 )
+from analysis.serving_side_exclusions import (
+    load_source_quality_exclusions,
+    samples_touch_source_exclusion,
+)
 
 
 ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
@@ -40,6 +44,10 @@ DEFAULT_FEEDBACK_ROOT = Path("/mnt/freenas/volleycut/model-feedback")
 DEFAULT_ALL_LABELS_MODEL = Path("prod/public/runtime/model-1ca43e38eefc.json")
 DEFAULT_PREVIOUS_MODEL = Path("prod/public/runtime/model-9c92b8e9333f.json")
 DEFAULT_OUTPUT = ROOT / "features/serving-side-serve-gate-v1/all-reviewed.json"
+DEFAULT_SOURCE_EXCLUSIONS = (
+    ROOT
+    / "reports/serving-side/serving-side-source-quality-exclusions-v1.json"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -162,6 +170,8 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
     if output_path.exists():
         raise FileExistsError(f"refusing to overwrite serve-gate evidence: {output_path}")
     report = _load(report_path)
+    source_exclusions_path = args.source_exclusions.resolve()
+    source_exclusions = load_source_quality_exclusions(source_exclusions_path)
     rallies = report.get("rallies")
     labels = report.get("labels")
     files = labels.get("files") if isinstance(labels, Mapping) else None
@@ -214,6 +224,11 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             rally
             for rally in rallies
             if isinstance(rally, Mapping) and rally.get("recordingId") == recording_id
+            and not samples_touch_source_exclusion(
+                source_exclusions,
+                recording_id,
+                [float(rally["start"])],
+            )
         ]
         for rally in selected:
             anchor = float(rally["start"])
@@ -243,8 +258,7 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             )
         feature_sources.append({"recordingId": recording_id, **feature_source})
         print(f"{recording_id}: {len(selected)} candidates", flush=True)
-    if len(rows) != len(rallies):
-        raise ValueError("serve-gate extraction did not cover every report candidate")
+    source_quality_excluded = len(rallies) - len(rows)
     prediction_counts = {
         decision: sum(row["prediction"] == decision for row in rows)
         for decision in ("serve", "not-serve")
@@ -280,6 +294,7 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         "counts": {
             "rows": len(rows),
             "recordings": len(recording_ids),
+            "sourceQualityExcluded": source_quality_excluded,
             **prediction_counts,
         },
         "rows": rows,
@@ -287,6 +302,10 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             "servingSideReport": {
                 "path": str(report_path),
                 "sha256": sha256(report_path),
+            },
+            "sourceQualityExclusions": {
+                "path": str(source_exclusions_path),
+                "sha256": sha256(source_exclusions_path),
             },
             "productionModels": {
                 "allLabelsV2": str(args.all_labels_model.resolve()),
@@ -307,7 +326,7 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             "labelsUsedForGateSelection": False,
             "protectedTestUsedForGateSelection": False,
             "thresholds": "unchanged deployed thresholds from each production serve head",
-            "coverage": "every candidate in the serving-side report, including unclear rows",
+            "coverage": "every candidate in the serving-side report outside source-quality exclusions, including unclear rows",
         },
     }
     atomic_write_text(output_path, json.dumps(payload, indent=2, allow_nan=False) + "\n")
@@ -320,6 +339,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serving-report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--feature-cache", type=Path, default=DEFAULT_FEATURE_CACHE)
     parser.add_argument("--feedback-root", type=Path, default=DEFAULT_FEEDBACK_ROOT)
+    parser.add_argument(
+        "--source-exclusions", type=Path, default=DEFAULT_SOURCE_EXCLUSIONS
+    )
     parser.add_argument("--all-labels-model", type=Path, default=DEFAULT_ALL_LABELS_MODEL)
     parser.add_argument("--previous-model", type=Path, default=DEFAULT_PREVIOUS_MODEL)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

@@ -1,5 +1,64 @@
 # Serving-side concentrated flight-motion experiment — 2026-08-20
 
+## Corrected-label retrain — 2026-08-21
+
+The v1 result below is preserved as the original experiment record. It is now
+superseded by a correction-clean retrain that applies all 19 saved human-label
+corrections and excludes source-quality failures before fitting or scoring.
+
+`raw-no-backup-PXL_20260816_164327879` was hit by a ball at 6:57. The canonical
+feedback bundle now marks `[417.0, 978.7967]` as
+`camera-hit-rotated-partial-court-view`; its final export is clipped at 417s.
+General temporal training masks that exact interval. Serving-side extraction
+rejects a row if any sampled frame touches it. This removes 15 reviewed
+serving-side rows while retaining the valid 410.125s serve anchor, whose last
+flight sample is 411.875s.
+
+The base specialist was retrained because at least one corrected row
+(`grass-source-01:rally:37`) was in the original training split, and the
+flight model's final refit used all non-test development rows. Seven corrected
+non-serves are absent from both training banks. A separate, explicitly
+non-training-eligible inference bank retains those seven rows so the production
+serve gate remains reviewable in `/serving-side-results`.
+
+| Model | Rows | Source-group macro BA | Pooled BA | Worst-group BA |
+| --- | ---: | ---: | ---: | ---: |
+| Base v2 before corrections | 1,090 | 87.45% | 87.27% | 72.46% |
+| **Base v3 corrected retrain** | **1,068** | **90.10%** | **89.26%** | **78.88%** |
+| Flight v1 before latest corrections | 1,046 | 92.56% | 92.73% | 81.71% |
+| **Flight v2 corrected retrain** | **1,028** | **94.12%** | **94.05%** | **85.83%** |
+
+The corrected flight model selected v2 plus flight recording ranks at
+192×108, grid 4×6, logistic L2 0.1. Its confusion matrix is 472/35 for human
+near and 26/495 for human far, or 61 errors total. The report now stores the
+reusable final model parameters and fingerprint
+`1e9b53a1023249126d0ecca9804fc2d68d63ed8d8c932018033b19caf8a7f9a7`.
+The previously opened protected bank was not used for selection or fitting; it
+is attached only to the all-video inference artifact.
+
+The review UI now defaults to the v2 evaluation. Sixty-four saved failure-mode
+annotations were migrated by rally ID. The two omitted annotations were for
+post-impact rallies 42 and 46 in the damaged recording.
+
+### Corrected NAS artifacts
+
+All paths except the feedback bundle are relative to
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `reports/full-nas-video-corpus-v2.json` | `bf3e1bd2601da1d742379f2b5897c6293a6b84c2b8c4f26550c8045cdde2f04e` |
+| `reports/serving-side/serving-side-source-quality-exclusions-v1.json` | `e4782c598ea23245d7303238511a5b5e2c65e69e9ea74a00279efdba5a707c4e` |
+| `features/serving-side-v3/development.json` | `2b84f0ae4bb406033e86939eaa5f2efe450f3fc475b6cdbcb5b130ed46dad38f` |
+| `models/serving-side-specialist-v3/model.json` | `91fe5e1a0fd9d755fba5afc34724332a36027b81af972878ed60a6527c80c735` |
+| `reports/serving-side/serving-side-specialist-v3-development.json` | `6e0a3ba8ce7cc7fdda911550a681f554749676e781fe79da05d2e30e8b5c0726` |
+| `features/serving-side-flight-v2/development.json` | `53f0e0f69aa0b3b0ce1d1d4abe824e73edb0ea98b7dad273305860014906438c` |
+| `reports/serving-side/serving-side-flight-v2-development.json` | `14c8f464422761a55007777f4490cafdf159c0ceca79042e04329549cb0308c4` |
+| `reports/serving-side/serving-side-flight-error-annotations-v2.json` | `81306be7cd160c4a8ed61520cf1f76647ae626b0232c3724d2918a18a46aadee` |
+| `features/serving-side-v3/all-reviewed-inference.json` | `4a6fd7c7eb410aabd3f9ceeb3c779864782589b2815a4b8cef4d0da9ffd94e07` |
+| `reports/serving-side/serving-side-specialist-v3-dual-serve-gate-all-video-inference-v2.json` | `30bbb4b465dd5b30b3568b439d3e4958d2731f8ee3d042f6ffbbd78440e6d298` |
+| `/mnt/freenas/volleycut/model-feedback/project-15ljci6-cfd050cdf42eee16/bundle.json` | `7f2117c2859168c01b2b30e5730b4a40998a7ebe42f1fc6736aca85bc56d57c5` |
+
 ## Decision
 
 Keep concentrated post-contact flight motion as the leading serving-side v3

@@ -16,6 +16,10 @@ import numpy as np
 
 from analysis.artifacts import atomic_write_text
 from analysis.serving_side import crop_roi
+from analysis.serving_side_exclusions import (
+    load_source_quality_exclusions,
+    samples_touch_source_exclusion,
+)
 from analysis.serving_side_specialist import apply_review_corrections, reviewed_rallies
 from analysis.serving_side_v2 import (
     FEATURE_NAMES,
@@ -37,6 +41,10 @@ DEFAULT_DECISIONS = (
 )
 DEFAULT_CORRECTIONS = (
     ROOT / "reports/serving-side/serving-side-result-label-corrections-v1.json"
+)
+DEFAULT_SOURCE_EXCLUSIONS = (
+    ROOT
+    / "reports/serving-side/serving-side-source-quality-exclusions-v1.json"
 )
 DEFAULT_DEVELOPMENT = ROOT / "features/serving-side-v2/development.json"
 DEFAULT_PROTECTED = ROOT / "features/serving-side-v2/protected-test.json"
@@ -110,6 +118,8 @@ def _rank_features(rows: list[dict[str, Any]]) -> None:
 def extract(args: argparse.Namespace) -> dict[str, Any]:
     report_path = args.serving_report.resolve()
     decisions_path = args.decisions.resolve()
+    source_exclusions_path = args.source_exclusions.resolve()
+    source_exclusions_hash = _sha256(source_exclusions_path)
     output = args.output.resolve() if args.output else (
         DEFAULT_PROTECTED if args.protected_test else DEFAULT_DEVELOPMENT
     )
@@ -119,25 +129,50 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
     if report_hash != REPORT_SHA256 or decisions_hash != DECISIONS_SHA256:
         raise ValueError("review sources do not match the frozen serving-side v1 hashes")
     report, decisions = _load(report_path), _load(decisions_path)
+    base_decisions = decisions
     corrections_path = args.corrections.resolve()
     correction_source = None
+    correction_hash: str | None = None
     correction_counts = {"applied": 0, "near": 0, "far": 0, "notServe": 0}
+    correction_labels: Mapping[str, Any] = {}
     if corrections_path.exists():
         correction_hash = _sha256(corrections_path)
+        correction_payload = _load(corrections_path)
+        correction_labels = correction_payload.get("corrections", {})
         decisions, correction_counts = apply_review_corrections(
             report,
             decisions,
-            _load(corrections_path),
+            correction_payload,
             base_decision_sha256=decisions_hash,
         )
+        if args.include_not_serve_for_inference:
+            effective_decisions = dict(decisions.get("decisions", {}))
+            frozen_decisions = base_decisions.get("decisions", {})
+            for rally_id, correction in correction_labels.items():
+                if correction == "not-serve" and rally_id in frozen_decisions:
+                    effective_decisions[rally_id] = frozen_decisions[rally_id]
+            decisions = {**decisions, "decisions": effective_decisions}
         correction_source = {
             "path": str(corrections_path),
             "sha256": correction_hash,
         }
     reviewed, review_counts = reviewed_rallies(report, decisions)
     review_counts["notServe"] = correction_counts["notServe"]
-    review_counts["missing"] -= correction_counts["notServe"]
+    if not args.include_not_serve_for_inference:
+        review_counts["missing"] -= correction_counts["notServe"]
     wanted = [row for row in reviewed if (row.split == "test") == args.protected_test]
+    source_exclusions = load_source_quality_exclusions(source_exclusions_path)
+    before_source_exclusions = len(wanted)
+    wanted = [
+        row
+        for row in wanted
+        if not samples_touch_source_exclusion(
+            source_exclusions,
+            row.recording_id,
+            [float(row.rally["start"]) + offset for offset in OFFSETS_SECONDS],
+        )
+    ]
+    source_quality_excluded = before_source_exclusions - len(wanted)
     if not wanted:
         raise ValueError("selected extraction scope has no clear reviewed rows")
     if not args.protected_test and any(row.split == "test" for row in wanted):
@@ -182,6 +217,9 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
                         "targetStatus": row.target_status,
                         "serveAnchor": anchor,
                         "decision": row.decision,
+                        "currentHumanLabel": correction_labels.get(
+                            row.rally_id, row.decision
+                        ),
                         "label": row.label,
                         "geometryProvenance": provenance,
                         "roi": list(roi),
@@ -195,6 +233,10 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         finally:
             capture.release()
     _rank_features(output_rows)
+    if correction_hash is not None and _sha256(corrections_path) != correction_hash:
+        raise RuntimeError("correction overlay changed during v2 extraction")
+    if _sha256(source_exclusions_path) != source_exclusions_hash:
+        raise RuntimeError("source exclusions changed during v2 extraction")
     payload = {
         "schemaVersion": 1,
         "kind": "volleycut-serving-side-v2-feature-dataset",
@@ -212,11 +254,23 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             "recordings": len({row["recordingId"] for row in output_rows}),
             "near": sum(row["label"] for row in output_rows),
             "far": sum(1 - row["label"] for row in output_rows),
+            "sourceQualityExcluded": source_quality_excluded,
+            "notServeCandidatesRetained": (
+                correction_counts["notServe"]
+                if args.include_not_serve_for_inference
+                else 0
+            ),
             "geometryProvenance": geometry_counts,
         },
         "dataPolicy": {
             "unclear": "excluded",
-            "notServeCorrections": "excluded",
+            "notServeCorrections": (
+                "retained only as inference candidates"
+                if args.include_not_serve_for_inference
+                else "excluded"
+            ),
+            "trainingEligible": not args.include_not_serve_for_inference,
+            "sourceQualityIntervals": "any row whose sampled frame touches an excluded interval is excluded",
             "protectedTestIncluded": args.protected_test,
             "recordingRanks": "computed from unlabeled feature values within each recording",
             "fallbackGeometry": "top/bottom 32% of the recording ROI; camera-relative, not metric court calibration",
@@ -225,6 +279,10 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             "servingSideReport": {"path": str(report_path), "sha256": report_hash},
             "reviewDecisions": {"path": str(decisions_path), "sha256": decisions_hash},
             "humanLabelCorrections": correction_source,
+            "sourceQualityExclusions": {
+                "path": str(source_exclusions_path),
+                "sha256": source_exclusions_hash,
+            },
             "files": [
                 {
                     "recordingId": recording_id,
@@ -253,8 +311,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serving-report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--decisions", type=Path, default=DEFAULT_DECISIONS)
     parser.add_argument("--corrections", type=Path, default=DEFAULT_CORRECTIONS)
+    parser.add_argument(
+        "--source-exclusions", type=Path, default=DEFAULT_SOURCE_EXCLUSIONS
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--protected-test", action="store_true")
+    parser.add_argument("--include-not-serve-for-inference", action="store_true")
     return parser
 
 

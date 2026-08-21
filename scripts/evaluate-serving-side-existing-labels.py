@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import cv2
 import numpy as np
@@ -34,6 +34,11 @@ from analysis.serving_side import (
     occupancy_change_margin,
     palette_change,
     pixel_motion,
+)
+from analysis.serving_side_exclusions import (
+    SourceQualityInterval,
+    load_source_quality_exclusions,
+    samples_touch_source_exclusion,
 )
 from analysis.side_switch_appearance import create_hog, read_frame
 
@@ -93,6 +98,10 @@ VARIANT_DEFINITIONS: dict[str, dict[str, Any]] = {
 }
 
 BASELINE_BAND_FRACTION = 0.35
+DEFAULT_SOURCE_EXCLUSIONS = Path(
+    "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/"
+    "serving-side-source-quality-exclusions-v1.json"
+)
 
 
 @dataclass(frozen=True)
@@ -118,6 +127,7 @@ class RecordingLabels:
     video_filename: str
     duration_seconds: float
     roi: tuple[float, float, float, float] | None
+    ignored_intervals: tuple[SourceQualityInterval, ...]
     rallies: tuple[RallyLabel, ...]
     candidate_source: dict[str, Any]
 
@@ -151,6 +161,51 @@ def _read_roi(value: Any, where: str) -> tuple[float, float, float, float] | Non
     if result[2] <= 0 or result[3] <= 0:
         raise ValueError(f"{where} width and height must be positive")
     return result  # type: ignore[return-value]
+
+
+def _read_ignored_intervals(
+    value: Any, duration: float, where: str
+) -> tuple[SourceQualityInterval, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError(f"{where} must be an array")
+    result: list[SourceQualityInterval] = []
+    previous_end = -1.0
+    for index, row in enumerate(value):
+        if not isinstance(row, dict):
+            raise ValueError(f"{where}[{index}] must be an object")
+        start = _finite(row.get("start"), f"{where}[{index}].start")
+        end = _finite(row.get("end"), f"{where}[{index}].end")
+        reason = row.get("reason")
+        if (
+            start < 0
+            or start >= end
+            or end > duration
+            or start < previous_end
+            or not isinstance(reason, str)
+            or not reason
+        ):
+            raise ValueError(f"{where}[{index}] is invalid or overlaps")
+        result.append(SourceQualityInterval(start, end, reason))
+        previous_end = end
+    return tuple(result)
+
+
+def _combined_ignored_intervals(
+    recording: RecordingLabels,
+    source_exclusions: Mapping[str, Sequence[SourceQualityInterval]],
+) -> tuple[SourceQualityInterval, ...]:
+    """Combine embedded and overlay intervals without repeating identical bounds."""
+
+    rows = {
+        (row.start, row.end, row.reason): row
+        for row in (
+            *recording.ignored_intervals,
+            *source_exclusions.get(recording.recording_id, ()),
+        )
+    }
+    return tuple(rows[key] for key in sorted(rows))
 
 
 def load_recording_labels(path: Path) -> RecordingLabels:
@@ -198,6 +253,9 @@ def load_recording_labels(path: Path) -> RecordingLabels:
         video_filename=str(recording.get("videoFilename", video.name)),
         duration_seconds=duration,
         roi=_read_roi(recording.get("roi"), f"{recording_id}.recording.roi"),
+        ignored_intervals=_read_ignored_intervals(
+            payload.get("ignoredIntervals"), duration, f"{recording_id}.ignoredIntervals"
+        ),
         rallies=tuple(rallies),
         candidate_source={
             "kind": "label-document",
@@ -227,6 +285,7 @@ def load_manifest_record(record: dict[str, Any]) -> RecordingLabels:
         previous_end = end
     label_path_value = record.get("labelPath")
     label_path = Path(label_path_value).expanduser().resolve() if isinstance(label_path_value, str) else None
+    duration = _finite(record["durationSeconds"], f"{recording_id}.durationSeconds")
     return RecordingLabels(
         label_path=label_path,
         recording_id=recording_id,
@@ -237,8 +296,11 @@ def load_manifest_record(record: dict[str, Any]) -> RecordingLabels:
         target_status=target_status,
         video_path=manifest_path_record(record),
         video_filename=str(record.get("videoFilename", manifest_path_record(record).name)),
-        duration_seconds=_finite(record["durationSeconds"], f"{recording_id}.durationSeconds"),
+        duration_seconds=duration,
         roi=_read_roi(record.get("roi"), f"{recording_id}.recording.roi"),
+        ignored_intervals=_read_ignored_intervals(
+            record.get("ignoredIntervals"), duration, f"{recording_id}.ignoredIntervals"
+        ),
         rallies=tuple(rallies),
         candidate_source=(record.get("candidateSource") if isinstance(record.get("candidateSource"), dict) else {}),
     )
@@ -593,6 +655,9 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--corpus-manifest", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
+        "--source-exclusions", type=Path, default=DEFAULT_SOURCE_EXCLUSIONS
+    )
+    parser.add_argument(
         "--environments",
         nargs="+",
         default=["beach", "grass", "indoor", "broadcast", "unknown"],
@@ -613,6 +678,8 @@ def main() -> int:
     labels_dir = arguments.labels_dir.expanduser().resolve() if arguments.labels_dir else None
     manifest_path = arguments.corpus_manifest.expanduser().resolve() if arguments.corpus_manifest else None
     output = arguments.output.expanduser().resolve()
+    source_exclusions_path = arguments.source_exclusions.expanduser().resolve()
+    source_exclusions = load_source_quality_exclusions(source_exclusions_path)
     if output.exists():
         raise FileExistsError(f"refusing to overwrite existing report: {output}")
     if not 0.1 < arguments.split_fraction < 0.9:
@@ -633,11 +700,29 @@ def main() -> int:
         raise ValueError("no recordings matched --environments")
 
     rows: list[dict[str, Any]] = []
+    source_quality_excluded = 0
+    eligible_rallies_by_recording: dict[str, list[RallyLabel]] = {}
     for recording in recordings:
         if not recording.video_path.is_file():
             raise FileNotFoundError(f"video does not exist: {recording.video_path}")
+        combined_intervals = _combined_ignored_intervals(recording, source_exclusions)
+        combined_exclusions = {recording.recording_id: combined_intervals}
+        eligible_rallies = [
+            rally
+            for rally in recording.rallies
+            if not samples_touch_source_exclusion(
+                combined_exclusions,
+                recording.recording_id,
+                (
+                    *sample_times(rally, recording.duration_seconds)[0],
+                    *sample_times(rally, recording.duration_seconds)[1],
+                ),
+            )
+        ]
+        eligible_rallies_by_recording[recording.recording_id] = eligible_rallies
+        source_quality_excluded += len(recording.rallies) - len(eligible_rallies)
         print(
-            f"Analyzing {recording.recording_id}: {len(recording.rallies)} rallies from {recording.video_path}",
+            f"Analyzing {recording.recording_id}: {len(eligible_rallies)} usable rallies from {recording.video_path}",
             file=sys.stderr,
             flush=True,
         )
@@ -646,10 +731,10 @@ def main() -> int:
             raise RuntimeError(f"could not open video: {recording.video_path}")
         try:
             hog = create_hog()
-            for index, rally in enumerate(recording.rallies, start=1):
-                if index == 1 or index % 10 == 0 or index == len(recording.rallies):
+            for index, rally in enumerate(eligible_rallies, start=1):
+                if index == 1 or index % 10 == 0 or index == len(eligible_rallies):
                     print(
-                        f"  {index}/{len(recording.rallies)} at {rally.start:.3f}s",
+                        f"  {index}/{len(eligible_rallies)} at {rally.start:.3f}s",
                         file=sys.stderr,
                         flush=True,
                     )
@@ -687,6 +772,10 @@ def main() -> int:
         "labels": {
             "directory": labels_directory,
             "manifest": str(manifest_path) if manifest_path else None,
+            "sourceQualityExclusions": {
+                "path": str(source_exclusions_path),
+                "sha256": _sha256(source_exclusions_path),
+            },
             "files": [
                 {
                     "recordingId": recording.recording_id,
@@ -701,7 +790,14 @@ def main() -> int:
                     "videoFilename": recording.video_filename,
                     "durationSeconds": recording.duration_seconds,
                     "candidateSource": recording.candidate_source,
-                    "rallies": len(recording.rallies),
+                    "sourceRallies": len(recording.rallies),
+                    "rallies": len(eligible_rallies_by_recording[recording.recording_id]),
+                    "ignoredIntervals": [
+                        {"start": row.start, "end": row.end, "reason": row.reason}
+                        for row in _combined_ignored_intervals(
+                            recording, source_exclusions
+                        )
+                    ],
                 }
                 for recording in recordings
             ],
@@ -724,6 +820,7 @@ def main() -> int:
             ],
             "decisionMargin": arguments.decision_margin,
             "corpusScope": "full NAS manifest" if manifest_path else "label directory",
+            "sourceQualityExclusions": "all sampled frames must be outside ignored intervals",
             "evaluationTargetStatuses": sorted(evaluation_statuses),
             "thresholdsAreDiagnostic": True,
         },
@@ -731,6 +828,7 @@ def main() -> int:
         "summary": {
             "recordings": len(recordings),
             "rallies": len(rows),
+            "sourceQualityExcluded": source_quality_excluded,
             "targetableRallies": len(target_rows),
             "unknownRallies": len(rows) - len(target_rows),
             "targetStatusCounts": {
