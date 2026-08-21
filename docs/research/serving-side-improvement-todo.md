@@ -253,3 +253,33 @@ all-video UI artifact uses the older court-flow v4 model, while this policy is b
 the selected fixed-flight fingerprint `85bc3325fbd43abba6ba3726ac091dc6a3a1eafc68d63d979cb2a7450eb49e06`.
 Generate matching all-video fixed-flight inference or a separately audited v4 policy;
 never silently apply these thresholds to the mismatched v4 probabilities.
+
+Matching fixed-flight all-video inference result:
+
+- Development/unprotected feature bank: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v4/all-reviewed-inference.json`,
+  SHA-256 `8bdf003a2fbb1295609e6051e14767614c4915006fcb2cfcac764d25bfdcb895`.
+  It contains 1,075 candidates across 29 recordings, retains all 8 current not-serve
+  corrections for UI inspection, and excludes 15 source-quality-affected candidates.
+- Post-selection protected feature bank: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v4/protected-test.json`,
+  SHA-256 `58fdb6b0aa7c57fc77ec4393334daf1637f5175b8d11b86e5b6c7e417308ce2e`.
+  It contains 39 candidates from the one protected recording. It was extracted only
+  after calibration and the 95% review policy were frozen and was never used to revise
+  either. The first extraction with ambiguous aggregate count metadata is preserved as
+  `protected-test-metadata-v1.json` and was superseded before inference.
+- All-video inference artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-dual-serve-gate-all-video-inference-v1.json`,
+  SHA-256 `47dea63a37bc66253d92296ca3255538360e5a61d9b0a8b6b822489075cb1401`.
+  It covers the same 1,114 candidates and 30 recordings as the prior UI artifact,
+  reuses the unchanged dual production serve-head evidence, and binds the review band
+  to the matching fixed-flight fingerprint. It marks 24 full-model predictions for
+  review.
+- Mixed-scope side diagnostics are 96.140% accuracy and 96.138% balanced accuracy
+  (near precision 96.364%, near recall 95.841%, far precision 95.922%, far recall
+  96.435%). These combine in-sample development and post-selection protected results;
+  they are descriptive only and must not replace cross-fit development ranking.
+- An intermediate all-video inference with the superseded protected metadata is saved
+  as `serving-side-flight-v3-dual-serve-gate-all-video-inference-metadata-v1.json`.
+
+Exact next action: switch the serving-side results loader to the matching all-video
+artifact, expose its frozen review policy in the typed server payload, add an
+`uncertain` outcome queue and confidence-band explanation, then exercise correction
+persistence and URL navigation in browser/tests.

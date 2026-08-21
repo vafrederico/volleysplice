@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract development-only multi-resolution flight-motion grid features."""
+"""Extract multi-resolution flight-motion grid features."""
 
 from __future__ import annotations
 
@@ -143,15 +143,28 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         corrections,
         base_decision_sha256=decision_hash,
     )
+    correction_labels = corrections.get("corrections", {})
+    if args.all_reviewed_inference:
+        effective_decisions = dict(effective.get("decisions", {}))
+        frozen_decisions = decisions.get("decisions", {})
+        for rally_id, correction in correction_labels.items():
+            if correction == "not-serve" and rally_id in frozen_decisions:
+                effective_decisions[rally_id] = frozen_decisions[rally_id]
+        effective = {**effective, "decisions": effective_decisions}
     reviewed, review_counts = reviewed_rallies(report, effective)
+    review_counts["notServe"] = correction_counts["notServe"]
     protected_source_groups = sorted(
         {row.source_group for row in reviewed if row.split == "test"}
     )
-    wanted = [
-        row
-        for row in reviewed
-        if row.split != "test" and row.source_group not in protected_source_groups
-    ]
+    wanted = (
+        list(reviewed)
+        if args.all_reviewed_inference
+        else [
+            row
+            for row in reviewed
+            if row.split != "test" and row.source_group not in protected_source_groups
+        ]
+    )
     source_exclusions = load_source_quality_exclusions(source_exclusions_path)
     before_source_exclusions = len(wanted)
     wanted = [
@@ -164,7 +177,10 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         )
     ]
     source_quality_excluded = before_source_exclusions - len(wanted)
-    if not wanted or any(row.split == "test" for row in wanted):
+    if not wanted or (
+        not args.all_reviewed_inference
+        and any(row.split == "test" for row in wanted)
+    ):
         raise ValueError("flight extraction must contain development rows only")
     if args.limit_per_recording is not None:
         selected = []
@@ -177,8 +193,13 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         wanted = selected
 
     v2 = _load(v2_path)
+    allowed_v2_scopes = (
+        {"development", "protected-test"}
+        if args.all_reviewed_inference
+        else {"development"}
+    )
     if (
-        v2.get("scope") != "development"
+        v2.get("scope") not in allowed_v2_scopes
         or v2.get("sources", {}).get("servingSideReport", {}).get("sha256")
         != report_hash
         or v2.get("sources", {}).get("reviewDecisions", {}).get("sha256")
@@ -193,6 +214,13 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         for row in raw_v2_rows
         if isinstance(row, Mapping) and isinstance(row.get("rallyId"), str)
     }
+    if args.all_reviewed_inference:
+        wanted = [row for row in wanted if row.rally_id in v2_by_id]
+        if {row.rally_id for row in wanted} != set(v2_by_id):
+            raise ValueError("all-reviewed flight rows do not exactly match the v2 inference bank")
+        source_quality_excluded = int(
+            v2.get("counts", {}).get("sourceQualityExcluded", 0)
+        )
     if any(row.rally_id not in v2_by_id for row in wanted):
         raise ValueError("v2 baseline does not cover every flight row")
 
@@ -273,6 +301,9 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
                         "targetStatus": row.target_status,
                         "serveAnchor": anchor,
                         "decision": row.decision,
+                        "currentHumanLabel": correction_labels.get(
+                            row.rally_id, row.decision
+                        ),
                         "label": row.label,
                         "v2RecordingRankFeatures": baseline[
                             "recordingRankFeatures"
@@ -306,12 +337,17 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
     if _sha256(source_exclusions_path) != source_exclusions_hash:
         raise RuntimeError("source exclusions changed during flight extraction")
     if args.limit_per_recording is None and len(output_rows) != len(wanted):
-        raise AssertionError("flight extraction did not cover every development row")
+        raise AssertionError("flight extraction did not cover every selected row")
+    scope = "all-reviewed-inference" if args.all_reviewed_inference else "development"
     payload = {
         "schemaVersion": 1,
-        "kind": "volleycut-serving-side-flight-feature-development-v1",
+        "kind": (
+            "volleycut-serving-side-flight-feature-all-reviewed-inference-v1"
+            if args.all_reviewed_inference
+            else "volleycut-serving-side-flight-feature-development-v1"
+        ),
         "createdAt": datetime.now(UTC).isoformat(),
-        "scope": "development",
+        "scope": scope,
         "featureVersion": FEATURE_VERSION,
         "offsetsSeconds": list(OFFSETS_SECONDS),
         "v2FeatureNames": v2.get("featureNames"),
@@ -323,15 +359,21 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             "sourceGroups": len({row["sourceGroup"] for row in output_rows}),
             "near": sum(row["label"] for row in output_rows),
             "far": sum(1 - row["label"] for row in output_rows),
+            "notServeCandidatesRetained": sum(
+                row.get("currentHumanLabel") == "not-serve" for row in output_rows
+            ),
             "sourceQualityExcluded": source_quality_excluded,
         },
         "reviewCounts": review_counts,
         "correctionCounts": correction_counts,
         "dataPolicy": {
-            "protectedTestIncluded": False,
+            "protectedTestIncluded": any(row["sourceSplit"] == "test" for row in output_rows),
+            "trainingEligible": not args.all_reviewed_inference,
             "protectedSourceGroupsExcluded": protected_source_groups,
             "unclear": "excluded",
-            "notServeCorrections": "excluded",
+            "notServeCorrections": (
+                "retained for inference" if args.all_reviewed_inference else "excluded"
+            ),
             "sideCorrections": "applied",
             "sourceQualityIntervals": "any row whose flight sample touches an excluded interval is excluded",
             "serveAnchor": "authoritative rally.start from the reviewed source",
@@ -395,6 +437,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--v2-dataset", type=Path, default=DEFAULT_V2_DATASET)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--all-reviewed-inference", action="store_true")
     parser.add_argument("--limit-per-recording", type=int)
     parser.add_argument("--workers", type=int, default=4)
     return parser
