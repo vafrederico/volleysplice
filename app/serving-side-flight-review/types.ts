@@ -2,15 +2,10 @@ export type FlightReviewSide = "near" | "far";
 
 export type ServerVisibility = "visible" | "partial" | "offscreen" | "unclear";
 export type ContactTiming =
-  | "on-anchor"
-  | "before-anchor"
-  | "after-anchor"
-  | "unclear";
+  "on-anchor" | "before-anchor" | "after-anchor" | "unclear";
 export type BallFlightVisibility = "visible" | "not-visible" | "unclear";
 export type MotionDirectionAssessment =
-  | "matches-human-side"
-  | "opposes-human-side"
-  | "unclear";
+  "matches-human-side" | "opposes-human-side" | "unclear";
 
 export type ServingSideFlightAnnotation = {
   serverVisibility: ServerVisibility;
@@ -60,6 +55,17 @@ export type ServingSideFlightReviewRecording = {
   errors: number;
 };
 
+export type ServingSideFlightCorrectControlCohort = {
+  kind: "volleycut-serving-side-flight-correct-control-cohort-v1";
+  createdAt: string;
+  algorithm: string;
+  targetRows: number;
+  populationRows: number;
+  rows: number;
+  excludedByCurrentLabels: number;
+  rallyIds: string[];
+};
+
 export type ServingSideFlightReviewData = {
   kind: string;
   createdAt: string;
@@ -72,6 +78,7 @@ export type ServingSideFlightReviewData = {
   labelCorrectionsBakedIn: number;
   correctedNotServesExcluded: number;
   sourceQualityExcluded: number;
+  correctControlCohort: ServingSideFlightCorrectControlCohort;
   metrics: {
     rows: number;
     accuracy: number;

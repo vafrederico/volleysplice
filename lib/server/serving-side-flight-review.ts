@@ -29,6 +29,8 @@ const DEFAULT_EVALUATION_PATH =
   "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v2-development.json";
 const DEFAULT_SOURCE_EXCLUSIONS_PATH =
   "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-source-quality-exclusions-v1.json";
+const DEFAULT_CORRECT_CONTROL_COHORT_PATH =
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-correct-control-cohort-v1.json";
 const DEFAULT_ANNOTATION_FILENAME =
   "serving-side-flight-error-annotations-v2.json";
 const ANNOTATION_KIND =
@@ -61,6 +63,15 @@ const FLIGHT_SAMPLE_OFFSETS_SECONDS = [
 ] as const;
 
 type SourceQualityInterval = { start: number; end: number; reason: string };
+
+type CorrectControlCohortArtifact = {
+  kind: "volleycut-serving-side-flight-correct-control-cohort-v1";
+  createdAt: string;
+  algorithm: string;
+  targetRows: number;
+  populationRows: number;
+  rallyIds: string[];
+};
 
 type ExperimentIdentity = {
   kind: string;
@@ -151,6 +162,116 @@ export function getServingSideSourceExclusionsPath(): string {
     process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS,
     DEFAULT_SOURCE_EXCLUSIONS_PATH,
   );
+}
+
+export function getServingSideCorrectControlCohortPath(): string {
+  return configuredPath(
+    process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT,
+    DEFAULT_CORRECT_CONTROL_COHORT_PATH,
+  );
+}
+
+async function loadCorrectControlCohort(
+  identity: ExperimentIdentity,
+): Promise<CorrectControlCohortArtifact> {
+  let value: unknown;
+  try {
+    value = JSON.parse(
+      await readFile(
+        /* turbopackIgnore: true */ getServingSideCorrectControlCohortPath(),
+        "utf8",
+      ),
+    ) as unknown;
+  } catch {
+    throw new ServingSideFlightReviewError(
+      "The serving-side correct-control cohort could not be read",
+    );
+  }
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    value.kind !== "volleycut-serving-side-flight-correct-control-cohort-v1" ||
+    !isRecord(value.experiment) ||
+    !isRecord(value.sampling) ||
+    value.experiment.sha256 !== identity.sha256 ||
+    value.experiment.kind !== identity.kind ||
+    value.experiment.createdAt !== identity.createdAt ||
+    value.experiment.predictionDigest !== identity.predictionDigest
+  ) {
+    throw new ServingSideFlightReviewError(
+      "The correct-control cohort belongs to a different flight experiment",
+    );
+  }
+  const targetRows = finiteNumber(
+    value.sampling.targetRows,
+    "correct-control target rows",
+  );
+  const populationRows = finiteNumber(
+    value.sampling.populationRows,
+    "correct-control population rows",
+  );
+  const sampledRows = finiteNumber(
+    value.sampling.sampledRows,
+    "correct-control sampled rows",
+  );
+  if (
+    !Number.isInteger(targetRows) ||
+    !Number.isInteger(populationRows) ||
+    !Number.isInteger(sampledRows) ||
+    targetRows <= 0 ||
+    populationRows < sampledRows ||
+    sampledRows <= 0
+  ) {
+    throw new ServingSideFlightReviewError(
+      "The correct-control cohort counts are invalid",
+    );
+  }
+  const rallyIds = objectArray(value.rows, "correct-control rows").map(
+    (row, index) => {
+      const rallyId = requiredString(
+        row.rallyId,
+        `correct-control row ${index} rally id`,
+      );
+      if (!identity.validRallyIds.has(rallyId)) {
+        throw new ServingSideFlightReviewError(
+          `Correct-control row references an unknown rally: ${rallyId}`,
+        );
+      }
+      const weight = finiteNumber(
+        row.samplingWeight,
+        `correct-control row ${rallyId} sampling weight`,
+      );
+      requiredString(
+        row.stratumKey,
+        `correct-control row ${rallyId} stratum key`,
+      );
+      if (weight <= 0) {
+        throw new ServingSideFlightReviewError(
+          `Correct-control row ${rallyId} has an invalid sampling weight`,
+        );
+      }
+      return rallyId;
+    },
+  );
+  if (
+    rallyIds.length !== sampledRows ||
+    new Set(rallyIds).size !== rallyIds.length
+  ) {
+    throw new ServingSideFlightReviewError(
+      "The correct-control cohort rows are duplicated or incomplete",
+    );
+  }
+  return {
+    kind: value.kind,
+    createdAt: requiredString(value.createdAt, "correct-control creation time"),
+    algorithm: requiredString(
+      value.sampling.algorithm,
+      "correct-control sampling algorithm",
+    ),
+    targetRows,
+    populationRows,
+    rallyIds,
+  };
 }
 
 async function loadSourceQualityExclusions(): Promise<
@@ -636,13 +757,19 @@ function correctedMetrics(results: ServingSideFlightReviewResult[]) {
 
 export async function loadServingSideFlightReview(): Promise<ServingSideFlightReviewData> {
   const { evaluation, report, identity } = await readReviewInputs();
-  const [annotationState, correctionState, correctionSha256, sourceExclusions] =
-    await Promise.all([
-      loadAnnotationStateForIdentity(identity),
-      loadServingSideCorrectionState(),
-      currentCorrectionSha256(),
-      loadSourceQualityExclusions(),
-    ]);
+  const [
+    annotationState,
+    correctionState,
+    correctionSha256,
+    sourceExclusions,
+    correctControlArtifact,
+  ] = await Promise.all([
+    loadAnnotationStateForIdentity(identity),
+    loadServingSideCorrectionState(),
+    currentCorrectionSha256(),
+    loadSourceQualityExclusions(),
+    loadCorrectControlCohort(identity),
+  ]);
   const hasCorrectionIdentity =
     correctionState.reportKind !== null ||
     correctionState.reportCreatedAt !== null ||
@@ -804,6 +931,33 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
     })
     .sort((left, right) => left.recordingId.localeCompare(right.recordingId));
 
+  const resultById = new Map(results.map((row) => [row.rallyId, row]));
+  for (const rallyId of correctControlArtifact.rallyIds) {
+    const result = resultById.get(rallyId);
+    if (result && result.originalHuman !== result.prediction) {
+      throw new ServingSideFlightReviewError(
+        `Correct-control cohort contains an originally incorrect prediction: ${rallyId}`,
+      );
+    }
+  }
+  const currentControlIds = correctControlArtifact.rallyIds.filter(
+    (rallyId) => {
+      const result = resultById.get(rallyId);
+      return result?.correct === true;
+    },
+  );
+  const correctControlCohort = {
+    kind: correctControlArtifact.kind,
+    createdAt: correctControlArtifact.createdAt,
+    algorithm: correctControlArtifact.algorithm,
+    targetRows: correctControlArtifact.targetRows,
+    populationRows: correctControlArtifact.populationRows,
+    rows: currentControlIds.length,
+    excludedByCurrentLabels:
+      correctControlArtifact.rallyIds.length - currentControlIds.length,
+    rallyIds: currentControlIds,
+  };
+
   const frozenMetrics = selectedMetrics(candidate);
   return {
     kind: identity.kind,
@@ -823,6 +977,7 @@ export async function loadServingSideFlightReview(): Promise<ServingSideFlightRe
     labelCorrectionsBakedIn,
     correctedNotServesExcluded,
     sourceQualityExcluded,
+    correctControlCohort,
     metrics: correctedMetrics(results),
     frozenMetrics,
     annotationState,

@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  getServingSideCorrectControlCohortPath,
   getServingSideFlightAnnotationPath,
   getServingSideFlightEvaluationPath,
   getServingSideSourceExclusionsPath,
@@ -23,10 +24,13 @@ test("flight review defaults to versioned NAS evaluation and annotations", () =>
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS;
   const previousSourceExclusions =
     process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
+  const previousControlCohort =
+    process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT;
   try {
     delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
     delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS;
     delete process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
+    delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT;
     assert.equal(
       getServingSideFlightEvaluationPath(),
       path.join(
@@ -48,6 +52,13 @@ test("flight review defaults to versioned NAS evaluation and annotations", () =>
         "serving-side-source-quality-exclusions-v1.json",
       ),
     );
+    assert.equal(
+      getServingSideCorrectControlCohortPath(),
+      path.join(
+        DEFAULT_SERVING_SIDE_DIRECTORY,
+        "serving-side-flight-correct-control-cohort-v1.json",
+      ),
+    );
   } finally {
     if (previousEvaluation === undefined) {
       delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
@@ -66,6 +77,12 @@ test("flight review defaults to versioned NAS evaluation and annotations", () =>
       process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS =
         previousSourceExclusions;
     }
+    if (previousControlCohort === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT =
+        previousControlCohort;
+    }
   }
 });
 
@@ -79,6 +96,7 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
   const correctionPath = path.join(temporary, "corrections.json");
   const annotationPath = path.join(temporary, "annotations.json");
   const sourceExclusionPath = path.join(temporary, "source-exclusions.json");
+  const controlCohortPath = path.join(temporary, "control-cohort.json");
   const previousEvaluation =
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION;
   const previousAnnotations =
@@ -88,6 +106,8 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
   const previousCorrections = process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS;
   const previousSourceExclusions =
     process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS;
+  const previousControlCohort =
+    process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT;
   try {
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_EVALUATION = evaluationPath;
     process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_ANNOTATIONS = annotationPath;
@@ -95,6 +115,8 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
     process.env.VOLLEYCUT_SERVING_SIDE_DECISIONS = decisionPath;
     process.env.VOLLEYCUT_SERVING_SIDE_CORRECTIONS = correctionPath;
     process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS = sourceExclusionPath;
+    process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT =
+      controlCohortPath;
     const evaluation = {
       schemaVersion: 1,
       kind: "volleycut-serving-side-flight-development-evaluation-v1",
@@ -184,8 +206,12 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
         "video-one:rally:2": "far",
       },
     })}\n`;
+    const evaluationText = `${JSON.stringify(evaluation)}\n`;
+    const evaluationSha256 = createHash("sha256")
+      .update(evaluationText)
+      .digest("hex");
     await Promise.all([
-      writeFile(evaluationPath, `${JSON.stringify(evaluation)}\n`, "utf8"),
+      writeFile(evaluationPath, evaluationText, "utf8"),
       writeFile(reportPath, `${JSON.stringify(report)}\n`, "utf8"),
       writeFile(decisionPath, decisionsText, "utf8"),
       writeFile(
@@ -198,6 +224,34 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
         })}\n`,
         "utf8",
       ),
+      writeFile(
+        controlCohortPath,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          kind: "volleycut-serving-side-flight-correct-control-cohort-v1",
+          createdAt: "2026-08-20T19:50:00.000Z",
+          experiment: {
+            sha256: evaluationSha256,
+            kind: evaluation.kind,
+            createdAt: evaluation.createdAt,
+            predictionDigest: "a".repeat(64),
+          },
+          sampling: {
+            algorithm: "minimum-one-then-proportional-largest-remainder-v1",
+            targetRows: 1,
+            populationRows: 1,
+            sampledRows: 1,
+          },
+          rows: [
+            {
+              rallyId: "video-one:rally:2",
+              stratumKey: "indoor|fixture-source|far|high",
+              samplingWeight: 1,
+            },
+          ],
+        })}\n`,
+        "utf8",
+      ),
     ]);
 
     const loaded = await loadServingSideFlightReview();
@@ -205,6 +259,10 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
     assert.equal(loaded.results.filter((row) => !row.correct).length, 1);
     assert.equal(loaded.recordings[0]?.errors, 1);
     assert.equal(loaded.sourceQualityExcluded, 0);
+    assert.deepEqual(loaded.correctControlCohort.rallyIds, [
+      "video-one:rally:2",
+    ]);
+    assert.equal(loaded.correctControlCohort.populationRows, 1);
     assert.deepEqual(loaded.annotationState.annotations, {});
 
     await writeFile(
@@ -276,6 +334,8 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
     assert.equal(withNotServe.results.length, 1);
     assert.equal(withNotServe.correctedNotServesExcluded, 1);
     assert.equal(withNotServe.metrics.rows, 1);
+    assert.equal(withNotServe.correctControlCohort.rows, 0);
+    assert.equal(withNotServe.correctControlCohort.excludedByCurrentLabels, 1);
 
     await assert.rejects(
       saveServingSideFlightAnnotation({
@@ -365,6 +425,12 @@ test("flight failure annotations round-trip and stay bound to predictions", asyn
     } else {
       process.env.VOLLEYCUT_SERVING_SIDE_SOURCE_EXCLUSIONS =
         previousSourceExclusions;
+    }
+    if (previousControlCohort === undefined) {
+      delete process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT;
+    } else {
+      process.env.VOLLEYCUT_SERVING_SIDE_FLIGHT_CONTROL_COHORT =
+        previousControlCohort;
     }
     await rm(temporary, { recursive: true, force: true });
   }

@@ -19,7 +19,7 @@ import type {
   ServingSideFlightReviewResult,
 } from "./types";
 
-type OutcomeFilter = "mistakes" | "all" | "correct";
+type OutcomeFilter = "controls" | "mistakes" | "all" | "correct";
 type ReviewFilter = "unreviewed" | "all" | "reviewed";
 type SavedDraft = Omit<ServingSideFlightAnnotation, "reviewedAt">;
 type Draft = {
@@ -165,6 +165,24 @@ function modelConfidence(result: ServingSideFlightReviewResult): number {
     : 1 - result.probabilityNear;
 }
 
+function matchesOutcome(
+  row: ServingSideFlightReviewResult,
+  outcome: OutcomeFilter,
+  controlIds: ReadonlySet<string>,
+): boolean {
+  if (outcome === "controls") return controlIds.has(row.rallyId);
+  if (outcome === "mistakes") return !row.correct;
+  if (outcome === "correct") return row.correct;
+  return true;
+}
+
+function outcomeNoun(outcome: OutcomeFilter, count: number): string {
+  const plural = count === 1 ? "" : "s";
+  if (outcome === "controls") return `control${plural}`;
+  if (outcome === "mistakes") return `mistake${plural}`;
+  return `example${plural}`;
+}
+
 function choiceLabel(value: string): string {
   return value.replaceAll("-", " ");
 }
@@ -276,8 +294,22 @@ function LoadedReview({
   const [annotationState, setAnnotationState] =
     useState<ServingSideFlightAnnotationState>(data.annotationState);
   const initial = data.results.find((row) => row.rallyId === initialRallyId);
+  const allErrorsReviewed = data.results
+    .filter((row) => !row.correct)
+    .every((row) => data.annotationState.annotations[row.rallyId]);
+  const initialIsControl = initial
+    ? data.correctControlCohort.rallyIds.includes(initial.rallyId)
+    : false;
   const [outcome, setOutcome] = useState<OutcomeFilter>(
-    initial?.correct ? "all" : "mistakes",
+    initial
+      ? initialIsControl
+        ? "controls"
+        : initial.correct
+          ? "all"
+          : "mistakes"
+      : allErrorsReviewed
+        ? "controls"
+        : "mistakes",
   );
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>(
     initialRallyId ? "all" : "unreviewed",
@@ -307,11 +339,14 @@ function LoadedReview({
       }),
     [data.results],
   );
+  const controlIds = useMemo(
+    () => new Set(data.correctControlCohort.rallyIds),
+    [data.correctControlCohort.rallyIds],
+  );
   const filteredRows = useMemo(
     () =>
       rows.filter((row) => {
-        if (outcome === "mistakes" && row.correct) return false;
-        if (outcome === "correct" && !row.correct) return false;
+        if (!matchesOutcome(row, outcome, controlIds)) return false;
         if (recordingId !== "all" && row.recordingId !== recordingId)
           return false;
         const reviewed = Boolean(annotationState.annotations[row.rallyId]);
@@ -319,7 +354,14 @@ function LoadedReview({
         if (reviewFilter === "reviewed" && !reviewed) return false;
         return true;
       }),
-    [annotationState.annotations, outcome, recordingId, reviewFilter, rows],
+    [
+      annotationState.annotations,
+      controlIds,
+      outcome,
+      recordingId,
+      reviewFilter,
+      rows,
+    ],
   );
   const selected =
     filteredRows.find((row) => row.rallyId === selectedId) ??
@@ -337,22 +379,20 @@ function LoadedReview({
   const reviewedErrors = errorRows.filter(
     (row) => annotationState.annotations[row.rallyId],
   ).length;
+  const controlRows = rows.filter((row) => controlIds.has(row.rallyId));
+  const reviewedControls = controlRows.filter(
+    (row) => annotationState.annotations[row.rallyId],
+  ).length;
   const currentAnnotation = selected
     ? annotationState.annotations[selected.rallyId]
     : undefined;
   const completedDraft = savableDraft(draft);
   const reviewScopeRows = rows.filter((row) => {
-    if (outcome === "mistakes" && row.correct) return false;
-    if (outcome === "correct" && !row.correct) return false;
+    if (!matchesOutcome(row, outcome, controlIds)) return false;
     return recordingId === "all" || row.recordingId === recordingId;
   });
   const savedInScope = reviewScopeRows.filter(
     (row) => annotationState.annotations[row.rallyId],
-  ).length;
-  const savedForRecording = rows.filter(
-    (row) =>
-      (recordingId === "all" || row.recordingId === recordingId) &&
-      annotationState.annotations[row.rallyId],
   ).length;
 
   const move = useCallback(
@@ -399,8 +439,7 @@ function LoadedReview({
           },
         );
         const payload = (await response.json()) as
-          | ServingSideFlightAnnotationState
-          | { error?: string };
+          ServingSideFlightAnnotationState | { error?: string };
         if (!response.ok || !("annotations" in payload)) {
           throw new Error(
             "error" in payload && payload.error
@@ -482,13 +521,14 @@ function LoadedReview({
             DEVELOPMENT CROSS-VALIDATION · FAILURE-MODE ANNOTATION
           </p>
           <h1>
-            Explain every <em>flight-model miss.</em>
+            Explain <em>flight-model behavior.</em>
           </h1>
           <p className={base.intro}>
             Review the exact out-of-source-group predictions used for the new
             model metrics. Label what is visible and whether the serve anchor is
-            correct. Camera movement is estimated automatically and is not a
-            human label.
+            correct. The correct-control queue is a frozen stratified sample for
+            population-weighted visibility slices. Camera movement is estimated
+            automatically and is not a human label.
           </p>
           <p className={base.sourceLine}>
             {data.configuration} · {data.featureFamily} · L2 {data.l2} ·{" "}
@@ -503,6 +543,10 @@ function LoadedReview({
             {data.sourceQualityExcluded > 0
               ? ` · ${data.sourceQualityExcluded} source-quality exclusions`
               : ""}
+            {` · ${data.correctControlCohort.rows}/${data.correctControlCohort.populationRows} frozen correct controls`}
+            {data.correctControlCohort.excludedByCurrentLabels > 0
+              ? ` · ${data.correctControlCohort.excludedByCurrentLabels} stale controls excluded`
+              : ""}
           </p>
         </div>
         <div className={base.heroMetric}>
@@ -511,6 +555,12 @@ function LoadedReview({
             {reviewedErrors}/{errorRows.length}
           </strong>
           <small>{errorRows.length - reviewedErrors} mistakes remaining</small>
+          <b>
+            visibility controls {reviewedControls}/{controlRows.length}
+          </b>
+          <small>
+            {controlRows.length - reviewedControls} controls remaining
+          </small>
           <b>
             precision near {percentage(data.metrics.nearPrecision)} · far{" "}
             {percentage(data.metrics.farPrecision)}
@@ -527,7 +577,8 @@ function LoadedReview({
           <span className={base.panelKicker}>01 / QUEUE</span>
           <strong>Choose what to review</strong>
           <small>
-            Defaults to unreviewed mistakes from the selected v3 candidate.
+            Starts with mistakes, then switches to the frozen representative
+            correct-control cohort.
           </small>
         </div>
         <label>
@@ -536,12 +587,20 @@ function LoadedReview({
             value={recordingId}
             onChange={(event) => setRecordingId(event.target.value)}
           >
-            <option value="all">All 28 development videos</option>
+            <option value="all">All development videos</option>
             {data.recordings
-              .filter((item) => item.errors > 0 || outcome !== "mistakes")
-              .map((item) => (
+              .map((item) => ({
+                item,
+                count: rows.filter(
+                  (row) =>
+                    row.recordingId === item.recordingId &&
+                    matchesOutcome(row, outcome, controlIds),
+                ).length,
+              }))
+              .filter(({ count }) => count > 0)
+              .map(({ item, count }) => (
                 <option value={item.recordingId} key={item.recordingId}>
-                  {item.recordingId} · {item.errors} mistakes
+                  {item.recordingId} · {count} {outcomeNoun(outcome, count)}
                 </option>
               ))}
           </select>
@@ -549,25 +608,28 @@ function LoadedReview({
         <div className={base.filterChoices}>
           <span>Outcome</span>
           <div>
-            {(["mistakes", "all", "correct"] as const).map((value) => (
-              <button
-                type="button"
-                data-active={outcome === value ? "true" : "false"}
-                onClick={() => setOutcome(value)}
-                key={value}
-              >
-                {value} ·{" "}
-                {
-                  rows.filter((row) =>
-                    value === "all"
-                      ? true
-                      : value === "mistakes"
-                        ? !row.correct
-                        : row.correct,
-                  ).length
-                }
-              </button>
-            ))}
+            {(["controls", "mistakes", "all", "correct"] as const).map(
+              (value) => (
+                <button
+                  type="button"
+                  data-active={outcome === value ? "true" : "false"}
+                  onClick={() => {
+                    setOutcome(value);
+                    if (value === "controls") {
+                      setRecordingId("all");
+                      setReviewFilter("unreviewed");
+                    }
+                  }}
+                  key={value}
+                >
+                  {value === "controls" ? "Correct controls" : value} ·{" "}
+                  {
+                    rows.filter((row) => matchesOutcome(row, value, controlIds))
+                      .length
+                  }
+                </button>
+              ),
+            )}
           </div>
         </div>
         <div className={base.filterChoices}>
@@ -583,12 +645,9 @@ function LoadedReview({
             <button
               type="button"
               data-active={reviewFilter === "reviewed" ? "true" : "false"}
-              onClick={() => {
-                setOutcome("all");
-                setReviewFilter("reviewed");
-              }}
+              onClick={() => setReviewFilter("reviewed")}
             >
-              Saved labels · {savedForRecording}
+              Saved labels · {savedInScope}
             </button>
             <button
               type="button"
@@ -649,7 +708,11 @@ function LoadedReview({
                     )}
                   </span>
                   <span className={styles.reviewBadge} data-reviewed={reviewed}>
-                    {reviewed ? "SAVED" : percentage(modelConfidence(row), 0)}
+                    {reviewed
+                      ? "SAVED"
+                      : controlIds.has(row.rallyId)
+                        ? "CONTROL"
+                        : percentage(modelConfidence(row), 0)}
                   </span>
                 </button>
               );
@@ -673,7 +736,11 @@ function LoadedReview({
                 <div>
                   <p className={base.eyebrow}>
                     {selected.environment} · {selected.sourceGroup} ·{" "}
-                    {selected.correct ? "correct" : "mistake"}
+                    {controlIds.has(selected.rallyId)
+                      ? "correct visibility control"
+                      : selected.correct
+                        ? "correct"
+                        : "mistake"}
                   </p>
                   <h2>{selected.rallyId}</h2>
                 </div>
@@ -787,7 +854,11 @@ function LoadedReview({
                 <header>
                   <div>
                     <span className={base.panelKicker}>02 / FAILURE MODE</span>
-                    <h3>What makes this example difficult?</h3>
+                    <h3>
+                      {controlIds.has(selected.rallyId)
+                        ? "Label this representative control"
+                        : "What makes this example difficult?"}
+                    </h3>
                     <p>
                       Choose the closest answer. “Can’t tell” is useful data and
                       is better than guessing.

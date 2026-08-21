@@ -40,6 +40,18 @@ The review UI now defaults to the v2 evaluation. Sixty-four saved failure-mode
 annotations were migrated by rally ID. The two omitted annotations were for
 post-impact rallies 42 and 46 in the damaged recording.
 
+After all 61 v2 mistakes were reviewed, a separate correct-control cohort was
+frozen for visibility-slice estimation. It samples 120 of the 967 correct
+out-of-source-group predictions across all 51 non-empty combinations of
+environment, source group, human side, and model-confidence band. Every stratum
+receives at least one row; the remaining allocation is proportional by largest
+remainder. The artifact stores each stratum's population, sample count, and
+sampling weight so later visible/partial/offscreen metrics can recover the
+development population mixture. Selection within a stratum is deterministic
+from the evaluation SHA-256 and rally ID. The review UI exposes this exact
+cohort as **Correct controls** and saves its labels in the existing
+evaluation-bound annotation artifact.
+
 ### Corrected NAS artifacts
 
 All paths except the feedback bundle are relative to
@@ -54,7 +66,8 @@ All paths except the feedback bundle are relative to
 | `reports/serving-side/serving-side-specialist-v3-development.json` | `6e0a3ba8ce7cc7fdda911550a681f554749676e781fe79da05d2e30e8b5c0726` |
 | `features/serving-side-flight-v2/development.json` | `53f0e0f69aa0b3b0ce1d1d4abe824e73edb0ea98b7dad273305860014906438c` |
 | `reports/serving-side/serving-side-flight-v2-development.json` | `14c8f464422761a55007777f4490cafdf159c0ceca79042e04329549cb0308c4` |
-| `reports/serving-side/serving-side-flight-error-annotations-v2.json` | `81306be7cd160c4a8ed61520cf1f76647ae626b0232c3724d2918a18a46aadee` |
+| `reports/serving-side/serving-side-flight-error-annotations-v2.json` | `9e80a4b5ff667f959cb7dda6bac2e1bcf00809b42df950e0268578f7e6ede285` |
+| `reports/serving-side/serving-side-flight-correct-control-cohort-v1.json` | `dddd58d8f89c5f3cdda3e906a31ee52e56224443d168beb48b892fd0a9a302a5` |
 | `features/serving-side-v3/all-reviewed-inference.json` | `4a6fd7c7eb410aabd3f9ceeb3c779864782589b2815a4b8cef4d0da9ffd94e07` |
 | `reports/serving-side/serving-side-specialist-v3-dual-serve-gate-all-video-inference-v2.json` | `30bbb4b465dd5b30b3568b439d3e4958d2731f8ee3d042f6ffbbd78440e6d298` |
 | `/mnt/freenas/volleycut/model-feedback/project-15ljci6-cfd050cdf42eee16/bundle.json` | `7f2117c2859168c01b2b30e5730b4a40998a7ebe42f1fc6736aca85bc56d57c5` |
