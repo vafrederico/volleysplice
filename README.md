@@ -59,7 +59,7 @@ draft persistence, source relinking, model-feedback export, and exact-boundary M
 without a network permission. It targets the Pixel 10 Pro and packages `arm64-v8a`.
 
 The current checked-in release is
-[`VolleyCut v0.10.3`](android/releases/VolleyCut-v0.10.3-arm64-release-signed.apk). See
+[`VolleyCut v0.10.4`](android/releases/VolleyCut-v0.10.4-arm64-release-signed.apk). See
 [`android/README.md`](android/README.md) for the SDK requirements, debug build/install
 workflow, editor behavior, benchmarks, cache behavior, and native-versus-browser parity
 caveats.
