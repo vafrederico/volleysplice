@@ -9,6 +9,8 @@ from analysis.serving_side_flight import extract_motion_sequence
 from analysis.serving_side_selective_highres import (
     FEATURE_NAMES,
     extract_selective_highres_features,
+    extract_selective_highres_from_context,
+    prepare_selective_highres_context,
     select_tracks,
 )
 
@@ -52,6 +54,20 @@ class SelectiveHighresTests(unittest.TestCase):
         motions = extract_motion_sequence(low)
         with self.assertRaises(ValueError):
             extract_selective_highres_features(source[:-1], low, motions)
+
+    def test_one_prepared_context_supports_predeclared_crop_sizes(self) -> None:
+        source, low = moving_frames()
+        motions = extract_motion_sequence(low)
+        context = prepare_selective_highres_context(source, low, motions)
+        small = extract_selective_highres_from_context(
+            context, source_patch_fraction=0.12, patch_size=96
+        )
+        large = extract_selective_highres_from_context(
+            context, source_patch_fraction=0.30, patch_size=96
+        )
+        self.assertEqual(tuple(small), FEATURE_NAMES)
+        self.assertEqual(tuple(large), FEATURE_NAMES)
+        self.assertNotEqual(small, large)
 
 
 if __name__ == "__main__":

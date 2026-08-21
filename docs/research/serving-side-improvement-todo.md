@@ -8,7 +8,8 @@ Do not rely on conversation history as the only record.
 
 ## Frozen current state
 
-- Code baseline: commit `673b27b` on `t3code/serving-review-shortcuts`.
+- Last committed research checkpoint: `279a49c` on
+  `t3code/serving-review-shortcuts`.
 - Final human correction overlay: 20 corrections (4 near, 8 far, 8 not-serve),
   SHA-256 `82fd8a7d46472cccb88561ca5eb03ef6fb54cf97eed89e9efa31f416636b5253`.
 - Completed review sample: 61 current errors plus 119 valid stratified controls.
@@ -37,7 +38,7 @@ Do not rely on conversation history as the only record.
   - Combine trajectory recording-rank features with the current v2 and fixed-flight
     features.
   - Select only with leave-one-source-group-out development predictions.
-- [ ] **Selective high-resolution inspection**
+- [x] **Selective high-resolution inspection**
   - Keep the correction-selected 192x108 full-frame 4x6 representation as baseline.
   - Use trajectory candidates to request small higher-resolution source regions.
   - Compare crop sizes and resolutions without running full-frame 640x360 everywhere.
@@ -46,8 +47,8 @@ Do not rely on conversation history as the only record.
   - [x] Smoke-test one rally from all 28 development recordings: 52 finite features
     per row, no human visibility input, and no protected data.
   - [x] Freeze and evaluate the first 20%-of-short-edge / 96x96 patch candidate.
-  - [ ] Confirm the small development gain with predeclared patch-size ablations;
-    do not promote the candidate based on this single regional configuration.
+  - [x] Run the predeclared patch-size ablation. The effect was size-sensitive, so
+    regional high-resolution features are not production-promoted.
 - [ ] **Visibility-aware mixture**
   - Derive an inference-time visibility/contact-quality signal; never use human
     visibility directly as an inference input.
@@ -123,7 +124,31 @@ Selective high-resolution result (development only):
 - Treat this as provisional: the source-group macro gain is only 0.114 percentage
   points and one regional configuration was tried. It is not production-promoted.
 
-Exact next action: predeclare and run smaller/larger patch-size ablations (for example
-12%, 20%, and 30% of the source short edge) without opening protected test. Keep the
-candidate only if the benefit is directionally stable; then begin the inference-time
-visibility/contact-quality classifier and nested mixture experiment.
+Patch-size ablation predeclaration and result:
+
+- Configurations: 12%, 20%, and 30% of the source short edge, each normalized to
+  96x96, with identical persistent/compact track selection and 52 descriptors.
+- Fixed side model: v2 recording ranks + 192x108-r4c6 flight ranks + absolute patch
+  descriptors, L2 0.1. Only source crop coverage changes.
+- Robustness rule: every size must improve source-group macro BA and must not regress
+  worst-source-group BA relative to the fixed-flight baseline.
+- The v2 20% features must exactly reproduce every v1 20% row before evaluation.
+- Feature artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-selective-highres-v2/development.json`,
+  SHA-256 `163dc85f832e35abcb6d95abd5daf3ffd5a84290366453306bdfb4951f8b14e7`.
+- Evaluation artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-selective-highres-v2-ablation-development.json`,
+  SHA-256 `6cf819a69288e802be128342e5510aaa9c2d0fabf64df0be460dab36ff2df9ff`.
+- Exact parity check passed: every 20% v2 feature equals its v1 feature.
+- 12%: 94.3503% macro BA, 94.8274% pooled BA, 87.2995% worst-group BA,
+  94.8393% accuracy; 11 baseline errors fixed and 3 regressions introduced.
+- 20%: 94.2328% macro BA, 94.5365% pooled BA, 87.2995% worst-group BA,
+  94.5472% accuracy; 11 baseline errors fixed and 6 regressions introduced.
+- 30%: 94.0467% macro BA, 94.3565% pooled BA, 85.8289% worst-group BA,
+  94.3525% accuracy; 9 baseline errors fixed and 6 regressions introduced.
+- Robustness rule failed because the 30% crop reduced macro BA by 0.0719 percentage
+  points. Do not production-promote regional detail. Preserve 12% as the best research
+  candidate and use the established 20% reference for the next quality-signal study
+  to avoid post-hoc cherry-picking.
+
+Exact next action: commit the completed crop ablation and weighted-quality tooling,
+run `npm run evaluate:serving-side-quality-signals`, record both quality classifiers,
+then execute the nested visibility/contact mixture without waiting for user input.

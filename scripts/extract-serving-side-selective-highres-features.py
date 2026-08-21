@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -22,7 +23,8 @@ from analysis.serving_side_selective_highres import (
     FEATURE_VERSION,
     PATCH_SIZE,
     SOURCE_PATCH_FRACTION,
-    extract_selective_highres_features,
+    extract_selective_highres_from_context,
+    prepare_selective_highres_context,
 )
 from analysis.side_switch_appearance import read_frame
 
@@ -38,6 +40,34 @@ IMPLEMENTATION_PATHS = (
     REPOSITORY_ROOT / "analysis/serving_side_selective_highres.py",
     Path(__file__).resolve(),
 )
+
+
+@dataclass(frozen=True)
+class PatchConfiguration:
+    name: str
+    source_patch_fraction: float
+    patch_size: int
+
+
+def _parse_configuration(value: str) -> PatchConfiguration:
+    try:
+        name, raw_fraction, raw_size = value.split(":", 2)
+        configuration = PatchConfiguration(
+            name=name,
+            source_patch_fraction=float(raw_fraction),
+            patch_size=int(raw_size),
+        )
+    except (ValueError, TypeError) as error:
+        raise argparse.ArgumentTypeError(
+            "configuration must be NAME:FRACTION:PATCH_SIZE"
+        ) from error
+    if (
+        not name
+        or not 0.05 <= configuration.source_patch_fraction <= 0.5
+        or configuration.patch_size < 32
+    ):
+        raise argparse.ArgumentTypeError("invalid selective patch configuration")
+    return configuration
 
 
 def _sha256(path: Path) -> str:
@@ -88,6 +118,9 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         raise ValueError("workers must be positive")
     if args.limit_per_recording is not None and args.limit_per_recording < 1:
         raise ValueError("limit-per-recording must be positive")
+    configurations = tuple(args.configuration or ())
+    if len({item.name for item in configurations}) != len(configurations):
+        raise ValueError("selective patch configuration names must be unique")
     trajectory_path = args.trajectory_dataset.resolve()
     output_path = args.output.resolve()
     if output_path.exists():
@@ -184,21 +217,33 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
                     for frame in source_frames
                 ]
                 motions = extract_motion_sequence(low_frames)
-                output.append(
-                    {
-                        "rallyId": row["rallyId"],
-                        "recordingId": recording_id,
-                        "environment": row["environment"],
-                        "sourceGroup": row["sourceGroup"],
-                        "sourceSplit": row["sourceSplit"],
-                        "serveAnchor": anchor,
-                        "decision": row["decision"],
-                        "label": row["label"],
-                        "selectiveHighresFeatures": extract_selective_highres_features(
-                            source_frames, low_frames, motions
-                        ),
-                    }
+                context = prepare_selective_highres_context(
+                    source_frames, low_frames, motions
                 )
+                item = {
+                    "rallyId": row["rallyId"],
+                    "recordingId": recording_id,
+                    "environment": row["environment"],
+                    "sourceGroup": row["sourceGroup"],
+                    "sourceSplit": row["sourceSplit"],
+                    "serveAnchor": anchor,
+                    "decision": row["decision"],
+                    "label": row["label"],
+                }
+                if configurations:
+                    item["configurations"] = {
+                        configuration.name: extract_selective_highres_from_context(
+                            context,
+                            source_patch_fraction=configuration.source_patch_fraction,
+                            patch_size=configuration.patch_size,
+                        )
+                        for configuration in configurations
+                    }
+                else:
+                    item["selectiveHighresFeatures"] = (
+                        extract_selective_highres_from_context(context)
+                    )
+                output.append(item)
                 if index % 10 == 0 or index == len(recording_rows):
                     print(f"{recording_id}: {index}/{len(recording_rows)}", flush=True)
         finally:
@@ -219,21 +264,18 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
         if _sha256(path) != digest:
             raise RuntimeError(f"{name} changed during selective extraction")
 
-    payload = {
+    payload: dict[str, Any] = {
         "schemaVersion": 1,
-        "kind": "volleycut-serving-side-selective-highres-feature-development-v1",
+        "kind": (
+            "volleycut-serving-side-selective-highres-ablation-development-v1"
+            if configurations
+            else "volleycut-serving-side-selective-highres-feature-development-v1"
+        ),
         "createdAt": datetime.now(UTC).isoformat(),
         "scope": "development",
         "featureVersion": FEATURE_VERSION,
-        "featureNames": list(FEATURE_NAMES),
         "offsetsSeconds": list(OFFSETS_SECONDS),
         "lowResolutionLocator": {"width": LOW_RESIZE[0], "height": LOW_RESIZE[1]},
-        "patch": {
-            "sourceFractionOfShortEdge": SOURCE_PATCH_FRACTION,
-            "normalizedWidth": PATCH_SIZE,
-            "normalizedHeight": PATCH_SIZE,
-            "selectors": ["strongest persistent track", "strongest compact/fast track"],
-        },
         "rows": output_rows,
         "counts": {
             "rows": len(output_rows),
@@ -278,6 +320,28 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             ],
         },
     }
+    if configurations:
+        payload["configurations"] = [
+            {
+                "name": configuration.name,
+                "sourceFractionOfShortEdge": configuration.source_patch_fraction,
+                "normalizedWidth": configuration.patch_size,
+                "normalizedHeight": configuration.patch_size,
+                "featureNames": list(FEATURE_NAMES),
+            }
+            for configuration in configurations
+        ]
+    else:
+        payload["featureNames"] = list(FEATURE_NAMES)
+        payload["patch"] = {
+            "sourceFractionOfShortEdge": SOURCE_PATCH_FRACTION,
+            "normalizedWidth": PATCH_SIZE,
+            "normalizedHeight": PATCH_SIZE,
+            "selectors": [
+                "strongest persistent track",
+                "strongest compact/fast track",
+            ],
+        }
     atomic_write_text(output_path, json.dumps(payload, indent=2, allow_nan=False) + "\n")
     print(f"wrote {output_path} ({len(output_rows)} rows)")
     return payload
@@ -289,6 +353,12 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     result.add_argument("--workers", type=int, default=6)
     result.add_argument("--limit-per-recording", type=int)
+    result.add_argument(
+        "--configuration",
+        action="append",
+        type=_parse_configuration,
+        help="repeat NAME:FRACTION:PATCH_SIZE to create an ablation artifact",
+    )
     return result
 
 
