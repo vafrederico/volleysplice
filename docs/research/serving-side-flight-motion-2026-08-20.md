@@ -154,3 +154,23 @@ offscreen performance. Then freeze the 384×216 4×6 candidate and run one prote
 evaluation only if the visibility slices and beach guardrail are acceptable. A later
 experiment can compare this concentrated-motion proxy with an explicit high-
 resolution ball track, without reopening the protected result for selection.
+
+### Failure-mode annotation contract
+
+The `/serving-side-flight-review` UI reviews the exact 1,046 out-of-source-group
+predictions in this report and starts with its 76 mistakes. It writes the separate,
+atomic NAS artifact
+`reports/serving-side/serving-side-flight-error-annotations-v1.json`. The artifact is
+bound to this evaluation's SHA-256 and selected prediction digest, so it cannot be
+silently reused with a different experiment.
+
+Each reviewed rally records server visibility, whether actual contact is before, at,
+or after the original anchor, an optional exact corrected contact time, ball-flight
+visibility, whether visible direction agrees with the human side, notes, and the
+server-generated review time. Camera pan and zoom are intentionally not human labels;
+the residual-flow pipeline estimates camera motion directly.
+
+Successor feature extractors must prefer `correctedServeAnchorSeconds` when present.
+Visibility and direction annotations are evaluation slices and mixture-of-experts
+targets, not input features at inference time. The immutable v1 feature artifact above
+remains unchanged.

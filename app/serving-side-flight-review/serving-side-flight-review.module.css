@@ -1,0 +1,448 @@
+.workbench {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.34fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.reviewBadge {
+  align-self: center;
+  padding: 4px 6px;
+  color: #77796f;
+  border: 1px solid #aaa89f;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+  letter-spacing: 0.4px;
+}
+
+.reviewBadge[data-reviewed="true"] {
+  color: #28785c;
+  border-color: #28785c;
+  background: #e7f2eb;
+}
+
+.verdict {
+  margin: 14px 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  border: 1px solid #b62f23;
+  box-shadow: 5px 5px 0 #b62f23;
+  background: #f8f7f2;
+}
+
+.verdict[data-correct="true"] {
+  border-color: #28785c;
+  box-shadow: 5px 5px 0 #28785c;
+}
+
+.verdict > div {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 5px;
+  border-right: 1px solid #d4d2c8;
+}
+
+.verdict span,
+.verdict small {
+  color: #77796f;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.verdict strong {
+  font:
+    700 28px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.verdict > a {
+  padding: 14px;
+  display: grid;
+  place-items: center;
+  color: #161813;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.verdict > a:hover {
+  color: #fff;
+  background: #161813;
+}
+
+.anchorLabel {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  top: 10px;
+  padding: 7px 9px;
+  color: #161813;
+  background: #d7ff45;
+  font:
+    700 10px "Atkinson Hyperlegible Mono",
+    monospace;
+  letter-spacing: 0.4px;
+}
+
+.videoToolbar {
+  margin-top: 7px;
+  padding: 8px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #aaa89f;
+  background: #eeeae0;
+}
+
+.videoToolbar label {
+  display: grid;
+  gap: 4px;
+}
+
+.videoToolbar label span {
+  color: #77796f;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.videoToolbar select,
+.videoToolbar button {
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid #888980;
+  border-radius: 0;
+  background: #fff;
+  color: #161813;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.videoToolbar > div {
+  display: flex;
+  gap: 5px;
+}
+
+.videoToolbar button {
+  cursor: pointer;
+}
+
+.videoToolbar button:hover {
+  color: #fff;
+  background: #161813;
+}
+
+.annotationPanel {
+  margin-top: 18px;
+  border: 1px solid #aaa89f;
+  background: #f8f7f2;
+}
+
+.annotationPanel > header {
+  padding: 16px;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #d4d2c8;
+  background: #eeeae0;
+}
+
+.annotationPanel > header h3 {
+  margin: 5px 0 3px;
+  font-size: 20px;
+}
+
+.annotationPanel > header p,
+.annotationPanel > header small {
+  margin: 0;
+  color: #61645b;
+  font:
+    9px / 1.5 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.choiceGroup {
+  margin: 0;
+  padding: 16px;
+  border: 0;
+  border-bottom: 1px solid #d4d2c8;
+}
+
+.choiceGroup legend {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.choiceGroup > p {
+  margin: 4px 0 10px;
+  color: #61645b;
+  font:
+    9px / 1.45 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.choiceGroup > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.choiceGroup button {
+  min-height: 72px;
+  padding: 9px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  border: 1px solid #aaa89f;
+  border-radius: 0;
+  background: #fff;
+  color: #161813;
+  text-align: left;
+  cursor: pointer;
+}
+
+.choiceGroup button strong {
+  font:
+    700 11px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.choiceGroup button small {
+  color: #77796f;
+  font:
+    8px / 1.35 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.choiceGroup button[data-active="true"] {
+  color: #d7ff45;
+  border-color: #161813;
+  background: #161813;
+}
+
+.choiceGroup button[data-active="true"] small {
+  color: #fff;
+}
+
+.exactAnchor {
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #d4d2c8;
+  background: #eeece5;
+}
+
+.exactAnchor > div {
+  display: grid;
+  gap: 3px;
+}
+
+.exactAnchor strong {
+  font-size: 11px;
+}
+
+.exactAnchor small,
+.exactAnchor output {
+  color: #61645b;
+  font:
+    8px / 1.4 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.exactAnchor button {
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid #888980;
+  border-radius: 0;
+  background: #fff;
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+  cursor: pointer;
+}
+
+.exactAnchor button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.notes {
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid #d4d2c8;
+}
+
+.notes span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.notes textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px;
+  resize: vertical;
+  border: 1px solid #888980;
+  border-radius: 0;
+  background: #fff;
+  font:
+    11px / 1.45 "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.notes small {
+  color: #77796f;
+  font:
+    8px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-align: right;
+}
+
+.annotationPanel > footer {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  background: #eeeae0;
+}
+
+.annotationPanel > footer > div {
+  margin-right: auto;
+  display: grid;
+  gap: 3px;
+}
+
+.annotationPanel output,
+.annotationPanel > footer small {
+  font:
+    9px "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.annotationPanel output[data-status="saved"] {
+  color: #28785c;
+}
+
+.annotationPanel output[data-status="error"] {
+  color: #b62f23;
+}
+
+.annotationPanel > footer small {
+  color: #77796f;
+}
+
+.saveButton,
+.secondaryButton,
+.completed button {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid #161813;
+  border-radius: 0;
+  font:
+    700 10px "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.saveButton {
+  color: #161813;
+  background: #d7ff45;
+}
+
+.secondaryButton,
+.completed button {
+  color: #161813;
+  background: #fff;
+}
+
+.saveButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.completed {
+  min-height: 420px;
+  display: grid;
+  place-content: center;
+  justify-items: start;
+}
+
+.completed h2 {
+  max-width: 520px;
+  font-size: 32px;
+}
+
+@media (max-width: 1050px) {
+  .workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .verdict {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .verdict > a {
+    grid-column: 1 / -1;
+    border-top: 1px solid #d4d2c8;
+  }
+}
+
+@media (max-width: 760px) {
+  .choiceGroup > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exactAnchor {
+    grid-template-columns: 1fr;
+  }
+
+  .annotationPanel > footer,
+  .annotationPanel > header,
+  .videoToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .annotationPanel > footer > div {
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .verdict {
+    grid-template-columns: 1fr;
+  }
+
+  .verdict > div {
+    border-right: 0;
+    border-bottom: 1px solid #d4d2c8;
+  }
+
+  .choiceGroup > div {
+    grid-template-columns: 1fr;
+  }
+
+  .videoToolbar > div {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

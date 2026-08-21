@@ -160,6 +160,7 @@ function unavailable(evaluationPath: string, loadError?: string) {
         <nav>
           <Link href="/">Rally model review ↗</Link>
           <Link href="/serving-side-review">Serving-side labels ↗</Link>
+          <Link href="/serving-side-flight-review">Flight error review ↗</Link>
         </nav>
       </header>
       <section className={base.unavailable}>
@@ -515,6 +516,7 @@ function LoadedResults({
         <nav>
           <Link href="/">Rally model review ↗</Link>
           <Link href="/serving-side-review">Human labels ↗</Link>
+          <Link href="/serving-side-flight-review">Flight error review ↗</Link>
           <Link href="/side-switch-review">Side-switch review ↗</Link>
         </nav>
       </header>
