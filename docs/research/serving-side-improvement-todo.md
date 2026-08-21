@@ -322,3 +322,26 @@ Final verification:
 Roadmap checkpoint complete. Resume from the saved artifacts and this file for any
 future active-learning labels or another development-only model iteration; do not use
 the protected slice to choose that iteration.
+
+## Uncertainty review confirmation
+
+The user completed the 24-case uncertainty queue and confirmed that every displayed
+human label was correct. This is a verification event, not a correction event:
+
+- Artifact: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-uncertainty-review-v1.json`,
+  SHA-256 `c095beb208f075ec1dec913bff147f2e5f2ee84178d4f4b15aa56221eed831db`.
+- Confirmed labels: 10 near, 14 far, and 0 not-serve. No label mutation occurred.
+- Twenty-three confirmations are members of the exact correction-clean development
+  feature universe and may be consumed as label-verification provenance by future
+  feature/model pipelines. They are not additional independent training examples.
+- `indoor-source-05:rally:36` is the one protected confirmation. It is marked
+  `trainingEligible: false` and remains prohibited from fitting, calibration,
+  thresholding, or model selection.
+- `indoor-source-04:rally:18` correctly resolves through the current NAS
+  correction overlay to `far`; the confirmation artifact binds that overlay's hash.
+- Review was assisted because the model results were visible. The artifact records
+  this explicitly and must not be represented as a blind-labeling cohort.
+
+No retraining is required from this review because the effective training labels are
+unchanged. The next useful iteration would use these confirmations to suppress already
+reviewed active-learning rows or compare a genuinely new development-only model.

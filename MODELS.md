@@ -59,6 +59,7 @@ a model study.
 | `F90+peaks` | 454 | F90 plus four decoded serve-peak-window features |
 | `SIDE36` | 36 | Separate side-switch marker appearance/context signature |
 | `SERVSIDE38` | 38 | Nineteen serving-side motion/palette/HOG scalars plus paired missingness indicators |
+| `SERVSIDE237-FLIGHT` | 237 | 82 court-flow recording ranks plus 155 fixed-anchor residual-flight grid recording ranks |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -124,6 +125,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `dead-state-global-audio-normalized-v1-full-final`; `…-v2-full-final` | Algebraic inverse-rally dead-state control, F104 | Compared with transition-trained dead-state heads; uses global inverse-rally targets. v2 is the same learned weights with final re-export metadata. | Research control; not promoted. |
 | `side-switch-specialist-v1` | Side-switch marker, SIDE36; fit `SIDE4`, selected on `GOLD-V2` | First dedicated learned side-switch ranker; compared against marker heuristics rather than a prior trained side-switch model. | Rejected for automatic use; retained for review ranking. |
 | `serving-side-specialist-v1` | Camera-space serving side, SERVSIDE38; fit six declared train recordings, threshold selected on two validation recordings | First reviewed near/far classifier using the existing whole-half, baseline-band, and HOG evidence bank; compared with the nine fixed signed-score variants. | Research baseline only: 90.41% raw balanced accuracy, but 62.30% on the single protected-test indoor recording. Model SHA-256 `97356fe4ad38…`; see [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |
+| `serving-side-fixed-flight-v3` | Camera-space serving side, SERVSIDE237-FLIGHT; correction-clean development fit with leave-one-source-group-out selection | Adds fixed-anchor residual-motion grid ranks to the court-flow bank; compared with the correction-clean court-flow baseline, trajectory/high-resolution variants, quality mixtures, and group-balanced fits. | Selected for the serving-side results UI: 94.12% development source-group macro balanced accuracy and 94.05% pooled balanced accuracy. Final fingerprint `85bc3325fbd4…`; the frozen 95% precision review band routes 3.90% of development cross-fit rows. The later 24-row assisted uncertainty review confirmed every current human label, so no refit was required. See [`serving-side-improvement-todo.md`](docs/research/serving-side-improvement-todo.md). |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are

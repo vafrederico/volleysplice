@@ -43,6 +43,7 @@
     "evaluate:serving-side-flight": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-flight.py",
     "evaluate:serving-side-flight-calibration": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-flight-calibration.py",
     "infer:serving-side-flight-all": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-serving-side-flight-all-videos.py",
+    "record:serving-side-uncertainty-review": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/record-serving-side-uncertainty-review.py",
     "build:serving-side-flight-controls": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/build-serving-side-flight-control-cohort.py",
     "evaluate:serving-side-flight-reviews": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-serving-side-flight-review-slices.py",
     "extract:serving-side-temporal-flight": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/extract-serving-side-temporal-flight-features.py",
