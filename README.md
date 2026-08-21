@@ -102,7 +102,11 @@ The v6 quantized-person/adaptive-prototype study improves raw-phone row AP to 45
 regresses candidate-window exact F1 to 24.10%; it is not promoted and v5 remains the
 best event-level side-switch artifact. The 61-gap V5/V5-state/V6 proposal union is
 available as three separate recording timelines in `/side-switch-review` because the
-earlier heuristic marker seeds are not exhaustive.
+earlier heuristic marker seeds are not exhaustive. That review page also exposes
+explicit/candidate/full-video human marker rails, a per-recording continuous-review
+flag, production model range labels, and the corrected production-editor/final-export
+timelines. New full-video markers are stored separately from the frozen candidate
+decision artifact.
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
@@ -149,8 +153,9 @@ Use the printed LAN address. Important routes include:
 - `/model-feedback` — inspect production web/Android feedback bundles and optionally
   link their source video;
 - `/suppression-review` — visually audit learned suppression behavior;
-- `/side-switch-review` and `/serving-side-review` — review the current side/serve
-  diagnostics;
+- `/side-switch-review` — review side-switch proposals, place exhaustive full-video
+  switch markers, and compare them with the saved production editor timeline;
+- `/serving-side-review` — review the current serving-side diagnostics;
 - `/on-device`, `/on-device-batch`, `/audio-benchmark`, and `/video-benchmark` —
   internal parity and performance tools.
 

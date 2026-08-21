@@ -51,6 +51,38 @@ all 30 recordings in the appearance report.
 The UI asks whether a physical side switch occurs in the video. Model selection,
 appearance distance, and earlier markers are evidence only.
 
+## Full-video coverage extension — 2026-08-21
+
+The 11 raw-phone model-feedback bundles contain no explicit `sideSwitches` point
+markers. Their 354 saved candidate decisions (35 switch, 317 no-switch, and 2 unclear)
+are conditioned on rally-gap candidate generation and therefore cannot measure switches
+outside that candidate universe.
+
+The same review page now supports a separate exhaustive pass:
+
+- a human-coverage timeline distinguishes explicit source markers, candidate decisions
+  reviewed as switches, and newly placed full-video markers;
+- `M` or the visible add button places a millisecond point marker at the video playhead;
+- markers can be sought and removed, and each recording can be marked fully reviewed so
+  an empty marker list is distinguishable from an unreviewed video;
+- the recording picker identifies recordings that still need a continuous pass;
+- each selected V5/V5-state/V6 proposal displays its model name and timestamp directly
+  on its aligned rail;
+- raw model-feedback recordings add production model-label, corrected editor-cut, and
+  final-export rails. Corrected cuts retain their range IDs, core/padding structure,
+  included/removed state, and ignored-time overlays.
+
+Full-video markers and completion state autosave atomically to
+`full-video-side-switch-markers-full-nas-v1.json` beside the appearance report, or to
+`VOLLEYCUT_SIDE_SWITCH_MARKERS` when configured. They are deliberately separate from
+`appearance-review-decisions-full-nas-v1.json`, whose hash is already bound by frozen
+model artifacts. Opening or filtering the page writes neither file.
+
+For a recording marked fully reviewed, the exhaustive human point set is the union of
+its existing candidate decisions whose value is `switch` (at the report transition
+time) and its new full-video markers. The new artifact stores additions rather than
+copying or silently revising the candidate-decision artifact.
+
 ## Artifact binding and overrides
 
 The default layers are loaded from immutable V5, V5-state, and V6 paths recorded in

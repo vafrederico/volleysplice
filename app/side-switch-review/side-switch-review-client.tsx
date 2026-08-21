@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Brand } from "@/components/brand";
 import { formatTime } from "@/lib/edit-list";
@@ -19,6 +26,7 @@ import {
   type AppearanceFeature,
   type AppearanceMetric,
   type AppearanceReport,
+  type FullVideoSideSwitchMarker,
   type ReviewDecision,
   type SideSwitchRecording,
 } from "./types";
@@ -31,6 +39,10 @@ type SideSwitchReviewClientProps = {
   initialDecisions: Record<string, ReviewDecision>;
   initialSavedAt: string | null;
   decisionLoadError?: string;
+  initialMarkers: FullVideoSideSwitchMarker[];
+  initialReviewedRecordingIds: string[];
+  initialMarkersSavedAt: string | null;
+  markerLoadError?: string;
   loadError?: string;
 };
 
@@ -102,6 +114,7 @@ const PROPOSAL_FILTERS: Array<{ value: ProposalFilter; label: string }> = [
 
 const OVERVIEW_TICK_RATIOS = [0, 0.2, 0.4, 0.6, 0.8, 1];
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2, 4];
+const FULL_VIDEO_MARKER_KIND = "volleycut-full-video-side-switch-markers-v1";
 
 function compactNumber(value: number): string {
   return value.toLocaleString("en-US");
@@ -242,6 +255,13 @@ function savedTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleTimeString();
 }
 
+function preciseTime(value: number): string {
+  const safe = Math.max(0, Number.isFinite(value) ? value : 0);
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe - minutes * 60;
+  return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`;
+}
+
 function VariantTimelines({
   events,
   proposalBundle,
@@ -318,7 +338,7 @@ function VariantTimelines({
                 }}
                 role="presentation"
               >
-                {events.map((item) => {
+                {events.map((item, eventIndex) => {
                   const proposal = eventProposals(item, proposalBundle)[
                     layer.modelId
                   ];
@@ -329,6 +349,7 @@ function VariantTimelines({
                       data-kind={eventKind(item)}
                       data-proposed={proposal?.selected ? "true" : "false"}
                       data-scoped={proposal ? "true" : "false"}
+                      data-label-row={eventIndex % 2}
                       data-status={item.status}
                       data-selected={
                         item.eventId === selectedEventId ? "true" : "false"
@@ -343,7 +364,14 @@ function VariantTimelines({
                       title={`${layer.label} · ${proposal?.selected ? "proposal" : proposal ? "not selected" : "outside model scope"} · ${eventKindLabel(item)} · ${formatTime(item.transitionTime)}`}
                       aria-label={`Select ${item.eventId} on the ${layer.label} timeline`}
                       key={item.eventId}
-                    />
+                    >
+                      {proposal?.selected && (
+                        <span className={styles.variantEventLabel}>
+                          {MODEL_BADGE_LABELS[layer.modelId]} ·{" "}
+                          {formatTime(item.transitionTime)}
+                        </span>
+                      )}
+                    </button>
                   );
                 })}
                 <span
@@ -365,6 +393,522 @@ function VariantTimelines({
         <span data-tone="switch">thin prior switch marker</span>
         <span data-tone="control">other scored gap</span>
         <span data-tone="selected">selected event</span>
+      </div>
+    </section>
+  );
+}
+
+function FullVideoCoverageTimeline({
+  recording,
+  events,
+  decisions,
+  markers,
+  reviewedComplete,
+  duration,
+  currentTime,
+  markerSaveStatus,
+  markerSavedAt,
+  markerSaveError,
+  onSelect,
+  onSeek,
+  onAddMarker,
+  onRemoveMarker,
+  onSetReviewedComplete,
+}: {
+  recording: SideSwitchRecording;
+  events: AppearanceEvent[];
+  decisions: Record<string, ReviewDecision>;
+  markers: FullVideoSideSwitchMarker[];
+  reviewedComplete: boolean;
+  duration: number;
+  currentTime: number;
+  markerSaveStatus: SaveStatus;
+  markerSavedAt: string | null;
+  markerSaveError: string | null;
+  onSelect: (eventId: string) => void;
+  onSeek: (time: number) => void;
+  onAddMarker: () => void;
+  onRemoveMarker: (markerId: string) => void;
+  onSetReviewedComplete: (reviewed: boolean) => void;
+}) {
+  const reviewedSwitches = events.filter(
+    (event) => decisions[event.eventId] === "switch",
+  );
+  const completeFromSource = recording.continuousVideoReviewed;
+  const complete = completeFromSource || reviewedComplete;
+  const seekFromRail = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    onSeek(
+      boundedTime(
+        ((event.clientX - bounds.left) / bounds.width) * duration,
+        duration,
+      ),
+    );
+  };
+
+  return (
+    <section
+      className={`${styles.timelineBlock} ${styles.coverageTimeline}`}
+      data-complete={complete ? "true" : "false"}
+      aria-label="Full-video human side-switch coverage"
+    >
+      <div className={styles.timelineHeading}>
+        <div>
+          <strong>Human switch coverage</strong>
+          <span>
+            {complete
+              ? completeFromSource
+                ? "Source label document records continuous-video review"
+                : "This recording is marked as fully reviewed"
+              : "Candidate reviews are not exhaustive—scan the full video and add every switch"}
+          </span>
+        </div>
+        <span>{formatTime(duration)}</span>
+      </div>
+      <div className={styles.coverageActions}>
+        <button type="button" onClick={onAddMarker}>
+          + Add switch at {preciseTime(currentTime)} <kbd>M</kbd>
+        </button>
+        {!completeFromSource && (
+          <button
+            type="button"
+            data-complete={reviewedComplete ? "true" : "false"}
+            onClick={() => onSetReviewedComplete(!reviewedComplete)}
+          >
+            {reviewedComplete
+              ? "✓ Full video reviewed"
+              : "Mark full video reviewed"}
+          </button>
+        )}
+        <span className={styles.saveStatus} data-status={markerSaveStatus}>
+          {markerSaveStatus === "saving" && "Saving marker coverage…"}
+          {markerSaveStatus === "saved" &&
+            `Marker coverage saved ${savedTime(markerSavedAt)}`}
+          {markerSaveStatus === "error" &&
+            `Marker save failed: ${markerSaveError ?? "unknown error"}`}
+          {markerSaveStatus === "idle" && "No marker edits yet"}
+        </span>
+      </div>
+      <div className={styles.variantTimelineAxis}>
+        <span aria-hidden="true" />
+        <div className={styles.overviewAxis}>
+          {OVERVIEW_TICK_RATIOS.map((ratio) => (
+            <span key={`coverage-tick-${ratio}`}>
+              {formatTime(duration * ratio)}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className={styles.coverageTimelineRows}>
+        <div className={styles.coverageTimelineRow}>
+          <div className={styles.variantTimelineLabel} data-tone="source">
+            <strong>Explicit source markers</strong>
+            <span>{recording.sourceSideSwitches.length} point labels</span>
+          </div>
+          <div
+            className={styles.overviewRail}
+            onClick={seekFromRail}
+            role="presentation"
+          >
+            {recording.sourceSideSwitches.map((marker) => (
+              <button
+                type="button"
+                className={styles.coverageMarker}
+                data-tone="source"
+                style={{ left: `${percentageAt(marker.time, 0, duration)}%` }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSeek(marker.time);
+                }}
+                title={`Source side-switch marker · ${preciseTime(marker.time)}${marker.notes ? ` · ${marker.notes}` : ""}`}
+                aria-label={`Seek to source side-switch marker at ${preciseTime(marker.time)}`}
+                key={marker.time}
+              >
+                <span>{formatTime(marker.time)}</span>
+              </button>
+            ))}
+            <span
+              className={styles.overviewPlayhead}
+              style={{ left: `${percentageAt(currentTime, 0, duration)}%` }}
+            />
+          </div>
+        </div>
+        <div className={styles.coverageTimelineRow}>
+          <div className={styles.variantTimelineLabel} data-tone="reviewed">
+            <strong>Candidate review labels</strong>
+            <span>{reviewedSwitches.length} reviewed as switch</span>
+          </div>
+          <div
+            className={styles.overviewRail}
+            onClick={seekFromRail}
+            role="presentation"
+          >
+            {reviewedSwitches.map((event) => (
+              <button
+                type="button"
+                className={styles.coverageMarker}
+                data-tone="reviewed"
+                style={{
+                  left: `${percentageAt(event.transitionTime, 0, duration)}%`,
+                }}
+                onClick={(click) => {
+                  click.stopPropagation();
+                  onSelect(event.eventId);
+                }}
+                title={`Human-reviewed candidate · ${event.eventId} · ${preciseTime(event.transitionTime)}`}
+                aria-label={`Select reviewed switch candidate at ${preciseTime(event.transitionTime)}`}
+                key={event.eventId}
+              >
+                <span>{formatTime(event.transitionTime)}</span>
+              </button>
+            ))}
+            <span
+              className={styles.overviewPlayhead}
+              style={{ left: `${percentageAt(currentTime, 0, duration)}%` }}
+            />
+          </div>
+        </div>
+        <div className={styles.coverageTimelineRow}>
+          <div className={styles.variantTimelineLabel} data-tone="manual">
+            <strong>Full-video markers</strong>
+            <span>{markers.length} manually placed points</span>
+          </div>
+          <div
+            className={styles.overviewRail}
+            onClick={seekFromRail}
+            role="presentation"
+          >
+            {markers.map((marker) => (
+              <button
+                type="button"
+                className={styles.coverageMarker}
+                data-tone="manual"
+                style={{ left: `${percentageAt(marker.time, 0, duration)}%` }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSeek(marker.time);
+                }}
+                title={`Full-video switch marker · ${preciseTime(marker.time)}`}
+                aria-label={`Seek to full-video switch marker at ${preciseTime(marker.time)}`}
+                key={marker.id}
+              >
+                <span>{formatTime(marker.time)}</span>
+              </button>
+            ))}
+            <span
+              className={styles.overviewPlayhead}
+              style={{ left: `${percentageAt(currentTime, 0, duration)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+      {markers.length > 0 && (
+        <div
+          className={styles.markerList}
+          role="list"
+          aria-label="Editable full-video markers"
+        >
+          {markers.map((marker) => (
+            <span role="listitem" key={marker.id}>
+              <button type="button" onClick={() => onSeek(marker.time)}>
+                {preciseTime(marker.time)}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRemoveMarker(marker.id)}
+                aria-label={`Remove full-video marker at ${preciseTime(marker.time)}`}
+                title="Remove marker"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className={styles.timelineLegend}>
+        <span data-tone="source">explicit source marker</span>
+        <span data-tone="reviewed">reviewed candidate switch</span>
+        <span data-tone="manual">full-video marker</span>
+        <span data-tone="selected">playhead</span>
+      </div>
+    </section>
+  );
+}
+
+function ProductionContextTimelines({
+  recording,
+  duration,
+  currentTime,
+  onSeek,
+}: {
+  recording: SideSwitchRecording;
+  duration: number;
+  currentTime: number;
+  onSeek: (time: number) => void;
+}) {
+  const hasProductionBundle =
+    recording.productionModelRanges.length > 0 ||
+    recording.productionEditorRanges.length > 0 ||
+    recording.productionFinalIntervals.length > 0;
+  const producerLabel =
+    recording.feedbackProducer === "android"
+      ? "saved Android feedback"
+      : recording.feedbackProducer === "production-web"
+        ? "saved production-web feedback"
+        : "saved model feedback";
+  const seekFromRail = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    onSeek(
+      boundedTime(
+        ((event.clientX - bounds.left) / bounds.width) * duration,
+        duration,
+      ),
+    );
+  };
+  const intervalStyle = (start: number, end: number) => ({
+    left: `${percentageAt(start, 0, duration)}%`,
+    width: `${percentageAt(end, 0, duration) - percentageAt(start, 0, duration)}%`,
+  });
+
+  return (
+    <section
+      className={`${styles.timelineBlock} ${styles.productionTimelines}`}
+      aria-label="Production web app model and editor timelines"
+    >
+      <div className={styles.timelineHeading}>
+        <div>
+          <strong>Production web context</strong>
+          <span>
+            Production model labels plus the web-editor-equivalent cut timeline
+            reconstructed from {producerLabel}
+          </span>
+        </div>
+        <span>{formatTime(duration)}</span>
+      </div>
+      <div className={styles.variantTimelineAxis}>
+        <span aria-hidden="true" />
+        <div className={styles.overviewAxis}>
+          {OVERVIEW_TICK_RATIOS.map((ratio) => (
+            <span key={`production-tick-${ratio}`}>
+              {formatTime(duration * ratio)}
+            </span>
+          ))}
+        </div>
+      </div>
+      {hasProductionBundle ? (
+        <div className={styles.productionTimelineRows}>
+          {recording.gameWindow && (
+            <div className={styles.productionTimelineRow} data-track="window">
+              <div className={styles.variantTimelineLabel}>
+                <strong>Game window</strong>
+                <span>
+                  {formatTime(recording.gameWindow.start)}–
+                  {formatTime(recording.gameWindow.end)}
+                </span>
+              </div>
+              <div
+                className={styles.overviewRail}
+                onClick={seekFromRail}
+                role="presentation"
+              >
+                <button
+                  type="button"
+                  className={styles.productionRange}
+                  data-tone="window"
+                  style={intervalStyle(
+                    recording.gameWindow.start,
+                    recording.gameWindow.end,
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSeek(recording.gameWindow?.start ?? 0);
+                  }}
+                  title={`Production analysis game window · ${preciseTime(recording.gameWindow.start)}–${preciseTime(recording.gameWindow.end)}`}
+                >
+                  <span>game</span>
+                </button>
+                <span
+                  className={styles.overviewPlayhead}
+                  style={{
+                    left: `${percentageAt(currentTime, 0, duration)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          <div className={styles.productionTimelineRow} data-track="model">
+            <div className={styles.variantTimelineLabel}>
+              <strong>Production model labels</strong>
+              <span>
+                {recording.productionModelRanges.length} initial inference
+                ranges
+              </span>
+            </div>
+            <div
+              className={styles.overviewRail}
+              onClick={seekFromRail}
+              role="presentation"
+            >
+              {recording.productionModelRanges.map((range) => (
+                <button
+                  type="button"
+                  className={styles.productionRange}
+                  data-tone="model"
+                  style={intervalStyle(range.start, range.end)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSeek(range.start);
+                  }}
+                  title={`${range.id} · initial production model label · ${preciseTime(range.start)}–${preciseTime(range.end)}${range.confidence === null ? "" : ` · ${Math.round(range.confidence * 100)}%`}${range.agreement ? ` · ${range.agreement}` : ""}`}
+                  aria-label={`Seek to production model label ${range.id}`}
+                  key={range.id}
+                >
+                  <span>{range.id}</span>
+                </button>
+              ))}
+              <span
+                className={styles.overviewPlayhead}
+                style={{ left: `${percentageAt(currentTime, 0, duration)}%` }}
+              />
+            </div>
+          </div>
+          <div className={styles.productionTimelineRow} data-track="editor">
+            <div className={styles.variantTimelineLabel}>
+              <strong>Production web editor view</strong>
+              <span>
+                {
+                  recording.productionEditorRanges.filter(
+                    (range) => range.included,
+                  ).length
+                }{" "}
+                kept ·{" "}
+                {
+                  recording.productionEditorRanges.filter(
+                    (range) => !range.included,
+                  ).length
+                }{" "}
+                removed
+              </span>
+            </div>
+            <div
+              className={styles.overviewRail}
+              onClick={seekFromRail}
+              role="presentation"
+            >
+              {recording.productionEditorRanges.map((range) => (
+                <button
+                  type="button"
+                  className={styles.productionRange}
+                  data-tone="editor"
+                  data-included={range.included ? "true" : "false"}
+                  style={intervalStyle(range.keepStart, range.keepEnd)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSeek(range.keepStart);
+                  }}
+                  title={`${range.id} · ${range.included ? "kept" : "removed"} in production editor · ${preciseTime(range.keepStart)}–${preciseTime(range.keepEnd)}${range.agreement ? ` · ${range.agreement}` : ""}`}
+                  aria-label={`Seek to ${range.included ? "kept" : "removed"} production editor cut ${range.id}`}
+                  key={range.id}
+                >
+                  {range.included && range.coreStart > range.keepStart && (
+                    <i
+                      data-padding="before"
+                      style={{
+                        left: 0,
+                        width: `${percentageAt(range.coreStart, range.keepStart, range.keepEnd)}%`,
+                      }}
+                    />
+                  )}
+                  <b
+                    style={{
+                      left: `${percentageAt(range.coreStart, range.keepStart, range.keepEnd)}%`,
+                      width: `${percentageAt(range.coreEnd, range.keepStart, range.keepEnd) - percentageAt(range.coreStart, range.keepStart, range.keepEnd)}%`,
+                    }}
+                  />
+                  {range.included && range.keepEnd > range.coreEnd && (
+                    <i
+                      data-padding="after"
+                      style={{
+                        left: `${percentageAt(range.coreEnd, range.keepStart, range.keepEnd)}%`,
+                        width: `${100 - percentageAt(range.coreEnd, range.keepStart, range.keepEnd)}%`,
+                      }}
+                    />
+                  )}
+                  <span>{range.id}</span>
+                </button>
+              ))}
+              {recording.productionIgnoredIntervals.map((interval) => (
+                <span
+                  className={styles.productionIgnored}
+                  style={intervalStyle(interval.start, interval.end)}
+                  title={`${interval.id} · ignored${interval.reason ? ` · ${interval.reason}` : ""}`}
+                  key={interval.id}
+                />
+              ))}
+              <span
+                className={styles.overviewPlayhead}
+                style={{ left: `${percentageAt(currentTime, 0, duration)}%` }}
+              />
+            </div>
+          </div>
+          <div className={styles.productionTimelineRow} data-track="export">
+            <div className={styles.variantTimelineLabel}>
+              <strong>Production final export</strong>
+              <span>
+                {recording.productionFinalIntervals.length} materialized
+                intervals
+              </span>
+            </div>
+            <div
+              className={styles.overviewRail}
+              onClick={seekFromRail}
+              role="presentation"
+            >
+              {recording.productionFinalIntervals.map((range, index) => (
+                <button
+                  type="button"
+                  className={styles.productionRange}
+                  data-tone="export"
+                  style={intervalStyle(range.start, range.end)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSeek(range.start);
+                  }}
+                  title={`Export ${index + 1} · ${preciseTime(range.start)}–${preciseTime(range.end)} · ${range.cutIds.join(", ")}`}
+                  aria-label={`Seek to production final export interval ${index + 1}`}
+                  key={`${range.start}-${range.end}`}
+                >
+                  <span>E{index + 1}</span>
+                </button>
+              ))}
+              {recording.productionIgnoredIntervals.map((interval) => (
+                <span
+                  className={styles.productionIgnored}
+                  style={intervalStyle(interval.start, interval.end)}
+                  title={`${interval.id} · ignored${interval.reason ? ` · ${interval.reason}` : ""}`}
+                  key={interval.id}
+                />
+              ))}
+              <span
+                className={styles.overviewPlayhead}
+                style={{ left: `${percentageAt(currentTime, 0, duration)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className={styles.emptyVariantTimelines}>
+          {recording.timelineLoadError
+            ? `The source timeline could not be loaded: ${recording.timelineLoadError}`
+            : "No production model-feedback bundle is attached to this recording."}
+        </p>
+      )}
+      <div className={styles.timelineLegend}>
+        <span data-tone="model-label">initial model label</span>
+        <span data-tone="editor-kept">editor kept</span>
+        <span data-tone="editor-removed">editor removed</span>
+        <span data-tone="export">final export</span>
+        <span data-tone="ignored">ignored time</span>
       </div>
     </section>
   );
@@ -671,6 +1215,10 @@ function LoadedSideSwitchReview({
   initialDecisions,
   initialSavedAt,
   decisionLoadError,
+  initialMarkers,
+  initialReviewedRecordingIds,
+  initialMarkersSavedAt,
+  markerLoadError,
 }: {
   report: AppearanceReport;
   recordings: SideSwitchRecording[];
@@ -679,6 +1227,10 @@ function LoadedSideSwitchReview({
   initialDecisions: Record<string, ReviewDecision>;
   initialSavedAt: string | null;
   decisionLoadError?: string;
+  initialMarkers: FullVideoSideSwitchMarker[];
+  initialReviewedRecordingIds: string[];
+  initialMarkersSavedAt: string | null;
+  markerLoadError?: string;
 }) {
   const allEvents = report.events;
   const [environment, setEnvironment] = useState("all");
@@ -704,9 +1256,30 @@ function LoadedSideSwitchReview({
     decisionLoadError ?? null,
   );
   const [lastSavedAt, setLastSavedAt] = useState(initialSavedAt);
+  const [markers, setMarkers] =
+    useState<FullVideoSideSwitchMarker[]>(initialMarkers);
+  const [reviewedRecordingIds, setReviewedRecordingIds] = useState(
+    initialReviewedRecordingIds,
+  );
+  const [markerSaveStatus, setMarkerSaveStatus] = useState<SaveStatus>(
+    markerLoadError ? "error" : initialMarkersSavedAt ? "saved" : "idle",
+  );
+  const [markerSaveError, setMarkerSaveError] = useState<string | null>(
+    markerLoadError ?? null,
+  );
+  const [markersLastSavedAt, setMarkersLastSavedAt] = useState(
+    initialMarkersSavedAt,
+  );
   const videoRef = useRef<HTMLVideoElement>(null);
   const persistedDecisionSignature = useRef(JSON.stringify(initialDecisions));
+  const persistedMarkerSignature = useRef(
+    JSON.stringify({
+      markers: initialMarkers,
+      reviewedRecordingIds: initialReviewedRecordingIds,
+    }),
+  );
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const markerSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const environments = useMemo(
     () =>
@@ -762,6 +1335,7 @@ function LoadedSideSwitchReview({
     ? decisions[selectedEvent.eventId]
     : undefined;
   const reviewedCount = Object.keys(decisions).length;
+  const markerCount = markers.length;
   const proposedEventCount = useMemo(
     () =>
       allEvents.filter((event) =>
@@ -777,6 +1351,18 @@ function LoadedSideSwitchReview({
         Record<SideSwitchProposalModel, (typeof proposalBundle.layers)[number]>
       >,
     [proposalBundle.layers],
+  );
+
+  const selectedRecordingMarkers = useMemo(
+    () =>
+      selectedRecording
+        ? markers
+            .filter(
+              (marker) => marker.recordingId === selectedRecording.recordingId,
+            )
+            .sort((left, right) => left.time - right.time)
+        : [],
+    [markers, selectedRecording],
   );
 
   const moveToNext = useCallback(() => {
@@ -845,6 +1431,54 @@ function LoadedSideSwitchReview({
     [report.createdAt, report.kind],
   );
 
+  const saveMarkersToNas = useCallback(
+    async (values: FullVideoSideSwitchMarker[], reviewedIds: string[]) => {
+      setMarkerSaveStatus("saving");
+      setMarkerSaveError(null);
+      try {
+        const response = await fetch("/api/side-switch-review/markers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            kind: FULL_VIDEO_MARKER_KIND,
+            reportKind: report.kind,
+            reportCreatedAt: report.createdAt,
+            markers: values,
+            reviewedRecordingIds: reviewedIds,
+          }),
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          error?: unknown;
+          savedAt?: unknown;
+        } | null;
+        if (!response.ok) {
+          throw new Error(
+            typeof payload?.error === "string"
+              ? payload.error
+              : `Save failed with HTTP ${response.status}`,
+          );
+        }
+        const savedAt =
+          typeof payload?.savedAt === "string"
+            ? payload.savedAt
+            : new Date().toISOString();
+        persistedMarkerSignature.current = JSON.stringify({
+          markers: values,
+          reviewedRecordingIds: reviewedIds,
+        });
+        setMarkersLastSavedAt(savedAt);
+        setMarkerSaveStatus("saved");
+      } catch (error) {
+        setMarkerSaveStatus("error");
+        setMarkerSaveError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    },
+    [report.createdAt, report.kind],
+  );
+
   useEffect(() => {
     if (JSON.stringify(decisions) === persistedDecisionSignature.current)
       return;
@@ -859,9 +1493,24 @@ function LoadedSideSwitchReview({
     };
   }, [decisions, saveDecisionsToNas]);
 
+  useEffect(() => {
+    const signature = JSON.stringify({ markers, reviewedRecordingIds });
+    if (signature === persistedMarkerSignature.current) return;
+    if (markerSaveTimerRef.current) clearTimeout(markerSaveTimerRef.current);
+    setMarkerSaveStatus("saving");
+    setMarkerSaveError(null);
+    markerSaveTimerRef.current = setTimeout(() => {
+      void saveMarkersToNas(markers, reviewedRecordingIds);
+    }, 350);
+    return () => {
+      if (markerSaveTimerRef.current) clearTimeout(markerSaveTimerRef.current);
+    };
+  }, [markers, reviewedRecordingIds, saveMarkersToNas]);
+
   useEffect(
     () => () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (markerSaveTimerRef.current) clearTimeout(markerSaveTimerRef.current);
     },
     [],
   );
@@ -884,6 +1533,46 @@ function LoadedSideSwitchReview({
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate;
   }, [playbackRate]);
+
+  const addMarkerAtCurrentTime = useCallback(() => {
+    if (!selectedRecording) return;
+    const time = Math.round(boundedTime(currentTime, duration) * 1000) / 1000;
+    const suffix =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const marker: FullVideoSideSwitchMarker = {
+      id: `manual:${selectedRecording.recordingId}:${suffix}`,
+      recordingId: selectedRecording.recordingId,
+      time,
+      createdAt: new Date().toISOString(),
+    };
+    setMarkers((current) =>
+      [...current, marker].sort(
+        (left, right) =>
+          left.recordingId.localeCompare(right.recordingId) ||
+          left.time - right.time ||
+          left.id.localeCompare(right.id),
+      ),
+    );
+  }, [currentTime, duration, selectedRecording]);
+
+  const removeMarker = useCallback((markerId: string) => {
+    setMarkers((current) => current.filter((marker) => marker.id !== markerId));
+  }, []);
+
+  const setRecordingReviewedComplete = useCallback(
+    (reviewed: boolean) => {
+      if (!selectedRecording) return;
+      setReviewedRecordingIds((current) => {
+        const next = new Set(current);
+        if (reviewed) next.add(selectedRecording.recordingId);
+        else next.delete(selectedRecording.recordingId);
+        return [...next].sort((left, right) => left.localeCompare(right));
+      });
+    },
+    [selectedRecording],
+  );
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -914,12 +1603,15 @@ function LoadedSideSwitchReview({
       } else if (key === "u") {
         event.preventDefault();
         setDecision("unclear");
+      } else if (key === "m") {
+        event.preventDefault();
+        addMarkerAtCurrentTime();
       }
     }
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [moveToNext, moveToPrevious, setDecision]);
+  }, [addMarkerAtCurrentTime, moveToNext, moveToPrevious, setDecision]);
 
   function seek(time: number) {
     const target = boundedTime(time, duration);
@@ -1024,6 +1716,22 @@ function LoadedSideSwitchReview({
           <span>Reviewed decisions</span>
           <strong>{compactNumber(reviewedCount)}</strong>
         </div>
+        <div>
+          <span>Full-video markers</span>
+          <strong data-tone="switch">{compactNumber(markerCount)}</strong>
+        </div>
+        <div>
+          <span>Full videos reviewed</span>
+          <strong>
+            {compactNumber(
+              recordings.filter(
+                (recording) =>
+                  recording.continuousVideoReviewed ||
+                  reviewedRecordingIds.includes(recording.recordingId),
+              ).length,
+            )}
+          </strong>
+        </div>
       </section>
 
       <section className={styles.protocolPanel}>
@@ -1099,7 +1807,11 @@ function LoadedSideSwitchReview({
           <span>Recording</span>
           <select
             value={recordingId}
-            onChange={(event) => setRecordingId(event.target.value)}
+            onChange={(event) => {
+              setRecordingId(event.target.value);
+              setEventFilter("all");
+              setProposalFilter("all");
+            }}
           >
             <option value="all">All recordings</option>
             {recordings
@@ -1113,7 +1825,11 @@ function LoadedSideSwitchReview({
                   value={recording.recordingId}
                   key={recording.recordingId}
                 >
-                  {recording.environment} · {recording.recordingId}
+                  {recording.environment} · {recording.recordingId} ·{" "}
+                  {recording.continuousVideoReviewed ||
+                  reviewedRecordingIds.includes(recording.recordingId)
+                    ? "covered"
+                    : "needs full review"}
                 </option>
               ))}
           </select>
@@ -1342,9 +2058,33 @@ function LoadedSideSwitchReview({
                   <span>
                     <kbd>U</kbd> unclear
                   </span>
+                  <span>
+                    <kbd>M</kbd> add full-video marker
+                  </span>
                 </div>
               </div>
 
+              {selectedRecording && (
+                <FullVideoCoverageTimeline
+                  recording={selectedRecording}
+                  events={selectedRecordingEvents}
+                  decisions={decisions}
+                  markers={selectedRecordingMarkers}
+                  reviewedComplete={reviewedRecordingIds.includes(
+                    selectedRecording.recordingId,
+                  )}
+                  duration={duration}
+                  currentTime={currentTime}
+                  markerSaveStatus={markerSaveStatus}
+                  markerSavedAt={markersLastSavedAt}
+                  markerSaveError={markerSaveError}
+                  onSelect={selectEvent}
+                  onSeek={seek}
+                  onAddMarker={addMarkerAtCurrentTime}
+                  onRemoveMarker={removeMarker}
+                  onSetReviewedComplete={setRecordingReviewedComplete}
+                />
+              )}
               <VariantTimelines
                 events={selectedRecordingEvents}
                 proposalBundle={proposalBundle}
@@ -1354,6 +2094,14 @@ function LoadedSideSwitchReview({
                 onSelect={selectEvent}
                 onSeek={seek}
               />
+              {selectedRecording && (
+                <ProductionContextTimelines
+                  recording={selectedRecording}
+                  duration={duration}
+                  currentTime={currentTime}
+                  onSeek={seek}
+                />
+              )}
               <WindowTimeline
                 event={selectedEvent}
                 duration={duration}
@@ -1485,6 +2233,10 @@ export function SideSwitchReviewClient({
   initialDecisions,
   initialSavedAt,
   decisionLoadError,
+  initialMarkers,
+  initialReviewedRecordingIds,
+  initialMarkersSavedAt,
+  markerLoadError,
   loadError,
 }: SideSwitchReviewClientProps) {
   if (!report)
@@ -1498,6 +2250,10 @@ export function SideSwitchReviewClient({
       initialDecisions={initialDecisions}
       initialSavedAt={initialSavedAt}
       decisionLoadError={decisionLoadError}
+      initialMarkers={initialMarkers}
+      initialReviewedRecordingIds={initialReviewedRecordingIds}
+      initialMarkersSavedAt={initialMarkersSavedAt}
+      markerLoadError={markerLoadError}
     />
   );
 }
