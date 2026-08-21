@@ -119,7 +119,10 @@ phase/side differences. The 155-value bank describes grid energy, vertical flow,
 centroid/spread, entropy, connected-component concentration, direction/divergence, and
 phase-to-phase trajectory deltas. It does not use audio or human visibility annotations.
 The exact offsets, formulas, names, ranking rule, and feature-count expansion are normative
-in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md).
+in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). Its **Production implementation delta**
+is also the release checklist: all 237 visual columns and their within-recording ranks
+are new production outputs, while serve-head scores and ensemble rally agreement are
+reused gate evidence rather than new side-model inputs.
 
 ## Three-head rally-model bundles
 

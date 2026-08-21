@@ -142,6 +142,14 @@ The serving-side production target is the indivisible composition
 fixed-flight v3 with the older serve-head-only gate, and do not describe the hybrid
 gate as a learned replacement for either production serve head.
 
+This target requires production to add the separate 237-column visual feature pipeline
+and side-model runner described in the **Production implementation delta** in
+[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). It does not require another serve/rally
+feature bank: the hybrid gate reuses the two existing serve-head score streams and the
+existing ensemble interval-agreement output. Both browser and Android must implement
+and pass parity for the new 237 columns, recording ranks, side score, thresholds, and
+gate/review decisions before release.
+
 The learned side model is one deterministic class-balanced logistic regression:
 
 - Target: physical camera-space `near=1`, `far=0` at a saved serve/rally anchor.

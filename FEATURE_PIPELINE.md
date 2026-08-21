@@ -350,6 +350,30 @@ two independent parts:
 
 The gate is composition policy, not an input to or refit of the side model.
 
+### Production implementation delta
+
+The existing production F104/520 matrix cannot be passed to the serving-side model.
+Production must generate a new, separate `SERVSIDE237-FLIGHT` matrix over the complete
+set of candidate anchors in the recording. The following table is the release checklist:
+
+| Production capability | Reuse or new work | Required contract |
+| --- | --- | --- |
+| Video decode, source timestamps, and ROI cropping | Reuse infrastructure | Seek the exact 8-frame and 9-frame offset sets below from one source-aligned candidate anchor. |
+| Court-flow values | **New 82-feature generator** | Add near/far service-zone masks, median-translation-compensated Farnebäck flow, residual-motion morphology/components, three phase summaries, and the declared side/phase deltas. These values do not exist in F104. |
+| Concentrated-flight values | **New 155-feature generator** | Add 192×108 nine-frame sampling, robust affine translation/rotation/zoom compensation, p90 residual-energy isolation, 4×6 cell and row summaries, connected-component statistics, and the two phase-transition banks. These values do not exist in F104. |
+| Recording normalization | **New serving-side transform** | After every candidate has raw values, compute tied percentile ranks independently for all 237 columns within that recording. Production's existing whole-game F104 rank path is not a substitute because its rows, columns, and missing-value contract differ. |
+| Side classifier | **New model artifact and runner** | Load the exact 237-name signature, medians, means, scales, weights, bias, L2 metadata, side threshold, and review thresholds registered in `MODELS.md`; emit a near-side score plus `near`/`far`. |
+| Serve-head score series | Reuse existing outputs | Preserve each production bundle's per-sample serve scores so the gate can inspect the maximum inside ±1 second of the anchor at threshold `0.85`. No new serve feature or head is needed. |
+| Ensemble rally intervals and agreement | Reuse existing outputs | Preserve overlap-union interval bounds and `both-models`/one-model agreement. No new rally feature or rally model is needed. |
+| Hybrid gate and review reason | **New composition logic** | Add `serve-head`, `production-rally-recovery`, and `none` decision sources; a rally recovery always requests review and never changes a rally interval. |
+| Cache/parity coverage | **New browser and Android integration** | Version the 237-feature cache separately and add golden raw features, tied ranks, side scores, side decisions, gate decisions, and review-reason parity fixtures. |
+
+In short, production adds **237 new visual feature columns and one side-model score**.
+It reuses the existing two serve-head score streams and ensemble rally agreement; those
+reused values are gate evidence and must not be appended to the 237 model inputs. Human
+near/far labels, visibility labels, contact-quality labels, and review answers are never
+inference features.
+
 ### Court-flow bank: 82 inputs
 
 `serving-side-court-flow-v2` samples eight ROI-cropped frames at offsets
