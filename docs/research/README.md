@@ -5,6 +5,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 ## Current decision
 
 - [Side-switch production-state and serve-grounding experiment — 2026-08-20](./side-switch-production-state-experiment-2026-08-20.md) — replay of both shipped rally/serve/dead-state bundles, soft-gate and serve-anchor ablations for V5/V6, modest V5 precision gain, V6/hard-gate rejection, and suppression quarantine.
+- [Side-switch V5 no-cadence experiment — 2026-08-20](./side-switch-v5-no-cadence-2026-08-20.md) — exact V5/V5-state head refit with independent all-gap decisions, 31.43%→80.00% exact recall, direct re-anchoring cascade evidence, immutable artifacts, and review-only non-promotion decision.
 - [Side-switch specialist v3 — 2026-08-20](./side-switch-specialist-v3-2026-08-20.md) — completed detector-free 192×108 feature extraction, source-separated training, re-anchored/capped cadence decoding, ±1 through requested ±4 sensitivity, immutable artifacts, and non-promotion result.
 - [Side-switch specialist v4 — 2026-08-20](./side-switch-specialist-v4-2026-08-20.md) — seven-frame side identity, automatic net-height calibration, camera-distance normalization, raw-phone improvement over v3, immutable artifacts, and non-promotion result.
 - [Side-switch specialist v5 — 2026-08-20](./side-switch-specialist-v5-2026-08-20.md) — player-like motion-component isolation, score-zero team anchors, persistent-orientation no-op result, strongest raw-phone improvement, immutable artifacts, and non-promotion decision.

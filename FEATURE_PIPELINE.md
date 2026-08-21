@@ -357,6 +357,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch v5 PLAYER-ORIENTATION22 | Six retained v4 scalars plus 16 motion-component player-palette, proposal-support, and quality features; whole-set score-zero team anchors feed an optional parity decoder | Best event-level research result but not promoted for automatic use. Candidate-window exact-gap F1 improved from 16.67% to 27.85% and row AP from 26.92% to 43.40%. Validation selected orientation weight zero, so the persistence stage is a no-op. Its 44 selected proposals are reviewable; no browser/Android port. See [`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md). |
 | Side-switch v6 DETECTED-ADAPTIVE29 | Six retained v4 scalars, 20 player-localization/torso-palette inputs from a pinned 3.48 MB block-int8 MediaPipe person detector, and three confidence-gated adaptive team-prototype values | Positive row-ranking but negative candidate-window event result; not promoted. Raw-phone row AP improves from 43.40% to 45.47%, while exact F1 falls from 27.85% to 24.10% and ±2-tolerant F1 falls from 45.57% to 40.96%. Its 48 selected proposals are reviewable; no browser/Android port. See [`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md). |
 | Side-switch production-state/serve grounding | Twenty soft reductions from the two shipped production bundles plus optional two-second serve-anchored V5/V6 appearance windows; suppression scores are diagnostic-only | V5 original appearance + ten state/gating inputs is a positive exploratory result (exact F1 27.85%→30.14%) exposed as its own `/side-switch-review` timeline; V6 and serve-grounded appearance are rejected. No inference-runtime port. See [`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md). |
+| Side-switch V5 no-cadence decoder | Reuses the frozen V5/V5-state rows and refitted linear heads; scores every reviewed inter-rally gap independently with no seven-point opportunity centers, re-anchoring, spacing, or count cap | Positive causal diagnostic, not production. Exact recall/F1 improve from 31.43%/30.14% to 80.00%/44.44%, but independent outputs rise from 38 to 91. The learned head parameters exactly match the cadence control, isolating the decoder effect. See [`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -481,6 +482,19 @@ its target included side switches and its fitting recordings overlap all frozen 
 Exact implementation: [`side_switch_production_state.py`](analysis/side_switch_production_state.py),
 extraction: [`extract-side-switch-production-state.py`](scripts/extract-side-switch-production-state.py),
 and fitting/evaluation: [`train-side-switch-production-state.py`](scripts/train-side-switch-production-state.py).
+
+### Side-switch V5 no-cadence decoder
+
+The no-cadence ablation changes no visual or production-state feature generation. It
+refits the 22-input V5 base and 32-input V5-state heads on the exact frozen rows, then
+selects an independent score threshold on validation. Every reviewed inter-rally gap is
+eligible. There are no score-derived opportunity centers, candidate margins,
+re-anchoring transitions, spacing constraint, or maximum count. Both refitted heads
+match the cadence variants' learned imputation, normalization, weights, bias, and L2
+exactly; only the decoder-specific threshold differs. Exact implementation:
+[`side_switch_no_cadence.py`](analysis/side_switch_no_cadence.py), fitting/evaluation:
+[`train-side-switch-v5-no-cadence.py`](scripts/train-side-switch-v5-no-cadence.py), and
+provenance: [`build-side-switch-v5-no-cadence-provenance.py`](scripts/build-side-switch-v5-no-cadence-provenance.py).
 
 ## Rebuild and parity acceptance
 

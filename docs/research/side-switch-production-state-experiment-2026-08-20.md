@@ -24,6 +24,12 @@ until the candidate gaps receive exhaustive adjudication.
 The V6 candidate selected on validation (`serve-grounded:combined`) regresses on
 retrospective data. Frozen V6 therefore remains unchanged.
 
+A subsequent controlled decoder ablation refits the same V5/V5-state heads with exact
+parameter parity and removes hard seven-point cadence entirely. It confirms cadence
+coupling is suppressing true switches, but independent thresholding emits too many
+proposals for automatic use. See
+[`side-switch-v5-no-cadence-2026-08-20.md`](side-switch-v5-no-cadence-2026-08-20.md).
+
 ## Question and constraints
 
 The experiment tested whether outputs already computed by the on-device production

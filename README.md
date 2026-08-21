@@ -107,6 +107,11 @@ The production-state follow-up reuses the on-device ensemble as soft V5 evidence
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
 gates fail, and suppression is excluded for target/data overlap.
+The controlled no-cadence V5-state refit confirms that the re-anchored seven-point path
+can cascade errors: exact recall rises 31.43%→80.00% and F1 30.14%→44.44%, retaining
+all cadence true positives, but proposals rise 38→91. It is tracked as a research-only
+decoder diagnostic; the next iteration needs appearance-local cluster suppression or a
+soft count prior before any on-device promotion.
 
 ### Setup
 

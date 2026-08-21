@@ -135,6 +135,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-specialist-v5-player-orientation` | Side-switch gap, PLAYER-ORIENTATION22; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Adds player-like motion-component proposals, soft foot-position side assignment, first-three-rally team anchors, and optional persistent orientation parity. Validation selected L2 1.0, ±1 margin, distance 0.25, and orientation weight zero. | Best event-level research result but not promoted for automatic use. Candidate-window exact F1 16.67%→27.85%, ±2-tolerant F1 41.67%→45.57%, and row AP 26.92%→43.40%. Its 44 selected proposals are exposed in `/side-switch-review`; no browser/Android port. |
 | `side-switch-specialist-v6-detected-adaptive`; bundled `detectedFixedPrototypeAblation` | Side-switch gap, DETECTED-ADAPTIVE29 selected head and 26-input fixed-prototype ablation; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces v5 motion blobs with the frozen 3.48 MB block-int8 OpenCV Zoo MediaPipe person localizer, torso palettes, and three-frame consistency; adds confidence-gated online team-prototype updates. The Apache-2.0 detector is a third-party frozen input, not a VolleyCut-trained model. | Negative candidate-window event result; not promoted. Raw-phone row AP rises 43.40%→45.47%, but exact F1 falls 27.85%→24.10% and ±2-tolerant F1 falls 45.57%→40.96%. Its 48 selected proposals are exposed in `/side-switch-review`; no browser/Android port. |
 | `side-switch-v5-production-state-v1` | Side-switch gap, PLAYER-ORIENTATION22+STATE10; frozen split and common V5/V6 decoder geometry | Compares original and production-serve-grounded V5 appearance with soft summaries of the two shipped rally/serve/dead-state bundles. Validation selects original appearance plus the ten state/gating inputs. Suppression scores are structurally quarantined. | Positive exploratory review-ranking result, not promoted. Exact precision/F1 improve 25.00%/27.85%→28.95%/30.14% while proposals fall 44→38; ±2 F1 moves 45.57%→46.58%, but exact per-recording count accuracy falls 3/11→0/11. Its 38 proposals are exposed as a separate `/side-switch-review` timeline; no inference-runtime port. |
+| `side-switch-v5-no-cadence-v1` | Side-switch gap, validation-selected PLAYER-ORIENTATION22+STATE10; same frozen split and rows as V5-state | Refits the V5 base/state heads, verifies exact learned-parameter parity with the cadence model, and replaces seven-point candidate windows, re-anchoring, spacing, and the six-event cap with independent all-gap thresholding. L2, threshold, and feature-view selection remain development-only. | Positive causal diagnostic, not promoted. Exact recall/F1 improve 31.43%/30.14%→80.00%/44.44%, retaining all 11 cadence true positives and recovering 17 more, but proposals rise 38→91 and false positives 27→63. Research artifact only; no review UI or inference-runtime port. |
 | `side-switch-v6-production-state-v1` | Side-switch gap, validation-selected serve-grounded DETECTED-ADAPTIVE29+PRODUCTION-STATE20 | Same production-state/serve-grounding ablation applied to V6; all eight candidates tie on validation exact F1 and AP selects grounded+combined. | Rejected. Exact F1 falls 24.10%→17.91%, ±2 F1 40.96%→38.81%, and row AP 45.47%→36.23%; frozen V6 remains unchanged. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
@@ -224,6 +225,17 @@ and non-promotion constraints are in
 The immutable provenance manifest has SHA-256
 `174fe3980cdd55fa14dda00c7e27d1b01882f303ec3ece6b6d709276e88643e7` and binds
 implementation revision `5221c74f51356e993ebfcad8326469fd6bb80124`.
+
+The no-cadence V5-state follow-up refits both eligible heads against the same frozen
+rows and produces exact classifier-parameter parity with the cadence variants before
+reselecting independent thresholds on validation. Its selected fingerprint is
+`c8e6014892b0012971d288fd60eadb81150a9646ec0b4c5ce6c77e76eeca76ab`.
+The model/development/evaluation hashes, exact true-positive cross-tab, decoder-cascade
+audit, and non-promotion constraints are in
+[`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md).
+The immutable provenance manifest has SHA-256
+`b0a6d21df15c4c5f7f968efa600836bd1b13c6d72791ce746c0c89c7725d64e2` and binds
+implementation revision `b7c732d61b2d242ee50f28af1686f9fab73d6a21`.
 
 ### No-beach full-gold refits
 

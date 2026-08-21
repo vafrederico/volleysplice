@@ -272,6 +272,16 @@ side-switch positives and overlaps all experiment roles. The selected V5-state o
 are reviewable, but no shipped inference graph is changed. See
 [`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md).
 
+The no-cadence follow-up holds those frozen V5/V5-state rows fixed, refits both linear
+heads with exact learned-parameter parity, and replaces the re-anchored seven-point
+path with independent thresholding of every reviewed gap. The validation-selected
+V5-state variant retains all 11 cadence exact true positives and recovers 17 more,
+raising retrospective exact recall/F1 from 31.43%/30.14% to 80.00%/44.44%. It also
+raises proposals from 38 to 91 because it deliberately has no spacing, cluster
+suppression, or count cap. This isolates a real cadence failure but is not a production
+decoder; no shipped graph changes. See
+[`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md).
+
 ## Production inference and export flow
 
 The complete production path is:

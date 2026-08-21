@@ -752,6 +752,23 @@ appearance are not promoted. See the
 [production-state decision record](../docs/research/side-switch-production-state-experiment-2026-08-20.md)
 for exact commands, hashes, attribution, and guardrails.
 
+The V5 no-cadence ablation reuses those exact frozen feature rows, refits the eligible
+base/state heads, verifies learned-parameter parity with the cadence variants, and
+selects independent all-gap thresholds on validation. It removes seven-point
+opportunity centers, candidate margins, re-anchoring, spacing, and the six-selection
+cap. Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-no-cadence.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-no-cadence.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v5-no-cadence-provenance.py
+```
+
+Exact retrospective recall/F1 rise from 31.43%/30.14% to 80.00%/44.44%, but proposals
+rise from 38 to 91. The result demonstrates harmful cadence coupling and remains
+research-only; no browser/Android inference port or review timeline is added. See the
+[no-cadence decision record](../docs/research/side-switch-v5-no-cadence-2026-08-20.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
