@@ -18,6 +18,10 @@ from .serve import ServeDecoderConfig, ServeDetection, decode_serve_probabilitie
 GATE_VERSION = "production-dual-serve-head-anchor-window-v1"
 ANCHOR_WINDOW_SECONDS = 1.0
 GATE_AGGREGATION = "either-head-at-production-threshold"
+HYBRID_GATE_VERSION = "production-serve-head-plus-both-rally-anchor-v2"
+HYBRID_GATE_AGGREGATION = (
+    "either-serve-head-or-anchor-contained-in-both-model-rally"
+)
 
 
 class ProductionServeGateError(RuntimeError):
@@ -73,6 +77,42 @@ class ServeHeadAnchorEvidence:
                 if nearest is not None
                 else None
             ),
+        }
+
+
+@dataclass(frozen=True)
+class ProductionRallyInterval:
+    start: float
+    end: float
+    agreement: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "start": self.start,
+            "end": self.end,
+            "agreement": self.agreement,
+        }
+
+
+@dataclass(frozen=True)
+class ProductionRallyAnchorEvidence:
+    anchor_contained: bool
+    interval: ProductionRallyInterval | None
+
+    @property
+    def both_models(self) -> bool:
+        return self.interval is not None and self.interval.agreement == "both-models"
+
+    @property
+    def recovers_serve(self) -> bool:
+        return self.anchor_contained and self.both_models
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "anchorContained": self.anchor_contained,
+            "bothModels": self.both_models,
+            "recoversServe": self.recovers_serve,
+            "interval": self.interval.to_dict() if self.interval is not None else None,
         }
 
 
@@ -209,11 +249,111 @@ def dual_head_prediction(evidence: Sequence[ServeHeadAnchorEvidence]) -> str:
     )
 
 
+def merge_production_rally_intervals(
+    all_labels_v2: Sequence[Mapping[str, Any]],
+    previous_production: Sequence[Mapping[str, Any]],
+) -> tuple[ProductionRallyInterval, ...]:
+    """Mirror production's overlap-union-disagreement-v1 interval merge."""
+
+    candidates: list[tuple[float, float, str]] = []
+    for source, rows in (
+        ("all-labels-v2", all_labels_v2),
+        ("previous-production", previous_production),
+    ):
+        for row in rows:
+            if row.get("included", True) is not True:
+                continue
+            start = row.get("start")
+            end = row.get("end")
+            if (
+                not isinstance(start, (int, float))
+                or not isinstance(end, (int, float))
+                or not math.isfinite(float(start))
+                or not math.isfinite(float(end))
+                or float(end) <= float(start)
+            ):
+                raise ProductionServeGateError(
+                    "production rally intervals must have finite positive duration"
+                )
+            candidates.append((float(start), float(end), source))
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    clusters: list[list[tuple[float, float, str]]] = []
+    for candidate in candidates:
+        current = clusters[-1] if clusters else None
+        current_end = max(item[1] for item in current) if current else -math.inf
+        if current is None or candidate[0] >= current_end:
+            clusters.append([candidate])
+        else:
+            current.append(candidate)
+    return tuple(
+        ProductionRallyInterval(
+            start=min(item[0] for item in cluster),
+            end=max(item[1] for item in cluster),
+            agreement=(
+                "both-models"
+                if len({item[2] for item in cluster}) == 2
+                else (
+                    "all-labels-v2-only"
+                    if cluster[0][2] == "all-labels-v2"
+                    else "previous-production-only"
+                )
+            ),
+        )
+        for cluster in clusters
+    )
+
+
+def production_rally_anchor_evidence(
+    intervals: Sequence[ProductionRallyInterval], anchor: float
+) -> ProductionRallyAnchorEvidence:
+    if not math.isfinite(anchor) or anchor < 0:
+        raise ProductionServeGateError("production rally anchor must be non-negative")
+    containing = [item for item in intervals if item.start <= anchor < item.end]
+    if len(containing) > 1:
+        raise ProductionServeGateError("production rally intervals overlap at the anchor")
+    interval = containing[0] if containing else None
+    return ProductionRallyAnchorEvidence(interval is not None, interval)
+
+
+def hybrid_gate_prediction(
+    head_evidence: Sequence[ServeHeadAnchorEvidence],
+    rally_evidence: ProductionRallyAnchorEvidence,
+) -> tuple[str, str, bool]:
+    """Return prediction, decision source, and whether human review is required."""
+
+    head_prediction = dual_head_prediction(head_evidence)
+    if head_prediction == "serve":
+        return "serve", "serve-head", False
+    if rally_evidence.recovers_serve:
+        return "serve", "production-rally-recovery", True
+    return "not-serve", "none", False
+
+
 def gate_fingerprint(heads: Sequence[ProductionServeHead]) -> str:
     contract = {
         "version": GATE_VERSION,
         "anchorWindowSeconds": ANCHOR_WINDOW_SECONDS,
         "aggregation": GATE_AGGREGATION,
+        "heads": [
+            {
+                "modelId": head.model_id,
+                "bundleSha256": head.bundle_sha256,
+                "threshold": head.decoder.threshold,
+            }
+            for head in heads
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def hybrid_gate_fingerprint(heads: Sequence[ProductionServeHead]) -> str:
+    contract = {
+        "version": HYBRID_GATE_VERSION,
+        "anchorWindowSeconds": ANCHOR_WINDOW_SECONDS,
+        "aggregation": HYBRID_GATE_AGGREGATION,
+        "reviewRequiredForRallyRecovery": True,
         "heads": [
             {
                 "modelId": head.model_id,

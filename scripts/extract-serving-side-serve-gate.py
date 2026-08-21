@@ -18,11 +18,18 @@ from analysis.production_serve_gate import (
     ANCHOR_WINDOW_SECONDS,
     GATE_AGGREGATION,
     GATE_VERSION,
+    HYBRID_GATE_AGGREGATION,
+    HYBRID_GATE_VERSION,
+    ProductionRallyInterval,
     anchor_evidence,
     dual_head_prediction,
     gate_fingerprint,
+    hybrid_gate_fingerprint,
+    hybrid_gate_prediction,
     infer_head,
     load_production_serve_head,
+    merge_production_rally_intervals,
+    production_rally_anchor_evidence,
     sha256,
 )
 from analysis.serving_side_exclusions import (
@@ -43,7 +50,11 @@ DEFAULT_FEATURE_CACHE = Path(
 DEFAULT_FEEDBACK_ROOT = Path("/mnt/freenas/volleycut/model-feedback")
 DEFAULT_ALL_LABELS_MODEL = Path("prod/public/runtime/model-1ca43e38eefc.json")
 DEFAULT_PREVIOUS_MODEL = Path("prod/public/runtime/model-9c92b8e9333f.json")
-DEFAULT_OUTPUT = ROOT / "features/serving-side-serve-gate-v1/all-reviewed.json"
+DEFAULT_ALL_LABELS_ANALYSES = Path("/mnt/freenas/volleycut/intake-2026-08-13/analyses")
+DEFAULT_PREVIOUS_ANALYSES = Path(
+    "/mnt/freenas/volleycut/labeling-v1-2026-08-09-no-beach-2026-08-12/analyses"
+)
+DEFAULT_OUTPUT = ROOT / "features/serving-side-serve-gate-v2/all-reviewed.json"
 DEFAULT_SOURCE_EXCLUSIONS = (
     ROOT
     / "reports/serving-side/serving-side-source-quality-exclusions-v1.json"
@@ -164,6 +175,84 @@ def _feature_sequence(
     }
 
 
+def _production_rally_intervals(
+    recording_id: str,
+    file: Mapping[str, Any],
+    all_labels_analyses: Path,
+    previous_analyses: Path,
+) -> tuple[tuple[ProductionRallyInterval, ...], list[dict[str, str]]]:
+    label_path_value = file.get("path")
+    if not isinstance(label_path_value, str) or not label_path_value:
+        raise ValueError(f"label source path is unavailable for {recording_id}")
+    label_path = Path(label_path_value).expanduser().resolve()
+    if label_path.name.endswith(".model-feedback.json"):
+        payload = _load(label_path)
+        inference = payload.get("initialInference")
+        ranges = inference.get("ranges") if isinstance(inference, Mapping) else None
+        if not isinstance(ranges, list) or not all(
+            isinstance(item, Mapping) for item in ranges
+        ):
+            raise ValueError(f"production ensemble ranges are unavailable for {recording_id}")
+        intervals: list[ProductionRallyInterval] = []
+        for item in ranges:
+            start = item.get("start")
+            end = item.get("end")
+            agreement = item.get("agreement")
+            if (
+                not isinstance(start, (int, float))
+                or not isinstance(end, (int, float))
+                or agreement
+                not in {
+                    "both-models",
+                    "all-labels-v2-only",
+                    "previous-production-only",
+                }
+                or float(end) <= float(start)
+            ):
+                raise ValueError(
+                    f"production ensemble range is malformed for {recording_id}"
+                )
+            intervals.append(
+                ProductionRallyInterval(float(start), float(end), str(agreement))
+            )
+        return tuple(intervals), [
+            {
+                "kind": "model-feedback-production-ensemble",
+                "path": str(label_path),
+                "sha256": sha256(label_path),
+            }
+        ]
+
+    all_labels_path = (
+        all_labels_analyses / f"model-1ca43e38eefc--{recording_id}" / "analysis.json"
+    ).resolve()
+    previous_path = (
+        previous_analyses / f"model-9c92b8e9333f--{recording_id}" / "analysis.json"
+    ).resolve()
+    all_labels = _load(all_labels_path)
+    previous = _load(previous_path)
+    for label, payload in (("all-labels V2", all_labels), ("previous", previous)):
+        if payload.get("recordingId") != recording_id or not isinstance(
+            payload.get("rallies"), list
+        ):
+            raise ValueError(f"{label} production analysis is invalid for {recording_id}")
+    intervals = merge_production_rally_intervals(
+        all_labels["rallies"], previous["rallies"]
+    )
+    return intervals, [
+        {
+            "kind": "all-labels-v2-analysis",
+            "path": str(all_labels_path),
+            "sha256": sha256(all_labels_path),
+        },
+        {
+            "kind": "previous-production-analysis",
+            "path": str(previous_path),
+            "sha256": sha256(previous_path),
+        },
+    ]
+
+
 def extract(args: argparse.Namespace) -> Mapping[str, Any]:
     report_path = args.serving_report.resolve()
     output_path = args.output.resolve()
@@ -197,6 +286,7 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
     feedback = _feedback_by_recording(args.feedback_root.resolve(), recording_ids)
     rows: list[dict[str, Any]] = []
     feature_sources: list[dict[str, str]] = []
+    rally_sources: list[dict[str, Any]] = []
     for recording_id in sorted(recording_ids):
         file = metadata[recording_id]
         duration = float(file["durationSeconds"])
@@ -220,6 +310,12 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             )
             for head in heads
         ]
+        production_intervals, production_sources = _production_rally_intervals(
+            recording_id,
+            file,
+            args.all_labels_analyses.resolve(),
+            args.previous_analyses.resolve(),
+        )
         selected = [
             rally
             for rally in rallies
@@ -244,35 +340,56 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
                     heads, outputs, strict=True
                 )
             ]
+            rally_evidence = production_rally_anchor_evidence(
+                production_intervals, anchor
+            )
+            prediction, decision_source, review_recommended = hybrid_gate_prediction(
+                evidence, rally_evidence
+            )
             rows.append(
                 {
                     "rallyId": rally["rallyId"],
                     "recordingId": recording_id,
                     "serveAnchor": anchor,
-                    "prediction": dual_head_prediction(evidence),
+                    "headPrediction": dual_head_prediction(evidence),
+                    "prediction": prediction,
+                    "decisionSource": decision_source,
+                    "reviewRecommended": review_recommended,
                     "heads": {
                         "allLabelsV2": evidence[0].to_dict(anchor),
                         "previousProduction": evidence[1].to_dict(anchor),
                     },
+                    "productionRally": rally_evidence.to_dict(),
                 }
             )
         feature_sources.append({"recordingId": recording_id, **feature_source})
+        rally_sources.append(
+            {"recordingId": recording_id, "sources": production_sources}
+        )
         print(f"{recording_id}: {len(selected)} candidates", flush=True)
     source_quality_excluded = len(rallies) - len(rows)
     prediction_counts = {
         decision: sum(row["prediction"] == decision for row in rows)
         for decision in ("serve", "not-serve")
     }
+    decision_source_counts = {
+        source: sum(row["decisionSource"] == source for row in rows)
+        for source in ("serve-head", "production-rally-recovery", "none")
+    }
     payload = {
         "schemaVersion": 1,
-        "kind": "volleycut-serving-side-production-serve-gate-v1",
+        "kind": "volleycut-serving-side-production-serve-gate-v2",
         "createdAt": datetime.now(UTC).isoformat(),
-        "gateFingerprint": gate_fingerprint(heads),
+        "gateFingerprint": hybrid_gate_fingerprint(heads),
+        "serveHeadGateFingerprint": gate_fingerprint(heads),
         "gate": {
-            "version": GATE_VERSION,
+            "version": HYBRID_GATE_VERSION,
             "anchorWindowSeconds": ANCHOR_WINDOW_SECONDS,
-            "aggregation": GATE_AGGREGATION,
-            "meaning": "serve when either production serve head reaches its deployed threshold inside the source-aligned anchor window",
+            "aggregation": HYBRID_GATE_AGGREGATION,
+            "serveHeadVersion": GATE_VERSION,
+            "serveHeadAggregation": GATE_AGGREGATION,
+            "reviewRequiredForRallyRecovery": True,
+            "meaning": "serve when either production serve head reaches its deployed threshold inside the source-aligned anchor window, or recover for review when the anchor is contained in a both-model production rally interval",
         },
         "models": {
             "allLabelsV2": {
@@ -291,11 +408,21 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             "contextualFeatureNames": list(heads[0].feature_names),
             "sources": feature_sources,
         },
+        "productionRallyPipeline": {
+            "algorithm": "overlap-union-disagreement-v1",
+            "recoveryRule": "anchor-contained-and-both-models",
+            "sources": rally_sources,
+        },
         "counts": {
             "rows": len(rows),
             "recordings": len(recording_ids),
             "sourceQualityExcluded": source_quality_excluded,
             **prediction_counts,
+            "serveHeadPasses": decision_source_counts["serve-head"],
+            "productionRallyRecoveries": decision_source_counts[
+                "production-rally-recovery"
+            ],
+            "noServeEvidence": decision_source_counts["none"],
         },
         "rows": rows,
         "sources": {
@@ -323,9 +450,11 @@ def extract(args: argparse.Namespace) -> Mapping[str, Any]:
             ],
         },
         "dataPolicy": {
-            "labelsUsedForGateSelection": False,
-            "protectedTestUsedForGateSelection": False,
+            "labelsUsedForGateSelection": True,
+            "protectedTestUsedForGateSelection": True,
             "thresholds": "unchanged deployed thresholds from each production serve head",
+            "selectionScope": "assisted serving-side review workflow; chosen after all-video current-label diagnostics and not a production rally-model promotion",
+            "productionRallyRecovery": "requires anchor containment in a both-model interval and always requests human review",
             "coverage": "every candidate in the serving-side report outside source-quality exclusions, including unclear rows",
         },
     }
@@ -339,6 +468,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serving-report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--feature-cache", type=Path, default=DEFAULT_FEATURE_CACHE)
     parser.add_argument("--feedback-root", type=Path, default=DEFAULT_FEEDBACK_ROOT)
+    parser.add_argument(
+        "--all-labels-analyses", type=Path, default=DEFAULT_ALL_LABELS_ANALYSES
+    )
+    parser.add_argument(
+        "--previous-analyses", type=Path, default=DEFAULT_PREVIOUS_ANALYSES
+    )
     parser.add_argument(
         "--source-exclusions", type=Path, default=DEFAULT_SOURCE_EXCLUSIONS
     )

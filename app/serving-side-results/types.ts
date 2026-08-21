@@ -1,6 +1,10 @@
 export type ServingSideResultSide = "near" | "far";
 export type ServingSideHumanLabel = ServingSideResultSide | "not-serve";
 export type ServingSideServePrediction = "serve" | "not-serve";
+export type ServingSideServeDecisionSource =
+  | "serve-head"
+  | "production-rally-recovery"
+  | "none";
 export type ServingSideReviewRecommendation = "near" | "far" | "review";
 
 export type ServingSideReviewPolicy = {
@@ -25,6 +29,20 @@ export type ServingSideServeHeadEvidence = {
   };
 };
 
+export type ServingSideProductionRallyEvidence = {
+  anchorContained: boolean;
+  bothModels: boolean;
+  recoversServe: boolean;
+  interval: null | {
+    start: number;
+    end: number;
+    agreement:
+      | "both-models"
+      | "all-labels-v2-only"
+      | "previous-production-only";
+  };
+};
+
 export type ServingSideResult = {
   rallyId: string;
   recordingId: string;
@@ -41,11 +59,14 @@ export type ServingSideResult = {
   humanCorrected: boolean;
   prediction: ServingSideResultSide;
   servePrediction: ServingSideServePrediction;
+  serveDecisionSource: ServingSideServeDecisionSource;
+  serveReviewRecommended: boolean;
   finalPrediction: ServingSideHumanLabel;
   serveEvidence: {
     serveAnchor: number;
     allLabelsV2: ServingSideServeHeadEvidence;
     previousProduction: ServingSideServeHeadEvidence;
+    productionRally: ServingSideProductionRallyEvidence | null;
   };
   nearProbability: number;
   reviewRecommendation: ServingSideReviewRecommendation | null;
@@ -63,6 +84,10 @@ export type ServingSideServeGateMetrics = {
   falseServes: number;
   missedServes: number;
   trueNotServes: number;
+  serveHeadPasses: number;
+  recoveredServes: number;
+  recoveredTrueServes: number;
+  recoveredFalseServes: number;
   precision: number;
   recall: number;
   specificity: number;

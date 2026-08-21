@@ -3,11 +3,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
+  ServingSideProductionRallyEvidence,
   ServingSideResult,
   ServingSideResultMetrics,
   ServingSideResultRecording,
   ServingSideResultsData,
   ServingSideReviewPolicy,
+  ServingSideServeDecisionSource,
   ServingSideServeHeadEvidence,
   ServingSideServePrediction,
 } from "@/app/serving-side-results/types";
@@ -23,7 +25,7 @@ import {
 } from "./serving-side-review.ts";
 
 const DEFAULT_EVALUATION_PATH =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-dual-serve-gate-all-video-inference-v1.json";
+  "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-hybrid-serve-gate-all-video-inference-v2.json";
 
 export class ServingSideResultsError extends Error {}
 
@@ -90,6 +92,22 @@ function servePrediction(
 ): ServingSideServePrediction {
   if (value !== "serve" && value !== "not-serve") {
     throw new ServingSideResultsError(`${label} is not serve or not-serve`);
+  }
+  return value;
+}
+
+function serveDecisionSource(
+  value: unknown,
+  fallback: ServingSideServeDecisionSource,
+  label: string,
+): ServingSideServeDecisionSource {
+  if (value === undefined) return fallback;
+  if (
+    value !== "serve-head" &&
+    value !== "production-rally-recovery" &&
+    value !== "none"
+  ) {
+    throw new ServingSideResultsError(`${label} is invalid`);
   }
   return value;
 }
@@ -207,6 +225,56 @@ function serveHeadEvidence(
   };
 }
 
+function productionRallyEvidence(
+  value: unknown,
+  label: string,
+): ServingSideProductionRallyEvidence | null {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value)) {
+    throw new ServingSideResultsError(`${label} is unavailable`);
+  }
+  const anchorContained = value.anchorContained;
+  const bothModels = value.bothModels;
+  const recoversServe = value.recoversServe;
+  if (
+    typeof anchorContained !== "boolean" ||
+    typeof bothModels !== "boolean" ||
+    typeof recoversServe !== "boolean"
+  ) {
+    throw new ServingSideResultsError(`${label} flags are invalid`);
+  }
+  let interval: ServingSideProductionRallyEvidence["interval"] = null;
+  if (value.interval !== null) {
+    if (!isRecord(value.interval)) {
+      throw new ServingSideResultsError(`${label} interval is invalid`);
+    }
+    const agreement = value.interval.agreement;
+    if (
+      agreement !== "both-models" &&
+      agreement !== "all-labels-v2-only" &&
+      agreement !== "previous-production-only"
+    ) {
+      throw new ServingSideResultsError(`${label} agreement is invalid`);
+    }
+    const start = finiteNumber(value.interval.start, `${label} interval start`);
+    const end = finiteNumber(value.interval.end, `${label} interval end`);
+    if (start < 0 || end <= start) {
+      throw new ServingSideResultsError(`${label} interval bounds are invalid`);
+    }
+    interval = { start, end, agreement };
+  }
+  if (
+    anchorContained !== (interval !== null) ||
+    bothModels !== (interval?.agreement === "both-models") ||
+    recoversServe !== (anchorContained && bothModels)
+  ) {
+    throw new ServingSideResultsError(
+      `${label} flags disagree with its interval`,
+    );
+  }
+  return { anchorContained, bothModels, recoversServe, interval };
+}
+
 function sha256(content: Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -305,6 +373,16 @@ function serveMetricsForResults(results: ServingSideResult[]) {
   const trueNotServes = results.filter(
     (row) => row.human === "not-serve" && row.servePrediction === "not-serve",
   ).length;
+  const serveHeadPasses = results.filter(
+    (row) => row.serveDecisionSource === "serve-head",
+  ).length;
+  const recovered = results.filter(
+    (row) => row.serveDecisionSource === "production-rally-recovery",
+  );
+  const recoveredTrueServes = recovered.filter(
+    (row) => row.human !== "not-serve",
+  ).length;
+  const recoveredFalseServes = recovered.length - recoveredTrueServes;
   return {
     rows: results.length,
     humanServes: trueServes + missedServes,
@@ -313,6 +391,10 @@ function serveMetricsForResults(results: ServingSideResult[]) {
     falseServes,
     missedServes,
     trueNotServes,
+    serveHeadPasses,
+    recoveredServes: recovered.length,
+    recoveredTrueServes,
+    recoveredFalseServes,
     precision: ratio(trueServes, trueServes + falseServes),
     recall: ratio(trueServes, trueServes + missedServes),
     specificity: ratio(trueNotServes, trueNotServes + falseServes),
@@ -504,17 +586,6 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
         `Review recommendation ${rallyId} disagrees with the frozen policy`,
       );
     }
-    const modelServePrediction = servePrediction(
-      prediction.servePrediction,
-      `serve prediction ${rallyId}`,
-    );
-    const finalPrediction =
-      modelServePrediction === "serve" ? model : "not-serve";
-    if (prediction.finalPrediction !== finalPrediction) {
-      throw new ServingSideResultsError(
-        `Final prediction ${rallyId} disagrees with its serve gate`,
-      );
-    }
     if (!isRecord(prediction.serveEvidence)) {
       throw new ServingSideResultsError(
         `Serve evidence ${rallyId} is unavailable`,
@@ -526,6 +597,14 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
         `Serve heads ${rallyId} are unavailable`,
       );
     }
+    const allLabelsV2Evidence = serveHeadEvidence(
+      heads.allLabelsV2,
+      `all-labels V2 serve evidence ${rallyId}`,
+    );
+    const previousProductionEvidence = serveHeadEvidence(
+      heads.previousProduction,
+      `previous-production serve evidence ${rallyId}`,
+    );
     const serveAnchor = finiteNumber(
       prediction.serveEvidence.serveAnchor,
       `serve evidence anchor ${rallyId}`,
@@ -537,6 +616,75 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
     ) {
       throw new ServingSideResultsError(
         `Serve evidence ${rallyId} is misaligned`,
+      );
+    }
+    const modelServePrediction = servePrediction(
+      prediction.servePrediction,
+      `serve prediction ${rallyId}`,
+    );
+    const productionRally = productionRallyEvidence(
+      prediction.serveEvidence.productionRally,
+      `production rally evidence ${rallyId}`,
+    );
+    const expectedDecisionSource: ServingSideServeDecisionSource =
+      modelServePrediction === "not-serve"
+        ? "none"
+        : productionRally?.recoversServe
+          ? "production-rally-recovery"
+          : "serve-head";
+    const modelServeDecisionSource = serveDecisionSource(
+      prediction.serveDecisionSource,
+      expectedDecisionSource,
+      `serve decision source ${rallyId}`,
+    );
+    const serveReviewRecommended =
+      prediction.serveReviewRecommended === undefined
+        ? false
+        : prediction.serveReviewRecommended;
+    if (typeof serveReviewRecommended !== "boolean") {
+      throw new ServingSideResultsError(
+        `Serve review recommendation ${rallyId} is invalid`,
+      );
+    }
+    if (
+      productionRally?.interval &&
+      !(
+        productionRally.interval.start <= serveAnchor &&
+        serveAnchor < productionRally.interval.end
+      )
+    ) {
+      throw new ServingSideResultsError(
+        `Production rally evidence ${rallyId} does not contain its anchor`,
+      );
+    }
+    const headsPass =
+      allLabelsV2Evidence.crossesThreshold ||
+      previousProductionEvidence.crossesThreshold;
+    const expectedPrediction = headsPass
+      ? "serve"
+      : productionRally?.recoversServe
+        ? "serve"
+        : "not-serve";
+    const expectedSource: ServingSideServeDecisionSource = headsPass
+      ? "serve-head"
+      : productionRally?.recoversServe
+        ? "production-rally-recovery"
+        : "none";
+    if (
+      modelServePrediction !== expectedPrediction ||
+      modelServeDecisionSource !== expectedSource ||
+      serveReviewRecommended !==
+        (modelServeDecisionSource === "production-rally-recovery")
+    ) {
+      throw new ServingSideResultsError(
+        `Serve decision ${rallyId} disagrees with its hybrid gate evidence`,
+      );
+    }
+    const finalPrediction =
+      modelServePrediction === "serve" ? model : "not-serve";
+    if (prediction.finalPrediction !== finalPrediction) {
+      throw new ServingSideResultsError(
+        `Final prediction ${rallyId} disagrees with its serve gate`,
       );
     }
     return {
@@ -557,17 +705,14 @@ export async function loadServingSideResults(): Promise<ServingSideResultsData> 
       humanCorrected: human !== originalHuman,
       prediction: model,
       servePrediction: modelServePrediction,
+      serveDecisionSource: modelServeDecisionSource,
+      serveReviewRecommended,
       finalPrediction,
       serveEvidence: {
         serveAnchor,
-        allLabelsV2: serveHeadEvidence(
-          heads.allLabelsV2,
-          `all-labels V2 serve evidence ${rallyId}`,
-        ),
-        previousProduction: serveHeadEvidence(
-          heads.previousProduction,
-          `previous-production serve evidence ${rallyId}`,
-        ),
+        allLabelsV2: allLabelsV2Evidence,
+        previousProduction: previousProductionEvidence,
+        productionRally,
       },
       nearProbability,
       reviewRecommendation: expectedReviewRecommendation,

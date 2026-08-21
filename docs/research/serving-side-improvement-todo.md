@@ -345,3 +345,48 @@ human label was correct. This is a verification event, not a correction event:
 No retraining is required from this review because the effective training labels are
 unchanged. The next useful iteration would use these confirmations to suppress already
 reviewed active-learning rows or compare a genuinely new development-only model.
+
+## Hybrid serve-gate recovery
+
+- [x] Confirm that `not-serve` is produced only by the separate dual production
+  serve-head gate; the fixed-flight side model always emits `near` or `far`.
+- [x] Audit the 56 current true serves rejected by that gate. Their hidden side is
+  correct for 48/56 (85.714%), and 51/56 overlap a production-ensemble rally.
+- [x] Implement the user-selected conservative fallback: after both serve heads miss,
+  recover only when the saved anchor is contained in a `both-models` production rally
+  interval. Every recovered row requires review.
+- [x] Version exact production interval provenance and matching all-video fixed-flight
+  inference on the NAS. Do not overwrite the serve-head-only artifacts.
+- [x] Route rally-recovered rows into the results UI uncertainty queue and expose a
+  dedicated filter, decision source, interval bounds, agreement, and live metrics.
+
+Current-label outcome on the unchanged 1,114-row UI universe:
+
+- 35 recovered rows: 34 true serves and one current human non-serve.
+- Serve-head-only versus hybrid: missed serves 56 → 22, false serves 3 → 4,
+  serve recall 94.937% → 98.011%, and serve precision 99.715% → 99.632%.
+- The side model is correct on 30/34 recovered true serves (88.235%).
+- Side-score uncertainty contains 24 rows, serve recovery contains 35, and their
+  two-row overlap yields 57 unique review candidates.
+- Evidence artifact:
+  `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-serve-gate-v2/all-reviewed.json`,
+  SHA-256 `9ac4071f125030b0a8f1de037e48aa48b73f30f71fa6df8a302b70ed2db5344f`.
+- Inference artifact:
+  `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-hybrid-serve-gate-all-video-inference-v2.json`,
+  SHA-256 `a7135cd509df3b0063e4634c99d314afb06d1df5552e292b5c17339a1671e722`.
+
+Selection caveat: this fallback was chosen after current-label all-video diagnostics,
+including the historically opened protected recording. Treat it as an assisted review
+workflow, never as clean held-out evidence for a future model or production promotion.
+
+Hybrid-gate verification:
+
+- Four focused Python gate tests and three serving-side web tests pass.
+- `npm run test:analysis`: 548 tests passed, 4 skipped.
+- `npx tsc --noEmit`, targeted Biome checks, and `npm run build` pass; the build
+  generated all 22 routes and retained only the two previously recorded dynamic-filesystem
+  tracing warnings.
+- The broader web suite still has the same three unrelated model-feedback/suppression
+  assertion failures; all serving-side tests pass.
+- The default server loader validated the immutable hybrid artifact, and a live LAN
+  render displayed the rally-recovered filter and both-model recovery explanation.

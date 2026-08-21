@@ -36,11 +36,11 @@ DEFAULT_DEVELOPMENT_FEATURES = (
 DEFAULT_PROTECTED_FEATURES = ROOT / "features/serving-side-flight-v4/protected-test.json"
 DEFAULT_SERVE_EVIDENCE = (
     ROOT
-    / "reports/serving-side/serving-side-specialist-v4-dual-serve-gate-all-video-inference-v3.json"
+    / "features/serving-side-serve-gate-v2/all-reviewed.json"
 )
 DEFAULT_OUTPUT = (
     ROOT
-    / "reports/serving-side/serving-side-flight-v3-dual-serve-gate-all-video-inference-v1.json"
+    / "reports/serving-side/serving-side-flight-v3-hybrid-serve-gate-all-video-inference-v2.json"
 )
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 IMPLEMENTATION_PATHS = (
@@ -156,32 +156,56 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
     threshold = float(model.threshold)
     choices = probabilities >= threshold
 
-    old_predictions_value = serve_evidence.get("predictions")
-    if not isinstance(old_predictions_value, list) or not all(
-        isinstance(row, Mapping) for row in old_predictions_value
+    serve_rows_value = serve_evidence.get("rows")
+    if not isinstance(serve_rows_value, list) or not all(
+        isinstance(row, Mapping) for row in serve_rows_value
     ):
-        raise ValueError("serve evidence prediction rows are unavailable")
-    old_by_id = {str(row["rallyId"]): row for row in old_predictions_value}
-    if set(old_by_id) != {str(row["rallyId"]) for row in rows}:
-        raise ValueError("fixed-flight rows do not exactly match the serve-evidence universe")
+        raise ValueError("hybrid serve-gate evidence rows are unavailable")
+    serve_by_id = {str(row["rallyId"]): row for row in serve_rows_value}
+    row_ids = {str(row["rallyId"]) for row in rows}
+    if not row_ids.issubset(serve_by_id):
+        raise ValueError("fixed-flight rows are missing hybrid serve-gate evidence")
     recommended = calibration["abstentionSelection"]["recommended"]
     far_threshold = float(recommended["farThreshold"])
     near_threshold = float(recommended["nearThreshold"])
     predictions = []
     for row, probability, choice in zip(rows, probabilities, choices, strict=True):
         rally_id = str(row["rallyId"])
-        old = old_by_id[rally_id]
+        evidence = serve_by_id[rally_id]
         side = "near" if choice else "far"
-        serve_prediction = str(old["servePrediction"])
+        serve_prediction = str(evidence["prediction"])
         if serve_prediction not in {"serve", "not-serve"}:
             raise ValueError(f"invalid serve prediction for {rally_id}")
+        decision_source = str(evidence.get("decisionSource"))
+        if decision_source not in {
+            "serve-head",
+            "production-rally-recovery",
+            "none",
+        }:
+            raise ValueError(f"invalid serve decision source for {rally_id}")
         predictions.append(
             {
-                **old,
+                "rallyId": rally_id,
+                "recordingId": row["recordingId"],
+                "environment": row["environment"],
+                "split": row["sourceSplit"],
                 "decision": row["decision"],
                 "nearProbability": float(probability),
                 "prediction": side,
+                "servePrediction": serve_prediction,
+                "serveDecisionSource": decision_source,
+                "serveReviewRecommended": bool(evidence["reviewRecommended"]),
                 "finalPrediction": side if serve_prediction == "serve" else "not-serve",
+                "serveEvidence": {
+                    "serveAnchor": evidence["serveAnchor"],
+                    "heads": evidence["heads"],
+                    "productionRally": evidence["productionRally"],
+                },
+                "evaluationRole": (
+                    "protected-test"
+                    if row["sourceSplit"] == "test"
+                    else "development-in-sample"
+                ),
                 "reviewRecommendation": _review_decision(
                     float(probability), far_threshold, near_threshold
                 ),
@@ -200,11 +224,11 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
         raise ValueError("serve evidence source bindings are unavailable")
     result = {
         "schemaVersion": 1,
-        "kind": "volleycut-serving-side-flight-v3-dual-serve-gate-all-video-inference",
+        "kind": "volleycut-serving-side-flight-v3-hybrid-serve-gate-all-video-inference",
         "createdAt": datetime.now(UTC).isoformat(),
         "modelFingerprint": fingerprint,
-        "serveGateFingerprint": serve_evidence["serveGateFingerprint"],
-        "serveGate": serve_evidence["serveGate"],
+        "serveGateFingerprint": serve_evidence["gateFingerprint"],
+        "serveGate": serve_evidence["gate"],
         "threshold": threshold,
         "featureFamily": final_model["featureFamily"],
         "modelFamily": final_model["parameters"]["family"],
@@ -235,6 +259,18 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
                     & (probabilities < near_threshold)
                 )
             ),
+            "serveReviewRecommended": sum(
+                prediction["serveReviewRecommended"] for prediction in predictions
+            ),
+            "serveHeadPredictions": sum(
+                prediction["serveDecisionSource"] == "serve-head"
+                for prediction in predictions
+            ),
+            "productionRallyRecoveries": sum(
+                prediction["serveDecisionSource"]
+                == "production-rally-recovery"
+                for prediction in predictions
+            ),
             "servePredictions": sum(
                 prediction["servePrediction"] == "serve" for prediction in predictions
             ),
@@ -248,13 +284,13 @@ def infer(args: argparse.Namespace) -> Mapping[str, Any]:
             "training": "fixed-flight model fitted only on correction-clean development rows",
             "reviewPolicySelection": "development only; protected rows were not loaded until thresholds were frozen",
             "protectedTest": "post-selection inference only; never used to change the model, calibration, or review band",
-            "serveGate": serve_evidence["dataPolicy"]["serveGate"],
+            "serveGate": serve_evidence["dataPolicy"],
         },
         "sources": {
             "servingSideReport": sources["servingSideReport"],
-            "reviewDecisions": sources["reviewDecisions"],
-            "humanLabelCorrections": sources["humanLabelCorrections"],
-            "sourceQualityExclusions": sources["sourceQualityExclusions"],
+            "reviewDecisions": development["sources"]["reviewDecisions"],
+            "humanLabelCorrections": development["sources"]["humanLabelCorrections"],
+            "sourceQualityExclusions": development["sources"]["sourceQualityExclusions"],
             "serveGateEvidence": _source(serve_path),
             "fixedFlightEvaluation": _source(model_path),
             "calibrationPolicy": _source(calibration_path),

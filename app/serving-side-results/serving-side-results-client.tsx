@@ -23,6 +23,7 @@ type OutcomeFilter =
   | "uncertain"
   | "near-as-far"
   | "far-as-near"
+  | "rally-recovered"
   | "serve-as-not-serve"
   | "not-serve-as-serve"
   | "not-serve";
@@ -43,6 +44,7 @@ const OUTCOME_FILTERS: Array<{ value: OutcomeFilter; label: string }> = [
   { value: "correct", label: "Correct" },
   { value: "near-as-far", label: "Near recall misses" },
   { value: "far-as-near", label: "Far recall misses" },
+  { value: "rally-recovered", label: "Rally-recovered serves" },
   { value: "serve-as-not-serve", label: "Serve gate misses" },
   { value: "not-serve-as-serve", label: "False serves" },
   { value: "not-serve", label: "Not a serve" },
@@ -93,11 +95,16 @@ function matchesOutcome(
 ): boolean {
   if (outcome === "wrong") return !result.correct;
   if (outcome === "correct") return result.correct;
-  if (outcome === "uncertain") return result.reviewRecommendation === "review";
+  if (outcome === "uncertain")
+    return (
+      result.reviewRecommendation === "review" || result.serveReviewRecommended
+    );
   if (outcome === "near-as-far")
     return result.human === "near" && result.finalPrediction !== "near";
   if (outcome === "far-as-near")
     return result.human === "far" && result.finalPrediction !== "far";
+  if (outcome === "rally-recovered")
+    return result.serveDecisionSource === "production-rally-recovery";
   if (outcome === "serve-as-not-serve")
     return (
       result.human !== "not-serve" && result.servePrediction === "not-serve"
@@ -114,14 +121,22 @@ function confidence(result: ServingSideResult): number {
     : 1 - result.nearProbability;
 }
 
+function needsReview(result: ServingSideResult): boolean {
+  return (
+    result.reviewRecommendation === "review" || result.serveReviewRecommended
+  );
+}
+
 function recordingMetrics(rows: ServingSideResult[]) {
   const near = rows.filter((row) => row.human === "near");
   const far = rows.filter((row) => row.human === "far");
   return {
     rows: near.length + far.length,
     notServes: rows.filter((row) => row.human === "not-serve").length,
-    uncertain: rows.filter((row) => row.reviewRecommendation === "review")
-      .length,
+    uncertain: rows.filter(needsReview).length,
+    recoveredServes: rows.filter(
+      (row) => row.serveDecisionSource === "production-rally-recovery",
+    ).length,
     serveGateMisses: rows.filter(
       (row) => row.human !== "not-serve" && row.servePrediction === "not-serve",
     ).length,
@@ -237,7 +252,7 @@ function ResultTimeline({
             type="button"
             className={styles.timelineEvent}
             data-outcome={
-              row.reviewRecommendation === "review"
+              needsReview(row)
                 ? "uncertain"
                 : row.correct
                   ? row.human === "not-serve"
@@ -576,6 +591,12 @@ function LoadedResults({
               {percentage(data.serveGateMetrics.recall)}
             </b>
           )}
+          {isAllVideoInference && data.serveGateMetrics.recoveredServes > 0 && (
+            <b>
+              {data.serveGateMetrics.recoveredServes} rally-recovered ·{" "}
+              {data.serveGateMetrics.recoveredTrueServes} true serves
+            </b>
+          )}
         </div>
       </header>
 
@@ -594,6 +615,10 @@ function LoadedResults({
         <div>
           <span>Uncertain</span>
           <strong data-tone="warning">{localMetrics.uncertain}</strong>
+        </div>
+        <div>
+          <span>Rally-recovered</span>
+          <strong data-tone="warning">{localMetrics.recoveredServes}</strong>
         </div>
         <div>
           <span>Serve gate misses</span>
@@ -715,9 +740,11 @@ function LoadedResults({
                 <span className={base.queueScore}>
                   {row.servePrediction === "not-serve"
                     ? "NO SERVE"
-                    : row.reviewRecommendation === "review"
-                      ? "REVIEW"
-                      : percentage(confidence(row), 0)}
+                    : row.serveReviewRecommended
+                      ? "RECOVERED"
+                      : row.reviewRecommendation === "review"
+                        ? "REVIEW"
+                        : percentage(confidence(row), 0)}
                   <i data-decision={row.correct ? row.human : "unclear"} />
                 </span>
               </button>
@@ -779,7 +806,14 @@ function LoadedResults({
                 <div>
                   <span>Is this a serve?</span>
                   <strong>{selected.servePrediction}</strong>
-                  <small>either production head must pass</small>
+                  <small>
+                    {selected.serveDecisionSource ===
+                    "production-rally-recovery"
+                      ? "recovered by both-model production rally"
+                      : selected.serveDecisionSource === "serve-head"
+                        ? "at least one production serve head passed"
+                        : "no serve-head or both-model rally evidence"}
+                  </small>
                 </div>
                 <div>
                   <span>Serving side</span>
@@ -795,7 +829,7 @@ function LoadedResults({
                 <div className={styles.outcome}>
                   <span>Outcome · review policy</span>
                   <strong>
-                    {selected.reviewRecommendation === "review"
+                    {needsReview(selected)
                       ? "Review"
                       : selected.correct
                         ? "Correct"
@@ -803,9 +837,11 @@ function LoadedResults({
                   </strong>
                   <small>
                     final prediction {selected.finalPrediction}
-                    {selected.reviewRecommendation === "review"
-                      ? " · uncertain side score"
-                      : " · automatic side score"}
+                    {selected.serveReviewRecommended
+                      ? " · rally-evidence recovery"
+                      : selected.reviewRecommendation === "review"
+                        ? " · uncertain side score"
+                        : " · automatic side score"}
                   </small>
                 </div>
               </section>
@@ -1001,8 +1037,27 @@ function LoadedResults({
                 </div>
                 <small className={styles.gateNote}>
                   Maximum source-aligned score within ±1 second of the candidate
-                  anchor. Either head passing marks this as a serve.
+                  anchor. Either head passing marks this as a serve. If both
+                  miss, an anchor contained in a both-model production rally
+                  recovers the side and requires review.
                 </small>
+                {selected.serveEvidence.productionRally?.interval && (
+                  <small className={styles.gateNote}>
+                    Production rally{" "}
+                    {formatTime(
+                      selected.serveEvidence.productionRally.interval.start,
+                    )}
+                    –
+                    {formatTime(
+                      selected.serveEvidence.productionRally.interval.end,
+                    )}{" "}
+                    ·{" "}
+                    {selected.serveEvidence.productionRally.interval.agreement}
+                    {selected.serveEvidence.productionRally.recoversServe
+                      ? " · anchor contained · serve recovered"
+                      : " · no recovery"}
+                  </small>
+                )}
               </section>
 
               <section className={styles.probabilityPanel}>

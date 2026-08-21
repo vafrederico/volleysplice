@@ -6,9 +6,13 @@ from pathlib import Path
 import numpy as np
 
 from analysis.production_serve_gate import (
+    ProductionRallyInterval,
     anchor_evidence,
     dual_head_prediction,
+    hybrid_gate_prediction,
     load_production_serve_head,
+    merge_production_rally_intervals,
+    production_rally_anchor_evidence,
 )
 from analysis.serve import ServeDetection
 
@@ -66,6 +70,62 @@ class ProductionServeGateTest(unittest.TestCase):
             5.0,
         )
         self.assertEqual(dual_head_prediction([v2, previous_below]), "not-serve")
+
+    def test_production_rally_merge_preserves_agreement_and_touching_cuts(self) -> None:
+        merged = merge_production_rally_intervals(
+            [
+                {"start": 10.0, "end": 14.0, "included": True},
+                {"start": 20.0, "end": 22.0, "included": True},
+            ],
+            [
+                {"start": 12.0, "end": 16.0, "included": True},
+                {"start": 16.0, "end": 18.0, "included": True},
+                {"start": 22.0, "end": 24.0, "included": True},
+            ],
+        )
+        self.assertEqual(
+            merged,
+            (
+                ProductionRallyInterval(10.0, 16.0, "both-models"),
+                ProductionRallyInterval(16.0, 18.0, "previous-production-only"),
+                ProductionRallyInterval(20.0, 22.0, "all-labels-v2-only"),
+                ProductionRallyInterval(22.0, 24.0, "previous-production-only"),
+            ),
+        )
+
+    def test_hybrid_gate_recovers_only_both_model_anchor_containment(self) -> None:
+        times = np.asarray([5.0])
+        below = [
+            anchor_evidence(
+                head,
+                times,
+                np.asarray([head.decoder.threshold - 0.01], dtype=np.float32),
+                [],
+                5.0,
+            )
+            for head in (self.v2, self.previous)
+        ]
+        both = production_rally_anchor_evidence(
+            [ProductionRallyInterval(4.0, 8.0, "both-models")], 5.0
+        )
+        self.assertEqual(
+            hybrid_gate_prediction(below, both),
+            ("serve", "production-rally-recovery", True),
+        )
+        one_model = production_rally_anchor_evidence(
+            [ProductionRallyInterval(4.0, 8.0, "all-labels-v2-only")], 5.0
+        )
+        self.assertEqual(
+            hybrid_gate_prediction(below, one_model),
+            ("not-serve", "none", False),
+        )
+        outside = production_rally_anchor_evidence(
+            [ProductionRallyInterval(6.0, 8.0, "both-models")], 5.0
+        )
+        self.assertEqual(
+            hybrid_gate_prediction(below, outside),
+            ("not-serve", "none", False),
+        )
 
 
 if __name__ == "__main__":
