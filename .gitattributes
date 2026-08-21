@@ -1,2 +1,3 @@
 vendor/libswresample-wasm/dist/libswresample.mjs text eol=lf whitespace=-blank-at-eol
 prod/public/runtime/libswresample.mjs text eol=lf
+android/*.sh text eol=lf
