@@ -186,6 +186,24 @@
 .roiGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .roiGrid label span { display: flex; justify-content: space-between; color: #77796f; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
 .roiGrid input { width: 100%; margin-top: 8px; accent-color: var(--orange); }
+.servingSideToggle {
+  margin-top: 18px;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #aaa;
+  background: #fff;
+  cursor: pointer;
+}
+.servingSideToggle[data-enabled="true"] {
+  border-color: #769322;
+  background: #f7ffdb;
+}
+.servingSideToggle input { margin: 2px 0 0; accent-color: var(--orange); }
+.servingSideToggle > span { display: grid; gap: 4px; }
+.servingSideToggle strong { font-size: 11px; }
+.servingSideToggle small { color: #686b62; font: 500 9px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .analyzeButton { width: 100%; min-height: 48px; margin-top: 19px; padding: 13px; border: 0; color: var(--ink); background: var(--acid); cursor: pointer; font-size: 12px; font-weight: 800; }
 .analyzeButton:disabled { color: #8b8d84; background: #dddcd4; cursor: wait; }
 .runtimeNote { display: block; margin-top: 12px; }

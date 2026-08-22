@@ -145,6 +145,7 @@ export function App() {
     start: 0,
     end: 0,
   });
+  const [servingSideEnabled, setServingSideEnabled] = useState(true);
   const [candidateProgress, setCandidateProgress] =
     useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -214,6 +215,7 @@ export function App() {
     if (!project?.analysis || project.status !== "ready") return;
     commitProject({
       ...project,
+      servingSideEnabled: true,
       analysis: { ...project.analysis, servingSide },
       updatedAt: new Date().toISOString(),
     });
@@ -231,6 +233,7 @@ export function App() {
     setInfo(null);
     setRoi(FULL_FRAME_ROI);
     setAnalysisWindow({ start: 0, end: 0 });
+    setServingSideEnabled(true);
     setCandidateProgress(null);
     setError(null);
     setWorkState("empty");
@@ -513,6 +516,7 @@ export function App() {
       info,
       analysisWindow: normalizedWindow,
       roi,
+      servingSideEnabled,
       status: "queued",
       analysis: null,
       error: null,
@@ -599,7 +603,10 @@ export function App() {
       );
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
       let completedAnalysis = result;
-      if (result.productionServeOutputs) {
+      if (
+        running.servingSideEnabled !== false &&
+        result.productionServeOutputs
+      ) {
         try {
           const { inferServingSides } = await import(
             "@/lib/on-device/serving-side"
@@ -849,6 +856,9 @@ export function App() {
         key={productAnalysis.id}
         header={projectHeader}
         initialAnalysis={productAnalysis}
+        initialScoreTrackingEnabled={
+          selectedProject.servingSideEnabled !== false
+        }
         importedInitialDraft={
           selectedProject.importedFeedback?.initialDraft
         }
@@ -1218,6 +1228,27 @@ export function App() {
                     ))}
                   </div>
                 </div>
+                <label
+                  className={styles.servingSideToggle}
+                  data-enabled={servingSideEnabled || undefined}
+                >
+                  <input
+                    type="checkbox"
+                    checked={servingSideEnabled}
+                    onChange={(event) =>
+                      setServingSideEnabled(event.currentTarget.checked)
+                    }
+                    disabled={busy}
+                  />
+                  <span>
+                    <strong>Generate serving-side score tracking</strong>
+                    <small>
+                      Samples extra video frames after rally inference. Turn this
+                      off for a faster project setup; you can enable it later in
+                      the editor.
+                    </small>
+                  </span>
+                </label>
                 <button
                   className={styles.analyzeButton}
                   data-tour="source-create"

@@ -74,10 +74,10 @@ export type DerivedScore = {
   reviewPointCount: number;
 };
 
-export function createScoreTracking(): ScoreTracking {
+export function createScoreTracking(enabled = true): ScoreTracking {
   return {
     version: SCORE_TRACKING_SCHEMA_VERSION,
-    enabled: true,
+    enabled,
     team1Name: "Team 1",
     team2Name: "Team 2",
     serveMarkers: [],

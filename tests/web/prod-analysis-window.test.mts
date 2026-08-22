@@ -33,3 +33,20 @@ test("production editor padding is clipped to the marked game window", () => {
     { start: 20, end: 100, cutIds: ["R001"] },
   ]);
 });
+
+test("project creation can defer score-tracking analysis", () => {
+  const seed = {
+    analysisId: "score-tracking-option",
+    recordingId: "recording",
+    duration: 120,
+    rallies: [],
+    ignoredIntervals: [],
+  };
+
+  assert.equal(createCutDraft(seed).scoreTracking.enabled, true);
+  assert.equal(
+    createCutDraft({ ...seed, scoreTrackingEnabled: false }).scoreTracking
+      .enabled,
+    false,
+  );
+});

@@ -81,6 +81,7 @@ import styles from "./CutEditor.module.css";
 type CutEditorProps = {
   header: ReactNode;
   initialAnalysis: ProductAnalysis;
+  initialScoreTrackingEnabled: boolean;
   importedInitialDraft?: CutDraft;
   sourceFile: File | null;
   sourceError: string | null;
@@ -186,6 +187,7 @@ function modelAgreementLabel(cut: EditableCut): string {
 export function CutEditor({
   header,
   initialAnalysis,
+  initialScoreTrackingEnabled,
   importedInitialDraft,
   sourceFile,
   sourceError,
@@ -216,11 +218,12 @@ export function CutEditor({
       duration: initialAnalysis.duration,
       analysisStart,
       analysisEnd,
+      scoreTrackingEnabled: initialScoreTrackingEnabled,
       rallies: initialAnalysis.rallies,
       ignoredIntervals: initialAnalysis.ignoredIntervals,
       suppressionContractVersion: initialAnalysis.suppression?.policyContractVersion,
     }),
-    [initialAnalysis, analysisStart, analysisEnd],
+    [initialAnalysis, initialScoreTrackingEnabled, analysisStart, analysisEnd],
   );
   const initialDraft = useMemo(() => createCutDraft(seed), [seed]);
   const [draft, setDraft] = useState<CutDraft>(initialDraft);

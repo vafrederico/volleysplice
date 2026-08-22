@@ -48,6 +48,8 @@ export type VolleyCutProject = {
   info: OnDeviceMediaInfo;
   analysisWindow: AnalysisWindow;
   roi: NormalizedRoi;
+  /** Whether project creation should eagerly generate serving-side features. */
+  servingSideEnabled?: boolean;
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
   error: string | null;
@@ -476,6 +478,8 @@ function validProject(value: unknown): value is VolleyCutProject {
     (project.analysisWindow === undefined ||
       validAnalysisWindow(project.analysisWindow, project.info.duration)) &&
     validRoi(project.roi) &&
+    (project.servingSideEnabled === undefined ||
+      typeof project.servingSideEnabled === "boolean") &&
     typeof project.status === "string" &&
     statuses.includes(project.status as ProjectStatus) &&
     (project.analysis === null ||

@@ -115,6 +115,7 @@ export type CutDraftSeed = {
   duration: number;
   analysisStart?: number;
   analysisEnd?: number;
+  scoreTrackingEnabled?: boolean;
   rallies: Rally[];
   ignoredIntervals: IgnoredInterval[];
   suppressionContractVersion?: number;
@@ -228,7 +229,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     userTouchedCutIds: [],
     suppressionContractVersion:
       seed.suppressionContractVersion ?? SUPPRESSION_POLICY_CONTRACT_VERSION,
-    scoreTracking: createScoreTracking(),
+    scoreTracking: createScoreTracking(seed.scoreTrackingEnabled ?? true),
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
       coreStart: clamp(rally.start, bounds.start, bounds.end),
@@ -435,7 +436,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         : seed.suppressionContractVersion ?? SUPPRESSION_POLICY_CONTRACT_VERSION,
       scoreTracking: persistedVersion >= 11
         ? migrateScoreTracking(persisted.scoreTracking, seed.duration) ?? undefined
-        : createScoreTracking(),
+        : createScoreTracking(seed.scoreTrackingEnabled ?? true),
     };
     if (
       value.version !== CUT_DRAFT_VERSION ||
