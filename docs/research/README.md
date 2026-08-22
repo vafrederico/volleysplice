@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch full-video marker audit — 2026-08-21](./side-switch-full-video-marker-audit-2026-08-21.md) — exhaustive 50-event raw-phone truth, one-to-one strict/±4-second proposal matching, 66% candidate-coverage ceiling, all 19 decoder rankings, upstream-versus-decoder miss decomposition, and continued non-promotion.
 - [Side-switch production-state and serve-grounding experiment — 2026-08-20](./side-switch-production-state-experiment-2026-08-20.md) — replay of both shipped rally/serve/dead-state bundles, soft-gate and serve-anchor ablations for V5/V6, modest V5 precision gain, V6/hard-gate rejection, and suppression quarantine.
 - [Side-switch V5 no-cadence experiment — 2026-08-20](./side-switch-v5-no-cadence-2026-08-20.md) — exact V5/V5-state head refit with independent all-gap decisions, 31.43%→80.00% exact recall, direct re-anchoring cascade evidence, immutable artifacts, and review-only non-promotion decision.
 - [Side-switch V5 peak/count/context cleanup — 2026-08-20](./side-switch-v5-peak-cleanup-2026-08-20.md) — cadence-free local-peak NMS, soft post-six count penalty, 19-input production-context auxiliary head, eight locked ablations, positive peak/count result, negative production-gate transfer result, and immutable artifacts.

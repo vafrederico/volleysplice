@@ -107,6 +107,12 @@ explicit/candidate/full-video human marker rails, a per-recording continuous-rev
 flag, production model range labels, and the corrected production-editor/final-export
 timelines. New full-video markers are stored separately from the frozen candidate
 decision artifact.
+The completed 50-event continuous review now provides exhaustive raw-phone truth: only
+33/50 switches are covered by any modern candidate gap with four-second boundary
+allowance. No-cadence V5-state leads the comparable macro-recall ranking at 56.36%,
+while local peak plus soft count has the best pooled F1 at 44.64%; neither is promoted.
+See the
+[`full-video marker audit`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

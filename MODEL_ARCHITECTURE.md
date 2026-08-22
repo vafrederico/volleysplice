@@ -294,6 +294,15 @@ flat at 44.21%. The locked peak+soft-count diagnostic reaches 49.48% exact and 5
 or ported. See
 [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
 
+The later continuous full-video review exposes a larger architectural bottleneck. Only
+33 of 50 confirmed raw-phone switches lie inside any modern candidate gap even after a
+four-second boundary allowance. No decoder over the existing gap stream can exceed 66%
+end-to-end recall on this scope. The no-cadence head recovers 28 events; its remaining
+22 misses split into 17 upstream candidate misses and five decoder misses inside the
+available universe. A successor therefore needs candidate generation independent of
+the production rally intervals, not only another classifier or cadence rule. See
+[`side-switch-full-video-marker-audit-2026-08-21.md`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
+
 ## Production inference and export flow
 
 The complete production path is:

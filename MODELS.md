@@ -249,6 +249,17 @@ The immutable provenance manifest has SHA-256
 `0782d18b53741ba8f63270986c432278ac2d43ff7d8088babfe349acd07d47f9` and binds
 implementation revision `8926e69e12bee18b4fd64cea92f621ede81bc201`.
 
+The completed raw-phone continuous review adds a separate exhaustive evaluation; it
+does not refit or mutate any model above. Fifty direct human points are canonical for
+the 11-recording physical-event audit. With four-second proposal-boundary allowance,
+only 33/50 events are covered by any modern candidate gap. No-cadence V5-state has the
+highest comparable macro recall at 56.36%; independent soft count has the highest macro
+precision at 55.91%; and local peak plus soft count has the best pooled F1 at 44.64%.
+These replace the candidate-conditioned raw-phone numbers when discussing end-to-end
+physical-switch accuracy, but they are post-hoc audit results and do not authorize
+selection or promotion. See
+[`side-switch-full-video-marker-audit-2026-08-21.md`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
+
 ### No-beach full-gold refits
 
 The no-beach root is

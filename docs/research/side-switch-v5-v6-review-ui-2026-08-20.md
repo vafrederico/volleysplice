@@ -78,10 +78,14 @@ Full-video markers and completion state autosave atomically to
 `appearance-review-decisions-full-nas-v1.json`, whose hash is already bound by frozen
 model artifacts. Opening or filtering the page writes neither file.
 
-For a recording marked fully reviewed, the exhaustive human point set is the union of
-its existing candidate decisions whose value is `switch` (at the report transition
-time) and its new full-video markers. The new artifact stores additions rather than
-copying or silently revising the candidate-decision artifact.
+The UI initially treated new points as additions beside existing candidate decisions.
+After the raw-phone continuous pass was completed, the reviewer confirmed that the 50
+new points themselves are the complete physical-switch inventory for those 11 games.
+They are therefore canonical for full-video event evaluation; the earlier candidate
+decisions remain visible seed evidence and are not unioned back into truth, which would
+duplicate events and restore candidate-conditioning. Neither stored artifact is
+rewritten. See
+[`side-switch-full-video-marker-audit-2026-08-21.md`](side-switch-full-video-marker-audit-2026-08-21.md).
 
 ## Artifact binding and overrides
 
