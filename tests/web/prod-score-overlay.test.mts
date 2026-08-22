@@ -1,0 +1,98 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  formatOverlayScore,
+  prepareScoreOverlay,
+  scoreOverlayLayout,
+  scoreOverlaySnapshot,
+} from "../../prod/src/lib/score-overlay.ts";
+import {
+  addServeMarker,
+  createScoreTracking,
+  setPreviousPointIgnored,
+} from "../../prod/src/lib/score-tracking.ts";
+
+function trackingFixture() {
+  let tracking = createScoreTracking();
+  tracking = {
+    ...tracking,
+    team1Name: "Falcons",
+    team2Name: "Waves",
+  };
+  tracking = addServeMarker(tracking, 2, "near", { id: "S1", rallyId: "R1" });
+  tracking = addServeMarker(tracking, 8, "near", { id: "S2", rallyId: "R2" });
+  tracking = addServeMarker(tracking, 14, "far", { id: "S3", rallyId: "R3" });
+  tracking = addServeMarker(tracking, 20, "near", { id: "S4", rallyId: "R4" });
+  return tracking;
+}
+
+test("overlay scores are always padded to at least two digits", () => {
+  assert.equal(formatOverlayScore(0), "00");
+  assert.equal(formatOverlayScore(7), "07");
+  assert.equal(formatOverlayScore(21), "21");
+});
+
+test("overlay snapshot follows source-timeline score history", () => {
+  const prepared = prepareScoreOverlay({ scoreTracking: trackingFixture() });
+  assert.deepEqual(scoreOverlaySnapshot(prepared, 2), {
+    team1Name: "Falcons",
+    team1Score: 0,
+    team1ScoreLabel: "00",
+    team2Name: "Waves",
+    team2Score: 0,
+    team2ScoreLabel: "00",
+  });
+  assert.deepEqual(
+    {
+      team1: scoreOverlaySnapshot(prepared, 14).team1ScoreLabel,
+      team2: scoreOverlaySnapshot(prepared, 14).team2ScoreLabel,
+    },
+    { team1: "01", team2: "01" },
+  );
+});
+
+test("overlay removes ignored, suppressed, and replayed points", () => {
+  let tracking = trackingFixture();
+  tracking = setPreviousPointIgnored(tracking, "S4", true);
+  const prepared = prepareScoreOverlay({
+    scoreTracking: tracking,
+    excludedRallyIds: ["R2"],
+    ignoredIntervals: [{ start: 13, end: 15 }],
+  });
+  const snapshot = scoreOverlaySnapshot(prepared, 30);
+  assert.equal(snapshot.team1ScoreLabel, "00");
+  assert.equal(snapshot.team2ScoreLabel, "00");
+});
+
+test("overlay uses the next serve during dead time and leading padding", () => {
+  const prepared = prepareScoreOverlay({
+    scoreTracking: trackingFixture(),
+    rallyRanges: [
+      { coreStart: 2, coreEnd: 5, keepStart: 1, keepEnd: 6 },
+      { coreStart: 8, coreEnd: 11, keepStart: 7, keepEnd: 12 },
+      { coreStart: 14, coreEnd: 17, keepStart: 13, keepEnd: 18 },
+    ],
+  });
+  assert.equal(scoreOverlaySnapshot(prepared, 6.5).team1ScoreLabel, "01");
+  assert.equal(scoreOverlaySnapshot(prepared, 7.5).team1ScoreLabel, "01");
+  assert.equal(scoreOverlaySnapshot(prepared, 12.5).team2ScoreLabel, "01");
+});
+
+test("overlay layout is compact, bounded, and gives each score equal width", () => {
+  const snapshot = scoreOverlaySnapshot(
+    prepareScoreOverlay({ scoreTracking: trackingFixture() }),
+    30,
+  );
+  const layout = scoreOverlayLayout(
+    { measureText: (text: string) => ({ width: text.length * 10 }) as TextMetrics },
+    1920,
+    1080,
+    snapshot,
+  );
+  assert.equal(layout.height, 69);
+  assert.equal(layout.borderWidth, 2);
+  assert.equal(layout.scoreWidth, 90);
+  assert.ok(layout.width < 1920 / 2);
+  assert.ok(layout.radius > 0);
+});

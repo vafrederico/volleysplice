@@ -6,6 +6,7 @@ import {
   Output,
   Quality,
   StreamTarget,
+  VideoSample,
   VideoSampleSink,
   VideoSampleSource,
   canEncodeAudio,
@@ -26,9 +27,19 @@ import {
   type PreparedVideoExport,
 } from "./export-delivery";
 import { startServiceWorkerStreamDownload } from "./stream-download";
+import {
+  prepareScoreOverlay,
+  scoreOverlayLayout,
+  scoreOverlaySnapshot,
+  SCORE_OVERLAY_COLORS,
+  type PreparedScoreOverlay,
+  type ScoreOverlayOptions,
+  type ScoreOverlaySnapshot,
+} from "../score-overlay";
 
 export type { ExportInterval } from "./export-math";
 export type { PreparedVideoExport } from "./export-delivery";
+export type { ScoreOverlayOptions } from "../score-overlay";
 
 export type ExportProgress = {
   completedSeconds: number;
@@ -55,6 +66,128 @@ type ExportDestination = {
 
 const OPFS_EXPORT_NAME = "volleycut-latest-export.mp4";
 export type VideoExportMode = "compatible" | "opfs" | "stream-download";
+
+export type VideoExportOptions = {
+  scoreOverlay?: ScoreOverlayOptions;
+};
+
+type ExportCanvas = HTMLCanvasElement | OffscreenCanvas;
+type ExportCanvasContext =
+  | CanvasRenderingContext2D
+  | OffscreenCanvasRenderingContext2D;
+
+function createExportCanvas(width: number, height: number): {
+  canvas: ExportCanvas;
+  context: ExportCanvasContext;
+} {
+  const canvas: ExportCanvas = typeof OffscreenCanvas === "function"
+    ? new OffscreenCanvas(width, height)
+    : Object.assign(document.createElement("canvas"), { width, height });
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("This browser cannot draw the score overlay.");
+  return { canvas, context };
+}
+
+function scoreOverlayPath(
+  context: ExportCanvasContext,
+  width: number,
+  height: number,
+  borderWidth: number,
+  radius: number,
+): void {
+  const inset = borderWidth / 2;
+  const right = width - inset;
+  const bottom = height - inset;
+  context.beginPath();
+  context.moveTo(inset, inset);
+  context.lineTo(right, inset);
+  context.lineTo(right, bottom - radius);
+  context.quadraticCurveTo(right, bottom, right - radius, bottom);
+  context.lineTo(inset, bottom);
+  context.closePath();
+}
+
+function drawScoreOverlay(
+  context: ExportCanvasContext,
+  videoWidth: number,
+  videoHeight: number,
+  snapshot: ScoreOverlaySnapshot,
+): void {
+  const shortestEdge = Math.max(1, Math.min(videoWidth, videoHeight));
+  const provisionalHeight = Math.round(
+    Math.min(76, Math.max(36, shortestEdge * 0.064)),
+  );
+  context.font = `700 ${Math.round(provisionalHeight * 0.39)}px sans-serif`;
+  const layout = scoreOverlayLayout(context, videoWidth, videoHeight, snapshot);
+  const firstScoreX = layout.team1Width;
+  const team2X = firstScoreX + layout.scoreWidth;
+  const secondScoreX = team2X + layout.team2Width;
+
+  context.save();
+  scoreOverlayPath(
+    context,
+    layout.width,
+    layout.height,
+    layout.borderWidth,
+    layout.radius,
+  );
+  context.clip();
+  context.fillStyle = SCORE_OVERLAY_COLORS.team1;
+  context.fillRect(0, 0, layout.team1Width, layout.height);
+  context.fillStyle = SCORE_OVERLAY_COLORS.scoreBackground;
+  context.fillRect(firstScoreX, 0, layout.scoreWidth, layout.height);
+  context.fillStyle = SCORE_OVERLAY_COLORS.team2;
+  context.fillRect(team2X, 0, layout.team2Width, layout.height);
+  context.fillStyle = SCORE_OVERLAY_COLORS.scoreBackground;
+  context.fillRect(secondScoreX, 0, layout.scoreWidth, layout.height);
+
+  context.font = `700 ${layout.fontSize}px sans-serif`;
+  context.textBaseline = "middle";
+  context.fillStyle = SCORE_OVERLAY_COLORS.teamText;
+  context.textAlign = "left";
+  context.fillText(
+    snapshot.team1Name,
+    layout.horizontalPadding,
+    layout.height / 2,
+    layout.team1Width - layout.horizontalPadding * 2,
+  );
+  context.fillText(
+    snapshot.team2Name,
+    team2X + layout.horizontalPadding,
+    layout.height / 2,
+    layout.team2Width - layout.horizontalPadding * 2,
+  );
+  context.fillStyle = SCORE_OVERLAY_COLORS.scoreText;
+  context.textAlign = "center";
+  context.fillText(
+    snapshot.team1ScoreLabel,
+    firstScoreX + layout.scoreWidth / 2,
+    layout.height / 2,
+  );
+  context.fillText(
+    snapshot.team2ScoreLabel,
+    secondScoreX + layout.scoreWidth / 2,
+    layout.height / 2,
+  );
+
+  context.strokeStyle = SCORE_OVERLAY_COLORS.border;
+  context.lineWidth = layout.borderWidth;
+  for (const x of [firstScoreX, team2X, secondScoreX]) {
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, layout.height);
+    context.stroke();
+  }
+  scoreOverlayPath(
+    context,
+    layout.width,
+    layout.height,
+    layout.borderWidth,
+    layout.radius,
+  );
+  context.stroke();
+  context.restore();
+}
 
 function safeBaseName(filename: string): string {
   return (
@@ -136,6 +269,7 @@ export async function exportRawQualityReel(
   expectedTimelineDuration?: number,
   onWakeLockState?: (state: WakeLockState) => void,
   mode: VideoExportMode = "compatible",
+  options: VideoExportOptions = {},
 ): Promise<PreparedVideoExport | null> {
   const outputName = `${safeBaseName(file.name)}-volleycut.mp4`;
   const destination = await chooseExportDestination(outputName, mode);
@@ -164,6 +298,9 @@ export async function exportRawQualityReel(
   }
 
   const totalSeconds = intervals.reduce((total, interval) => total + interval.end - interval.start, 0);
+  const preparedScoreOverlay: PreparedScoreOverlay | null = options.scoreOverlay
+    ? prepareScoreOverlay(options.scoreOverlay)
+    : null;
   const videoQuality = new Quality("very-high");
   const audioQuality = new Quality("high");
   let videoSupported: boolean;
@@ -224,7 +361,10 @@ export async function exportRawQualityReel(
     latencyMode: "quality",
     hardwareAcceleration: "prefer-hardware",
   });
-  output.addVideoTrack(videoSource, { rotation: media.info.rotation });
+  // Overlay frames are rendered in display orientation, so rotation is baked in.
+  output.addVideoTrack(videoSource, {
+    rotation: preparedScoreOverlay ? 0 : media.info.rotation,
+  });
   const audioSource = media.audioTrack
     ? new AudioSampleSource({ codec: "aac", quality: audioQuality })
     : null;
@@ -266,6 +406,9 @@ export async function exportRawQualityReel(
       const sink = new VideoSampleSink(media.videoTrack, {
         hardwareAcceleration: "prefer-hardware",
       });
+      const overlaySurface = preparedScoreOverlay
+        ? createExportCanvas(media.info.width, media.info.height)
+        : null;
       let outputOffset = 0;
       try {
         for (const interval of intervals) {
@@ -275,9 +418,44 @@ export async function exportRawQualityReel(
             try {
               const timing = clipSampleToInterval(sample.timestamp, sample.duration, interval);
               if (!timing) continue;
-              sample.setTimestamp(outputOffset + timing.timestamp);
-              sample.setDuration(timing.duration);
-              await videoSource.add(sample, first ? { keyFrame: true } : undefined);
+              const outputTimestamp = outputOffset + timing.timestamp;
+              if (overlaySurface && preparedScoreOverlay) {
+                overlaySurface.context.clearRect(
+                  0,
+                  0,
+                  media.info.width,
+                  media.info.height,
+                );
+                sample.draw(
+                  overlaySurface.context,
+                  0,
+                  0,
+                  media.info.width,
+                  media.info.height,
+                );
+                drawScoreOverlay(
+                  overlaySurface.context,
+                  media.info.width,
+                  media.info.height,
+                  scoreOverlaySnapshot(preparedScoreOverlay, sample.timestamp),
+                );
+                const overlaidSample = new VideoSample(overlaySurface.canvas, {
+                  timestamp: outputTimestamp,
+                  duration: timing.duration,
+                });
+                try {
+                  await videoSource.add(
+                    overlaidSample,
+                    first ? { keyFrame: true } : undefined,
+                  );
+                } finally {
+                  overlaidSample.close();
+                }
+              } else {
+                sample.setTimestamp(outputTimestamp);
+                sample.setDuration(timing.duration);
+                await videoSource.add(sample, first ? { keyFrame: true } : undefined);
+              }
               first = false;
               reportProgress(
                 Math.min(totalSeconds, outputOffset + timing.timestamp + timing.duration),
