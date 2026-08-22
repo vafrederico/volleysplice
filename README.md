@@ -54,9 +54,13 @@ project behavior, export details, runtime assets, and deployment.
 
 ### Android
 
-The native app performs video/audio feature extraction, production inference, editing,
-draft persistence, source relinking, model-feedback export, and exact-boundary MP4 export
-without a network permission. It targets the Pixel 10 Pro and packages `arm64-v8a`.
+The native app performs the shared F104 rally/suppression feature extraction and
+inference, editing, draft persistence, source relinking, model-feedback export, and
+exact-boundary MP4 export without a network permission. It targets the Pixel 10 Pro and
+packages `arm64-v8a`. The browser's newer serving-side model, score-tracking editor, and
+score overlay are not yet implemented on Android; their required parity and product
+behavior are specified in
+[`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
 The current checked-in release is
 [`VolleyCut v0.10.4`](android/releases/VolleyCut-v0.10.4-arm64-release-signed.apk). See
@@ -71,6 +75,11 @@ audiovisual features, gathers five temporal contexts into 520 model inputs, and 
 independent rally/serve/dead-state bundles. Their overlapping intervals are unioned, and
 one-model-only regions remain visible as review-priority disagreements. A separate held
 suppression model can propose reversible removals from eligible disagreement regions.
+The production browser then runs a separate 237-input fixed-flight serving-side model at
+each included merged interval start, composes it with both existing serve heads and rally
+agreement, and seeds editable source-timestamped score markers. This eighth classifier
+and its score UI remain an Android implementation target rather than current native
+production behavior.
 
 The following documents are the maintained contracts:
 
@@ -82,6 +91,8 @@ The following documents are the maintained contracts:
   comparison predecessors, changes, and disposition;
 - [`docs/model-ranking-metric.md`](docs/model-ranking-metric.md) — canonical
   `F1_padP_coreR` selection and reporting contract.
+- [`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md)
+  — shipped browser serving-side/score behavior and the normative Android port plan.
 
 ## Internal model lab
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import styles from "./GuidedTour.module.css";
 
-const TOUR_STORAGE_KEY = "volleycut:guided-tour:v10";
+const TOUR_STORAGE_KEY = "volleycut:guided-tour:v11";
 
 const EDITOR_STEPS = [
   "editor-header",
@@ -12,6 +12,7 @@ const EDITOR_STEPS = [
   "editor-padding",
   "editor-join-gaps",
   "editor-play-final-cut",
+  "editor-score-overlay",
   "editor-export-video",
   "editor-video",
   "editor-score",
@@ -28,6 +29,7 @@ const EDITOR_STEPS = [
 const SOURCE_STEP_COUNT = 4;
 const SCORE_EDITOR_STEPS = new Set<EditorStep>([
   "editor-score",
+  "editor-score-overlay",
   "editor-score-panel",
   "editor-score-markers",
 ]);
@@ -231,6 +233,15 @@ export function GuidedTour({
           label: editorLabel("editor-play-final-cut"),
           title: "Preview only the final cut",
           body: "Play final cut only skips removed rallies, ignored sections, and unselected gaps at or above the join threshold while the video plays. Turn it off when you need to review the complete analysis window.",
+          action: scoreTrackingEnabled
+            ? "Next: score overlay"
+            : "Next: export video",
+        };
+      case "editor-score-overlay":
+        return {
+          label: editorLabel("editor-score-overlay"),
+          title: "Put the score on the final video",
+          body: "Render score on final video is off by default for each project. Turn it on to preview the source-timestamped Team 1 and Team 2 score box at the top-left of the player and burn the same box into the exported MP4. Team names and corrected serve, replay, suppression, ignored-range, and side-switch decisions all feed this display.",
           action: "Next: export video",
         };
       case "editor-export-video":

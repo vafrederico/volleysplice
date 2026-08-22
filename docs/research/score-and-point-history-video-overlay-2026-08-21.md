@@ -1,5 +1,13 @@
 # Score and point-history video overlay — 2026-08-21
 
+> Historical design research, not the implemented product contract. The shipped browser
+> feature uses next-serve serving-side markers, renders only the compact current-score
+> box, previews it with accessible DOM/CSS, and burns it into export with Canvas 2D. It
+> does not store explicit award events, sets, serving players, or an encoded point-history
+> rail. See
+> [`serving-side-score-tracking-android-spec.md`](../serving-side-score-tracking-android-spec.md)
+> for the normative browser behavior and Android handoff.
+
 ## Purpose
 
 This note evaluates whether VolleyCut can burn a tracked volleyball score, serving-team indicator,
@@ -14,10 +22,12 @@ The encoding work is not the main product risk. The larger requirement is a reli
 source-timestamped score model that survives project reloads and produces an immutable snapshot for
 each export.
 
-## Current product state
+## Product state when this research was written
 
-VolleyCut does not currently persist a game score, point winner, or serving team. Existing fields
-named `score` refer to model confidence or suppression confidence, not volleyball scoring.
+At the time of this research, VolleyCut did not persist a game score, point winner, or serving
+team. The production browser now does so through the next-serve contract documented in the
+normative Android handoff above; native Android still does not. Other fields named `score` refer
+to model confidence or suppression confidence, not volleyball scoring.
 
 The Android editor persists cut decisions in
 [`EditorDraft`](../../android/app/src/main/java/com/volleycut/nativeanalysis/EditorModels.kt), and the

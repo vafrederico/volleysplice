@@ -1831,38 +1831,41 @@ export function CutEditor({
             </div>
             <small>Padding applies to inferred cuts. Light gray gaps are retained when they are shorter than the join setting.</small>
           </div>
-          <label
-            className={styles.cutPreviewToggle}
-            data-tour="editor-play-final-cut"
-          >
-            <input
-              type="checkbox"
-              checked={cutPreviewEnabled}
-              onChange={(event) => toggleCutPreview(event.currentTarget.checked)}
-            />
-            <span>
-              <strong>Play final cut only</strong>
-              <small>Skip removed rallies, ignored sections, and unselected gaps at or above the join setting.</small>
-            </span>
-          </label>
-          {draft.scoreTracking.enabled && (
+          <div className={styles.previewToggles}>
             <label
-              className={`${styles.cutPreviewToggle} ${styles.scoreOverlayToggle}`}
-              data-enabled={draft.renderScoreOverlay || undefined}
+              className={styles.cutPreviewToggle}
+              data-tour="editor-play-final-cut"
             >
               <input
                 type="checkbox"
-                checked={draft.renderScoreOverlay}
-                onChange={(event) => toggleScoreOverlay(event.currentTarget.checked)}
+                checked={cutPreviewEnabled}
+                onChange={(event) => toggleCutPreview(event.currentTarget.checked)}
               />
               <span>
-                <strong>Render score on final video</strong>
-                <small>
-                  Add the score box to the exported video. This will slow down generating the final file.
-                </small>
+                <strong>Play final cut only</strong>
+                <small>Skip removed rallies, ignored sections, and unselected gaps at or above the join setting.</small>
               </span>
             </label>
-          )}
+            {draft.scoreTracking.enabled && (
+              <label
+                className={`${styles.cutPreviewToggle} ${styles.scoreOverlayToggle}`}
+                data-enabled={draft.renderScoreOverlay || undefined}
+                data-tour="editor-score-overlay"
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.renderScoreOverlay}
+                  onChange={(event) => toggleScoreOverlay(event.currentTarget.checked)}
+                />
+                <span>
+                  <strong>Render score on final video</strong>
+                  <small>
+                    Preview the score box on the player and include it in the exported MP4.
+                  </small>
+                </span>
+              </label>
+            )}
+          </div>
           {chromeOnIos && (
             <div className={`${styles.cutPreviewToggle} ${styles.streamExportStatus}`}>
               <span>

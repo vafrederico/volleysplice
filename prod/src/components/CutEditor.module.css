@@ -1392,6 +1392,12 @@
   cursor: pointer;
 }
 
+.previewToggles {
+  display: grid;
+  align-self: stretch;
+  gap: 8px;
+}
+
 .cutPreviewToggle input {
   width: 22px;
   height: 22px;
@@ -1401,10 +1407,6 @@
 
 .scoreOverlayToggle[data-enabled="true"] {
   border-color: var(--cut-acid);
-}
-
-.scoreOverlayToggle small {
-  color: #ffd7cc;
 }
 
 .cutPreviewToggle > span {

@@ -26,8 +26,9 @@ The bundle contains:
 - both production components' serve-probability traces and decoded serve contacts under
   `initialInference.componentServeOutputs`;
 - the frozen serving-side model identity, fingerprint, feature/anchor contracts, row-aligned
-  `SERVSIDE237-FLIGHT` matrix, candidate verdicts, probabilities, review reasons, and both
-  serve heads' evidence under `initialInference.servingSide`;
+  raw `SERVSIDE237-FLIGHT` matrix, candidate verdicts, probabilities, review reasons, and both
+  serve heads' evidence under `initialInference.servingSide` (the browser recomputes tied
+  within-recording ranks from the complete raw candidate matrix before classification);
 - the untouched raw ranges from both production models, plus the held suppression artifact
   identity, probability trace, decoded events, and policy-eligible suggestion spans;
 - the full corrected editor ranges and ignored intervals;

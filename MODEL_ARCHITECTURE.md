@@ -11,26 +11,26 @@ export-encoding architecture.
 VolleyCut's production architecture is a lightweight, on-device audiovisual signal-
 processing system. It does not explicitly detect the volleyball, players, net, score,
 or named volleyball actions. Instead, it learns statistical patterns that distinguish
-live rallies, serve contact, end-of-play transitions, common false positives, and—for
-the selected next-production serving-side path—the physical camera-space serving side.
+live rallies, serve contact, end-of-play transitions, common false positives, and—in
+the production browser—the physical camera-space serving side.
 
 The currently deployed rally/export system contains seven logistic classifiers:
 
 - two independent three-head rally-model bundles, used as a recall-safety ensemble; and
 - one false-positive suppression head, used as an optional, review-first veto.
 
-The selected next-production composition adds one class-balanced logistic serving-side
-classifier. Its hybrid serve gate is deterministic and reuses the two existing serve heads
-and their decoded rally intervals; it is not a ninth learned classifier. The resulting
-target therefore contains eight learned classifiers in total.
+The production browser adds one class-balanced logistic serving-side classifier. Its
+hybrid serve gate is deterministic and reuses the two existing serve heads and their
+decoded rally intervals; it is not a ninth learned classifier. The browser therefore
+runs eight learned classifiers in total.
 
-The seven existing classifiers run locally in the production browser and native Android
-applications. Their two clients share the same model artifacts, feature signature,
-temporal decoders, ensemble rules, and suppression-policy contract. The serving-side
-Python/results-UI path is complete, but its browser/Android artifact export, feature
-implementation, and parity acceptance remain required before release. “Production target”
-below records the selected behavior to ship; it does not claim those deployment steps have
-already happened.
+The seven rally/suppression classifiers run locally in both the production browser and
+native Android applications. Those clients share the same F104/520 model artifacts,
+temporal decoders, ensemble rules, and suppression-policy contract. Serving-side fixed-
+flight v3 and its hybrid gate are additionally deployed in the production browser with a
+checked-in runtime artifact and browser tests. Android does not yet implement or package
+that eighth classifier; the cross-platform port is specified in
+[`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
 ## What the models look for
 
@@ -99,7 +99,7 @@ The canonical feature list is defined in
 and contextual normalization is implemented in
 [`prod/src/lib/on-device/feature-math.ts`](prod/src/lib/on-device/feature-math.ts).
 
-The production-target serving-side path is a separate candidate-conditioned branch:
+The production-browser serving-side path is a separate candidate-conditioned branch:
 
 ```text
 Saved rally/serve anchor and ROI
@@ -119,10 +119,9 @@ phase/side differences. The 155-value bank describes grid energy, vertical flow,
 centroid/spread, entropy, connected-component concentration, direction/divergence, and
 phase-to-phase trajectory deltas. It does not use audio or human visibility annotations.
 The exact offsets, formulas, names, ranking rule, and feature-count expansion are normative
-in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). Its **Production implementation delta**
-is also the release checklist: all 237 visual columns and their within-recording ranks
-are new production outputs, while serve-head scores and ensemble rally agreement are
-reused gate evidence rather than new side-model inputs.
+in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). All 237 visual columns and their within-
+recording ranks are separate from F104/520, while serve-head scores and ensemble rally
+agreement are reused gate evidence rather than side-model inputs.
 
 ## Three-head rally-model bundles
 
@@ -235,10 +234,10 @@ The specialist runner and policy are implemented in
 and
 [`android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java`](android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java).
 
-## Production-target serving-side model and hybrid gate
+## Production-browser serving-side model and hybrid gate
 
-`serving-side-fixed-flight-v3` replaces the earlier 38-input v1 research baseline as the
-selected production target. It is candidate-conditioned: at a known source-aligned anchor,
+`serving-side-fixed-flight-v3` replaces the earlier 38-input v1 research baseline in the
+production browser. It is candidate-conditioned: at a known source-aligned anchor,
 it maps the 237 tied within-recording ranks to a near-side score:
 
 ```text
@@ -286,14 +285,17 @@ false serve. Those gate numbers are assisted post-hoc diagnostics, not a clean h
 model-selection estimate.
 
 The model, thresholds, source lineage, immutable NAS paths/hashes, and deployment status
-are registered in [`MODELS.md`](MODELS.md). The implementation is in
+are registered in [`MODELS.md`](MODELS.md). The browser runtime implementation is in
+[`prod/src/lib/on-device/serving-side-model.ts`](prod/src/lib/on-device/serving-side-model.ts)
+and [`prod/src/lib/on-device/serving-side.ts`](prod/src/lib/on-device/serving-side.ts).
+The training/reference implementation is in
 [`analysis/serving_side_v2.py`](analysis/serving_side_v2.py),
 [`analysis/serving_side_flight.py`](analysis/serving_side_flight.py),
 [`analysis/production_serve_gate.py`](analysis/production_serve_gate.py), and the matching
 extraction/inference scripts. The historical v1 non-promotion remains documented in
 [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md).
 
-## Production inference and export flow
+## Production-browser inference, scoring, and export flow
 
 The complete selected production path is:
 
@@ -305,12 +307,13 @@ Extract and cache 104 base features at 4 fps
 Normalize and gather 520 contextual inputs
            |
            |-- run all-labels-v2 rally/serve/dead-state heads
-           |-- run previous-production rally/serve/dead-state heads
-           `-- run the suppression head
+           `-- run previous-production rally/serve/dead-state heads
                            |
               union the two rally outputs
                            |
              mark agreement and disagreement
+                           |
+       run suppression head and build gated suggestions
                            |
              for each saved candidate anchor
                    |                    |
@@ -324,13 +327,15 @@ Normalize and gather 520 contextual inputs
                                       |
                       add side-score and recovery review reasons
                            |
-          create optional gated suppression suggestions
+             seed editable source-time serve markers
+                           |
+       derive point winners from each following server
                            |
             human review and manual corrections
                            |
         add export padding and join short positive gaps
                            |
-                    preview or export MP4
+             preview or export MP4, optionally with score
 ```
 
 New edit drafts default to:
@@ -343,15 +348,35 @@ New edit drafts default to:
 Manual include/exclude decisions, boundary edits, ignored intervals, and selected
 suppression overrides are materialized before preview and export.
 
+Serving-side candidates are generated after the browser's rally/suppression analysis
+result for a new project and before the editor is shown. Every included merged production
+interval start is an anchor. The raw 237-column matrix, verdict evidence, and model
+identity are stored with the project; tied ranks are recomputed over the complete
+candidate set during inference. Editor ignored ranges and disabled/suppressed rallies
+filter markers after inference and never cause video reprocessing.
+
+If serving-side extraction alone fails, the browser reports the error and opens the
+editor with the already-complete rally/suppression result; a connected source plus the
+two retained serve outputs allows the user to rerun that stage. A failure is not stored
+as a valid serving-side cache.
+
+The score reducer treats the first visible serve as the initial server and awards no
+point. Every later serve awards the preceding rally to the team that serves next, unless
+that marker is `review` or is marked replay/ignored. Team 1 begins near and Team 2 begins
+far; a side-switch marker flips that physical mapping for serve markers at or after the
+switch. The final rally cannot be awarded without a later serve marker, so the user may
+add one manually. This is a product inference convention, not a learned score model.
+
 The production browser orchestration is in
 [`prod/src/lib/on-device/production-inference.ts`](prod/src/lib/on-device/production-inference.ts)
-and [`prod/src/lib/on-device/pipeline.ts`](prod/src/lib/on-device/pipeline.ts). The native
-Android equivalent begins in
+and [`prod/src/App.tsx`](prod/src/App.tsx). Score reduction is in
+[`prod/src/lib/score-tracking.ts`](prod/src/lib/score-tracking.ts), and optional MP4
+composition is in [`prod/src/lib/score-overlay.ts`](prod/src/lib/score-overlay.ts) and
+[`prod/src/lib/on-device/export.ts`](prod/src/lib/on-device/export.ts). The native Android
+rally/suppression equivalent begins in
 [`android/app/src/main/java/com/volleycut/nativeanalysis/AnalysisEngine.java`](android/app/src/main/java/com/volleycut/nativeanalysis/AnalysisEngine.java).
-Those links describe the currently deployed rally/export path. The serving-side branch
-must be added to both clients with the exact `SERVSIDE237-FLIGHT` order, fitted parameters,
-thresholds, and hybrid-gate decisions before the next-production contract is considered
-deployed.
+The Android serving-side, score editor, timeline markers, persistence, feedback, preview,
+and export-overlay work remains to be implemented against the dedicated Android spec.
 
 ## Design philosophy and limitations
 

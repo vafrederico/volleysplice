@@ -21,6 +21,20 @@ No media is uploaded. The app has no network permission. It does not use a WebVi
 
 In the production project flow, choose a recording and use the local preview to mark the game start and game end before queueing inference. Only globally aligned 4 Hz samples inside that window generate visual, audio, or contextual features. The bounds are part of the project and feature-cache identity, and the editor overview, playback, padding, manual marks, edit list, and export are constrained to the same window. Existing full-video projects and caches keep their legacy identity.
 
+## Serving-side and score-tracking parity gap
+
+The native Android app currently stops after rally/serve/dead-state inference and suppression. It
+does not yet run the production browser's 237-column serving-side classifier, persist editable
+serve or side-switch markers, reduce those markers into a score, import browser feedback v3, or
+preview/render the score box in exported video. Its model-feedback exporter remains schema v1.
+
+The normative port contract is
+[`../docs/serving-side-score-tracking-android-spec.md`](../docs/serving-side-score-tracking-android-spec.md).
+That spec fixes the feature/model/gate contract, initial-inference ordering, cache identity, score
+semantics, conditional editor and tutorial behavior, timeline interaction, feedback v3 parity, and
+source-timestamped preview/export overlay. Implement and parity-test that complete contract rather
+than treating the model JSON or the score UI as an isolated addition.
+
 ## Target device and SDK
 
 - Target device: Pixel 10 Pro, arm64-v8a

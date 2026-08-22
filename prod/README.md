@@ -44,6 +44,28 @@ cut, and retained join gaps are shown in light gray on the overview rail.
 Both analysis and MP4 export show live elapsed-time and estimated-time-remaining counters
 while they run.
 
+For a new project, the browser runs serving-side extraction immediately after the
+two-model rally ensemble and before the ready editor is shown. It samples fixed windows
+around every included merged interval start, stores the raw 237-column
+`SERVSIDE237-FLIGHT` matrix and verdict evidence with the project, and does not rerun that
+work when ignored sections or rally inclusion change. A compatible older project can
+generate and retain the same cache on request after its source is reconnected. Score
+tracking is enabled by default per project; model markers remain editable and removable,
+while ignored, disabled, and suppressed rally markers are filtered from the derived score
+without changing the retained model output.
+
+Serving-side extraction is a recoverable stage: if it fails, the browser reports the
+error and still opens the editor with the completed rally/suppression analysis. When the
+source and both retained serve outputs are available, the score panel can rerun and save
+the serving-side stage without repeating the main feature pipeline.
+
+The optional **Render score on final video** setting is available only while score
+tracking is enabled and defaults off per project. When enabled, the editor previews the
+source-timestamped score box over the video and the MP4 exporter burns the same Team 1 /
+Team 2 score into the top-left of every retained frame. The existing decode/AVC encode
+path is used with or without the overlay; the enabled path additionally composites each
+frame through a reusable canvas.
+
 ## Run locally
 
 Requirements: Node.js 24 and a current Chrome or Edge browser, or Safari 26 on iOS/macOS.
@@ -112,6 +134,10 @@ curl -I https://volleycut.vafrederico.com
 - `public/runtime/suppression-39eddf581639.json`: the held corrected suppression
   specialist. Its neighboring manifest records the source artifact, weights, decoder,
   and emitted asset hashes.
+- `public/runtime/serving-side-85bc3325fbd4.json`: the frozen 237-input fixed-flight
+  serving-side logistic model, thresholds, feature order, image geometry, and hybrid
+  serve-gate policy. Runtime file SHA-256:
+  `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`.
 
 The production app extracts media features once, runs both model stacks, and unions
 overlapping rally ranges. Ranges emitted by only one model are retained but marked as
