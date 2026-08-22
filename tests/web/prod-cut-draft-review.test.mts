@@ -26,11 +26,26 @@ const seed: CutDraftSeed = {
 test("production drafts persist reviewed model ranges", () => {
   const draft = createCutDraft(seed);
   draft.reviewedCutIds = ["R001"];
+  draft.renderScoreOverlay = true;
 
   const restored = parseCutDraft(JSON.stringify(draft), seed);
 
   assert.deepEqual(restored?.reviewedCutIds, ["R001"]);
+  assert.equal(restored?.renderScoreOverlay, true);
   assert.deepEqual(restored?.cuts, JSON.parse(JSON.stringify(draft.cuts)));
+});
+
+test("score overlay export defaults off and migrates older drafts", () => {
+  assert.equal(createCutDraft(seed).renderScoreOverlay, false);
+
+  const legacy = createCutDraft(seed) as unknown as Record<string, unknown>;
+  legacy.version = 12;
+  delete legacy.renderScoreOverlay;
+
+  assert.equal(
+    parseCutDraft(JSON.stringify(legacy), seed)?.renderScoreOverlay,
+    false,
+  );
 });
 
 test("version seven production drafts migrate to an empty review history", () => {

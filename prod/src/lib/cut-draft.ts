@@ -14,7 +14,7 @@ import {
   type ScoreTracking,
 } from "./score-tracking.ts";
 
-export const CUT_DRAFT_VERSION = 12 as const;
+export const CUT_DRAFT_VERSION = 13 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -56,6 +56,7 @@ export type CutDraft = {
   pendingIgnoreStart: number | null;
   ignoreReason: string;
   cutPreviewEnabled: boolean;
+  renderScoreOverlay: boolean;
   playbackRate: (typeof PLAYBACK_RATES)[number];
   confidenceReviewThreshold: number;
   reviewedCutIds: string[];
@@ -194,7 +195,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -217,6 +218,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     pendingIgnoreStart: null,
     ignoreReason: "non-game-content",
     cutPreviewEnabled: false,
+    renderScoreOverlay: false,
     playbackRate: 1,
     confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
     reviewedCutIds: [],
@@ -349,7 +351,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, CUT_DRAFT_VERSION].includes(
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, CUT_DRAFT_VERSION].includes(
         persistedVersion,
       )
     ) {
@@ -379,6 +381,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         ? persisted.ignoreReason
         : "non-game-content",
       cutPreviewEnabled: persistedVersion >= 4 ? persisted.cutPreviewEnabled : false,
+      renderScoreOverlay: persistedVersion >= 13
+        ? persisted.renderScoreOverlay
+        : false,
       playbackRate: persistedVersion >= 5 ? persisted.playbackRate : 1,
       confidenceReviewThreshold: persistedVersion >= 6
         ? persisted.confidenceReviewThreshold
@@ -464,6 +469,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       typeof value.ignoreReason !== "string" ||
       value.ignoreReason.length === 0 ||
       typeof value.cutPreviewEnabled !== "boolean" ||
+      typeof value.renderScoreOverlay !== "boolean" ||
       !PLAYBACK_RATES.includes(value.playbackRate as (typeof PLAYBACK_RATES)[number]) ||
       !finiteTime(value.confidenceReviewThreshold) ||
       value.confidenceReviewThreshold < 0 ||
