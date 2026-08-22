@@ -142,7 +142,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             json.optJSONObject("scoreTracking")?.let { ScoreTrackingJson.decode(it, seed.durationMs) }
         } else null
         val scoreTracking = ScoreReducer.seedModelMarkers(
-            restoredScore ?: ScoreTracking(),
+            restoredScore ?: ScoreTracking(enabled = seed.scoreTrackingInitiallyEnabled),
             seed.servingSide,
         )
         val draft = EditorDraft(

@@ -58,6 +58,7 @@ internal data class EditorSeed(
         AnalysisTypes.ProductionServeOutputs.empty(),
     val servingSide: ServingSideOutput? = null,
     val servingSideError: String? = null,
+    val scoreTrackingInitiallyEnabled: Boolean = true,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
 ) {
     val sourceRevision: String by lazy {
@@ -188,7 +189,10 @@ internal object EditorMath {
                 add(IgnoredSourceInterval("G002", seed.gameEndMs, seed.durationMs, "outside-game-window"))
             }
         },
-        scoreTracking = ScoreReducer.seedModelMarkers(ScoreTracking(), seed.servingSide),
+        scoreTracking = ScoreReducer.seedModelMarkers(
+            ScoreTracking(enabled = seed.scoreTrackingInitiallyEnabled),
+            seed.servingSide,
+        ),
     )
 
     fun applyPadding(

@@ -138,6 +138,9 @@ internal object ModelFeedbackImporter {
             } ?: AnalysisTypes.ProductionComponents.empty(),
             productionServeOutputs = serveOutputs,
             servingSide = servingSide,
+            servingSideStatus = if (servingSide == null) {
+                ServingSideAnalysisStatus.NOT_RUN
+            } else ServingSideAnalysisStatus.READY,
             servingSideError = if (servingSide == null) "Imported bundle has no serving-side output" else null,
             suppression = suppression,
             modelId = inference.optString("modelId", FeatureSchema.MODEL_ID),

@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 
 /** Stores only enough metadata to reopen the most recent editor after process death. */
 internal object EditorProjectStore {
-    private const val VERSION = 2
+    private const val VERSION = 3
     private const val TAG = "VolleyCutEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
@@ -44,6 +44,7 @@ internal object EditorProjectStore {
                 put("productionServeOutputs", ServingSideJson.encodeServeOutputs(seed.productionServeOutputs))
                 put("servingSide", seed.servingSide?.let(ServingSideJson::encodeOutput) ?: JSONObject.NULL)
                 put("servingSideError", seed.servingSideError ?: JSONObject.NULL)
+                put("scoreTrackingInitiallyEnabled", seed.scoreTrackingInitiallyEnabled)
             }.toString())
             try {
                 Files.move(
@@ -92,6 +93,7 @@ internal object EditorProjectStore {
             servingSide = json.optJSONObject("servingSide")?.let(ServingSideJson::decodeOutput),
             servingSideError = if (json.isNull("servingSideError")) null
                 else json.optString("servingSideError").takeIf(String::isNotBlank),
+            scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", true),
         ).takeIf { seed ->
             seed.durationMs > 0 && seed.sourceUri.isNotBlank() &&
                 seed.gameStartMs >= 0 && seed.gameEndMs <= seed.durationMs &&

@@ -55,7 +55,25 @@ final class AnalysisEngine {
         return analyze(
                 uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
                 AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
-                cancelled, progress
+                cancelled, progress, true
+        );
+    }
+
+    AnalysisTypes.AnalysisResult analyze(
+            Uri uri,
+            boolean fullFrame,
+            int sourceFrameLimit,
+            AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.Mode cacheMode,
+            AnalysisTypes.AnalysisWindow requestedWindow,
+            AtomicBoolean cancelled,
+            AnalysisTypes.ProgressListener progress,
+            boolean includeServingSide
+    ) throws IOException, JSONException {
+        return analyze(
+                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
+                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
+                cancelled, progress, includeServingSide
         );
     }
 
@@ -70,6 +88,25 @@ final class AnalysisEngine {
             AnalysisTypes.AudioDecoderMode audioDecoderMode,
             AtomicBoolean cancelled,
             AnalysisTypes.ProgressListener progress
+    ) throws IOException, JSONException {
+        return analyze(
+                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
+                stages, audioDecoderMode, cancelled, progress, true
+        );
+    }
+
+    AnalysisTypes.AnalysisResult analyze(
+            Uri uri,
+            boolean fullFrame,
+            int sourceFrameLimit,
+            AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.Mode cacheMode,
+            AnalysisTypes.AnalysisWindow requestedWindow,
+            AnalysisTypes.AnalysisStages stages,
+            AnalysisTypes.AudioDecoderMode audioDecoderMode,
+            AtomicBoolean cancelled,
+            AnalysisTypes.ProgressListener progress,
+            boolean includeServingSide
     ) throws IOException, JSONException {
         long totalStarted = System.nanoTime();
         long threadCpuStarted = Debug.threadCpuTimeNanos();
@@ -310,19 +347,26 @@ final class AnalysisEngine {
             );
             profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
             operation = System.nanoTime();
-            try {
-                servingSide = ServingSideInference.INSTANCE.run(
-                        context, uri, media, roi, ranges, productionServeOutputs,
-                        progress, cancelled::get
-                );
-            } catch (Exception error) {
-                if (cancelled.get()) throw new IOException("Analysis cancelled", error);
-                servingSideError = error.getMessage() == null
-                        ? "Serving-side analysis failed" : error.getMessage();
-                android.util.Log.w("VolleyCutAnalysis", "Recoverable serving-side failure", error);
+            if (includeServingSide) {
+                try {
+                    servingSide = ServingSideInference.INSTANCE.run(
+                            context, uri, media, roi, ranges, productionServeOutputs,
+                            progress, cancelled::get
+                    );
+                } catch (Exception error) {
+                    if (cancelled.get()) throw new IOException("Analysis cancelled", error);
+                    servingSideError = error.getMessage() == null
+                            ? "Serving-side analysis failed" : error.getMessage();
+                    android.util.Log.w("VolleyCutAnalysis", "Recoverable serving-side failure", error);
+                    progress.onProgress(
+                            "serving-side", 1,
+                            "Serving-side scoring unavailable; rally analysis is complete"
+                    );
+                }
+            } else {
                 progress.onProgress(
                         "serving-side", 1,
-                        "Serving-side scoring unavailable; rally analysis is complete"
+                        "Serving-side features skipped; enable score tracking later to generate them"
                 );
             }
             profile.put("inference/serving_side", elapsedMilliseconds(operation));

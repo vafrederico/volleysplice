@@ -28,6 +28,10 @@ The native Android app packages and verifies the frozen production-browser servi
 extracts the exact 82 court-flow plus 155 fixed-flight columns, ranks each column across the
 recording, and composes the side result with both production serve heads and the hybrid gate.
 Serving-side failures are recoverable and do not discard otherwise valid rally inference.
+Project creation exposes a **Prepare score tracking** switch, enabled by default. Turning it off
+skips the additional serving-side frame sampling and starts the editor with score tracking off.
+Enabling score tracking later queues only the missing serving-side feature generation and inference
+in the foreground project worker; it reuses the completed rally ranges and serve-head outputs.
 
 The editor seeds editable serve markers, supports manual serves, not-serve corrections, replay
 points, and side switches, then reduces those source-timestamped markers into the current score.

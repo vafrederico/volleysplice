@@ -22,6 +22,19 @@ internal enum class ProjectStatus(val wireName: String) {
     }
 }
 
+internal enum class ServingSideAnalysisStatus(val wireName: String) {
+    DISABLED("disabled"),
+    NOT_RUN("not-run"),
+    QUEUED("queued"),
+    ANALYZING("analyzing"),
+    READY("ready"),
+    ERROR("error");
+
+    companion object {
+        fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
+    }
+}
+
 internal data class ProjectSource(
     val uri: String,
     val name: String,
@@ -46,6 +59,7 @@ internal data class NativeProject(
     val productionServeOutputs: AnalysisTypes.ProductionServeOutputs =
         AnalysisTypes.ProductionServeOutputs.empty(),
     val servingSide: ServingSideOutput? = null,
+    val servingSideStatus: ServingSideAnalysisStatus = ServingSideAnalysisStatus.NOT_RUN,
     val servingSideCacheIdentity: ServingSideCacheIdentity? = null,
     val servingSideError: String? = null,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
@@ -70,6 +84,7 @@ internal data class NativeProject(
             productionServeOutputs = productionServeOutputs,
             servingSide = servingSide,
             servingSideError = servingSideError,
+            scoreTrackingInitiallyEnabled = servingSideStatus != ServingSideAnalysisStatus.DISABLED,
             suppression = suppression,
         )
     } else null
@@ -77,7 +92,7 @@ internal data class NativeProject(
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 3
+    private const val VERSION = 4
     private const val TAG = "VolleyCutProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -136,6 +151,21 @@ internal object NativeProjectStore {
     }
 
     @Synchronized
+    fun updateServingSideStatus(
+        context: Context,
+        id: String,
+        status: ServingSideAnalysisStatus,
+        error: String? = null,
+    ): NativeProject? {
+        val current = get(context, id) ?: return null
+        return current.copy(
+            servingSideStatus = status,
+            servingSideError = error,
+            updatedAtMs = System.currentTimeMillis(),
+        ).also { save(context, it) }
+    }
+
+    @Synchronized
     fun complete(context: Context, id: String, result: AnalysisTypes.AnalysisResult): NativeProject? {
         val current = get(context, id) ?: return null
         val completed = current.copy(
@@ -155,6 +185,13 @@ internal object NativeProjectStore {
             productionComponents = result.productionComponents(),
             productionServeOutputs = result.productionServeOutputs(),
             servingSide = result.servingSide(),
+            servingSideStatus = when {
+                current.servingSideStatus == ServingSideAnalysisStatus.DISABLED ->
+                    ServingSideAnalysisStatus.DISABLED
+                result.servingSide() != null -> ServingSideAnalysisStatus.READY
+                result.servingSideError() != null -> ServingSideAnalysisStatus.ERROR
+                else -> ServingSideAnalysisStatus.NOT_RUN
+            },
             servingSideCacheIdentity = null,
             servingSideError = result.servingSideError(),
             suppression = result.suppression(),
@@ -166,6 +203,26 @@ internal object NativeProjectStore {
         return completed.also {
             save(context, it)
             EditorProjectStore.save(context, checkNotNull(it.editorSeed()))
+        }
+    }
+
+    @Synchronized
+    fun completeServingSide(
+        context: Context,
+        id: String,
+        output: ServingSideOutput,
+    ): NativeProject? {
+        val current = get(context, id) ?: return null
+        val completed = current.copy(
+            servingSide = output,
+            servingSideStatus = ServingSideAnalysisStatus.READY,
+            servingSideCacheIdentity = null,
+            servingSideError = null,
+            updatedAtMs = System.currentTimeMillis(),
+        ).withServingSideCacheIdentity()
+        return completed.also {
+            save(context, it)
+            it.editorSeed()?.let { seed -> EditorProjectStore.save(context, seed) }
         }
     }
 
@@ -301,6 +358,7 @@ internal object NativeProjectStore {
         media: AnalysisTypes.MediaInfo,
         roi: AnalysisTypes.Roi,
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
+        analyzeServingSide: Boolean = true,
     ): NativeProject {
         val now = System.currentTimeMillis()
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, media.durationSeconds())
@@ -311,6 +369,9 @@ internal object NativeProjectStore {
             analysisWindow = analysisWindow,
             roi = roi,
             status = ProjectStatus.QUEUED,
+            servingSideStatus = if (analyzeServingSide) {
+                ServingSideAnalysisStatus.QUEUED
+            } else ServingSideAnalysisStatus.DISABLED,
             createdAtMs = now,
             updatedAtMs = now,
         ).withServingSideCacheIdentity()
@@ -349,6 +410,11 @@ internal object NativeProjectStore {
             productionComponents = result.productionComponents(),
             productionServeOutputs = result.productionServeOutputs(),
             servingSide = result.servingSide(),
+            servingSideStatus = when {
+                result.servingSide() != null -> ServingSideAnalysisStatus.READY
+                result.servingSideError() != null -> ServingSideAnalysisStatus.ERROR
+                else -> ServingSideAnalysisStatus.NOT_RUN
+            },
             servingSideError = result.servingSideError(),
             suppression = result.suppression(),
             createdAtMs = now,
@@ -385,6 +451,12 @@ internal object NativeProjectStore {
             productionComponents = seed.productionComponents,
             productionServeOutputs = seed.productionServeOutputs,
             servingSide = seed.servingSide,
+            servingSideStatus = when {
+                !seed.scoreTrackingInitiallyEnabled -> ServingSideAnalysisStatus.DISABLED
+                seed.servingSide != null -> ServingSideAnalysisStatus.READY
+                seed.servingSideError != null -> ServingSideAnalysisStatus.ERROR
+                else -> ServingSideAnalysisStatus.NOT_RUN
+            },
             servingSideError = seed.servingSideError,
             suppression = seed.suppression,
             createdAtMs = now,
@@ -472,6 +544,7 @@ internal object NativeProjectStore {
         put("productionComponents", encodeProductionComponents(project.productionComponents))
         put("productionServeOutputs", ServingSideJson.encodeServeOutputs(project.productionServeOutputs))
         put("servingSide", project.servingSide?.let(ServingSideJson::encodeOutput) ?: JSONObject.NULL)
+        put("servingSideStatus", project.servingSideStatus.wireName)
         put("servingSideCacheIdentity", project.servingSideCacheIdentity?.let(::encodeServingSideCacheIdentity)
             ?: JSONObject.NULL)
         put("servingSideError", project.servingSideError ?: JSONObject.NULL)
@@ -539,6 +612,14 @@ internal object NativeProjectStore {
                 ServingSideJson.decodeServeOutputs(it)
             } ?: AnalysisTypes.ProductionServeOutputs.empty(),
             servingSide = json.optJSONObject("servingSide")?.let(ServingSideJson::decodeOutput),
+            servingSideStatus = if (json.has("servingSideStatus")) {
+                ServingSideAnalysisStatus.fromWireName(json.optString("servingSideStatus"))
+                    ?: return null
+            } else when {
+                json.optJSONObject("servingSide") != null -> ServingSideAnalysisStatus.READY
+                !json.isNull("servingSideError") -> ServingSideAnalysisStatus.ERROR
+                else -> ServingSideAnalysisStatus.NOT_RUN
+            },
             servingSideCacheIdentity = json.optJSONObject("servingSideCacheIdentity")
                 ?.let(::decodeServingSideCacheIdentity),
             servingSideError = if (json.isNull("servingSideError")) null
@@ -578,16 +659,22 @@ internal object NativeProjectStore {
             })
         if (!staleInference) {
             if (normalized.servingSide == null) {
-                return if (normalized.servingSideCacheIdentity == null) normalized
-                    else normalized.copy(servingSideCacheIdentity = null)
+                return normalized.copy(
+                    servingSideStatus = when (normalized.servingSideStatus) {
+                        ServingSideAnalysisStatus.READY -> ServingSideAnalysisStatus.NOT_RUN
+                        else -> normalized.servingSideStatus
+                    },
+                    servingSideCacheIdentity = null,
+                )
             }
             return if (normalized.servingSideCacheIdentity != null && ServingSideCache.isReusable(
                     normalized.servingSideCacheIdentity, normalized, normalized.servingSide,
                 )
             ) {
-                normalized
+                normalized.copy(servingSideStatus = ServingSideAnalysisStatus.READY)
             } else normalized.copy(
                 servingSide = null,
+                servingSideStatus = ServingSideAnalysisStatus.NOT_RUN,
                 servingSideCacheIdentity = null,
                 servingSideError = "Serving-side cache identity changed; rerun analysis to restore it.",
             )
@@ -595,6 +682,9 @@ internal object NativeProjectStore {
         return normalized.copy(
             status = ProjectStatus.QUEUED,
             ranges = emptyList(),
+            servingSideStatus = if (normalized.servingSideStatus == ServingSideAnalysisStatus.DISABLED) {
+                ServingSideAnalysisStatus.DISABLED
+            } else ServingSideAnalysisStatus.QUEUED,
             modelId = FeatureSchema.MODEL_ID,
             error = "Production model ensemble changed; cached features will be reused.",
             updatedAtMs = System.currentTimeMillis(),

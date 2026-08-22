@@ -15,6 +15,37 @@ class NativeProjectStoreTest {
     )
 
     @Test
+    fun queuedProjectCanExplicitlySkipServingSideAnalysis() {
+        val project = NativeProjectStore.newQueued(
+            source,
+            AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"),
+            AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default"),
+            analyzeServingSide = false,
+        )
+
+        assertEquals(ServingSideAnalysisStatus.DISABLED, project.servingSideStatus)
+        assertEquals(false, project.copy(status = ProjectStatus.READY).editorSeed()?.scoreTrackingInitiallyEnabled)
+        assertEquals(
+            ServingSideAnalysisStatus.DISABLED,
+            NativeProjectStore.decode(NativeProjectStore.encode(project))?.servingSideStatus,
+        )
+    }
+
+    @Test
+    fun legacyProjectWithoutServingSideStateRemainsEligibleForDeferredAnalysis() {
+        val project = readyProject()
+        val legacyJson = NativeProjectStore.encode(project).apply {
+            put("version", 3)
+            remove("servingSideStatus")
+        }
+
+        val restored = requireNotNull(NativeProjectStore.decode(legacyJson))
+
+        assertEquals(ServingSideAnalysisStatus.NOT_RUN, restored.servingSideStatus)
+        assertEquals(true, restored.editorSeed()?.scoreTrackingInitiallyEnabled)
+    }
+
+    @Test
     fun projectIdIsStableAndSourceSpecific() {
         val first = NativeProjectStore.projectId(source, 1_105.817)
         val second = NativeProjectStore.projectId(source, 1_105.817)

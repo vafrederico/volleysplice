@@ -95,6 +95,17 @@ class ScoreReducerTest {
     }
 
     @Test
+    fun deferredServingResultsDoNotOverrideTheCurrentScoreToggle() {
+        val seeded = ScoreReducer.seedModelMarkers(
+            ScoreTracking(enabled = false),
+            output(ServingSideVerdict.NEAR),
+        )
+
+        assertFalse(seeded.enabled)
+        assertTrue(seeded.serveMarkers.isNotEmpty())
+    }
+
+    @Test
     fun reseedingPreservesCorrectionsReplayFlagsManualMarkersAndCorrectedNotServe() {
         val initial = ScoreReducer.seedModelMarkers(ScoreTracking(), output(ServingSideVerdict.NEAR))
         val corrected = initial.copy(

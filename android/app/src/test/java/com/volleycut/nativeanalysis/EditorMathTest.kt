@@ -8,6 +8,22 @@ import org.junit.Test
 
 class EditorMathTest {
     @Test
+    fun scoreTrackingStartsDisabledWhenServingSideWasSkipped() {
+        val draft = EditorMath.newDraft(EditorSeed(
+            sourceUri = "content://fixture/video",
+            displayName = "fixture.mp4",
+            durationMs = 10_000,
+            width = 1_920,
+            height = 1_080,
+            rotation = 0,
+            ranges = emptyList(),
+            scoreTrackingInitiallyEnabled = false,
+        ))
+
+        assertFalse(draft.scoreTracking.enabled)
+    }
+
+    @Test
     fun finalIntervalsMergeTouchingCutsAndSubtractIgnoredTime() {
         val draft = EditorDraft(
             sourceRevision = "fixture",

@@ -312,6 +312,7 @@ private data class SourceSelection(
 private data class InferenceUiState(
     val projectId: String? = null,
     val running: Boolean = false,
+    val servingSideJob: Boolean = false,
     val progress: Float = 0f,
     val stage: String = "",
     val detail: String = "",
@@ -328,6 +329,20 @@ private data class EditorProjectSummary(
     val removed: Int,
     val ignored: Int,
 )
+
+private fun setScoreTrackingPreference(
+    context: Context,
+    project: NativeProject,
+    enabled: Boolean,
+) {
+    val seed = project.editorSeed() ?: return
+    val store = EditorDraftStore(context, seed)
+    val draft = store.load() ?: EditorMath.newDraft(seed)
+    store.save(draft.copy(
+        scoreTracking = draft.scoreTracking.copy(enabled = enabled),
+        updatedAtMs = System.currentTimeMillis(),
+    ))
+}
 
 @Composable
 private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
@@ -357,6 +372,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var preparingSource by remember { mutableStateOf(false) }
     var inference by remember { mutableStateOf(InferenceUiState()) }
     var useCache by remember { mutableStateOf(true) }
+    var analyzeServingSide by remember { mutableStateOf(true) }
     var cacheBytes by remember { mutableLongStateOf(NativeFeatureCache.totalBytes(context)) }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
@@ -565,21 +581,42 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     selected.media,
                     selected.roi,
                     analysisWindow,
+                    analyzeServingSide,
                 )
                 val existing = NativeProjectStore.findMatching(context, candidate)
                 val reusable = useCache && existing?.status == ProjectStatus.READY &&
                     existing.modelId == FeatureSchema.MODEL_ID
                 if (reusable) {
-                    selectedProjectId = existing.id
+                    var opened = checkNotNull(existing)
+                    if (opened.servingSide == null) {
+                        opened = NativeProjectStore.updateServingSideStatus(
+                            context,
+                            opened.id,
+                            if (analyzeServingSide) ServingSideAnalysisStatus.QUEUED
+                            else ServingSideAnalysisStatus.DISABLED,
+                        ) ?: opened
+                    }
+                    withContext(Dispatchers.IO) {
+                        setScoreTrackingPreference(context, opened, analyzeServingSide)
+                    }
+                    selectedProjectId = opened.id
                     creatingNew = false
                     selectedSource = null
                     inference = InferenceUiState(
-                        projectId = existing.id,
-                        progress = 1f,
-                        stage = "complete",
-                        detail = "Opened cached inference; no analysis was run",
+                        projectId = opened.id,
+                        servingSideJob = opened.servingSideStatus == ServingSideAnalysisStatus.QUEUED,
+                        progress = if (opened.servingSideStatus == ServingSideAnalysisStatus.QUEUED) 0f else 1f,
+                        stage = if (opened.servingSideStatus == ServingSideAnalysisStatus.QUEUED) {
+                            "serving-side-queued"
+                        } else "complete",
+                        detail = if (opened.servingSideStatus == ServingSideAnalysisStatus.QUEUED) {
+                            "Opened cached rally inference; waiting to prepare score tracking"
+                        } else "Opened cached inference; no analysis was run",
                     )
-                    reloadProjects(existing.id)
+                    reloadProjects(opened.id)
+                    if (opened.servingSideStatus == ServingSideAnalysisStatus.QUEUED) {
+                        ProjectAnalysisService.enqueueServingSide(context, opened.id)
+                    }
                 } else if (existing?.status == ProjectStatus.QUEUED ||
                     existing?.status == ProjectStatus.ANALYZING
                 ) {
@@ -683,14 +720,22 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 if (projectId == selectedProjectId) {
                     val status = intent.getStringExtra(ProjectAnalysisService.EXTRA_STATUS)
                         ?.let(ProjectStatus::fromWireName)
+                    val stage = intent.getStringExtra(ProjectAnalysisService.EXTRA_STAGE).orEmpty()
+                    val servingSideJob = intent.getBooleanExtra(
+                        ProjectAnalysisService.EXTRA_SERVING_SIDE_JOB,
+                        false,
+                    )
                     inference = inference.copy(
                         projectId = projectId,
-                        running = status == ProjectStatus.QUEUED || status == ProjectStatus.ANALYZING,
+                        servingSideJob = servingSideJob,
+                        running = if (servingSideJob) {
+                            stage != "serving-side-complete" && stage != "serving-side-failed"
+                        } else status == ProjectStatus.QUEUED || status == ProjectStatus.ANALYZING,
                         progress = intent.getDoubleExtra(ProjectAnalysisService.EXTRA_PROGRESS, 0.0)
                             .coerceIn(0.0, 1.0).toFloat(),
-                        stage = intent.getStringExtra(ProjectAnalysisService.EXTRA_STAGE).orEmpty(),
+                        stage = stage,
                         detail = intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL).orEmpty(),
-                        error = if (status == ProjectStatus.ERROR) {
+                        error = if (status == ProjectStatus.ERROR || stage == "serving-side-failed") {
                             intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL)
                         } else null,
                     )
@@ -761,7 +806,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     }
 
     val queueCount = projects.count {
-        it.status == ProjectStatus.QUEUED || it.status == ProjectStatus.ANALYZING
+        it.status == ProjectStatus.QUEUED || it.status == ProjectStatus.ANALYZING ||
+            it.servingSideStatus == ServingSideAnalysisStatus.QUEUED ||
+            it.servingSideStatus == ServingSideAnalysisStatus.ANALYZING
     }
     val guidedTourTargets = remember { GuidedTourTargets() }
     var guidedTourRestartSignal by remember { mutableIntStateOf(0) }
@@ -790,6 +837,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 gameStartMs = 0
                 gameEndMs = 0
                 inference = InferenceUiState(detail = "Choose a recording for the new project")
+                analyzeServingSide = true
                 relinkMessage = null
                 relinkFailed = false
             },
@@ -817,6 +865,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 preparing = preparingSource,
                 state = inference,
                 useCache = useCache,
+                analyzeServingSide = analyzeServingSide,
                 cacheBytes = cacheBytes,
                 queueCount = queueCount,
                 gameStartMs = gameStartMs,
@@ -840,6 +889,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     gameEndMs = selectedSource?.media?.durationSeconds()?.let(::secondsToMs) ?: 0
                 },
                 onUseCache = { useCache = it },
+                onAnalyzeServingSide = { analyzeServingSide = it },
                 onClearCache = {
                     NativeFeatureCache.clearAll(context)
                     cacheBytes = 0
@@ -898,11 +948,17 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 initialDraft = restored ?: EditorMath.newDraft(currentSeed),
                 restored = restored != null,
                 analysisRunning = queueCount > 0,
+                servingSideProgress = inference.takeIf {
+                    it.projectId == selectedProject.id && it.servingSideJob
+                }?.progress,
+                servingSideProgressDetail = inference.takeIf {
+                    it.projectId == selectedProject.id && it.servingSideJob
+                }?.detail,
                 sourceAvailable = sourceAvailable,
                 relinkingSource = relinkingSource,
                 relinkMessage = relinkMessage,
                 relinkFailed = relinkFailed,
-                onSuppressionAugmented = { updated ->
+                onProjectUpdated = { updated ->
                     projects = projects.map { if (it.id == updated.id) updated else it }
                 },
                 onRelink = {
@@ -1111,6 +1167,7 @@ private fun NewProjectCard(
     preparing: Boolean,
     state: InferenceUiState,
     useCache: Boolean,
+    analyzeServingSide: Boolean,
     cacheBytes: Long,
     queueCount: Int,
     gameStartMs: Long,
@@ -1122,6 +1179,7 @@ private fun NewProjectCard(
     onGameEnd: (Long) -> Unit,
     onFullVideo: () -> Unit,
     onUseCache: (Boolean) -> Unit,
+    onAnalyzeServingSide: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onBenchmark: (() -> Unit)?,
     guidedTourTargets: GuidedTourTargets? = null,
@@ -1179,6 +1237,25 @@ private fun NewProjectCard(
                     onFullVideo = onFullVideo,
                 )
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Prepare score tracking", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (analyzeServingSide) {
+                        "Generate serving-side features and predictions during project creation"
+                    } else {
+                        "Create faster; enabling score tracking later will run this analysis"
+                    },
+                    fontSize = 12.sp,
+                    color = Muted,
+                )
+            }
+            Switch(
+                enabled = !preparing,
+                checked = analyzeServingSide,
+                onCheckedChange = onAnalyzeServingSide,
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -1421,11 +1498,13 @@ private fun EditorScreen(
     initialDraft: EditorDraft,
     restored: Boolean,
     analysisRunning: Boolean,
+    servingSideProgress: Float?,
+    servingSideProgressDetail: String?,
     sourceAvailable: Boolean?,
     relinkingSource: Boolean,
     relinkMessage: String?,
     relinkFailed: Boolean,
-    onSuppressionAugmented: (NativeProject) -> Unit,
+    onProjectUpdated: (NativeProject) -> Unit,
     onRelink: () -> Unit,
     sourceControls: @Composable (EditorProjectSummary) -> Unit,
     guidedTourTargets: GuidedTourTargets,
@@ -1535,6 +1614,12 @@ private fun EditorScreen(
     fun updateDraft(mutate: (EditorDraft) -> EditorDraft) {
         draft = EditorMath.reconcileTouchedCuts(mutate(draft), seed)
             .copy(updatedAtMs = System.currentTimeMillis())
+    }
+
+    LaunchedEffect(project.servingSideCacheIdentity) {
+        val output = project.servingSide ?: return@LaunchedEffect
+        val seeded = ScoreReducer.seedModelMarkers(draft.scoreTracking, output)
+        if (seeded != draft.scoreTracking) updateDraft { it.copy(scoreTracking = seeded) }
     }
 
     fun updateCut(id: String, mutate: (EditableCut) -> EditableCut) {
@@ -1889,7 +1974,7 @@ private fun EditorScreen(
                                     }
                                     suppressionPreparing = false
                                     result.onSuccess {
-                                        onSuppressionAugmented(it)
+                                        onProjectUpdated(it)
                                         message = "Suppression suggestions are ready"
                                     }.onFailure {
                                         message = it.message ?: "Could not prepare suppression suggestions"
@@ -2032,11 +2117,35 @@ private fun EditorScreen(
                     selectedMarkerId = selectedScoreMarkerId,
                     manualServingSide = manualServingSide,
                     currentTimestampMs = playbackPositionMs,
-                    servingSideError = seed.servingSideError,
+                    servingSideStatus = project.servingSideStatus,
+                    servingSideError = project.servingSideError,
+                    servingSideProgress = servingSideProgress,
+                    servingSideProgressDetail = servingSideProgressDetail,
                     modifier = Modifier.guidedTourTarget("editor-score-panel", guidedTourTargets),
                     toggleModifier = Modifier.guidedTourTarget("editor-score-toggle", guidedTourTargets),
                     onEnabledChange = { enabled ->
                         updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(enabled = enabled)) }
+                        if (enabled && project.servingSide == null &&
+                            project.servingSideStatus != ServingSideAnalysisStatus.QUEUED &&
+                            project.servingSideStatus != ServingSideAnalysisStatus.ANALYZING
+                        ) {
+                            if (sourceAvailable == false) {
+                                message = "Re-link the source video to prepare score tracking"
+                            } else {
+                                message = "Queued serving-side feature generation"
+                                scope.launch {
+                                    val queued = withContext(Dispatchers.IO) {
+                                        NativeProjectStore.updateServingSideStatus(
+                                            context,
+                                            project.id,
+                                            ServingSideAnalysisStatus.QUEUED,
+                                        )
+                                    }
+                                    queued?.let(onProjectUpdated)
+                                    ProjectAnalysisService.enqueueServingSide(context, project.id)
+                                }
+                            }
+                        }
                     },
                     onTracking = { tracking -> updateDraft { it.copy(scoreTracking = tracking) } },
                     onSelect = { markerId, timestampMs ->
@@ -2466,40 +2575,51 @@ private fun EditorScreen(
                 "${effectiveIds.size} kept · $ignoredCutCount fully ignored",
                 modifier = Modifier.guidedTourTarget("editor-cuts", guidedTourTargets),
             ) {
-                sortedCuts.forEachIndexed { index, cut ->
-                    val state = when {
-                        !cut.included -> "Removed"
-                        cut.id !in effectiveIds -> "Ignored"
-                        else -> "Keep"
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (cut.id == selected?.id) Color(0xFFFFEEE8) else Color.Transparent)
-                            .clickable { selectedId = cut.id; seekTo(cut.keepStartMs) }
-                            .padding(vertical = 7.dp, horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text((index + 1).toString().padStart(2, '0'), color = Muted, fontFamily = FontFamily.Monospace)
-                        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                            Text(cut.id, fontWeight = FontWeight.SemiBold)
-                            Text("${preciseTime(cut.keepStartMs)}–${preciseTime(cut.keepEndMs)}", fontSize = 12.sp, color = Muted)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .border(1.dp, Rail, RoundedCornerShape(4.dp))
+                        .background(Paper, RoundedCornerShape(4.dp))
+                        .verticalScroll(rememberScrollState())
+                        .padding(4.dp)
+                        .semantics { contentDescription = "All cuts list" },
+                ) {
+                    sortedCuts.forEachIndexed { index, cut ->
+                        val state = when {
+                            !cut.included -> "Removed"
+                            cut.id !in effectiveIds -> "Ignored"
+                            else -> "Keep"
                         }
-                        Text(
-                            if (cut.origin == CutOrigin.MANUAL) "MANUAL"
-                            else if (cut.isModelDisagreement()) "CHECK"
-                            else "${(cut.confidence * 100).roundToInt()}%",
-                            fontSize = 12.sp,
-                            color = if (cut.isModelDisagreement() ||
-                                cut.confidence < draft.confidenceReviewThreshold
-                            ) Warning else Muted,
-                        )
-                        TextButton(onClick = { updateCut(cut.id) { it.copy(included = !it.included) } }) {
-                            Text(state, color = if (state == "Keep") Green else Danger)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (cut.id == selected?.id) Color(0xFFFFEEE8) else Color.Transparent)
+                                .clickable { selectedId = cut.id; seekTo(cut.keepStartMs) }
+                                .padding(vertical = 7.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text((index + 1).toString().padStart(2, '0'), color = Muted, fontFamily = FontFamily.Monospace)
+                            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                                Text(cut.id, fontWeight = FontWeight.SemiBold)
+                                Text("${preciseTime(cut.keepStartMs)}–${preciseTime(cut.keepEndMs)}", fontSize = 12.sp, color = Muted)
+                            }
+                            Text(
+                                if (cut.origin == CutOrigin.MANUAL) "MANUAL"
+                                else if (cut.isModelDisagreement()) "CHECK"
+                                else "${(cut.confidence * 100).roundToInt()}%",
+                                fontSize = 12.sp,
+                                color = if (cut.isModelDisagreement() ||
+                                    cut.confidence < draft.confidenceReviewThreshold
+                                ) Warning else Muted,
+                            )
+                            TextButton(onClick = { updateCut(cut.id) { it.copy(included = !it.included) } }) {
+                                Text(state, color = if (state == "Keep") Green else Danger)
+                            }
                         }
+                        if (index < sortedCuts.lastIndex) HorizontalDivider(color = Rail)
                     }
-                    if (index < sortedCuts.lastIndex) HorizontalDivider(color = Rail)
                 }
             }
 
@@ -2589,7 +2709,10 @@ internal fun ScoreTrackingPanel(
     selectedMarkerId: String?,
     manualServingSide: ServingSide,
     currentTimestampMs: Long,
+    servingSideStatus: ServingSideAnalysisStatus,
     servingSideError: String?,
+    servingSideProgress: Float?,
+    servingSideProgressDetail: String?,
     onEnabledChange: (Boolean) -> Unit,
     onTracking: (ScoreTracking) -> Unit,
     onSelect: (String, Long) -> Unit,
@@ -2711,30 +2834,67 @@ internal fun ScoreTrackingPanel(
                     }
                 }
 
+                val servingSideBusy = servingSideStatus == ServingSideAnalysisStatus.QUEUED ||
+                    servingSideStatus == ServingSideAnalysisStatus.ANALYZING
+                val servingSideFailed = servingSideStatus == ServingSideAnalysisStatus.ERROR
+                val reportedProgress = servingSideProgress?.coerceIn(0f, 1f) ?: 0f
                 Surface(
                     modifier = Modifier.fillMaxWidth().border(
                         1.dp,
-                        if (servingSideError == null) PaleGreen else Orange,
+                        if (servingSideFailed) Orange else PaleGreen,
                         RoundedCornerShape(4.dp),
                     ),
-                    color = if (servingSideError == null) Color(0xFFEEF6F0) else Color(0xFFFFEEE8),
+                    color = if (servingSideFailed) Color(0xFFFFEEE8) else Color(0xFFEEF6F0),
                     shape = RoundedCornerShape(4.dp),
                 ) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(
-                            if (servingSideError == null) "SERVE MARKERS READY" else "SERVING-SIDE ANALYSIS NEEDS ATTENTION",
+                            when (servingSideStatus) {
+                                ServingSideAnalysisStatus.QUEUED -> "SCORE TRACKING QUEUED"
+                                ServingSideAnalysisStatus.ANALYZING -> "GENERATING SERVING-SIDE FEATURES"
+                                ServingSideAnalysisStatus.READY -> "SERVE MARKERS READY"
+                                ServingSideAnalysisStatus.ERROR -> "SERVING-SIDE ANALYSIS NEEDS ATTENTION"
+                                ServingSideAnalysisStatus.DISABLED,
+                                ServingSideAnalysisStatus.NOT_RUN -> "SERVE MARKERS NOT PREPARED"
+                            },
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            servingSideError ?: if (reviewCount > 0) {
-                                "$reviewCount model ${if (reviewCount == 1) "verdict needs" else "verdicts need"} review."
-                            } else "Serving-side predictions are ready to edit.",
+                            when {
+                                servingSideBusy && !servingSideProgressDetail.isNullOrBlank() ->
+                                    servingSideProgressDetail
+                                servingSideBusy -> "This can take a while. You can keep editing while it runs."
+                                servingSideFailed -> servingSideError ?: "Serving-side analysis failed. Disable and re-enable score tracking to retry."
+                                servingSideStatus == ServingSideAnalysisStatus.READY && reviewCount > 0 ->
+                                    "$reviewCount model ${if (reviewCount == 1) "verdict needs" else "verdicts need"} review."
+                                servingSideStatus == ServingSideAnalysisStatus.READY ->
+                                    "Serving-side predictions are ready to edit."
+                                else -> "Enable score tracking to generate serving-side features and predictions."
+                            },
                             color = Muted,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                         )
+                        if (servingSideBusy) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = { reportedProgress },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    "${(reportedProgress * 100).roundToInt()}%",
+                                    color = Muted,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                )
+                            }
+                        }
                     }
                 }
 

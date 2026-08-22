@@ -23,13 +23,85 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal fun servingSideOverallProgress(stage: String, fraction: Double): Double {
+    val bounded = fraction.coerceIn(0.0, 1.0)
+    return when (stage) {
+        "serving-side-frames" -> 0.02 + bounded * 0.80
+        "serving-side-features" -> 0.82 + bounded * 0.17
+        "serving-side" -> if (bounded >= 1.0) 1.0 else 0.01
+        else -> bounded
+    }
+}
+
+internal fun projectCreationOverallProgress(
+    stage: String,
+    fraction: Double,
+    includeServingSide: Boolean,
+): Double {
+    val bounded = fraction.coerceIn(0.0, 1.0)
+    if (stage == "complete") return 1.0
+    if (includeServingSide) {
+        return when (stage) {
+            "opening" -> 0.02 * bounded
+            "video" -> 0.02 + 0.40 * bounded
+            "audio" -> 0.42 + 0.16 * bounded
+            "normalizing" -> 0.58 + 0.06 * bounded
+            "inference" -> 0.64 + 0.06 * bounded
+            "serving-side", "serving-side-frames", "serving-side-features" ->
+                0.70 + 0.30 * servingSideOverallProgress(stage, bounded)
+            else -> bounded
+        }
+    }
+    return when (stage) {
+        "opening" -> 0.02 * bounded
+        "video" -> 0.02 + 0.63 * bounded
+        "audio" -> 0.65 + 0.19 * bounded
+        "normalizing" -> 0.84 + 0.07 * bounded
+        "inference" -> 0.91 + 0.08 * bounded
+        "serving-side" -> 0.99
+        else -> bounded
+    }
+}
+
+internal fun projectInferenceNotificationDetail(
+    filename: String,
+    stats: AnalysisTypes.PerformanceStats?,
+): String {
+    if (stats == null || stats.framesPerSecond() <= 0.0) return filename
+    val etaSeconds = stats.etaSeconds()
+    val eta = if (!etaSeconds.isFinite() || etaSeconds < 0.0) {
+        "calculating"
+    } else {
+        val totalSeconds = etaSeconds.toLong().coerceAtLeast(0L)
+        val hours = totalSeconds / 3_600
+        val minutes = totalSeconds % 3_600 / 60
+        val seconds = totalSeconds % 60
+        when {
+            hours > 0 -> "${hours}h ${minutes}m"
+            minutes > 0 -> "${minutes}m ${seconds}s"
+            else -> "${seconds}s"
+        }
+    }
+    return String.format(
+        Locale.US,
+        "%s · %.1f fps · %.2fx realtime · ETA %s",
+        filename,
+        stats.framesPerSecond(),
+        stats.realtimeRatio(),
+        eta,
+    )
+}
+
 /** Serial foreground queue so decoding continues while a different project is edited. */
 class ProjectAnalysisService : Service() {
+    private data class AnalysisTask(val projectId: String, val servingSideOnly: Boolean)
+
     private val executor = Executors.newSingleThreadExecutor()
-    private val queue = ArrayDeque<String>()
+    private val queue = ArrayDeque<AnalysisTask>()
     private val queuedIds = mutableSetOf<String>()
     private val deletingProjects = mutableMapOf<String, NativeProject>()
     private var activeProjectId: String? = null
+    private var activeServingSideOnly = false
     private var activeCancellation: AtomicBoolean? = null
     private var workerRunning = false
     private var foreground = false
@@ -51,6 +123,8 @@ class ProjectAnalysisService : Service() {
         when (intent?.action) {
             ACTION_DELETE -> intent.getStringExtra(EXTRA_PROJECT_ID)?.let(::deleteProject)
             ACTION_ENQUEUE -> intent.getStringExtra(EXTRA_PROJECT_ID)?.let(::enqueueProject)
+            ACTION_ENQUEUE_SERVING_SIDE -> intent.getStringExtra(EXTRA_PROJECT_ID)
+                ?.let(::enqueueServingSideProject)
         }
         return START_NOT_STICKY
     }
@@ -60,7 +134,7 @@ class ProjectAnalysisService : Service() {
         val project = NativeProjectStore.get(this, projectId) ?: return
         if (project.status == ProjectStatus.READY || projectId == activeProjectId || projectId in queuedIds) return
         NativeProjectStore.updateStatus(this, projectId, ProjectStatus.QUEUED)
-        queue.addLast(projectId)
+        queue.addLast(AnalysisTask(projectId, false))
         queuedIds += projectId
         liveProjectIds += projectId
         if (wakeLock?.isHeld != true) wakeLock?.acquire(12 * 60 * 60 * 1_000L)
@@ -73,8 +147,35 @@ class ProjectAnalysisService : Service() {
     }
 
     @Synchronized
+    private fun enqueueServingSideProject(projectId: String) {
+        val project = NativeProjectStore.get(this, projectId) ?: return
+        if (project.status != ProjectStatus.READY ||
+            project.servingSideStatus == ServingSideAnalysisStatus.READY ||
+            projectId == activeProjectId || projectId in queuedIds
+        ) return
+        NativeProjectStore.updateServingSideStatus(
+            this,
+            projectId,
+            ServingSideAnalysisStatus.QUEUED,
+        )
+        queue.addLast(AnalysisTask(projectId, true))
+        queuedIds += projectId
+        liveProjectIds += projectId
+        if (wakeLock?.isHeld != true) wakeLock?.acquire(12 * 60 * 60 * 1_000L)
+        ensureForeground("Queued score tracking for ${project.source.name}", true)
+        broadcast(
+            projectId, null, 0.0, "serving-side-queued",
+            "Waiting to generate serving-side features", servingSideJob = true,
+        )
+        if (!workerRunning) {
+            workerRunning = true
+            executor.execute(::drainQueue)
+        }
+    }
+
+    @Synchronized
     private fun deleteProject(projectId: String) {
-        queue.removeAll { it == projectId }
+        queue.removeAll { it.projectId == projectId }
         queuedIds -= projectId
         if (activeProjectId == projectId) activeCancellation?.set(true)
         NativeProjectStore.get(this, projectId)?.let {
@@ -87,23 +188,25 @@ class ProjectAnalysisService : Service() {
 
     private fun drainQueue() {
         while (!timedOut) {
-            val projectId = synchronized(this) {
+            val task = synchronized(this) {
                 val next = if (queue.isEmpty()) null else queue.removeFirst()
                 if (next == null) {
                     workerRunning = false
                     null
                 } else {
-                    queuedIds -= next
-                    activeProjectId = next
+                    queuedIds -= next.projectId
+                    activeProjectId = next.projectId
+                    activeServingSideOnly = next.servingSideOnly
                     next
                 }
             } ?: break
-            analyze(projectId)
+            if (task.servingSideOnly) analyzeServingSide(task.projectId) else analyze(task.projectId)
             synchronized(this) {
                 activeProjectId = null
+                activeServingSideOnly = false
                 activeCancellation = null
             }
-            liveProjectIds -= projectId
+            liveProjectIds -= task.projectId
         }
         finishForeground()
     }
@@ -113,8 +216,15 @@ class ProjectAnalysisService : Service() {
         val cancelled = AtomicBoolean(false)
         synchronized(this) { activeCancellation = cancelled }
         NativeProjectStore.updateStatus(this, projectId, ProjectStatus.ANALYZING)
+        if (project.servingSideStatus != ServingSideAnalysisStatus.DISABLED) {
+            NativeProjectStore.updateServingSideStatus(
+                this, projectId, ServingSideAnalysisStatus.ANALYZING,
+            )
+        }
         broadcast(projectId, ProjectStatus.ANALYZING, 0.0, "opening", "Preparing game-window video + audio inference")
-        updateNotification(0, "Analyzing ${project.source.name}", true)
+        var latestProgressPercent = 0
+        var latestPerformance: AnalysisTypes.PerformanceStats? = null
+        updateNotification(0, project.source.name, false)
         try {
             val result = AnalysisEngine(this).analyze(
                 Uri.parse(project.source.uri),
@@ -126,15 +236,38 @@ class ProjectAnalysisService : Service() {
                 cancelled,
                 object : AnalysisTypes.ProgressListener {
                     override fun onProgress(stage: String, fraction: Double, detail: String) {
-                        val percent = (fraction.coerceIn(0.0, 1.0) * 100).toInt()
-                        updateNotification(percent, "${project.source.name} · $detail", true)
-                        broadcast(projectId, ProjectStatus.ANALYZING, fraction, stage, detail)
+                        val overallProgress = projectCreationOverallProgress(
+                            stage,
+                            fraction,
+                            project.servingSideStatus != ServingSideAnalysisStatus.DISABLED,
+                        )
+                        val percent = (overallProgress * 100).toInt()
+                        latestProgressPercent = percent
+                        updateNotification(
+                            percent,
+                            projectInferenceNotificationDetail(project.source.name, latestPerformance),
+                            false,
+                        )
+                        broadcast(
+                            projectId,
+                            ProjectStatus.ANALYZING,
+                            overallProgress,
+                            stage,
+                            detail,
+                        )
                     }
 
                     override fun onPerformance(stats: AnalysisTypes.PerformanceStats) {
+                        latestPerformance = stats
+                        updateNotification(
+                            latestProgressPercent,
+                            projectInferenceNotificationDetail(project.source.name, stats),
+                            false,
+                        )
                         broadcastPerformance(projectId, stats)
                     }
                 },
+                project.servingSideStatus != ServingSideAnalysisStatus.DISABLED,
             )
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
                 NativeProjectStore.complete(this, projectId, result)
@@ -162,6 +295,100 @@ class ProjectAnalysisService : Service() {
                     broadcast(projectId, ProjectStatus.ERROR, 0.0, "failed", message)
                     updateNotification(0, "Failed: ${project.source.name}", false)
                 }
+            }
+        } finally {
+            synchronized(this) { deletingProjects.remove(projectId) }
+                ?.let { NativeProjectStore.delete(this, it) }
+        }
+    }
+
+    private fun analyzeServingSide(projectId: String) {
+        val project = NativeProjectStore.get(this, projectId) ?: return
+        if (project.status != ProjectStatus.READY) return
+        val cancelled = AtomicBoolean(false)
+        synchronized(this) { activeCancellation = cancelled }
+        NativeProjectStore.updateServingSideStatus(
+            this, projectId, ServingSideAnalysisStatus.ANALYZING,
+        )
+        broadcast(
+            projectId, null, 0.0, "serving-side",
+            "Generating serving-side features", servingSideJob = true,
+        )
+        updateNotification(0, "Score tracking · ${project.source.name}", true)
+        try {
+            val output = ServingSideInference.run(
+                this,
+                Uri.parse(project.source.uri),
+                project.media,
+                project.roi,
+                project.ranges.map {
+                    AnalysisTypes.Interval(
+                        it.startMs / 1_000.0,
+                        it.endMs / 1_000.0,
+                        it.confidence,
+                        it.agreement,
+                    )
+                },
+                project.productionServeOutputs,
+                object : AnalysisTypes.ProgressListener {
+                    override fun onProgress(stage: String, fraction: Double, detail: String) {
+                        val overallProgress = servingSideOverallProgress(stage, fraction)
+                        val percent = (overallProgress * 100).toInt()
+                        updateNotification(percent, "${project.source.name} · $detail", false)
+                        broadcast(
+                            projectId, null, overallProgress, stage, detail,
+                            servingSideJob = true,
+                        )
+                    }
+
+                    override fun onPerformance(stats: AnalysisTypes.PerformanceStats) = Unit
+                },
+                cancelled::get,
+            )
+            if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
+                NativeProjectStore.completeServingSide(this, projectId, output)
+                val reviewCount = output.candidates.count {
+                    it.verdict == ServingSideVerdict.REVIEW
+                }
+                val detail = "${output.candidates.size} serve candidates · $reviewCount to review"
+                broadcast(
+                    projectId, null, 1.0, "serving-side-complete", detail,
+                    servingSideJob = true,
+                )
+                updateNotification(100, "Score tracking ready: ${project.source.name}", false)
+            }
+        } catch (error: Exception) {
+            if (NativeProjectStore.get(this, projectId) != null) {
+                val detail = when {
+                    cancelled.get() && !timedOut -> {
+                        NativeProjectStore.updateServingSideStatus(
+                            this, projectId, ServingSideAnalysisStatus.QUEUED,
+                        )
+                        "Serving-side inference interrupted; ready to resume"
+                    }
+                    timedOut -> {
+                        val message = "Android stopped serving-side inference after its background time limit. Retry by enabling score tracking again."
+                        NativeProjectStore.updateServingSideStatus(
+                            this, projectId, ServingSideAnalysisStatus.ERROR, message,
+                        )
+                        message
+                    }
+                    else -> {
+                        val message = error.message ?: error.javaClass.simpleName
+                        NativeProjectStore.updateServingSideStatus(
+                            this, projectId, ServingSideAnalysisStatus.ERROR, message,
+                        )
+                        Log.e(TAG, "Serving-side inference failed for $projectId", error)
+                        message
+                    }
+                }
+                broadcast(
+                    projectId, null, 0.0,
+                    if (cancelled.get() && !timedOut) "serving-side-queued" else "serving-side-failed",
+                    detail,
+                    servingSideJob = true,
+                )
+                updateNotification(0, "Score tracking unavailable: ${project.source.name}", false)
             }
         } finally {
             synchronized(this) { deletingProjects.remove(projectId) }
@@ -212,6 +439,7 @@ class ProjectAnalysisService : Service() {
         progress: Double,
         stage: String,
         detail: String,
+        servingSideJob: Boolean = false,
     ) {
         sendBroadcast(Intent(ACTION_UPDATE).setPackage(packageName).apply {
             putExtra(EXTRA_PROJECT_ID, projectId)
@@ -219,6 +447,7 @@ class ProjectAnalysisService : Service() {
             putExtra(EXTRA_PROGRESS, progress)
             putExtra(EXTRA_STAGE, stage)
             putExtra(EXTRA_DETAIL, detail)
+            putExtra(EXTRA_SERVING_SIDE_JOB, servingSideJob)
         })
     }
 
@@ -288,24 +517,34 @@ class ProjectAnalysisService : Service() {
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        val projectId = synchronized(this) {
+        val activeTask = synchronized(this) {
             timedOut = true
             activeCancellation?.set(true)
-            activeProjectId
+            activeProjectId?.let { AnalysisTask(it, activeServingSideOnly) }
         }
-        val affectedIds = synchronized(this) {
-            (queue.toList() + listOfNotNull(projectId)).distinct().also {
+        val affectedTasks = synchronized(this) {
+            (queue.toList() + listOfNotNull(activeTask)).distinctBy { it.projectId }.also {
                 queue.clear()
                 queuedIds.clear()
                 workerRunning = false
             }
         }
         val detail = "Android stopped project inference after its background time limit. Retry when the app is ready."
-        affectedIds.forEach { affectedId ->
-            NativeProjectStore.updateStatus(this, affectedId, ProjectStatus.ERROR, detail)
-            broadcast(affectedId, ProjectStatus.ERROR, 0.0, "timeout", detail)
+        affectedTasks.forEach { task ->
+            if (task.servingSideOnly) {
+                NativeProjectStore.updateServingSideStatus(
+                    this, task.projectId, ServingSideAnalysisStatus.ERROR, detail,
+                )
+                broadcast(
+                    task.projectId, null, 0.0, "serving-side-failed", detail,
+                    servingSideJob = true,
+                )
+            } else {
+                NativeProjectStore.updateStatus(this, task.projectId, ProjectStatus.ERROR, detail)
+                broadcast(task.projectId, ProjectStatus.ERROR, 0.0, "timeout", detail)
+            }
         }
-        val project = projectId?.let { NativeProjectStore.get(this, it) }
+        val project = activeTask?.projectId?.let { NativeProjectStore.get(this, it) }
         ProcessingTimeoutTracker.record(
             context = this,
             operation = MediaProcessingOperation.INFERENCE,
@@ -338,6 +577,7 @@ class ProjectAnalysisService : Service() {
         private const val NOTIFICATION_ID = 402
         private val liveProjectIds = ConcurrentHashMap.newKeySet<String>()
         const val ACTION_ENQUEUE = "com.volleycut.nativeanalysis.ENQUEUE_PROJECT"
+        const val ACTION_ENQUEUE_SERVING_SIDE = "com.volleycut.nativeanalysis.ENQUEUE_SERVING_SIDE"
         const val ACTION_DELETE = "com.volleycut.nativeanalysis.DELETE_PROJECT"
         const val ACTION_UPDATE = "com.volleycut.nativeanalysis.PROJECT_UPDATE"
         const val EXTRA_PROJECT_ID = "project_id"
@@ -353,12 +593,22 @@ class ProjectAnalysisService : Service() {
         const val EXTRA_FPS = "project_fps"
         const val EXTRA_REALTIME = "project_realtime"
         const val EXTRA_ETA_SECONDS = "project_eta_seconds"
+        const val EXTRA_SERVING_SIDE_JOB = "project_serving_side_job"
 
         fun enqueue(context: Context, projectId: String) {
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, ProjectAnalysisService::class.java)
                     .setAction(ACTION_ENQUEUE)
+                    .putExtra(EXTRA_PROJECT_ID, projectId),
+            )
+        }
+
+        fun enqueueServingSide(context: Context, projectId: String) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ProjectAnalysisService::class.java)
+                    .setAction(ACTION_ENQUEUE_SERVING_SIDE)
                     .putExtra(EXTRA_PROJECT_ID, projectId),
             )
         }
@@ -381,6 +631,22 @@ class ProjectAnalysisService : Service() {
                         NativeProjectStore.updateStatus(context, it.id, ProjectStatus.QUEUED)
                     }
                     enqueue(context, it.id)
+                }
+            NativeProjectStore.list(context)
+                .filter {
+                    it.status == ProjectStatus.READY &&
+                        (it.servingSideStatus == ServingSideAnalysisStatus.QUEUED ||
+                            it.servingSideStatus == ServingSideAnalysisStatus.ANALYZING)
+                }
+                .sortedBy { it.createdAtMs }
+                .forEach {
+                    if (it.id in liveProjectIds) return@forEach
+                    if (it.servingSideStatus == ServingSideAnalysisStatus.ANALYZING) {
+                        NativeProjectStore.updateServingSideStatus(
+                            context, it.id, ServingSideAnalysisStatus.QUEUED,
+                        )
+                    }
+                    enqueueServingSide(context, it.id)
                 }
         }
     }

@@ -371,7 +371,11 @@ path. Android must verify 0°, 90°, 180°, and 270° inputs and avoid applying 
 
 Android must version and atomically migrate its native project/editor schemas. Existing
 projects default to score tracking enabled and final-video rendering disabled without
-losing cuts or suppression state.
+losing cuts or suppression state. New-project setup may explicitly skip the additional
+serving-side feature pass; that choice starts score tracking disabled and is persisted separately
+from rally inference. Enabling score tracking later must queue only the missing serving-side
+feature generation and inference, retain all edits, and merge the resulting model markers without
+re-running the rally models.
 
 Android's current feedback exporter is schema v1. This feature requires parity with
 `volleycut-model-feedback` schema v3:

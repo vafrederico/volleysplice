@@ -30,6 +30,8 @@ class ScoreTrackingUiInstrumentedTest {
     @Test
     fun scorePanelUsesOneHeaderAndHidesDetailsWhenDisabled() {
         var enabled by mutableStateOf(false)
+        var servingSideStatus by mutableStateOf(ServingSideAnalysisStatus.NOT_RUN)
+        var servingSideProgress by mutableStateOf<Float?>(null)
         val tracking = ScoreTracking()
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         compose.runOnUiThread {
@@ -45,7 +47,10 @@ class ScoreTrackingUiInstrumentedTest {
                         selectedMarkerId = null,
                         manualServingSide = ServingSide.NEAR,
                         currentTimestampMs = 0,
+                        servingSideStatus = servingSideStatus,
                         servingSideError = null,
+                        servingSideProgress = servingSideProgress,
+                        servingSideProgressDetail = "Sampling serving-side windows",
                         onEnabledChange = { enabled = it },
                         onTracking = {},
                         onSelect = { _, _ -> },
@@ -57,9 +62,14 @@ class ScoreTrackingUiInstrumentedTest {
         compose.waitForIdle()
         assertTrue(device.hasObject(By.desc("Score tracking controls")))
         assertFalse(device.hasObject(By.desc("Score marker list")))
-        compose.runOnIdle { enabled = true }
+        compose.runOnIdle {
+            enabled = true
+            servingSideStatus = ServingSideAnalysisStatus.ANALYZING
+            servingSideProgress = 0.42f
+        }
         compose.waitForIdle()
         assertTrue(device.wait(Until.hasObject(By.desc("Score marker list")), 2_000))
+        assertTrue(device.wait(Until.hasObject(By.text("42%")), 2_000))
     }
 
     @Test
