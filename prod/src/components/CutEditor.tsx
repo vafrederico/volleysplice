@@ -114,6 +114,10 @@ type TimelineDrag = {
   moved: boolean;
   seekOnTap: boolean;
   tapCutId: string | null;
+  tapMarker:
+    | { kind: "serve"; markerId: string; timestamp: number }
+    | { kind: "switch"; timestamp: number }
+    | null;
 };
 
 function preciseTime(seconds: number): string {
@@ -1168,6 +1172,22 @@ export function CutEditor({
     const tapCutId = target
       ?.closest<HTMLButtonElement>("[data-overview-cut-id]")
       ?.dataset.overviewCutId ?? null;
+    const markerTarget = target?.closest<HTMLButtonElement>(
+      "[data-timeline-marker]",
+    );
+    const markerTimestamp = Number(markerTarget?.dataset.markerTimestamp);
+    const tapMarker = Number.isFinite(markerTimestamp)
+      ? markerTarget?.dataset.timelineMarker === "serve" &&
+        markerTarget.dataset.markerId
+        ? {
+            kind: "serve" as const,
+            markerId: markerTarget.dataset.markerId,
+            timestamp: markerTimestamp,
+          }
+        : markerTarget?.dataset.timelineMarker === "switch"
+          ? { kind: "switch" as const, timestamp: markerTimestamp }
+          : null
+      : null;
     timelineDragRef.current = {
       pointerId: event.pointerId,
       left: bounds.left,
@@ -1179,6 +1199,7 @@ export function CutEditor({
       moved: false,
       seekOnTap: event.target === event.currentTarget,
       tapCutId,
+      tapMarker,
     };
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -1206,6 +1227,16 @@ export function CutEditor({
     if (drag.moved) {
       timelineSeekTime(event.clientX, drag);
       suppressTimelineClickUntilRef.current = Date.now() + 800;
+    } else if (drag.tapMarker) {
+      suppressTimelineClickUntilRef.current = Date.now() + 800;
+      if (drag.tapMarker.kind === "serve") {
+        selectServeMarker(
+          drag.tapMarker.markerId,
+          drag.tapMarker.timestamp,
+        );
+      } else {
+        seekTo(drag.tapMarker.timestamp, false);
+      }
     } else if (drag.tapCutId) {
       suppressTimelineClickUntilRef.current = Date.now() + 800;
       const tappedCut = draft.cuts.find((cut) => cut.id === drag.tapCutId);
@@ -1543,13 +1574,14 @@ export function CutEditor({
               type="button"
               key={marker.id}
               className={styles.serveTimelineMarker}
+              data-timeline-marker="serve"
+              data-marker-id={marker.id}
+              data-marker-timestamp={marker.timestamp}
               data-side={marker.side}
               data-selected={marker.id === selectedServeMarkerId || undefined}
               style={{ left: `${timelinePercent(marker.timestamp - windowStart, windowDuration)}%` }}
               aria-label={`Serve marker at ${preciseTime(marker.timestamp)}, ${marker.side === "review" ? "review needed" : `${marker.side} side`}`}
               title={`Serve · ${preciseTime(marker.timestamp)} · ${marker.side}`}
-              onPointerDown={(event) => event.stopPropagation()}
-              onPointerUp={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 selectServeMarker(marker.id, marker.timestamp);
@@ -1567,11 +1599,11 @@ export function CutEditor({
               type="button"
               key={marker.id}
               className={styles.switchTimelineMarker}
+              data-timeline-marker="switch"
+              data-marker-timestamp={marker.timestamp}
               style={{ left: `${timelinePercent(marker.timestamp - windowStart, windowDuration)}%` }}
-              aria-label={`Team side switch at ${preciseTime(marker.timestamp)}`}
-              title={`Team side switch · ${preciseTime(marker.timestamp)}`}
-              onPointerDown={(event) => event.stopPropagation()}
-              onPointerUp={(event) => event.stopPropagation()}
+              aria-label={`Team side switch at ${preciseTime(marker.timestamp)}, applies to the next serve marker`}
+              title={`Team side switch · ${preciseTime(marker.timestamp)} · applies to next serve`}
               onClick={(event) => {
                 event.stopPropagation();
                 seekTo(marker.timestamp, false);
@@ -2713,7 +2745,10 @@ export function CutEditor({
       </section>
 
       <SiteFooter />
-      <GuidedTour stage="editor" />
+      <GuidedTour
+        stage="editor"
+        scoreTrackingEnabled={draft.scoreTracking.enabled}
+      />
     </main>
   );
 }

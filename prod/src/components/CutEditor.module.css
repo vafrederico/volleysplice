@@ -1140,9 +1140,8 @@
   border: 0;
   background: transparent;
   color: var(--cut-ink);
-  cursor: pointer;
+  pointer-events: none;
   transform: translateX(-22px);
-  touch-action: manipulation;
 }
 
 .serveTimelineMarker > span,
@@ -1158,7 +1157,10 @@
   border: 1px solid var(--cut-ink);
   border-radius: 50%;
   background: #fff;
+  cursor: pointer;
   font: 9px/1 sans-serif;
+  pointer-events: auto;
+  touch-action: manipulation;
   transform: translateX(-50%);
 }
 

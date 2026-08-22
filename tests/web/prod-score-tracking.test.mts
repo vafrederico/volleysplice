@@ -67,8 +67,16 @@ test("a side switch flips physical near/far without changing team identity", () 
   tracking = addServeMarker(tracking, 5, "near", { id: "S001" });
   tracking = addServeMarker(tracking, 10, "far", { id: "S002" });
   tracking = addSideSwitchMarker(tracking, 15, "X001");
-  tracking = addServeMarker(tracking, 15, "far", { id: "S003" });
+  tracking = addServeMarker(tracking, 16, "far", { id: "S003" });
   tracking = addServeMarker(tracking, 20, "near", { id: "S004" });
+
+  const atSwitch = deriveScoreAt(tracking, 15);
+  assert.equal(atSwitch.team1Score, 0);
+  assert.equal(atSwitch.team2Score, 1);
+
+  const atNextServe = deriveScoreAt(tracking, 16);
+  assert.equal(atNextServe.team1Score, 1);
+  assert.equal(atNextServe.team2Score, 1);
 
   const score = deriveScoreAt(tracking);
   assert.equal(score.team1Score, 1);

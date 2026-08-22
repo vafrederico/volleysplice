@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import styles from "./GuidedTour.module.css";
 
-const TOUR_STORAGE_KEY = "volleycut:guided-tour:v9";
+const TOUR_STORAGE_KEY = "volleycut:guided-tour:v10";
 
 const EDITOR_STEPS = [
   "editor-header",
@@ -15,6 +15,7 @@ const EDITOR_STEPS = [
   "editor-export-video",
   "editor-video",
   "editor-score",
+  "editor-score-panel",
   "editor-transport",
   "editor-score-markers",
   "editor-overview",
@@ -25,7 +26,11 @@ const EDITOR_STEPS = [
   "editor-cuts",
 ] as const;
 const SOURCE_STEP_COUNT = 4;
-const TOTAL_TOUR_STEPS = SOURCE_STEP_COUNT + EDITOR_STEPS.length;
+const SCORE_EDITOR_STEPS = new Set<EditorStep>([
+  "editor-score",
+  "editor-score-panel",
+  "editor-score-markers",
+]);
 
 type TourState =
   | "source-select"
@@ -78,11 +83,24 @@ function writeTourState(state: TourState): void {
 type GuidedTourProps = {
   stage: TourStage;
   sourceReady?: boolean;
+  scoreTrackingEnabled?: boolean;
 };
 
-export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
+export function GuidedTour({
+  stage,
+  sourceReady = false,
+  scoreTrackingEnabled = false,
+}: GuidedTourProps) {
   const [tourState, setTourState] = useState<TourState | null>(null);
   const [holdSourceSelect, setHoldSourceSelect] = useState(false);
+  const activeEditorSteps = useMemo(
+    () =>
+      stage === "source" || scoreTrackingEnabled
+        ? [...EDITOR_STEPS]
+        : EDITOR_STEPS.filter((step) => !SCORE_EDITOR_STEPS.has(step)),
+    [scoreTrackingEnabled, stage],
+  );
+  const totalTourSteps = SOURCE_STEP_COUNT + activeEditorSteps.length;
   const sourceStep: SourceStep | null =
     stage === "source" &&
     (tourState === "source-select" ||
@@ -92,7 +110,11 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
       ? tourState
       : null;
   const editorStep: EditorStep | null =
-    stage === "editor" && isEditorStep(tourState) ? tourState : null;
+    stage === "editor" &&
+    isEditorStep(tourState) &&
+    activeEditorSteps.includes(tourState)
+      ? tourState
+      : null;
   const targetName =
     stage === "editor"
       ? (editorStep ?? "editor-header")
@@ -109,11 +131,13 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
               ? "source-create"
               : "source-picker"
             : "source-picker";
+  const editorLabel = (step: EditorStep) =>
+    `WELCOME TOUR · ${SOURCE_STEP_COUNT + activeEditorSteps.indexOf(step) + 1} OF ${totalTourSteps}`;
 
   const copy = useMemo(() => {
     if (stage === "source" && sourceStep === "source-camera" && sourceReady) {
       return {
-        label: `WELCOME TOUR · 2 OF ${TOTAL_TOUR_STEPS}`,
+        label: `WELCOME TOUR · 2 OF ${totalTourSteps}`,
         title: "Set the camera viewport",
         body: "The yellow FEATURE CROP box is the part of the video the models analyze. New projects start with the full frame; keep the court and players inside it, then use the x, y, width, and height sliders to provide a tighter crop when needed. Full frame resets the crop.",
         action: "Next: start & end",
@@ -121,7 +145,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     }
     if (stage === "source" && sourceStep === "source-camera") {
       return {
-        label: `WELCOME TOUR · 2 OF ${TOTAL_TOUR_STEPS}`,
+        label: `WELCOME TOUR · 2 OF ${totalTourSteps}`,
         title: "Reveal the camera controls",
         body: "Choose video to reveal the preview and camera viewport controls. The yellow FEATURE CROP box will show what the models analyze; new projects start at full frame, and the sliders let you provide a tighter crop.",
         action: "Next: start & end",
@@ -129,7 +153,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     }
     if (stage === "source" && sourceStep === "source-window" && sourceReady) {
       return {
-        label: `WELCOME TOUR · 3 OF ${TOTAL_TOUR_STEPS}`,
+        label: `WELCOME TOUR · 3 OF ${totalTourSteps}`,
         title: "Choose the game start and end",
         body: "Seek the preview, then use Set to playhead under Game start and Game end to copy the current time. Use full video to reset both boundaries. Only this analysis window generates features, so set it before continuing.",
         action: "Next: create project",
@@ -137,7 +161,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     }
     if (stage === "source" && sourceStep === "source-window") {
       return {
-        label: `WELCOME TOUR · 3 OF ${TOTAL_TOUR_STEPS}`,
+        label: `WELCOME TOUR · 3 OF ${totalTourSteps}`,
         title: "Set the game window",
         body: "Choose video first to reveal the Game start and Game end controls. You will be able to seek the preview, copy the playhead into either boundary, reset to the full video, and then queue local analysis.",
         action: "Next: create project",
@@ -145,7 +169,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     }
     if (stage === "source" && sourceStep === "source-create" && sourceReady) {
       return {
-        label: `WELCOME TOUR · 4 OF ${TOTAL_TOUR_STEPS}`,
+        label: `WELCOME TOUR · 4 OF ${totalTourSteps}`,
         title: "Create the project and queue inference",
         body: "When the camera crop and game start/end look right, click Create project & queue inference. Your source settings are saved on this device and local model analysis begins; the editor opens when the project is ready.",
         action: "Next: editor",
@@ -153,7 +177,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     }
     if (stage === "source") {
       return {
-        label: `WELCOME TOUR · 1 OF ${TOTAL_TOUR_STEPS}`,
+        label: `WELCOME TOUR · 1 OF ${totalTourSteps}`,
         title: "Select video or feedback",
         body: "Choose video to analyze a local recording, or import a model-feedback JSON to reopen its inference and completed edits as a new project. Video files stay in this browser and are never uploaded; imported feedback can reconnect its matching source later for playback and export.",
         action: sourceReady ? "Next: camera setup" : "Choose video first",
@@ -162,132 +186,151 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     switch (editorStep ?? "editor-header") {
       case "editor-source":
         return {
-          label: `WELCOME TOUR · 6 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-source"),
           title: "Know what this video represents",
           body: "The top source bar names the local video and the inference that produced its ranges. The Project menu switches between saved videos; reconnect the source there when playback or export needs the original file.",
           action: "Next: final settings",
         };
       case "editor-header":
         return {
-          label: `WELCOME TOUR · 5 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-header"),
           title: "Navigate projects from the header",
           body: "The VolleyCut header keeps project navigation in one place. Use the Project menu to switch saved videos, watch the queue status while inference runs, and delete the selected project when you no longer need its local data.",
           action: "Next: local source",
         };
       case "editor-settings":
         return {
-          label: `WELCOME TOUR · 7 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-settings"),
           title: "Build the final edit",
           body: "This panel is the control center for the final edit. It summarizes kept and removed time, previews the selected result, and contains the controls for suppression, padding, gap joining, playback, and exports.",
           action: "Next: suppression",
         };
       case "editor-suppression":
         return {
-          label: `WELCOME TOUR · 8 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-suppression"),
           title: "Choose a suppression policy",
           body: "Suppression levels automatically remove model ranges that look like false positives. None preserves the existing output; the available policy levels apply increasingly strong suggestions. Untouched suggestions are suppressed until you choose Keep while reviewing. When a suggestion is selected, choose Whole rally to veto the inferred rally and padding, or Veto region to remove only the highlighted red span; Whole rally is the default.",
           action: "Next: padding",
         };
       case "editor-padding":
         return {
-          label: `WELCOME TOUR · 9 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-padding"),
           title: "Add padding around each cut",
           body: "The Before and After sliders add extra seconds around every inferred cut. Use them to keep context around a rally; the current values are shown beside each slider and are included in the final edit timing.",
           action: "Next: gap joining",
         };
       case "editor-join-gaps":
         return {
-          label: `WELCOME TOUR · 10 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-join-gaps"),
           title: "Join short gaps between cuts",
           body: "Join gaps under controls when nearby kept ranges should become one continuous export. Light-gray gaps shorter than this threshold are retained; set it to Off when every gap should remain a cut.",
           action: "Next: final-cut preview",
         };
       case "editor-play-final-cut":
         return {
-          label: `WELCOME TOUR · 11 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-play-final-cut"),
           title: "Preview only the final cut",
           body: "Play final cut only skips removed rallies, ignored sections, and unselected gaps at or above the join threshold while the video plays. Turn it off when you need to review the complete analysis window.",
           action: "Next: export video",
         };
       case "editor-export-video":
         return {
-          label: `WELCOME TOUR · 12 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-export-video"),
           title: "Export the final video",
           body: "This button creates the edited MP4 from the kept ranges, padding, suppression, and joined gaps. The export stays on this device at the original dimensions; reconnect the local source first if playback or export is unavailable.",
           action: "Next: video player",
         };
       case "editor-video":
         return {
-          label: `WELCOME TOUR · 13 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-video"),
           title: "Watch the source video",
           body: "This is the original local video. The timecode is limited to the marked game window. Use the browser video controls to play, pause, and scrub while checking a model range against the footage.",
-          action: "Next: score tracking",
+          action: scoreTrackingEnabled
+            ? "Next: score tracking"
+            : "Next: transport controls",
         };
       case "editor-score":
         return {
-          label: `WELCOME TOUR · 14 OF ${TOTAL_TOUR_STEPS}`,
-          title: "Track the score from each serve",
-          body: "Score tracking is a beta feature and starts enabled. Turn it off here to hide every score control and marker; the choice is saved with this project. The score box sits above the video. Rename Team 1 and Team 2, and read the full-width point timeline above Markers: the top rail gives the rally number, and each numbered badge appears on the winning team's row with that team's running point total. Review the model's Near, Far, or Review verdict, correct a selected serve to Near or Far, or mark the previous rally as replayed so it does not award a point. In dead time and a rally's leading padding, the scoreboard uses the next visible serve as its boundary.",
+          label: editorLabel("editor-score"),
+          title: "Enable serving-side score tracking",
+          body: "Score tracking is a beta feature and this project currently has it enabled. This switch shows or hides the score box and timeline markers, and its state is saved with the project. Turning it off also removes the score-specific steps from this tutorial.",
+          action: "Next: score controls",
+        };
+      case "editor-score-panel":
+        return {
+          label: editorLabel("editor-score-panel"),
+          title: "Use the score-tracking box",
+          body: "The scoreboard names Team 1 and Team 2, shows their current points, and identifies who serves now. Selected serve lets you correct a model verdict to Near or Far and mark the previous rally as ignored or replayed. Missing serve adds a marker at the playhead, while Add team side switch records when the teams change court sides. The point timeline shows rally order and each team's running point number; the Markers list lets you seek to or remove individual serves and switches.",
           action: "Next: transport controls",
         };
       case "editor-transport":
         return {
-          label: `WELCOME TOUR · 15 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-transport"),
           title: "Move frame by frame",
           body: "The transport buttons nudge the playhead by one second or one tenth of a second, and Play / Pause starts or stops playback. Playback speed changes how quickly the video runs without changing its saved boundaries.",
-          action: "Next: score markers",
+          action: scoreTrackingEnabled
+            ? "Next: score markers"
+            : "Next: game window",
         };
       case "editor-score-markers":
         return {
-          label: `WELCOME TOUR · 16 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-score-markers"),
           title: "Read and edit score markers",
-          body: "A vertical line topped with a ball is a serve marker; select it to correct the verdict to Near or Far in the score box. A line topped with two arrows marks the moment the teams switch court sides, which flips the near/far team mapping from that time onward. Use the playhead controls to add a missing serve or side switch, and remove incorrect predicted or manually added markers from the marker list. Disabling or suppressing a rally removes its linked marker from the scoring sequence; keeping it again restores the cached marker.",
+          body: "A vertical line topped with a ball is a serve marker; select the ball to correct the verdict to Near or Far in the score box. The line is only a visual overlay, so clicking or dragging through it still seeks normally. A line topped with two arrows marks a court-side switch: it awards nothing itself, then flips the near/far team mapping when the next serve marker scores the preceding rally. Use the playhead controls to add a missing serve or side switch, and remove incorrect predicted or manually added markers from the marker list. Disabling or suppressing a rally removes its linked marker from the scoring sequence; keeping it again restores the cached marker.",
           action: "Next: game window",
         };
       case "editor-overview":
         return {
-          label: `WELCOME TOUR · 17 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-overview"),
           title: "Read the GAME WINDOW rail",
           body: "The two rows show the first and second halves of the game, giving each rally more horizontal space on small screens. Tap or slide either row to seek, or select a colored range to focus it below. Review next moves through low-confidence or one-model disagreement ranges.",
           action: "Next: focused range",
         };
       case "editor-focus":
         return {
-          label: `WELCOME TOUR · 18 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-focus"),
           title: "Refine the focused range",
           body: "The focused timeline enlarges the selected rally. Blue shows the output including padding, while the inner rally is marked separately. Use Previous and Next to move through the cut list, and Keep / Restore, Preview cut, Reset padding, or Mark reviewed to finish reviewing it.",
           action: "Next: change duration",
         };
       case "editor-change-duration":
         return {
-          label: `WELCOME TOUR · 19 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-change-duration"),
           title: "Change a rally's duration",
           body: "Drag either orange handle to shorten or extend the rally. For frame-accurate edits, seek with the player or transport controls and choose Set rally start here or Set rally end here. Existing padding follows the corrected rally edges; Output edges adjust only the surrounding padding.",
           action: "Next: split a rally",
         };
       case "editor-split-rally":
         return {
-          label: `WELCOME TOUR · 20 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-split-rally"),
           title: "Split one rally into two",
           body: "Move the playhead to the point where the rallies should separate, then choose Split at playhead. VolleyCut creates two ranges with the same padding and selects the new second part, so each side can be trimmed, kept, or removed independently.",
           action: "Next: marking tools",
         };
       case "editor-marking":
         return {
-          label: `WELCOME TOUR · 21 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-marking"),
           title: "Add misses or ignore unusable footage",
           body: "Use Add a missed cut when the model missed a rally: mark its start, seek, then mark its end. Use Ignore source section for camera gaps or non-game footage; ignored time is excluded without becoming a negative label.",
           action: "Next: all cuts",
         };
       case "editor-cuts":
         return {
-          label: `WELCOME TOUR · 22 OF ${TOTAL_TOUR_STEPS}`,
+          label: editorLabel("editor-cuts"),
           title: "Use the all-cuts list",
           body: "Each card is one model prediction or manual addition. Click the time card to focus it, then use Keep, Removed, or Ignored to decide whether it contributes to the final edit. Check badges identify ranges that still need review.",
           action: "Finish tour",
         };
     }
-  }, [editorStep, sourceReady, sourceStep, stage]);
+  }, [
+    activeEditorSteps,
+    editorStep,
+    scoreTrackingEnabled,
+    sourceReady,
+    sourceStep,
+    stage,
+    totalTourSteps,
+  ]);
 
   useEffect(() => {
     if (
@@ -307,15 +350,20 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
   useEffect(() => {
     const current = readTourState();
     if (stage === "editor" && current !== "done" && current !== "dismissed") {
-      const editorState: EditorStep = isEditorStep(current)
-        ? current
-        : EDITOR_STEPS[0];
+      const editorState: EditorStep =
+        isEditorStep(current) && activeEditorSteps.includes(current)
+          ? current
+          : isEditorStep(current)
+            ? activeEditorSteps.find(
+                (step) => EDITOR_STEPS.indexOf(step) > EDITOR_STEPS.indexOf(current),
+              ) ?? activeEditorSteps[0]
+            : activeEditorSteps[0];
       writeTourState(editorState);
       setTourState(editorState);
       return;
     }
     setTourState(current ?? "source-select");
-  }, [stage]);
+  }, [activeEditorSteps, stage]);
 
   useEffect(() => {
     if (
@@ -398,7 +446,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
 
   function restart() {
     const initialState: TourState =
-      stage === "source" ? "source-select" : EDITOR_STEPS[0];
+      stage === "source" ? "source-select" : activeEditorSteps[0];
     setHoldSourceSelect(stage === "source");
     writeTourState(initialState);
     setTourState(initialState);
@@ -410,10 +458,12 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     const nextState: TourState =
       stage === "editor"
         ? (() => {
-            const index = editorStep ? EDITOR_STEPS.indexOf(editorStep) : 0;
-            return index >= EDITOR_STEPS.length - 1
+            const index = editorStep
+              ? activeEditorSteps.indexOf(editorStep)
+              : 0;
+            return index >= activeEditorSteps.length - 1
               ? "done"
-              : EDITOR_STEPS[index + 1];
+              : activeEditorSteps[index + 1];
           })()
         : sourceStep === "source-select"
           ? "source-camera"
@@ -421,14 +471,15 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
             ? "source-window"
             : sourceStep === "source-window"
               ? "source-create"
-              : EDITOR_STEPS[0];
+              : activeEditorSteps[0];
     writeTourState(nextState);
     setTourState(nextState);
   }
 
   const activeStep =
     stage === "editor"
-      ? SOURCE_STEP_COUNT + (editorStep ? EDITOR_STEPS.indexOf(editorStep) : 0)
+      ? SOURCE_STEP_COUNT +
+        (editorStep ? activeEditorSteps.indexOf(editorStep) : 0)
       : sourceStep === "source-camera"
         ? 1
         : sourceStep === "source-window"
@@ -490,7 +541,7 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
         <h2 id="volleycut-tour-title">{copy.title}</h2>
         <p id="volleycut-tour-body">{copy.body}</p>
         <div className={styles.progress} aria-hidden="true">
-          {Array.from({ length: TOTAL_TOUR_STEPS }, (_, step) => (
+          {Array.from({ length: totalTourSteps }, (_, step) => (
             <i
               key={`tour-step-${step}`}
               data-active={activeStep === step || undefined}

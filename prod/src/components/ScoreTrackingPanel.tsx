@@ -109,7 +109,11 @@ export function ScoreTrackingPanel({
       : "Review needed";
 
   return (
-    <aside className={styles.scorePanel} aria-label="Score tracking controls">
+    <aside
+      className={styles.scorePanel}
+      aria-label="Score tracking controls"
+      data-tour="editor-score-panel"
+    >
       <header className={styles.scorePanelHeader}>
         <div>
           <span>SCORE TRACKING · BETA</span>
