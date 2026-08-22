@@ -110,17 +110,35 @@ export function scoreOverlayLayout(
   const horizontalPadding = Math.round(height * 0.24);
   const scoreWidth = Math.round(height * 1.3);
   const minimumTeamWidth = Math.round(height * 2.25);
-  const maximumTeamWidth = Math.round(height * 4.5);
   const measuredTeamWidth = (name: string) =>
-    Math.min(
-      maximumTeamWidth,
-      Math.max(
-        minimumTeamWidth,
-        Math.ceil(context.measureText(name).width) + horizontalPadding * 2,
-      ),
+    Math.max(
+      minimumTeamWidth,
+      Math.ceil(context.measureText(name).width) + horizontalPadding * 2,
     );
-  const team1Width = measuredTeamWidth(snapshot.team1Name);
-  const team2Width = measuredTeamWidth(snapshot.team2Name);
+  const desiredTeam1Width = measuredTeamWidth(snapshot.team1Name);
+  const desiredTeam2Width = measuredTeamWidth(snapshot.team2Name);
+  const maximumOverlayWidth = Math.max(
+    minimumTeamWidth * 2 + scoreWidth * 2,
+    Math.floor(videoWidth * 0.96),
+  );
+  const availableTeamWidth = maximumOverlayWidth - scoreWidth * 2;
+  const desiredTeamWidth = desiredTeam1Width + desiredTeam2Width;
+  let team1Width = desiredTeam1Width;
+  let team2Width = desiredTeam2Width;
+  if (desiredTeamWidth > availableTeamWidth) {
+    const flexibleTeam1Width = desiredTeam1Width - minimumTeamWidth;
+    const flexibleTeam2Width = desiredTeam2Width - minimumTeamWidth;
+    const flexibleWidth = flexibleTeam1Width + flexibleTeam2Width;
+    const availableFlexibleWidth = Math.max(
+      0,
+      availableTeamWidth - minimumTeamWidth * 2,
+    );
+    const scale = flexibleWidth > 0
+      ? Math.min(1, availableFlexibleWidth / flexibleWidth)
+      : 0;
+    team1Width = Math.round(minimumTeamWidth + flexibleTeam1Width * scale);
+    team2Width = Math.round(minimumTeamWidth + flexibleTeam2Width * scale);
+  }
 
   return {
     width: team1Width + scoreWidth + team2Width + scoreWidth,

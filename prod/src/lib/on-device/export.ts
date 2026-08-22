@@ -144,16 +144,16 @@ function drawScoreOverlay(
   context.font = `700 ${layout.fontSize}px sans-serif`;
   context.textBaseline = "middle";
   context.fillStyle = SCORE_OVERLAY_COLORS.teamText;
-  context.textAlign = "left";
+  context.textAlign = "center";
   context.fillText(
     snapshot.team1Name,
-    layout.horizontalPadding,
+    layout.team1Width / 2,
     layout.height / 2,
     layout.team1Width - layout.horizontalPadding * 2,
   );
   context.fillText(
     snapshot.team2Name,
-    team2X + layout.horizontalPadding,
+    team2X + layout.team2Width / 2,
     layout.height / 2,
     layout.team2Width - layout.horizontalPadding * 2,
   );

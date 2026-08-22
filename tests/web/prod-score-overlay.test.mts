@@ -79,7 +79,7 @@ test("overlay uses the next serve during dead time and leading padding", () => {
   assert.equal(scoreOverlaySnapshot(prepared, 12.5).team2ScoreLabel, "01");
 });
 
-test("overlay layout is compact, bounded, and gives each score equal width", () => {
+test("overlay layout grows for team names, stays bounded, and gives each score equal width", () => {
   const snapshot = scoreOverlaySnapshot(
     prepareScoreOverlay({ scoreTracking: trackingFixture() }),
     30,
@@ -95,4 +95,18 @@ test("overlay layout is compact, bounded, and gives each score equal width", () 
   assert.equal(layout.scoreWidth, 90);
   assert.ok(layout.width < 1920 / 2);
   assert.ok(layout.radius > 0);
+
+  const longNameLayout = scoreOverlayLayout(
+    { measureText: (text: string) => ({ width: text.length * 18 }) as TextMetrics },
+    1920,
+    1080,
+    {
+      ...snapshot,
+      team1Name: "Very Long Home Team Name",
+      team2Name: "International Volleyball Club",
+    },
+  );
+  assert.ok(longNameLayout.team1Width > layout.team1Width);
+  assert.ok(longNameLayout.team2Width > layout.team2Width);
+  assert.ok(longNameLayout.width <= Math.floor(1920 * 0.96));
 });
