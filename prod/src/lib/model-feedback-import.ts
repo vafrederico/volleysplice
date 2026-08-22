@@ -1,15 +1,14 @@
 import {
+  type CutDraft,
+  type CutDraftSeed,
+  createCutDraft,
+  parseCutDraft,
+} from "./cut-draft.ts";
+import {
   ModelFeedbackValidationError,
   type ParsedModelFeedback,
   parseModelFeedbackText,
-} from "../../../lib/model-feedback.ts";
-
-import {
-  createCutDraft,
-  parseCutDraft,
-  type CutDraft,
-  type CutDraftSeed,
-} from "./cut-draft.ts";
+} from "./model-feedback-validation.ts";
 import {
   SERVING_SIDE_ANCHOR_CONTRACT,
   SERVING_SIDE_FEATURE_COLUMNS,
@@ -22,10 +21,7 @@ import type {
   OnDeviceMediaInfo,
   OnDeviceServingSideOutput,
 } from "./on-device/types.ts";
-import {
-  projectAnalysisId,
-  type VolleyCutProject,
-} from "./project-store.ts";
+import { projectAnalysisId, type VolleyCutProject } from "./project-store.ts";
 import { migrateScoreTracking } from "./score-tracking.ts";
 
 export type ImportedModelFeedbackProject = {
@@ -146,9 +142,7 @@ function servingSideOutput(
         ...candidate,
         interval: {
           ...candidateInterval,
-          ...(normalizedAgreement
-            ? { agreement: normalizedAgreement }
-            : {}),
+          ...(normalizedAgreement ? { agreement: normalizedAgreement } : {}),
         },
         reviewReasons: [...candidate.reviewReasons],
         serveEvidence: {
@@ -175,9 +169,7 @@ function servingSideOutput(
   };
 }
 
-function analysisFromFeedback(
-  feedback: ParsedModelFeedback,
-): OnDeviceAnalysis {
+function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {
   if (feedback.features) {
     if (
       feedback.features.rows !== feedback.initialInference.timestamps.length ||
