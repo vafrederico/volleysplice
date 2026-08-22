@@ -28,7 +28,9 @@ file or origin-private storage before iOS sharing. JSON edit-list export is also
 For model improvement, the editor can additionally download a versioned model-feedback JSON
 containing the retained 104-column base feature matrix, source timestamps, probability traces,
 untouched initial inference ranges, corrected ranges, explicit false-positive and false-negative
-labels, ignored intervals, and finalized export ranges. Video bytes are never included. New
+labels, ignored intervals, the serving-side feature matrix and untouched verdict evidence, final
+score-marker corrections/removals and derived point history, and finalized export ranges. Video
+bytes are never included. New
 projects retain a sampled source fingerprint, so an identical raw video can be reconnected after
 renaming or transfer and aligned using the bundle's source-relative timestamps. See
 [`docs/model-feedback-bundle.md`](docs/model-feedback-bundle.md) for the format contract.

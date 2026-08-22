@@ -121,6 +121,54 @@ export type ProductionServeOutputs = {
   previousProduction: OnDeviceServeOutput;
 };
 
+export type ServingSideSide = "near" | "far";
+export type ServingSideVerdict = ServingSideSide | "review" | "not-serve";
+export type ServingSideDecisionSource =
+  | "serve-head"
+  | "production-rally-recovery"
+  | "none";
+export type ServingSideReviewReason = "side-score" | "production-rally-recovery";
+
+export type ServingSideHeadEvidence = {
+  modelId: string;
+  threshold: number;
+  peakProbability: number;
+  peakTime: number;
+  crossesThreshold: boolean;
+  nearestDetection: OnDeviceServeDetection | null;
+};
+
+export type ServingSideCandidateVerdict = {
+  /** Stable ID of the merged production interval used as the candidate. */
+  id: string;
+  /** Explicit production assumption: the merged interval start is the serve anchor. */
+  anchor: number;
+  interval: Pick<OnDeviceInterval, "start" | "end" | "agreement">;
+  nearProbability: number;
+  side: ServingSideSide;
+  verdict: ServingSideVerdict;
+  serveDecisionSource: ServingSideDecisionSource;
+  reviewReasons: ServingSideReviewReason[];
+  serveEvidence: {
+    allLabelsV2: ServingSideHeadEvidence;
+    previousProduction: ServingSideHeadEvidence;
+  };
+};
+
+export type OnDeviceServingSideOutput = {
+  modelId: string;
+  modelFingerprint: string;
+  featureVersion: "SERVSIDE237-FLIGHT";
+  anchorContract: "merged-production-interval-start-v1";
+  /** Raw, source-derived features aligned row-for-row with `candidates`. */
+  features: {
+    rows: number;
+    columns: number;
+    values: Float64Array;
+  };
+  candidates: ServingSideCandidateVerdict[];
+};
+
 export type OnDeviceSuppression = {
   modelId: string;
   artifactSha256: string;
@@ -148,5 +196,6 @@ export type OnDeviceAnalysis = {
     previousProduction: OnDeviceInterval[];
   };
   productionServeOutputs?: ProductionServeOutputs;
+  servingSide?: OnDeviceServingSideOutput;
   suppression?: OnDeviceSuppression;
 };

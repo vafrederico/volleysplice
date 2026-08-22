@@ -11,7 +11,7 @@ The top-level format is identified by:
 ```json
 {
   "schema": "volleycut-model-feedback",
-  "schemaVersion": 2
+  "schemaVersion": 3
 }
 ```
 
@@ -25,12 +25,20 @@ The bundle contains:
   traces (the backward-compatible primary traces are produced by `probabilityModelId`);
 - both production components' serve-probability traces and decoded serve contacts under
   `initialInference.componentServeOutputs`;
+- the frozen serving-side model identity, fingerprint, feature/anchor contracts, row-aligned
+  `SERVSIDE237-FLIGHT` matrix, candidate verdicts, probabilities, review reasons, and both
+  serve heads' evidence under `initialInference.servingSide`;
 - the untouched raw ranges from both production models, plus the held suppression artifact
   identity, probability trace, decoded events, and policy-eligible suggestion spans;
 - the full corrected editor ranges and ignored intervals;
 - the selected suppression policy, explicit and dormant decisions, touched inferred ranges, the
   default whole-rally suppression scope plus any per-suggestion veto-region overrides, and the
-  effective state and scope of every suggestion; and
+  effective state and scope of every suggestion;
+- the complete editable score-tracking state under `corrections.scoreTracking.state`, including
+  team names, the enabled flag, surviving model and manual serve markers, original `modelSide`
+  versus corrected `side`, replay flags, side switches, and persisted removed-model-marker IDs;
+- score-excluded rally IDs and the derived final score/point history, including counted, ignored,
+  and unresolved point outcomes; and
 - explicit feedback labels, final padded/joined export intervals, and materialization provenance.
 
 The label contract is deliberately simple:
@@ -73,6 +81,11 @@ all_labels_serve_probability = decode_array(
 previous_serve_contacts = bundle["initialInference"]["componentServeOutputs"][
     "previousProduction"
 ]["detections"]
+serving_side_features = decode_array(
+    bundle["initialInference"]["servingSide"]["features"]["values"]
+)
+serving_side_candidates = bundle["initialInference"]["servingSide"]["candidates"]
+score_tracking = bundle["corrections"]["scoreTracking"]
 ```
 
 ## Pairing with raw video
@@ -90,4 +103,5 @@ the JSON intentionally references the source instead of embedding video bytes.
 
 Projects created before schema version 1 feature retention can still export inference and
 corrections. Such bundles have `features: null` and an explicit warning; rerunning inference from
-the source creates a complete bundle.
+the source creates a complete bundle. Older projects without a retained serving-side result export
+`initialInference.servingSide: null`; their final score-marker corrections are still retained.

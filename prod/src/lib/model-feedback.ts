@@ -16,9 +16,15 @@ import {
 } from "./on-device/ensemble.ts";
 import { ANALYSIS_FPS } from "./on-device/feature-schema.ts";
 import type { ProductAnalysis } from "./product-analysis";
+import {
+  deriveScoreAt,
+  scoreTrackingOutsideExcludedRallies,
+  scoreTrackingOutsideIgnoredIntervals,
+  type DerivedScore,
+} from "./score-tracking.ts";
 
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
-export const MODEL_FEEDBACK_SCHEMA_VERSION = 2 as const;
+export const MODEL_FEEDBACK_SCHEMA_VERSION = 3 as const;
 
 export type EncodedNumericArray = {
   encoding: "base64";
@@ -87,6 +93,18 @@ export type ModelFeedbackBundle = {
       allLabelsV2: EncodedServeOutput;
       previousProduction: EncodedServeOutput;
     };
+    servingSide: null | {
+      modelId: string;
+      modelFingerprint: string;
+      featureVersion: string;
+      anchorContract: string;
+      features: {
+        rows: number;
+        columns: number;
+        values: EncodedNumericArray;
+      };
+      candidates: NonNullable<ProductAnalysis["servingSide"]>["candidates"];
+    };
     productionComponents: ProductAnalysis["productionComponents"];
     suppression: null | {
       modelId: string;
@@ -121,6 +139,11 @@ export type ModelFeedbackBundle = {
         state: ReturnType<typeof suppressionSuggestionState>;
         scope: ReturnType<typeof suppressionSuggestionScope>;
       }>;
+    };
+    scoreTracking: {
+      state: CutDraft["scoreTracking"];
+      excludedRallyIds: string[];
+      derivedFinalScore: DerivedScore;
     };
     labels: {
       falsePositives: FeedbackRange[];
@@ -222,11 +245,29 @@ export function createModelFeedbackBundle(
       "Per-component serve-head outputs are unavailable because this analysis predates their retention; the V2 probability trace remains included.",
     );
   }
+  if (!analysis.servingSide) {
+    warnings.push(
+      "Serving-side features and initial verdicts are unavailable because this analysis predates their retention; score-marker corrections are still included.",
+    );
+  }
   const materialized = materializeFinalCutIntervals(
     draft,
     analysis.suppression,
   );
   const allSuppressionSuggestions = analysis.suppression?.suggestions ?? [];
+  const effectiveCutIds = new Set(
+    materialized.intervals.flatMap((interval) => interval.cutIds),
+  );
+  const excludedRallyIds = draft.cuts
+    .filter((cut) => !effectiveCutIds.has(cut.id))
+    .map((cut) => cut.id);
+  const scoringTracking = scoreTrackingOutsideExcludedRallies(
+    scoreTrackingOutsideIgnoredIntervals(
+      draft.scoreTracking,
+      draft.ignoredIntervals,
+    ),
+    new Set(excludedRallyIds),
+  );
 
   return {
     schema: MODEL_FEEDBACK_SCHEMA,
@@ -326,6 +367,45 @@ export function createModelFeedbackBundle(
             },
           }
         : undefined,
+      servingSide: analysis.servingSide
+        ? {
+            modelId: analysis.servingSide.modelId,
+            modelFingerprint: analysis.servingSide.modelFingerprint,
+            featureVersion: analysis.servingSide.featureVersion,
+            anchorContract: analysis.servingSide.anchorContract,
+            features: {
+              rows: analysis.servingSide.features.rows,
+              columns: analysis.servingSide.features.columns,
+              values: encodeNumericArray(
+                analysis.servingSide.features.values,
+                [
+                  analysis.servingSide.features.rows,
+                  analysis.servingSide.features.columns,
+                ],
+              ),
+            },
+            candidates: analysis.servingSide.candidates.map((candidate) => ({
+              ...candidate,
+              interval: { ...candidate.interval },
+              reviewReasons: [...candidate.reviewReasons],
+              serveEvidence: {
+                allLabelsV2: {
+                  ...candidate.serveEvidence.allLabelsV2,
+                  nearestDetection: candidate.serveEvidence.allLabelsV2.nearestDetection
+                    ? { ...candidate.serveEvidence.allLabelsV2.nearestDetection }
+                    : null,
+                },
+                previousProduction: {
+                  ...candidate.serveEvidence.previousProduction,
+                  nearestDetection:
+                    candidate.serveEvidence.previousProduction.nearestDetection
+                      ? { ...candidate.serveEvidence.previousProduction.nearestDetection }
+                      : null,
+                },
+              },
+            })),
+          }
+        : null,
       productionComponents: analysis.productionComponents
         ? {
             allLabelsV2: analysis.productionComponents.allLabelsV2.map(
@@ -383,6 +463,22 @@ export function createModelFeedbackBundle(
           state: suppressionSuggestionState(suggestion, draft),
           scope: suppressionSuggestionScope(suggestion, draft),
         })),
+      },
+      scoreTracking: {
+        state: {
+          ...draft.scoreTracking,
+          serveMarkers: draft.scoreTracking.serveMarkers.map((marker) => ({
+            ...marker,
+          })),
+          sideSwitchMarkers: draft.scoreTracking.sideSwitchMarkers.map(
+            (marker) => ({ ...marker }),
+          ),
+          removedModelMarkerIds: [
+            ...draft.scoreTracking.removedModelMarkerIds,
+          ],
+        },
+        excludedRallyIds,
+        derivedFinalScore: deriveScoreAt(scoringTracking),
       },
       labels: {
         falsePositives: modelCuts

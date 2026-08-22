@@ -3,13 +3,13 @@ import test from "node:test";
 
 import {
   applyPaddingToCachedCuts,
+  type CutDraftSeed,
   createCutDraft,
   parseCutDraft,
   setCutCoreEnd,
   setCutCoreRange,
   setCutCoreStart,
   splitCutAt,
-  type CutDraftSeed,
 } from "../../prod/src/lib/cut-draft.ts";
 
 const seed: CutDraftSeed = {
@@ -39,6 +39,65 @@ test("version seven production drafts migrate to an empty review history", () =>
   delete legacy.reviewedCutIds;
 
   assert.deepEqual(parseCutDraft(JSON.stringify(legacy), seed)?.reviewedCutIds, []);
+});
+
+test("version ten production drafts migrate to enabled score tracking", () => {
+  const legacy = createCutDraft(seed) as unknown as Record<string, unknown>;
+  legacy.version = 10;
+  delete legacy.scoreTracking;
+
+  assert.deepEqual(parseCutDraft(JSON.stringify(legacy), seed)?.scoreTracking, {
+    version: 2,
+    enabled: true,
+    team1Name: "Team 1",
+    team2Name: "Team 2",
+    serveMarkers: [],
+    sideSwitchMarkers: [],
+    removedModelMarkerIds: [],
+  });
+});
+
+test("version eleven score tracking migrates model-removal tombstones", () => {
+  const legacy = createCutDraft(seed) as unknown as Record<string, unknown>;
+  legacy.version = 11;
+  const scoreTracking = legacy.scoreTracking as Record<string, unknown>;
+  scoreTracking.version = 1;
+  delete scoreTracking.removedModelMarkerIds;
+
+  assert.deepEqual(
+    parseCutDraft(JSON.stringify(legacy), seed)?.scoreTracking.removedModelMarkerIds,
+    [],
+  );
+});
+
+test("production drafts persist valid score tracking and reject invalid markers", () => {
+  const draft = createCutDraft(seed);
+  draft.scoreTracking = {
+    ...draft.scoreTracking,
+    enabled: true,
+    team1Name: "Falcons",
+    team2Name: "Tigers",
+    serveMarkers: [
+      {
+        id: "serve-R001",
+        timestamp: 5,
+        side: "near",
+        origin: "model",
+        modelSide: "near",
+        ignorePreviousPoint: false,
+        rallyId: "R001",
+      },
+    ],
+    sideSwitchMarkers: [{ id: "switch-1", timestamp: 15 }],
+  };
+
+  assert.deepEqual(
+    parseCutDraft(JSON.stringify(draft), seed)?.scoreTracking,
+    draft.scoreTracking,
+  );
+
+  draft.scoreTracking.serveMarkers[0].timestamp = 61;
+  assert.equal(parseCutDraft(JSON.stringify(draft), seed), null);
 });
 
 test("production drafts reject review history for unknown ranges", () => {

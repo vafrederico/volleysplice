@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import styles from "./GuidedTour.module.css";
 
-const TOUR_STORAGE_KEY = "volleycut:guided-tour:v8";
+const TOUR_STORAGE_KEY = "volleycut:guided-tour:v9";
 
 const EDITOR_STEPS = [
   "editor-header",
@@ -14,7 +14,9 @@ const EDITOR_STEPS = [
   "editor-play-final-cut",
   "editor-export-video",
   "editor-video",
+  "editor-score",
   "editor-transport",
+  "editor-score-markers",
   "editor-overview",
   "editor-focus",
   "editor-change-duration",
@@ -219,53 +221,67 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
           label: `WELCOME TOUR · 13 OF ${TOTAL_TOUR_STEPS}`,
           title: "Watch the source video",
           body: "This is the original local video. The timecode is limited to the marked game window. Use the browser video controls to play, pause, and scrub while checking a model range against the footage.",
+          action: "Next: score tracking",
+        };
+      case "editor-score":
+        return {
+          label: `WELCOME TOUR · 14 OF ${TOTAL_TOUR_STEPS}`,
+          title: "Track the score from each serve",
+          body: "Score tracking is a beta feature and starts enabled. Turn it off here to hide every score control and marker; the choice is saved with this project. The score box sits above the video. Rename Team 1 and Team 2, and read the full-width point timeline above Markers: the top rail gives the rally number, and each numbered badge appears on the winning team's row with that team's running point total. Review the model's Near, Far, or Review verdict, correct a selected serve to Near or Far, or mark the previous rally as replayed so it does not award a point. In dead time and a rally's leading padding, the scoreboard uses the next visible serve as its boundary.",
           action: "Next: transport controls",
         };
       case "editor-transport":
         return {
-          label: `WELCOME TOUR · 14 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 15 OF ${TOTAL_TOUR_STEPS}`,
           title: "Move frame by frame",
           body: "The transport buttons nudge the playhead by one second or one tenth of a second, and Play / Pause starts or stops playback. Playback speed changes how quickly the video runs without changing its saved boundaries.",
+          action: "Next: score markers",
+        };
+      case "editor-score-markers":
+        return {
+          label: `WELCOME TOUR · 16 OF ${TOTAL_TOUR_STEPS}`,
+          title: "Read and edit score markers",
+          body: "A vertical line topped with a ball is a serve marker; select it to correct the verdict to Near or Far in the score box. A line topped with two arrows marks the moment the teams switch court sides, which flips the near/far team mapping from that time onward. Use the playhead controls to add a missing serve or side switch, and remove incorrect predicted or manually added markers from the marker list. Disabling or suppressing a rally removes its linked marker from the scoring sequence; keeping it again restores the cached marker.",
           action: "Next: game window",
         };
       case "editor-overview":
         return {
-          label: `WELCOME TOUR · 15 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 17 OF ${TOTAL_TOUR_STEPS}`,
           title: "Read the GAME WINDOW rail",
           body: "The two rows show the first and second halves of the game, giving each rally more horizontal space on small screens. Tap or slide either row to seek, or select a colored range to focus it below. Review next moves through low-confidence or one-model disagreement ranges.",
           action: "Next: focused range",
         };
       case "editor-focus":
         return {
-          label: `WELCOME TOUR · 16 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 18 OF ${TOTAL_TOUR_STEPS}`,
           title: "Refine the focused range",
           body: "The focused timeline enlarges the selected rally. Blue shows the output including padding, while the inner rally is marked separately. Use Previous and Next to move through the cut list, and Keep / Restore, Preview cut, Reset padding, or Mark reviewed to finish reviewing it.",
           action: "Next: change duration",
         };
       case "editor-change-duration":
         return {
-          label: `WELCOME TOUR · 17 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 19 OF ${TOTAL_TOUR_STEPS}`,
           title: "Change a rally's duration",
           body: "Drag either orange handle to shorten or extend the rally. For frame-accurate edits, seek with the player or transport controls and choose Set rally start here or Set rally end here. Existing padding follows the corrected rally edges; Output edges adjust only the surrounding padding.",
           action: "Next: split a rally",
         };
       case "editor-split-rally":
         return {
-          label: `WELCOME TOUR · 18 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 20 OF ${TOTAL_TOUR_STEPS}`,
           title: "Split one rally into two",
           body: "Move the playhead to the point where the rallies should separate, then choose Split at playhead. VolleyCut creates two ranges with the same padding and selects the new second part, so each side can be trimmed, kept, or removed independently.",
           action: "Next: marking tools",
         };
       case "editor-marking":
         return {
-          label: `WELCOME TOUR · 19 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 21 OF ${TOTAL_TOUR_STEPS}`,
           title: "Add misses or ignore unusable footage",
           body: "Use Add a missed cut when the model missed a rally: mark its start, seek, then mark its end. Use Ignore source section for camera gaps or non-game footage; ignored time is excluded without becoming a negative label.",
           action: "Next: all cuts",
         };
       case "editor-cuts":
         return {
-          label: `WELCOME TOUR · 20 OF ${TOTAL_TOUR_STEPS}`,
+          label: `WELCOME TOUR · 22 OF ${TOTAL_TOUR_STEPS}`,
           title: "Use the all-cuts list",
           body: "Each card is one model prediction or manual addition. Click the time card to focus it, then use Keep, Removed, or Ignored to decide whether it contributes to the final edit. Check badges identify ranges that still need review.",
           action: "Finish tour",

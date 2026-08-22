@@ -180,6 +180,129 @@ test("feedback importer accepts suppression-era schema version two bundles", () 
   assert.equal(imported.schemaVersion, 2);
 });
 
+test("feedback importer retains serving-side inference and score corrections", () => {
+  const current = fixture();
+  current.schemaVersion = 3;
+  Object.assign(current.initialInference, {
+    servingSide: {
+      modelId: "serving-side-fixed-flight-v3",
+      modelFingerprint: "a".repeat(64),
+      featureVersion: "SERVSIDE237-FLIGHT",
+      anchorContract: "merged-production-interval-start-v1",
+      features: {
+        rows: 1,
+        columns: 2,
+        values: encoded([0.25, 0.75], "float64", [1, 2]),
+      },
+      candidates: [
+        {
+          id: "R001",
+          anchor: 5,
+          interval: { start: 5, end: 8, agreement: "both-models" },
+          nearProbability: 0.75,
+          side: "near",
+          verdict: "near",
+          serveDecisionSource: "serve-head",
+          reviewReasons: [],
+          serveEvidence: {
+            allLabelsV2: {
+              modelId: "model-a",
+              threshold: 0.5,
+              peakProbability: 0.91,
+              peakTime: 5.25,
+              crossesThreshold: true,
+              nearestDetection: { time: 5.25, confidence: 0.91 },
+            },
+            previousProduction: {
+              modelId: "model-b",
+              threshold: 0.5,
+              peakProbability: 0.4,
+              peakTime: 5.5,
+              crossesThreshold: false,
+              nearestDetection: null,
+            },
+          },
+        },
+      ],
+    },
+  });
+  Object.assign(current.corrections, {
+    scoreTracking: {
+      state: {
+        version: 2,
+        enabled: true,
+        team1Name: "Falcons",
+        team2Name: "Owls",
+        serveMarkers: [
+          {
+            id: "serve-R001",
+            timestamp: 5,
+            side: "near",
+            origin: "model",
+            modelSide: "review",
+            ignorePreviousPoint: false,
+            rallyId: "R001",
+          },
+          {
+            id: "S001",
+            timestamp: 12,
+            side: "far",
+            origin: "manual",
+            ignorePreviousPoint: false,
+          },
+        ],
+        sideSwitchMarkers: [{ id: "X001", timestamp: 10 }],
+        removedModelMarkerIds: ["serve-R002"],
+      },
+      excludedRallyIds: [],
+      derivedFinalScore: {
+        team1Score: 1,
+        team2Score: 0,
+        servingTeamId: "team-1",
+        servingSide: "far",
+        ignoredPointCount: 0,
+        reviewPointCount: 0,
+        points: [
+          {
+            serveMarkerId: "S001",
+            timestamp: 12,
+            servingSide: "far",
+            winnerTeamId: "team-1",
+            status: "counted",
+            team1ScoreAfter: 1,
+            team2ScoreAfter: 0,
+          },
+        ],
+      },
+    },
+  });
+
+  const imported = parseModelFeedback(current);
+
+  assert.equal(imported.schemaVersion, 3);
+  assert.deepEqual(
+    Array.from(imported.initialInference.servingSide!.features.values),
+    [0.25, 0.75],
+  );
+  assert.equal(
+    imported.initialInference.servingSide!.candidates[0].nearProbability,
+    0.75,
+  );
+  assert.equal(imported.corrections.scoreTracking!.state.team1Name, "Falcons");
+  assert.equal(
+    imported.corrections.scoreTracking!.state.serveMarkers[0].modelSide,
+    "review",
+  );
+  assert.deepEqual(
+    imported.corrections.scoreTracking!.state.removedModelMarkerIds,
+    ["serve-R002"],
+  );
+  assert.equal(
+    imported.corrections.scoreTracking!.derivedFinalScore.team1Score,
+    1,
+  );
+});
+
 test("feedback importer retains both production serve-head outputs", () => {
   const current = fixture();
   current.schemaVersion = 2;

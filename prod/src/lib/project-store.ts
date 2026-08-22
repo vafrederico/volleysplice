@@ -5,6 +5,7 @@ import {
   normalizeAnalysisWindow,
 } from "./on-device/analysis-window.ts";
 import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
+import { isReusableServingSideOutput } from "./on-device/serving-side-cache.ts";
 import {
   SUPPRESSION_ARTIFACT_SHA256,
   SUPPRESSION_DECODER_VERSION,
@@ -426,12 +427,26 @@ export function normalizeStoredProject(
     project.analysisWindow,
     project.info.duration,
   );
-  const normalizedProject =
+  const windowNormalizedProject =
     project.analysisWindow &&
     project.analysisWindow.start === analysisWindow.start &&
     project.analysisWindow.end === analysisWindow.end
       ? project
       : { ...project, analysisWindow };
+  const normalizedProject =
+    windowNormalizedProject.analysis?.servingSide &&
+      !isReusableServingSideOutput(
+        windowNormalizedProject.analysis.servingSide,
+        windowNormalizedProject.analysis.intervals,
+      )
+      ? {
+          ...windowNormalizedProject,
+          analysis: {
+            ...windowNormalizedProject.analysis,
+            servingSide: undefined,
+          },
+        }
+      : windowNormalizedProject;
   if (
     normalizedProject.analysis &&
     (normalizedProject.analysis.modelId !== PRODUCTION_ENSEMBLE_MODEL_ID ||

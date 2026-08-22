@@ -173,6 +173,60 @@
   font: 600 10px/1.5 "Atkinson Hyperlegible Mono", monospace;
 }
 
+.scoreTrackingToggle {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 18px clamp(16px, 4vw, 56px);
+  padding: 12px 14px;
+  border: 1px solid var(--cut-ink);
+  background: #fff;
+  box-shadow: 4px 4px 0 #b7b5ad;
+  cursor: pointer;
+}
+
+.scoreTrackingToggle[data-enabled="true"] {
+  box-shadow: 4px 4px 0 var(--cut-acid);
+}
+
+.scoreTrackingToggle input {
+  width: 24px;
+  height: 24px;
+  margin: auto;
+  accent-color: var(--cut-acid);
+}
+
+.scoreTrackingToggle > span {
+  display: grid;
+  gap: 4px;
+}
+
+.scoreTrackingToggle strong,
+.scoreTrackingToggle small {
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+
+.scoreTrackingToggle strong {
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.scoreTrackingToggle em {
+  padding: 3px 5px;
+  background: var(--cut-orange);
+  color: #fff;
+  font-size: 8px;
+  font-style: normal;
+  letter-spacing: .8px;
+}
+
+.scoreTrackingToggle small {
+  color: var(--cut-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 .editorShell {
   display: grid;
   gap: 14px;
@@ -185,6 +239,15 @@
   border: 1px solid var(--cut-ink);
   background: #fff;
   box-shadow: 7px 7px 0 var(--cut-ink);
+}
+
+.playerWorkspace {
+  display: grid;
+  gap: 14px;
+}
+
+.videoColumn {
+  min-width: 0;
 }
 
 .videoStage {
@@ -276,6 +339,451 @@
   background: #fff;
   color: var(--cut-ink);
   font: 600 12px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.scorePanel {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--cut-ink);
+  background: #f7f6f1;
+}
+
+.scorePanel button,
+.scorePanel input,
+.scorePanel select {
+  border-radius: 0;
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+
+.scorePanelHeader,
+.scoreMarkerList > div:first-child {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scorePanelHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.scorePanelHeader span,
+.selectedServeEditor > div > span,
+.scoreMarkerList > div:first-child > span,
+.markerAddTools label > span {
+  color: var(--cut-orange);
+  font: 700 9px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+}
+
+.scorePanelHeader strong {
+  font-size: 13px;
+}
+
+.scorePanelHeader small,
+.scoreMarkerList > div:first-child small {
+  color: var(--cut-muted);
+  font: 9px "Atkinson Hyperlegible Mono", monospace;
+  text-align: right;
+}
+
+.scoreboard {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  background: var(--cut-ink);
+  color: #fff;
+}
+
+.scoreboard label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px;
+  gap: 3px 8px;
+  align-items: center;
+}
+
+.scoreboard label > span {
+  grid-column: 1 / -1;
+  color: #b7b9af;
+  font: 8px "Atkinson Hyperlegible Mono", monospace;
+  text-transform: uppercase;
+}
+
+.scoreboard input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 9px;
+  border: 1px solid #5b5e55;
+  background: #23251f;
+  color: #fff;
+  font-size: 12px;
+}
+
+.scoreboard output {
+  color: var(--cut-acid);
+  font: 800 30px/1 "Atkinson Hyperlegible Mono", monospace;
+  text-align: center;
+}
+
+.pointTimeline {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px;
+  background: var(--cut-ink);
+  color: #fff;
+}
+
+.pointTimelineHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pointTimelineHeader span {
+  color: #fff;
+  font: 700 8px "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: .7px;
+}
+
+.pointTimelineHeader small,
+.pointTimelineEmpty {
+  color: #8f9288;
+  font: 8px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.pointTimelineScroller {
+  display: grid;
+  gap: 3px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  overscroll-behavior-x: contain;
+}
+
+.pointTimelineRow {
+  display: grid;
+  align-items: center;
+  width: max-content;
+  min-width: 100%;
+}
+
+.pointTimelineRow > strong {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  overflow: hidden;
+  padding-right: 7px;
+  background: var(--cut-ink);
+  color: #b7b9af;
+  font: 8px "Atkinson Hyperlegible Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pointTimelineUnit {
+  position: relative;
+  display: grid;
+  width: 22px;
+  height: 19px;
+  place-items: center;
+}
+
+.pointTimelineUnit::before {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: #5d6056;
+  content: "";
+}
+
+.pointTimelineUnit i {
+  z-index: 1;
+  display: grid;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 2px;
+  border: 1px solid var(--cut-ink);
+  border-radius: 50%;
+  background: var(--cut-acid);
+  box-shadow: 0 0 0 1px var(--cut-acid);
+  color: var(--cut-ink);
+  font: 800 7px/1 "Atkinson Hyperlegible Mono", monospace;
+  font-style: normal;
+  place-items: center;
+}
+
+.pointTimelineRow[data-team="team-2"] .pointTimelineUnit i {
+  background: var(--cut-orange);
+  box-shadow: 0 0 0 1px var(--cut-orange);
+}
+
+.pointTimelineRallyRow {
+  margin-bottom: 1px;
+}
+
+.pointTimelineRallyRow .pointTimelineUnit {
+  height: 13px;
+}
+
+.pointTimelineRallyRow .pointTimelineUnit b {
+  z-index: 1;
+  padding: 0 2px;
+  background: var(--cut-ink);
+  color: #b7b9af;
+  font: 600 7px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.scoreboard p,
+.scoreboard > small {
+  margin: 3px 0 0;
+  color: #b7b9af;
+  font: 9px/1.4 "Atkinson Hyperlegible Mono", monospace;
+}
+
+.scoreboard p strong {
+  color: #fff;
+}
+
+.scoreInference {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 9px;
+  border-left: 4px solid var(--cut-blue);
+  background: #eaf2ff;
+}
+
+.scoreInference[data-state="running"] {
+  border-left-color: #c19135;
+  background: #fff4d9;
+}
+
+.scoreInference[data-state="error"] {
+  border-left-color: var(--cut-orange);
+  background: #ffe1d8;
+}
+
+.scoreInference > div,
+.selectedServeEditor > div {
+  display: grid;
+  gap: 3px;
+}
+
+.scoreInference strong,
+.scoreInference small,
+.selectedServeEditor strong,
+.selectedServeEditor small {
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+
+.scoreInference strong {
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.scoreInference small,
+.selectedServeEditor small {
+  color: var(--cut-muted);
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.scoreInference button,
+.markerAddTools button,
+.sideVerdictButtons button {
+  padding: 0 9px;
+  border: 1px solid var(--cut-ink);
+  background: #fff;
+  color: var(--cut-ink);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.scoreInference button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.selectedServeEditor {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #c5c3ba;
+  background: #fff;
+}
+
+.selectedServeEditor fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #c5c3ba;
+}
+
+.selectedServeEditor legend {
+  padding: 0 5px;
+  color: var(--cut-muted);
+  font: 8px "Atkinson Hyperlegible Mono", monospace;
+  text-transform: uppercase;
+}
+
+.sideVerdictButtons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.sideVerdictButtons button[data-active="true"] {
+  background: var(--cut-acid);
+}
+
+.replayToggle {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.replayToggle[data-disabled="true"] {
+  opacity: .5;
+}
+
+.replayToggle input {
+  width: 20px;
+  height: 20px;
+  margin: auto;
+  accent-color: var(--cut-orange);
+}
+
+.replayToggle span {
+  display: grid;
+  gap: 2px;
+}
+
+.replayToggle strong,
+.replayToggle small {
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+
+.replayToggle strong {
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.replayToggle small {
+  color: var(--cut-muted);
+  font-size: 8px;
+}
+
+.markerAddTools {
+  display: grid;
+  gap: 6px;
+}
+
+.markerAddTools > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.markerAddTools label {
+  display: grid;
+  gap: 3px;
+}
+
+.markerAddTools select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--cut-ink);
+  background: #fff;
+  color: var(--cut-ink);
+  font-size: 10px;
+}
+
+.markerAddTools .addSwitchButton {
+  background: var(--cut-acid);
+}
+
+.scoreMarkerList {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.scoreMarkerList > div:last-child {
+  display: grid;
+  gap: 4px;
+}
+
+.scoreMarkerList article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border: 1px solid #c5c3ba;
+  background: #fff;
+}
+
+.scoreMarkerList article[data-selected="true"] {
+  border-color: var(--cut-orange);
+  box-shadow: inset 4px 0 0 var(--cut-orange);
+}
+
+.scoreMarkerList article > button:first-child {
+  display: grid;
+  grid-template-columns: 25px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--cut-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.scoreMarkerList article strong,
+.scoreMarkerList article small {
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+
+.scoreMarkerList article strong {
+  font-size: 9px;
+}
+
+.scoreMarkerList article small {
+  overflow: hidden;
+  color: var(--cut-muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scoreMarkerList .removeMarker {
+  min-height: 0;
+  padding: 0 7px;
+  border: 0;
+  border-left: 1px solid #c5c3ba;
+  background: #fff1ee;
+  color: #a51e1e;
+  font: 700 8px "Atkinson Hyperlegible Mono", monospace;
+  cursor: pointer;
+}
+
+.scoreMarkerList p {
+  margin: 0;
+  color: var(--cut-muted);
+  font: 9px "Atkinson Hyperlegible Mono", monospace;
 }
 
 .overviewSection {
@@ -402,6 +910,22 @@
 
 .timelineLegend i[data-kind="joined"] {
   background: #aaa9a2;
+}
+
+.timelineLegend i[data-kind="serve-marker"],
+.timelineLegend i[data-kind="side-switch"] {
+  display: inline-grid;
+  height: 18px;
+  place-items: center;
+  background: #fff;
+  color: var(--cut-ink);
+  font: 10px/1 sans-serif;
+  font-style: normal;
+}
+
+.timelineLegend i[data-kind="side-switch"] {
+  background: var(--cut-acid);
+  font: 700 12px/1 "Atkinson Hyperlegible Mono", monospace;
 }
 
 .sectionHeading,
@@ -602,6 +1126,69 @@
   min-width: 2px;
   background: #aaa9a2;
   pointer-events: none;
+}
+
+.serveTimelineMarker,
+.switchTimelineMarker {
+  position: absolute;
+  z-index: 7;
+  top: 0;
+  width: 44px;
+  height: 68px;
+  min-height: 0 !important;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cut-ink);
+  cursor: pointer;
+  transform: translateX(-22px);
+  touch-action: manipulation;
+}
+
+.serveTimelineMarker > span,
+.switchTimelineMarker > span {
+  position: absolute;
+  z-index: 2;
+  top: 2px;
+  left: 50%;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border: 1px solid var(--cut-ink);
+  border-radius: 50%;
+  background: #fff;
+  font: 9px/1 sans-serif;
+  transform: translateX(-50%);
+}
+
+.switchTimelineMarker > span {
+  border-radius: 0;
+  background: var(--cut-acid);
+  font: 700 10px/1 "Atkinson Hyperlegible Mono", monospace;
+}
+
+.serveTimelineMarker > i,
+.switchTimelineMarker > i {
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--cut-ink);
+  transform: translateX(-50%);
+}
+
+.serveTimelineMarker[data-side="review"] > span {
+  border-color: #a84a16;
+  background: #ffe1c7;
+}
+
+.serveTimelineMarker[data-selected="true"] > span,
+.serveTimelineMarker:focus-visible > span,
+.switchTimelineMarker:focus-visible > span {
+  outline: 3px solid var(--cut-orange);
+  outline-offset: 1px;
 }
 
 .playhead,
@@ -1678,6 +2265,30 @@
 }
 
 @media (max-width: 620px) {
+  .scorePanel {
+    padding: 10px;
+  }
+
+  .scorePanelHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .scorePanelHeader small {
+    text-align: left;
+  }
+
+  .scoreInference,
+  .markerAddTools > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scoreInference button,
+  .markerAddTools button,
+  .sideVerdictButtons button {
+    min-height: 40px;
+  }
+
   .header {
     align-items: flex-start;
     flex-direction: column;
@@ -1791,7 +2402,49 @@
   }
 }
 
+@media (min-width: 760px) {
+  .scorePanel {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .scorePanelHeader,
+  .pointTimeline,
+  .scoreMarkerList {
+    grid-column: 1 / -1;
+  }
+
+  .scoreboard {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    align-self: stretch;
+  }
+
+  .scoreInference {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+
+  .selectedServeEditor {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .markerAddTools {
+    grid-column: 3;
+    grid-row: 3;
+  }
+
+  .scoreMarkerList > div:last-child {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-height: 146px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 @media (min-width: 1100px) {
+
   .summaryCard {
     grid-template-columns:
       minmax(240px, .8fr)
@@ -1805,6 +2458,7 @@
   }
 
   .editorShell,
+  .scoreTrackingToggle,
   .focusEditor,
   .markingTools,
   .addedCutList,

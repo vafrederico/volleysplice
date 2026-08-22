@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { GuidedTour } from "@/components/GuidedTour";
+import { ScoreTrackingPanel } from "@/components/ScoreTrackingPanel";
 import { SiteFooter } from "@/components/SiteFooter";
 import {
   activeSuppressionSuggestions,
@@ -50,8 +51,17 @@ import {
   type PreparedVideoExport,
 } from "@/lib/on-device/export-delivery";
 import type { ExportProgress, VideoExportMode } from "@/lib/on-device/export";
+import { openLocalMedia } from "@/lib/on-device/media";
 import { modelDisplayName } from "@/lib/on-device/ensemble";
 import { requestPlayingSeek } from "@/lib/on-device/player";
+import {
+  addServeMarker,
+  isScoreTimestampIgnored,
+  scoreBoundaryTimestamp,
+  scoreTrackingOutsideExcludedRallies,
+  scoreTrackingOutsideIgnoredIntervals,
+  type ScoreTracking,
+} from "@/lib/score-tracking";
 import {
   nextSuppressionAfterTime,
   nextSuppressionSuggestion,
@@ -62,6 +72,7 @@ import {
 } from "@/lib/on-device/suppression-policy";
 import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
+import type { OnDeviceServingSideOutput } from "@/lib/on-device/types";
 import type { ProductAnalysis } from "@/lib/product-analysis";
 
 import styles from "./CutEditor.module.css";
@@ -73,6 +84,7 @@ type CutEditorProps = {
   sourceError: string | null;
   onAttachSource: (file: File | null) => void;
   onRequestSuppression: () => void;
+  onServingSideAnalysis: (output: OnDeviceServingSideOutput) => void;
 };
 
 type ExportState = "idle" | "exporting" | "done" | "error";
@@ -172,6 +184,7 @@ export function CutEditor({
   sourceError,
   onAttachSource,
   onRequestSuppression,
+  onServingSideAnalysis,
 }: CutEditorProps) {
   const analysisStart = initialAnalysis.analysisWindow.start;
   const analysisEnd = initialAnalysis.analysisWindow.end;
@@ -179,6 +192,7 @@ export function CutEditor({
   const detailRailRef = useRef<HTMLDivElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
   const timelineDragRef = useRef<TimelineDrag | null>(null);
+  const scoreInferenceStartedRef = useRef(false);
   const suppressTimelineClickUntilRef = useRef(0);
   const previewEndRef = useRef<number | null>(null);
   const previewStopRef = useRef<number | null>(null);
@@ -207,6 +221,11 @@ export function CutEditor({
   const [storageMessage, setStorageMessage] = useState("Loading on-device draft…");
   const [selectedId, setSelectedId] = useState(initialDraft.cuts[0]?.id ?? "");
   const [selectedSuppressionId, setSelectedSuppressionId] = useState("");
+  const [selectedServeMarkerId, setSelectedServeMarkerId] = useState("");
+  const [scoreInferenceStatus, setScoreInferenceStatus] = useState<
+    "idle" | "running" | "done" | "error"
+  >("idle");
+  const [scoreInferenceMessage, setScoreInferenceMessage] = useState<string | null>(null);
   const [focusLocked, setFocusLocked] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(analysisStart);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -225,6 +244,36 @@ export function CutEditor({
   const ignoreStart = draft.pendingIgnoreStart;
   const ignoreReason = draft.ignoreReason;
   const cutPreviewEnabled = draft.cutPreviewEnabled;
+  const effectiveKeptIds = useMemo(
+    () => new Set(effectiveKeptCutIds(draft, initialAnalysis.suppression)),
+    [draft, initialAnalysis.suppression],
+  );
+  const excludedRallyIds = useMemo(
+    () => new Set(
+      draft.cuts
+        .filter((cut) => !effectiveKeptIds.has(cut.id))
+        .map((cut) => cut.id),
+    ),
+    [draft.cuts, effectiveKeptIds],
+  );
+  const activeScoreTracking = useMemo(
+    () => scoreTrackingOutsideExcludedRallies(
+      scoreTrackingOutsideIgnoredIntervals(
+        draft.scoreTracking,
+        draft.ignoredIntervals,
+      ),
+      excludedRallyIds,
+    ),
+    [draft.ignoredIntervals, draft.scoreTracking, excludedRallyIds],
+  );
+  const scoreBoundaryTime = useMemo(
+    () => scoreBoundaryTimestamp(
+      playbackTime,
+      draft.cuts.filter((cut) => effectiveKeptIds.has(cut.id)),
+      activeScoreTracking,
+    ),
+    [activeScoreTracking, draft.cuts, effectiveKeptIds, playbackTime],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -264,8 +313,57 @@ export function CutEditor({
   }, [draft, seed.analysisId, storageReady]);
 
   useEffect(() => {
+    if (
+      !storageReady ||
+      !draft.scoreTracking.enabled ||
+      scoreInferenceStartedRef.current
+    ) return;
+    if (initialAnalysis.servingSide) {
+      scoreInferenceStartedRef.current = true;
+      applyServingSideOutput(initialAnalysis.servingSide);
+      setScoreInferenceStatus("done");
+      const visible = initialAnalysis.servingSide.candidates.filter(
+        (candidate) => candidate.verdict !== "not-serve",
+      );
+      const review = visible.filter((candidate) => candidate.verdict === "review").length;
+      setScoreInferenceMessage(
+        `Serving-side feature cache loaded · ${review} model verdicts need review. Ignored sections do not reprocess the video.`,
+      );
+      return;
+    }
+    if (sourceFile && initialAnalysis.productionServeOutputs) {
+      void runScoreInference();
+      return;
+    }
+    setScoreInferenceStatus("idle");
+    setScoreInferenceMessage(
+      sourceFile
+        ? "This older analysis has no dual serve-head evidence. Add markers manually or run a new analysis."
+        : "Reconnect the source once to generate and save serving-side features for this project.",
+    );
+  }, [draft.scoreTracking.enabled, draft.scoreTracking.serveMarkers, initialAnalysis.productionServeOutputs, initialAnalysis.servingSide, sourceFile, storageReady]);
+
+  useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = draft.playbackRate;
   }, [draft.playbackRate]);
+
+  useEffect(() => {
+    const activeServeMarkers = activeScoreTracking.serveMarkers;
+    if (!draft.scoreTracking.enabled || activeServeMarkers.length === 0) {
+      setSelectedServeMarkerId("");
+      return;
+    }
+    setSelectedServeMarkerId((current) =>
+      activeServeMarkers.some((marker) => marker.id === current)
+        ? current
+        : [...activeServeMarkers].sort(
+            (left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id),
+          )[0].id,
+    );
+  }, [
+    activeScoreTracking,
+    draft.scoreTracking.enabled,
+  ]);
 
   useEffect(() => {
     const chromeOnIos = isChromeOnIosBrowser();
@@ -312,10 +410,6 @@ export function CutEditor({
       { ...draft, selectedSuppressionPolicy: "none" },
       initialAnalysis.suppression,
     )),
-    [draft, initialAnalysis.suppression],
-  );
-  const effectiveKeptIds = useMemo(
-    () => new Set(effectiveKeptCutIds(draft, initialAnalysis.suppression)),
     [draft, initialAnalysis.suppression],
   );
   const suppressionSuggestions = useMemo(
@@ -416,6 +510,116 @@ export function CutEditor({
       ...mutate(current),
       updatedAt: new Date().toISOString(),
     }));
+  }
+
+  function updateScoreTracking(scoreTracking: ScoreTracking) {
+    updateDraft((current) => ({ ...current, scoreTracking }));
+  }
+
+  function applyServingSideOutput(output: OnDeviceServingSideOutput) {
+    updateDraft((current) => {
+      const existingByRally = new Map(
+        current.scoreTracking.serveMarkers
+          .filter((marker) => marker.rallyId)
+          .map((marker) => [marker.rallyId!, marker]),
+      );
+      let scoreTracking: ScoreTracking = {
+        ...current.scoreTracking,
+        serveMarkers: current.scoreTracking.serveMarkers.filter(
+          (marker) => marker.origin === "manual",
+        ),
+      };
+      for (const candidate of output.candidates) {
+        const existing = existingByRally.get(candidate.id);
+        const wasCorrected = Boolean(
+          existing?.modelSide && existing.side !== existing.modelSide,
+        );
+        if (candidate.verdict === "not-serve" && !wasCorrected) continue;
+        const modelSide = candidate.verdict === "review" || candidate.verdict === "not-serve"
+          ? "review"
+          : candidate.side;
+        scoreTracking = addServeMarker(
+          scoreTracking,
+          candidate.anchor,
+          wasCorrected ? existing!.side : modelSide,
+          {
+            id: `serve-${candidate.id}`,
+            origin: "model",
+            modelSide,
+            rallyId: candidate.id,
+          },
+        );
+        if (existing?.ignorePreviousPoint) {
+          scoreTracking = {
+            ...scoreTracking,
+            serveMarkers: scoreTracking.serveMarkers.map((marker) =>
+              marker.rallyId === candidate.id
+                ? { ...marker, ignorePreviousPoint: true }
+                : marker,
+            ),
+          };
+        }
+      }
+      return { ...current, scoreTracking };
+    });
+  }
+
+  async function runScoreInference() {
+    if (!sourceFile || scoreInferenceStatus === "running") return;
+    scoreInferenceStartedRef.current = true;
+    setScoreInferenceStatus("running");
+    setScoreInferenceMessage("Loading the frozen serving-side model…");
+    updateDraft((current) => ({
+      ...current,
+      scoreTracking: {
+        ...current.scoreTracking,
+        serveMarkers: current.scoreTracking.serveMarkers.filter(
+          (marker) => marker.origin === "manual",
+        ),
+      },
+    }));
+    let media: Awaited<ReturnType<typeof openLocalMedia>> | null = null;
+    try {
+      media = await openLocalMedia(sourceFile);
+      const { inferServingSides } = await import("@/lib/on-device/serving-side");
+      const output = await inferServingSides(
+        media,
+        initialAnalysis.roi,
+        initialAnalysis,
+        (progress) => setScoreInferenceMessage(progress.detail),
+      );
+      onServingSideAnalysis(output);
+      applyServingSideOutput(output);
+      setScoreInferenceStatus("done");
+      const visible = output.candidates.filter(
+        (candidate) => candidate.verdict !== "not-serve",
+      );
+      const review = visible.filter((candidate) => candidate.verdict === "review").length;
+      setScoreInferenceMessage(
+        `Serving-side feature cache saved · ${review} model verdicts need review. The final rally needs a later or manually added serve before it can award a point.`,
+      );
+    } catch (cause) {
+      setScoreInferenceStatus("error");
+      setScoreInferenceMessage(
+        `Near/far analysis could not finish: ${cause instanceof Error ? cause.message : String(cause)}. Review markers remain editable.`,
+      );
+    } finally {
+      media?.input.dispose();
+    }
+  }
+
+  function toggleScoreTracking(enabled: boolean) {
+    updateDraft((current) => ({
+      ...current,
+      scoreTracking: { ...current.scoreTracking, enabled },
+    }));
+    if (enabled) scoreInferenceStartedRef.current = false;
+  }
+
+  function selectServeMarker(markerId: string, timestamp: number) {
+    setSelectedServeMarkerId(markerId);
+    seekTo(timestamp, false);
+    setEditorMessage(`Selected serve marker at ${preciseTime(timestamp)}.`);
   }
 
   function updateCut(id: string, mutate: (cut: EditableCut) => EditableCut) {
@@ -1025,6 +1229,10 @@ export function CutEditor({
     setDraft({ ...initialDraft, updatedAt: new Date().toISOString() });
     setSelectedId(initialDraft.cuts[0]?.id ?? "");
     setSelectedSuppressionId("");
+    setSelectedServeMarkerId("");
+    scoreInferenceStartedRef.current = false;
+    setScoreInferenceStatus("idle");
+    setScoreInferenceMessage(null);
     setEditorMessage("Reset to the inferred model ranges.");
   }
 
@@ -1043,6 +1251,7 @@ export function CutEditor({
       cuts: draft.cuts,
       reviewedCutIds: draft.reviewedCutIds,
       ignoredIntervals: draft.ignoredIntervals,
+      scoreTracking: draft.scoreTracking,
       suppression: {
         selectedPolicy: draft.selectedSuppressionPolicy,
         artifact: initialAnalysis.suppression
@@ -1097,7 +1306,7 @@ export function CutEditor({
           });
           setEditorMessage(
             initialAnalysis.features
-              ? "Shared model feedback with features, inference, and corrections."
+              ? "Shared model feedback with features, serving-side inference, score tracking, and corrections."
               : "Shared inference and corrections; this older analysis has no retained feature matrix.",
           );
           return;
@@ -1114,7 +1323,7 @@ export function CutEditor({
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
       setEditorMessage(
         initialAnalysis.features
-          ? "Downloaded model feedback with features, inference, and corrections."
+          ? "Downloaded model feedback with features, serving-side inference, score tracking, and corrections."
           : "Downloaded inference and corrections; this older analysis has no retained feature matrix.",
       );
     } catch (cause) {
@@ -1315,6 +1524,54 @@ export function CutEditor({
               /> : null;
             }),
         )}
+        {draft.scoreTracking.enabled && draft.scoreTracking.serveMarkers
+          .filter((marker) => marker.timestamp >= windowStart &&
+            (rowIndex === 1 ? marker.timestamp <= windowEnd : marker.timestamp < windowEnd) &&
+            !isScoreTimestampIgnored(marker.timestamp, draft.ignoredIntervals) &&
+            (!marker.rallyId || !excludedRallyIds.has(marker.rallyId)))
+          .map((marker) => (
+            <button
+              type="button"
+              key={marker.id}
+              className={styles.serveTimelineMarker}
+              data-side={marker.side}
+              data-selected={marker.id === selectedServeMarkerId || undefined}
+              style={{ left: `${timelinePercent(marker.timestamp - windowStart, windowDuration)}%` }}
+              aria-label={`Serve marker at ${preciseTime(marker.timestamp)}, ${marker.side === "review" ? "review needed" : `${marker.side} side`}`}
+              title={`Serve · ${preciseTime(marker.timestamp)} · ${marker.side}`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                selectServeMarker(marker.id, marker.timestamp);
+              }}
+            >
+              <span aria-hidden="true">🏐</span>
+              <i />
+            </button>
+          ))}
+        {draft.scoreTracking.enabled && draft.scoreTracking.sideSwitchMarkers
+          .filter((marker) => marker.timestamp >= windowStart &&
+            (rowIndex === 1 ? marker.timestamp <= windowEnd : marker.timestamp < windowEnd))
+          .map((marker) => (
+            <button
+              type="button"
+              key={marker.id}
+              className={styles.switchTimelineMarker}
+              style={{ left: `${timelinePercent(marker.timestamp - windowStart, windowDuration)}%` }}
+              aria-label={`Team side switch at ${preciseTime(marker.timestamp)}`}
+              title={`Team side switch · ${preciseTime(marker.timestamp)}`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                seekTo(marker.timestamp, false);
+              }}
+            >
+              <span aria-hidden="true">⇄</span>
+              <i />
+            </button>
+          ))}
         {playheadInRow && <span
           className={styles.playhead}
           style={{ left: `${timelinePercent(playbackTime - windowStart, windowDuration)}%` }}
@@ -1363,6 +1620,24 @@ export function CutEditor({
       </section>
 
       {sourceError && <p className={styles.sourceError}>{sourceError}</p>}
+
+      <label
+        className={styles.scoreTrackingToggle}
+        data-enabled={draft.scoreTracking.enabled || undefined}
+        data-tour="editor-score"
+      >
+        <input
+          type="checkbox"
+          checked={draft.scoreTracking.enabled}
+          onChange={(event) => toggleScoreTracking(event.currentTarget.checked)}
+        />
+        <span>
+          <strong>Score tracking <em>BETA</em></strong>
+          <small>
+            Use serving-side markers to track points. This choice is saved with the project on this device.
+          </small>
+        </span>
+      </label>
 
       <section className={styles.editorShell}>
         <aside
@@ -1572,14 +1847,21 @@ export function CutEditor({
                 : "Desktop and Android use the standard native file or private browser storage path."}
             </p>
             <p>
-              Model feedback JSON contains source-aligned features, probability traces, untouched
-              inference ranges, corrections, and final ranges—never video bytes. Disabled model
-              ranges are labeled false positives; included manual ranges are labeled false negatives.
+              Model feedback JSON contains source-aligned rally and serving-side features, probability
+              traces, untouched inference ranges and serving-side verdicts, score-marker corrections,
+              removals, switches, derived point history, and final ranges—never video bytes. Disabled
+              model ranges are labeled false positives; included manual ranges are labeled false negatives.
             </p>
             {!initialAnalysis.features && (
               <strong>
                 This saved analysis predates feature capture. Its feedback file will still contain
                 inference and corrections, but not the feature matrix.
+              </strong>
+            )}
+            {!initialAnalysis.servingSide && (
+              <strong>
+                This saved analysis predates serving-side retention. Its feedback file will still contain
+                score-marker corrections, but not the original serving-side features or verdict evidence.
               </strong>
             )}
             {!localExportSupported && (
@@ -1633,11 +1915,38 @@ export function CutEditor({
         </aside>
 
         <div className={styles.playerColumn}>
-          <div
-            className={styles.videoStage}
-            data-tour="editor-video"
-            style={{ aspectRatio: `${initialAnalysis.width} / ${initialAnalysis.height}` }}
-          >
+          <div className={styles.playerWorkspace}>
+            {draft.scoreTracking.enabled && (
+              <ScoreTrackingPanel
+                tracking={draft.scoreTracking}
+                ignoredIntervals={draft.ignoredIntervals}
+                excludedRallyIds={excludedRallyIds}
+                playbackTime={playbackTime}
+                scoreBoundaryTime={scoreBoundaryTime}
+                selectedServeMarkerId={selectedServeMarkerId}
+                inferenceStatus={scoreInferenceStatus}
+                inferenceMessage={scoreInferenceMessage}
+                canRunInference={Boolean(
+                  !initialAnalysis.servingSide &&
+                  sourceFile &&
+                  initialAnalysis.productionServeOutputs
+                )}
+                onChange={updateScoreTracking}
+                onSelectServeMarker={selectServeMarker}
+                onSeek={(timestamp) => seekTo(timestamp, false)}
+                onRunInference={() => {
+                  scoreInferenceStartedRef.current = false;
+                  void runScoreInference();
+                }}
+              />
+            )}
+
+            <div className={styles.videoColumn}>
+              <div
+                className={styles.videoStage}
+                data-tour="editor-video"
+                style={{ aspectRatio: `${initialAnalysis.width} / ${initialAnalysis.height}` }}
+              >
             {initialAnalysis.videoUrl ? (
               <video
                 ref={videoRef}
@@ -1751,9 +2060,9 @@ export function CutEditor({
             <div className={styles.timecode}>
               {preciseTime(playbackTime)} <span>/ game ends {preciseTime(analysisEnd)}</span>
             </div>
-          </div>
+              </div>
 
-          <div className={styles.transport} data-tour="editor-transport">
+              <div className={styles.transport} data-tour="editor-transport">
             <button type="button" onClick={() => seekTo(playbackTime - 1)}>−1s</button>
             <button type="button" onClick={() => seekTo(playbackTime - 0.1)}>−0.1s</button>
             <button
@@ -1766,8 +2075,8 @@ export function CutEditor({
             </button>
             <button type="button" onClick={() => seekTo(playbackTime + 0.1)}>+0.1s</button>
             <button type="button" onClick={() => seekTo(playbackTime + 1)}>+1s</button>
-          </div>
-          <label className={styles.playbackRateControl}>
+              </div>
+              <label className={styles.playbackRateControl}>
             <span>Playback speed</span>
             <select
               aria-label="Video playback speed"
@@ -1780,7 +2089,10 @@ export function CutEditor({
                 <option key={rate} value={rate}>{rate}x</option>
               ))}
             </select>
-          </label>
+              </label>
+            </div>
+
+          </div>
 
           <section className={styles.overviewSection} data-tour="editor-overview">
             <div className={styles.sectionHeading}>
@@ -1851,8 +2163,14 @@ export function CutEditor({
               <span><i data-kind="suggestion-kept" /> Suggestion kept</span>
               <span><i data-kind="ignored" /> Ignored source</span>
               <span><i data-kind="joined" /> Joined gap</span>
+              {draft.scoreTracking.enabled && (
+                <>
+                  <span><i data-kind="serve-marker">🏐</i> Serve</span>
+                  <span><i data-kind="side-switch">⇄</i> Side switch</span>
+                </>
+              )}
             </div>
-            <div className={styles.overviewRows}>
+            <div className={styles.overviewRows} data-tour="editor-score-markers">
               {renderOverviewRow(
                 analysisStart,
                 (analysisStart + analysisEnd) / 2,

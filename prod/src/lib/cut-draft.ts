@@ -1,4 +1,3 @@
-import type { IgnoredInterval } from "./product-analysis.ts";
 import type { Rally } from "./edit-list.ts";
 import {
   SUPPRESSION_POLICY_CONTRACT_VERSION,
@@ -7,8 +6,15 @@ import {
   type SuppressionSuggestion,
 } from "./on-device/suppression-policy.ts";
 import type { OnDeviceSuppression } from "./on-device/types.ts";
+import type { IgnoredInterval } from "./product-analysis.ts";
+import {
+  createScoreTracking,
+  isValidScoreTracking,
+  migrateScoreTracking,
+  type ScoreTracking,
+} from "./score-tracking.ts";
 
-export const CUT_DRAFT_VERSION = 10 as const;
+export const CUT_DRAFT_VERSION = 12 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -58,6 +64,7 @@ export type CutDraft = {
   suppressionScopeOverrides: Record<string, SuppressionScope>;
   userTouchedCutIds: string[];
   suppressionContractVersion: number;
+  scoreTracking: ScoreTracking;
   cuts: EditableCut[];
   ignoredIntervals: IgnoredSourceInterval[];
 };
@@ -187,7 +194,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -219,6 +226,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     userTouchedCutIds: [],
     suppressionContractVersion:
       seed.suppressionContractVersion ?? SUPPRESSION_POLICY_CONTRACT_VERSION,
+    scoreTracking: createScoreTracking(),
     cuts: seed.rallies.map((rally) => ({
       id: rally.id,
       coreStart: clamp(rally.start, bounds.start, bounds.end),
@@ -341,7 +349,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, 8, 9, CUT_DRAFT_VERSION].includes(persistedVersion)
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, CUT_DRAFT_VERSION].includes(
+        persistedVersion,
+      )
     ) {
       return null;
     }
@@ -418,6 +428,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       suppressionContractVersion: persistedVersion >= 9
         ? persisted.suppressionContractVersion
         : seed.suppressionContractVersion ?? SUPPRESSION_POLICY_CONTRACT_VERSION,
+      scoreTracking: persistedVersion >= 11
+        ? migrateScoreTracking(persisted.scoreTracking, seed.duration) ?? undefined
+        : createScoreTracking(),
     };
     if (
       value.version !== CUT_DRAFT_VERSION ||
@@ -480,6 +493,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       new Set(value.userTouchedCutIds).size !== value.userTouchedCutIds.length ||
       !Number.isInteger(value.suppressionContractVersion) ||
       value.suppressionContractVersion! < 1 ||
+      !isValidScoreTracking(value.scoreTracking, seed.duration) ||
       (value.pendingManualStart !== null && value.pendingIgnoreStart !== null) ||
       !Array.isArray(value.cuts) ||
       !Array.isArray(value.ignoredIntervals) ||

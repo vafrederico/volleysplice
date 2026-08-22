@@ -42,5 +42,6 @@ export type ProductAnalysis = {
   };
   productionComponents?: OnDeviceAnalysis["productionComponents"];
   productionServeOutputs?: OnDeviceAnalysis["productionServeOutputs"];
+  servingSide?: OnDeviceAnalysis["servingSide"];
   suppression?: OnDeviceAnalysis["suppression"];
 };

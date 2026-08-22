@@ -1,6 +1,6 @@
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
-export const MODEL_FEEDBACK_SCHEMA_VERSION = 2 as const;
-export const SUPPORTED_MODEL_FEEDBACK_SCHEMA_VERSIONS = [1, 2] as const;
+export const MODEL_FEEDBACK_SCHEMA_VERSION = 3 as const;
+export const SUPPORTED_MODEL_FEEDBACK_SCHEMA_VERSIONS = [1, 2, 3] as const;
 
 const MAX_NUMERIC_VALUES = 25_000_000;
 
@@ -96,6 +96,7 @@ export type ParsedModelFeedback = {
       allLabelsV2: ParsedServeOutput;
       previousProduction: ParsedServeOutput;
     };
+    servingSide: ParsedServingSideOutput | null;
   };
   corrections: {
     updatedAt: string;
@@ -104,6 +105,7 @@ export type ParsedModelFeedback = {
     joinGapSeconds: number;
     correctedRanges: CorrectedFeedbackRange[];
     ignoredIntervals: IgnoredFeedbackRange[];
+    scoreTracking: ParsedScoreTrackingFeedback | null;
     labels: {
       falsePositives: FeedbackRange[];
       falseNegatives: FeedbackRange[];
@@ -119,6 +121,79 @@ export type ParsedServeOutput = {
   modelId: string;
   probabilities: Float32Array;
   detections: Array<{ time: number; confidence: number }>;
+};
+
+export type ParsedServingSideEvidence = {
+  modelId: string;
+  threshold: number;
+  peakProbability: number;
+  peakTime: number;
+  crossesThreshold: boolean;
+  nearestDetection: { time: number; confidence: number } | null;
+};
+
+export type ParsedServingSideOutput = {
+  modelId: string;
+  modelFingerprint: string;
+  featureVersion: string;
+  anchorContract: string;
+  features: {
+    rows: number;
+    columns: number;
+    values: Float64Array;
+  };
+  candidates: Array<{
+    id: string;
+    anchor: number;
+    interval: { start: number; end: number; agreement?: string };
+    nearProbability: number;
+    side: "near" | "far";
+    verdict: "near" | "far" | "review" | "not-serve";
+    serveDecisionSource: "serve-head" | "production-rally-recovery" | "none";
+    reviewReasons: Array<"side-score" | "production-rally-recovery">;
+    serveEvidence: {
+      allLabelsV2: ParsedServingSideEvidence;
+      previousProduction: ParsedServingSideEvidence;
+    };
+  }>;
+};
+
+export type ParsedScoreTrackingFeedback = {
+  state: {
+    version: number;
+    enabled: boolean;
+    team1Name: string;
+    team2Name: string;
+    serveMarkers: Array<{
+      id: string;
+      timestamp: number;
+      side: "near" | "far" | "review";
+      origin: "model" | "manual";
+      modelSide?: "near" | "far" | "review";
+      ignorePreviousPoint: boolean;
+      rallyId?: string;
+    }>;
+    sideSwitchMarkers: Array<{ id: string; timestamp: number }>;
+    removedModelMarkerIds: string[];
+  };
+  excludedRallyIds: string[];
+  derivedFinalScore: {
+    team1Score: number;
+    team2Score: number;
+    servingTeamId: "team-1" | "team-2" | null;
+    servingSide: "near" | "far" | "review" | null;
+    ignoredPointCount: number;
+    reviewPointCount: number;
+    points: Array<{
+      serveMarkerId: string;
+      timestamp: number;
+      servingSide: "near" | "far" | "review";
+      winnerTeamId: "team-1" | "team-2" | null;
+      status: "counted" | "ignored" | "review";
+      team1ScoreAfter: number;
+      team2ScoreAfter: number;
+    }>;
+  };
 };
 
 export class ModelFeedbackValidationError extends Error {}
@@ -372,6 +447,346 @@ function sourceProducer(runtimeVariant: string): FeedbackSource {
     : "production-web";
 }
 
+function choice<const Values extends readonly string[]>(
+  value: unknown,
+  values: Values,
+  field: string,
+): Values[number] {
+  if (!values.includes(value as Values[number])) {
+    fail(field, `must be one of ${values.join(", ")}`);
+  }
+  return value as Values[number];
+}
+
+function probability(value: unknown, field: string): number {
+  const parsed = number(value, field);
+  if (parsed < 0 || parsed > 1) fail(field, "must be between 0 and 1");
+  return parsed;
+}
+
+function sourceTime(value: unknown, field: string, duration: number): number {
+  const parsed = nonNegative(value, field);
+  if (parsed > duration) fail(field, "must be within the source");
+  return parsed;
+}
+
+function parseServingSideOutput(
+  value: unknown,
+  field: string,
+  duration: number,
+): ParsedServingSideOutput {
+  const output = object(value, field);
+  const features = object(output.features, `${field}.features`);
+  const rows = integer(features.rows, `${field}.features.rows`);
+  const columns = integer(features.columns, `${field}.features.columns`);
+  if (columns <= 0) fail(`${field}.features.columns`, "must be positive");
+  const values = decodeNumericArray(
+    features.values,
+    `${field}.features.values`,
+    "float64",
+    [rows, columns],
+  ) as Float64Array;
+  if (!Array.isArray(output.candidates)) {
+    fail(`${field}.candidates`, "must be an array");
+  }
+  if (output.candidates.length !== rows) {
+    fail(`${field}.candidates`, "length must match feature rows");
+  }
+  const candidateIds = new Set<string>();
+  const parseEvidence = (
+    value: unknown,
+    evidenceField: string,
+  ): ParsedServingSideEvidence => {
+    const evidence = object(value, evidenceField);
+    const nearestDetection = evidence.nearestDetection === null
+      ? null
+      : (() => {
+          const detection = object(
+            evidence.nearestDetection,
+            `${evidenceField}.nearestDetection`,
+          );
+          return {
+            time: sourceTime(
+              detection.time,
+              `${evidenceField}.nearestDetection.time`,
+              duration,
+            ),
+            confidence: probability(
+              detection.confidence,
+              `${evidenceField}.nearestDetection.confidence`,
+            ),
+          };
+        })();
+    return {
+      modelId: string(evidence.modelId, `${evidenceField}.modelId`),
+      threshold: probability(evidence.threshold, `${evidenceField}.threshold`),
+      peakProbability: probability(
+        evidence.peakProbability,
+        `${evidenceField}.peakProbability`,
+      ),
+      peakTime: sourceTime(
+        evidence.peakTime,
+        `${evidenceField}.peakTime`,
+        duration,
+      ),
+      crossesThreshold: boolean(
+        evidence.crossesThreshold,
+        `${evidenceField}.crossesThreshold`,
+      ),
+      nearestDetection,
+    };
+  };
+  const candidates = output.candidates.map((value, index) => {
+    const candidateField = `${field}.candidates[${index}]`;
+    const candidate = object(value, candidateField);
+    const id = string(candidate.id, `${candidateField}.id`);
+    if (candidateIds.has(id)) fail(`${candidateField}.id`, "must be unique");
+    candidateIds.add(id);
+    const interval = object(candidate.interval, `${candidateField}.interval`);
+    const start = sourceTime(
+      interval.start,
+      `${candidateField}.interval.start`,
+      duration,
+    );
+    const end = sourceTime(
+      interval.end,
+      `${candidateField}.interval.end`,
+      duration,
+    );
+    if (end <= start) fail(`${candidateField}.interval`, "must have positive duration");
+    const anchor = sourceTime(candidate.anchor, `${candidateField}.anchor`, duration);
+    if (anchor !== start) fail(`${candidateField}.anchor`, "must equal interval start");
+    if (!Array.isArray(candidate.reviewReasons)) {
+      fail(`${candidateField}.reviewReasons`, "must be an array");
+    }
+    const serveEvidence = object(
+      candidate.serveEvidence,
+      `${candidateField}.serveEvidence`,
+    );
+    return {
+      id,
+      anchor,
+      interval: {
+        start,
+        end,
+        ...(interval.agreement === undefined
+          ? {}
+          : {
+              agreement: string(
+                interval.agreement,
+                `${candidateField}.interval.agreement`,
+              ),
+            }),
+      },
+      nearProbability: probability(
+        candidate.nearProbability,
+        `${candidateField}.nearProbability`,
+      ),
+      side: choice(candidate.side, ["near", "far"] as const, `${candidateField}.side`),
+      verdict: choice(
+        candidate.verdict,
+        ["near", "far", "review", "not-serve"] as const,
+        `${candidateField}.verdict`,
+      ),
+      serveDecisionSource: choice(
+        candidate.serveDecisionSource,
+        ["serve-head", "production-rally-recovery", "none"] as const,
+        `${candidateField}.serveDecisionSource`,
+      ),
+      reviewReasons: candidate.reviewReasons.map((reason, reasonIndex) =>
+        choice(
+          reason,
+          ["side-score", "production-rally-recovery"] as const,
+          `${candidateField}.reviewReasons[${reasonIndex}]`,
+        )
+      ),
+      serveEvidence: {
+        allLabelsV2: parseEvidence(
+          serveEvidence.allLabelsV2,
+          `${candidateField}.serveEvidence.allLabelsV2`,
+        ),
+        previousProduction: parseEvidence(
+          serveEvidence.previousProduction,
+          `${candidateField}.serveEvidence.previousProduction`,
+        ),
+      },
+    };
+  });
+  return {
+    modelId: string(output.modelId, `${field}.modelId`),
+    modelFingerprint: string(
+      output.modelFingerprint,
+      `${field}.modelFingerprint`,
+    ),
+    featureVersion: string(output.featureVersion, `${field}.featureVersion`),
+    anchorContract: string(output.anchorContract, `${field}.anchorContract`),
+    features: { rows, columns, values },
+    candidates,
+  };
+}
+
+function parseScoreTrackingFeedback(
+  value: unknown,
+  field: string,
+  duration: number,
+): ParsedScoreTrackingFeedback {
+  const feedback = object(value, field);
+  const state = object(feedback.state, `${field}.state`);
+  if (!Array.isArray(state.serveMarkers)) {
+    fail(`${field}.state.serveMarkers`, "must be an array");
+  }
+  if (!Array.isArray(state.sideSwitchMarkers)) {
+    fail(`${field}.state.sideSwitchMarkers`, "must be an array");
+  }
+  const markerIds = new Set<string>();
+  const serveMarkers = state.serveMarkers.map((value, index) => {
+    const markerField = `${field}.state.serveMarkers[${index}]`;
+    const marker = object(value, markerField);
+    const id = string(marker.id, `${markerField}.id`);
+    if (markerIds.has(id)) fail(`${markerField}.id`, "must be unique");
+    markerIds.add(id);
+    return {
+      id,
+      timestamp: sourceTime(marker.timestamp, `${markerField}.timestamp`, duration),
+      side: choice(
+        marker.side,
+        ["near", "far", "review"] as const,
+        `${markerField}.side`,
+      ),
+      origin: choice(
+        marker.origin,
+        ["model", "manual"] as const,
+        `${markerField}.origin`,
+      ),
+      ...(marker.modelSide === undefined
+        ? {}
+        : {
+            modelSide: choice(
+              marker.modelSide,
+              ["near", "far", "review"] as const,
+              `${markerField}.modelSide`,
+            ),
+          }),
+      ignorePreviousPoint: boolean(
+        marker.ignorePreviousPoint,
+        `${markerField}.ignorePreviousPoint`,
+      ),
+      ...(marker.rallyId === undefined
+        ? {}
+        : { rallyId: string(marker.rallyId, `${markerField}.rallyId`) }),
+    };
+  });
+  const sideSwitchMarkers = state.sideSwitchMarkers.map((value, index) => {
+    const markerField = `${field}.state.sideSwitchMarkers[${index}]`;
+    const marker = object(value, markerField);
+    const id = string(marker.id, `${markerField}.id`);
+    if (markerIds.has(id)) fail(`${markerField}.id`, "must be unique");
+    markerIds.add(id);
+    return {
+      id,
+      timestamp: sourceTime(marker.timestamp, `${markerField}.timestamp`, duration),
+    };
+  });
+  const removedModelMarkerIds = stringArray(
+    state.removedModelMarkerIds,
+    `${field}.state.removedModelMarkerIds`,
+  );
+  if (new Set(removedModelMarkerIds).size !== removedModelMarkerIds.length) {
+    fail(`${field}.state.removedModelMarkerIds`, "must contain unique IDs");
+  }
+  if (removedModelMarkerIds.some((id) => markerIds.has(id))) {
+    fail(`${field}.state.removedModelMarkerIds`, "must not contain active marker IDs");
+  }
+  const excludedRallyIds = stringArray(
+    feedback.excludedRallyIds,
+    `${field}.excludedRallyIds`,
+  );
+  if (new Set(excludedRallyIds).size !== excludedRallyIds.length) {
+    fail(`${field}.excludedRallyIds`, "must contain unique IDs");
+  }
+  const derived = object(
+    feedback.derivedFinalScore,
+    `${field}.derivedFinalScore`,
+  );
+  if (!Array.isArray(derived.points)) {
+    fail(`${field}.derivedFinalScore.points`, "must be an array");
+  }
+  const team = (value: unknown, teamField: string) =>
+    value === null
+      ? null
+      : choice(value, ["team-1", "team-2"] as const, teamField);
+  const side = (value: unknown, sideField: string) =>
+    value === null
+      ? null
+      : choice(value, ["near", "far", "review"] as const, sideField);
+  const points = derived.points.map((value, index) => {
+    const pointField = `${field}.derivedFinalScore.points[${index}]`;
+    const point = object(value, pointField);
+    return {
+      serveMarkerId: string(point.serveMarkerId, `${pointField}.serveMarkerId`),
+      timestamp: sourceTime(point.timestamp, `${pointField}.timestamp`, duration),
+      servingSide: choice(
+        point.servingSide,
+        ["near", "far", "review"] as const,
+        `${pointField}.servingSide`,
+      ),
+      winnerTeamId: team(point.winnerTeamId, `${pointField}.winnerTeamId`),
+      status: choice(
+        point.status,
+        ["counted", "ignored", "review"] as const,
+        `${pointField}.status`,
+      ),
+      team1ScoreAfter: integer(
+        point.team1ScoreAfter,
+        `${pointField}.team1ScoreAfter`,
+      ),
+      team2ScoreAfter: integer(
+        point.team2ScoreAfter,
+        `${pointField}.team2ScoreAfter`,
+      ),
+    };
+  });
+  return {
+    state: {
+      version: integer(state.version, `${field}.state.version`),
+      enabled: boolean(state.enabled, `${field}.state.enabled`),
+      team1Name: string(state.team1Name, `${field}.state.team1Name`),
+      team2Name: string(state.team2Name, `${field}.state.team2Name`),
+      serveMarkers,
+      sideSwitchMarkers,
+      removedModelMarkerIds,
+    },
+    excludedRallyIds,
+    derivedFinalScore: {
+      team1Score: integer(
+        derived.team1Score,
+        `${field}.derivedFinalScore.team1Score`,
+      ),
+      team2Score: integer(
+        derived.team2Score,
+        `${field}.derivedFinalScore.team2Score`,
+      ),
+      servingTeamId: team(
+        derived.servingTeamId,
+        `${field}.derivedFinalScore.servingTeamId`,
+      ),
+      servingSide: side(
+        derived.servingSide,
+        `${field}.derivedFinalScore.servingSide`,
+      ),
+      ignoredPointCount: integer(
+        derived.ignoredPointCount,
+        `${field}.derivedFinalScore.ignoredPointCount`,
+      ),
+      reviewPointCount: integer(
+        derived.reviewPointCount,
+        `${field}.derivedFinalScore.reviewPointCount`,
+      ),
+      points,
+    },
+  };
+}
+
 export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   const root = object(value, "bundle");
   if (root.schema !== MODEL_FEEDBACK_SCHEMA) {
@@ -379,9 +794,10 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   }
   if (
     root.schemaVersion !== 1 &&
+    root.schemaVersion !== 2 &&
     root.schemaVersion !== MODEL_FEEDBACK_SCHEMA_VERSION
   ) {
-    fail("bundle.schemaVersion", "must be 1 or 2");
+    fail("bundle.schemaVersion", "must be 1, 2, or 3");
   }
   const schemaVersion = root.schemaVersion;
 
@@ -608,6 +1024,20 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       ),
     };
   })();
+  const servingSide = (() => {
+    if (inference.servingSide === undefined) {
+      if (schemaVersion >= 3) {
+        fail("bundle.initialInference.servingSide", "is required");
+      }
+      return null;
+    }
+    if (inference.servingSide === null) return null;
+    return parseServingSideOutput(
+      inference.servingSide,
+      "bundle.initialInference.servingSide",
+      duration,
+    );
+  })();
 
   const corrections = object(root.corrections, "bundle.corrections");
   const correctedValue = corrections.correctedRanges;
@@ -617,6 +1047,19 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   if (!Array.isArray(ignoredValue))
     fail("bundle.corrections.ignoredIntervals", "must be an array");
   const labels = object(corrections.labels, "bundle.corrections.labels");
+  const scoreTracking = (() => {
+    if (corrections.scoreTracking === undefined) {
+      if (schemaVersion >= 3) {
+        fail("bundle.corrections.scoreTracking", "is required");
+      }
+      return null;
+    }
+    return parseScoreTrackingFeedback(
+      corrections.scoreTracking,
+      "bundle.corrections.scoreTracking",
+      duration,
+    );
+  })();
   const finalValue = root.finalExportIntervals;
   if (!Array.isArray(finalValue))
     fail("bundle.finalExportIntervals", "must be an array");
@@ -704,6 +1147,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       serveProbabilities,
       deadStateProbabilities,
       componentServeOutputs,
+      servingSide,
     },
     corrections: {
       updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),
@@ -758,6 +1202,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
           ),
         };
       }),
+      scoreTracking,
       labels: {
         falsePositives: ranges(
           labels.falsePositives,

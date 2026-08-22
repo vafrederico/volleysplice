@@ -27,6 +27,7 @@ import type {
   NormalizedRoi,
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
+  OnDeviceServingSideOutput,
 } from "@/lib/on-device/types";
 import {
   holdScreenWakeLock,
@@ -198,6 +199,21 @@ export function App() {
           "Browser project storage is unavailable. This project will last for this tab only.",
         );
       }
+    });
+  }
+
+  function persistServingSideAnalysis(
+    projectIdToUpdate: string,
+    servingSide: OnDeviceServingSideOutput,
+  ) {
+    const project = projectsRef.current.find(
+      (candidate) => candidate.id === projectIdToUpdate,
+    );
+    if (!project?.analysis || project.status !== "ready") return;
+    commitProject({
+      ...project,
+      analysis: { ...project.analysis, servingSide },
+      updatedAt: new Date().toISOString(),
     });
   }
 
@@ -557,10 +573,44 @@ export function App() {
         },
       );
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      let completedAnalysis = result;
+      if (result.productionServeOutputs) {
+        try {
+          const { inferServingSides } = await import(
+            "@/lib/on-device/serving-side"
+          );
+          const servingSide = await inferServingSides(
+            opened,
+            running.roi,
+            result,
+            (progress) => {
+              if (
+                !deletedProjectIdsRef.current.has(projectIdToRun) &&
+                mountedRef.current
+              ) {
+                setActiveProgress({
+                  stage: "inference",
+                  completed: progress.completed,
+                  total: progress.total,
+                  detail: progress.detail,
+                });
+              }
+            },
+          );
+          completedAnalysis = { ...result, servingSide };
+        } catch (cause) {
+          if (mountedRef.current) {
+            setError(
+              `Score tracking features could not be cached: ${cause instanceof Error ? cause.message : String(cause)}`,
+            );
+          }
+        }
+      }
+      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
       const ready: VolleyCutProject = {
         ...running,
         status: "ready",
-        analysis: result,
+        analysis: completedAnalysis,
         error: null,
         updatedAt: new Date().toISOString(),
       };
@@ -760,6 +810,7 @@ export function App() {
       },
       productionComponents: selectedProject.analysis.productionComponents,
       productionServeOutputs: selectedProject.analysis.productionServeOutputs,
+      servingSide: selectedProject.analysis.servingSide,
       suppression: selectedProject.analysis.suppression,
     };
   }, [selectedProject, selectedVideoUrl]);
@@ -776,6 +827,9 @@ export function App() {
           void attachSource(selectedProject, selected)
         }
         onRequestSuppression={() => queueAttachedProject(selectedProject)}
+        onServingSideAnalysis={(servingSide) =>
+          persistServingSideAnalysis(selectedProject.id, servingSide)
+        }
       />
     );
   }

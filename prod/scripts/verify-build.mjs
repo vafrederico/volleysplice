@@ -19,6 +19,10 @@ const expectedHashes = new Map([
     "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d",
   ],
   [
+    "runtime/serving-side-85bc3325fbd4.json",
+    "14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c",
+  ],
+  [
     "runtime/suppression-39eddf581639.json",
     "ef0ad4eb93fa61ce1d403f083d91f7578cf9ff0f31fac797fde9ab8b73f42794",
   ],

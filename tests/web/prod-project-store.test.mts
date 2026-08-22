@@ -19,6 +19,12 @@ import {
 } from "../../prod/src/lib/on-device/ensemble.ts";
 import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "../../prod/src/lib/on-device/runtime-variants.ts";
 import {
+  SERVING_SIDE_ANCHOR_CONTRACT,
+  SERVING_SIDE_FEATURE_VERSION,
+  SERVING_SIDE_MODEL_FINGERPRINT,
+  SERVING_SIDE_MODEL_ID,
+} from "../../prod/src/lib/on-device/serving-side-model.ts";
+import {
   normalizeStoredProject,
   projectAnalysisId,
   projectId,
@@ -276,4 +282,22 @@ test("an ensemble cache without per-range agreement provenance is stale", () => 
   );
   assert.equal(normalized.status, "waiting");
   assert.equal(normalized.analysis, null);
+});
+
+test("a serving-side cache with changed candidate anchors is discarded without invalidating the project", () => {
+  const project = storedProject(
+    cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true),
+  );
+  project.analysis!.servingSide = {
+    modelId: SERVING_SIDE_MODEL_ID,
+    modelFingerprint: SERVING_SIDE_MODEL_FINGERPRINT,
+    featureVersion: SERVING_SIDE_FEATURE_VERSION,
+    anchorContract: SERVING_SIDE_ANCHOR_CONTRACT,
+    features: { rows: 0, columns: 237, values: new Float64Array(0) },
+    candidates: [],
+  };
+  const normalized = normalizeStoredProject(project);
+  assert.equal(normalized.status, "ready");
+  assert.equal(normalized.analysis?.servingSide, undefined);
+  assert.ok(normalized.analysis);
 });
