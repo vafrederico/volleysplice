@@ -1,0 +1,56 @@
+.overlay {
+  display: grid;
+  grid-template-columns:
+    minmax(clamp(54px, 7.5vw, 96px), auto)
+    clamp(28px, 4.5vw, 58px)
+    minmax(clamp(54px, 7.5vw, 96px), auto)
+    clamp(28px, 4.5vw, 58px);
+  overflow: hidden;
+  width: max-content;
+  max-width: min(92%, 420px);
+  min-height: 30px;
+  border: 2px solid var(--score-overlay-border, #000);
+  border-radius: 0 0 9px;
+  background: var(--score-overlay-score-background, #fff);
+  color: var(--score-overlay-score-text, #000);
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.overlay > span,
+.overlay > strong {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(5px, .9vw, 12px) 8px;
+  font-size: clamp(10px, 1.45vw, 17px);
+  white-space: nowrap;
+}
+
+.overlay > :not(:first-child) {
+  border-left: 1px solid var(--score-overlay-border, #000);
+}
+
+.team1Name,
+.team2Name {
+  overflow: hidden;
+  color: var(--score-overlay-team-text, #fff);
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.team1Name {
+  background: var(--score-overlay-team-1, #d9342b);
+}
+
+.team2Name {
+  background: var(--score-overlay-team-2, #2367c9);
+}
+
+.score {
+  background: var(--score-overlay-score-background, #fff);
+  color: var(--score-overlay-score-text, #000);
+  font-weight: 800;
+}

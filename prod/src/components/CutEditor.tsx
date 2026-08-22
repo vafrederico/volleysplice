@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { GuidedTour } from "@/components/GuidedTour";
+import { ScoreOverlay } from "@/components/ScoreOverlay";
 import { ScoreTrackingPanel } from "@/components/ScoreTrackingPanel";
 import { SiteFooter } from "@/components/SiteFooter";
 import {
@@ -272,13 +273,17 @@ export function CutEditor({
     ),
     [draft.ignoredIntervals, draft.scoreTracking, excludedRallyIds],
   );
+  const activeScoreRallyRanges = useMemo(
+    () => draft.cuts.filter((cut) => effectiveKeptIds.has(cut.id)),
+    [draft.cuts, effectiveKeptIds],
+  );
   const scoreBoundaryTime = useMemo(
     () => scoreBoundaryTimestamp(
       playbackTime,
-      draft.cuts.filter((cut) => effectiveKeptIds.has(cut.id)),
+      activeScoreRallyRanges,
       activeScoreTracking,
     ),
-    [activeScoreTracking, draft.cuts, effectiveKeptIds, playbackTime],
+    [activeScoreRallyRanges, activeScoreTracking, playbackTime],
   );
 
   useEffect(() => {
@@ -627,6 +632,10 @@ export function CutEditor({
       scoreTracking: { ...current.scoreTracking, enabled },
     }));
     if (enabled) scoreInferenceStartedRef.current = false;
+  }
+
+  function toggleScoreOverlay(renderScoreOverlay: boolean) {
+    updateDraft((current) => ({ ...current, renderScoreOverlay }));
   }
 
   function selectServeMarker(markerId: string, timestamp: number) {
@@ -1292,6 +1301,7 @@ export function CutEditor({
       reviewedCutIds: draft.reviewedCutIds,
       ignoredIntervals: draft.ignoredIntervals,
       scoreTracking: draft.scoreTracking,
+      renderScoreOverlay: draft.renderScoreOverlay,
       suppression: {
         selectedPolicy: draft.selectedSuppressionPolicy,
         artifact: initialAnalysis.suppression
@@ -1395,6 +1405,16 @@ export function CutEditor({
           initialAnalysis.duration,
           setExportWakeLock,
           mode,
+          {
+            scoreOverlay: draft.scoreTracking.enabled && draft.renderScoreOverlay
+              ? {
+                  scoreTracking: draft.scoreTracking,
+                  excludedRallyIds: [...excludedRallyIds],
+                  ignoredIntervals: draft.ignoredIntervals,
+                  rallyRanges: activeScoreRallyRanges,
+                }
+              : undefined,
+          },
         );
       let prepared: PreparedVideoExport | null;
       try {
@@ -1825,6 +1845,24 @@ export function CutEditor({
               <small>Skip removed rallies, ignored sections, and unselected gaps at or above the join setting.</small>
             </span>
           </label>
+          {draft.scoreTracking.enabled && (
+            <label
+              className={`${styles.cutPreviewToggle} ${styles.scoreOverlayToggle}`}
+              data-enabled={draft.renderScoreOverlay || undefined}
+            >
+              <input
+                type="checkbox"
+                checked={draft.renderScoreOverlay}
+                onChange={(event) => toggleScoreOverlay(event.currentTarget.checked)}
+              />
+              <span>
+                <strong>Render score on final video</strong>
+                <small>
+                  Add the score box to the exported video. This will slow down generating the final file.
+                </small>
+              </span>
+            </label>
+          )}
           {chromeOnIos && (
             <div className={`${styles.cutPreviewToggle} ${styles.streamExportStatus}`}>
               <span>
@@ -2097,6 +2135,13 @@ export function CutEditor({
               />
             ) : (
               <div className={styles.noVideo}>Video unavailable</div>
+            )}
+            {draft.scoreTracking.enabled && draft.renderScoreOverlay && (
+              <ScoreOverlay
+                className={styles.videoScoreOverlay}
+                tracking={activeScoreTracking}
+                timestamp={scoreBoundaryTime}
+              />
             )}
             <div className={styles.timecode}>
               {preciseTime(playbackTime)} <span>/ game ends {preciseTime(analysisEnd)}</span>
