@@ -28,6 +28,7 @@ internal data class ProjectSource(
     val size: Long,
     val lastModified: Long,
     val mimeType: String,
+    val sampledFingerprint: String? = null,
 )
 
 internal data class NativeProject(
@@ -42,6 +43,11 @@ internal data class NativeProject(
     val ranges: List<SeedRange> = emptyList(),
     val productionComponents: AnalysisTypes.ProductionComponents =
         AnalysisTypes.ProductionComponents.empty(),
+    val productionServeOutputs: AnalysisTypes.ProductionServeOutputs =
+        AnalysisTypes.ProductionServeOutputs.empty(),
+    val servingSide: ServingSideOutput? = null,
+    val servingSideCacheIdentity: ServingSideCacheIdentity? = null,
+    val servingSideError: String? = null,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
     val modelId: String = FeatureSchema.MODEL_ID,
     val cacheMode: String = NativeFeatureCache.Mode.USE.wireName(),
@@ -61,6 +67,9 @@ internal data class NativeProject(
             gameStartMs = secondsToMs(analysisWindow.start()),
             gameEndMs = secondsToMs(analysisWindow.end()),
             productionComponents = productionComponents,
+            productionServeOutputs = productionServeOutputs,
+            servingSide = servingSide,
+            servingSideError = servingSideError,
             suppression = suppression,
         )
     } else null
@@ -68,7 +77,7 @@ internal data class NativeProject(
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 2
+    private const val VERSION = 3
     private const val TAG = "VolleyCutProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -129,7 +138,7 @@ internal object NativeProjectStore {
     @Synchronized
     fun complete(context: Context, id: String, result: AnalysisTypes.AnalysisResult): NativeProject? {
         val current = get(context, id) ?: return null
-        return current.copy(
+        val completed = current.copy(
             source = current.source.copy(name = result.displayName()),
             featureCacheSource = null,
             media = result.media(),
@@ -144,12 +153,17 @@ internal object NativeProjectStore {
                 )
             },
             productionComponents = result.productionComponents(),
+            productionServeOutputs = result.productionServeOutputs(),
+            servingSide = result.servingSide(),
+            servingSideCacheIdentity = null,
+            servingSideError = result.servingSideError(),
             suppression = result.suppression(),
             modelId = FeatureSchema.MODEL_ID,
             cacheMode = NativeFeatureCache.Mode.USE.wireName(),
             error = null,
             updatedAtMs = System.currentTimeMillis(),
-        ).also {
+        ).withServingSideCacheIdentity()
+        return completed.also {
             save(context, it)
             EditorProjectStore.save(context, checkNotNull(it.editorSeed()))
         }
@@ -220,12 +234,24 @@ internal object NativeProjectStore {
         replacementMismatch(project, replacement, replacementMedia)?.let {
             throw IllegalArgumentException(it)
         }
+        project.source.sampledFingerprint?.let { expected ->
+            val actual = ModelFeedbackExporter.sourceFingerprint(
+                context,
+                project.copy(source = replacement),
+            )
+            if (actual != expected) {
+                throw IllegalArgumentException("That file does not match the imported recording fingerprint.")
+            }
+        }
         val oldSeed = project.editorSeed()
         val updated = project.copy(
-            source = replacement,
+            source = replacement.copy(
+                sampledFingerprint = project.source.sampledFingerprint
+                    ?: replacement.sampledFingerprint,
+            ),
             featureCacheSource = project.featureCacheSource ?: project.source,
             updatedAtMs = System.currentTimeMillis(),
-        )
+        ).withServingSideCacheIdentity()
         val newSeed = updated.editorSeed()
         if (oldSeed != null && newSeed != null) {
             EditorDraftStore.relink(context, oldSeed, newSeed)
@@ -287,7 +313,7 @@ internal object NativeProjectStore {
             status = ProjectStatus.QUEUED,
             createdAtMs = now,
             updatedAtMs = now,
-        )
+        ).withServingSideCacheIdentity()
     }
 
     fun findMatching(context: Context, candidate: NativeProject): NativeProject? =
@@ -321,10 +347,13 @@ internal object NativeProjectStore {
                 )
             },
             productionComponents = result.productionComponents(),
+            productionServeOutputs = result.productionServeOutputs(),
+            servingSide = result.servingSide(),
+            servingSideError = result.servingSideError(),
             suppression = result.suppression(),
             createdAtMs = now,
             updatedAtMs = now,
-        )
+        ).withServingSideCacheIdentity()
     }
 
     fun fromSeed(context: Context, seed: EditorSeed): NativeProject {
@@ -354,10 +383,13 @@ internal object NativeProjectStore {
             status = ProjectStatus.READY,
             ranges = seed.ranges,
             productionComponents = seed.productionComponents,
+            productionServeOutputs = seed.productionServeOutputs,
+            servingSide = seed.servingSide,
+            servingSideError = seed.servingSideError,
             suppression = seed.suppression,
             createdAtMs = now,
             updatedAtMs = now,
-        )
+        ).withServingSideCacheIdentity()
     }
 
     fun repairLegacyMetadata(context: Context, project: NativeProject): NativeProject {
@@ -367,7 +399,7 @@ internal object NativeProjectStore {
                 media = AnalysisEngine(context).probe(Uri.parse(project.source.uri)),
                 roi = AnalysisEngine.inferRoi(project.source.name),
                 updatedAtMs = System.currentTimeMillis(),
-            ).also { save(context, it) }
+            ).withServingSideCacheIdentity().also { save(context, it) }
         }.getOrDefault(project)
     }
 
@@ -401,6 +433,7 @@ internal object NativeProjectStore {
             put("size", project.source.size)
             put("lastModified", project.source.lastModified)
             put("mimeType", project.source.mimeType)
+            put("sampledFingerprint", project.source.sampledFingerprint ?: JSONObject.NULL)
         })
         put("featureCacheSource", project.featureCacheSource?.let(::encodeSource) ?: JSONObject.NULL)
         put("media", JSONObject().apply {
@@ -437,6 +470,11 @@ internal object NativeProjectStore {
             }) }
         })
         put("productionComponents", encodeProductionComponents(project.productionComponents))
+        put("productionServeOutputs", ServingSideJson.encodeServeOutputs(project.productionServeOutputs))
+        put("servingSide", project.servingSide?.let(ServingSideJson::encodeOutput) ?: JSONObject.NULL)
+        put("servingSideCacheIdentity", project.servingSideCacheIdentity?.let(::encodeServingSideCacheIdentity)
+            ?: JSONObject.NULL)
+        put("servingSideError", project.servingSideError ?: JSONObject.NULL)
         put("suppression", project.suppression?.let(::encodeSuppression) ?: JSONObject.NULL)
     }
 
@@ -462,6 +500,8 @@ internal object NativeProjectStore {
                 size = sourceJson.optLong("size", -1),
                 lastModified = sourceJson.optLong("lastModified", -1),
                 mimeType = sourceJson.optString("mimeType"),
+                sampledFingerprint = if (sourceJson.isNull("sampledFingerprint")) null
+                    else sourceJson.optString("sampledFingerprint").takeIf(String::isNotBlank),
             ),
             featureCacheSource = featureCacheSource,
             media = AnalysisTypes.MediaInfo(
@@ -495,6 +535,14 @@ internal object NativeProjectStore {
             productionComponents = json.optJSONObject("productionComponents")?.let {
                 decodeProductionComponents(it)
             } ?: AnalysisTypes.ProductionComponents.empty(),
+            productionServeOutputs = json.optJSONObject("productionServeOutputs")?.let {
+                ServingSideJson.decodeServeOutputs(it)
+            } ?: AnalysisTypes.ProductionServeOutputs.empty(),
+            servingSide = json.optJSONObject("servingSide")?.let(ServingSideJson::decodeOutput),
+            servingSideCacheIdentity = json.optJSONObject("servingSideCacheIdentity")
+                ?.let(::decodeServingSideCacheIdentity),
+            servingSideError = if (json.isNull("servingSideError")) null
+                else json.optString("servingSideError").takeIf(String::isNotBlank),
             suppression = json.optJSONObject("suppression")?.let(::decodeSuppression),
             modelId = json.optString("modelId"),
             cacheMode = json.optString("cacheMode", NativeFeatureCache.Mode.USE.wireName()),
@@ -528,7 +576,22 @@ internal object NativeProjectStore {
             (normalized.status == ProjectStatus.READY && normalized.ranges.any {
                 !ProductionEnsemble.isValidAgreement(it.agreement)
             })
-        if (!staleInference) return normalized
+        if (!staleInference) {
+            if (normalized.servingSide == null) {
+                return if (normalized.servingSideCacheIdentity == null) normalized
+                    else normalized.copy(servingSideCacheIdentity = null)
+            }
+            return if (normalized.servingSideCacheIdentity != null && ServingSideCache.isReusable(
+                    normalized.servingSideCacheIdentity, normalized, normalized.servingSide,
+                )
+            ) {
+                normalized
+            } else normalized.copy(
+                servingSide = null,
+                servingSideCacheIdentity = null,
+                servingSideError = "Serving-side cache identity changed; rerun analysis to restore it.",
+            )
+        }
         return normalized.copy(
             status = ProjectStatus.QUEUED,
             ranges = emptyList(),
@@ -561,7 +624,55 @@ internal object NativeProjectStore {
         put("size", source.size)
         put("lastModified", source.lastModified)
         put("mimeType", source.mimeType)
+        put("sampledFingerprint", source.sampledFingerprint ?: JSONObject.NULL)
     }
+
+    private fun NativeProject.withServingSideCacheIdentity(): NativeProject = copy(
+        servingSideCacheIdentity = servingSide?.let { ServingSideCache.identity(this) },
+    )
+
+    private fun encodeServingSideCacheIdentity(value: ServingSideCacheIdentity) = JSONObject().apply {
+        put("sourceUri", value.sourceUri)
+        put("sourceName", value.sourceName)
+        put("sourceSize", value.sourceSize)
+        put("sourceLastModified", value.sourceLastModified)
+        put("sourceSampledFingerprint", value.sourceSampledFingerprint ?: JSONObject.NULL)
+        put("durationSeconds", value.durationSeconds)
+        put("width", value.width)
+        put("height", value.height)
+        put("rotation", value.rotation)
+        put("roiX", value.roiX)
+        put("roiY", value.roiY)
+        put("roiWidth", value.roiWidth)
+        put("roiHeight", value.roiHeight)
+        put("analysisStart", value.analysisStart)
+        put("analysisEnd", value.analysisEnd)
+        put("decodeVariant", value.decodeVariant)
+        put("featureSignature", value.featureSignature)
+        put("candidateSignature", value.candidateSignature)
+    }
+
+    private fun decodeServingSideCacheIdentity(json: JSONObject) = ServingSideCacheIdentity(
+        sourceUri = json.getString("sourceUri"),
+        sourceName = json.getString("sourceName"),
+        sourceSize = json.getLong("sourceSize"),
+        sourceLastModified = json.getLong("sourceLastModified"),
+        sourceSampledFingerprint = if (json.isNull("sourceSampledFingerprint")) null
+            else json.getString("sourceSampledFingerprint"),
+        durationSeconds = json.getDouble("durationSeconds"),
+        width = json.getInt("width"),
+        height = json.getInt("height"),
+        rotation = json.getInt("rotation"),
+        roiX = json.getDouble("roiX"),
+        roiY = json.getDouble("roiY"),
+        roiWidth = json.getDouble("roiWidth"),
+        roiHeight = json.getDouble("roiHeight"),
+        analysisStart = json.getDouble("analysisStart"),
+        analysisEnd = json.getDouble("analysisEnd"),
+        decodeVariant = json.getString("decodeVariant"),
+        featureSignature = json.getString("featureSignature"),
+        candidateSignature = json.getString("candidateSignature"),
+    )
 
     private fun decodeSource(json: JSONObject) = ProjectSource(
         uri = json.getString("uri"),
@@ -569,6 +680,8 @@ internal object NativeProjectStore {
         size = json.optLong("size", -1),
         lastModified = json.optLong("lastModified", -1),
         mimeType = json.optString("mimeType"),
+        sampledFingerprint = if (json.isNull("sampledFingerprint")) null
+            else json.optString("sampledFingerprint").takeIf(String::isNotBlank),
     )
 
     private fun encodeProductionComponents(value: AnalysisTypes.ProductionComponents) =

@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 
 /** Stores only enough metadata to reopen the most recent editor after process death. */
 internal object EditorProjectStore {
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val TAG = "VolleyCutEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
@@ -41,6 +41,9 @@ internal object EditorProjectStore {
                         })
                     }
                 })
+                put("productionServeOutputs", ServingSideJson.encodeServeOutputs(seed.productionServeOutputs))
+                put("servingSide", seed.servingSide?.let(ServingSideJson::encodeOutput) ?: JSONObject.NULL)
+                put("servingSideError", seed.servingSideError ?: JSONObject.NULL)
             }.toString())
             try {
                 Files.move(
@@ -59,7 +62,7 @@ internal object EditorProjectStore {
         val target = File(File(context.filesDir, "editor-drafts"), FILE_NAME)
         if (!target.isFile) return null
         val json = JSONObject(target.readText())
-        if (json.optInt("version") != VERSION) return null
+        if (json.optInt("version") !in 1..VERSION) return null
         val durationMs = json.getLong("durationMs")
         val rangesJson = json.getJSONArray("ranges")
         val ranges = buildList {
@@ -83,6 +86,12 @@ internal object EditorProjectStore {
             ranges = ranges,
             gameStartMs = json.optLong("gameStartMs", 0),
             gameEndMs = json.optLong("gameEndMs", durationMs),
+            productionServeOutputs = json.optJSONObject("productionServeOutputs")?.let {
+                ServingSideJson.decodeServeOutputs(it)
+            } ?: AnalysisTypes.ProductionServeOutputs.empty(),
+            servingSide = json.optJSONObject("servingSide")?.let(ServingSideJson::decodeOutput),
+            servingSideError = if (json.isNull("servingSideError")) null
+                else json.optString("servingSideError").takeIf(String::isNotBlank),
         ).takeIf { seed ->
             seed.durationMs > 0 && seed.sourceUri.isNotBlank() &&
                 seed.gameStartMs >= 0 && seed.gameEndMs <= seed.durationMs &&

@@ -1,6 +1,7 @@
 # Serving-side score tracking and video overlay: browser contract and Android spec
 
-Status: production web implementation complete; native Android implementation pending.
+Status: production web implementation complete; native Android implementation landed,
+with physical-device and cross-runtime release validation pending.
 
 This document is the normative product and parity contract for porting the production
 browser's serving-side inference, score editor, timeline markers, model-feedback data,

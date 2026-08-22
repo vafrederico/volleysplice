@@ -879,7 +879,7 @@ final class NativeVideoDecoder {
         }
     }
 
-    private static Mat imageToAnalysisRgba(Image image, AnalysisTypes.Roi roi, int rotation) {
+    static Mat imageToAnalysisRgba(Image image, AnalysisTypes.Roi roi, int rotation) {
         Image.Plane[] planes = image.getPlanes();
         if (planes.length < 3) throw new IllegalArgumentException("YUV image has fewer than three planes");
         Rect crop = image.getCropRect();

@@ -94,6 +94,27 @@ internal enum class GuidedTourStep(
         "editor-output",
         "Build the final edit",
         "This panel controls which footage remains in the result. It combines suppression, padding, gap joining, and final-cut playback into one saved edit.",
+        "Next: score tracking",
+    ),
+    EDITOR_SCORE_TOGGLE(
+        GuidedTourStage.EDITOR,
+        "editor-score-toggle",
+        "Score tracking is in beta",
+        "Turn score tracking on or off per project. When it is off, score controls and timeline markers are hidden; retained serving-side inference is not deleted.",
+        "Next: score panel",
+    ),
+    EDITOR_SCORE_PANEL(
+        GuidedTourStage.EDITOR,
+        "editor-score-panel",
+        "Correct serves and points",
+        "A serve marker identifies the team that serves next, which awards the previous rally. Correct Near or Far predictions, mark replays, add missing serves, and record side switches here.",
+        "Next: video overlay",
+    ),
+    EDITOR_SCORE_OVERLAY(
+        GuidedTourStage.EDITOR,
+        "editor-score-overlay",
+        "Render the score in the final video",
+        "This optional setting previews the score box immediately and burns the same source-timestamped score into the next MP4 export.",
         "Next: suppression",
     ),
     EDITOR_SUPPRESSION(
@@ -183,6 +204,11 @@ internal enum class GuidedTourStep(
 }
 
 private val guidedTourSteps = GuidedTourStep.entries
+private val scoreGuidedTourSteps = setOf(
+    GuidedTourStep.EDITOR_SCORE_TOGGLE,
+    GuidedTourStep.EDITOR_SCORE_PANEL,
+    GuidedTourStep.EDITOR_SCORE_OVERLAY,
+)
 private val TourInk = Color(0xFF20201E)
 private val TourOrange = Color(0xFFEF5B35)
 private val TourMuted = Color(0xFF77736C)
@@ -191,8 +217,15 @@ private const val TOUR_STATE_KEY = "state"
 private const val TOUR_DONE = "done"
 private const val TOUR_DISMISSED = "dismissed"
 
-internal fun nextGuidedTourStep(step: GuidedTourStep): GuidedTourStep? =
-    guidedTourSteps.getOrNull(guidedTourSteps.indexOf(step) + 1)
+internal fun nextGuidedTourStep(
+    step: GuidedTourStep,
+    scoreTrackingEnabled: Boolean = true,
+): GuidedTourStep? {
+    val steps = if (scoreTrackingEnabled) guidedTourSteps else guidedTourSteps.filterNot {
+        it in scoreGuidedTourSteps
+    }
+    return steps.getOrNull(steps.indexOf(step) + 1)
+}
 
 internal object GuidedTourStore {
     fun restart(context: Context, stage: GuidedTourStage) {
@@ -247,6 +280,7 @@ internal fun GuidedTour(
     stage: GuidedTourStage,
     targets: GuidedTourTargets,
     sourceReady: Boolean = false,
+    scoreTrackingEnabled: Boolean = true,
     restartSignal: Int = 0,
 ) {
     val context = LocalContext.current
@@ -265,7 +299,18 @@ internal fun GuidedTour(
         if (initial != stored) GuidedTourStore.write(context, initial)
         mutableStateOf(initial)
     }
-    val step = GuidedTourStep.entries.firstOrNull { it.name == state && it.stage == stage }
+    val storedStep = GuidedTourStep.entries.firstOrNull { it.name == state && it.stage == stage }
+    val activeTourSteps = if (scoreTrackingEnabled) guidedTourSteps else guidedTourSteps.filterNot {
+        it in scoreGuidedTourSteps
+    }
+    val step = if (!scoreTrackingEnabled && storedStep in scoreGuidedTourSteps) {
+        GuidedTourStep.EDITOR_SUPPRESSION.also { saveTarget ->
+            LaunchedEffect(state) {
+                GuidedTourStore.write(context, saveTarget.name)
+                state = saveTarget.name
+            }
+        }
+    } else storedStep
     val visible = step != null
 
     fun save(value: String) {
@@ -285,7 +330,7 @@ internal fun GuidedTour(
         val current = step ?: return
         if (current == GuidedTourStep.SETUP_SOURCE && !sourceReady) return
         if (current == GuidedTourStep.SETUP_CREATE) return
-        val next = nextGuidedTourStep(current)
+        val next = nextGuidedTourStep(current, scoreTrackingEnabled)
         save(next?.name ?: TOUR_DONE)
     }
 
@@ -330,7 +375,7 @@ internal fun GuidedTour(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "WELCOME TOUR · ${guidedTourSteps.indexOf(current) + 1} OF ${guidedTourSteps.size}",
+                        "WELCOME TOUR · ${activeTourSteps.indexOf(current) + 1} OF ${activeTourSteps.size}",
                         modifier = Modifier.weight(1f),
                         color = TourOrange,
                         fontFamily = FontFamily.Monospace,
@@ -352,13 +397,13 @@ internal fun GuidedTour(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
-                    guidedTourSteps.forEachIndexed { index, _ ->
+                    activeTourSteps.forEachIndexed { index, _ ->
                         Box(
                             Modifier
                                 .weight(1f)
                                 .height(4.dp)
                                 .background(
-                                    if (index <= guidedTourSteps.indexOf(current)) TourOrange
+                                    if (index <= activeTourSteps.indexOf(current)) TourOrange
                                     else Color(0xFFD7D5CC),
                                 ),
                         )

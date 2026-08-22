@@ -5,7 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
-internal const val EDITOR_DRAFT_VERSION = 5
+internal const val EDITOR_DRAFT_VERSION = 6
 internal const val DEFAULT_BEFORE_PADDING_MS = 2_000L
 internal const val DEFAULT_AFTER_PADDING_MS = 2_000L
 internal const val DEFAULT_JOIN_GAP_MS = 3_000L
@@ -54,6 +54,10 @@ internal data class EditorSeed(
     val gameEndMs: Long = durationMs,
     val productionComponents: AnalysisTypes.ProductionComponents =
         AnalysisTypes.ProductionComponents.empty(),
+    val productionServeOutputs: AnalysisTypes.ProductionServeOutputs =
+        AnalysisTypes.ProductionServeOutputs.empty(),
+    val servingSide: ServingSideOutput? = null,
+    val servingSideError: String? = null,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
 ) {
     val sourceRevision: String by lazy {
@@ -123,6 +127,8 @@ internal data class EditorDraft(
     val suppressionScopeOverrides: Map<String, SuppressionScope> = emptyMap(),
     val userTouchedCutIds: Set<String> = emptySet(),
     val suppressionContractVersion: String = FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION,
+    val scoreTracking: ScoreTracking = ScoreTracking(),
+    val renderScoreOverlay: Boolean = false,
 )
 
 internal data class JoinedGap(val startMs: Long, val endMs: Long)
@@ -182,6 +188,7 @@ internal object EditorMath {
                 add(IgnoredSourceInterval("G002", seed.gameEndMs, seed.durationMs, "outside-game-window"))
             }
         },
+        scoreTracking = ScoreReducer.seedModelMarkers(ScoreTracking(), seed.servingSide),
     )
 
     fun applyPadding(

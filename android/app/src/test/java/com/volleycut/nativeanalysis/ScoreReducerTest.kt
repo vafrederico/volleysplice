@@ -1,0 +1,197 @@
+package com.volleycut.nativeanalysis
+
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ScoreReducerTest {
+    @Test
+    fun firstServeEstablishesServerAndLaterServesAwardPreviousRallies() {
+        val tracking = tracking(
+            serve("S1", 1_000, ServingSide.NEAR),
+            serve("S2", 2_000, ServingSide.NEAR),
+            serve("S3", 3_000, ServingSide.FAR),
+        )
+        val score = ScoreReducer.deriveAt(tracking)
+        assertEquals(1, score.team1Score)
+        assertEquals(1, score.team2Score)
+        assertEquals(2, score.points.size)
+        assertEquals(ScoreTeamId.TEAM_2, score.servingTeamId)
+    }
+
+    @Test
+    fun reviewAndReplayRecordUnawardedPoints() {
+        val tracking = tracking(
+            serve("S1", 1_000, ServingSide.NEAR),
+            serve("S2", 2_000, ServingSide.REVIEW),
+            serve("S3", 3_000, ServingSide.FAR).copy(ignorePreviousPoint = true),
+        )
+        val score = ScoreReducer.deriveAt(tracking)
+        assertEquals(0, score.team1Score)
+        assertEquals(0, score.team2Score)
+        assertEquals(1, score.reviewPointCount)
+        assertEquals(1, score.ignoredPointCount)
+    }
+
+    @Test
+    fun equalTimestampSideSwitchAppliesToServe() {
+        val tracking = tracking(
+            serve("S1", 1_000, ServingSide.NEAR),
+            serve("S2", 2_000, ServingSide.NEAR),
+        ).copy(sideSwitchMarkers = listOf(SideSwitchMarker("X1", 2_000)))
+        val score = ScoreReducer.deriveAt(tracking)
+        assertEquals(0, score.team1Score)
+        assertEquals(1, score.team2Score)
+    }
+
+    @Test
+    fun ignoredTimeAndExcludedRalliesFilterWithoutMutatingState() {
+        val tracking = tracking(
+            serve("S1", 1_000, ServingSide.NEAR, "R001"),
+            serve("S2", 2_000, ServingSide.NEAR, "R002"),
+            serve("S3", 3_000, ServingSide.NEAR),
+        )
+        val visible = ScoreReducer.visibleTracking(
+            tracking,
+            listOf(IgnoredSourceInterval("I1", 2_900, 3_100, "gap")),
+            setOf("R002"),
+        )
+        assertEquals(listOf("S1"), visible.serveMarkers.map { it.id })
+        assertEquals(3, tracking.serveMarkers.size)
+    }
+
+    @Test
+    fun finalRallyIsUnawardedUntilManualNextServeExists() {
+        val oneServe = tracking(serve("S1", 1_000, ServingSide.NEAR))
+        assertEquals(0, ScoreReducer.deriveAt(oneServe).team1Score)
+        val withManual = ScoreReducer.addServe(oneServe, 5_000, ServingSide.NEAR)
+        assertEquals(1, ScoreReducer.deriveAt(withManual).team1Score)
+    }
+
+    @Test
+    fun deadTimeAndLeadingPaddingUseNextServeBoundaryButCoreDoesNot() {
+        val tracking = tracking(
+            serve("S1", 1_000, ServingSide.NEAR),
+            serve("S2", 5_000, ServingSide.FAR),
+        )
+        val ranges = listOf(ScoreRallyRange(5_000, 8_000, 4_000, 9_000))
+        assertEquals(5_000, ScoreReducer.scoreBoundaryTimestamp(3_000, ranges, tracking))
+        assertEquals(5_000, ScoreReducer.scoreBoundaryTimestamp(4_500, ranges, tracking))
+        assertEquals(6_000, ScoreReducer.scoreBoundaryTimestamp(6_000, ranges, tracking))
+        assertEquals(8_500, ScoreReducer.scoreBoundaryTimestamp(8_500, ranges, tracking))
+    }
+
+    @Test
+    fun removingModelMarkerCreatesTombstoneAndReseedingDoesNotResurrectIt() {
+        val output = output(ServingSideVerdict.NEAR)
+        val seeded = ScoreReducer.seedModelMarkers(ScoreTracking(), output)
+        val removed = ScoreReducer.removeServe(seeded, "serve-R001")
+        val reseeded = ScoreReducer.seedModelMarkers(removed, output)
+        assertTrue("serve-R001" in reseeded.removedModelMarkerIds)
+        assertFalse(reseeded.serveMarkers.any { it.id == "serve-R001" })
+    }
+
+    @Test
+    fun reseedingPreservesCorrectionsReplayFlagsManualMarkersAndCorrectedNotServe() {
+        val initial = ScoreReducer.seedModelMarkers(ScoreTracking(), output(ServingSideVerdict.NEAR))
+        val corrected = initial.copy(
+            serveMarkers = initial.serveMarkers.map {
+                it.copy(side = ServingSide.FAR, ignorePreviousPoint = true)
+            } + serve("S001", 4_000, ServingSide.NEAR),
+        )
+        val notServe = output(ServingSideVerdict.NOT_SERVE)
+        val reseeded = ScoreReducer.seedModelMarkers(corrected, notServe)
+        val model = reseeded.serveMarkers.single { it.origin == ServeMarkerOrigin.MODEL }
+        assertEquals(ServingSide.FAR, model.side)
+        assertEquals(ServingSide.REVIEW, model.modelSide)
+        assertTrue(model.ignorePreviousPoint)
+        assertTrue(reseeded.serveMarkers.any { it.id == "S001" })
+    }
+
+    @Test
+    fun reseedingCanonicalizesImportedModelMarkerIdsLikeBrowser() {
+        val imported = ScoreTracking(serveMarkers = listOf(
+            ServeMarker(
+                id = "imported-model-id",
+                timestampMs = 1_000,
+                side = ServingSide.FAR,
+                origin = ServeMarkerOrigin.MODEL,
+                modelSide = ServingSide.NEAR,
+                ignorePreviousPoint = true,
+                rallyId = "R001",
+            ),
+        ))
+        val reseeded = ScoreReducer.seedModelMarkers(imported, output(ServingSideVerdict.NEAR))
+        val marker = reseeded.serveMarkers.single()
+        assertEquals("serve-R001", marker.id)
+        assertEquals(ServingSide.FAR, marker.side)
+        assertEquals(ServingSide.NEAR, marker.modelSide)
+        assertTrue(marker.ignorePreviousPoint)
+    }
+
+    @Test
+    fun scoreWireRoundTripsAndVersionOneDraftMigratesToVersionTwo() {
+        val value = tracking(
+            ServeMarker(
+                "M1", 1_250, ServingSide.FAR, ServeMarkerOrigin.MANUAL,
+                modelSide = ServingSide.NEAR, rallyId = "R001",
+            ),
+        ).copy(
+            team1Name = "Falcons",
+            sideSwitchMarkers = listOf(SideSwitchMarker("X1", 2_000)),
+            removedModelMarkerIds = setOf("serve-R009"),
+        )
+        assertEquals(value, ScoreTrackingJson.decodeWire(ScoreTrackingJson.encodeWire(value), 5_000))
+
+        val old = JSONObject().apply {
+            put("version", 1)
+            put("enabled", true)
+            put("team1Name", "Team 1")
+            put("team2Name", "Team 2")
+            put("serveMarkers", JSONArray())
+            put("sideSwitchMarkers", JSONArray())
+        }
+        val migrated = ScoreTrackingJson.decode(old, 5_000)
+        assertEquals(SCORE_TRACKING_SCHEMA_VERSION, migrated?.version)
+        assertTrue(migrated?.removedModelMarkerIds?.isEmpty() == true)
+    }
+
+    @Test
+    fun scoreWireRejectsMissingRequiredFieldsAndInvalidOptionalModelSide() {
+        val valid = ScoreTrackingJson.encodeWire(ScoreTracking())
+        assertEquals(null, ScoreTrackingJson.decodeWire(
+            org.json.JSONObject(valid.toString()).apply { remove("enabled") },
+            5_000,
+        ))
+        val markerState = ScoreTracking(serveMarkers = listOf(
+            serve("S001", 1_000, ServingSide.NEAR).copy(modelSide = ServingSide.NEAR),
+        ))
+        val invalidSide = ScoreTrackingJson.encodeWire(markerState).apply {
+            getJSONArray("serveMarkers").getJSONObject(0).put("modelSide", "left")
+        }
+        assertEquals(null, ScoreTrackingJson.decodeWire(invalidSide, 5_000))
+        val duplicateTombstones = ScoreTrackingJson.encodeWire(ScoreTracking()).apply {
+            put("removedModelMarkerIds", JSONArray(listOf("serve-R001", "serve-R001")))
+        }
+        assertEquals(null, ScoreTrackingJson.decodeWire(duplicateTombstones, 5_000))
+    }
+
+    private fun tracking(vararg serves: ServeMarker) = ScoreTracking(serveMarkers = serves.toList())
+    private fun serve(id: String, time: Long, side: ServingSide, rallyId: String? = null) =
+        ServeMarker(id, time, side, ServeMarkerOrigin.MANUAL, rallyId = rallyId)
+
+    private fun output(verdict: ServingSideVerdict) = ServingSideOutput(
+        rows = 1,
+        rawFeatures = DoubleArray(237),
+        candidates = listOf(ServingSideCandidate(
+            "R001", 1.0, 1.0, 2.0, ProductionEnsemble.BOTH_MODELS,
+            .9, ServingSide.NEAR, verdict, ServingSideDecisionSource.SERVE_HEAD,
+            emptyList(), evidence(), evidence(),
+        )),
+    )
+
+    private fun evidence() = ServingSideHeadEvidence("model", .85, .9, 1.0, true, null)
+}

@@ -240,6 +240,10 @@ final class AnalysisEngine {
         List<AnalysisTypes.Interval> ranges = List.of();
         AnalysisTypes.ProductionComponents productionComponents =
                 AnalysisTypes.ProductionComponents.empty();
+        AnalysisTypes.ProductionServeOutputs productionServeOutputs =
+                AnalysisTypes.ProductionServeOutputs.empty();
+        ServingSideOutput servingSide = null;
+        String servingSideError = null;
         AnalysisTypes.SuppressionAnalysis suppression = null;
         if (stages.inference()) {
             progress.onProgress("inference", 0, "Running all-labels v2 model stack on CPU");
@@ -269,6 +273,20 @@ final class AnalysisEngine {
             productionComponents = new AnalysisTypes.ProductionComponents(
                     allLabelsRaw, previousRaw
             );
+            productionServeOutputs = new AnalysisTypes.ProductionServeOutputs(
+                    new AnalysisTypes.ProductionServeOutput(
+                            FeatureSchema.ALL_LABELS_V2_MODEL_ID,
+                            times.clone(),
+                            allLabelsResult.serveProbabilities().clone(),
+                            allLabelsResult.serveDetections()
+                    ),
+                    new AnalysisTypes.ProductionServeOutput(
+                            FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID,
+                            times.clone(),
+                            previousResult.serveProbabilities().clone(),
+                            previousResult.serveDetections()
+                    )
+            );
             operation = System.nanoTime();
             SuppressionModelRunner.Result suppressionResult =
                     new SuppressionModelRunner(context).run(
@@ -291,6 +309,23 @@ final class AnalysisEngine {
                     allLabelsRaw, previousRaw
             );
             profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
+            operation = System.nanoTime();
+            try {
+                servingSide = ServingSideInference.INSTANCE.run(
+                        context, uri, media, roi, ranges, productionServeOutputs,
+                        progress, cancelled::get
+                );
+            } catch (Exception error) {
+                if (cancelled.get()) throw new IOException("Analysis cancelled", error);
+                servingSideError = error.getMessage() == null
+                        ? "Serving-side analysis failed" : error.getMessage();
+                android.util.Log.w("VolleyCutAnalysis", "Recoverable serving-side failure", error);
+                progress.onProgress(
+                        "serving-side", 1,
+                        "Serving-side scoring unavailable; rally analysis is complete"
+                );
+            }
+            profile.put("inference/serving_side", elapsedMilliseconds(operation));
         } else {
             progress.onProgress("inference", 1, "Model inference not selected");
         }
@@ -335,6 +370,9 @@ final class AnalysisEngine {
                 audio.featureSha256(),
                 List.copyOf(ranges),
                 productionComponents,
+                productionServeOutputs,
+                servingSide,
+                servingSideError,
                 suppression,
                 timings,
                 profile,

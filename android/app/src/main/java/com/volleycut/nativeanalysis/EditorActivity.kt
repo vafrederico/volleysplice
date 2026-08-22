@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -57,6 +58,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -90,12 +92,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -222,6 +227,9 @@ private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorS
         SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence(), it.agreement())
     },
     productionComponents = result.productionComponents(),
+    productionServeOutputs = result.productionServeOutputs(),
+    servingSide = result.servingSide(),
+    servingSideError = result.servingSideError(),
     suppression = result.suppression(),
 )
 
@@ -436,6 +444,38 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     )
                 } finally {
                     preparingSource = false
+                }
+            }
+        }
+    }
+    val feedbackImportPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            preparingSource = true
+            inference = InferenceUiState(stage = "importing", detail = "Validating model feedback")
+            scope.launch {
+                val imported = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val text = context.contentResolver.openInputStream(uri)
+                            ?.bufferedReader()?.use { it.readText() }
+                            ?: error("Could not open model feedback")
+                        ModelFeedbackImporter.import(context, text)
+                    }
+                }
+                preparingSource = false
+                imported.onSuccess { project ->
+                    reloadProjects(project.id, preserveNewProject = false)
+                    creatingNew = false
+                    inference = InferenceUiState(
+                        projectId = project.id,
+                        detail = "Feedback imported · re-link the original video for playback",
+                    )
+                }.onFailure { error ->
+                    inference = InferenceUiState(
+                        stage = "failed",
+                        error = error.message ?: "Could not import model feedback",
+                    )
                 }
             }
         }
@@ -782,6 +822,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 gameStartMs = gameStartMs,
                 gameEndMs = gameEndMs,
                 onSelect = { sourcePicker.launch(arrayOf("video/*")) },
+                onImportFeedback = {
+                    feedbackImportPicker.launch(arrayOf("application/json", "text/json"))
+                },
                 onQueue = ::queueSelectedSource,
                 onGameStart = { requested ->
                     gameStartMs = requested.coerceIn(0, (gameEndMs - 1_000).coerceAtLeast(0))
@@ -1073,6 +1116,7 @@ private fun NewProjectCard(
     gameStartMs: Long,
     gameEndMs: Long,
     onSelect: () -> Unit,
+    onImportFeedback: () -> Unit,
     onQueue: () -> Unit,
     onGameStart: (Long) -> Unit,
     onGameEnd: (Long) -> Unit,
@@ -1093,21 +1137,32 @@ private fun NewProjectCard(
             fontSize = 12.sp,
         )
         Row(
-            Modifier.horizontalScroll(rememberScrollState()),
+            Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedButton(
                 enabled = !preparing,
                 onClick = onSelect,
-                modifier = Modifier.guidedTourTarget("setup-source", guidedTourTargets),
+                modifier = Modifier
+                    .weight(1f)
+                    .guidedTourTarget("setup-source", guidedTourTargets),
             ) { Text("Choose video") }
             Button(
                 enabled = selected?.media != null && !preparing && gameEndMs - gameStartMs >= 1_000,
                 onClick = onQueue,
-                modifier = Modifier.guidedTourTarget("setup-create", guidedTourTargets),
+                modifier = Modifier
+                    .weight(1f)
+                    .guidedTourTarget("setup-create", guidedTourTargets),
             ) {
                 Text(if (preparing) "Creating…" else "Create & queue")
             }
+        }
+        TextButton(
+            enabled = !preparing,
+            onClick = onImportFeedback,
+            modifier = Modifier.align(Alignment.Start),
+        ) {
+            Text("Import model feedback instead", color = Muted)
         }
         if (selected?.media != null) {
             Column(
@@ -1395,6 +1450,8 @@ private fun EditorScreen(
     var confirmReset by remember { mutableStateOf(false) }
     var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
     var suppressionPreparing by remember { mutableStateOf(false) }
+    var selectedScoreMarkerId by remember { mutableStateOf<String?>(null) }
+    var manualServingSide by remember { mutableStateOf(ServingSide.NEAR) }
 
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -1410,6 +1467,27 @@ private fun EditorScreen(
     val finalMaterialization = EditorMath.materialize(draft, seed.suppression)
     val finalIntervals = finalMaterialization.intervals
     val effectiveIds = EditorMath.effectiveKeptIds(draft, seed.suppression)
+    val excludedScoreRallyIds = draft.cuts.asSequence()
+        .filter { it.origin == CutOrigin.INFERRED && (!it.included || it.id !in effectiveIds) }
+        .map { it.id }
+        .toSet()
+    val scoreRallyRanges = draft.cuts.filter {
+        it.included && (it.origin == CutOrigin.MANUAL || it.id in effectiveIds)
+    }.map { ScoreRallyRange(it.coreStartMs, it.coreEndMs, it.keepStartMs, it.keepEndMs) }
+    val preparedScoreOverlay = ScoreOverlay.prepare(
+        draft.scoreTracking,
+        draft.ignoredIntervals,
+        excludedScoreRallyIds,
+        scoreRallyRanges,
+    )
+    val visibleScore = ScoreReducer.deriveAt(
+        preparedScoreOverlay.tracking,
+        ScoreReducer.scoreBoundaryTimestamp(
+            playbackPositionMs,
+            preparedScoreOverlay.rallyRanges,
+            preparedScoreOverlay.tracking,
+        ),
+    )
     val activeSuggestions = EditorMath.activeSuggestions(draft, seed.suppression)
     val selectedSuggestion = activeSuggestions.firstOrNull { it.fragmentId() == selectedSuggestionId }
     val selectedSuggestionIndex = selectedSuggestion?.let(activeSuggestions::indexOf) ?: -1
@@ -1562,6 +1640,16 @@ private fun EditorScreen(
                 putExtra(ExportService.EXTRA_DESTINATION_URI, uri.toString())
                 putExtra(ExportService.EXTRA_INTERVAL_STARTS, requestedIntervals.map { it.startMs }.toLongArray())
                 putExtra(ExportService.EXTRA_INTERVAL_ENDS, requestedIntervals.map { it.endMs }.toLongArray())
+                putExtra(
+                    ExportService.EXTRA_SCORE_SNAPSHOT,
+                    ScoreExportSnapshotJson.encode(ScoreExportSnapshot(
+                        render = draft.renderScoreOverlay && draft.scoreTracking.enabled,
+                        scoreTracking = draft.scoreTracking,
+                        ignoredIntervals = draft.ignoredIntervals,
+                        excludedRallyIds = excludedScoreRallyIds,
+                        rallyRanges = scoreRallyRanges,
+                    )),
+                )
             }
             context.startForegroundService(exportIntent)
             exportState = ExportUiState(jobId, "queued", 0, "Added to export queue")
@@ -1706,7 +1794,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset this edit?") },
-            text = { Text("All boundary, keep/remove, suppression, manual-cut, and ignored-section changes will be discarded.") },
+            text = { Text("All boundary, keep/remove, suppression, score, marker, manual-cut, and ignored-section changes will be discarded.") },
             confirmButton = {
                 TextButton(onClick = {
                     store.clear()
@@ -1917,17 +2005,74 @@ private fun EditorScreen(
                         },
                     )
                 }
+                if (draft.scoreTracking.enabled) {
+                    Row(
+                        modifier = Modifier
+                            .padding(start = 18.dp)
+                            .guidedTourTarget("editor-score-overlay", guidedTourTargets),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Render score on final video", fontWeight = FontWeight.SemiBold)
+                            Text("Preview now and include in the next MP4 export", fontSize = 12.sp, color = Muted)
+                        }
+                        Switch(
+                            checked = draft.renderScoreOverlay,
+                            onCheckedChange = { enabled -> updateDraft { it.copy(renderScoreOverlay = enabled) } },
+                        )
+                    }
+                }
             }
+
+            ScoreTrackingPanel(
+                    enabled = draft.scoreTracking.enabled,
+                    tracking = draft.scoreTracking,
+                    visibleTracking = preparedScoreOverlay.tracking,
+                    visibleScore = visibleScore,
+                    selectedMarkerId = selectedScoreMarkerId,
+                    manualServingSide = manualServingSide,
+                    currentTimestampMs = playbackPositionMs,
+                    servingSideError = seed.servingSideError,
+                    modifier = Modifier.guidedTourTarget("editor-score-panel", guidedTourTargets),
+                    toggleModifier = Modifier.guidedTourTarget("editor-score-toggle", guidedTourTargets),
+                    onEnabledChange = { enabled ->
+                        updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(enabled = enabled)) }
+                    },
+                    onTracking = { tracking -> updateDraft { it.copy(scoreTracking = tracking) } },
+                    onSelect = { markerId, timestampMs ->
+                        selectedScoreMarkerId = markerId
+                        seekTo(timestampMs)
+                    },
+                    onManualServingSide = { manualServingSide = it },
+                )
 
             Card(
                 modifier = Modifier.guidedTourTarget("editor-video", guidedTourTargets),
                 colors = CardDefaults.cardColors(containerColor = Color.Black),
             ) {
-                ContentFrame(
-                    player = player,
-                    modifier = Modifier.fillMaxWidth().height(176.dp),
-                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                )
+                BoxWithConstraints(Modifier.fillMaxWidth().height(176.dp)) {
+                    ContentFrame(
+                        player = player,
+                        modifier = Modifier.fillMaxSize(),
+                        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                    )
+                    if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
+                        val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
+                            seed.width, seed.height, seed.rotation,
+                        )
+                        val videoAspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
+                        val containerAspect = maxWidth.value / maxHeight.value.coerceAtLeast(.001f)
+                        val videoModifier = if (containerAspect > videoAspect) {
+                            Modifier.height(maxHeight).width(maxHeight * videoAspect)
+                        } else {
+                            Modifier.width(maxWidth).height(maxWidth / videoAspect)
+                        }
+                        ScoreOverlayPreview(
+                            ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
+                            videoModifier.align(Alignment.Center),
+                        )
+                    }
+                }
             }
             PlayerControls(
                 playing = isPlaying,
@@ -1993,6 +2138,12 @@ private fun EditorScreen(
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
                     playheadMs = playbackPositionMs,
+                    serveMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.serveMarkers else emptyList(),
+                    sideSwitchMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.sideSwitchMarkers else emptyList(),
+                    onMarkerSelect = { markerId, timestampMs ->
+                        selectedScoreMarkerId = markerId
+                        seekTo(timestampMs)
+                    },
                     onSeek = { time, id, suggestionId ->
                         if (suggestionId != null) {
                             val candidate = suggestionId
@@ -2027,6 +2178,12 @@ private fun EditorScreen(
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
                     playheadMs = playbackPositionMs,
+                    serveMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.serveMarkers else emptyList(),
+                    sideSwitchMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.sideSwitchMarkers else emptyList(),
+                    onMarkerSelect = { markerId, timestampMs ->
+                        selectedScoreMarkerId = markerId
+                        seekTo(timestampMs)
+                    },
                     onSeek = { time, id, suggestionId ->
                         if (suggestionId != null) {
                             val candidate = suggestionId
@@ -2417,8 +2574,501 @@ private fun EditorScreen(
         GuidedTour(
             GuidedTourStage.EDITOR,
             guidedTourTargets,
+            scoreTrackingEnabled = draft.scoreTracking.enabled,
             restartSignal = guidedTourRestartSignal,
         )
+    }
+}
+
+@Composable
+internal fun ScoreTrackingPanel(
+    enabled: Boolean,
+    tracking: ScoreTracking,
+    visibleTracking: ScoreTracking,
+    visibleScore: DerivedScore,
+    selectedMarkerId: String?,
+    manualServingSide: ServingSide,
+    currentTimestampMs: Long,
+    servingSideError: String?,
+    onEnabledChange: (Boolean) -> Unit,
+    onTracking: (ScoreTracking) -> Unit,
+    onSelect: (String, Long) -> Unit,
+    onManualServingSide: (ServingSide) -> Unit,
+    modifier: Modifier = Modifier,
+    toggleModifier: Modifier = Modifier,
+) {
+    val sortedServes = visibleTracking.serveMarkers.sortedWith(
+        compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id },
+    )
+    val selected = sortedServes.firstOrNull { it.id == selectedMarkerId }
+    val selectedIndex = selected?.let {
+        sortedServes.indexOfFirst { marker -> marker.id == it.id }
+    } ?: -1
+    Card(
+        modifier = modifier
+            .testTag("score-tracking-panel")
+            .semantics { contentDescription = "Score tracking controls" },
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "SCORE TRACKING · BETA",
+                        color = Orange,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = .8.sp,
+                    )
+                    Text("Serving-side point history", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onEnabledChange,
+                    modifier = toggleModifier,
+                )
+            }
+            if (!enabled) {
+                Text(
+                    "Use serving-side markers to track points. This choice is saved with the project.",
+                    color = Muted,
+                    fontSize = 12.sp,
+                )
+            } else {
+                val reviewCount = sortedServes.count { it.side == ServingSide.REVIEW }
+                Text(
+                    "${sortedServes.size} serves · ${visibleTracking.sideSwitchMarkers.size} switches" +
+                        if (reviewCount > 0) " · $reviewCount need review" else "",
+                    color = Muted,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                )
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(8.dp)),
+                    color = Paper,
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = tracking.team1Name,
+                                onValueChange = { name ->
+                                    onTracking(tracking.copy(team1Name = name.ifEmpty { "Team 1" }))
+                                },
+                                label = { Text("Team 1 · starts near") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                visibleScore.team1Score.toString(),
+                                Modifier.width(54.dp),
+                                color = Green,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = tracking.team2Name,
+                                onValueChange = { name ->
+                                    onTracking(tracking.copy(team2Name = name.ifEmpty { "Team 2" }))
+                                },
+                                label = { Text("Team 2 · starts far") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                visibleScore.team2Score.toString(),
+                                Modifier.width(54.dp),
+                                color = Orange,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        Text(
+                            when (visibleScore.servingTeamId) {
+                                ScoreTeamId.TEAM_1 -> "Serving now: ${tracking.team1Name} · ${visibleScore.servingSide?.wireName} side"
+                                ScoreTeamId.TEAM_2 -> "Serving now: ${tracking.team2Name} · ${visibleScore.servingSide?.wireName} side"
+                                null -> if (visibleScore.servingSide == ServingSide.REVIEW) {
+                                    "Serving side needs review"
+                                } else "Server not established"
+                            },
+                            color = Muted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth().border(
+                        1.dp,
+                        if (servingSideError == null) PaleGreen else Orange,
+                        RoundedCornerShape(4.dp),
+                    ),
+                    color = if (servingSideError == null) Color(0xFFEEF6F0) else Color(0xFFFFEEE8),
+                    shape = RoundedCornerShape(4.dp),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            if (servingSideError == null) "SERVE MARKERS READY" else "SERVING-SIDE ANALYSIS NEEDS ATTENTION",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            servingSideError ?: if (reviewCount > 0) {
+                                "$reviewCount model ${if (reviewCount == 1) "verdict needs" else "verdicts need"} review."
+                            } else "Serving-side predictions are ready to edit.",
+                            color = Muted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                        )
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(4.dp)),
+                    color = Color.White,
+                    shape = RoundedCornerShape(4.dp),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("SELECTED SERVE", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        if (selected == null) {
+                            Text("Select a ball marker on the timeline", color = Muted, fontSize = 12.sp)
+                        } else {
+                            Text(
+                                "${preciseTime(selected.timestampMs)} · ${selected.side.wireName}",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            selected.modelSide?.let { modelSide ->
+                                Text(
+                                    "Model: ${modelSide.wireName}" + if (selected.side != modelSide) " · corrected" else "",
+                                    color = Muted,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(ServingSide.NEAR to "Near", ServingSide.FAR to "Far").forEach { (side, label) ->
+                                    FilterChip(
+                                        selected = selected.side == side,
+                                        onClick = {
+                                            onTracking(tracking.copy(serveMarkers = tracking.serveMarkers.map {
+                                                if (it.id == selected.id) it.copy(side = side) else it
+                                            }))
+                                        },
+                                        label = { Text(label) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = selected.ignorePreviousPoint,
+                                    enabled = selectedIndex > 0,
+                                    onCheckedChange = { ignored ->
+                                        onTracking(tracking.copy(serveMarkers = tracking.serveMarkers.map {
+                                            if (it.id == selected.id) it.copy(ignorePreviousPoint = ignored) else it
+                                        }))
+                                    },
+                                )
+                                Column {
+                                    Text("Ignore / replay previous point", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("Do not change the score at this serve.", color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    "MISSING SERVE AT ${preciseTime(currentTimestampMs)}",
+                    color = Orange,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        ServingSide.NEAR to "Near",
+                        ServingSide.FAR to "Far",
+                        ServingSide.REVIEW to "Review",
+                    ).forEach { (side, label) ->
+                        FilterChip(
+                            selected = manualServingSide == side,
+                            onClick = { onManualServingSide(side) },
+                            label = { Text(label) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = {
+                        val updated = ScoreReducer.addServe(tracking, currentTimestampMs, manualServingSide)
+                        onTracking(updated)
+                        updated.serveMarkers.firstOrNull { marker ->
+                            tracking.serveMarkers.none { it.id == marker.id }
+                        }?.let { onSelect(it.id, it.timestampMs) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("+ Add serve") }
+                Button(
+                    onClick = {
+                        val updated = ScoreReducer.addSideSwitch(tracking, currentTimestampMs)
+                        onTracking(updated)
+                        updated.sideSwitchMarkers.firstOrNull { marker ->
+                            tracking.sideSwitchMarkers.none { it.id == marker.id }
+                        }?.let { onSelect(it.id, it.timestampMs) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("⇄ Add team side switch · ${preciseTime(currentTimestampMs)}") }
+
+                val awardedPoints = visibleScore.points.mapIndexedNotNull { index, point ->
+                    point.takeIf { it.status == ScorePointStatus.COUNTED && it.winnerTeamId != null }
+                        ?.let { index + 1 to it }
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(4.dp)),
+                    color = Paper,
+                    shape = RoundedCornerShape(4.dp),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("POINT TIMELINE", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.weight(1f))
+                            Text("${awardedPoints.size} awarded", color = Muted, fontSize = 10.sp)
+                        }
+                        if (awardedPoints.isEmpty()) {
+                            Text("No points awarded yet", color = Muted, fontSize = 11.sp)
+                        } else {
+                            Column(
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                ScoreTimelineLabelRow("RALLY", awardedPoints.map { it.first.toString() })
+                                ScoreTimelinePointRow(
+                                    tracking.team1Name,
+                                    awardedPoints.map { (_, point) ->
+                                        point.team1ScoreAfter.toString().takeIf { point.winnerTeamId == ScoreTeamId.TEAM_1 }
+                                    },
+                                    Green,
+                                )
+                                ScoreTimelinePointRow(
+                                    tracking.team2Name,
+                                    awardedPoints.map { (_, point) ->
+                                        point.team2ScoreAfter.toString().takeIf { point.winnerTeamId == ScoreTeamId.TEAM_2 }
+                                    },
+                                    Orange,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val markerRows = buildList<Triple<String, Long, String>> {
+                    sortedServes.forEachIndexed { index, marker ->
+                        val side = if (index == 0) "First serve" else marker.side.wireName
+                        add(Triple(marker.id, marker.timestampMs, "$side · ${marker.origin.wireName}"))
+                    }
+                    visibleTracking.sideSwitchMarkers.forEach { marker ->
+                        add(Triple(marker.id, marker.timestampMs, "Team side switch"))
+                    }
+                }.sortedWith(compareBy<Triple<String, Long, String>> { it.second }.thenBy { it.first })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("MARKERS", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text("${markerRows.size} · tap to select", color = Muted, fontSize = 10.sp)
+                }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 252.dp)
+                        .border(1.dp, Rail, RoundedCornerShape(4.dp))
+                        .background(Paper, RoundedCornerShape(4.dp))
+                        .verticalScroll(rememberScrollState())
+                        .padding(4.dp)
+                        .semantics { contentDescription = "Score marker list" },
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (markerRows.isEmpty()) {
+                        Text("No score markers have been added.", Modifier.padding(10.dp), color = Muted, fontSize = 11.sp)
+                    }
+                    markerRows.forEach { (id, timestamp, label) ->
+                        val selectedRow = id == selectedMarkerId
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    if (selectedRow) 2.dp else 1.dp,
+                                    if (selectedRow) Orange else Rail,
+                                    RoundedCornerShape(3.dp),
+                                )
+                                .background(Color.White, RoundedCornerShape(3.dp)),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(
+                                onClick = { onSelect(id, timestamp) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(
+                                        "${if (tracking.serveMarkers.any { it.id == id }) "●" else "⇄"} ${preciseTime(timestamp)}",
+                                        color = Ink,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(label, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            TextButton(
+                                onClick = {
+                                    onTracking(
+                                        if (tracking.serveMarkers.any { it.id == id }) ScoreReducer.removeServe(tracking, id)
+                                        else ScoreReducer.removeSideSwitch(tracking, id),
+                                    )
+                                },
+                            ) { Text("Remove", color = Danger, fontSize = 11.sp) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScoreTimelineLabelRow(label: String, values: List<String>) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.width(72.dp), color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        values.forEach { value ->
+            Text(
+                value,
+                Modifier.width(32.dp),
+                color = Muted,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScoreTimelinePointRow(label: String, values: List<String?>, accent: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            Modifier.width(72.dp),
+            color = Ink,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        values.forEach { value ->
+            Box(Modifier.width(32.dp).height(28.dp), contentAlignment = Alignment.Center) {
+                if (value == null) {
+                    HorizontalDivider(Modifier.width(26.dp), color = Rail)
+                } else {
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .background(accent.copy(alpha = .14f), RoundedCornerShape(50))
+                            .border(2.dp, accent, RoundedCornerShape(50)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(value, color = Ink, fontFamily = FontFamily.Monospace, fontSize = 9.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScoreOverlayPreview(snapshot: ScoreOverlaySnapshot, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier) {
+        val videoWidthPx = with(density) { maxWidth.toPx().roundToInt() }
+        val videoHeightPx = with(density) { maxHeight.toPx().roundToInt() }
+        val layout = ScoreOverlay.layout(videoWidthPx, videoHeightPx, snapshot) { text, fontSize ->
+            measurer.measure(
+                text,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = with(density) { fontSize.toSp() },
+                    fontWeight = FontWeight.Bold,
+                ),
+            ).size.width.toFloat()
+        }
+        fun pxDp(value: Int) = with(density) { value.toDp() }
+        val rowShape = RoundedCornerShape(bottomEnd = pxDp(layout.radius))
+        Box(
+            Modifier
+                .width(pxDp(layout.width))
+                .height(pxDp(layout.height))
+                .clip(rowShape)
+                .border(pxDp(layout.borderWidth), Color(ScoreOverlay.BORDER_COLOR), rowShape),
+        ) {
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                fun Modifier.cell(widthPx: Int, color: Long) = width(pxDp(widthPx))
+                    .fillMaxHeight().background(Color(color))
+                Text(
+                    snapshot.team1Name,
+                    Modifier.cell(layout.team1Width, ScoreOverlay.TEAM_1_COLOR).padding(horizontal = pxDp(layout.horizontalPadding)),
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    fontSize = with(density) { layout.fontSize.toSp() },
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    snapshot.team1ScoreLabel,
+                    Modifier.cell(layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR),
+                    color = Color.Black,
+                    textAlign = TextAlign.Center,
+                    fontSize = with(density) { layout.fontSize.toSp() },
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    snapshot.team2Name,
+                    Modifier.cell(layout.team2Width, ScoreOverlay.TEAM_2_COLOR).padding(horizontal = pxDp(layout.horizontalPadding)),
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    fontSize = with(density) { layout.fontSize.toSp() },
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    snapshot.team2ScoreLabel,
+                    Modifier.cell(layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR),
+                    color = Color.Black,
+                    textAlign = TextAlign.Center,
+                    fontSize = with(density) { layout.fontSize.toSp() },
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = layout.borderWidth.toFloat()
+                var divider = pxDp(layout.team1Width).toPx()
+                drawLine(Color.Black, Offset(divider, 0f), Offset(divider, size.height), stroke)
+                divider += pxDp(layout.scoreWidth).toPx()
+                drawLine(Color.Black, Offset(divider, 0f), Offset(divider, size.height), stroke)
+                divider += pxDp(layout.team2Width).toPx()
+                drawLine(Color.Black, Offset(divider, 0f), Offset(divider, size.height), stroke)
+            }
+        }
     }
 }
 
@@ -2555,7 +3205,7 @@ private fun ConfidenceControl(
 }
 
 @Composable
-private fun WholeTimeline(
+internal fun WholeTimeline(
     windowStartMs: Long,
     windowEndMs: Long,
     cuts: List<EditableCut>,
@@ -2568,6 +3218,9 @@ private fun WholeTimeline(
     effectiveIds: Set<String>,
     confidenceThreshold: Float,
     playheadMs: Long,
+    serveMarkers: List<ServeMarker>,
+    sideSwitchMarkers: List<SideSwitchMarker>,
+    onMarkerSelect: (String, Long) -> Unit,
     onSeek: (Long, String?, String?) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -2579,6 +3232,7 @@ private fun WholeTimeline(
         fun xAt(timeMs: Long) = (timeMs - windowStartMs).toFloat() / windowSpanMs * widthPx
         Canvas(
             Modifier
+                .testTag("whole-timeline")
                 .fillMaxWidth()
                 .height(34.dp)
                 .clip(RoundedCornerShape(9.dp))
@@ -2591,9 +3245,23 @@ private fun WholeTimeline(
                                 if (suggestion.fragmentId() in appliedSuggestionIds) "Suppressed" else "Suggestion kept"
                         }
                 }
-                .pointerInput(windowStartMs, windowEndMs, cuts, suggestions) {
+                .pointerInput(windowStartMs, windowEndMs, cuts, suggestions, serveMarkers, sideSwitchMarkers) {
                     detectTapGestures { offset ->
                         val time = timeAt(offset.x)
+                        val markerHitRadius = with(density) { 12.dp.toPx() }
+                        val markerIconHeight = with(density) { 15.dp.toPx() }
+                        val marker = if (offset.y <= markerIconHeight) {
+                            buildList<Pair<String, Long>> {
+                                serveMarkers.forEach { add(it.id to it.timestampMs) }
+                                sideSwitchMarkers.forEach { add(it.id to it.timestampMs) }
+                            }.filter { it.second in windowStartMs..windowEndMs }
+                                .minByOrNull { kotlin.math.abs(xAt(it.second) - offset.x) }
+                                ?.takeIf { kotlin.math.abs(xAt(it.second) - offset.x) <= markerHitRadius }
+                        } else null
+                        if (marker != null) {
+                            onMarkerSelect(marker.first, marker.second)
+                            return@detectTapGestures
+                        }
                         val suggestion = suggestions.lastOrNull {
                             time >= it.startMs() && time <= it.endMs()
                         }
@@ -2702,6 +3370,23 @@ private fun WholeTimeline(
                 if (suggestion.fragmentId() == selectedSuggestionId) {
                     drawRect(Color.White, Offset(x, 2f), Size(width, size.height - 4f), style = Stroke(3f))
                 }
+            }
+            serveMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
+                val x = xAt(marker.timestampMs)
+                drawLine(Color.White, Offset(x, 4f), Offset(x, size.height), 1.5f)
+                drawCircle(Color.White, 5f, Offset(x, 6f))
+                drawArc(
+                    Color.Black, -75f, 150f, false,
+                    Offset(x - 4f, 2f), Size(8f, 8f), style = Stroke(1f),
+                )
+            }
+            sideSwitchMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
+                val x = xAt(marker.timestampMs)
+                drawLine(Color.White, Offset(x, 4f), Offset(x, size.height), 1.5f)
+                drawLine(Color.White, Offset(x - 5f, 4f), Offset(x + 5f, 4f), 1.5f)
+                drawLine(Color.White, Offset(x - 5f, 4f), Offset(x - 2f, 1f), 1.5f)
+                drawLine(Color.White, Offset(x + 5f, 9f), Offset(x - 5f, 9f), 1.5f)
+                drawLine(Color.White, Offset(x + 5f, 9f), Offset(x + 2f, 12f), 1.5f)
             }
             if (playheadMs in windowStartMs..windowEndMs) {
                 val playheadX = xAt(playheadMs)
@@ -2983,7 +3668,7 @@ private fun SmallButton(label: String, enabled: Boolean = true, onClick: () -> U
     }
 }
 
-private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<FinalCutInterval>) =
+internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<FinalCutInterval>) =
     JSONObject().apply {
         put("schemaVersion", 2)
         put("method", "android-editor-v3-suppression")
@@ -3099,6 +3784,8 @@ private fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<F
                 })
             }
         })
+        put("scoreTracking", ScoreTrackingJson.encodeWire(draft.scoreTracking))
+        put("renderScoreOverlay", draft.renderScoreOverlay)
     }
 
 private fun exportFilename(sourceName: String): String {
@@ -3116,6 +3803,7 @@ private fun createModelFeedback(
 ): String {
     val analysis = ModelFeedbackExporter.loadAnalysis(context, project)
     val fingerprint = ModelFeedbackExporter.sourceFingerprint(context, project)
+        ?: project.source.sampledFingerprint
     return ModelFeedbackExporter.createBundle(
         project,
         draft,

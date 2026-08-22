@@ -1,0 +1,339 @@
+package com.volleycut.nativeanalysis
+
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.roundToInt
+
+internal const val SCORE_TRACKING_SCHEMA_VERSION = 2
+
+internal enum class ScoreTeamId(val wireName: String) {
+    TEAM_1("team-1"), TEAM_2("team-2");
+
+    companion object {
+        fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
+    }
+}
+
+internal enum class ServeMarkerOrigin(val wireName: String) {
+    MODEL("model"), MANUAL("manual");
+
+    companion object {
+        fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
+    }
+}
+
+internal data class ServeMarker(
+    val id: String,
+    val timestampMs: Long,
+    val side: ServingSide,
+    val origin: ServeMarkerOrigin,
+    val modelSide: ServingSide? = null,
+    val ignorePreviousPoint: Boolean = false,
+    val rallyId: String? = null,
+)
+
+internal data class SideSwitchMarker(val id: String, val timestampMs: Long)
+
+internal data class ScoreTracking(
+    val version: Int = SCORE_TRACKING_SCHEMA_VERSION,
+    val enabled: Boolean = true,
+    val team1Name: String = "Team 1",
+    val team2Name: String = "Team 2",
+    val serveMarkers: List<ServeMarker> = emptyList(),
+    val sideSwitchMarkers: List<SideSwitchMarker> = emptyList(),
+    val removedModelMarkerIds: Set<String> = emptySet(),
+)
+
+internal enum class ScorePointStatus(val wireName: String) {
+    COUNTED("counted"), IGNORED("ignored"), REVIEW("review")
+}
+
+internal data class DerivedScorePoint(
+    val serveMarkerId: String,
+    val timestampMs: Long,
+    val servingSide: ServingSide,
+    val winnerTeamId: ScoreTeamId?,
+    val status: ScorePointStatus,
+    val team1ScoreAfter: Int,
+    val team2ScoreAfter: Int,
+)
+
+internal data class DerivedScore(
+    val team1Score: Int,
+    val team2Score: Int,
+    val servingTeamId: ScoreTeamId?,
+    val servingSide: ServingSide?,
+    val points: List<DerivedScorePoint>,
+    val ignoredPointCount: Int,
+    val reviewPointCount: Int,
+)
+
+internal data class ScoreRallyRange(
+    val coreStartMs: Long,
+    val coreEndMs: Long,
+    val keepStartMs: Long,
+    val keepEndMs: Long,
+)
+
+internal object ScoreReducer {
+    private val serveOrder = compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id }
+    private val switchOrder = compareBy<SideSwitchMarker> { it.timestampMs }.thenBy { it.id }
+
+    fun seedModelMarkers(
+        current: ScoreTracking,
+        output: ServingSideOutput?,
+    ): ScoreTracking {
+        if (output == null) return current
+        val existingByRally = current.serveMarkers
+            .filter { it.rallyId != null }
+            .associateBy { it.rallyId }
+        var tracking = current.copy(
+            serveMarkers = current.serveMarkers.filter { it.origin == ServeMarkerOrigin.MANUAL },
+        )
+        output.candidates.forEach { candidate ->
+            val id = "serve-${candidate.id}"
+            val existing = existingByRally[candidate.id]
+            val wasCorrected = existing?.modelSide != null && existing.side != existing.modelSide
+            if (candidate.verdict == ServingSideVerdict.NOT_SERVE && !wasCorrected) {
+                return@forEach
+            }
+            val modelSide = when (candidate.verdict) {
+                ServingSideVerdict.NEAR, ServingSideVerdict.FAR -> candidate.side
+                ServingSideVerdict.REVIEW -> ServingSide.REVIEW
+                ServingSideVerdict.NOT_SERVE -> ServingSide.REVIEW
+            }
+            val used = tracking.serveMarkers.any { it.id == id } ||
+                tracking.sideSwitchMarkers.any { it.id == id } ||
+                id in tracking.removedModelMarkerIds
+            if (used) return@forEach
+            tracking = tracking.copy(serveMarkers = (tracking.serveMarkers + ServeMarker(
+                id = id,
+                timestampMs = secondsToMs(candidate.anchor),
+                side = if (wasCorrected) checkNotNull(existing).side else modelSide,
+                origin = ServeMarkerOrigin.MODEL,
+                modelSide = modelSide,
+                ignorePreviousPoint = existing?.ignorePreviousPoint == true,
+                rallyId = candidate.id,
+            )).sortedWith(serveOrder))
+        }
+        return tracking
+    }
+
+    fun visibleTracking(
+        tracking: ScoreTracking,
+        ignoredIntervals: List<IgnoredSourceInterval>,
+        excludedRallyIds: Set<String>,
+    ): ScoreTracking = tracking.copy(serveMarkers = tracking.serveMarkers.filter { marker ->
+        ignoredIntervals.none { marker.timestampMs >= it.startMs && marker.timestampMs < it.endMs } &&
+            (marker.rallyId == null || marker.rallyId !in excludedRallyIds)
+    })
+
+    fun teamForServingSide(side: ServingSide, sideSwitchCount: Int): ScoreTeamId? {
+        if (side == ServingSide.REVIEW) return null
+        val switched = abs(sideSwitchCount) % 2 == 1
+        return when (side) {
+            ServingSide.NEAR -> if (switched) ScoreTeamId.TEAM_2 else ScoreTeamId.TEAM_1
+            ServingSide.FAR -> if (switched) ScoreTeamId.TEAM_1 else ScoreTeamId.TEAM_2
+            ServingSide.REVIEW -> null
+        }
+    }
+
+    fun deriveAt(tracking: ScoreTracking, sourceTimestampMs: Long = Long.MAX_VALUE): DerivedScore {
+        val serves = tracking.serveMarkers.sortedWith(serveOrder)
+            .filter { it.timestampMs <= sourceTimestampMs.coerceAtLeast(0) }
+        val switches = tracking.sideSwitchMarkers.sortedWith(switchOrder)
+        var switchIndex = 0
+        var team1Score = 0
+        var team2Score = 0
+        var servingTeam: ScoreTeamId? = null
+        var servingSide: ServingSide? = null
+        var ignored = 0
+        var review = 0
+        val points = mutableListOf<DerivedScorePoint>()
+        serves.forEachIndexed { index, serve ->
+            while (switchIndex < switches.size && switches[switchIndex].timestampMs <= serve.timestampMs) {
+                switchIndex++
+            }
+            servingSide = serve.side
+            servingTeam = teamForServingSide(serve.side, switchIndex)
+            if (index == 0) return@forEachIndexed
+            val status = when {
+                serve.ignorePreviousPoint -> ScorePointStatus.IGNORED.also { ignored++ }
+                servingTeam == null -> ScorePointStatus.REVIEW.also { review++ }
+                else -> ScorePointStatus.COUNTED.also {
+                    if (servingTeam == ScoreTeamId.TEAM_1) team1Score++ else team2Score++
+                }
+            }
+            points += DerivedScorePoint(
+                serve.id, serve.timestampMs, serve.side, servingTeam, status,
+                team1Score, team2Score,
+            )
+        }
+        return DerivedScore(
+            team1Score, team2Score, servingTeam, servingSide, points, ignored, review,
+        )
+    }
+
+    fun scoreBoundaryTimestamp(
+        playbackTimestampMs: Long,
+        rallyRanges: List<ScoreRallyRange>,
+        tracking: ScoreTracking,
+    ): Long {
+        val timestamp = playbackTimestampMs.coerceAtLeast(0)
+        val insideRally = rallyRanges.any { timestamp >= it.keepStartMs && timestamp < it.keepEndMs }
+        val insideLeadingPadding = rallyRanges.any {
+            timestamp >= it.keepStartMs && timestamp < it.coreStartMs
+        }
+        if (insideRally && !insideLeadingPadding) return timestamp
+        return tracking.serveMarkers.sortedWith(serveOrder)
+            .firstOrNull { it.timestampMs >= timestamp }?.timestampMs ?: timestamp
+    }
+
+    fun nextMarkerId(prefix: String, tracking: ScoreTracking): String {
+        val used = buildSet {
+            addAll(tracking.serveMarkers.map { it.id })
+            addAll(tracking.sideSwitchMarkers.map { it.id })
+            addAll(tracking.removedModelMarkerIds)
+        }
+        for (index in 1 until 10_000) {
+            val candidate = prefix + index.toString().padStart(3, '0')
+            if (candidate !in used) return candidate
+        }
+        return prefix + System.currentTimeMillis()
+    }
+
+    fun addServe(tracking: ScoreTracking, timestampMs: Long, side: ServingSide): ScoreTracking {
+        if (timestampMs < 0) return tracking
+        val marker = ServeMarker(
+            nextMarkerId("S", tracking), timestampMs, side, ServeMarkerOrigin.MANUAL,
+        )
+        return tracking.copy(serveMarkers = (tracking.serveMarkers + marker).sortedWith(serveOrder))
+    }
+
+    fun addSideSwitch(tracking: ScoreTracking, timestampMs: Long): ScoreTracking {
+        if (timestampMs < 0) return tracking
+        val marker = SideSwitchMarker(nextMarkerId("X", tracking), timestampMs)
+        return tracking.copy(
+            sideSwitchMarkers = (tracking.sideSwitchMarkers + marker).sortedWith(switchOrder),
+        )
+    }
+
+    fun removeServe(tracking: ScoreTracking, markerId: String): ScoreTracking {
+        val removed = tracking.serveMarkers.firstOrNull { it.id == markerId }
+        return tracking.copy(
+            serveMarkers = tracking.serveMarkers.filterNot { it.id == markerId },
+            removedModelMarkerIds = if (removed?.origin == ServeMarkerOrigin.MODEL) {
+                tracking.removedModelMarkerIds + markerId
+            } else tracking.removedModelMarkerIds,
+        )
+    }
+
+    fun removeSideSwitch(tracking: ScoreTracking, markerId: String): ScoreTracking = tracking.copy(
+        sideSwitchMarkers = tracking.sideSwitchMarkers.filterNot { it.id == markerId },
+    )
+}
+
+internal data class PreparedScoreOverlay(
+    val tracking: ScoreTracking,
+    val rallyRanges: List<ScoreRallyRange>,
+)
+
+internal data class ScoreOverlaySnapshot(
+    val team1Name: String,
+    val team1Score: Int,
+    val team1ScoreLabel: String,
+    val team2Name: String,
+    val team2Score: Int,
+    val team2ScoreLabel: String,
+)
+
+internal data class ScoreOverlayLayout(
+    val width: Int,
+    val height: Int,
+    val team1Width: Int,
+    val team2Width: Int,
+    val scoreWidth: Int,
+    val borderWidth: Int,
+    val radius: Int,
+    val fontSize: Int,
+    val horizontalPadding: Int,
+)
+
+internal object ScoreOverlay {
+    const val BORDER_COLOR = 0xff000000
+    const val TEAM_1_COLOR = 0xffd9342b
+    const val TEAM_2_COLOR = 0xff2367c9
+    const val TEAM_TEXT_COLOR = 0xffffffff
+    const val SCORE_BACKGROUND_COLOR = 0xffffffff
+    const val SCORE_TEXT_COLOR = 0xff000000
+
+    fun prepare(
+        scoreTracking: ScoreTracking,
+        ignoredIntervals: List<IgnoredSourceInterval>,
+        excludedRallyIds: Set<String>,
+        rallyRanges: List<ScoreRallyRange>,
+    ) = PreparedScoreOverlay(
+        ScoreReducer.visibleTracking(scoreTracking, ignoredIntervals, excludedRallyIds),
+        rallyRanges,
+    )
+
+    fun snapshot(prepared: PreparedScoreOverlay, sourceTimestampMs: Long): ScoreOverlaySnapshot {
+        val boundary = ScoreReducer.scoreBoundaryTimestamp(
+            sourceTimestampMs, prepared.rallyRanges, prepared.tracking,
+        )
+        val score = ScoreReducer.deriveAt(prepared.tracking, boundary)
+        return ScoreOverlaySnapshot(
+            prepared.tracking.team1Name, score.team1Score, formatScore(score.team1Score),
+            prepared.tracking.team2Name, score.team2Score, formatScore(score.team2Score),
+        )
+    }
+
+    fun formatScore(score: Int) = max(0, score).toString().padStart(2, '0')
+
+    fun layout(
+        videoWidth: Int,
+        videoHeight: Int,
+        snapshot: ScoreOverlaySnapshot,
+        measureText: (String, Int) -> Float,
+    ): ScoreOverlayLayout {
+        val shortestEdge = max(1, minOf(videoWidth, videoHeight))
+        val height = (shortestEdge * 0.064).coerceIn(36.0, 76.0).roundToInt()
+        val borderWidth = if (shortestEdge >= 720) 2 else 1
+        val fontSize = (height * 0.39).roundToInt()
+        val horizontalPadding = (height * 0.24).roundToInt()
+        val scoreWidth = (height * 1.3).roundToInt()
+        val minimumTeamWidth = (height * 2.25).roundToInt()
+        fun measured(name: String) = max(
+            minimumTeamWidth,
+            ceil(measureText(name, fontSize)).toInt() + horizontalPadding * 2,
+        )
+        val desiredTeam1Width = measured(snapshot.team1Name)
+        val desiredTeam2Width = measured(snapshot.team2Name)
+        val maximumOverlayWidth = max(
+            minimumTeamWidth * 2 + scoreWidth * 2,
+            floor(videoWidth * 0.96).toInt(),
+        )
+        val availableTeamWidth = maximumOverlayWidth - scoreWidth * 2
+        var team1Width = desiredTeam1Width
+        var team2Width = desiredTeam2Width
+        if (desiredTeam1Width + desiredTeam2Width > availableTeamWidth) {
+            val flexible1 = desiredTeam1Width - minimumTeamWidth
+            val flexible2 = desiredTeam2Width - minimumTeamWidth
+            val flexible = flexible1 + flexible2
+            val availableFlexible = max(0, availableTeamWidth - minimumTeamWidth * 2)
+            val scale = if (flexible > 0) minOf(1.0, availableFlexible.toDouble() / flexible) else 0.0
+            team1Width = (minimumTeamWidth + flexible1 * scale).roundToInt()
+            team2Width = (minimumTeamWidth + flexible2 * scale).roundToInt()
+        }
+        return ScoreOverlayLayout(
+            team1Width + scoreWidth + team2Width + scoreWidth,
+            height, team1Width, team2Width, scoreWidth, borderWidth,
+            (height * 0.24).roundToInt(), fontSize, horizontalPadding,
+        )
+    }
+}
+
+internal fun scoreOverlayDisplaySize(width: Int, height: Int, rotation: Int): Pair<Int, Int> =
+    if (Math.floorMod(rotation, 180) == 90) height to width else width to height

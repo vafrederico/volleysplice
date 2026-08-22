@@ -20,11 +20,13 @@ import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.OverlayEffect
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import org.json.JSONArray
@@ -52,6 +54,7 @@ private data class ExportJob(
     val sourceDurationMs: Long,
     val destination: Uri,
     val intervals: List<FinalCutInterval>,
+    val scoreSnapshot: ScoreExportSnapshot?,
 )
 
 @OptIn(markerClass = [UnstableApi::class])
@@ -109,7 +112,10 @@ class ExportService : Service() {
         ) return null
         val intervals = starts.indices.map { FinalCutInterval(starts[it], ends[it], emptyList()) }
         if (intervals.any { it.startMs < 0 || it.endMs <= it.startMs || it.endMs > sourceDurationMs }) return null
-        return ExportJob(id, projectId, source, sourceName, sourceDurationMs, target, intervals)
+        val scoreSnapshot = intent.getStringExtra(EXTRA_SCORE_SNAPSHOT)?.let {
+            ScoreExportSnapshotJson.decode(it, sourceDurationMs)
+        }
+        return ExportJob(id, projectId, source, sourceName, sourceDurationMs, target, intervals, scoreSnapshot)
     }
 
     private fun startNextExport() {
@@ -139,14 +145,19 @@ class ExportService : Service() {
         if (wakeLock?.isHeld != true) wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
         broadcast("running", 0, "Preparing hardware encoder", null)
         publishQueuedStatuses()
-        runCatching { startTransformer(job.source, job.sourceDurationMs, job.intervals) }
+        runCatching { startTransformer(job.source, job.sourceDurationMs, job.intervals, job.scoreSnapshot) }
             .onFailure { error ->
                 Log.e(TAG, "Could not start native export", error)
                 finishExport("failed", error.message ?: "Could not start export", null, error)
             }
     }
 
-    private fun startTransformer(source: Uri, sourceDurationMs: Long, intervals: List<FinalCutInterval>) {
+    private fun startTransformer(
+        source: Uri,
+        sourceDurationMs: Long,
+        intervals: List<FinalCutInterval>,
+        scoreSnapshot: ScoreExportSnapshot?,
+    ) {
         val jobId = currentJob?.id ?: error("Export job missing")
         val editedItems = intervals.map { interval ->
             val mediaItem = MediaItem.Builder()
@@ -158,9 +169,15 @@ class ExportService : Service() {
                         .build(),
                 )
                 .build()
-            EditedMediaItem.Builder(mediaItem)
-                .setDurationUs(sourceDurationMs * 1_000)
-                .build()
+            EditedMediaItem.Builder(mediaItem).apply {
+                setDurationUs(sourceDurationMs * 1_000)
+                if (scoreSnapshot?.render == true) {
+                    setEffects(Effects(
+                        emptyList(),
+                        listOf(OverlayEffect(listOf(ScoreCanvasOverlay(scoreSnapshot, interval.startMs)))),
+                    ))
+                }
+            }.build()
         }
         val sequence = EditedMediaItemSequence.withAudioAndVideoFrom(editedItems)
         val composition = Composition.Builder(sequence).build()
@@ -523,6 +540,7 @@ class ExportService : Service() {
         const val EXTRA_DESTINATION_URI = "export_destination_uri"
         const val EXTRA_INTERVAL_STARTS = "export_interval_starts"
         const val EXTRA_INTERVAL_ENDS = "export_interval_ends"
+        const val EXTRA_SCORE_SNAPSHOT = "export_score_snapshot"
         const val EXTRA_STATUS = "export_status"
         const val EXTRA_PROGRESS = "export_progress"
         const val EXTRA_DETAIL = "export_detail"

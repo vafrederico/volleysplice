@@ -57,9 +57,10 @@ project behavior, export details, runtime assets, and deployment.
 The native app performs the shared F104 rally/suppression feature extraction and
 inference, editing, draft persistence, source relinking, model-feedback export, and
 exact-boundary MP4 export without a network permission. It targets the Pixel 10 Pro and
-packages `arm64-v8a`. The browser's newer serving-side model, score-tracking editor, and
-score overlay are not yet implemented on Android; their required parity and product
-behavior are specified in
+packages `arm64-v8a`. It now also runs the frozen 237-input serving-side model and hybrid
+serve gate, seeds an editable score timeline, exchanges model-feedback schema v3, and can
+preview or encode an optional score overlay. The required parity and product behavior are
+specified in
 [`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
 The current checked-in release is
@@ -75,11 +76,11 @@ audiovisual features, gathers five temporal contexts into 520 model inputs, and 
 independent rally/serve/dead-state bundles. Their overlapping intervals are unioned, and
 one-model-only regions remain visible as review-priority disagreements. A separate held
 suppression model can propose reversible removals from eligible disagreement regions.
-The production browser then runs a separate 237-input fixed-flight serving-side model at
+The production browser runs a separate 237-input fixed-flight serving-side model at
 each included merged interval start, composes it with both existing serve heads and rally
-agreement, and seeds editable source-timestamped score markers. This eighth classifier
-and its score UI remain an Android implementation target rather than current native
-production behavior.
+agreement, and seeds editable source-timestamped score markers. Android now implements
+the same feature/model/gate and score-tracking contracts; physical-device golden-video,
+rotation/export, and cross-runtime corpus validation remain release gates.
 
 The following documents are the maintained contracts:
 

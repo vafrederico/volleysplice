@@ -73,7 +73,30 @@ val verifySuppressionAsset by tasks.registering {
     }
 }
 
-tasks.named("preBuild").configure { dependsOn(verifySuppressionAsset) }
+val verifyServingSideAsset by tasks.registering {
+    val asset = layout.projectDirectory.file(
+        "src/main/assets/serving-side-85bc3325fbd4.json",
+    )
+    inputs.file(asset)
+    doLast {
+        val expected = "14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c"
+        // Git may materialize CRLF in an existing Windows checkout. The runtime
+        // identity is the canonical LF JSON payload used to build the model.
+        val canonical = asset.asFile.readText(Charsets.UTF_8)
+            .replace("\r\n", "\n")
+            .toByteArray(Charsets.UTF_8)
+        val actual = MessageDigest.getInstance("SHA-256")
+            .digest(canonical)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        check(actual == expected) {
+            "Frozen serving-side asset hash mismatch: expected $expected, got $actual"
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(verifySuppressionAsset, verifyServingSideAsset)
+}
 
 dependencies {
     implementation("org.opencv:opencv:4.12.0")
@@ -86,11 +109,13 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     val media3Version = "1.10.1"
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui-compose:$media3Version")
+    implementation("androidx.media3:media3-effect:$media3Version")
     implementation("androidx.media3:media3-transformer:$media3Version")
     implementation("androidx.media3:media3-muxer:$media3Version")
 
@@ -98,4 +123,6 @@ dependencies {
     testImplementation("org.json:json:20250517")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

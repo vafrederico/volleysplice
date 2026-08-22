@@ -12,7 +12,7 @@ import java.time.Instant
 import java.util.Base64
 
 internal const val MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback"
-internal const val MODEL_FEEDBACK_SCHEMA_VERSION = 1
+internal const val MODEL_FEEDBACK_SCHEMA_VERSION = 3
 
 internal data class ModelFeedbackAnalysis(
     val timestamps: DoubleArray,
@@ -90,11 +90,26 @@ internal object ModelFeedbackExporter {
         if (sampledFingerprint == null) {
             warnings.put("The source fingerprint could not be calculated; pair this bundle by source metadata.")
         }
+        if (project.servingSide == null) {
+            warnings.put(
+                project.servingSideError
+                    ?: "Serving-side features and initial verdicts are unavailable; score-marker corrections are still included.",
+            )
+        }
 
         val inferredCuts = draft.cuts.filter { it.origin == CutOrigin.INFERRED }
         val manualCuts = draft.cuts.filter { it.origin == CutOrigin.MANUAL }
         val inferenceRows = analysis?.timestamps?.size ?: 0
         val updatedAtMs = draft.updatedAtMs.takeIf { it > 0 } ?: project.updatedAtMs
+        val effectiveIds = EditorMath.effectiveKeptIds(draft, project.suppression)
+        val excludedRallyIds = draft.cuts.filter {
+            it.origin == CutOrigin.INFERRED && (!it.included || it.id !in effectiveIds)
+        }.map { it.id }.sorted()
+        val visibleScoring = ScoreReducer.visibleTracking(
+            draft.scoreTracking,
+            draft.ignoredIntervals,
+            excludedRallyIds.toSet(),
+        )
 
         return JSONObject().apply {
             put("schema", MODEL_FEEDBACK_SCHEMA)
@@ -106,9 +121,9 @@ internal object ModelFeedbackExporter {
                 put("timelineCoordinates", "seconds-from-start-of-source")
                 put("file", JSONObject().apply {
                     put("name", project.source.name)
-                    put("sizeBytes", project.source.size)
-                    put("lastModifiedMs", lastModifiedMs(project.source.lastModified))
-                    put("mimeType", project.source.mimeType)
+                    put("sizeBytes", project.source.size.coerceAtLeast(0))
+                    put("lastModifiedMs", lastModifiedMs(project.source.lastModified).coerceAtLeast(0))
+                    put("mimeType", project.source.mimeType.ifBlank { project.media.videoMime() })
                     put("sampledFingerprint", sampledFingerprint ?: JSONObject.NULL)
                 })
                 put("media", JSONObject().apply {
@@ -174,24 +189,40 @@ internal object ModelFeedbackExporter {
                     }) }
                 })
                 put("productionComponents", JSONObject().apply {
-                    put("allLabelsV2", analysisIntervals(project.productionComponents.allLabelsV2()))
-                    put("previousProduction", analysisIntervals(project.productionComponents.previousProduction()))
+                    put("allLabelsV2", analysisIntervals(
+                        project.productionComponents.allLabelsV2(),
+                        "all-labels-v2",
+                    ))
+                    put("previousProduction", analysisIntervals(
+                        project.productionComponents.previousProduction(),
+                        "previous-production",
+                    ))
                 })
-                put("suppression", project.suppression?.let { suppression -> JSONObject().apply {
+                put("suppression", if (analysis != null) project.suppression
+                    ?.takeIf { it.probabilities().size == inferenceRows }
+                    ?.let { suppression -> JSONObject().apply {
                     put("modelId", suppression.modelId())
                     put("artifactSha256", suppression.artifactSha256())
                     put("weightsSha256", suppression.weightsSha256())
                     put("decoderVersion", suppression.decoderVersion())
-                    put("policyContractVersion", draft.suppressionContractVersion)
+                    put("policyContractVersion", 1)
+                    put("identicalPolicyResults", identicalSuppressionPolicies(suppression))
+                    put("timestamps", encode(analysis.timestamps, intArrayOf(inferenceRows)))
                     put("probabilities", encode(
                         suppression.probabilities(),
                         intArrayOf(suppression.probabilities().size),
                     ))
-                    put("decodedIntervals", analysisIntervals(suppression.decodedIntervals()))
+                    put("decodedIntervals", analysisIntervals(
+                        suppression.decodedIntervals(),
+                        "suppression",
+                    ))
                     put("suggestions", JSONArray().apply {
                         suppression.suggestions().forEach { suggestion -> put(JSONObject().apply {
+                            put("id", suggestion.fragmentId())
                             put("logicalId", suggestion.logicalId())
-                            put("fragmentId", suggestion.fragmentId())
+                            // Android's native suppression model predates the event
+                            // field; its logical ID is the stable event grouping.
+                            put("suppressionEventId", suggestion.logicalId())
                             put("start", suggestion.startMs() / 1_000.0)
                             put("end", suggestion.endMs() / 1_000.0)
                             put("score", suggestion.score().toDouble())
@@ -199,7 +230,7 @@ internal object ModelFeedbackExporter {
                             put("eligiblePolicyIds", JSONArray(suggestion.eligiblePolicyIds()))
                         }) }
                     })
-                }} ?: JSONObject.NULL)
+                }} ?: JSONObject.NULL else JSONObject.NULL)
                 put("probabilityModelId", FeatureSchema.ALL_LABELS_V2_MODEL_ID)
                 put("timestamps", encode(
                     analysis?.timestamps ?: doubleArrayOf(),
@@ -219,6 +250,15 @@ internal object ModelFeedbackExporter {
                         intArrayOf(inferenceRows),
                     ))
                 })
+                if (analysis != null) {
+                    componentServeOutputs(
+                        project.productionServeOutputs,
+                        analysis.timestamps,
+                    )?.let {
+                        put("componentServeOutputs", it)
+                    }
+                }
+                put("servingSide", project.servingSide?.let(::servingSideFeedback) ?: JSONObject.NULL)
             })
             put("corrections", JSONObject().apply {
                 put("updatedAt", Instant.ofEpochMilli(updatedAtMs).toString())
@@ -241,6 +281,7 @@ internal object ModelFeedbackExporter {
                     }
                 })
                 put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
+                put("suppression", suppressionCorrections(project.suppression, draft))
                 put("correctedRanges", JSONArray().apply {
                     draft.cuts.forEach { put(correctedRange(it)) }
                 })
@@ -251,6 +292,11 @@ internal object ModelFeedbackExporter {
                         put("end", interval.endMs / 1_000.0)
                         put("reason", interval.reason)
                     }) }
+                })
+                put("scoreTracking", JSONObject().apply {
+                    put("state", ScoreTrackingJson.encodeWire(draft.scoreTracking))
+                    put("excludedRallyIds", JSONArray(excludedRallyIds))
+                    put("derivedFinalScore", derivedScoreJson(ScoreReducer.deriveAt(visibleScoring)))
                 })
                 put("labels", JSONObject().apply {
                     put("falsePositives", feedbackRanges(inferredCuts.filterNot { it.included }))
@@ -272,7 +318,7 @@ internal object ModelFeedbackExporter {
                     })
                 }) }
             })
-            put("materializationProvenance", JSONArray().apply {
+            put("finalExportProvenance", JSONArray().apply {
                 EditorMath.materialize(draft, project.suppression).provenance.forEach { segment ->
                     put(JSONObject().apply {
                         put("start", segment.startMs / 1_000.0)
@@ -400,8 +446,160 @@ internal object ModelFeedbackExporter {
         put("bundleSha256", sha256)
     }
 
-    private fun analysisIntervals(values: List<AnalysisTypes.Interval>) = JSONArray().apply {
-        values.forEach { interval -> put(JSONObject().apply {
+    private fun componentServeOutputs(
+        value: AnalysisTypes.ProductionServeOutputs,
+        inferenceTimes: DoubleArray,
+    ): JSONObject? {
+        val outputs = listOf(value.allLabelsV2(), value.previousProduction())
+        if (outputs.any {
+                it.times().size != inferenceTimes.size ||
+                    it.probabilities().size != inferenceTimes.size ||
+                    !it.times().contentEquals(inferenceTimes)
+            }
+        ) {
+            return null
+        }
+        fun output(item: AnalysisTypes.ProductionServeOutput) = JSONObject().apply {
+            put("modelId", item.modelId())
+            put("probabilities", encode(item.probabilities(), intArrayOf(item.probabilities().size)))
+            put("detections", JSONArray().apply {
+                item.detections().forEach { detection -> put(JSONObject().apply {
+                    put("time", detection.time())
+                    put("confidence", detection.confidence().toDouble())
+                }) }
+            })
+        }
+        return JSONObject().apply {
+            put("allLabelsV2", output(value.allLabelsV2()))
+            put("previousProduction", output(value.previousProduction()))
+        }
+    }
+
+    private fun identicalSuppressionPolicies(value: AnalysisTypes.SuppressionAnalysis): Boolean {
+        fun signature(policy: String) = value.suggestions()
+            .filter { policy in it.eligiblePolicyIds() }
+            .joinToString("\u0000") { it.fragmentId() }
+        val conservative = signature("conservative")
+        val balanced = signature("balanced")
+        val aggressive = signature("aggressive")
+        return conservative == balanced && balanced == aggressive
+    }
+
+    private fun suppressionCorrections(
+        suppression: AnalysisTypes.SuppressionAnalysis?,
+        draft: EditorDraft,
+    ) = JSONObject().apply {
+        put("selectedPolicy", draft.selectedSuppressionPolicy.wireName)
+        put("decisionOverrides", JSONObject().apply {
+            draft.suppressionDecisionOverrides.toSortedMap().forEach { (id, decision) ->
+                put(id, decision.wireName)
+            }
+        })
+        put("defaultSuppressionScope", SuppressionScope.WHOLE_RALLY.wireName)
+        put("suppressionScopeOverrides", JSONObject().apply {
+            draft.suppressionScopeOverrides.toSortedMap().forEach { (id, scope) ->
+                put(id, scope.wireName)
+            }
+        })
+        put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
+        put("decisions", JSONArray().apply {
+            suppression?.suggestions()?.forEach { suggestion ->
+                val active = draft.selectedSuppressionPolicy != SuppressionPolicyEngine.Policy.NONE &&
+                    draft.selectedSuppressionPolicy.wireName in suggestion.eligiblePolicyIds()
+                val explicit = draft.suppressionDecisionOverrides[suggestion.logicalId()]
+                val effective = EditorMath.suggestionEffectiveDecision(draft, suggestion)
+                val touched = draft.cuts.any { cut ->
+                    cut.origin == CutOrigin.INFERRED && cut.id in draft.userTouchedCutIds &&
+                        cut.coreStartMs < suggestion.endMs() && suggestion.startMs() < cut.coreEndMs
+                }
+                val state = when {
+                    !active -> "dormant"
+                    effective == SuppressionDecision.SUPPRESS -> "suppressed"
+                    explicit == SuppressionDecision.KEEP -> "kept"
+                    touched -> "edited-kept"
+                    else -> "kept"
+                }
+                put(JSONObject().apply {
+                    put("suggestionId", suggestion.fragmentId())
+                    put("logicalId", suggestion.logicalId())
+                    put("state", state)
+                    put("scope", EditorMath.suggestionEffectiveScope(draft, suggestion).wireName)
+                })
+            }
+        })
+    }
+
+    private fun servingSideFeedback(value: ServingSideOutput) = JSONObject().apply {
+        put("modelId", value.modelId)
+        put("modelFingerprint", value.modelFingerprint)
+        put("featureVersion", value.featureVersion)
+        put("anchorContract", value.anchorContract)
+        put("features", JSONObject().apply {
+            put("rows", value.rows)
+            put("columns", value.columns)
+            put("values", encode(value.rawFeatures, intArrayOf(value.rows, value.columns)))
+        })
+        put("candidates", JSONArray().apply {
+            value.candidates.forEach { candidate -> put(JSONObject().apply {
+                put("id", candidate.id)
+                put("anchor", candidate.anchor)
+                put("interval", JSONObject().apply {
+                    put("start", candidate.intervalStart)
+                    put("end", candidate.intervalEnd)
+                    candidate.agreement?.let { put("agreement", it) }
+                })
+                put("nearProbability", candidate.nearProbability)
+                put("side", candidate.side.wireName)
+                put("verdict", candidate.verdict.wireName)
+                put("serveDecisionSource", candidate.serveDecisionSource.wireName)
+                put("reviewReasons", JSONArray(candidate.reviewReasons.map { it.wireName }))
+                put("serveEvidence", JSONObject().apply {
+                    put("allLabelsV2", evidenceJson(candidate.allLabelsV2Evidence))
+                    put("previousProduction", evidenceJson(candidate.previousProductionEvidence))
+                })
+            }) }
+        })
+    }
+
+    private fun evidenceJson(value: ServingSideHeadEvidence) = JSONObject().apply {
+        put("modelId", value.modelId)
+        put("threshold", value.threshold)
+        put("peakProbability", value.peakProbability)
+        put("peakTime", value.peakTime)
+        put("crossesThreshold", value.crossesThreshold)
+        put("nearestDetection", value.nearestDetection?.let { JSONObject().apply {
+            put("time", it.time())
+            put("confidence", it.confidence().toDouble())
+        }} ?: JSONObject.NULL)
+    }
+
+    private fun derivedScoreJson(value: DerivedScore) = JSONObject().apply {
+        put("team1Score", value.team1Score)
+        put("team2Score", value.team2Score)
+        put("servingTeamId", value.servingTeamId?.wireName ?: JSONObject.NULL)
+        put("servingSide", value.servingSide?.wireName ?: JSONObject.NULL)
+        put("ignoredPointCount", value.ignoredPointCount)
+        put("reviewPointCount", value.reviewPointCount)
+        put("points", JSONArray().apply {
+            value.points.forEach { point -> put(JSONObject().apply {
+                put("serveMarkerId", point.serveMarkerId)
+                put("timestamp", point.timestampMs / 1_000.0)
+                put("servingSide", point.servingSide.wireName)
+                put("winnerTeamId", point.winnerTeamId?.wireName ?: JSONObject.NULL)
+                put("status", point.status.wireName)
+                put("team1ScoreAfter", point.team1ScoreAfter)
+                put("team2ScoreAfter", point.team2ScoreAfter)
+            }) }
+        })
+    }
+
+    private fun analysisIntervals(values: List<AnalysisTypes.Interval>, prefix: String) = JSONArray().apply {
+        values.forEachIndexed { index, interval -> put(JSONObject().apply {
+            put(
+                "id",
+                "$prefix:${(index + 1).toString().padStart(4, '0')}:" +
+                    "${secondsToMs(interval.start())}:${secondsToMs(interval.end())}",
+            )
             put("start", interval.start())
             put("end", interval.end())
             put("confidence", interval.confidence().toDouble())

@@ -66,6 +66,8 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         })
         put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
         put("suppressionContractVersion", draft.suppressionContractVersion)
+        put("scoreTracking", ScoreTrackingJson.encode(draft.scoreTracking))
+        put("renderScoreOverlay", draft.renderScoreOverlay)
         put("cuts", JSONArray().apply {
             draft.cuts.forEach { cut -> put(JSONObject().apply {
                 put("id", cut.id)
@@ -136,6 +138,13 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             }
         }
         val touchedJson = json.optJSONArray("userTouchedCutIds") ?: JSONArray()
+        val restoredScore = if (persistedVersion >= 6) {
+            json.optJSONObject("scoreTracking")?.let { ScoreTrackingJson.decode(it, seed.durationMs) }
+        } else null
+        val scoreTracking = ScoreReducer.seedModelMarkers(
+            restoredScore ?: ScoreTracking(),
+            seed.servingSide,
+        )
         val draft = EditorDraft(
             sourceRevision = json.getString("sourceRevision"),
             updatedAtMs = json.optLong("updatedAtMs"),
@@ -167,6 +176,10 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
                 "suppressionContractVersion",
                 FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION,
             ),
+            scoreTracking = scoreTracking,
+            renderScoreOverlay = if (persistedVersion >= 6) {
+                json.optBoolean("renderScoreOverlay")
+            } else false,
         )
         return EditorMath.reconcileTouchedCuts(draft, seed).takeIf { validate(it) }
     }
@@ -178,6 +191,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             draft.playbackRate in setOf(1f, 2f, 4f, 8f) &&
             draft.confidenceReviewThreshold in 0f..1f &&
             draft.suppressionContractVersion == FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION &&
+            ScoreTrackingJson.validate(draft.scoreTracking, seed.durationMs) &&
             draft.userTouchedCutIds.all { id -> draft.cuts.any { it.id == id } } &&
             draft.cuts.all { cut ->
                 cut.keepStartMs in seed.gameStartMs..cut.coreStartMs &&

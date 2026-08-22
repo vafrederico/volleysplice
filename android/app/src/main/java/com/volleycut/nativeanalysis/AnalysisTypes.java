@@ -3,6 +3,7 @@ package com.volleycut.nativeanalysis;
 import android.net.Uri;
 
 import java.util.LinkedHashSet;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -122,6 +123,45 @@ public final class AnalysisTypes {
         }
     }
 
+    public record ProductionServeOutput(
+            String modelId,
+            double[] times,
+            float[] probabilities,
+            List<Serve> detections
+    ) {
+        public static ProductionServeOutput empty(String modelId) {
+            return new ProductionServeOutput(modelId, new double[0], new float[0], List.of());
+        }
+
+        @Override public boolean equals(Object value) {
+            if (this == value) return true;
+            if (!(value instanceof ProductionServeOutput other)) return false;
+            return modelId.equals(other.modelId)
+                    && Arrays.equals(times, other.times)
+                    && Arrays.equals(probabilities, other.probabilities)
+                    && detections.equals(other.detections);
+        }
+
+        @Override public int hashCode() {
+            int result = modelId.hashCode();
+            result = 31 * result + Arrays.hashCode(times);
+            result = 31 * result + Arrays.hashCode(probabilities);
+            return 31 * result + detections.hashCode();
+        }
+    }
+
+    public record ProductionServeOutputs(
+            ProductionServeOutput allLabelsV2,
+            ProductionServeOutput previousProduction
+    ) {
+        public static ProductionServeOutputs empty() {
+            return new ProductionServeOutputs(
+                    ProductionServeOutput.empty(FeatureSchema.ALL_LABELS_V2_MODEL_ID),
+                    ProductionServeOutput.empty(FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID)
+            );
+        }
+    }
+
     public record SuppressionSuggestion(
             String logicalId,
             String fragmentId,
@@ -211,6 +251,9 @@ public final class AnalysisTypes {
             String audioFeatureSha256,
             List<Interval> ranges,
             ProductionComponents productionComponents,
+            ProductionServeOutputs productionServeOutputs,
+            ServingSideOutput servingSide,
+            String servingSideError,
             SuppressionAnalysis suppression,
             Map<String, Long> stageMilliseconds,
             Map<String, Double> profileMilliseconds,

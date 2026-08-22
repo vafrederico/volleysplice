@@ -69,15 +69,16 @@ the authoritative signature.
 
 Production browser assets are under `prod/public/runtime/`. The F104 rally and
 suppression artifacts have corresponding Android assets under
-`android/app/src/main/assets/`. The serving-side runtime is currently browser-only and
-must not be described as Android production until the native parity spec passes.
+`android/app/src/main/assets/`. Android now packages the frozen serving-side runtime and
+implements its feature/model/gate contract. It must not be described as a released
+Android production feature until the remaining physical-device parity gates pass.
 
 | Artifact | Learned models | Features | Fit sources | Compared with and change | Disposition |
 | --- | --- | --- | --- | --- | --- |
 | `model-1ca43e38eefc` (`environment-specialists-v2-all-labels`) | Rally, serve-contact, and dead-state linear heads | F104 | `ENV2-ALL11` | Compared with `environment-specialists-v1/all-labels` and previous production. Added three indoor recordings containing walking/ball-retrieval hard negatives; refit all three heads on six grass plus five indoor recordings. | Primary production bundle. Artifact SHA-256 `1ca43e38eefc…`; component artifact hashes remain in the bundle. |
 | `model-9c92b8e9333f` | `full-audiovisual-audio-normalized-v3` rally, `serve-specialist-audio-normalized-v5` serve, and `dead-state-transition-audio-normalized-v5-no-legacy-final` dead-state heads | F104 | `GOLD-NB-T4` | Compared component-by-component with the prior F90 models. Added 14 noise-normalized audio base features; the serve/dead-state heads also tested legacy/new audio ablations. | Previous production bundle, retained in the two-model consensus because it still recovers some rallies missed by the newer refit. Artifact SHA-256 `9c92b8e9333f…`. |
 | `suppression-overlap-exclusion-retrained` | Binary false-positive suppression head | F104 | `FEEDBACK16` | Compared with the original feedback suppression v3 fit. Corrected the target builder so false-positive intervals overlapping an included corrected rally core were excluded from suppression positives; production decoder settings were held fixed. | Production suppression model, gated to eligible one-model intervals. Artifact SHA-256 `39eddf581639…`; learned-weights SHA-256 `a943…`. |
-| `serving-side-fixed-flight-v3` | Camera-space near/far class-balanced logistic head | SERVSIDE237-FLIGHT | 1,027 correction-clean rows from 28 recordings and nine development source groups; protected recording excluded from fitting and selection | Compared with court-flow, trajectory, high-resolution, quality-mixture, and group-balanced variants. Adds the selected fixed-anchor 155-value flight bank to 82 court-flow values. | Production browser serving-side model; Android port pending. Runtime asset `serving-side-85bc3325fbd4.json`, file SHA-256 `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`, model fingerprint `85bc3325fbd4…`. The deterministic hybrid gate below is part of the deployed browser composition. |
+| `serving-side-fixed-flight-v3` | Camera-space near/far class-balanced logistic head | SERVSIDE237-FLIGHT | 1,027 correction-clean rows from 28 recordings and nine development source groups; protected recording excluded from fitting and selection | Compared with court-flow, trajectory, high-resolution, quality-mixture, and group-balanced variants. Adds the selected fixed-anchor 155-value flight bank to 82 court-flow values. | Production browser serving-side model; native Android implementation landed with device release gates pending. Runtime asset `serving-side-85bc3325fbd4.json`, file SHA-256 `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`, model fingerprint `85bc3325fbd4…`. The deterministic hybrid gate below is part of the composition. |
 
 ## Named artifact lineage
 
@@ -128,8 +129,8 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `dead-state-global-audio-normalized-v1-full-final`; `…-v2-full-final` | Algebraic inverse-rally dead-state control, F104 | Compared with transition-trained dead-state heads; uses global inverse-rally targets. v2 is the same learned weights with final re-export metadata. | Research control; not promoted. |
 | `side-switch-specialist-v1` | Side-switch marker, SIDE36; fit `SIDE4`, selected on `GOLD-V2` | First dedicated learned side-switch ranker; compared against marker heuristics rather than a prior trained side-switch model. | Rejected for automatic use; retained for review ranking. |
 | `serving-side-specialist-v1` | Camera-space serving side, SERVSIDE38; fit six declared train recordings, threshold selected on two validation recordings | First reviewed near/far classifier using the existing whole-half, baseline-band, and HOG evidence bank; compared with the nine fixed signed-score variants. | Research baseline only: 90.41% raw balanced accuracy, but 62.30% on the single protected-test indoor recording. Model SHA-256 `97356fe4ad38…`; see [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |
-| `serving-side-fixed-flight-v3` | Camera-space serving side, SERVSIDE237-FLIGHT; correction-clean development fit with leave-one-source-group-out selection | Adds fixed-anchor residual-motion grid ranks to the court-flow bank; compared with the correction-clean court-flow baseline, trajectory/high-resolution variants, quality mixtures, and group-balanced fits. | Promoted to the production browser; Android port pending. Development source-group macro balanced accuracy is 94.12% and pooled balanced accuracy is 94.05%. Final fingerprint `85bc3325fbd4…`; the frozen review band routes 3.90% of development cross-fit rows. The later 24-row assisted uncertainty review confirmed every current human label, so no refit was required. See the production-browser contract below. |
-| `serving-side-hybrid-serve-gate-v2` | Production-browser serving-side composition; two frozen production serve heads plus `both-models` agreement on the candidate interval | Compared with the serve-head-only UI gate; recovers a side only when both serve heads miss and the merged interval is supported by both production models. | Deployed with fixed-flight v3 in the browser; Android port pending. It is deterministic composition, not another trained head, and does not change rally ranges. It recovers 34 of 56 current true-serve gate misses while adding one false serve; all 35 recovered candidates require review. See the production-browser contract below. |
+| `serving-side-fixed-flight-v3` | Camera-space serving side, SERVSIDE237-FLIGHT; correction-clean development fit with leave-one-source-group-out selection | Adds fixed-anchor residual-motion grid ranks to the court-flow bank; compared with the correction-clean court-flow baseline, trajectory/high-resolution variants, quality mixtures, and group-balanced fits. | Promoted to the production browser; native Android implementation landed with device release gates pending. Development source-group macro balanced accuracy is 94.12% and pooled balanced accuracy is 94.05%. Final fingerprint `85bc3325fbd4…`; the frozen review band routes 3.90% of development cross-fit rows. The later 24-row assisted uncertainty review confirmed every current human label, so no refit was required. See the production contract below. |
+| `serving-side-hybrid-serve-gate-v2` | Production serving-side composition; two frozen production serve heads plus `both-models` agreement on the candidate interval | Compared with the serve-head-only UI gate; recovers a side only when both serve heads miss and the merged interval is supported by both production models. | Deployed with fixed-flight v3 in the browser and implemented on Android with device release gates pending. It is deterministic composition, not another trained head, and does not change rally ranges. It recovers 34 of 56 current true-serve gate misses while adding one false serve; all 35 recovered candidates require review. See the production contract below. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
@@ -138,20 +139,19 @@ the complete names are
 `dead-state-transition-audio-normalized-v5-no-legacy-final`, and
 `dead-state-global-audio-normalized-v2-full-final`.
 
-### Production-browser serving-side contract; Android port pending
+### Production serving-side contract
 
 The production browser deploys the indivisible composition
 `serving-side-fixed-flight-v3` + `serving-side-hybrid-serve-gate-v2`. Do not deploy
 fixed-flight v3 with the older serve-head-only gate, and do not describe the hybrid
 gate as a learned replacement for either production serve head.
 
-The browser runtime adds the separate 237-column visual feature pipeline and side-model
-runner described in **Browser implementation and Android delta** in
+The browser and Android runtimes add the separate 237-column visual feature pipeline and
+side-model runner described in **Browser implementation and Android delta** in
 [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). It does not add another serve/rally feature
 bank: the hybrid gate reuses the two existing serve-head score streams and the ensemble
-interval-agreement output. Android must reproduce and pass parity for the 237 raw
-columns, recording ranks, side score, thresholds, and gate/review decisions before its
-release can claim this feature.
+interval-agreement output. Android's implementation must still pass the physical-device
+golden-video and cross-runtime corpus parity gates before a release can claim this feature.
 
 The learned side model is one deterministic class-balanced logistic regression:
 

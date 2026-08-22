@@ -20,6 +20,7 @@ final class ModelRunner {
             float[] rallyProbabilities,
             float[] serveProbabilities,
             float[] deadStateProbabilities,
+            List<AnalysisTypes.Serve> serveDetections,
             java.util.Map<String, Double> profileMilliseconds
     ) {}
     private record Head(float[] mean, float[] scale, float[] weights, float bias) {}
@@ -121,6 +122,7 @@ final class ModelRunner {
                 rallyProbabilities,
                 serveProbabilities,
                 deadProbabilities,
+                serves,
                 profiler.milliseconds()
         );
     }

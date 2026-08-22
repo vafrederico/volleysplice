@@ -29,4 +29,16 @@ class GuidedTourTest {
         )
         assertNull(nextGuidedTourStep(GuidedTourStep.EDITOR_EXPORT))
     }
+
+    @Test
+    fun disabledScoreTrackingSkipsAllScoreTourSteps() {
+        assertEquals(
+            GuidedTourStep.EDITOR_SUPPRESSION,
+            nextGuidedTourStep(GuidedTourStep.EDITOR_OUTPUT, scoreTrackingEnabled = false),
+        )
+        assertEquals(
+            GuidedTourStep.EDITOR_SCORE_TOGGLE,
+            nextGuidedTourStep(GuidedTourStep.EDITOR_OUTPUT, scoreTrackingEnabled = true),
+        )
+    }
 }

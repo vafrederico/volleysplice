@@ -14,6 +14,7 @@ video URI
   -> all-labels-v2 and previous-production rally/serve/dead-state stacks
   -> overlap-union-disagreement-v1 production ensemble
   -> frozen overlap-safe suppression head + Conservative/Balanced/Aggressive suggestions
+  -> fixed-flight SERVSIDE237 extraction + serving-side hybrid gate
   -> unpadded candidates with model-agreement provenance + stage timings
 ```
 
@@ -21,19 +22,25 @@ No media is uploaded. The app has no network permission. It does not use a WebVi
 
 In the production project flow, choose a recording and use the local preview to mark the game start and game end before queueing inference. Only globally aligned 4 Hz samples inside that window generate visual, audio, or contextual features. The bounds are part of the project and feature-cache identity, and the editor overview, playback, padding, manual marks, edit list, and export are constrained to the same window. Existing full-video projects and caches keep their legacy identity.
 
-## Serving-side and score-tracking parity gap
+## Serving-side and score tracking
 
-The native Android app currently stops after rally/serve/dead-state inference and suppression. It
-does not yet run the production browser's 237-column serving-side classifier, persist editable
-serve or side-switch markers, reduce those markers into a score, import browser feedback v3, or
-preview/render the score box in exported video. Its model-feedback exporter remains schema v1.
+The native Android app packages and verifies the frozen production-browser serving-side runtime,
+extracts the exact 82 court-flow plus 155 fixed-flight columns, ranks each column across the
+recording, and composes the side result with both production serve heads and the hybrid gate.
+Serving-side failures are recoverable and do not discard otherwise valid rally inference.
+
+The editor seeds editable serve markers, supports manual serves, not-serve corrections, replay
+points, and side switches, then reduces those source-timestamped markers into the current score.
+Score state and model tombstones survive draft persistence. The same pure score snapshot drives
+the letterboxed preview and the optional Media3 export overlay. Feedback export and import use
+browser-compatible schema v3, including raw float64 serving-side features and score corrections.
 
 The normative port contract is
 [`../docs/serving-side-score-tracking-android-spec.md`](../docs/serving-side-score-tracking-android-spec.md).
-That spec fixes the feature/model/gate contract, initial-inference ordering, cache identity, score
-semantics, conditional editor and tutorial behavior, timeline interaction, feedback v3 parity, and
-source-timestamped preview/export overlay. Implement and parity-test that complete contract rather
-than treating the model JSON or the score UI as an isolated addition.
+That spec remains the normative feature/model/gate, cache, score, timeline, persistence, feedback,
+preview, and export contract. JVM contract tests and Android instrumentation fixtures cover the
+port; physical-device golden-video, rotation, export, and cross-runtime corpus gates must still be
+run before publishing a signed release that claims full device parity.
 
 ## Target device and SDK
 
@@ -83,13 +90,16 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
 - keep/remove review, mandatory single-model disagreement review, confidence review, 0.1/1 second nudges, and per-range reset;
 - optional suppression suggestions (off by default), selectable Conservative/Balanced/Aggressive levels, persisted Highlight-only/Disable-initially behavior, whole-rally suppression by default with per-suggestion veto-region scope, red timeline overlays, Keep/Suppress overrides, and suppression navigation beside confidence review;
 - manual missed cuts and ignored source sections;
+- serving-side score tracking with editable near/far/review serves, replay points, manual serves,
+  side switches, source-timestamped timeline markers, and reversible model corrections;
 - atomic, versioned draft persistence and a **Resume native cut editor** entry after process restart;
 - source-availability detection and validated video re-linking that preserves inference, feature
   cache identity, and saved editor corrections after a recording is moved or its document grant expires;
-- edit-list JSON output and an exact-boundary MP4 export with progress, cancellation, and encoder telemetry.
-- document-saved model-feedback JSON containing source-aligned base features,
-  probability traces, original inference, corrections, ignored intervals, and final export ranges,
-  without embedding raw video bytes.
+- edit-list JSON output and an exact-boundary MP4 export with progress, cancellation, encoder
+  telemetry, and an optional frozen score overlay;
+- browser-compatible model-feedback schema v3 export/import containing source-aligned base
+  features, both production serve outputs, raw serving-side features/evidence, original inference,
+  corrections, score state, ignored intervals, and final export ranges, without raw video bytes.
 
 The player is Media3 ExoPlayer. Export builds a Media3 `Composition` from the final merged ranges after ignored sections are subtracted, then uses Transformer to encode AVC video and AAC audio into MP4. Export runs as an Android `mediaProcessing` foreground service. A custom Media3 muxer factory writes directly to the seekable file descriptor returned for the document selected with Android's system picker, so normal local exports do not need duplicate temporary storage. Streaming-only document providers automatically retain the app-cache-and-copy fallback. Failed, cancelled, or abandoned exports remove their incomplete destination document. The service logs a `VolleyCutExport` JSON record containing the selected `outputWriteMode`, wall time, real-time ratio, frame rate, encoder names, bitrates, output geometry, file size, conversion modes, and failures.
 
