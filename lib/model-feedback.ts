@@ -65,10 +65,12 @@ export type ParsedModelFeedback = {
       rotation: number;
       videoCodec: string;
       videoCodecString: string | null;
+      canDecodeVideo: boolean;
       hasAudio: boolean;
       audioCodec: string | null;
       sampleRate: number | null;
       channels: number | null;
+      canDecodeAudio: boolean;
     };
     gameWindow: { start: number; end: number };
     featureRoi: { x: number; y: number; width: number; height: number };
@@ -92,11 +94,16 @@ export type ParsedModelFeedback = {
     rallyProbabilities: Float32Array;
     serveProbabilities: Float32Array;
     deadStateProbabilities: Float32Array;
+    productionComponents: null | {
+      allLabelsV2: FeedbackRange[];
+      previousProduction: FeedbackRange[];
+    };
     componentServeOutputs: null | {
       allLabelsV2: ParsedServeOutput;
       previousProduction: ParsedServeOutput;
     };
     servingSide: ParsedServingSideOutput | null;
+    suppression: ParsedSuppressionOutput | null;
   };
   corrections: {
     updatedAt: string;
@@ -105,6 +112,7 @@ export type ParsedModelFeedback = {
     joinGapSeconds: number;
     correctedRanges: CorrectedFeedbackRange[];
     ignoredIntervals: IgnoredFeedbackRange[];
+    suppression: ParsedSuppressionCorrections | null;
     scoreTracking: ParsedScoreTrackingFeedback | null;
     labels: {
       falsePositives: FeedbackRange[];
@@ -115,6 +123,43 @@ export type ParsedModelFeedback = {
   };
   finalExportIntervals: FinalFeedbackRange[];
   warnings: string[];
+};
+
+export type ParsedSuppressionSuggestion = {
+  id: string;
+  logicalId: string;
+  suppressionEventId: string;
+  start: number;
+  end: number;
+  score: number;
+  sourceProductionIds: string[];
+  eligiblePolicyIds: Array<"conservative" | "balanced" | "aggressive">;
+};
+
+export type ParsedSuppressionOutput = {
+  modelId: string;
+  artifactSha256: string;
+  weightsSha256: string;
+  decoderVersion: string;
+  policyContractVersion: number;
+  probabilities: Float32Array;
+  decodedIntervals: FeedbackRange[];
+  suggestions: ParsedSuppressionSuggestion[];
+  identicalPolicyResults: boolean;
+};
+
+export type ParsedSuppressionCorrections = {
+  selectedPolicy: "none" | "conservative" | "balanced" | "aggressive";
+  decisionOverrides: Record<string, "keep" | "suppress">;
+  defaultSuppressionScope: "whole-rally" | "veto-region";
+  suppressionScopeOverrides: Record<string, "whole-rally" | "veto-region">;
+  userTouchedCutIds: string[];
+  decisions: Array<{
+    suggestionId: string;
+    logicalId: string;
+    state: "dormant" | "suppressed" | "kept" | "edited-kept";
+    scope: "whole-rally" | "veto-region";
+  }>;
 };
 
 export type ParsedServeOutput = {
@@ -1038,6 +1083,134 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       duration,
     );
   })();
+  const productionComponents = (() => {
+    if (inference.productionComponents === undefined) return null;
+    const components = object(
+      inference.productionComponents,
+      "bundle.initialInference.productionComponents",
+    );
+    return {
+      allLabelsV2: ranges(
+        components.allLabelsV2,
+        "bundle.initialInference.productionComponents.allLabelsV2",
+        duration,
+      ),
+      previousProduction: ranges(
+        components.previousProduction,
+        "bundle.initialInference.productionComponents.previousProduction",
+        duration,
+      ),
+    };
+  })();
+  const suppression = (() => {
+    if (inference.suppression === undefined || inference.suppression === null) {
+      return null;
+    }
+    const value = object(
+      inference.suppression,
+      "bundle.initialInference.suppression",
+    );
+    const probabilities = decodeNumericArray(
+      value.probabilities,
+      "bundle.initialInference.suppression.probabilities",
+      "float32",
+      [inferenceRows],
+    ) as Float32Array;
+    validateProbabilities(
+      probabilities,
+      "bundle.initialInference.suppression.probabilities",
+    );
+    const timestamps = decodeNumericArray(
+      value.timestamps,
+      "bundle.initialInference.suppression.timestamps",
+      "float64",
+      [inferenceRows],
+    ) as Float64Array;
+    validateTimestamps(
+      timestamps,
+      duration,
+      "bundle.initialInference.suppression.timestamps",
+    );
+    if (!Array.isArray(value.suggestions)) {
+      fail("bundle.initialInference.suppression.suggestions", "must be an array");
+    }
+    const suggestions = value.suggestions.map((item, index) => {
+      const field = `bundle.initialInference.suppression.suggestions[${index}]`;
+      const suggestion = object(item, field);
+      const start = sourceTime(suggestion.start, `${field}.start`, duration);
+      const end = sourceTime(suggestion.end, `${field}.end`, duration);
+      if (end <= start) fail(field, "must have positive duration");
+      if (!Array.isArray(suggestion.eligiblePolicyIds)) {
+        fail(`${field}.eligiblePolicyIds`, "must be an array");
+      }
+      return {
+        id: string(suggestion.id, `${field}.id`),
+        logicalId: string(suggestion.logicalId, `${field}.logicalId`),
+        suppressionEventId: string(
+          suggestion.suppressionEventId,
+          `${field}.suppressionEventId`,
+        ),
+        start,
+        end,
+        score: probability(suggestion.score, `${field}.score`),
+        sourceProductionIds: stringArray(
+          suggestion.sourceProductionIds,
+          `${field}.sourceProductionIds`,
+        ),
+        eligiblePolicyIds: suggestion.eligiblePolicyIds.map(
+          (policy, policyIndex) =>
+            choice(
+              policy,
+              ["conservative", "balanced", "aggressive"] as const,
+              `${field}.eligiblePolicyIds[${policyIndex}]`,
+            ),
+        ),
+      };
+    });
+    const policySignature = (policy: "conservative" | "balanced" | "aggressive") =>
+      suggestions
+        .filter((suggestion) => suggestion.eligiblePolicyIds.includes(policy))
+        .map((suggestion) => suggestion.id)
+        .sort()
+        .join("\u0000");
+    return {
+      modelId: string(
+        value.modelId,
+        "bundle.initialInference.suppression.modelId",
+      ),
+      artifactSha256: string(
+        value.artifactSha256,
+        "bundle.initialInference.suppression.artifactSha256",
+      ),
+      weightsSha256: string(
+        value.weightsSha256,
+        "bundle.initialInference.suppression.weightsSha256",
+      ),
+      decoderVersion: string(
+        value.decoderVersion,
+        "bundle.initialInference.suppression.decoderVersion",
+      ),
+      policyContractVersion: integer(
+        value.policyContractVersion,
+        "bundle.initialInference.suppression.policyContractVersion",
+      ),
+      probabilities,
+      decodedIntervals: ranges(
+        value.decodedIntervals,
+        "bundle.initialInference.suppression.decodedIntervals",
+        duration,
+      ),
+      suggestions,
+      identicalPolicyResults:
+        value.identicalPolicyResults === undefined
+          ? policySignature("conservative") === policySignature("balanced") &&
+            policySignature("balanced") === policySignature("aggressive")
+          : boolean(
+              value.identicalPolicyResults,
+              "bundle.initialInference.suppression.identicalPolicyResults",
+            ),
+    };
+  })();
 
   const corrections = object(root.corrections, "bundle.corrections");
   const correctedValue = corrections.correctedRanges;
@@ -1047,6 +1220,84 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   if (!Array.isArray(ignoredValue))
     fail("bundle.corrections.ignoredIntervals", "must be an array");
   const labels = object(corrections.labels, "bundle.corrections.labels");
+  const suppressionCorrections = (() => {
+    if (corrections.suppression === undefined) return null;
+    const value = object(
+      corrections.suppression,
+      "bundle.corrections.suppression",
+    );
+    const decisionOverridesValue = object(
+      value.decisionOverrides ?? {},
+      "bundle.corrections.suppression.decisionOverrides",
+    );
+    const decisionOverrides = Object.fromEntries(
+      Object.entries(decisionOverridesValue).map(([id, decision]) => [
+        id,
+        choice(
+          decision,
+          ["keep", "suppress"] as const,
+          `bundle.corrections.suppression.decisionOverrides.${id}`,
+        ),
+      ]),
+    );
+    const scopeOverridesValue = object(
+      value.suppressionScopeOverrides ?? {},
+      "bundle.corrections.suppression.suppressionScopeOverrides",
+    );
+    const suppressionScopeOverrides = Object.fromEntries(
+      Object.entries(scopeOverridesValue).map(([id, scope]) => [
+        id,
+        choice(
+          scope,
+          ["whole-rally", "veto-region"] as const,
+          `bundle.corrections.suppression.suppressionScopeOverrides.${id}`,
+        ),
+      ]),
+    );
+    const decisionsValue = value.decisions ?? [];
+    if (!Array.isArray(decisionsValue)) {
+      fail("bundle.corrections.suppression.decisions", "must be an array");
+    }
+    return {
+      selectedPolicy: choice(
+        value.selectedPolicy,
+        ["none", "conservative", "balanced", "aggressive"] as const,
+        "bundle.corrections.suppression.selectedPolicy",
+      ),
+      decisionOverrides,
+      defaultSuppressionScope:
+        value.defaultSuppressionScope === undefined
+          ? "whole-rally" as const
+          : choice(
+              value.defaultSuppressionScope,
+              ["whole-rally", "veto-region"] as const,
+              "bundle.corrections.suppression.defaultSuppressionScope",
+            ),
+      suppressionScopeOverrides,
+      userTouchedCutIds: stringArray(
+        value.userTouchedCutIds ?? [],
+        "bundle.corrections.suppression.userTouchedCutIds",
+      ),
+      decisions: decisionsValue.map((item, index) => {
+        const field = `bundle.corrections.suppression.decisions[${index}]`;
+        const decision = object(item, field);
+        return {
+          suggestionId: string(decision.suggestionId, `${field}.suggestionId`),
+          logicalId: string(decision.logicalId, `${field}.logicalId`),
+          state: choice(
+            decision.state,
+            ["dormant", "suppressed", "kept", "edited-kept"] as const,
+            `${field}.state`,
+          ),
+          scope: choice(
+            decision.scope,
+            ["whole-rally", "veto-region"] as const,
+            `${field}.scope`,
+          ),
+        };
+      }),
+    };
+  })();
   const scoreTracking = (() => {
     if (corrections.scoreTracking === undefined) {
       if (schemaVersion >= 3) {
@@ -1107,6 +1358,10 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
           media.videoCodecString,
           "bundle.source.media.videoCodecString",
         ),
+        canDecodeVideo: boolean(
+          media.canDecodeVideo,
+          "bundle.source.media.canDecodeVideo",
+        ),
         hasAudio: boolean(media.hasAudio, "bundle.source.media.hasAudio"),
         audioCodec: nullableString(
           media.audioCodec,
@@ -1119,6 +1374,10 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
         channels: optionalNumber(
           media.channels,
           "bundle.source.media.channels",
+        ),
+        canDecodeAudio: boolean(
+          media.canDecodeAudio,
+          "bundle.source.media.canDecodeAudio",
         ),
       },
       gameWindow: { start: windowStart, end: windowEnd },
@@ -1146,8 +1405,10 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       rallyProbabilities,
       serveProbabilities,
       deadStateProbabilities,
+      productionComponents,
       componentServeOutputs,
       servingSide,
+      suppression,
     },
     corrections: {
       updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),
@@ -1202,6 +1463,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
           ),
         };
       }),
+      suppression: suppressionCorrections,
       scoreTracking,
       labels: {
         falsePositives: ranges(

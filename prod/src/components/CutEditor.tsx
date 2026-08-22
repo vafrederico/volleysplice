@@ -80,6 +80,7 @@ import styles from "./CutEditor.module.css";
 type CutEditorProps = {
   header: ReactNode;
   initialAnalysis: ProductAnalysis;
+  importedInitialDraft?: CutDraft;
   sourceFile: File | null;
   sourceError: string | null;
   onAttachSource: (file: File | null) => void;
@@ -180,6 +181,7 @@ function modelAgreementLabel(cut: EditableCut): string {
 export function CutEditor({
   header,
   initialAnalysis,
+  importedInitialDraft,
   sourceFile,
   sourceError,
   onAttachSource,
@@ -287,18 +289,25 @@ export function CutEditor({
       } catch {
         // Privacy-restricted browsers can deny storage; editing still works in memory.
       }
-      const next = restored ?? initialDraft;
+      const imported = importedInitialDraft
+        ? parseCutDraft(JSON.stringify(importedInitialDraft), seed)
+        : null;
+      const next = restored ?? imported ?? initialDraft;
       setDraft(next);
       setSelectedId((current) =>
         next.cuts.some((cut) => cut.id === current) ? current : next.cuts[0]?.id ?? "",
       );
       setStorageMessage(
-        restored ? "Restored cached edits on this device" : "New on-device draft",
+        restored
+          ? "Restored cached edits on this device"
+          : imported
+            ? "Imported model-feedback edits"
+            : "New on-device draft",
       );
       setStorageReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [initialDraft, seed]);
+  }, [importedInitialDraft, initialDraft, seed]);
 
   useEffect(() => {
     if (!storageReady) return;

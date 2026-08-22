@@ -154,8 +154,8 @@ export function GuidedTour({ stage, sourceReady = false }: GuidedTourProps) {
     if (stage === "source") {
       return {
         label: `WELCOME TOUR · 1 OF ${TOTAL_TOUR_STEPS}`,
-        title: "Select a volleyball video",
-        body: "Choose video to load one recording. The file stays in this browser and is not uploaded. Once it opens, the camera viewport and game start/end sections appear for you to configure before running analysis.",
+        title: "Select video or feedback",
+        body: "Choose video to analyze a local recording, or import a model-feedback JSON to reopen its inference and completed edits as a new project. Video files stay in this browser and are never uploaded; imported feedback can reconnect its matching source later for playback and export.",
         action: sourceReady ? "Next: camera setup" : "Choose video first",
       };
     }

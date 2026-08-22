@@ -105,3 +105,15 @@ Projects created before schema version 1 feature retention can still export infe
 corrections. Such bundles have `features: null` and an explicit warning; rerunning inference from
 the source creates a complete bundle. Older projects without a retained serving-side result export
 `initialInference.servingSide: null`; their final score-marker corrections are still retained.
+
+## Importing into the production app
+
+Use **Import model feedback** on the new-project screen to restore a bundle as a separate local
+project. The import validates and decodes the bundle, restores its original inference and editor
+corrections, and does not rerun either model. Importing the same bundle again creates another
+project instead of replacing the first import.
+
+The restored project initially has no video because `videoBytesIncluded` is always false. Use the
+editor's source reconnect action to select the original recording. VolleyCut verifies the source
+metadata or sampled fingerprint before enabling playback and video export; reconnecting does not
+replace the imported inference or corrections.

@@ -1,6 +1,5 @@
 import type { Rally } from "./edit-list";
 import type { AnalysisWindow } from "./on-device/analysis-window";
-import type { OnDeviceRuntimeVariant } from "./on-device/runtime-variants";
 import type {
   BaseFeatureSequence,
   NormalizedRoi,
@@ -29,7 +28,7 @@ export type ProductAnalysis = {
   source: ProjectSource;
   mediaInfo: OnDeviceMediaInfo;
   roi: NormalizedRoi;
-  runtimeVariant: OnDeviceRuntimeVariant;
+  runtimeVariant: string;
   videoUrl: string | null;
   rallies: Rally[];
   ignoredIntervals: IgnoredInterval[];

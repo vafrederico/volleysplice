@@ -6,6 +6,7 @@ import { GuidedTour } from "@/components/GuidedTour";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
+import { importModelFeedbackProject } from "@/lib/model-feedback-import";
 import {
   type AnalysisWindow,
   MIN_ANALYSIS_WINDOW_SECONDS,
@@ -148,6 +149,7 @@ export function App() {
     useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [feedbackImporting, setFeedbackImporting] = useState(false);
 
   const projectsRef = useRef<VolleyCutProject[]>([]);
   const filesRef = useRef(new Map<string, File>());
@@ -171,7 +173,7 @@ export function App() {
     "AudioDecoder" in window &&
     "VideoFrame" in window;
   const secureContext = window.isSecureContext;
-  const busy = workState === "opening";
+  const busy = workState === "opening" || feedbackImporting;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedSourceFile = selectedProjectId
@@ -301,6 +303,7 @@ export function App() {
     if (
       !project?.analysis ||
       project.status !== "ready" ||
+      project.importedFeedback ||
       (project.analysis.suppression &&
         project.analysis.productionServeOutputs) ||
       !project.analysis.featureNames ||
@@ -408,6 +411,28 @@ export function App() {
       setWorkState("error");
     } finally {
       opened?.input.dispose();
+    }
+  }
+
+  async function importFeedback(selected: File | null) {
+    if (!selected) return;
+    setFeedbackImporting(true);
+    setError(null);
+    try {
+      const { project } = importModelFeedbackProject(await selected.text(), {
+        occupiedProjectIds: new Set(
+          projectsRef.current.map((candidate) => candidate.id),
+        ),
+      });
+      resetCandidate();
+      commitProject(project);
+      setSelectedProjectId(project.id);
+    } catch (cause) {
+      setError(
+        `Could not import model feedback: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    } finally {
+      setFeedbackImporting(false);
     }
   }
 
@@ -687,7 +712,8 @@ export function App() {
     setError(null);
     if (
       project.status !== "ready" ||
-      (!project.analysis?.suppression &&
+      (!project.importedFeedback &&
+        !project.analysis?.suppression &&
         (!project.analysis?.featureNames || !project.analysis?.featureValues))
     ) {
       queueAttachedProject(project);
@@ -768,7 +794,9 @@ export function App() {
       source: selectedProject.source,
       mediaInfo: selectedProject.info,
       roi: selectedProject.roi,
-      runtimeVariant: DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
+      runtimeVariant:
+        selectedProject.importedFeedback?.runtimeVariant ??
+        DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
       videoUrl: selectedVideoUrl,
       rallies: selectedProject.analysis.intervals,
       ignoredIntervals: [
@@ -821,6 +849,9 @@ export function App() {
         key={productAnalysis.id}
         header={projectHeader}
         initialAnalysis={productAnalysis}
+        importedInitialDraft={
+          selectedProject.importedFeedback?.initialDraft
+        }
         sourceFile={selectedSourceFile}
         sourceError={error}
         onAttachSource={(selected) =>
@@ -954,20 +985,39 @@ export function App() {
                   : "MP4, WebM, MOV, MKV, and other browser-decodable containers are supported."}
               </p>
             </div>
-            <label
-              className={styles.fileButton}
-              data-disabled={busy || safariUnsupported || undefined}
-            >
-              {file ? "Choose another" : "Choose video"}
-              <input
-                type="file"
-                accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
-                disabled={busy || safariUnsupported}
-                onChange={(event) =>
-                  void chooseFile(event.currentTarget.files?.[0] ?? null)
-                }
-              />
-            </label>
+            <div className={styles.importActions}>
+              <label
+                className={styles.fileButton}
+                data-disabled={busy || safariUnsupported || undefined}
+              >
+                {file ? "Choose another" : "Choose video"}
+                <input
+                  type="file"
+                  accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
+                  disabled={busy || safariUnsupported}
+                  onChange={(event) =>
+                    void chooseFile(event.currentTarget.files?.[0] ?? null)
+                  }
+                />
+              </label>
+              <label
+                className={`${styles.fileButton} ${styles.feedbackButton}`}
+                data-disabled={busy || undefined}
+              >
+                {feedbackImporting ? "Importing…" : "Import model feedback"}
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  disabled={busy}
+                  onChange={(event) => {
+                    const input = event.currentTarget;
+                    const feedbackFile = input.files?.[0] ?? null;
+                    input.value = "";
+                    void importFeedback(feedbackFile);
+                  }}
+                />
+              </label>
+            </div>
           </section>
 
           {info && previewUrl && (

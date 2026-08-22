@@ -18,6 +18,7 @@ import type {
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
 } from "./on-device/types.ts";
+import type { CutDraft } from "./cut-draft.ts";
 
 const DATABASE_NAME = "volleycut-projects";
 const DATABASE_VERSION = 1;
@@ -50,6 +51,16 @@ export type VolleyCutProject = {
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
   error: string | null;
+  importedFeedback?: {
+    schemaVersion: 1 | 2 | 3;
+    generatedAt: string;
+    importedAt: string;
+    originalProjectId: string;
+    originalAnalysisId: string;
+    runtimeVariant: string;
+    warnings: string[];
+    initialDraft: CutDraft;
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -288,15 +299,21 @@ function validProductionServeOutputs(value: unknown, rows: number): boolean {
   );
 }
 
-function validSuppression(value: unknown, rows: number): boolean {
+function validSuppression(
+  value: unknown,
+  rows: number,
+  allowHistoricalArtifact: boolean,
+): boolean {
   if (!value || typeof value !== "object") return false;
   const suppression = value as Record<string, unknown>;
   return (
-    suppression.modelId === SUPPRESSION_MODEL_ID &&
-    suppression.artifactSha256 === SUPPRESSION_ARTIFACT_SHA256 &&
-    suppression.weightsSha256 === SUPPRESSION_WEIGHTS_SHA256 &&
-    suppression.decoderVersion === SUPPRESSION_DECODER_VERSION &&
-    suppression.policyContractVersion === SUPPRESSION_POLICY_CONTRACT_VERSION &&
+    (allowHistoricalArtifact ||
+      (suppression.modelId === SUPPRESSION_MODEL_ID &&
+        suppression.artifactSha256 === SUPPRESSION_ARTIFACT_SHA256 &&
+        suppression.weightsSha256 === SUPPRESSION_WEIGHTS_SHA256 &&
+        suppression.decoderVersion === SUPPRESSION_DECODER_VERSION &&
+        suppression.policyContractVersion ===
+          SUPPRESSION_POLICY_CONTRACT_VERSION)) &&
     suppression.probabilities instanceof Float32Array &&
     suppression.probabilities.length === rows &&
     Array.isArray(suppression.decodedIntervals) &&
@@ -326,7 +343,10 @@ function validSuppression(value: unknown, rows: number): boolean {
   );
 }
 
-function validAnalysis(value: unknown): value is OnDeviceAnalysis {
+function validAnalysis(
+  value: unknown,
+  allowHistoricalArtifacts = false,
+): value is OnDeviceAnalysis {
   if (!value || typeof value !== "object") return false;
   const analysis = value as Partial<OnDeviceAnalysis>;
   const featureNames = analysis.featureNames;
@@ -380,7 +400,45 @@ function validAnalysis(value: unknown): value is OnDeviceAnalysis {
         analysis.times.length,
       )) &&
     (analysis.suppression === undefined ||
-      validSuppression(analysis.suppression, analysis.times.length))
+      validSuppression(
+        analysis.suppression,
+        analysis.times.length,
+        allowHistoricalArtifacts,
+      ))
+  );
+}
+
+function validImportedFeedback(
+  value: unknown,
+  projectIdValue: string,
+  analysisId: string | null,
+): value is NonNullable<VolleyCutProject["importedFeedback"]> {
+  if (!value || typeof value !== "object" || !analysisId) return false;
+  const feedback = value as Partial<
+    NonNullable<VolleyCutProject["importedFeedback"]>
+  >;
+  const draft = feedback.initialDraft as Partial<CutDraft> | undefined;
+  return (
+    (feedback.schemaVersion === 1 ||
+      feedback.schemaVersion === 2 ||
+      feedback.schemaVersion === 3) &&
+    typeof feedback.generatedAt === "string" &&
+    Number.isFinite(Date.parse(feedback.generatedAt)) &&
+    typeof feedback.importedAt === "string" &&
+    Number.isFinite(Date.parse(feedback.importedAt)) &&
+    typeof feedback.originalProjectId === "string" &&
+    feedback.originalProjectId.length > 0 &&
+    typeof feedback.originalAnalysisId === "string" &&
+    feedback.originalAnalysisId.length > 0 &&
+    typeof feedback.runtimeVariant === "string" &&
+    feedback.runtimeVariant.length > 0 &&
+    Array.isArray(feedback.warnings) &&
+    feedback.warnings.every((warning) => typeof warning === "string") &&
+    Boolean(draft) &&
+    draft?.analysisId === analysisId &&
+    draft?.recordingId === projectIdValue &&
+    Array.isArray(draft?.cuts) &&
+    Array.isArray(draft?.ignoredIntervals)
   );
 }
 
@@ -394,6 +452,14 @@ function validProject(value: unknown): value is VolleyCutProject {
     "ready",
     "error",
   ];
+  const importedFeedbackPresent = project.importedFeedback !== undefined;
+  const analysisId =
+    typeof project.id === "string" &&
+    project.analysis &&
+    typeof project.analysis.modelId === "string" &&
+    typeof project.analysis.featurePath === "string"
+      ? `${project.id}-${project.analysis.modelId}-${project.analysis.featurePath}`
+      : null;
   return (
     project.schemaVersion === 1 &&
     typeof project.id === "string" &&
@@ -412,8 +478,11 @@ function validProject(value: unknown): value is VolleyCutProject {
     validRoi(project.roi) &&
     typeof project.status === "string" &&
     statuses.includes(project.status as ProjectStatus) &&
-    (project.analysis === null || validAnalysis(project.analysis)) &&
+    (project.analysis === null ||
+      validAnalysis(project.analysis, importedFeedbackPresent)) &&
     (project.error === null || typeof project.error === "string") &&
+    (!importedFeedbackPresent ||
+      validImportedFeedback(project.importedFeedback, project.id, analysisId)) &&
     typeof project.createdAt === "string" &&
     typeof project.updatedAt === "string" &&
     (project.status !== "ready" || project.analysis !== null)
@@ -434,6 +503,7 @@ export function normalizeStoredProject(
       ? project
       : { ...project, analysisWindow };
   const normalizedProject =
+    !windowNormalizedProject.importedFeedback &&
     windowNormalizedProject.analysis?.servingSide &&
       !isReusableServingSideOutput(
         windowNormalizedProject.analysis.servingSide,
@@ -449,6 +519,7 @@ export function normalizeStoredProject(
       : windowNormalizedProject;
   if (
     normalizedProject.analysis &&
+    !normalizedProject.importedFeedback &&
     (normalizedProject.analysis.modelId !== PRODUCTION_ENSEMBLE_MODEL_ID ||
       normalizedProject.analysis.intervals.some(
         (interval) => !interval.agreement,

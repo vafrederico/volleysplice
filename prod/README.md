@@ -34,6 +34,10 @@ bytes are never included. New
 projects retain a sampled source fingerprint, so an identical raw video can be reconnected after
 renaming or transfer and aligned using the bundle's source-relative timestamps. See
 [`docs/model-feedback-bundle.md`](docs/model-feedback-bundle.md) for the format contract.
+The new-project screen can also import one of these feedback files. An import creates a distinct
+ready project containing the retained inference, suppression state, corrected ranges, ignored
+intervals, and score-tracking edits. Because the bundle intentionally contains no video bytes,
+playback and MP4 export become available after reconnecting the matching source file.
 Padded ranges separated by less than the configurable join-gap threshold are exported as
 one continuous section. The default is 3 seconds, a gap of exactly 3 seconds remains a
 cut, and retained join gaps are shown in light gray on the overview rail.

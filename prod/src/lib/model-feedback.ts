@@ -112,6 +112,7 @@ export type ModelFeedbackBundle = {
       weightsSha256: string;
       decoderVersion: string;
       policyContractVersion: number;
+      identicalPolicyResults: boolean;
       timestamps: EncodedNumericArray;
       probabilities: EncodedNumericArray;
       decodedIntervals: NonNullable<
@@ -424,6 +425,8 @@ export function createModelFeedbackBundle(
             weightsSha256: analysis.suppression.weightsSha256,
             decoderVersion: analysis.suppression.decoderVersion,
             policyContractVersion: analysis.suppression.policyContractVersion,
+            identicalPolicyResults:
+              analysis.suppression.identicalPolicyResults,
             timestamps: encodeNumericArray(analysis.inferenceTimes, [
               analysis.inferenceTimes.length,
             ]),
