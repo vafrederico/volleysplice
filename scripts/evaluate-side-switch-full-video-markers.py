@@ -33,7 +33,9 @@ ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
 REPORTS = ROOT / "reports/side-switch"
 MODELS = ROOT / "models"
 DEFAULT_MARKERS = REPORTS / "full-video-side-switch-markers-full-nas-v1.json"
-DEFAULT_OUTPUT_PREFIX = REPORTS / "side-switch-full-video-marker-evaluation-2026-08-21"
+DEFAULT_OUTPUT_PREFIX = (
+    REPORTS / "side-switch-full-video-marker-evaluation-2026-08-21-r2"
+)
 PRIMARY_PADDING_SECONDS = 4.0
 PADDING_SENSITIVITY_SECONDS = (0.0, PRIMARY_PADDING_SECONDS)
 
@@ -555,6 +557,13 @@ def _evaluate_one_decoder(
         and pooled_precision + pooled_recall
         else None
     )
+    recording_count = len(by_recording)
+    per_video_averages = {
+        "truePositives": total_tp / recording_count,
+        "falsePositives": total_fp / recording_count,
+        "falseNegatives": total_fn / recording_count,
+        "proposals": sum(proposal_counts) / recording_count,
+    }
     return {
         "paddingSeconds": padding_seconds,
         "recordings": len(markers_by_recording),
@@ -572,8 +581,9 @@ def _evaluate_one_decoder(
         "macroPerVideoPrecisionRecordingCount": len(precision_values),
         "macroPerVideoRecall": statistics.mean(recall_values),
         "macroPerVideoRecallRecordingCount": len(recall_values),
+        "perVideoAverages": per_video_averages,
         "proposalDistribution": {
-            "meanPerVideo": statistics.mean(proposal_counts),
+            "meanPerVideo": per_video_averages["proposals"],
             "medianPerVideo": statistics.median(proposal_counts),
             "minimumPerVideo": min(proposal_counts),
             "maximumPerVideo": max(proposal_counts),
@@ -649,6 +659,9 @@ def _ranking(
             "decoderId": decoder_id,
             metric: decoders[decoder_id]["evaluations"][padding_key][metric],
             secondary: decoders[decoder_id]["evaluations"][padding_key][secondary],
+            "perVideoAverages": decoders[decoder_id]["evaluations"][padding_key][
+                "perVideoAverages"
+            ],
         }
         for rank, decoder_id in enumerate(ordered, start=1)
     ]
@@ -719,8 +732,8 @@ def build_evaluation(root: Path, marker_path: Path) -> dict[str, Any]:
         repository_root / "analysis/side_switch_full_video.py",
     ]
     return {
-        "schemaVersion": 1,
-        "kind": "volleycut-side-switch-full-video-marker-evaluation-v1",
+        "schemaVersion": 2,
+        "kind": "volleycut-side-switch-full-video-marker-evaluation-v2",
         "createdAt": datetime.now(UTC).isoformat(),
         "implementation": {
             "files": [
@@ -841,10 +854,19 @@ def _render_markdown(payload: Mapping[str, Any]) -> str:
             f"and miss {prior['falseNegatives']} manual events under the same contract."
         ),
         "",
+        (
+            "Per-video TP, FP, FN, and proposal averages are arithmetic means over "
+            f"all {payload['scope']['recordings']} recordings (equivalently, each "
+            "pooled count divided by the recording count)."
+        ),
+        "",
         "## Sorted by average per-video recall",
         "",
-        "| Rank | Decoder | Avg R | Avg P | TP/FP/FN | Pooled P/R/F1 | Proposals/video |",
-        "| ---: | --- | ---: | ---: | --- | --- | ---: |",
+        (
+            "| Rank | Decoder | Avg R | Avg P | Total TP/FP/FN | "
+            "Avg TP/FP/FN | Avg proposals | Pooled P/R/F1 |"
+        ),
+        "| ---: | --- | ---: | ---: | --- | --- | ---: | --- |",
     ]
 
     def ranking_row(
@@ -853,6 +875,7 @@ def _render_markdown(payload: Mapping[str, Any]) -> str:
         decoder_id = str(entry["decoderId"])
         decoder = decoders[decoder_id]
         metric = decoder["evaluations"][primary_key]
+        averages = metric["perVideoAverages"]
         v2_note = "*" if decoder_id == "v2-temporal-noop" else ""
         first_metric = (
             metric["macroPerVideoPrecision"]
@@ -869,10 +892,12 @@ def _render_markdown(payload: Mapping[str, Any]) -> str:
             f"{_percent(first_metric)} | "
             f"{_percent(second_metric)} | "
             f"{metric['truePositives']}/{metric['falsePositives']}/{metric['falseNegatives']} | "
+            f"{averages['truePositives']:.2f}/{averages['falsePositives']:.2f}/"
+            f"{averages['falseNegatives']:.2f} | "
+            f"{averages['proposals']:.2f} | "
             f"{_percent(metric['pooledPrecision'])} / "
             f"{_percent(metric['pooledRecall'])} / "
-            f"{_percent(metric['pooledF1'])} | "
-            f"{metric['proposalDistribution']['meanPerVideo']:.1f} |"
+            f"{_percent(metric['pooledF1'])} |"
         )
 
     lines.extend(
@@ -884,8 +909,11 @@ def _render_markdown(payload: Mapping[str, Any]) -> str:
             "",
             "## Sorted by average per-video precision",
             "",
-            "| Rank | Decoder | Avg P | Avg R | TP/FP/FN | Pooled P/R/F1 | Proposals/video |",
-            "| ---: | --- | ---: | ---: | --- | --- | ---: |",
+            (
+                "| Rank | Decoder | Avg P | Avg R | Total TP/FP/FN | "
+                "Avg TP/FP/FN | Avg proposals | Pooled P/R/F1 |"
+            ),
+            "| ---: | --- | ---: | ---: | --- | --- | ---: | --- |",
         ]
     )
     lines.extend(
@@ -1002,11 +1030,77 @@ def _render_csv(payload: Mapping[str, Any]) -> str:
     return output.getvalue()
 
 
+def _render_model_summary_csv(payload: Mapping[str, Any]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(
+        [
+            "padding_seconds",
+            "recall_rank",
+            "precision_rank",
+            "decoder",
+            "decoder_label",
+            "recordings",
+            "human_events",
+            "total_proposals",
+            "total_true_positives",
+            "total_false_positives",
+            "total_false_negatives",
+            "average_proposals_per_video",
+            "average_true_positives_per_video",
+            "average_false_positives_per_video",
+            "average_false_negatives_per_video",
+            "macro_per_video_precision",
+            "macro_per_video_recall",
+            "pooled_precision",
+            "pooled_recall",
+            "pooled_f1",
+        ]
+    )
+    primary_key = f"{float(payload['matching']['primaryPaddingSeconds']):g}"
+    recall_ranking = payload["rankings"]["byMacroPerVideoRecall"]
+    precision_rank_by_decoder = {
+        str(entry["decoderId"]): int(entry["rank"])
+        for entry in payload["rankings"]["byMacroPerVideoPrecision"]
+    }
+    for recall_entry in recall_ranking:
+        decoder_id = str(recall_entry["decoderId"])
+        decoder = payload["decoders"][decoder_id]
+        metric = decoder["evaluations"][primary_key]
+        averages = metric["perVideoAverages"]
+        writer.writerow(
+            [
+                primary_key,
+                recall_entry["rank"],
+                precision_rank_by_decoder[decoder_id],
+                decoder_id,
+                decoder["label"],
+                metric["recordings"],
+                metric["humanEvents"],
+                metric["proposals"],
+                metric["truePositives"],
+                metric["falsePositives"],
+                metric["falseNegatives"],
+                averages["proposals"],
+                averages["truePositives"],
+                averages["falsePositives"],
+                averages["falseNegatives"],
+                metric["macroPerVideoPrecision"],
+                metric["macroPerVideoRecall"],
+                metric["pooledPrecision"],
+                metric["pooledRecall"],
+                metric["pooledF1"],
+            ]
+        )
+    return output.getvalue()
+
+
 def write_outputs(prefix: Path, payload: Mapping[str, Any]) -> list[Path]:
     paths = [
         Path(f"{prefix}.json"),
         Path(f"{prefix}.md"),
         Path(f"{prefix}.csv"),
+        Path(f"{prefix}-model-summary.csv"),
     ]
     existing = [path for path in paths if path.exists()]
     if existing:
@@ -1020,6 +1114,7 @@ def write_outputs(prefix: Path, payload: Mapping[str, Any]) -> list[Path]:
     )
     atomic_write_text(paths[1], _render_markdown(payload))
     atomic_write_text(paths[2], _render_csv(payload))
+    atomic_write_text(paths[3], _render_model_summary_csv(payload))
     return paths
 
 
@@ -1048,12 +1143,17 @@ def main() -> None:
     for entry in payload["rankings"]["byMacroPerVideoRecall"]:
         decoder_id = entry["decoderId"]
         metric = payload["decoders"][decoder_id]["evaluations"][primary_key]
+        averages = metric["perVideoAverages"]
         print(
             f"{entry['rank']:02d}\t{decoder_id}\t"
             f"macroR={metric['macroPerVideoRecall']:.6f}\t"
             f"macroP={metric['macroPerVideoPrecision']:.6f}\t"
             f"TP/FP/FN={metric['truePositives']}/"
-            f"{metric['falsePositives']}/{metric['falseNegatives']}"
+            f"{metric['falsePositives']}/{metric['falseNegatives']}\t"
+            f"avgTP/FP/FN/proposals={averages['truePositives']:.6f}/"
+            f"{averages['falsePositives']:.6f}/"
+            f"{averages['falseNegatives']:.6f}/"
+            f"{averages['proposals']:.6f}"
         )
     for path in paths:
         print(f"{path}\tsha256={_sha256(path)}")
