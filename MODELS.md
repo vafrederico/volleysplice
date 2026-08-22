@@ -137,7 +137,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-specialist-v6-detected-adaptive`; bundled `detectedFixedPrototypeAblation` | Side-switch gap, DETECTED-ADAPTIVE29 selected head and 26-input fixed-prototype ablation; same `SIDE-V3-T6`/`SIDE-V3-V4`/`SIDE-V3-E11` split | Replaces v5 motion blobs with the frozen 3.48 MB block-int8 OpenCV Zoo MediaPipe person localizer, torso palettes, and three-frame consistency; adds confidence-gated online team-prototype updates. The Apache-2.0 detector is a third-party frozen input, not a VolleyCut-trained model. | Negative candidate-window event result; not promoted. Raw-phone row AP rises 43.40%→45.47%, but exact F1 falls 27.85%→24.10% and ±2-tolerant F1 falls 45.57%→40.96%. Its 48 selected proposals are exposed in `/side-switch-review`; no browser/Android port. |
 | `side-switch-v5-production-state-v1` | Side-switch gap, PLAYER-ORIENTATION22+STATE10; frozen split and common V5/V6 decoder geometry | Compares original and production-serve-grounded V5 appearance with soft summaries of the two shipped rally/serve/dead-state bundles. Validation selects original appearance plus the ten state/gating inputs. Suppression scores are structurally quarantined. | Positive exploratory review-ranking result, not promoted. Exact precision/F1 improve 25.00%/27.85%→28.95%/30.14% while proposals fall 44→38; ±2 F1 moves 45.57%→46.58%, but exact per-recording count accuracy falls 3/11→0/11. Its 38 proposals are exposed as a separate `/side-switch-review` timeline; no inference-runtime port. |
 | `side-switch-v5-no-cadence-v1` | Side-switch gap, validation-selected PLAYER-ORIENTATION22+STATE10; same frozen split and rows as V5-state | Refits the V5 base/state heads, verifies exact learned-parameter parity with the cadence model, and replaces seven-point candidate windows, re-anchoring, spacing, and the six-event cap with independent all-gap thresholding. L2, threshold, and feature-view selection remain development-only. | Positive causal diagnostic, not promoted. Exact recall/F1 improve 31.43%/30.14%→80.00%/44.44%, retaining all 11 cadence true positives and recovering 17 more, but proposals rise 38→91 and false positives 27→63. Research artifact only; no review UI or inference-runtime port. |
-| `side-switch-v5-peak-cleanup-v1` | Frozen no-cadence V5-state head plus PRODUCTION-CONTEXT19 auxiliary head and cadence-free peak/count decoder | Compares eight locked combinations of adjacent/time NMS, a soft post-six logit penalty, and soft production-context log odds. There is no cadence, re-anchoring, hard count cap, production hard gate, or suppression input. Validation selects adjacent-gap peaks plus context weight 0.25. | Research-only mixed result. Selected output cuts proposals 91→60 and raises ±2 F1 47.62%→56.84%, but exact F1 is flat at 44.21%. The locked local-peak+soft-count ablation reaches 49.48% exact and 57.73% ±2 F1 at 62 proposals but cannot replace the validation winner. Production context does not transfer; no review UI/runtime port. |
+| `side-switch-v5-peak-cleanup-v1` | Frozen no-cadence V5-state head plus PRODUCTION-CONTEXT19 auxiliary head and cadence-free peak/count decoder | Compares eight locked combinations of adjacent/time NMS, a soft post-six logit penalty, and soft production-context log odds. There is no cadence, re-anchoring, hard count cap, production hard gate, or suppression input. Historical validation selects adjacent-gap peaks plus context weight 0.25. | **Current research winner:** locked `local-peak-soft-count`, selected by user after the exhaustive 50-event audit. It has 44.64% end-to-end pooled F1, 25 TP/37 FP/25 FN, and 62 proposals (5.64/video) under ±4-second boundary matching. The historical validation-selected context output remains immutable provenance. Research-only; no review UI/runtime port or automatic promotion. |
 | `side-switch-v6-production-state-v1` | Side-switch gap, validation-selected serve-grounded DETECTED-ADAPTIVE29+PRODUCTION-STATE20 | Same production-state/serve-grounding ablation applied to V6; all eight candidates tie on validation exact F1 and AP selects grounded+combined. | Rejected. Exact F1 falls 24.10%→17.91%, ±2 F1 40.96%→38.81%, and row AP 45.47%→36.23%; frozen V6 remains unchanged. |
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
@@ -240,8 +240,15 @@ The immutable provenance manifest has SHA-256
 implementation revision `b7c732d61b2d242ee50f28af1686f9fab73d6a21`.
 
 The peak/count/context follow-up inherits that exact no-cadence model and evaluates
-eight validation-locked cleanup families. Its selected fingerprint is
+eight validation-locked cleanup families. Its historical validation-selected
+peak+context fingerprint is
 `d37839e0031facd6913d904fd7c81624b7f3d9ce57567a1b2f182d3c0aac0190`.
+The current forward research winner is its locked `local-peak-soft-count` mechanism,
+fingerprint
+`053fde3b92c971542ac9b644bfa8ab7ce70f5e37e0469ed229ac64b8727c0a07`.
+The machine-readable pointer, decoder settings, evaluation metrics, and bound source
+hashes are in
+[`side-switch-current-research-winner-v1.json`](data/side-switch-current-research-winner-v1.json).
 Complete grids, hard-versus-soft production semantics, all retrospective ablations,
 and non-promotion constraints are in
 [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
@@ -256,8 +263,10 @@ only 33/50 events are covered by any modern candidate gap. No-cadence V5-state h
 highest comparable macro recall at 56.36%; independent soft count has the highest macro
 precision at 55.91%; and local peak plus soft count has the best pooled F1 at 44.64%.
 These replace the candidate-conditioned raw-phone numbers when discussing end-to-end
-physical-switch accuracy, but they are post-hoc audit results and do not authorize
-selection or promotion. See
+physical-switch accuracy. By explicit user decision, local peak plus soft count is now
+the current research winner and forward baseline. Because this selection follows label
+opening, these 11 recordings are development scope for that choice; the decision does
+not authorize automatic promotion. See
 [`side-switch-full-video-marker-audit-2026-08-21.md`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
 
 ### No-beach full-gold refits

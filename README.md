@@ -100,7 +100,8 @@ The v5 player-isolation study improves exact precision to 25.00%; persistent ori
 was a validation-selected no-op, and v5 also remains research-only.
 The v6 quantized-person/adaptive-prototype study improves raw-phone row AP to 45.47% but
 regresses candidate-window exact F1 to 24.10%; it is not promoted and v5 remains the
-best event-level side-switch artifact. The 61-gap V5/V5-state/V6 proposal union is
+strongest base appearance specialist. The current decoder winner is the V5-state-based
+local-peak+soft-count cleanup described below. The 61-gap V5/V5-state/V6 proposal union is
 available as three separate recording timelines in `/side-switch-review` because the
 earlier heuristic marker seeds are not exhaustive. That review page also exposes
 explicit/candidate/full-video human marker rails, a per-recording continuous-review
@@ -110,7 +111,10 @@ decision artifact.
 The completed 50-event continuous review now provides exhaustive raw-phone truth: only
 33/50 switches are covered by any modern candidate gap with four-second boundary
 allowance. No-cadence V5-state leads the comparable macro-recall ranking at 56.36%,
-while local peak plus soft count has the best pooled F1 at 44.64%; neither is promoted.
+while local peak plus soft count has the best pooled F1 at 44.64%. The latter is the
+current user-designated research winner and forward baseline; it is not promoted to
+automatic inference. Its exact identity and source bindings are frozen in
+[`data/side-switch-current-research-winner-v1.json`](data/side-switch-current-research-winner-v1.json).
 See the
 [`full-video marker audit`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
@@ -124,10 +128,11 @@ decoder diagnostic; the next iteration needs appearance-local cluster suppressio
 soft count prior before any on-device promotion.
 The follow-up confirms adjacent-gap peak suppression as the stable cleanup: its locked
 raw-phone ablation raises exact F1 to 48.15%. Peak suppression plus a soft post-six
-penalty reaches 49.48% exact/57.73% ±2 F1 at 62 proposals, but needs confirmation on
-new labels. A separate production rally/dead/serve context head wins historical
-validation but fails to improve retrospective exact F1, so production outputs remain
-soft features rather than eligibility gates.
+penalty reaches 49.48% exact/57.73% ±2 candidate-conditioned F1 at 62 proposals and is
+the current research winner after the exhaustive audit. It still needs confirmation on
+new labels before promotion. A separate production rally/dead/serve context head wins
+historical validation but fails to improve retrospective exact F1, so production
+outputs remain soft features rather than eligibility gates.
 
 ### Setup
 

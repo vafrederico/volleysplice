@@ -1,6 +1,21 @@
 # Side-switch V5 peak/count/context cleanup — 2026-08-20
 
-## Decision
+## Current status — 2026-08-21
+
+After the exhaustive 50-event full-video review, the user designated **local peak +
+soft count** as the current research winner for forward work. Its mechanism ID is
+`local-peak-soft-count`, and its immutable fingerprint is
+`053fde3b92c971542ac9b644bfa8ab7ce70f5e37e0469ed229ac64b8727c0a07`.
+Under the primary full-video ±4-second boundary contract it produces 62 proposals,
+matches 25/50 events, and has 40.32% pooled precision, 50.00% pooled recall, and 44.64%
+pooled F1. It averages 2.27 TP, 3.36 FP, 2.27 FN, and 5.64 proposals per recording.
+
+This working-baseline decision does not mutate the frozen experiment's historical
+validation selection. It was made after opening the retrospective raw-phone labels,
+so the same 11 recordings are now selection/development scope and cannot provide an
+independent promotion result. The decoder remains research-only and unported.
+
+## Frozen experiment decision — 2026-08-20
 
 Use local peak suppression as the next cadence-free decoder direction. Keep a soft
 post-six count penalty as the most promising follow-up for new reviewed recordings.
@@ -17,8 +32,9 @@ recall from 80.00% to 60.00%.
 The locked local-peak + soft-count ablation is the strongest raw-phone diagnostic:
 62 proposals, 38.71% precision, 68.57% recall, 49.48% exact F1, and 57.73% ±1/±2 F1.
 It did not win the historical validation selection and therefore cannot replace the
-selected mechanism after retrospective labels are opened. It is the preregistered
-candidate to confirm on new user-reviewed sets.
+selected mechanism within that frozen experiment record. The later exhaustive audit
+and explicit user decision now make it the forward research winner; new recordings
+are still required for unbiased confirmation.
 
 No mechanism is promoted to automatic use. The raw-phone labels are correct within the
 reviewed gap inventory, but that inventory is candidate-conditioned rather than
@@ -150,13 +166,14 @@ It eliminates all 22 adjacent selected pairs from the independent output. This i
 most stable result: the same mechanism improves both validation and retrospective
 metrics without recreating a seven-point path.
 
-### Soft count is promising but not confirmed
+### Soft count is the current winner but not independently confirmed
 
 Adding the validation-selected `0.25` post-six logit penalty to local peaks reduces the
 raw-phone result to 62 proposals and raises exact F1 to 49.48%. It removes nine more
 false positives and two more true positives relative to local peaks. Historical
-validation preferred no count penalty, so this gain needs confirmation on newly
-reviewed sets rather than promotion from the opened scope.
+validation preferred no count penalty. The exhaustive full-video audit and subsequent
+user decision select this mechanism as the forward baseline, while newly reviewed sets
+remain necessary before automatic promotion.
 
 ### Production context does not transfer cleanly
 
@@ -171,11 +188,11 @@ should not depend on it to establish eligibility.
 
 ## Recommended next confirmation
 
-On newly user-reviewed games, freeze and test exactly two cadence-free decoders before
-opening labels:
+On newly user-reviewed games, freeze and test the current winner against exactly one
+cadence-free control before opening labels:
 
-1. local adjacent-gap peak suppression; and
-2. the same peak suppression plus the post-six `0.25` logit penalty.
+1. local peak suppression plus the post-six `0.25` logit penalty (current winner); and
+2. local adjacent-gap peak suppression without the count penalty (control).
 
 Keep the production-context weight at zero for that confirmation. Report proposal
 count, exact/±1/±2 event metrics, and per-recording count error. If the soft-count row

@@ -7,6 +7,14 @@ continuous review establishes 50 physical side-switch events across the 11 raw-p
 recordings, replacing the earlier candidate-conditioned positive inventory as the
 canonical truth for this scope.
 
+Use **local peak + soft count** as the current research winner for forward side-switch
+work. This is the locked `local-peak-soft-count` mechanism inside
+`side-switch-v5-peak-cleanup-v1`, fingerprint
+`053fde3b92c971542ac9b644bfa8ab7ce70f5e37e0469ed229ac64b8727c0a07`.
+The choice is a user decision after the exhaustive review; it replaces the older
+peak+context mechanism as the working baseline, but it is not an automatic-production
+promotion or an independent held-out result.
+
 The most important new result is upstream: with each inter-rally proposal gap expanded
 by four seconds on both sides, only 33/50 human events are covered by any of the 352
 modern candidate gaps. The maximum achievable end-to-end recall from re-ranking those
@@ -21,6 +29,14 @@ Among the comparable frozen outputs:
   only 20/50 events; and
 - local peak plus soft count has the strongest pooled F1, 44.64%, with 25 matches from
   62 proposals.
+
+The current winner averages 2.27 TP, 3.36 FP, 2.27 FN, and 5.64 proposals per video.
+Its pooled precision/recall are 40.32%/50.00%, and its macro per-video
+precision/recall are 41.19%/50.91%. The locked decoder uses threshold `0.447097`,
+adjacent-gap peak suppression, and a `0.25` logit penalty after six outputs; it has no
+cadence, re-anchoring, hard cap, time-separation rule, or production-context weight.
+The checked-in machine-readable selection is
+[`data/side-switch-current-research-winner-v1.json`](../../data/side-switch-current-research-winner-v1.json).
 
 V2 ranks slightly above no-cadence by macro recall, but that is not a fair held-out
 comparison: seven of its eleven sequences are deterministic development-scope replay.
@@ -74,10 +90,10 @@ equivalently, each pooled count is divided by 11.
 | 3 | V5-state no cadence | 56.36% | 33.06% | 28/63/22 | 2.55/5.73/2.00 | 8.27 | 30.77% / 56.00% / 39.72% |
 | 4 | Local peak | 54.55% | 38.89% | 27/46/23 | 2.45/4.18/2.09 | 6.64 | 36.99% / 54.00% / 43.90% |
 | 5 | Independent + soft count + context | 52.73% | 30.52% | 26/59/24 | 2.36/5.36/2.18 | 7.73 | 30.59% / 52.00% / 38.52% |
-| 6 | Local peak + soft count | 50.91% | 41.19% | 25/37/25 | 2.27/3.36/2.27 | 5.64 | 40.32% / 50.00% / 44.64% |
+| 6 | **Local peak + soft count (current research winner)** | 50.91% | 41.19% | 25/37/25 | 2.27/3.36/2.27 | 5.64 | 40.32% / 50.00% / 44.64% |
 | 7 | Independent + production context | 50.45% | 37.36% | 25/47/25 | 2.27/4.27/2.27 | 6.55 | 34.72% / 50.00% / 40.98% |
 | 8 | Local peak + soft count + context | 46.82% | 40.15% | 23/33/27 | 2.09/3.00/2.45 | 5.09 | 41.07% / 46.00% / 43.40% |
-| 9 | Local peak + context (selected) | 46.82% | 38.80% | 23/37/27 | 2.09/3.36/2.45 | 5.45 | 38.33% / 46.00% / 41.82% |
+| 9 | Local peak + context (historical validation selection) | 46.82% | 38.80% | 23/37/27 | 2.09/3.36/2.45 | 5.45 | 38.33% / 46.00% / 41.82% |
 | 10 | Independent + soft count | 40.00% | 55.91% | 20/24/30 | 1.82/2.18/2.73 | 4.00 | 45.45% / 40.00% / 42.55% |
 | 11 | V1 original | 29.09% | 15.75% | 14/99/36 | 1.27/9.00/3.27 | 10.27 | 12.39% / 28.00% / 17.18% |
 | 12 | V1 no-blurry-beach | 25.00% | 13.69% | 12/94/38 | 1.09/8.55/3.45 | 9.64 | 11.32% / 24.00% / 15.38% |
@@ -97,10 +113,10 @@ inventory rows even though their frozen proposal streams are identical.
 | Rank | Decoder | Macro P | Macro R | Total TP/FP/FN | Avg TP/FP/FN | Avg proposals | Pooled P/R/F1 |
 | ---: | --- | ---: | ---: | --- | --- | ---: | --- |
 | 1 | Independent + soft count | 55.91% | 40.00% | 20/24/30 | 1.82/2.18/2.73 | 4.00 | 45.45% / 40.00% / 42.55% |
-| 2 | Local peak + soft count | 41.19% | 50.91% | 25/37/25 | 2.27/3.36/2.27 | 5.64 | 40.32% / 50.00% / 44.64% |
+| 2 | **Local peak + soft count (current research winner)** | 41.19% | 50.91% | 25/37/25 | 2.27/3.36/2.27 | 5.64 | 40.32% / 50.00% / 44.64% |
 | 3 | Local peak + soft count + context | 40.15% | 46.82% | 23/33/27 | 2.09/3.00/2.45 | 5.09 | 41.07% / 46.00% / 43.40% |
 | 4 | Local peak | 38.89% | 54.55% | 27/46/23 | 2.45/4.18/2.09 | 6.64 | 36.99% / 54.00% / 43.90% |
-| 5 | Local peak + context (selected) | 38.80% | 46.82% | 23/37/27 | 2.09/3.36/2.45 | 5.45 | 38.33% / 46.00% / 41.82% |
+| 5 | Local peak + context (historical validation selection) | 38.80% | 46.82% | 23/37/27 | 2.09/3.36/2.45 | 5.45 | 38.33% / 46.00% / 41.82% |
 | 6 | Independent + production context | 37.36% | 50.45% | 25/47/25 | 2.27/4.27/2.27 | 6.55 | 34.72% / 50.00% / 40.98% |
 | 7 | Independent control | 33.06% | 56.36% | 28/63/22 | 2.55/5.73/2.00 | 8.27 | 30.77% / 56.00% / 39.72% |
 | 8 | V5-state no cadence | 33.06% | 56.36% | 28/63/22 | 2.55/5.73/2.00 | 8.27 | 30.77% / 56.00% / 39.72% |
@@ -145,7 +161,7 @@ production rally intervals already being correct.
 | --- | --- | --- | --- | --- |
 | V5-state no cadence | 26/65/24 | 28.57% / 52.00% / 36.88% | 28/63/22 | 30.77% / 56.00% / 39.72% |
 | Local peak | 25/48/25 | 34.25% / 50.00% / 40.65% | 27/46/23 | 36.99% / 54.00% / 43.90% |
-| Local peak + soft count | 23/39/27 | 37.10% / 46.00% / 41.07% | 25/37/25 | 40.32% / 50.00% / 44.64% |
+| **Local peak + soft count (current research winner)** | 23/39/27 | 37.10% / 46.00% / 41.07% | 25/37/25 | 40.32% / 50.00% / 44.64% |
 | Independent + soft count | 18/26/32 | 40.91% / 36.00% / 38.30% | 20/24/30 | 45.45% / 40.00% / 42.55% |
 
 The leading decoders gain only two matches from the boundary allowance, so their

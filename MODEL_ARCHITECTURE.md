@@ -254,8 +254,9 @@ online only when localization, assignment, and side-separation quality agree. Th
 same cadence decoder search. Validation again selects orientation weight zero. Although
 raw-phone row AP improves from 43.40% to 45.47%, candidate-window exact F1 falls to
 24.10% and ±2-tolerant F1 falls to 40.96%; both v6 variants select the same 48 events.
-V6 is not promoted, has no production port, and v5 remains the best event-level research
-artifact. These event metrics are candidate-window agreement rather than exhaustive
+V6 is not promoted, has no production port, and v5 remains the strongest base
+appearance specialist; the later V5-state-based peak+soft-count cleanup is the current
+decoder winner. These event metrics are candidate-window agreement rather than exhaustive
 full-video accuracy; the 61-gap V5/V5-state/V6 proposal union is attached to stable
 event IDs and rendered as three aligned recording timelines in the development review
 UI. See
@@ -288,10 +289,12 @@ a soft count prior adds increasing logit cost only after six outputs and never i
 a hard cap. A separate 19-input head summarizes production rally/dead/serve context,
 excluding raw gap duration, and contributes soft log odds rather than eligibility.
 Local peaks transfer to raw-phone data, while the production-context validation gain
-does not: the selected peak+context variant cuts proposals 91→60 but leaves exact F1
-flat at 44.21%. The locked peak+soft-count diagnostic reaches 49.48% exact and 57.73%
-±2 F1 at 62 proposals, but cannot replace the validation winner. Neither is promoted
-or ported. See
+does not: the historically selected peak+context variant cuts proposals 91→60 but
+leaves exact F1 flat at 44.21%. After the later exhaustive review, the user designated
+the locked peak+soft-count mechanism as the current research winner. It uses adjacent
+gap suppression plus a `0.25` post-six logit penalty, has no production-context weight,
+and reaches 44.64% end-to-end pooled F1 with 62 proposals. The historical artifact is
+not mutated, and the working winner is neither promoted nor ported. See
 [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
 
 The later continuous full-video review exposes a larger architectural bottleneck. Only
@@ -299,8 +302,9 @@ The later continuous full-video review exposes a larger architectural bottleneck
 four-second boundary allowance. No decoder over the existing gap stream can exceed 66%
 end-to-end recall on this scope. The no-cadence head recovers 28 events; its remaining
 22 misses split into 17 upstream candidate misses and five decoder misses inside the
-available universe. A successor therefore needs candidate generation independent of
-the production rally intervals, not only another classifier or cadence rule. See
+available universe. Local peak plus soft count is the current baseline for that
+successor, but candidate generation still needs to become independent of the production
+rally intervals; decoder cleanup alone cannot recover those 17 events. See
 [`side-switch-full-video-marker-audit-2026-08-21.md`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
 
 ## Production inference and export flow
