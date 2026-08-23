@@ -369,6 +369,13 @@ seven false event proposals at unchanged recall, and nested selection also regre
 so the pairwise term is rejected. See
 [`side-switch-pairwise-ranking-2026-08-23.md`](docs/research/side-switch-pairwise-ranking-2026-08-23.md).
 
+The recording-reliability follow-up adds a ridge-predicted threshold-logit offset from
+13 per-video quality and score-distribution summaries. It is nested by recording, but
+only ten targets train each outer head and the available artifact lacks direct blur.
+Every outer selector keeps zero offset; fixed nonzero heads trade one TP for at least
+six FP. The layer is rejected. See
+[`side-switch-recording-reliability-2026-08-23.md`](docs/research/side-switch-recording-reliability-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

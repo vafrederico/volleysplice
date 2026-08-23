@@ -5,6 +5,9 @@
 > direction was rejected. See the
 > [promotion](./side-switch-hard-negative-winner-promotion-2026-08-23.md) and
 > [pairwise decision](./side-switch-pairwise-ranking-2026-08-23.md).
+> The subsequent recording-reliability head was also rejected after every outer fold
+> selected zero offset; see the
+> [reliability decision](./side-switch-recording-reliability-2026-08-23.md).
 
 ## Decision
 

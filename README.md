@@ -176,6 +176,11 @@ mining, and decoder fixed. Its weakest weight slightly raises row AP but adds se
 without another TP (56.86%→53.21% F1); nested selection reaches 54.72%. The pairwise
 loss is rejected and the research-winner pointer remains unchanged. See the
 [`pairwise ranking decision`](docs/research/side-switch-pairwise-ranking-2026-08-23.md).
+A recording-reliability ridge head then predicts per-video threshold offsets from
+quality and score summaries. Nested selection rejects every nonzero offset; the best
+fixed head gains one TP but adds six FP (56.86%→55.05% F1). Direct blur is unavailable
+in the retained artifact, and the winner remains unchanged. See the
+[`recording-reliability decision`](docs/research/side-switch-recording-reliability-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

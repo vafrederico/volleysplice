@@ -863,6 +863,18 @@ control is reproduced exactly; every nonzero pairwise setting regresses event F1
 the objective is rejected without a runtime port. See the
 [pairwise decision](../docs/research/side-switch-pairwise-ranking-2026-08-23.md).
 
+The recording-level reliability experiment predicts a threshold-logit offset from
+label-free video summaries:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-recording-reliability.py
+```
+
+Nested recording selection retains zero offset in every fold, so the head is rejected.
+See the
+[recording-reliability decision](../docs/research/side-switch-recording-reliability-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
