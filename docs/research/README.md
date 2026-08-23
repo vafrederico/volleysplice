@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch full-trace candidate union — 2026-08-23](./side-switch-candidate-union-2026-08-23.md) — all 624 production boundaries plus 80 strong internal dead-state peaks, stable LOO selection, 66%→92% candidate recall, zero new inference/decode, half-universe frozen-feature gap, and continued non-promotion.
 - [Side-switch same-side continuity verifier — 2026-08-23](./side-switch-continuity-verifier-2026-08-23.md) — LOO conservative continuity-tail veto, 5 FP removed with all 25 TP retained, hard opposite-gate/add-only/quality rejections, immutable forward research threshold, and continued non-promotion.
 - [Side-switch parity feasibility — 2026-08-23](./side-switch-parity-feasibility-2026-08-23.md) — rally-level state extraction on the exhaustive 50-event scope, 100% truth-state bracketing oracle, strongly asymmetric V5 state emissions, failed persistence decoders, and retention of parity only as a candidate architecture pending a better state representation.
 - [Side-switch rare-event improvement plan — 2026-08-23](./side-switch-rare-event-improvement-plan-2026-08-23.md) — sourced execution plan for dense side-parity prediction, same-side verification, full-video candidate recovery, imbalance-aware ranking, recording calibration, and soft non-reanchored temporal priors.

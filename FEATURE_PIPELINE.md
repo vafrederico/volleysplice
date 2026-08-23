@@ -361,6 +361,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch V5 peak/count/context cleanup | Frozen no-cadence V5-state probabilities, adjacent/time local-peak NMS, soft post-six count penalties, and a 19-input production rally/dead/serve context head that excludes raw gap duration | Mixed research result, not production. Local peaks transfer and the locked local-peak+soft-count ablation reaches 49.48% exact/57.73% ±2 F1 at 62 proposals. Soft production context wins historical validation but fails to improve retrospective exact F1. No hard gate, suppression input, review UI, or runtime port. See [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md). |
 | Side-switch V5 rally-parity diagnostic | One score-zero-anchored orientation coordinate and one support/separation quality value per production-detected rally, with full-marker parity labels and ±4-second transition masks | Candidate architecture retained, current emission rejected. Truth parity between stable rallies brackets 50/50 reviewed events, but the V5 sign has 95.93% state-zero recall versus 21.32% state-one recall; persistence-2 reaches only 5 TP/13 FP/45 FN. No fitted model or runtime port. See [`side-switch-parity-feasibility-2026-08-23.md`](docs/research/side-switch-parity-feasibility-2026-08-23.md). |
 | Side-switch CONTINUITY1 verifier | Recording-median/MAD normalized V5 `playerSwapMargin`, applied only to the current local-peak+soft-count proposals as a strong same-side continuity veto | Promising research layer, not production/current winner. LOO removes 5 FP with all 25 TP retained, raising precision/F1 40.32%/44.64%→43.86%/46.73%. Hard same-cheaper gating, quality abstention, verifier-alone, and add-only modes are rejected. See [`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md). |
+| Side-switch full-trace candidate union | Every adjacent production rally boundary plus score-ranked `deadState >= 0.98` peaks inside ranges, with four-second edge exclusion, 14-second NMS, and two-second peak windows | Retained upstream research generator, not a model/final decoder. Adds 80 internal peaks to 624 boundaries and raises ±4 candidate recall 66%→92% with identical LOO selection and no new inference/decode. Only 352/704 windows have frozen V5 features. See [`side-switch-candidate-union-2026-08-23.md`](docs/research/side-switch-candidate-union-2026-08-23.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -479,6 +480,24 @@ training/evaluation:
 [`train-side-switch-continuity-verifier.py`](scripts/train-side-switch-continuity-verifier.py),
 and decision:
 [`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md).
+
+### Side-switch full-trace candidate union
+
+The full-trace union operates after the existing production heads. It retains all gaps
+between consecutive decoded rally ranges, then searches within each range for extremely
+strong dead-state peaks. The selected opened-development configuration excludes four
+seconds at each range edge, requires `deadState >= 0.98`, applies score-ranked 14-second
+NMS per range, and emits a two-second candidate around each peak. It uses the existing
+4 Hz probability trace and adds no feature/model inference or video decode.
+
+This is an internal high-recall universe, not an output feature matrix or UI proposal
+rail. Only exact legacy gap windows have `PLAYER-ORIENTATION22+STATE10`; the 272 new
+boundaries and 80 internal peaks need newly extracted appearance/state features before
+the frozen ranker can score them. Exact implementation:
+[`side_switch_candidate_union.py`](analysis/side_switch_candidate_union.py), evaluator:
+[`evaluate-side-switch-candidate-union.py`](scripts/evaluate-side-switch-candidate-union.py),
+and decision:
+[`side-switch-candidate-union-2026-08-23.md`](docs/research/side-switch-candidate-union-2026-08-23.md).
 
 ### Side-switch v6 detected-player adaptive profile
 

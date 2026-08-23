@@ -129,6 +129,13 @@ true proposal, improving pooled F1 from 44.64% to 46.73%. A hard same-versus-swa
 gate and add-only candidate use both fail, so the frozen verifier remains a research
 layer for the next union experiment rather than a new current winner. See the
 [`continuity verifier decision`](docs/research/side-switch-continuity-verifier-2026-08-23.md).
+The full-trace candidate follow-up then expands the internal universe from 352 V5 gaps
+to all 624 production boundaries plus 80 strong dead-state peaks inside overlong rally
+ranges. Candidate recall rises from 66% to 92% with the same configuration selected in
+every held-out fold and no new decode/inference. Only 352/704 windows currently have
+valid V5 features, so final proposals stay unchanged pending expanded feature
+extraction. See the
+[`candidate-union decision`](docs/research/side-switch-candidate-union-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

@@ -149,6 +149,13 @@ state recall and 5 TP/13 FP/45 FN at persistence two. The rally-level feature an
 artifact lineage are registered in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and the
 [decision record](docs/research/side-switch-parity-feasibility-2026-08-23.md).
 
+The full-trace side-switch candidate union also has no trained-model row. It is a fixed
+generator over existing production ranges/dead-state probabilities, not a learned head
+or a final decoder. Its selected development configuration, 92% candidate recall, and
+352-window downstream feature gap are tracked in
+[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and the
+[candidate-union decision](docs/research/side-switch-candidate-union-2026-08-23.md).
+
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are
 `dead-state-transition-audio-normalized-v3-legacy-only-final`,
