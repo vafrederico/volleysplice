@@ -362,6 +362,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch V5 rally-parity diagnostic | One score-zero-anchored orientation coordinate and one support/separation quality value per production-detected rally, with full-marker parity labels and ±4-second transition masks | Candidate architecture retained, current emission rejected. Truth parity between stable rallies brackets 50/50 reviewed events, but the V5 sign has 95.93% state-zero recall versus 21.32% state-one recall; persistence-2 reaches only 5 TP/13 FP/45 FN. No fitted model or runtime port. See [`side-switch-parity-feasibility-2026-08-23.md`](docs/research/side-switch-parity-feasibility-2026-08-23.md). |
 | Side-switch CONTINUITY1 verifier | Recording-median/MAD normalized V5 `playerSwapMargin`, applied only to the current local-peak+soft-count proposals as a strong same-side continuity veto | Promising research layer, not production/current winner. LOO removes 5 FP with all 25 TP retained, raising precision/F1 40.32%/44.64%→43.86%/46.73%. Hard same-cheaper gating, quality abstention, verifier-alone, and add-only modes are rejected. See [`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md). |
 | Side-switch full-trace candidate union | Every adjacent production rally boundary plus score-ranked `deadState >= 0.98` peaks inside ranges, with four-second edge exclusion, 14-second NMS, and two-second peak windows | Retained upstream research generator, not a model/final decoder. Adds 80 internal peaks to 624 boundaries and raises ±4 candidate recall 66%→92% with identical LOO selection and no new inference/decode. Only 352/704 windows have frozen V5 features. See [`side-switch-candidate-union-2026-08-23.md`](docs/research/side-switch-candidate-union-2026-08-23.md). |
+| Side-switch FULL-UNION-V5-STATE42 | `PLAYER-ORIENTATION22+PRODUCTION-STATE20` for all 704 full-union candidates; whole-rally boundary summaries and fixed `[t-4,t-1]`/`[t+1,t+4]` internal flanks, seven 256×144 frames per window | Retained research, not production. Reproduces all 42 values for all 352 legacy rows exactly. The 34-input union ranker uses the V5+STATE10 primary subset plus candidate kind/score; nested-LOO reaches 50.94% ±4 F1, but strict F1 regresses and internal-peak transfer is weak. No browser/Android port. See [`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -490,14 +491,24 @@ seconds at each range edge, requires `deadState >= 0.98`, applies score-ranked 1
 NMS per range, and emits a two-second candidate around each peak. It uses the existing
 4 Hz probability trace and adds no feature/model inference or video decode.
 
-This is an internal high-recall universe, not an output feature matrix or UI proposal
-rail. Only exact legacy gap windows have `PLAYER-ORIENTATION22+STATE10`; the 272 new
-boundaries and 80 internal peaks need newly extracted appearance/state features before
-the frozen ranker can score them. Exact implementation:
+This is an internal high-recall universe, not an output proposal rail. The follow-up
+`FULL-UNION-V5-STATE42` artifact now makes all 704 candidates scoreable. Boundaries use
+the frozen whole-rally seven-frame contract. Internal candidates compare fixed
+three-second flanks `[t-4,t-1]` and `[t+1,t+4]`, each with seven 256×144 frames. The
+generator's four-second edge exclusion keeps both flanks inside the containing range.
+All 352 legacy rows reproduce all 42 feature values exactly.
+
+The research ranker consumes either the existing 32-input V5+STATE10 primary view or
+that view plus candidate kind and generator score. Its nested-LOO decoder uses no
+cadence or re-anchoring. Exact candidate implementation:
 [`side_switch_candidate_union.py`](analysis/side_switch_candidate_union.py), evaluator:
 [`evaluate-side-switch-candidate-union.py`](scripts/evaluate-side-switch-candidate-union.py),
-and decision:
+and initial decision:
 [`side-switch-candidate-union-2026-08-23.md`](docs/research/side-switch-candidate-union-2026-08-23.md).
+Expanded extraction/ranking:
+[`side_switch_full_union_features.py`](analysis/side_switch_full_union_features.py),
+[`side_switch_full_union_ranker.py`](analysis/side_switch_full_union_ranker.py), and
+[`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
 
 ### Side-switch v6 detected-player adaptive profile
 

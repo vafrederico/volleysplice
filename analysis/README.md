@@ -788,6 +788,23 @@ not improve retrospective exact F1, so it is not a gate or promoted cleanup laye
 browser/Android port or review timeline is added. See the
 [peak-cleanup decision record](../docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
 
+The full-union follow-up first evaluates the fixed production-boundary/internal-peak
+candidate generator, then extracts V5+production-state features for every candidate and
+fits a nested recording-held-out class-balanced ranker. Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/evaluate-side-switch-candidate-union.py
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-full-union-features.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-full-union-ranker.py
+```
+
+The extractor refuses to publish unless all 352 legacy rows reproduce all 42 features
+within `1e-8`; the completed artifact has maximum difference zero. The nested ranker
+reaches 50.94% ±4-second end-to-end F1 with 56 proposals, but strict timing regresses,
+internal peaks remain weak, and the expanded continuity veto is rejected. The model is
+research-only and has no browser/Android port. See the
+[full-union decision record](../docs/research/side-switch-full-union-ranker-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is

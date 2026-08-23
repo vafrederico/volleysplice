@@ -63,6 +63,7 @@ a model study.
 | `PLAYER-ORIENTATION22` | 22 | Six v4 carry-forward scalars plus 16 motion-component player identity, proposal support, and quality inputs for side-switch v5 |
 | `DETECTED-ADAPTIVE29` | 29 | Six v4 carry-forward scalars, 20 quantized-person torso identity/localization inputs, and three adaptive whole-set team-orientation inputs for side-switch v6 |
 | `PRODUCTION-STATE20` | 20 | Ten rally/dead-state/agreement/gap inputs plus ten serve-anchor/support inputs reduced from the two shipped production bundles; side-switch add-on, not part of F104 |
+| `FULL-UNION-V5-STATE42` | 42 | V5 PLAYER-ORIENTATION22 plus PRODUCTION-STATE20 for all 704 full-union candidates; the trained union head selects a 34-input subset |
 | `PRODUCTION-CONTEXT19` | 19 | Nine rally/dead-state/agreement inputs plus all ten serve-anchor/support inputs from the shipped production bundles; excludes raw gap duration and suppression |
 | `PLAYER-ORIENTATION22+STATE10` | 32 | Validation-selected V5 production-state view: frozen V5 appearance plus the ten state/gating inputs; suppression excluded |
 | `V5-RALLY-PARITY2` | 2 | Diagnostic per-rally V5 orientation coordinate and quality; no learned head, production feature signature, or promotion |
@@ -142,6 +143,7 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-v5-peak-cleanup-v1` | Frozen no-cadence V5-state head plus PRODUCTION-CONTEXT19 auxiliary head and cadence-free peak/count decoder | Compares eight locked combinations of adjacent/time NMS, a soft post-six logit penalty, and soft production-context log odds. There is no cadence, re-anchoring, hard count cap, production hard gate, or suppression input. Historical validation selects adjacent-gap peaks plus context weight 0.25. | **Current research winner:** locked `local-peak-soft-count`, selected by user after the exhaustive 50-event audit. It has 44.64% end-to-end pooled F1, 25 TP/37 FP/25 FN, and 62 proposals (5.64/video) under ±4-second boundary matching. The historical validation-selected context output remains immutable provenance. Research-only; no review UI/runtime port or automatic promotion. |
 | `side-switch-v6-production-state-v1` | Side-switch gap, validation-selected serve-grounded DETECTED-ADAPTIVE29+PRODUCTION-STATE20 | Same production-state/serve-grounding ablation applied to V6; all eight candidates tie on validation exact F1 and AP selects grounded+combined. | Rejected. Exact F1 falls 24.10%→17.91%, ±2 F1 40.96%→38.81%, and row AP 45.47%→36.23%; frozen V6 remains unchanged. |
 | `side-switch-continuity-verifier-v1` | Current-winner proposal veto, CONTINUITY1; threshold fit on 11 opened development videos after LOO evaluation | Compared with `side-switch-v5-peak-cleanup-v1/local-peak-soft-count`. Recording-normalizes the existing player same-minus-swap cost and vetoes only its strong-continuity tail under a 90% fit-TP retention guardrail. | Promising research layer, not a new current winner or production model. LOO preserves 25 TP, removes 5 FP, and improves pooled precision/F1 40.32%/44.64%→43.86%/46.73%. A raw same-cheaper hard gate collapses recall to 14%; add-only and quality variants are rejected. |
+| `side-switch-full-union-ranker-v1` | Side-switch event, FULL-UNION-V5-STATE42 artifact; class-balanced 32/34-input linear views; nested recording LOO over 11 opened-development videos | Expands scoring from 352 reviewed gaps to all 704 union candidates. Inner grouped LOO selects feature view, L2, threshold, adjacent/time suppression, and soft count separately inside each outer fold. Final all-development model selects the 34-input union-native view, L2 0.1, adjacent suppression, and a 0.5 post-six logit penalty. | Strongest nested-development contender, not production and not an automatic current-winner replacement. At ±4 seconds it reaches 27 TP/29 FP/23 FN, 48.21% precision, 54.00% recall, and 50.94% F1 versus the current winner's 44.64%. Strict F1 is 39.62%, feature-view selection is 6/5 across folds, and the expanded continuity veto is rejected. |
 
 The `V5-RALLY-PARITY2` feasibility experiment does not appear as a trained-model row:
 it fits no head. Its fixed sign/persistence decoder is rejected after 21.32% swapped
@@ -149,12 +151,13 @@ state recall and 5 TP/13 FP/45 FN at persistence two. The rally-level feature an
 artifact lineage are registered in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and the
 [decision record](docs/research/side-switch-parity-feasibility-2026-08-23.md).
 
-The full-trace side-switch candidate union also has no trained-model row. It is a fixed
-generator over existing production ranges/dead-state probabilities, not a learned head
-or a final decoder. Its selected development configuration, 92% candidate recall, and
-352-window downstream feature gap are tracked in
+The full-trace side-switch candidate union is a fixed generator over existing production
+ranges/dead-state probabilities, not a learned head. Its selected development
+configuration and 92% candidate recall are tracked in
 [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and the
 [candidate-union decision](docs/research/side-switch-candidate-union-2026-08-23.md).
+The downstream `side-switch-full-union-ranker-v1` row records the separately trained
+ranker now that every union window has score-compatible features.
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are

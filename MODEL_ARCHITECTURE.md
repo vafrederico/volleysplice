@@ -307,6 +307,25 @@ successor, but candidate generation still needs to become independent of the pro
 rally intervals; decoder cleanup alone cannot recover those 17 events. See
 [`side-switch-full-video-marker-audit-2026-08-21.md`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
 
+The full-trace successor broadens the internal universe to every adjacent production
+range boundary plus strong dead-state peaks inside overlong ranges. Its selected fixed
+generator yields 624 boundaries and 80 internal peaks, covering 46/50 markers at the
+declared four-second allowance. Boundaries reuse whole-rally V5 summaries. An internal
+candidate at `t` compares fixed three-second flanks `[t-4,t-1]` and `[t+1,t+4]` inside
+the same range. Replaying the two shipped bundles adds the existing state inputs; all
+42 stored values reproduce exactly on the 352 legacy rows.
+
+`side-switch-full-union-ranker-v1` compares class-balanced 32-input V5+STATE10 and
+34-input union-native logistic heads. Nested recording LOO selects L2, threshold,
+local suppression, and soft count without using the outer video. The pooled held-out
+result reaches 50.94% F1 at the four-second allowance with 27 TP, 29 FP, 23 FN, and 56
+proposals, improving the current winner while remaining opened-development evidence.
+Its decoder uses adjacent-candidate suppression and usually a 0.5 post-six logit
+penalty; it has no cadence, re-anchoring, or hard cap. A refitted continuity veto
+regresses to 49.52% F1 and is rejected. No production graph or client runtime changes.
+See
+[`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

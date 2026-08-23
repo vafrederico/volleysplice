@@ -133,9 +133,16 @@ The full-trace candidate follow-up then expands the internal universe from 352 V
 to all 624 production boundaries plus 80 strong dead-state peaks inside overlong rally
 ranges. Candidate recall rises from 66% to 92% with the same configuration selected in
 every held-out fold and no new decode/inference. Only 352/704 windows currently have
-valid V5 features, so final proposals stay unchanged pending expanded feature
-extraction. See the
+valid frozen V5 features in that experiment. See the
 [`candidate-union decision`](docs/research/side-switch-candidate-union-2026-08-23.md).
+The next loop extracts V5+production-state features for every union candidate and
+reproduces all 42 legacy values exactly. A class-balanced nested-LOO ranker improves the
+current winner's ±4-second end-to-end result from 25 TP/37 FP/25 FN and 44.64% F1 to
+27 TP/29 FP/23 FN and 50.94% F1 at 56 proposals. Strict F1 does not improve, internal
+peaks remain weakly ranked, and an expanded-distribution continuity veto regresses, so
+the new head is retained as an on-device-compatible research contender without
+changing the current-winner pointer or production inference. See the
+[`full-union ranker decision`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
