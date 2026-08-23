@@ -100,7 +100,135 @@ The following documents are the maintained contracts:
 The repository root is an internal NAS-backed development application, not the public
 production client. It hosts the gold-label workstation, model/source comparison views,
 model-feedback import, suppression and side-switch review, on-device experiments, and
-the Python training/evaluation toolchain.
+the Python training/evaluation toolchain. The retained side-switch v2 specialist is a
+research/review-ranking artifact and is not part of either production client; its exact
+features and lineage are registered in
+[`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and [`MODELS.md`](MODELS.md). The implemented
+side-switch v3 cadence/low-resolution ranker and the v1 no-blur counterfactual both failed
+their promotion gates and are tracked there as research only; neither is a shipped model.
+The v4 multi-frame, court-normalized side-identity study improves on v3 but also remains
+research-only because its exact precision is still 16.22%.
+The v5 player-isolation study improves exact precision to 25.00%; persistent orientation
+was a validation-selected no-op, and v5 also remains research-only.
+The v6 quantized-person/adaptive-prototype study improves raw-phone row AP to 45.47% but
+regresses candidate-window exact F1 to 24.10%; it is not promoted and v5 remains the
+strongest base appearance specialist. The former decoder winner is the V5-state-based
+local-peak+soft-count cleanup described below; the current research winner is the
+full-union hard-negative model. The 61-gap V5/V5-state/V6 proposal union is
+available as three separate recording timelines in `/side-switch-review` because the
+earlier heuristic marker seeds are not exhaustive. That review page also exposes
+explicit/candidate/full-video human marker rails, a per-recording continuous-review
+flag, production model range labels, and the corrected production-editor/final-export
+timelines. New full-video markers are stored separately from the frozen candidate
+decision artifact.
+The completed 50-event continuous review now provides exhaustive raw-phone truth: only
+33/50 switches are covered by any modern candidate gap with four-second boundary
+allowance. No-cadence V5-state led the original comparable macro-recall ranking at
+56.36%, while local peak plus soft count led pooled F1 at 44.64%. A later full-union
+hard-negative model is now the user-designated research winner: it produces 52
+proposals with 29 TP/23 FP/21 FN and 56.86% pooled F1. It is not promoted to automatic
+inference. Its exact identity, per-video results, and source bindings are frozen in
+[`data/side-switch-current-research-winner-v1.json`](data/side-switch-current-research-winner-v1.json).
+See the
+[`winner promotion`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
+Its future browser feature path is now frozen separately in the
+[`production-port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md):
+22 V5 visual comparison values, ten existing production rally/dead-state reductions,
+and two candidate metadata values over the retained 624-boundary/80-internal-peak
+union. The contract excludes serve anchors, suppression, cadence, expanded internal
+candidates, and later rejected heads. It remains specified but unimplemented.
+The first rare-event follow-up preserves one V5 orientation observation per detected
+rally. Manual parity proves stable rally states can bracket all 50 switches, but the
+existing orientation sign recognizes only 21.32% of swapped-state observations and its
+persistence-2 decoder finds 5/50 events. The parity architecture is retained for a
+better emission; this diagnostic is not a model promotion. See the
+[`parity feasibility decision`](docs/research/side-switch-parity-feasibility-2026-08-23.md).
+The next follow-up uses extreme same-side continuity only as a conservative veto. In
+leave-one-recording-out evaluation it removes five false proposals without removing a
+true proposal, improving pooled F1 from 44.64% to 46.73%. A hard same-versus-swapped
+gate and add-only candidate use both fail, so the frozen verifier remains a research
+layer for the next union experiment rather than a new current winner. See the
+[`continuity verifier decision`](docs/research/side-switch-continuity-verifier-2026-08-23.md).
+The full-trace candidate follow-up then expands the internal universe from 352 V5 gaps
+to all 624 production boundaries plus 80 strong dead-state peaks inside overlong rally
+ranges. Candidate recall rises from 66% to 92% with the same configuration selected in
+every held-out fold and no new decode/inference. Only 352/704 windows currently have
+valid frozen V5 features in that experiment. See the
+[`candidate-union decision`](docs/research/side-switch-candidate-union-2026-08-23.md).
+The next loop extracts V5+production-state features for every union candidate and
+reproduces all 42 legacy values exactly. A class-balanced nested-LOO ranker improves the
+current winner's ±4-second end-to-end result from 25 TP/37 FP/25 FN and 44.64% F1 to
+27 TP/29 FP/23 FN and 50.94% F1 at 56 proposals. Strict F1 does not improve, internal
+peaks remain weakly ranked, and an expanded-distribution continuity veto regresses, so
+the new head is retained as an on-device-compatible research contender without
+changing the current-winner pointer or production inference. See the
+[`full-union ranker decision`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
+An imbalance/calibration loop then holds the full-union architecture fixed. Nested
+selection of natural, square-root-balanced, fully balanced, robust-logit, and percentile
+variants removes two false positives at unchanged recall, moving F1 from 50.94% to
+51.92%. Square-root weighting is retained as a candidate training objective; recording
+calibration is rejected. Training an otherwise identical no-switch head produces only
+the numerical complement of the switch score, so future negative modeling must use a
+distinct continuity or hard-negative target. See the
+[`imbalance/calibration decision`](docs/research/side-switch-imbalance-calibration-2026-08-23.md).
+A candidate-type penalty loop then tests whether weak internal dead-state peaks should
+receive a soft negative prior. Nested ±4 F1 improves from a matched 53.47% control to
+54.90%, but the penalty is zero in 6/11 folds and removes the control's only correct
+internal proposal. It is rejected as a general rule; the next loop should improve
+internal-candidate representation or localization instead. See the
+[`internal-peak penalty decision`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
+The next loop lowers the internal dead-state threshold and reaches 100% candidate
+coverage with 852 windows. Ranking regresses: nested ±4 F1 falls from 50.94% to 42.74%,
+and only one of 13 emitted internal proposals is correct. The 704-candidate union is
+retained; future internal candidates need better evidence or a separate head rather
+than a lower global threshold. See the
+[`expanded internal-candidate decision`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
+Recording-balanced hard-negative mining then improves the retained 704-candidate head
+without adding inference work. The nested selector removes one FP at unchanged recall
+(53.47%→54.00% F1), while the fixed 34-input top-2/2× candidate reaches 56.86% F1.
+By explicit user decision, that fixed variant is promoted to the current research
+winner, but it is not installed in production or either client. See the
+[`hard-negative mining decision`](docs/research/side-switch-hard-negative-mining-2026-08-23.md).
+A within-recording pairwise/AUC-surrogate follow-up keeps that winner's inputs, hard
+mining, and decoder fixed. Its weakest weight slightly raises row AP but adds seven FP
+without another TP (56.86%→53.21% F1); nested selection reaches 54.72%. The pairwise
+loss is rejected and the research-winner pointer remains unchanged. See the
+[`pairwise ranking decision`](docs/research/side-switch-pairwise-ranking-2026-08-23.md).
+A recording-reliability ridge head then predicts per-video threshold offsets from
+quality and score summaries. Nested selection rejects every nonzero offset; the best
+fixed head gains one TP but adds six FP (56.86%→55.05% F1). Direct blur is unavailable
+in the retained artifact, and the winner remains unchanged. See the
+[`recording-reliability decision`](docs/research/side-switch-recording-reliability-2026-08-23.md).
+Matched focal and effective-number objectives also fail. Focal marginally improves row
+AP but lowers event F1 to 53.85%; the best effective-number variant reaches 54.90%, and
+nested objective selection reaches 53.47%. Square-root BCE remains the winner. See the
+[`rare-event loss decision`](docs/research/side-switch-rare-event-losses-2026-08-23.md).
+A non-reanchored latent score prior then allows redo, normal, and missed-point
+transitions. Detected rally ordinal proves too different from point count: only 6/46
+positive candidates land on modulo seven. Exact cadence collapses and the best uncertain
+prior reaches 54.21% F1, so no cadence prior is retained. See the
+[`soft score-prior decision`](docs/research/side-switch-soft-score-prior-2026-08-23.md).
+Finally, a separate expanded internal-candidate head adds range, serve-anchor, peak,
+and transition geometry. It fails to add any held-out internal TP. A simpler
+boundary-only policy removes four FP and one TP, improving F1 56.86%→57.73% and strict
+F1 45.10%→47.42%; it is retained as an opened-development candidate, not promoted. See
+the [`internal-specialist decision`](docs/research/side-switch-internal-specialist-2026-08-23.md).
+The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
+raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
+accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
+gates fail, and suppression is excluded for target/data overlap.
+The controlled no-cadence V5-state refit confirms that the re-anchored seven-point path
+can cascade errors: exact recall rises 31.43%→80.00% and F1 30.14%→44.44%, retaining
+all cadence true positives, but proposals rise 38→91. It is tracked as a research-only
+decoder diagnostic; the next iteration needs appearance-local cluster suppression or a
+soft count prior before any on-device promotion.
+The follow-up confirmed adjacent-gap peak suppression as the stable cleanup: its locked
+raw-phone ablation raises exact F1 to 48.15%. Peak suppression plus a soft post-six
+penalty reaches 49.48% exact/57.73% ±2 candidate-conditioned F1 at 62 proposals and was
+the research winner after the exhaustive audit before being superseded by the
+full-union hard-negative model. A separate production rally/dead/serve context head wins
+historical validation but fails to improve retrospective exact F1, so production
+outputs remain soft features rather than eligibility gates.
 
 ### Setup
 
@@ -132,8 +260,9 @@ Use the printed LAN address. Important routes include:
 - `/model-feedback` — inspect production web/Android feedback bundles and optionally
   link their source video;
 - `/suppression-review` — visually audit learned suppression behavior;
-- `/side-switch-review` and `/serving-side-review` — review the current side/serve
-  diagnostics;
+- `/side-switch-review` — review side-switch proposals, place exhaustive full-video
+  switch markers, and compare them with the saved production editor timeline;
+- `/serving-side-review` — review the current serving-side diagnostics;
 - `/on-device`, `/on-device-batch`, `/audio-benchmark`, and `/video-benchmark` —
   internal parity and performance tools.
 

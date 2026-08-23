@@ -234,6 +234,244 @@ The specialist runner and policy are implemented in
 and
 [`android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java`](android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java).
 
+## Research-only side-switch specialist
+
+Side-switch classification is a separate candidate-marker pipeline and is not part of
+the production rally ensemble. `side-switch-specialist-v2` applies a class-balanced
+logistic head to 34 inputs: 17 adaptive near/far and derived appearance scalars, each
+paired with a missingness indicator. The extractor calibrates court depth without team
+labels, first across the full candidate sequence and then locally with shrinkage, so
+moderate zoom and camera-distance changes do not rely on one fixed pixel divider.
+
+The optional temporal stage is a Viterbi decoder over rally order. Its state carries
+near/far orientation parity and the previous switch position; candidate settings can
+penalize close switches, reward orientation-consistent toggles, or add a switch prior.
+Validation selected all of these settings as zero, so the frozen v2 decoder is an exact
+no-op over static threshold decisions. It is retained in the artifact and reported
+separately to preserve the negative decoder result.
+
+V2 improves same-scope v1 confirmation ranking, but its 20.45% precision is not suitable
+for automatic score tracking. It remains a research/review-ranking artifact. Indoor is
+fixed to no-switch and excluded from specialist selection and metrics. Exact features,
+lineage, and metrics are in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md),
+[`MODELS.md`](MODELS.md), and
+[`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md).
+
+V3 implements local opportunity ranking with a detector-free 12-input linear head over
+192×108 rally frames. Each recording is one set beginning at score zero; the decoder
+starts from a seven-point opportunity, searches margins ±1 through ±4, uses monotonic
+one-to-one assignment for overlapping ±4 windows, re-anchors after a selected switch,
+permits no selection, and caps the set at six opportunities. It failed source-held-out
+evaluation: selected exact-gap F1 is 7.59%, and the ±4 visual sensitivity is identical.
+The implementation and artifacts remain research-only; no TypeScript/Java port or
+production component was created. See
+[`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md).
+
+V4 keeps that cadence decoder fixed and replaces only visual representation. It samples
+seven 256×144 frames across each adjacent rally, calibrates net height from the first
+seven rallies, normalizes the net to a stable vertical coordinate, compensates camera
+translation, and compares broad/tight multi-frame side palettes. This improves
+raw-phone exact-gap F1 from 7.59% to 16.67%, but remains far below automatic-use
+requirements. It is research-only and has no TypeScript/Java port. See
+[`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md).
+
+V5 isolates up to six player-like motion components per frame and forms near/far team
+palettes from proposal-foot position. A whole-set decoder can compare every rally with
+team-side anchors pooled from the first three score-zero rallies and carry orientation
+parity across selected switches. Validation selected orientation weight zero, making the
+state path a no-op, while player isolation improved raw-phone exact F1 to 27.85% and row
+AP to 43.40%. Exact precision is still only 25.00%, so v5 remains research-only with no
+production port. See
+[`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md).
+
+V6 replaces those motion proposals with a pinned 3.48 MB block-int8 MediaPipe person
+localizer. Three frames per rally run through four overlapping ownership tiles; pose
+landmarks define torso palettes, and v4 net geometry maps hip positions to canonical
+near/far sides. Team palettes start from the first three score-zero rallies and update
+online only when localization, assignment, and side-separation quality agree. The full
+29-input classifier and a separately fitted 26-input fixed-prototype ablation share the
+same cadence decoder search. Validation again selects orientation weight zero. Although
+raw-phone row AP improves from 43.40% to 45.47%, candidate-window exact F1 falls to
+24.10% and ±2-tolerant F1 falls to 40.96%; both v6 variants select the same 48 events.
+V6 is not promoted, has no production port, and v5 remains the strongest base
+appearance specialist; the later V5-state-based peak+soft-count cleanup is the current
+decoder winner. These event metrics are candidate-window agreement rather than exhaustive
+full-video accuracy; the 61-gap V5/V5-state/V6 proposal union is attached to stable
+event IDs and rendered as three aligned recording timelines in the development review
+UI. See
+[`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md).
+
+The production-state follow-up reuses both shipped bundles' rally, serve, dead-state,
+decoded-range, and agreement outputs after ordinary on-device analysis. A 20-scalar
+bank can be appended to V5/V6, and an alternate appearance path samples around the
+production serve anchor. Validation selects original V5 appearance plus ten soft
+state/gating inputs, improving retrospective exact F1 to 30.14% while remaining far
+below automatic-use quality. Hard agreement/serve gates and every V6 variant are
+rejected. The suppression head is quarantined because it was trained with explicit
+side-switch positives and overlaps all experiment roles. The selected V5-state outputs
+are reviewable, but no shipped inference graph is changed. See
+[`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md).
+
+The no-cadence follow-up holds those frozen V5/V5-state rows fixed, refits both linear
+heads with exact learned-parameter parity, and replaces the re-anchored seven-point
+path with independent thresholding of every reviewed gap. The validation-selected
+V5-state variant retains all 11 cadence exact true positives and recovers 17 more,
+raising retrospective exact recall/F1 from 31.43%/30.14% to 80.00%/44.44%. It also
+raises proposals from 38 to 91 because it deliberately has no spacing, cluster
+suppression, or count cap. This isolates a real cadence failure but is not a production
+decoder; no shipped graph changes. See
+[`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md).
+
+The cleanup follow-up keeps that frozen probability stream and compares eight
+cadence-free post-decoders. Score-ranked adjacent/time NMS removes local duplicates;
+a soft count prior adds increasing logit cost only after six outputs and never imposes
+a hard cap. A separate 19-input head summarizes production rally/dead/serve context,
+excluding raw gap duration, and contributes soft log odds rather than eligibility.
+Local peaks transfer to raw-phone data, while the production-context validation gain
+does not: the historically selected peak+context variant cuts proposals 91→60 but
+leaves exact F1 flat at 44.21%. After the later exhaustive review, the user designated
+the locked peak+soft-count mechanism as the research winner at that time. It uses
+adjacent gap suppression plus a `0.25` post-six logit penalty, has no production-context
+weight, and reaches 44.64% end-to-end pooled F1 with 62 proposals. It was superseded by the
+full-union hard-negative winner on 2026-08-23; its historical artifact remains frozen.
+See
+[`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
+
+The later continuous full-video review exposes a larger architectural bottleneck. Only
+33 of 50 confirmed raw-phone switches lie inside any modern candidate gap even after a
+four-second boundary allowance. No decoder over the existing gap stream can exceed 66%
+end-to-end recall on this scope. The no-cadence head recovers 28 events; its remaining
+22 misses split into 17 upstream candidate misses and five decoder misses inside the
+available universe. Local peak plus soft count was the baseline for that successor,
+but candidate generation still needs to become independent of the production
+rally intervals; decoder cleanup alone cannot recover those 17 events. See
+[`side-switch-full-video-marker-audit-2026-08-21.md`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
+
+The full-trace successor broadens the internal universe to every adjacent production
+range boundary plus strong dead-state peaks inside overlong ranges. Its selected fixed
+generator yields 624 boundaries and 80 internal peaks, covering 46/50 markers at the
+declared four-second allowance. Boundaries reuse whole-rally V5 summaries. An internal
+candidate at `t` compares fixed three-second flanks `[t-4,t-1]` and `[t+1,t+4]` inside
+the same range. Replaying the two shipped bundles adds the existing state inputs; all
+42 stored values reproduce exactly on the 352 legacy rows.
+
+`side-switch-full-union-ranker-v1` compares class-balanced 32-input V5+STATE10 and
+34-input union-native logistic heads. Nested recording LOO selects L2, threshold,
+local suppression, and soft count without using the outer video. The pooled held-out
+result reaches 50.94% F1 at the four-second allowance with 27 TP, 29 FP, 23 FN, and 56
+proposals, improving the current winner while remaining opened-development evidence.
+Its decoder uses adjacent-candidate suppression and usually a 0.5 post-six logit
+penalty; it has no cadence, re-anchoring, or hard cap. A refitted continuity veto
+regresses to 49.52% F1 and is rejected. No production graph or client runtime changes.
+See
+[`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
+
+The imbalance follow-up holds that candidate/features/decoder path fixed and varies
+only the training prior and label-free recording score normalization. Square-root class
+balancing is the useful direction: nested selection removes two false positives at
+unchanged true positives, moving F1 from 50.94% to 51.92%. Robust-logit and percentile
+recording transforms are rejected. A symmetric head trained to predict no-switch is
+numerically just `1 - P(switch)` and adds no independent evidence. The architecture
+therefore remains one binary head; future negative modeling needs a genuinely distinct
+continuity/hard-negative target. See
+[`side-switch-imbalance-calibration-2026-08-23.md`](docs/research/side-switch-imbalance-calibration-2026-08-23.md).
+
+The next diagnostic keeps square-root balancing and the same fixed decoder, then applies
+a selected soft logit penalty only to internal dead-state-peak candidates. Nested ±4
+F1 rises from a matched 53.47% zero-penalty control to 54.90%, but six of eleven folds
+select no penalty and the penalized path suppresses the control's only correct internal
+proposal. The offset is therefore rejected as a general architectural rule. Candidate
+kind remains available as a feature; no hard type gate or runtime branch is added. See
+[`side-switch-internal-peak-penalty-2026-08-23.md`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
+
+The expanded-candidate diagnostic lowers the internal dead-state threshold from 0.98
+to 0.80 and peak separation from 14 to 10 seconds. This raises the internal universe
+from 80 to 228 and opened-scope candidate recall from 92% to 100%, but the unchanged
+32/34-input nested ranker falls to 42.74% ±4 F1. It selects 13 internal proposals with
+one TP. The 704-candidate architecture is therefore retained; the next internal path
+needs a distinct representation or head, not a lower global candidate threshold. See
+[`side-switch-expanded-internal-candidates-2026-08-23.md`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
+
+The hard-negative follow-up leaves the retained 704-candidate inference graph
+unchanged. During training it fits an initial square-root-weighted head, upweights the
+highest-scoring labeled negatives independently per recording, and refits. Nested
+variant selection reaches 54.00% ±4 F1; the fixed union34/top-2/2× variant reaches
+56.86% and is now the explicit research winner. The exported artifact is still one
+34-input linear head, so mining adds no on-device operation. It remains unported and is
+not production. See
+[`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
+
+### Selected side-switch research-winner execution contract
+
+The selected graph is fixed independently of later rejected experiments:
+
+```text
+existing production range union + 4 Hz rally/dead-state traces
+                              |
+       624 adjacent boundaries + deadState>=0.98 internal peaks
+                              |
+        seven 256x144 frames in each of two candidate windows
+                              |
+          V5 visual22 + production state10 + candidate metadata2
+                              |
+        stored impute/mean/scale -> 34-input logistic classifier
+                              |
+ threshold 0.3988497395 -> candidate-index NMS -> post-six logit cost
+                              |
+                  research side-switch proposals
+```
+
+Adjacent boundaries compare the entire decoded range before and after the gap. Internal
+peaks compare `[t-4,t-1]` with `[t+1,t+4]` inside the containing range. The visual path
+uses recording-level net calibration, court normalization, frame translation alignment,
+motion-weighted HSV side palettes, and motion-component player proposals. The ten state
+inputs reduce both production bundles' range support plus rally/dead scores over the
+candidate gap. Candidate kind and generator score complete the ordered vector.
+
+The decoder sorts by score, keeps candidate ordinals at least two apart, gives six
+outputs no count cost, then subtracts `0.5` logits per additional selected output. It
+has no cadence, no re-anchoring, no time-distance NMS, and no hard cap. Serve-anchor
+features, suppression, recording reliability, the expanded union, internal specialist,
+and boundary-only ablation are not part of this winner.
+
+The exact browser implementation contract is
+[`side-switch-current-research-winner-production-port-v1.json`](data/side-switch-current-research-winner-production-port-v1.json).
+Until its parity and independent-validation gates pass, this graph is not connected to
+the production inference/export flow below.
+
+The pairwise follow-up preserves that entire inference graph and adds only a training
+loss over positive-minus-negative logits within each fit recording. Equal total pair
+weight per recording prevents long games from dominating. The best row-AP variant adds
+seven false event proposals at unchanged recall, and nested selection also regresses,
+so the pairwise term is rejected. See
+[`side-switch-pairwise-ranking-2026-08-23.md`](docs/research/side-switch-pairwise-ranking-2026-08-23.md).
+
+The recording-reliability follow-up adds a ridge-predicted threshold-logit offset from
+13 per-video quality and score-distribution summaries. It is nested by recording, but
+only ten targets train each outer head and the available artifact lacks direct blur.
+Every outer selector keeps zero offset; fixed nonzero heads trade one TP for at least
+six FP. The layer is rejected. See
+[`side-switch-recording-reliability-2026-08-23.md`](docs/research/side-switch-recording-reliability-2026-08-23.md).
+
+The next training-only comparison swaps square-root BCE for exact focal loss or
+effective-number class weights while preserving hard-negative mining. Neither improves
+outer-held event F1, and the nested objective selector also regresses. The promoted
+linear head remains unchanged. See
+[`side-switch-rare-event-losses-2026-08-23.md`](docs/research/side-switch-rare-event-losses-2026-08-23.md).
+
+The soft cadence follow-up propagates a latent count from set start with `+0/+1/+2`
+redo/point/missed-point transitions and never re-anchors on predictions. Detected rally
+ordinal is not a usable point counter, and both exact and uncertain hazards regress.
+The architecture remains cadence-free. See
+[`side-switch-soft-score-prior-2026-08-23.md`](docs/research/side-switch-soft-score-prior-2026-08-23.md).
+
+The internal-specialist follow-up splits retained boundaries from 228 expanded internal
+peaks and gives the latter a distinct transition/range/serve/peak head. Sparse support
+prevents transfer: no held-out internal TP is added. Dropping the internal branch
+entirely removes four FP and one TP and is retained as a small, unpromoted precision
+candidate. See
+[`side-switch-internal-specialist-2026-08-23.md`](docs/research/side-switch-internal-specialist-2026-08-23.md).
+
 ## Production-browser serving-side model and hybrid gate
 
 `serving-side-fixed-flight-v3` replaces the earlier 38-input v1 research baseline in the

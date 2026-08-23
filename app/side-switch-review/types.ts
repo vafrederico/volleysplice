@@ -124,6 +124,47 @@ export type SideSwitchRecording = {
   videoFilename: string;
   sourceType?: string;
   targetStatus?: string;
+  timelineLoadError?: string;
+  feedbackProducer: "android" | "production-web" | null;
+  continuousVideoReviewed: boolean;
+  gameWindow: { start: number; end: number } | null;
+  sourceSideSwitches: Array<{ time: number; notes?: string }>;
+  productionModelRanges: Array<{
+    id: string;
+    start: number;
+    end: number;
+    confidence: number | null;
+    agreement?: string;
+  }>;
+  productionEditorRanges: Array<{
+    id: string;
+    coreStart: number;
+    coreEnd: number;
+    keepStart: number;
+    keepEnd: number;
+    confidence: number | null;
+    included: boolean;
+    origin?: string;
+    agreement?: string;
+  }>;
+  productionIgnoredIntervals: Array<{
+    id: string;
+    start: number;
+    end: number;
+    reason?: string;
+  }>;
+  productionFinalIntervals: Array<{
+    start: number;
+    end: number;
+    cutIds: string[];
+  }>;
 };
 
 export type ReviewDecision = "switch" | "no-switch" | "unclear";
+
+export type FullVideoSideSwitchMarker = {
+  id: string;
+  recordingId: string;
+  time: number;
+  createdAt: string;
+};

@@ -473,6 +473,31 @@ Research-only columns must not be added to the production schema or model bundle
 their experiment passes the declared development gate, their production execution cost
 is accepted, and browser/Android parity is implemented.
 
+### Selected side-switch winner port profile
+
+The current side-switch research winner is fixed to
+`FULL-UNION-V5-STATE42/union34`; it does **not** consume all 42 stored values. Its exact
+runtime vector is 34 ordered inputs:
+
+| Runtime group | Inputs | Production action |
+| --- | ---: | --- |
+| V5 visual comparison | 22 | Add a sparse 256×144 candidate-window extractor: recording-level net normalization, seven frames per window, phase alignment, broad/tight HSV palettes, and motion-component player proposals. |
+| Production state | 10 | Reuse both shipped bundles' range, rally, and dead-state traces to compute support, adjacent-rally peak, gap-live, gap-score, and gap-duration reductions. |
+| Candidate metadata | 2 | Emit boundary/internal kind and the internal dead-state generator score; boundary score is zero. |
+
+Candidate generation also belongs to the port: every adjacent production range boundary
+plus `deadState >= 0.98` peaks with four-second range-edge exclusion, 14-second
+within-range NMS, and one-second proposal half-width. The selected head does not use
+serve-anchor fields, suppression scores, cadence, reliability offsets, the expanded
+0.80-threshold union, or the internal-specialist geometry.
+
+The exact names/order, comparison windows, classifier preprocessing, decoder, and parity
+gates are frozen in the
+[`machine-readable port contract`](data/side-switch-current-research-winner-production-port-v1.json)
+and the
+[`production-port decision record`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md).
+This is a specified research port, not an extension of the deployed F104 schema.
+
 | Feature or representation | Definition/source | Status and decision |
 | --- | --- | --- |
 | Targeted v2 pruning | Removes selected contextual v2 columns while retaining helpful exceptions; the artifact still carries the 450-column signature with zeroed weights | Rejected; live-recall guardrail failed. See [`audiovisual-feature-ablation-2026-08-11.md`](docs/research/audiovisual-feature-ablation-2026-08-11.md). |
@@ -486,14 +511,263 @@ is accepted, and browser/Android parity is implemented.
 | DINOv2 temporal representation | Pinned DINOv2 ViT-S/14 `[T,10,384]` pooled tokens at 4 Hz plus audiovisual boundary heads | Retained research; passed its development gate, but no checkpoint was published and protected test remained unopened. See [`dinov2-temporal-execution-2026-08-13.md`](docs/research/dinov2-temporal-execution-2026-08-13.md). |
 | Ball presence/trajectory | Full-frame or tiled detector outputs and proposed trajectory/interactions | Rejected/skipped because the detector failed the precision/recall and environment gates. See [`minimum-ball-presence-pilot-2026-08-11.md`](docs/research/minimum-ball-presence-pilot-2026-08-11.md). |
 | Side-switch v1 appearance context | Seven marker-level appearance/detection-change values, before/after count/box/score/coverage summaries, gap duration, and paired missingness indicators | Rejected for automatic use; retained as a 36-input review-ranking baseline. This is a separate marker pipeline, not part of the 104 base columns. See [`side-switch-specialist-v1-2026-08-20.md`](docs/research/side-switch-specialist-v1-2026-08-20.md). |
-| Side-switch v2 | Side-conditioned color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a temporal toggle decoder | Planned only. See [`side-switch-v2-execution-handoff-2026-08-20.md`](docs/research/side-switch-v2-execution-handoff-2026-08-20.md). |
 | Serving-side v1 existing bank | Nineteen rally-anchor scalars covering near/far whole-half and baseline-band motion/palette change, HOG occupancy/change, and signed margins; paired missingness yields 38 model inputs | Retained research baseline, not production. Strong raw-camera behavior did not hold on the protected indoor recording. This is a separate rally-candidate pipeline, not part of the 104 production base columns. See [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |
 | Serving-side fixed-flight v3 | 82 court-flow within-recording ranks plus 155 ranks from nine fixed-anchor frames at 192×108 on a 4×6 residual-motion grid, yielding 237 inputs | Production browser; Android port pending. Development selection used leave-one-source-group-out predictions; the protected recording was excluded until after the model and 95% review policy were frozen. The completed 24-row uncertainty review confirmed labels without changing the fit. See the production-browser contract above and [`serving-side-improvement-todo.md`](docs/research/serving-side-improvement-todo.md). |
 | Serving-side hybrid serve gate v2 | Two frozen production serve-head anchor scores plus exact production rally agreement at the same merged-interval-start candidate | Production browser composition; Android port pending. Either serve head passes immediately; otherwise a `both-models` candidate recovers the fixed-flight side and requires review. This policy does not modify serving-side features, weights, or rally intervals. See [`serving-side-hybrid-serve-gate-2026-08-21.md`](docs/research/serving-side-hybrid-serve-gate-2026-08-21.md). |
+| Side-switch v2 | Adaptive near/far color assignment, frame consistency, robust per-recording normalization, derived stability interactions, and a separately selected temporal toggle decoder | Retained research/review ranking; not production. The selected `SIDE34-V2` classifier uses the raw combined family and the selected decoder is a no-op. See [`side-switch-specialist-v2-2026-08-20.md`](docs/research/side-switch-specialist-v2-2026-08-20.md). |
+| Side-switch v3 cadence + LOWRES12 | Seven-point opportunity decoder plus 12 detector-free HSV/motion/blur/edge features from three 192×108 early-rally frames on each side of a gap | Implemented and rejected for automatic use. The source-held-out selected decoder reached 7.59% exact-gap F1; ±4 cadence-only reached 12.12% exact and 42.42% at ±2 scoring tolerance. No browser/Android port. See [`side-switch-specialist-v3-2026-08-20.md`](docs/research/side-switch-specialist-v3-2026-08-20.md). |
+| Side-switch v4 MULTIFRAME-NORMALIZED19 | Seven 256×144 frames per rally, early-set net-height calibration, piecewise court normalization, camera-translation compensation, and broad/tight multi-frame near/far palettes | Positive research result but rejected for automatic use. Raw-phone exact-gap F1 improved from 7.59% to 16.67%, while ±2-tolerant F1 improved from 32.91% to 41.67%. No browser/Android port. See [`side-switch-specialist-v4-2026-08-20.md`](docs/research/side-switch-specialist-v4-2026-08-20.md). |
+| Side-switch v5 PLAYER-ORIENTATION22 | Six retained v4 scalars plus 16 motion-component player-palette, proposal-support, and quality features; whole-set score-zero team anchors feed an optional parity decoder | Best event-level research result but not promoted for automatic use. Candidate-window exact-gap F1 improved from 16.67% to 27.85% and row AP from 26.92% to 43.40%. Validation selected orientation weight zero, so the persistence stage is a no-op. Its 44 selected proposals are reviewable; no browser/Android port. See [`side-switch-specialist-v5-2026-08-20.md`](docs/research/side-switch-specialist-v5-2026-08-20.md). |
+| Side-switch v6 DETECTED-ADAPTIVE29 | Six retained v4 scalars, 20 player-localization/torso-palette inputs from a pinned 3.48 MB block-int8 MediaPipe person detector, and three confidence-gated adaptive team-prototype values | Positive row-ranking but negative candidate-window event result; not promoted. Raw-phone row AP improves from 43.40% to 45.47%, while exact F1 falls from 27.85% to 24.10% and ±2-tolerant F1 falls from 45.57% to 40.96%. Its 48 selected proposals are reviewable; no browser/Android port. See [`side-switch-specialist-v6-2026-08-20.md`](docs/research/side-switch-specialist-v6-2026-08-20.md). |
+| Side-switch production-state/serve grounding | Twenty soft reductions from the two shipped production bundles plus optional two-second serve-anchored V5/V6 appearance windows; suppression scores are diagnostic-only | V5 original appearance + ten state/gating inputs is a positive exploratory result (exact F1 27.85%→30.14%) exposed as its own `/side-switch-review` timeline; V6 and serve-grounded appearance are rejected. No inference-runtime port. See [`side-switch-production-state-experiment-2026-08-20.md`](docs/research/side-switch-production-state-experiment-2026-08-20.md). |
+| Side-switch V5 no-cadence decoder | Reuses the frozen V5/V5-state rows and refitted linear heads; scores every reviewed inter-rally gap independently with no seven-point opportunity centers, re-anchoring, spacing, or count cap | Positive causal diagnostic, not production. Exact recall/F1 improve from 31.43%/30.14% to 80.00%/44.44%, but independent outputs rise from 38 to 91. The learned head parameters exactly match the cadence control, isolating the decoder effect. See [`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md). |
+| Side-switch V5 peak/count/context cleanup | Frozen no-cadence V5-state probabilities, adjacent/time local-peak NMS, soft post-six count penalties, and a 19-input production rally/dead/serve context head that excludes raw gap duration | Mixed research result, not production. Local peaks transfer and the locked local-peak+soft-count ablation reaches 49.48% exact/57.73% ±2 F1 at 62 proposals. Soft production context wins historical validation but fails to improve retrospective exact F1. No hard gate, suppression input, review UI, or runtime port. See [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md). |
+| Side-switch V5 rally-parity diagnostic | One score-zero-anchored orientation coordinate and one support/separation quality value per production-detected rally, with full-marker parity labels and ±4-second transition masks | Candidate architecture retained, current emission rejected. Truth parity between stable rallies brackets 50/50 reviewed events, but the V5 sign has 95.93% state-zero recall versus 21.32% state-one recall; persistence-2 reaches only 5 TP/13 FP/45 FN. No fitted model or runtime port. See [`side-switch-parity-feasibility-2026-08-23.md`](docs/research/side-switch-parity-feasibility-2026-08-23.md). |
+| Side-switch CONTINUITY1 verifier | Recording-median/MAD normalized V5 `playerSwapMargin`, applied only to the current local-peak+soft-count proposals as a strong same-side continuity veto | Promising research layer, not production/current winner. LOO removes 5 FP with all 25 TP retained, raising precision/F1 40.32%/44.64%→43.86%/46.73%. Hard same-cheaper gating, quality abstention, verifier-alone, and add-only modes are rejected. See [`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md). |
+| Side-switch full-trace candidate union | Every adjacent production rally boundary plus score-ranked `deadState >= 0.98` peaks inside ranges, with four-second edge exclusion, 14-second NMS, and two-second peak windows | Retained upstream research generator, not a model/final decoder. Adds 80 internal peaks to 624 boundaries and raises ±4 candidate recall 66%→92% with identical LOO selection and no new inference/decode. Only 352/704 windows have frozen V5 features. See [`side-switch-candidate-union-2026-08-23.md`](docs/research/side-switch-candidate-union-2026-08-23.md). |
+| Side-switch FULL-UNION-V5-STATE42 | `PLAYER-ORIENTATION22+PRODUCTION-STATE20` for all 704 full-union candidates; whole-rally boundary summaries and fixed `[t-4,t-1]`/`[t+1,t+4]` internal flanks, seven 256×144 frames per window | Retained source profile for the current research winner. The selected `union34` runtime subset is exactly V5 visual 22 + state-gate 10 + candidate kind/score 2; serve-anchor 10 are stored but unused. Python parity is exact on 352 legacy rows; browser/Android generation remains unimplemented. See [`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md) and the [`port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md). |
+| Side-switch recording score calibration | Within-recording robust logit median/MAD scaling or tied percentile ranks over full-union classifier scores | Rejected. Percentiles raise AP/recall but add false proposals; robust logits also fail to improve F1. Raw scores with square-root class balancing are retained as a candidate training objective. See [`side-switch-imbalance-calibration-2026-08-23.md`](docs/research/side-switch-imbalance-calibration-2026-08-23.md). |
+| Side-switch internal-peak soft penalty | Subtracts a selected 0–3 logit offset from `internal-dead-state-peak` classifier scores before the fixed local-peak plus soft-count decoder; boundary scores are unchanged | Rejected as a general prior. Nested ±4 F1 improves 53.47%→54.90% against a matched zero-penalty control, but 6/11 folds select zero and the penalty removes the control's only correct internal proposal. No runtime/UI port. See [`side-switch-internal-peak-penalty-2026-08-23.md`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md). |
+| Side-switch FULL-UNION-EXPANDED-V5-STATE42 | Same 42-value flank/boundary feature contract with internal `deadState >= 0.80`, 10-second score-ranked NMS, and 228 internal peaks; exact reuse of 703 prior rows plus 149 new windows | Rejected. Candidate recall reaches 100%, but nested ±4 ranker F1 falls 50.94%→42.74%; only 1/13 emitted internal proposals is correct. Adds 2,086 decoded frames during extraction and no runtime/UI port. See [`side-switch-expanded-internal-candidates-2026-08-23.md`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md). |
+| Side-switch recording-balanced hard-negative mining | Training-only upweighting of each fit recording's top-scoring labeled negative candidates after an initial square-root-balanced fit; no new model inputs | **Current research winner:** fixed union34 top-2/2× reaches 56.86% opened-development F1 and was explicitly promoted. Runtime is the 34-input feature subset and cadence-free adjacent+soft-count decoder above; mining adds no inference operation. The production port is specified but unimplemented. See [`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md) and the [`port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md). |
+| Side-switch within-recording pairwise rank loss | Training-only all-positive/all-negative logit differences formed inside each fit recording, with equal total pair weight per video; no new model inputs | Rejected. λ=0.25 raises row AP 44.50%→44.73% but adds seven FP with no TP gain, reducing ±4 F1 56.86%→53.21%; nested selection reaches 54.72%. Zero strength reproduces the current winner exactly. See [`side-switch-pairwise-ranking-2026-08-23.md`](docs/research/side-switch-pairwise-ranking-2026-08-23.md). |
+| Side-switch recording reliability | Thirteen per-video quality/score summaries: camera shift, alignment, player separation, proposal coverage, palette instability, appearance change, serve anchor/confidence, score distribution, threshold exceedance, and candidate density | Rejected. Direct blur is absent from the retained artifact. Nested selection chooses no reliability offset in 11/11 folds; the best fixed offset gains 1 TP but adds 6 FP and lowers F1 56.86%→55.05%. See [`side-switch-recording-reliability-2026-08-23.md`](docs/research/side-switch-recording-reliability-2026-08-23.md). |
+| Side-switch focal/effective-number objectives | Training-only focal modulation at gamma 1/2 or effective-number class weights at beta 0.9/0.99/0.999; no new inputs | Rejected. Focal slightly raises AP but lowers event F1 to 53.85%; best effective-number F1 is 54.90%; nested objective selection reaches 53.47% versus the 56.86% control. See [`side-switch-rare-event-losses-2026-08-23.md`](docs/research/side-switch-rare-event-losses-2026-08-23.md). |
+| Side-switch latent score prior | Label-free forward distribution over `+0` redo, `+1` point, and `+2` missed-point transitions; Gaussian hazard near positive multiples of seven, centered per recording and added to classifier logits | Rejected. Detected rally ordinal is not point count: only 6/46 positive candidates land at modulo zero. Exact cadence collapses; best uncertain prior reaches 54.21% versus 56.86%, with no re-anchoring. See [`side-switch-soft-score-prior-2026-08-23.md`](docs/research/side-switch-soft-score-prior-2026-08-23.md). |
+| Side-switch internal-specialist geometry | Nine derived values over expanded internal peaks: containing-range duration/position/edges, time since serve anchor, nearest boundary distance, peak count/rank, and palette-instability difference; combined with transition/state views | Learned branch rejected. Eight positives in four recordings yield at most 6.87% internal AP and no added outer-held TP. Boundary-only improves F1 56.86%→57.73% by dropping one TP and four FP, and is retained only as an opened-development candidate. See [`side-switch-internal-specialist-2026-08-23.md`](docs/research/side-switch-internal-specialist-2026-08-23.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
 [`future-feature-experiment-backlog-2026-08-12.md`](docs/research/future-feature-experiment-backlog-2026-08-12.md).
+
+### Side-switch v2 marker profile
+
+`SIDE34-V2` is separate from the production 104/520 rally matrix. Each inter-rally
+candidate samples four frames on each side of its midpoint within an 8-second flank and
+a 0.75-second edge margin. OpenCV HOG proposals run at at most 1,280 pixels wide and
+are restricted to normalized central-court bounds. Unlabeled weighted two-means over
+the complete recording's candidate-frame foot positions sets the near/far divider;
+event-local fits shrink toward that recording value so zoom and moderate reframing do
+not rely on a fixed pixel boundary. Sparse local geometry falls back to the recording
+calibration and is exposed through coverage features.
+
+The 17 scalar base columns are:
+
+- `paletteDistanceMean`, `paletteDistanceMinimum`,
+  `paletteDistanceDisagreement`, `playerMinusBackgroundEvidence`,
+  `geometryStability`, `paletteByGeometryStability`, and
+  `areaPaletteByGeometryStability`;
+- `sideSameAssignmentCostMedian`, `sideSwappedAssignmentCostMedian`,
+  `sideSwapMarginMedian`, `sideSwapMarginLowerQuartile`,
+  `sideSwapSupportFraction`, `sideSwapMarginVariance`,
+  `sideUsablePairCount`, `sideMinimumCoverage`,
+  `colorMomentFlipEvidenceMedian`, and `swapMarginByGeometryStability`.
+
+Each scalar is paired with a missingness indicator, yielding 34 ordered classifier
+inputs. The feature artifact also carries per-recording median/MAD variants and an
+unlabeled color-moment orientation coordinate, but grouped development selection chose
+the raw combined family. Gap duration is audit context only and is excluded from every
+v2 learned feature set. The exact implementation is
+[`side_switch_v2.py`](analysis/side_switch_v2.py); extraction is
+[`extract-side-switch-v2.py`](scripts/extract-side-switch-v2.py).
+
+### Side-switch v3 low-resolution profile
+
+`LOWRES12` is separate from both the production rally matrix and `SIDE34-V2`. For each
+reviewed inter-rally gap it samples three frames from the first 2.4 seconds of the rally
+before and after, applies the recording ROI, and resizes to 192×108. The 12 ordered
+inputs are same/swapped assignment costs, swap margin, orientation-flip evidence,
+minimum/change motion coverage, before/after within-rally frame change, global appearance
+change, minimum log blur, luma change, and edge-density change. There is no person
+detector or neural feature extractor. Exact implementation:
+[`side_switch_v3.py`](analysis/side_switch_v3.py); extraction:
+[`extract-side-switch-v3.py`](scripts/extract-side-switch-v3.py).
+
+### Side-switch v4 multi-frame normalized profile
+
+`MULTIFRAME-NORMALIZED19` inherits v3's immutable labels and recording split but replaces
+`LOWRES12`. Seven 256×144 frames span 8% through 92% of each rally. Long horizontal lines
+from the first seven rallies estimate a recording-level foreground-net height, and a
+piecewise vertical remap places that divider at `y=0.5`. Upper-frame phase correlation
+compensates global translation before temporal-difference weighting. Joint hue/saturation
+and value palettes are pooled across all frames in broad overlapping and tight disjoint
+near/far bands.
+
+The 19 ordered inputs are broad and tight same/swapped assignment costs, swap margins,
+orientation-flip evidence, mean swap margin, cross-scale disagreement, minimum/change
+side separation, before/after palette instability, global appearance change,
+minimum/change foreground coverage, maximum normalized camera shift, and minimum
+alignment response. Exact implementation: [`side_switch_v4.py`](analysis/side_switch_v4.py);
+extraction: [`extract-side-switch-v4.py`](scripts/extract-side-switch-v4.py).
+
+### Side-switch v5 player-isolated orientation profile
+
+`PLAYER-ORIENTATION22` inherits v4's seven 256×144 frames and frozen court geometry but
+extracts every rally in the set. Adaptive temporal-difference components are filtered by
+area, aspect, dimensions, and lower-court position; overlapping boxes are suppressed and
+at most six player-like proposals remain per frame. Proposal palettes use temporal,
+motion, and weak saturation weights, then soft near/far assignment from proposal-foot
+position around normalized `y=0.63`.
+
+The 22 classifier inputs retain six v4 appearance/quality scalars and add same/swapped
+player-palette costs, swap/flip evidence, side separation, palette instability, player
+appearance change, proposal coverage/count, and near/far support. The first three
+score-zero rallies also pool team-side palette anchors. A research decoder carries
+orientation parity and flips it after selection, but validation selected orientation
+weight zero. Exact implementation: [`side_switch_v5.py`](analysis/side_switch_v5.py);
+extraction: [`extract-side-switch-v5.py`](scripts/extract-side-switch-v5.py).
+
+### Side-switch V5 rally-parity diagnostic
+
+The parity diagnostic persists the V5 whole-set orientation value at every detected
+rally instead of retaining only three-rally medians around reviewed candidate gaps.
+State zero is the first-three-rally near/far assignment; each ordered manual physical
+switch marker toggles the evaluation state. Rallies touching a four-second mask around
+a marker are excluded from state scoring. The two scalar observation fields are
+`orientationCoordinate` and `orientationQuality`; start/end time, parity, and mask are
+labels/metadata rather than model inputs.
+
+The fixed sign and persistence decoders have no learned parameters and are rejected as
+event predictors. The feature artifact remains useful as a reproducible feasibility
+record and establishes that stable production-rally observations bracket every reviewed
+switch. Exact implementation: [`side_switch_parity.py`](analysis/side_switch_parity.py),
+extraction/evaluation:
+[`evaluate-side-switch-parity-feasibility.py`](scripts/evaluate-side-switch-parity-feasibility.py),
+and decision:
+[`side-switch-parity-feasibility-2026-08-23.md`](docs/research/side-switch-parity-feasibility-2026-08-23.md).
+
+### Side-switch CONTINUITY1 verifier
+
+`CONTINUITY1` reuses V5's scalar `playerSwapMargin = sameCost - swapCost` but gives it
+a separately constrained role. Within each complete recording, subtract the candidate-
+row median and divide by
+`max(1.4826 × median absolute deviation, 0.25 × standard deviation, 1e-6)`. Lower
+normalized values are stronger evidence that team-to-side assignment remains unchanged.
+The verifier can only veto a proposal already selected by the frozen local-peak+soft-
+count control; it is not a hard positive gate or a candidate generator.
+
+The final development threshold is `-0.8360349704653693`, chosen with a 90% fit-TP
+retention guardrail after LOO evaluation. It has no weight matrix or bias. Exact
+implementation: [`side_switch_continuity.py`](analysis/side_switch_continuity.py),
+training/evaluation:
+[`train-side-switch-continuity-verifier.py`](scripts/train-side-switch-continuity-verifier.py),
+and decision:
+[`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md).
+
+### Side-switch full-trace candidate union
+
+The full-trace union operates after the existing production heads. It retains all gaps
+between consecutive decoded rally ranges, then searches within each range for extremely
+strong dead-state peaks. The selected opened-development configuration excludes four
+seconds at each range edge, requires `deadState >= 0.98`, applies score-ranked 14-second
+NMS per range, and emits a two-second candidate around each peak. It uses the existing
+4 Hz probability trace and adds no feature/model inference or video decode.
+
+This is an internal high-recall universe, not an output proposal rail. The follow-up
+`FULL-UNION-V5-STATE42` artifact now makes all 704 candidates scoreable. Boundaries use
+the frozen whole-rally seven-frame contract. Internal candidates compare fixed
+three-second flanks `[t-4,t-1]` and `[t+1,t+4]`, each with seven 256×144 frames. The
+generator's four-second edge exclusion keeps both flanks inside the containing range.
+All 352 legacy rows reproduce all 42 feature values exactly.
+
+The research ranker consumes either the existing 32-input V5+STATE10 primary view or
+that view plus candidate kind and generator score. Its nested-LOO decoder uses no
+cadence or re-anchoring. Exact candidate implementation:
+[`side_switch_candidate_union.py`](analysis/side_switch_candidate_union.py), evaluator:
+[`evaluate-side-switch-candidate-union.py`](scripts/evaluate-side-switch-candidate-union.py),
+and initial decision:
+[`side-switch-candidate-union-2026-08-23.md`](docs/research/side-switch-candidate-union-2026-08-23.md).
+Expanded extraction/ranking:
+[`side_switch_full_union_features.py`](analysis/side_switch_full_union_features.py),
+[`side_switch_full_union_ranker.py`](analysis/side_switch_full_union_ranker.py), and
+[`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
+The soft internal-candidate penalty runner is
+[`train-side-switch-internal-peak-penalty.py`](scripts/train-side-switch-internal-peak-penalty.py);
+its [decision record](docs/research/side-switch-internal-peak-penalty-2026-08-23.md)
+rejects the type prior despite a small aggregate nested gain because it removes the only
+correct internal proposal and selects zero penalty in most folds.
+The expanded-candidate follow-up lowers the internal peak threshold and separation,
+reuses 703 exact feature rows, and extracts 149 new candidates. It reaches 100% opened
+candidate coverage but is rejected after nested ranker F1 falls to 42.74%. See the
+[expanded-candidate decision](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
+The next retained objective mines hard negatives independently per fit recording and
+upweights them during a second linear-head fit. It changes training only; fixed
+union34/top-2/2× reaches 56.86% outer-held opened-development F1 and is the current
+research winner. See the
+[winner promotion](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
+
+### Side-switch v6 detected-player adaptive profile
+
+`DETECTED-ADAPTIVE29` retains six v4 appearance/alignment scalars but replaces v5's
+motion components with the pinned OpenCV Zoo MediaPipe person detector. The upstream
+block-int8 ONNX is 3,482,053 bytes, Apache-2.0 licensed, and runs through OpenCV DNN on
+CPU. Three full-resolution ROI frames are sampled at 15%, 50%, and 85% of every rally.
+Each frame is evaluated through four overlapping 62%-coverage ownership tiles. Hip and
+shoulder landmarks define torso palettes; geometry and duplicate-hip filters are applied,
+then at most two detections per canonical court side remain. Side assignment uses v4's
+recording-level net height and a soft canonical hip divider at `y=0.56`. Same-side hip
+matches within 0.18 normalized distance provide temporal-consistency weights.
+
+The first three score-zero rallies initialize canonical team palettes. Later rallies are
+assigned to the cheaper same/swapped ordering and can update those prototypes at a
+maximum exponential rate of 0.12 when player support, confidence, temporal consistency,
+side separation, and assignment margin pass the frozen gate. The 29 inputs comprise six
+v4 scalars, 20 detected-player identity/localization/quality scalars, and three adaptive
+orientation scalars. A separately fitted 26-input ablation holds the first-three-rally
+prototypes fixed. Exact implementation:
+[`side_switch_player_detector.py`](analysis/side_switch_player_detector.py) and
+[`side_switch_v6.py`](analysis/side_switch_v6.py); extraction:
+[`extract-side-switch-v6.py`](scripts/extract-side-switch-v6.py). The third-party model,
+license, feature rows, both fitted heads, and evaluation are bound by the v6 provenance
+artifact.
+
+### Side-switch production-state and serve-grounding profile
+
+`PRODUCTION-STATE20` is computed after the existing F104 production analysis. Ten
+state/gating inputs summarize adjacent component support, minimum rally confidence,
+decoded live fraction in the gap, ensemble-max rally/dead-state mean and peak values,
+and gap duration. Ten serve/anchor inputs summarize adjacent serve support/confidence,
+source-start alignment, and time from the preceding decoded end to the next serve.
+
+The alternate appearance view samples a two-second window from 1.25 seconds before to
+0.75 seconds after a production serve anchor. Two-head contacts within one second are
+confidence-combined; fallback proceeds through one-head serve, ensemble-component start,
+then source start. The selected V5 view retains original whole-rally appearance and uses
+only the ten state/gating inputs. The suppression specialist is never a declared input:
+its target included side switches and its fitting recordings overlap all frozen roles.
+Exact implementation: [`side_switch_production_state.py`](analysis/side_switch_production_state.py),
+extraction: [`extract-side-switch-production-state.py`](scripts/extract-side-switch-production-state.py),
+and fitting/evaluation: [`train-side-switch-production-state.py`](scripts/train-side-switch-production-state.py).
+
+### Side-switch V5 no-cadence decoder
+
+The no-cadence ablation changes no visual or production-state feature generation. It
+refits the 22-input V5 base and 32-input V5-state heads on the exact frozen rows, then
+selects an independent score threshold on validation. Every reviewed inter-rally gap is
+eligible. There are no score-derived opportunity centers, candidate margins,
+re-anchoring transitions, spacing constraint, or maximum count. Both refitted heads
+match the cadence variants' learned imputation, normalization, weights, bias, and L2
+exactly; only the decoder-specific threshold differs. Exact implementation:
+[`side_switch_no_cadence.py`](analysis/side_switch_no_cadence.py), fitting/evaluation:
+[`train-side-switch-v5-no-cadence.py`](scripts/train-side-switch-v5-no-cadence.py), and
+provenance: [`build-side-switch-v5-no-cadence-provenance.py`](scripts/build-side-switch-v5-no-cadence-provenance.py).
+
+### Side-switch V5 peak/count/context cleanup
+
+`PRODUCTION-CONTEXT19` contains the nine production-derived state inputs other than raw
+gap duration plus all ten serve support/confidence/anchor inputs. A separate linear
+head converts them to soft compatibility log odds. Those log odds can be added to the
+frozen V5-state log odds at weights 0.25, 0.5, or 1.0, but are never thresholded as a
+hard gate. Suppression remains outside every feature signature.
+
+The decoder also compares score-ranked non-maximum suppression at adjacent gap order
+and 0/30/60-second separation, plus post-six logit penalties 0.25/0.5/1.0. The count
+penalty is not a cap: strong later candidates remain eligible. No choice establishes a
+later search window, so there is no cadence or re-anchoring. Exact implementation:
+[`side_switch_peak_cleanup.py`](analysis/side_switch_peak_cleanup.py),
+fitting/evaluation: [`train-side-switch-v5-peak-cleanup.py`](scripts/train-side-switch-v5-peak-cleanup.py),
+and provenance:
+[`build-side-switch-v5-peak-cleanup-provenance.py`](scripts/build-side-switch-v5-peak-cleanup-provenance.py).
 
 ## Rebuild and parity acceptance
 

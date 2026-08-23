@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "kind": "volleycut-side-switch-current-research-winner-v1",
+  "selectedOn": "2026-08-21",
+  "status": "research-only",
+  "selectionBasis": "Explicit user decision after the exhaustive 50-event full-video marker audit.",
+  "automaticProductionUse": false,
+  "onDevicePortAvailable": false,
+  "winner": {
+    "id": "side-switch-v5-peak-cleanup-v1/local-peak-soft-count",
+    "evaluationDecoderId": "cleanup/local-peak-soft-count",
+    "mechanismId": "local-peak-soft-count",
+    "label": "Local peak + soft count",
+    "fingerprint": "053fde3b92c971542ac9b644bfa8ab7ce70f5e37e0469ed229ac64b8727c0a07",
+    "threshold": 0.4470970867570025,
+    "decoder": {
+      "kind": "volleycut-side-switch-peak-cleanup-decoder-v1",
+      "usesCadence": false,
+      "reanchorOnSelection": false,
+      "minimumGapSeparation": 2,
+      "minimumTimeSeparationSeconds": 0.0,
+      "freePredictionsPerRecording": 6,
+      "countPenaltyLogit": 0.25,
+      "hardMaximumPredictions": null,
+      "productionContextWeight": 0.0,
+      "productionContextIsHardGate": false
+    }
+  },
+  "primaryEvaluation": {
+    "recordings": 11,
+    "humanEvents": 50,
+    "proposalBoundaryPaddingSeconds": 4.0,
+    "proposals": 62,
+    "truePositives": 25,
+    "falsePositives": 37,
+    "falseNegatives": 25,
+    "pooledPrecision": 0.4032258064516129,
+    "pooledRecall": 0.5,
+    "pooledF1": 0.4464285714285714,
+    "macroPerVideoPrecision": 0.4119047619047619,
+    "macroPerVideoRecall": 0.509090909090909,
+    "averagePerVideo": {
+      "proposals": 5.636363636363637,
+      "truePositives": 2.272727272727273,
+      "falsePositives": 3.3636363636363638,
+      "falseNegatives": 2.272727272727273
+    }
+  },
+  "sourceArtifacts": [
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/models/side-switch-v5-peak-cleanup-v1/model.json",
+      "sha256": "82e64c69564d17c3dfbea9c5f4a276cdd161a0c400507d3df7589c019e44ee3f"
+    },
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-v5-peak-cleanup-v1-evaluation.json",
+      "sha256": "d38d85e6b4fec379786fbab390dd111e3b0cfc212adf6d2fcb95b6bba936c89f"
+    },
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-full-video-marker-evaluation-2026-08-21-r2.json",
+      "sha256": "142d6617aed7f20b51cdcdfc9b3e61c8c76beaf79a31fc2d7ee54fb0fdf27b89"
+    },
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/full-video-side-switch-markers-full-nas-v1.json",
+      "sha256": "50aabec1ecf5fb9d67edbdfa0a29a1997f4add5264c0b4a59a55b79ef6979e00"
+    }
+  ],
+  "limitations": [
+    "The winner was selected after the same 11 recordings were opened, so this scope is development rather than independent confirmation data.",
+    "Only 33 of 50 confirmed switches are covered by any current candidate gap at the primary boundary allowance.",
+    "The selected mechanism is a decoder over existing candidate gaps and cannot recover the 17 upstream candidate misses."
+  ]
+}

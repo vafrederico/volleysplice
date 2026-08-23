@@ -618,6 +618,312 @@ signature:
 These paths remain research-only. The first audio ablation favored the legacy-audio local
 transition head and did not support promoting the new band features. See the
 [end-boundary/dead-state experiment](../docs/research/end-and-dead-state-audio-experiment-2026-08-12.md).
+
+## Side-switch specialist v2
+
+The v2 marker pipeline is separate from rally feature extraction. It first creates one
+immutable, decision-free feature artifact over the preregistered raw recording split,
+then freezes model family/L2, static threshold, and decoder settings before the separate
+evaluation command can materialize confirmation decisions:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v2.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v2.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v2.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v2-provenance.py
+```
+
+Every command refuses to overwrite its durable NAS destination. The provenance command
+verifies full-file SHA-256 for all 11 source videos and binds the feature, model,
+development-dataset, and evaluation artifacts. The retained result is review-ranking
+research, not a production automatic scorer. See the
+[v2 decision record](../docs/research/side-switch-specialist-v2-2026-08-20.md).
+
+Side-switch v3 uses the frozen policy in
+[`side_switch_training_policy.py`](side_switch_training_policy.py): every recording is
+one set beginning at score zero, cadence is seven points, and candidate margins ±1
+through ±4 are tested rather than asserting an event at an exact rally index. The v3
+decoder re-anchors after selection, permits no switch, uses one-to-one assignment in
+overlapping ±4 windows, and caps a set at six opportunities. Every new trainer must call
+`validate_side_switch_fit_recordings` before fitting so the blurry
+`beach-source-02` recording cannot influence preprocessing or model selection.
+The historical v1 trainer also accepts repeatable `--exclude-fit-recording` arguments for
+controlled counterfactuals.
+
+V3 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v3.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v3.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v3.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v3-provenance.py
+```
+
+All destinations are immutable. V3 failed its source-held-out promotion gate, so the
+Python reference was not ported into production TypeScript/Java. See the
+[v3 decision record](../docs/research/side-switch-specialist-v3-2026-08-20.md),
+[v3 on-device plan](../docs/research/side-switch-v3-on-device-plan-2026-08-20.md), and
+[v1 blur-exclusion result](../docs/research/side-switch-v1-blur-exclusion-counterfactual-2026-08-20.md).
+
+Side-switch v4 changes only the visual representation requested after v3. It samples
+seven frames throughout each rally, calibrates foreground-net height from the first seven
+rallies, applies court-relative vertical normalization and camera-translation
+compensation, and pools broad/tight near/far side palettes. Labels, split, cadence,
+candidate margins, re-anchoring, and maximum opportunity count remain unchanged.
+
+V4 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v4.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v4.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v4.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v4-provenance.py
+```
+
+All destinations are immutable. V4 improves the retrospective raw-phone result over v3
+but remains below automatic-use requirements, so it also has no production port. See the
+[v4 decision record](../docs/research/side-switch-specialist-v4-2026-08-20.md).
+
+Side-switch v5 keeps v4 geometry and extracts player-like motion components from every
+rally in the set. The classifier uses player-isolated near/far palettes and proposal
+quality. The optional decoder anchors team sides from the first three score-zero rallies
+and carries parity across switches; validation selected orientation weight zero.
+
+V5 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v5.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v5-provenance.py
+```
+
+All destinations are immutable. V5 is the best visual side-switch result but remains
+below automatic-use precision, so it has no production port. See the
+[v5 decision record](../docs/research/side-switch-specialist-v5-2026-08-20.md).
+
+Side-switch v6 replaces v5's motion components with the pinned 3.48 MB block-int8
+OpenCV Zoo MediaPipe person localizer. It samples three frames per rally, runs four
+overlapping ownership tiles, pools landmark-defined torso palettes, and keeps at most
+two detections per canonical court side. Confidence-gated online team prototypes add
+three adaptive orientation inputs. A separately fitted 26-input ablation holds the
+score-zero prototypes fixed.
+
+V6 rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/install-side-switch-player-detector.py
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-v6.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v6.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v6.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v6-provenance.py
+```
+
+Every destination is immutable, and the trainer pins the extracted feature SHA before
+the first fit. V6 improves raw-phone row AP but regresses exact and tolerant event F1,
+so it is not promoted and has no production port. V5/V6 event metrics are conditioned
+on reviewed rally-gap candidates rather than exhaustive full-video truth. Adding the
+selected V5-state layer yields a 61-gap three-variant proposal union in the
+[review UI](../docs/research/side-switch-v5-v6-review-ui-2026-08-20.md). See the
+[v6 decision record](../docs/research/side-switch-specialist-v6-2026-08-20.md).
+
+The production-state follow-up replays both shipped production bundles over the
+available F104 matrices, derives soft rally/serve/dead-state context, and creates
+optional serve-anchored V5/V6 appearance views. Suppression is retained only as a
+quarantined diagnostic because its targets and fitting recordings overlap this task.
+
+Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-production-state.py prepare
+# Run the documented V5/V6 grounded extraction and four augment commands.
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py freeze --family v5
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py evaluate --family v5
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py attribute --family v5
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py freeze --family v6
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py evaluate --family v6
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-production-state.py attribute --family v6
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-production-state-provenance.py
+```
+
+V5 original appearance plus the ten state/gating inputs is a positive exploratory
+review-ranking result and is shown on its own review timeline; V6 and serve-grounded
+appearance are not promoted. See the
+[production-state decision record](../docs/research/side-switch-production-state-experiment-2026-08-20.md)
+for exact commands, hashes, attribution, and guardrails.
+
+The V5 no-cadence ablation reuses those exact frozen feature rows, refits the eligible
+base/state heads, verifies learned-parameter parity with the cadence variants, and
+selects independent all-gap thresholds on validation. It removes seven-point
+opportunity centers, candidate margins, re-anchoring, spacing, and the six-selection
+cap. Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-no-cadence.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-no-cadence.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v5-no-cadence-provenance.py
+```
+
+Exact retrospective recall/F1 rise from 31.43%/30.14% to 80.00%/44.44%, but proposals
+rise from 38 to 91. The result demonstrates harmful cadence coupling and remains
+research-only; no browser/Android inference port or review timeline is added. See the
+[no-cadence decision record](../docs/research/side-switch-v5-no-cadence-2026-08-20.md).
+
+The peak/count/context cleanup compares eight validation-locked post-decoders over that
+frozen probability stream. Adjacent/time non-maximum suppression never establishes a
+later window; the count prior penalizes only selections after six and is not a cap. A
+separate 19-input head uses production rally/dead/serve context without raw gap
+duration, adds soft log odds, and never gates eligibility. Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-peak-cleanup.py freeze
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-v5-peak-cleanup.py evaluate
+PYTHONPATH=. .venv/bin/python scripts/build-side-switch-v5-peak-cleanup-provenance.py \
+  --implementation-revision 8926e69
+```
+
+Local peaks transfer, and the locked peak+soft-count diagnostic reaches 49.48% exact
+and 57.73% ±2 F1 at 62 proposals. Soft production context removes candidates but does
+not improve retrospective exact F1, so it is not a gate or promoted cleanup layer. No
+browser/Android port or review timeline is added. See the
+[peak-cleanup decision record](../docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
+
+The full-union follow-up first evaluates the fixed production-boundary/internal-peak
+candidate generator, then extracts V5+production-state features for every candidate and
+fits a nested recording-held-out class-balanced ranker. Rebuild commands are:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/evaluate-side-switch-candidate-union.py
+PYTHONPATH=. .venv/bin/python scripts/extract-side-switch-full-union-features.py
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-full-union-ranker.py
+```
+
+The extractor refuses to publish unless all 352 legacy rows reproduce all 42 features
+within `1e-8`; the completed artifact has maximum difference zero. The nested ranker
+reaches 50.94% ±4-second end-to-end F1 with 56 proposals, but strict timing regresses,
+internal peaks remain weak, and the expanded continuity veto is rejected. The model is
+research-only and has no browser/Android port. See the
+[full-union decision record](../docs/research/side-switch-full-union-ranker-2026-08-23.md).
+
+The imbalance/calibration follow-up reuses that immutable feature artifact and fixes
+the prior L2/decoder while comparing natural, square-root, and full class balancing plus
+two label-free recording score transforms:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-full-union-calibration.py
+```
+
+Square-root weighting is retained as a candidate objective after a modest nested F1
+gain; robust-logit and percentile calibration are rejected. A mirrored no-switch fit is
+verified to be only the switch-score complement. See the
+[imbalance/calibration decision](../docs/research/side-switch-imbalance-calibration-2026-08-23.md).
+
+The internal-candidate penalty diagnostic reuses the same feature artifact and applies
+a soft kind-specific logit offset before the fixed adjacent+soft-count decoder:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-internal-peak-penalty.py
+```
+
+Its nested matched-control gain is small and it removes the only correct internal
+proposal, so the penalty is not retained as a runtime rule. See the
+[internal-peak penalty decision](../docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
+
+The expanded-candidate experiment fixes the v1 grid's 0.80 dead-state/10-second
+configuration, reuses exact prior feature rows, extracts only new windows, and reruns
+the nested ranker with explicit source hashes and candidate counts. The relevant tools
+accept `--fixed-config-id`, `--reuse-features`, `--expected-candidate-count`,
+`--expected-features-sha256`, and `--expected-positive-candidates` for this controlled
+variant. Perfect opened-scope candidate coverage does not transfer through ranking, so
+the 852-candidate artifact is rejected. See the
+[expanded internal-candidate decision](../docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
+
+Recording-balanced hard-negative mining reuses the retained 704-row feature artifact:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-hard-negative-mining.py
+```
+
+Mining and label access remain inside each fit scope. The final artifact is still one
+linear head, and the fixed union34/top-2/2× objective is the current research winner
+after reaching 56.86% opened-development outer F1. It is not installed in production.
+See the
+[winner promotion](../docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
+
+The corresponding future web-app implementation is specified in the
+[production-port contract](../docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md)
+and its
+[machine-readable signature](../data/side-switch-current-research-winner-production-port-v1.json).
+The selected runtime needs the retained 0.98/14-second candidate union, sparse seven-frame
+256×144 V4/V5 comparison extraction, the first ten production-state fields, candidate
+kind/score, the model's stored preprocessing, and the cadence-free decoder. It does not
+need the serve-anchor ten, suppression, reliability, expanded-union, or specialist
+features. No production file currently claims that this port exists.
+
+Verify the checked-in specification against the frozen NAS artifacts with:
+
+```bash
+python scripts/verify-side-switch-current-winner-production-port.py
+```
+
+The next rare-event objective compares within-recording pairwise ranking while holding
+that promoted control fixed:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-pairwise-ranking.py
+```
+
+Each fit video contributes equal total positive/negative pair weight. The pointwise
+control is reproduced exactly; every nonzero pairwise setting regresses event F1, so
+the objective is rejected without a runtime port. See the
+[pairwise decision](../docs/research/side-switch-pairwise-ranking-2026-08-23.md).
+
+The recording-level reliability experiment predicts a threshold-logit offset from
+label-free video summaries:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-recording-reliability.py
+```
+
+Nested recording selection retains zero offset in every fold, so the head is rejected.
+See the
+[recording-reliability decision](../docs/research/side-switch-recording-reliability-2026-08-23.md).
+
+Focal and effective-number loss variants are evaluated with:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-rare-event-losses.py
+```
+
+Both objective families regress outer-held event F1, so square-root BCE remains fixed.
+See the
+[rare-event loss decision](../docs/research/side-switch-rare-event-losses-2026-08-23.md).
+
+The non-reanchored latent score prior is evaluated with:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-soft-score-prior.py
+```
+
+It allows redo and missing-point transitions, but detected rally ordinal is not a
+reliable point count and every cadence variant regresses. See the
+[soft-prior decision](../docs/research/side-switch-soft-score-prior-2026-08-23.md).
+
+The expanded internal-candidate specialist is evaluated with:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-internal-specialist.py
+```
+
+The learned branch does not recover a held-out internal TP. Boundary-only is retained
+as a small opened-development precision candidate but is not promoted. See the
+[internal-specialist decision](../docs/research/side-switch-internal-specialist-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is

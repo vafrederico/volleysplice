@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "kind": "volleycut-side-switch-current-research-winner-v1",
+  "selectedOn": "2026-08-23",
+  "status": "research-only",
+  "selectionBasis": "Explicit user promotion after comparing the fixed union34-top2-x2 hard-negative variant with the preceding local-peak-soft-count winner on the exhaustive 50-event development audit.",
+  "automaticProductionUse": false,
+  "onDevicePortAvailable": false,
+  "winner": {
+    "id": "side-switch-hard-negative-mining-v1/union34-top2-x2",
+    "evaluationDecoderId": "hard-negative/union34-top2-x2",
+    "mechanismId": "full-union-local-peak-soft-count-hard-negative-top2-x2",
+    "label": "Full union + hard-negative top 2 at 2x",
+    "fingerprint": "15394f459335197eac7cfd537f12d6504854bced44839a6d39516d7902a99092",
+    "featureProfile": "FULL-UNION-V5-STATE42/union34",
+    "threshold": 0.39884973953581804,
+    "trainingObjective": {
+      "classBalanceExponent": 0.5,
+      "hardNegativesPerRecording": 2,
+      "hardNegativeMultiplier": 2.0,
+      "l2": 0.1
+    },
+    "decoder": {
+      "kind": "volleycut-side-switch-full-union-decoder-v1",
+      "usesCadence": false,
+      "reanchorOnSelection": false,
+      "minimumIndexSeparation": 2,
+      "minimumTimeSeparationSeconds": 0.0,
+      "freePredictionsPerRecording": 6,
+      "countPenaltyLogit": 0.5,
+      "hardMaximumPredictions": null
+    }
+  },
+  "primaryEvaluation": {
+    "protocol": "Fixed union34-top2-x2 variant; each recording prediction is from its outer-held model and fit-selected threshold.",
+    "recordings": 11,
+    "humanEvents": 50,
+    "proposalBoundaryPaddingSeconds": 4.0,
+    "proposals": 52,
+    "truePositives": 29,
+    "falsePositives": 23,
+    "falseNegatives": 21,
+    "pooledPrecision": 0.5576923076923077,
+    "pooledRecall": 0.58,
+    "pooledF1": 0.5686274509803922,
+    "macroPerVideoPrecision": 0.5865800865800866,
+    "macroPerVideoRecall": 0.5772727272727273,
+    "averagePerVideo": {
+      "proposals": 4.7272727272727275,
+      "truePositives": 2.6363636363636362,
+      "falsePositives": 2.090909090909091,
+      "falseNegatives": 1.9090909090909092
+    },
+    "byRecording": {
+      "raw-no-backup-PXL_20260816_160023210": {
+        "humanEvents": 4,
+        "proposals": 3,
+        "truePositives": 2,
+        "falsePositives": 1,
+        "falseNegatives": 2,
+        "precision": 0.6666666666666666,
+        "recall": 0.5
+      },
+      "raw-no-backup-PXL_20260816_161923155": {
+        "humanEvents": 5,
+        "proposals": 7,
+        "truePositives": 5,
+        "falsePositives": 2,
+        "falseNegatives": 0,
+        "precision": 0.7142857142857143,
+        "recall": 1.0
+      },
+      "raw-no-backup-PXL_20260816_164327879": {
+        "humanEvents": 4,
+        "proposals": 7,
+        "truePositives": 4,
+        "falsePositives": 3,
+        "falseNegatives": 0,
+        "precision": 0.5714285714285714,
+        "recall": 1.0
+      },
+      "raw-no-backup-PXL_20260816_171720964": {
+        "humanEvents": 5,
+        "proposals": 6,
+        "truePositives": 4,
+        "falsePositives": 2,
+        "falseNegatives": 1,
+        "precision": 0.6666666666666666,
+        "recall": 0.8
+      },
+      "raw-no-backup-PXL_20260816_180646590": {
+        "humanEvents": 5,
+        "proposals": 4,
+        "truePositives": 4,
+        "falsePositives": 0,
+        "falseNegatives": 1,
+        "precision": 1.0,
+        "recall": 0.8
+      },
+      "raw-no-backup-PXL_20260816_183701800": {
+        "humanEvents": 4,
+        "proposals": 6,
+        "truePositives": 3,
+        "falsePositives": 3,
+        "falseNegatives": 1,
+        "precision": 0.5,
+        "recall": 0.75
+      },
+      "raw-no-backup-PXL_20260816_190429172": {
+        "humanEvents": 5,
+        "proposals": 6,
+        "truePositives": 2,
+        "falsePositives": 4,
+        "falseNegatives": 3,
+        "precision": 0.3333333333333333,
+        "recall": 0.4
+      },
+      "raw-no-backup-PXL_20260816_193307688": {
+        "humanEvents": 4,
+        "proposals": 3,
+        "truePositives": 0,
+        "falsePositives": 3,
+        "falseNegatives": 4,
+        "precision": 0.0,
+        "recall": 0.0
+      },
+      "raw-no-backup-PXL_20260816_203801418": {
+        "humanEvents": 5,
+        "proposals": 1,
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 4,
+        "precision": 1.0,
+        "recall": 0.2
+      },
+      "raw-no-backup-PXL_20260816_210449857": {
+        "humanEvents": 4,
+        "proposals": 3,
+        "truePositives": 2,
+        "falsePositives": 1,
+        "falseNegatives": 2,
+        "precision": 0.6666666666666666,
+        "recall": 0.5
+      },
+      "raw-no-backup-PXL_20260816_212717581": {
+        "humanEvents": 5,
+        "proposals": 6,
+        "truePositives": 2,
+        "falsePositives": 4,
+        "falseNegatives": 3,
+        "precision": 0.3333333333333333,
+        "recall": 0.4
+      }
+    }
+  },
+  "previousWinner": {
+    "id": "side-switch-v5-peak-cleanup-v1/local-peak-soft-count",
+    "manifestPath": "data/side-switch-research-winner-2026-08-21-local-peak-soft-count.json",
+    "manifestSha256": "ea1423a3dd7f96812b401dbe7a8cdb2fe8435d4e7f2a290356eb2c0cfba4fb8f"
+  },
+  "sourceArtifacts": [
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/models/side-switch-hard-negative-mining-v1/model.json",
+      "sha256": "c2570481c30dec62f56ac3284cd4028763ffd8e72a9ad07e9908fec10df387e3"
+    },
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-hard-negative-mining-v1-evaluation.json",
+      "sha256": "e67088b36d177d68c24587efcb186eab4201b5294532be1fdf978ef13aaacc4b"
+    },
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-full-union-v5-state-features-v1.json",
+      "sha256": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551"
+    },
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-full-video-marker-evaluation-2026-08-21-r2.json",
+      "sha256": "142d6617aed7f20b51cdcdfc9b3e61c8c76beaf79a31fc2d7ee54fb0fdf27b89"
+    },
+    {
+      "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/full-video-side-switch-markers-full-nas-v1.json",
+      "sha256": "50aabec1ecf5fb9d67edbdfa0a29a1997f4add5264c0b4a59a55b79ef6979e00"
+    }
+  ],
+  "limitations": [
+    "The fixed variant was selected from a declared grid after this 11-recording scope was opened, so promotion is a development decision rather than independent confirmation.",
+    "Four of 50 confirmed switches fall outside the retained 704-candidate full union at the primary boundary allowance and cannot be recovered by this ranker.",
+    "The winner has no browser or Android/on-device port and is not the production editor model."
+  ]
+}
