@@ -3455,7 +3455,7 @@ internal fun WholeTimeline(
             Modifier
                 .testTag("whole-timeline")
                 .fillMaxWidth()
-                .height(34.dp)
+                .height(68.dp)
                 .clip(RoundedCornerShape(9.dp))
                 .background(Rail)
                 .semantics {
@@ -3497,6 +3497,10 @@ internal fun WholeTimeline(
                     )
                 },
         ) {
+            val cutTop = 16.dp.toPx()
+            val cutHeight = 36.dp.toPx()
+            val suppressionTop = 8.dp.toPx()
+            val suppressionHeight = 52.dp.toPx()
             ignored.forEach { interval ->
                 val clippedStart = max(interval.startMs, windowStartMs)
                 val clippedEnd = min(interval.endMs, windowEndMs)
@@ -3520,8 +3524,8 @@ internal fun WholeTimeline(
                 val width = max(1f, xAt(clippedEnd) - x)
                 drawRoundRect(
                     Color(0xFFBBB8B1),
-                    Offset(x, 16f),
-                    Size(width, size.height - 32f),
+                    Offset(x, cutTop),
+                    Size(width, cutHeight),
                     CornerRadius(4f),
                 )
             }
@@ -3539,7 +3543,7 @@ internal fun WholeTimeline(
                     low -> Warning
                     else -> PaleGreen
                 }
-                drawRoundRect(color, Offset(x, 16f), Size(width, size.height - 32f), CornerRadius(6f))
+                drawRoundRect(color, Offset(x, cutTop), Size(width, cutHeight), CornerRadius(6f))
                 val clippedCoreStart = max(cut.coreStartMs, windowStartMs)
                 val clippedCoreEnd = min(cut.coreEndMs, windowEndMs)
                 if (clippedCoreEnd > clippedCoreStart) {
@@ -3551,13 +3555,19 @@ internal fun WholeTimeline(
                             low -> Orange
                             else -> Green
                         },
-                        Offset(coreX, 24f),
-                        Size(coreWidth, size.height - 48f),
+                        Offset(coreX, cutTop),
+                        Size(coreWidth, cutHeight),
                         CornerRadius(4f),
                     )
                 }
                 if (cut.id == selectedId) {
-                    drawRoundRect(Orange, Offset(x, 13f), Size(width, size.height - 26f), CornerRadius(7f), style = Stroke(4f))
+                    drawRoundRect(
+                        Orange,
+                        Offset(x, cutTop - 3.dp.toPx()),
+                        Size(width, cutHeight + 6.dp.toPx()),
+                        CornerRadius(7f),
+                        style = Stroke(2.dp.toPx()),
+                    )
                 }
             }
             suggestions.forEach { suggestion ->
@@ -3568,28 +3578,43 @@ internal fun WholeTimeline(
                 val width = max(2f, xAt(clippedEnd) - x)
                 val applied = suggestion.fragmentId() in appliedSuggestionIds
                 if (applied) {
-                    drawRect(SuppressionRed.copy(alpha = .62f), Offset(x, 0f), Size(width, size.height))
+                    drawRect(
+                        SuppressionRed.copy(alpha = .62f),
+                        Offset(x, suppressionTop),
+                        Size(width, suppressionHeight),
+                    )
                 } else {
                     drawRect(
-                        SuppressionRed.copy(alpha = .2f), Offset(x, 0f), Size(width, size.height),
+                        SuppressionRed.copy(alpha = .2f),
+                        Offset(x, suppressionTop),
+                        Size(width, suppressionHeight),
                     )
                     drawRect(
-                        SuppressionRed, Offset(x, 1f), Size(width, size.height - 2f),
-                        style = Stroke(3f),
+                        SuppressionRed,
+                        Offset(x, suppressionTop),
+                        Size(width, suppressionHeight),
+                        style = Stroke(2.dp.toPx()),
                     )
                 }
-                clipRect(x, 0f, x + width, size.height) {
-                    var hatch = x - size.height
+                clipRect(x, suppressionTop, x + width, suppressionTop + suppressionHeight) {
+                    var hatch = x - suppressionHeight
                     while (hatch < x + width) {
                         drawLine(
                             SuppressionRed.copy(alpha = if (applied) .95f else .55f),
-                            Offset(hatch, size.height), Offset(hatch + size.height, 0f), 2f,
+                            Offset(hatch, suppressionTop + suppressionHeight),
+                            Offset(hatch + suppressionHeight, suppressionTop),
+                            2f,
                         )
                         hatch += 10f
                     }
                 }
                 if (suggestion.fragmentId() == selectedSuggestionId) {
-                    drawRect(Color.White, Offset(x, 2f), Size(width, size.height - 4f), style = Stroke(3f))
+                    drawRect(
+                        Color.White,
+                        Offset(x, suppressionTop + 2.dp.toPx()),
+                        Size(width, suppressionHeight - 4.dp.toPx()),
+                        style = Stroke(1.5.dp.toPx()),
+                    )
                 }
             }
             if (playheadMs in windowStartMs..windowEndMs) {
