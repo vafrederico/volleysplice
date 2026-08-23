@@ -242,3 +242,53 @@ test("score bounds use the next serve in dead time and leading padding", () => {
   assert.equal(scoreBoundaryTimestamp(15, ranges, tracking), 20);
   assert.equal(scoreBoundaryTimestamp(40, ranges, tracking), 40);
 });
+
+test("merged rally fragments do not advance score inside an internal gap without a serve", () => {
+  let tracking = createScoreTracking();
+  tracking = addServeMarker(tracking, 5, "near", { id: "S001" });
+  tracking = addServeMarker(tracking, 20, "far", { id: "S002" });
+  const ranges = [
+    { keepStart: 3, coreStart: 5, coreEnd: 12, keepEnd: 14 },
+    { keepStart: 16, coreStart: 20, coreEnd: 25, keepEnd: 27 },
+  ];
+  const merged = [{ start: 3, end: 27 }];
+
+  assert.equal(scoreBoundaryTimestamp(13, ranges, tracking, merged), 13);
+  assert.equal(scoreBoundaryTimestamp(15, ranges, tracking, merged), 15);
+  assert.equal(scoreBoundaryTimestamp(19, ranges, tracking, merged), 19);
+  assert.equal(scoreBoundaryTimestamp(20, ranges, tracking, merged), 20);
+});
+
+test("a serve marker inside merged padding activates the upcoming rally state", () => {
+  let tracking = createScoreTracking();
+  tracking = addServeMarker(tracking, 5, "near", { id: "S001" });
+  tracking = addServeMarker(tracking, 18, "far", { id: "S002" });
+  tracking = addServeMarker(tracking, 30, "near", { id: "S003" });
+  const ranges = [
+    { keepStart: 3, coreStart: 5, coreEnd: 12, keepEnd: 14 },
+    { keepStart: 16, coreStart: 20, coreEnd: 25, keepEnd: 27 },
+  ];
+
+  assert.equal(
+    scoreBoundaryTimestamp(15, ranges, tracking, [{ start: 3, end: 27 }]),
+    18,
+  );
+  assert.equal(
+    scoreBoundaryTimestamp(19, ranges, tracking, [{ start: 3, end: 27 }]),
+    19,
+  );
+});
+
+test("first leading padding stops looking ahead after crossing its serve marker", () => {
+  let tracking = createScoreTracking();
+  tracking = addServeMarker(tracking, 2.5, "near", { id: "S001" });
+  tracking = addServeMarker(tracking, 20, "far", { id: "S002" });
+  const ranges = [
+    { keepStart: 3, coreStart: 5, coreEnd: 12, keepEnd: 14 },
+  ];
+  const merged = [{ start: 3, end: 14 }];
+
+  assert.equal(scoreBoundaryTimestamp(3, ranges, tracking, merged), 3);
+  assert.equal(scoreBoundaryTimestamp(3.5, ranges, tracking, merged), 3.5);
+  assert.equal(scoreBoundaryTimestamp(4.5, ranges, tracking, merged), 4.5);
+});

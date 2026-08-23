@@ -19,7 +19,6 @@ import {
   cutDraftStorageKey,
   cutDraftStorageKeys,
   DEFAULT_SUPPRESSION_SCOPE,
-  effectiveKeptCutIds,
   materializeFinalCutIntervals,
   MIN_CUT_SECONDS,
   nextFinalCutTime,
@@ -254,9 +253,14 @@ export function CutEditor({
   const ignoreStart = draft.pendingIgnoreStart;
   const ignoreReason = draft.ignoreReason;
   const cutPreviewEnabled = draft.cutPreviewEnabled;
-  const effectiveKeptIds = useMemo(
-    () => new Set(effectiveKeptCutIds(draft, initialAnalysis.suppression)),
+  const materialized = useMemo(
+    () => materializeFinalCutIntervals(draft, initialAnalysis.suppression),
     [draft, initialAnalysis.suppression],
+  );
+  const finalIntervals = materialized.intervals;
+  const effectiveKeptIds = useMemo(
+    () => new Set(finalIntervals.flatMap((interval) => interval.cutIds)),
+    [finalIntervals],
   );
   const excludedRallyIds = useMemo(
     () => new Set(
@@ -285,8 +289,9 @@ export function CutEditor({
       playbackTime,
       activeScoreRallyRanges,
       activeScoreTracking,
+      finalIntervals,
     ),
-    [activeScoreRallyRanges, activeScoreTracking, playbackTime],
+    [activeScoreRallyRanges, activeScoreTracking, finalIntervals, playbackTime],
   );
 
   useEffect(() => {
@@ -420,11 +425,6 @@ export function CutEditor({
   const selectedIndex = selected
     ? sortedCuts.findIndex((cut) => cut.id === selected.id)
     : -1;
-  const materialized = useMemo(
-    () => materializeFinalCutIntervals(draft, initialAnalysis.suppression),
-    [draft, initialAnalysis.suppression],
-  );
-  const finalIntervals = materialized.intervals;
   const keptSeconds = totalFinalCutSeconds(finalIntervals);
   const noSuppressionSeconds = useMemo(
     () => totalFinalCutSeconds(buildFinalCutIntervals(
@@ -1415,6 +1415,7 @@ export function CutEditor({
                   excludedRallyIds: [...excludedRallyIds],
                   ignoredIntervals: draft.ignoredIntervals,
                   rallyRanges: activeScoreRallyRanges,
+                  mergedRanges: finalIntervals,
                 }
               : undefined,
           },

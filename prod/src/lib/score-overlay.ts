@@ -1,11 +1,13 @@
 import {
   deriveScoreAt,
+  type ScoreIgnoredInterval,
+  type ScoreMergedRange,
+  type ScoreRallyRange,
+  type ScoreTeamId,
+  type ScoreTracking,
   scoreBoundaryTimestamp,
   scoreTrackingOutsideExcludedRallies,
   scoreTrackingOutsideIgnoredIntervals,
-  type ScoreIgnoredInterval,
-  type ScoreRallyRange,
-  type ScoreTracking,
 } from "./score-tracking.ts";
 
 export const SCORE_OVERLAY_COLORS = {
@@ -22,11 +24,13 @@ export type ScoreOverlayOptions = {
   excludedRallyIds?: readonly string[];
   ignoredIntervals?: readonly ScoreIgnoredInterval[];
   rallyRanges?: readonly ScoreRallyRange[];
+  mergedRanges?: readonly ScoreMergedRange[];
 };
 
 export type PreparedScoreOverlay = {
   scoreTracking: ScoreTracking;
   rallyRanges: readonly ScoreRallyRange[];
+  mergedRanges: readonly ScoreMergedRange[];
 };
 
 export type ScoreOverlaySnapshot = {
@@ -36,6 +40,7 @@ export type ScoreOverlaySnapshot = {
   team2Name: string;
   team2Score: number;
   team2ScoreLabel: string;
+  servingTeamId: ScoreTeamId | null;
 };
 
 export type ScoreOverlayLayout = {
@@ -54,6 +59,13 @@ export function formatOverlayScore(score: number): string {
   return String(Math.max(0, Math.trunc(score))).padStart(2, "0");
 }
 
+export function formatOverlayTeamLabel(
+  teamName: string,
+  isServing: boolean,
+): string {
+  return isServing ? `${teamName} 🏐` : teamName;
+}
+
 export function prepareScoreOverlay(
   options: ScoreOverlayOptions,
 ): PreparedScoreOverlay {
@@ -68,6 +80,7 @@ export function prepareScoreOverlay(
   return {
     scoreTracking,
     rallyRanges: options.rallyRanges ?? [],
+    mergedRanges: options.mergedRanges ?? [],
   };
 }
 
@@ -79,6 +92,7 @@ export function scoreOverlaySnapshot(
     sourceTimestamp,
     prepared.rallyRanges,
     prepared.scoreTracking,
+    prepared.mergedRanges,
   );
   const score = deriveScoreAt(prepared.scoreTracking, boundaryTimestamp);
   return {
@@ -88,6 +102,7 @@ export function scoreOverlaySnapshot(
     team2Name: prepared.scoreTracking.team2Name,
     team2Score: score.team2Score,
     team2ScoreLabel: formatOverlayScore(score.team2Score),
+    servingTeamId: score.servingTeamId,
   };
 }
 
@@ -110,13 +125,18 @@ export function scoreOverlayLayout(
   const horizontalPadding = Math.round(height * 0.24);
   const scoreWidth = Math.round(height * 1.3);
   const minimumTeamWidth = Math.round(height * 2.25);
-  const measuredTeamWidth = (name: string) =>
+  const measuredTeamWidth = (name: string, teamId: ScoreTeamId) =>
     Math.max(
       minimumTeamWidth,
-      Math.ceil(context.measureText(name).width) + horizontalPadding * 2,
+      Math.ceil(
+        context.measureText(
+          formatOverlayTeamLabel(name, snapshot.servingTeamId === teamId),
+        ).width,
+      ) +
+        horizontalPadding * 2,
     );
-  const desiredTeam1Width = measuredTeamWidth(snapshot.team1Name);
-  const desiredTeam2Width = measuredTeamWidth(snapshot.team2Name);
+  const desiredTeam1Width = measuredTeamWidth(snapshot.team1Name, "team-1");
+  const desiredTeam2Width = measuredTeamWidth(snapshot.team2Name, "team-2");
   const maximumOverlayWidth = Math.max(
     minimumTeamWidth * 2 + scoreWidth * 2,
     Math.floor(videoWidth * 0.96),
@@ -133,9 +153,10 @@ export function scoreOverlayLayout(
       0,
       availableTeamWidth - minimumTeamWidth * 2,
     );
-    const scale = flexibleWidth > 0
-      ? Math.min(1, availableFlexibleWidth / flexibleWidth)
-      : 0;
+    const scale =
+      flexibleWidth > 0
+        ? Math.min(1, availableFlexibleWidth / flexibleWidth)
+        : 0;
     team1Width = Math.round(minimumTeamWidth + flexibleTeam1Width * scale);
     team2Width = Math.round(minimumTeamWidth + flexibleTeam2Width * scale);
   }

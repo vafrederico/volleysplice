@@ -302,6 +302,19 @@ During dead time and a retained rally's leading padding, preview/export uses the
 next visible serve timestamp as the score boundary. During the core and trailing padding,
 use the real source timestamp. This prevents a completed point from advancing early
 during the rally while keeping pre-serve padding aligned with the upcoming rally state.
+The serving indicator uses this same boundary, so the upcoming serving team is already
+shown throughout the pre-serve padding. If that serve marker occurs inside the leading
+padding, use it before the marker and return to real source time at and after the marker;
+the same rule applies when the marker falls in dead time immediately before the first
+retained padding. Never skip from the first serve to the second serve while still inside
+first-rally padding.
+
+Final-cut gap merging is authoritative for this boundary. If padding or a short joined
+gap combines multiple raw rally fragments into one retained interval, treat their
+internal padding/gap as the same rally: do not award a point or change the serving team
+early. The only exception is when a visible serve marker itself falls inside that
+internal bridge; in that case the bridge may use the upcoming serve state. A marker at
+the later raw core boundary is not inside the bridge and takes effect at its own time.
 
 ## Editor and timeline requirements
 
@@ -346,13 +359,16 @@ both current platform exporters already encode their requested output.
 The overlay is one top-left row:
 
 ```text
-Team 1 name | 00 | Team 2 name | 00
+Team 1 name 🏐 | 00 | Team 2 name | 00
 ```
 
 - outer black 1–2 px border;
 - only the bottom-right corner rounded;
 - Team 1 red `#d9342b`, Team 2 blue `#2367c9`;
 - team text white, centered, and name cells grow with measured text;
+- a volleyball icon appears immediately to the right of only the serving team's name,
+  remains there until the next rally boundary, and switches to the upcoming server for
+  pre-serve padding;
 - score cells white with black centered text;
 - scores padded to at least two digits; and
 - total overlay width capped at 96% of the display/video width, shrinking name cells

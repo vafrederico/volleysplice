@@ -77,6 +77,8 @@ internal data class ScoreRallyRange(
     val keepEndMs: Long,
 )
 
+internal data class ScoreMergedRange(val startMs: Long, val endMs: Long)
+
 internal object ScoreReducer {
     private val serveOrder = compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id }
     private val switchOrder = compareBy<SideSwitchMarker> { it.timestampMs }.thenBy { it.id }
@@ -180,15 +182,66 @@ internal object ScoreReducer {
         playbackTimestampMs: Long,
         rallyRanges: List<ScoreRallyRange>,
         tracking: ScoreTracking,
+        mergedRanges: List<ScoreMergedRange> = emptyList(),
     ): Long {
         val timestamp = playbackTimestampMs.coerceAtLeast(0)
+        val serves = tracking.serveMarkers.sortedWith(serveOrder)
+        fun nextServeTimestamp() = serves.firstOrNull { it.timestampMs >= timestamp }
+            ?.timestampMs ?: timestamp
+        fun paddingBoundaryTimestamp(startMs: Long, endMs: Long): Long {
+            val paddingServes = serves.filter {
+                it.timestampMs >= startMs && it.timestampMs < endMs
+            }
+            if (paddingServes.isEmpty()) return nextServeTimestamp()
+            return if (paddingServes.any { it.timestampMs <= timestamp }) {
+                timestamp
+            } else paddingServes.first().timestampMs
+        }
+        val mergedRange = mergedRanges.firstOrNull {
+            timestamp >= it.startMs && timestamp < it.endMs
+        }
+        if (mergedRange != null) {
+            val mergedRallies = rallyRanges.filter {
+                it.keepStartMs < mergedRange.endMs && mergedRange.startMs < it.keepEndMs
+            }.sortedWith(compareBy<ScoreRallyRange> { it.coreStartMs }.thenBy { it.coreEndMs })
+            if (mergedRallies.isEmpty()) return timestamp
+            if (timestamp < mergedRallies.first().coreStartMs) {
+                val previousMergedEnd = mergedRanges.fold(0L) { latest, range ->
+                    if (range.endMs <= mergedRange.startMs) maxOf(latest, range.endMs) else latest
+                }
+                return paddingBoundaryTimestamp(
+                    previousMergedEnd,
+                    mergedRallies.first().coreStartMs,
+                )
+            }
+            for (index in 1 until mergedRallies.size) {
+                val previous = mergedRallies[index - 1]
+                val next = mergedRallies[index]
+                if (timestamp < previous.coreEndMs) return timestamp
+                if (timestamp < next.coreStartMs) {
+                    val bridgeServes = serves.filter {
+                        it.timestampMs >= previous.coreEndMs && it.timestampMs < next.coreStartMs
+                    }
+                    if (bridgeServes.isEmpty()) return timestamp
+                    return if (bridgeServes.any { it.timestampMs <= timestamp }) {
+                        timestamp
+                    } else bridgeServes.first().timestampMs
+                }
+            }
+            return timestamp
+        }
         val insideRally = rallyRanges.any { timestamp >= it.keepStartMs && timestamp < it.keepEndMs }
-        val insideLeadingPadding = rallyRanges.any {
+        val leadingPaddingRange = rallyRanges.firstOrNull {
             timestamp >= it.keepStartMs && timestamp < it.coreStartMs
         }
-        if (insideRally && !insideLeadingPadding) return timestamp
-        return tracking.serveMarkers.sortedWith(serveOrder)
-            .firstOrNull { it.timestampMs >= timestamp }?.timestampMs ?: timestamp
+        if (insideRally && leadingPaddingRange == null) return timestamp
+        if (leadingPaddingRange != null) {
+            return paddingBoundaryTimestamp(
+                leadingPaddingRange.keepStartMs,
+                leadingPaddingRange.coreStartMs,
+            )
+        }
+        return nextServeTimestamp()
     }
 
     fun nextMarkerId(prefix: String, tracking: ScoreTracking): String {
@@ -238,6 +291,7 @@ internal object ScoreReducer {
 internal data class PreparedScoreOverlay(
     val tracking: ScoreTracking,
     val rallyRanges: List<ScoreRallyRange>,
+    val mergedRanges: List<ScoreMergedRange>,
 )
 
 internal data class ScoreOverlaySnapshot(
@@ -247,6 +301,7 @@ internal data class ScoreOverlaySnapshot(
     val team2Name: String,
     val team2Score: Int,
     val team2ScoreLabel: String,
+    val servingTeamId: ScoreTeamId? = null,
 )
 
 internal data class ScoreOverlayLayout(
@@ -274,23 +329,28 @@ internal object ScoreOverlay {
         ignoredIntervals: List<IgnoredSourceInterval>,
         excludedRallyIds: Set<String>,
         rallyRanges: List<ScoreRallyRange>,
+        mergedRanges: List<ScoreMergedRange> = emptyList(),
     ) = PreparedScoreOverlay(
         ScoreReducer.visibleTracking(scoreTracking, ignoredIntervals, excludedRallyIds),
         rallyRanges,
+        mergedRanges,
     )
 
     fun snapshot(prepared: PreparedScoreOverlay, sourceTimestampMs: Long): ScoreOverlaySnapshot {
         val boundary = ScoreReducer.scoreBoundaryTimestamp(
-            sourceTimestampMs, prepared.rallyRanges, prepared.tracking,
+            sourceTimestampMs, prepared.rallyRanges, prepared.tracking, prepared.mergedRanges,
         )
         val score = ScoreReducer.deriveAt(prepared.tracking, boundary)
         return ScoreOverlaySnapshot(
             prepared.tracking.team1Name, score.team1Score, formatScore(score.team1Score),
             prepared.tracking.team2Name, score.team2Score, formatScore(score.team2Score),
+            score.servingTeamId,
         )
     }
 
     fun formatScore(score: Int) = max(0, score).toString().padStart(2, '0')
+
+    fun formatTeamLabel(name: String, isServing: Boolean) = if (isServing) "$name 🏐" else name
 
     fun layout(
         videoWidth: Int,
@@ -305,12 +365,13 @@ internal object ScoreOverlay {
         val horizontalPadding = (height * 0.24).roundToInt()
         val scoreWidth = (height * 1.3).roundToInt()
         val minimumTeamWidth = (height * 2.25).roundToInt()
-        fun measured(name: String) = max(
+        fun measured(name: String, teamId: ScoreTeamId) = max(
             minimumTeamWidth,
-            ceil(measureText(name, fontSize)).toInt() + horizontalPadding * 2,
+            ceil(measureText(formatTeamLabel(name, snapshot.servingTeamId == teamId), fontSize)).toInt() +
+                horizontalPadding * 2,
         )
-        val desiredTeam1Width = measured(snapshot.team1Name)
-        val desiredTeam2Width = measured(snapshot.team2Name)
+        val desiredTeam1Width = measured(snapshot.team1Name, ScoreTeamId.TEAM_1)
+        val desiredTeam2Width = measured(snapshot.team2Name, ScoreTeamId.TEAM_2)
         val maximumOverlayWidth = max(
             minimumTeamWidth * 2 + scoreWidth * 2,
             floor(videoWidth * 0.96).toInt(),

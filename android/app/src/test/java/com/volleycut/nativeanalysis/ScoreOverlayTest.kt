@@ -16,6 +16,34 @@ class ScoreOverlayTest {
     }
 
     @Test
+    fun snapshotUsesTheUpcomingServerThroughoutPreServePadding() {
+        val tracking = ScoreTracking(
+            team1Name = "Falcons",
+            team2Name = "Waves",
+            serveMarkers = listOf(
+                ServeMarker("S1", 1_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL),
+                ServeMarker("S2", 5_000, ServingSide.FAR, ServeMarkerOrigin.MANUAL),
+            ),
+        )
+        val prepared = ScoreOverlay.prepare(
+            tracking,
+            emptyList(),
+            emptySet(),
+            listOf(
+                ScoreRallyRange(1_000, 3_000, 900, 4_000),
+                ScoreRallyRange(5_000, 7_000, 4_000, 8_000),
+            ),
+        )
+
+        assertEquals(ScoreTeamId.TEAM_1, ScoreOverlay.snapshot(prepared, 3_999).servingTeamId)
+        assertEquals(ScoreTeamId.TEAM_2, ScoreOverlay.snapshot(prepared, 4_000).servingTeamId)
+        assertEquals(ScoreTeamId.TEAM_2, ScoreOverlay.snapshot(prepared, 4_999).servingTeamId)
+        assertEquals(ScoreTeamId.TEAM_2, ScoreOverlay.snapshot(prepared, 5_000).servingTeamId)
+        assertEquals("Falcons 🏐", ScoreOverlay.formatTeamLabel("Falcons", true))
+        assertEquals("Falcons", ScoreOverlay.formatTeamLabel("Falcons", false))
+    }
+
+    @Test
     fun layoutMatchesResponsiveContractAcrossSd1080pAnd4k() {
         listOf(640 to 480, 1920 to 1080, 3840 to 2160).forEach { (width, height) ->
             val snapshot = ScoreOverlaySnapshot(
@@ -67,6 +95,7 @@ class ScoreOverlayTest {
             ignoredIntervals = listOf(IgnoredSourceInterval("I1", 1_000, 2_000, "timeout")),
             excludedRallyIds = setOf("R002"),
             rallyRanges = listOf(ScoreRallyRange(3_000, 4_000, 2_500, 4_500)),
+            mergedRanges = listOf(ScoreMergedRange(2_500, 4_500)),
         )
 
         val restored = ScoreExportSnapshotJson.decode(
@@ -80,5 +109,6 @@ class ScoreOverlayTest {
         assertEquals(original.ignoredIntervals, restored?.ignoredIntervals)
         assertEquals(original.excludedRallyIds, restored?.excludedRallyIds)
         assertEquals(original.rallyRanges, restored?.rallyRanges)
+        assertEquals(original.mergedRanges, restored?.mergedRanges)
     }
 }
