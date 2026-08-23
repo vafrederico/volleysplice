@@ -83,10 +83,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -94,6 +98,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -102,6 +107,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -3425,6 +3431,10 @@ internal fun WholeTimeline(
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
+        val resources = LocalContext.current.resources
+        val volleyballMarkerImage = remember(resources) {
+            ImageBitmap.imageResource(resources, R.drawable.volleycut_icon)
+        }
         val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val windowSpanMs = (windowEndMs - windowStartMs).coerceAtLeast(1)
         fun timeAt(x: Float) = windowStartMs +
@@ -3578,8 +3588,7 @@ internal fun WholeTimeline(
             val markerCenterY = 7.dp.toPx()
             val markerRadius = 5.dp.toPx()
             val markerStemWidth = 1.5.dp.toPx()
-            val markerBorderWidth = 1.dp.toPx()
-            val markerDetailWidth = 1.15.dp.toPx()
+            val volleyballImageSize = 11.dp.toPx().roundToInt()
             serveMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
                 val x = xAt(marker.timestampMs)
                 drawLine(
@@ -3588,23 +3597,20 @@ internal fun WholeTimeline(
                     Offset(x, size.height),
                     markerStemWidth,
                 )
-                drawCircle(Color.White, markerRadius, Offset(x, markerCenterY))
-                drawCircle(
-                    Ink, markerRadius, Offset(x, markerCenterY),
-                    style = Stroke(markerBorderWidth),
-                )
-                drawArc(
-                    Ink, -75f, 150f, false,
-                    Offset(x - markerRadius * .72f, markerCenterY - markerRadius * .72f),
-                    Size(markerRadius * 1.44f, markerRadius * 1.44f),
-                    style = Stroke(markerDetailWidth),
-                )
-                drawArc(
-                    Ink, 105f, 150f, false,
-                    Offset(x - markerRadius * .72f, markerCenterY - markerRadius * .72f),
-                    Size(markerRadius * 1.44f, markerRadius * 1.44f),
-                    style = Stroke(markerDetailWidth),
-                )
+                val imageLeft = x - volleyballImageSize / 2f
+                val imageTop = markerCenterY - volleyballImageSize / 2f
+                val ballClip = Path().apply {
+                    addOval(Rect(imageLeft, imageTop, imageLeft + volleyballImageSize, imageTop + volleyballImageSize))
+                }
+                clipPath(ballClip) {
+                    drawImage(
+                        image = volleyballMarkerImage,
+                        srcOffset = IntOffset(98, 27),
+                        srcSize = IntSize(268, 266),
+                        dstOffset = IntOffset(imageLeft.roundToInt(), imageTop.roundToInt()),
+                        dstSize = IntSize(volleyballImageSize, volleyballImageSize),
+                    )
+                }
             }
             sideSwitchMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
                 val x = xAt(marker.timestampMs)
@@ -3617,7 +3623,7 @@ internal fun WholeTimeline(
                 drawCircle(Color.White, markerRadius, Offset(x, markerCenterY))
                 drawCircle(
                     Ink, markerRadius, Offset(x, markerCenterY),
-                    style = Stroke(markerBorderWidth),
+                    style = Stroke(1.dp.toPx()),
                 )
                 val arrowHalfWidth = 3.2.dp.toPx()
                 val arrowHead = 1.8.dp.toPx()
