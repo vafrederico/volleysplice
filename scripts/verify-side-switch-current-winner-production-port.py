@@ -40,8 +40,10 @@ def _require_hash(path: Path, expected: str, label: str) -> None:
 def verify(contract_path: Path = DEFAULT_CONTRACT) -> dict[str, Any]:
     contract_path = contract_path.resolve()
     contract = _load(contract_path)
-    if contract.get("status") != "specified-not-implemented":
-        raise ValueError("port status must not claim an implementation")
+    if contract.get("status") != "implemented-production-beta":
+        raise ValueError("port status must identify the shipped production beta")
+    if contract.get("automaticProductionUse") is not True:
+        raise ValueError("the shipped production beta must enable automatic marker use")
 
     pointer_spec = contract["winnerPointer"]
     pointer_path = (REPOSITORY / str(pointer_spec["path"])).resolve()
@@ -80,6 +82,25 @@ def verify(contract_path: Path = DEFAULT_CONTRACT) -> dict[str, Any]:
         threshold, float(pointer["winner"]["threshold"]), abs_tol=1e-15
     ):
         raise ValueError("winner pointer threshold diverged")
+
+    runtime_spec = contract["runtimeAsset"]
+    runtime_path = (REPOSITORY / str(runtime_spec["path"])).resolve()
+    _require_hash(runtime_path, str(runtime_spec["sha256"]), "browser runtime")
+    runtime = _load(runtime_path)
+    runtime_classifier = runtime["classifier"]
+    if (
+        runtime["modelId"] != pointer_spec["winnerId"]
+        or runtime["fingerprint"] != f"sha256:{model_spec['sha256']}"
+        or runtime_classifier["featureNames"] != names
+    ):
+        raise ValueError("browser runtime identity or feature signature diverged")
+    for parameter in ("impute", "mean", "scale", "weights", "bias"):
+        if runtime_classifier[parameter] != classifier[parameter]:
+            raise ValueError(f"browser classifier diverged: {parameter}")
+    if not math.isclose(
+        float(runtime_classifier["threshold"]), threshold, abs_tol=1e-15
+    ):
+        raise ValueError("browser classifier threshold diverged")
 
     decoder_contract = contract["decoder"]
     decoder_model = model["decoder"]
@@ -144,6 +165,7 @@ def verify(contract_path: Path = DEFAULT_CONTRACT) -> dict[str, Any]:
         "threshold": threshold,
         "candidateConfig": candidate,
         "status": contract["status"],
+        "runtimeAsset": str(runtime_path),
     }
 
 

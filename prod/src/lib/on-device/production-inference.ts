@@ -200,6 +200,17 @@ export function runProductionInferenceWithLoadedModels(
         })),
       },
     },
+    productionStateOutputs: {
+      allLabelsV2: {
+        rallyProbabilities: allLabelsInference.probabilities.rally,
+        deadStateProbabilities: allLabelsInference.probabilities.deadState,
+      },
+      previousProduction: {
+        rallyProbabilities: previousProductionInference.probabilities.rally,
+        deadStateProbabilities:
+          previousProductionInference.probabilities.deadState,
+      },
+    },
     suppression: {
       modelId: SUPPRESSION_MODEL_ID,
       artifactSha256: SUPPRESSION_ARTIFACT_SHA256,
@@ -221,6 +232,7 @@ export async function augmentStoredAnalysisWithSuppression(
   if (
     analysis.productionComponents &&
     analysis.productionServeOutputs &&
+    analysis.productionStateOutputs &&
     analysis.suppression
   ) {
     return analysis;

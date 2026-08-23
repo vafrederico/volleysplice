@@ -25,6 +25,12 @@ import {
   SERVING_SIDE_MODEL_ID,
 } from "../../prod/src/lib/on-device/serving-side-model.ts";
 import {
+  SIDE_SWITCH_CANDIDATE_CONTRACT,
+  SIDE_SWITCH_FEATURE_NAMES,
+  SIDE_SWITCH_FEATURE_VERSION,
+  SIDE_SWITCH_MODEL_ID,
+} from "../../prod/src/lib/on-device/side-switch-model.ts";
+import {
   normalizeStoredProject,
   projectAnalysisId,
   projectId,
@@ -299,5 +305,27 @@ test("a serving-side cache with changed candidate anchors is discarded without i
   const normalized = normalizeStoredProject(project);
   assert.equal(normalized.status, "ready");
   assert.equal(normalized.analysis?.servingSide, undefined);
+  assert.ok(normalized.analysis);
+});
+
+test("a side-switch cache with changed model identity is discarded without invalidating the project", () => {
+  const project = storedProject(
+    cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true),
+  );
+  project.analysis!.sideSwitch = {
+    modelId: SIDE_SWITCH_MODEL_ID,
+    modelFingerprint: "sha256:stale",
+    featureVersion: SIDE_SWITCH_FEATURE_VERSION,
+    candidateContract: SIDE_SWITCH_CANDIDATE_CONTRACT,
+    features: {
+      rows: 0,
+      columns: SIDE_SWITCH_FEATURE_NAMES.length,
+      values: new Float64Array(0),
+    },
+    candidates: [],
+  };
+  const normalized = normalizeStoredProject(project);
+  assert.equal(normalized.status, "ready");
+  assert.equal(normalized.analysis?.sideSwitch, undefined);
   assert.ok(normalized.analysis);
 });

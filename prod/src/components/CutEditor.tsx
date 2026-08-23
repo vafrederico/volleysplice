@@ -56,6 +56,7 @@ import { modelDisplayName } from "@/lib/on-device/ensemble";
 import { requestPlayingSeek } from "@/lib/on-device/player";
 import {
   addServeMarker,
+  addSideSwitchMarker,
   isScoreTimestampIgnored,
   scoreBoundaryTimestamp,
   scoreTrackingOutsideExcludedRallies,
@@ -72,7 +73,10 @@ import {
 } from "@/lib/on-device/suppression-policy";
 import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type { WakeLockState } from "@/lib/on-device/wake-lock";
-import type { OnDeviceServingSideOutput } from "@/lib/on-device/types";
+import type {
+  OnDeviceSideSwitchOutput,
+  OnDeviceServingSideOutput,
+} from "@/lib/on-device/types";
 import type { ProductAnalysis } from "@/lib/product-analysis";
 
 import styles from "./CutEditor.module.css";
@@ -87,6 +91,7 @@ type CutEditorProps = {
   onAttachSource: (file: File | null) => void;
   onRequestSuppression: () => void;
   onServingSideAnalysis: (output: OnDeviceServingSideOutput) => void;
+  onSideSwitchAnalysis: (output: OnDeviceSideSwitchOutput) => void;
 };
 
 type ExportState = "idle" | "exporting" | "done" | "error";
@@ -193,6 +198,7 @@ export function CutEditor({
   onAttachSource,
   onRequestSuppression,
   onServingSideAnalysis,
+  onSideSwitchAnalysis,
 }: CutEditorProps) {
   const analysisStart = initialAnalysis.analysisWindow.start;
   const analysisEnd = initialAnalysis.analysisWindow.end;
@@ -339,35 +345,52 @@ export function CutEditor({
   }, [draft, seed.analysisId, storageReady]);
 
   useEffect(() => {
+    const resumableMissingStage = Boolean(
+      sourceFile &&
+      ((!initialAnalysis.servingSide && initialAnalysis.productionServeOutputs) ||
+        (!initialAnalysis.sideSwitch && initialAnalysis.productionComponents &&
+          initialAnalysis.productionStateOutputs)),
+    );
     if (
       !storageReady ||
       !draft.scoreTracking.enabled ||
-      scoreInferenceStartedRef.current
+      scoreInferenceStatus === "running" ||
+      (scoreInferenceStartedRef.current && !resumableMissingStage)
     ) return;
+    scoreInferenceStartedRef.current = true;
     if (initialAnalysis.servingSide) {
-      scoreInferenceStartedRef.current = true;
       applyServingSideOutput(initialAnalysis.servingSide);
+    }
+    if (initialAnalysis.sideSwitch) {
+      applySideSwitchOutput(initialAnalysis.sideSwitch);
+    }
+    const servingReady = Boolean(initialAnalysis.servingSide);
+    const switchingReady = Boolean(initialAnalysis.sideSwitch);
+    if (servingReady && switchingReady) {
       setScoreInferenceStatus("done");
-      const visible = initialAnalysis.servingSide.candidates.filter(
-        (candidate) => candidate.verdict !== "not-serve",
-      );
-      const review = visible.filter((candidate) => candidate.verdict === "review").length;
+      const review = initialAnalysis.servingSide!.candidates.filter(
+        (candidate) => candidate.verdict === "review",
+      ).length;
       setScoreInferenceMessage(
-        `Serving-side feature cache loaded · ${review} model verdicts need review. Ignored sections do not reprocess the video.`,
+        `Score model cache loaded · ${review} serve verdicts need review · ${initialAnalysis.sideSwitch!.candidates.length} team-side switches predicted.`,
       );
       return;
     }
-    if (sourceFile && initialAnalysis.productionServeOutputs) {
+    const canRunServing = !servingReady && Boolean(initialAnalysis.productionServeOutputs);
+    const canRunSwitching = !switchingReady && Boolean(
+      initialAnalysis.productionComponents && initialAnalysis.productionStateOutputs,
+    );
+    if (sourceFile && (canRunServing || canRunSwitching)) {
       void runScoreInference();
       return;
     }
     setScoreInferenceStatus("idle");
     setScoreInferenceMessage(
       sourceFile
-        ? "This older analysis has no dual serve-head evidence. Add markers manually or run a new analysis."
-        : "Reconnect the source once to generate and save serving-side features for this project.",
+        ? "This older analysis lacks the production traces required for automatic score markers. Add markers manually or run a new analysis."
+        : "Reconnect the source once to generate and save serve and team-side switch markers for this project.",
     );
-  }, [draft.scoreTracking.enabled, draft.scoreTracking.serveMarkers, initialAnalysis.productionServeOutputs, initialAnalysis.servingSide, sourceFile, storageReady]);
+  }, [draft.scoreTracking.enabled, draft.scoreTracking.serveMarkers, initialAnalysis.productionComponents, initialAnalysis.productionServeOutputs, initialAnalysis.productionStateOutputs, initialAnalysis.servingSide, initialAnalysis.sideSwitch, scoreInferenceStatus, sourceFile, storageReady]);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = draft.playbackRate;
@@ -585,44 +608,84 @@ export function CutEditor({
     });
   }
 
+  function applySideSwitchOutput(output: OnDeviceSideSwitchOutput) {
+    updateDraft((current) => {
+      let scoreTracking: ScoreTracking = {
+        ...current.scoreTracking,
+        sideSwitchMarkers: current.scoreTracking.sideSwitchMarkers.filter(
+          (marker) => marker.origin === "manual",
+        ),
+      };
+      for (const candidate of output.candidates) {
+        scoreTracking = addSideSwitchMarker(
+          scoreTracking,
+          candidate.timestamp,
+          {
+            id: `switch-${candidate.id}`,
+            origin: "model",
+            modelConfidence: candidate.probability,
+            modelEventId: candidate.id,
+            rallyIds: candidate.sourceRangeIds,
+          },
+        );
+      }
+      return { ...current, scoreTracking };
+    });
+  }
+
   async function runScoreInference() {
     if (!sourceFile || scoreInferenceStatus === "running") return;
     scoreInferenceStartedRef.current = true;
     setScoreInferenceStatus("running");
-    setScoreInferenceMessage("Loading the frozen serving-side model…");
-    updateDraft((current) => ({
-      ...current,
-      scoreTracking: {
-        ...current.scoreTracking,
-        serveMarkers: current.scoreTracking.serveMarkers.filter(
-          (marker) => marker.origin === "manual",
-        ),
-      },
-    }));
+    setScoreInferenceMessage("Loading the frozen score-tracking models…");
     let media: Awaited<ReturnType<typeof openLocalMedia>> | null = null;
     try {
       media = await openLocalMedia(sourceFile);
-      const { inferServingSides } = await import("@/lib/on-device/serving-side");
-      const output = await inferServingSides(
-        media,
-        initialAnalysis.roi,
-        initialAnalysis,
-        (progress) => setScoreInferenceMessage(progress.detail),
-      );
-      onServingSideAnalysis(output);
-      applyServingSideOutput(output);
+      let servingSide = initialAnalysis.servingSide;
+      let sideSwitch = initialAnalysis.sideSwitch;
+      if (!servingSide && initialAnalysis.productionServeOutputs) {
+        const { inferServingSides } = await import("@/lib/on-device/serving-side");
+        servingSide = await inferServingSides(
+          media,
+          initialAnalysis.roi,
+          initialAnalysis,
+          (progress) => setScoreInferenceMessage(progress.detail),
+        );
+        onServingSideAnalysis(servingSide);
+        applyServingSideOutput(servingSide);
+      }
+      if (!sideSwitch && initialAnalysis.productionComponents && initialAnalysis.productionStateOutputs) {
+        const { inferSideSwitches } = await import("@/lib/on-device/side-switch");
+        sideSwitch = await inferSideSwitches(
+          media,
+          initialAnalysis.roi,
+          {
+            intervals: initialAnalysis.rallies,
+            times: initialAnalysis.inferenceTimes,
+            deadStateProbabilities: initialAnalysis.probabilities.deadState,
+            productionComponents: initialAnalysis.productionComponents,
+            productionStateOutputs: initialAnalysis.productionStateOutputs,
+          },
+          (progress) => setScoreInferenceMessage(progress.detail),
+        );
+        onSideSwitchAnalysis(sideSwitch);
+        applySideSwitchOutput(sideSwitch);
+      }
+      if (!servingSide && !sideSwitch) {
+        throw new Error("This project has no reusable score-model inputs.");
+      }
       setScoreInferenceStatus("done");
-      const visible = output.candidates.filter(
+      const visible = servingSide?.candidates.filter(
         (candidate) => candidate.verdict !== "not-serve",
-      );
+      ) ?? [];
       const review = visible.filter((candidate) => candidate.verdict === "review").length;
       setScoreInferenceMessage(
-        `Serving-side feature cache saved · ${review} model verdicts need review. The final rally needs a later or manually added serve before it can award a point.`,
+        `Score model cache saved · ${review} serve verdicts need review · ${sideSwitch?.candidates.length ?? 0} team-side switches predicted.`,
       );
     } catch (cause) {
       setScoreInferenceStatus("error");
       setScoreInferenceMessage(
-        `Near/far analysis could not finish: ${cause instanceof Error ? cause.message : String(cause)}. Review markers remain editable.`,
+        `Score marker analysis could not finish: ${cause instanceof Error ? cause.message : String(cause)}. Existing markers remain editable.`,
       );
     } finally {
       media?.input.dispose();
@@ -1615,7 +1678,7 @@ export function CutEditor({
               <i />
             </button>
           ))}
-        {draft.scoreTracking.enabled && draft.scoreTracking.sideSwitchMarkers
+        {draft.scoreTracking.enabled && activeScoreTracking.sideSwitchMarkers
           .filter((marker) => marker.timestamp >= windowStart &&
             (rowIndex === 1 ? marker.timestamp <= windowEnd : marker.timestamp < windowEnd))
           .map((marker) => (
@@ -2013,9 +2076,10 @@ export function CutEditor({
                 inferenceStatus={scoreInferenceStatus}
                 inferenceMessage={scoreInferenceMessage}
                 canRunInference={Boolean(
-                  !initialAnalysis.servingSide &&
                   sourceFile &&
-                  initialAnalysis.productionServeOutputs
+                  ((!initialAnalysis.servingSide && initialAnalysis.productionServeOutputs) ||
+                    (!initialAnalysis.sideSwitch && initialAnalysis.productionComponents &&
+                      initialAnalysis.productionStateOutputs))
                 )}
                 onChange={updateScoreTracking}
                 onSelectServeMarker={selectServeMarker}

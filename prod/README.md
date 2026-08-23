@@ -138,28 +138,36 @@ curl -I https://volleycut.vafrederico.com
   serving-side logistic model, thresholds, feature order, image geometry, and hybrid
   serve-gate policy. Runtime file SHA-256:
   `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`.
+- `public/runtime/side-switch-c2570481c30d.json`: the selected 34-input
+  full-union side-switch classifier and decoder. Runtime file SHA-256:
+  `ab4197545fb916a37ee6ac1d69e74ddfc0123c09039cdfa88c4ef378dd3e27fc`.
 
 The production app extracts media features once, runs both model stacks, and unions
 overlapping rally ranges. Ranges emitted by only one model are retained but marked as
 disagreements, assigned a conservative review confidence below 50%, and highlighted
 with an orange striped treatment so **Review next** visits them before export.
 
-## Planned side-switch research port
+## Team-side switch marker model (beta)
 
-No side-switch classifier is currently installed in `public/runtime/` or connected to
-the editor. The selected research winner's future browser contract is tracked in
+The selected research winner is installed as a production score-tracking beta. After
+the rally ensemble completes, the browser retains both production bundles' rally and
+dead-state traces, runs the sparse 256×144 comparison pass, and adds the decoded outputs
+as editable team-side switch markers. Predicted markers retain confidence, source-range
+IDs, and deletion tombstones so ignored/suppressed footage filters them without changing
+the cached inference and a removed prediction does not reappear.
+
+The exact browser contract is tracked in
 [`side-switch-current-research-winner-production-port-v1.json`](../data/side-switch-current-research-winner-production-port-v1.json)
 and the
 [`implementation note`](../docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md).
 
-That port must reuse the existing production traces but add a sparse candidate-window
+The port reuses the existing production traces and adds a sparse candidate-window
 visual pass: seven 256×144 frames for each side of every retained candidate, producing
 22 V5 visual values. Ten rally/dead-state reductions from the two shipped bundles and
 candidate kind/generator score complete the ordered 34-input vector. Serve-anchor
 features, suppression, cadence, the expanded union, and later specialist heads are not
-dependencies of the selected model. Do not add a runtime asset or automatic editor
-markers until the parity, device-cost, and independent-validation gates in the contract
-pass.
+dependencies of the selected model. Runtime/memory measurements and an independent
+exhaustively reviewed set remain follow-up gates before removing the beta label.
 
 Feature caches are versioned by the feature schema, extraction settings, source,
 media metadata, ROI, and runtime variant—not by the model—so compatible features can

@@ -183,7 +183,7 @@ export function ScoreTrackingPanel({
             disabled={!canRunInference || inferenceStatus === "running"}
             onClick={onRunInference}
           >
-            Find serves
+            Find score markers
           </button>
         )}
       </div>
@@ -365,12 +365,17 @@ export function ScoreTrackingPanel({
               <button type="button" onClick={() => onSeek(marker.timestamp)}>
                 <span aria-hidden="true">⇄</span>
                 <strong>{preciseTime(marker.timestamp)}</strong>
-                <small>Team side switch</small>
+                <small>
+                  Team side switch · {marker.origin}
+                  {marker.modelConfidence === undefined
+                    ? ""
+                    : ` · ${Math.round(marker.modelConfidence * 100)}%`}
+                </small>
               </button>
               <button
                 type="button"
                 className={styles.removeMarker}
-                aria-label={`Remove side switch at ${preciseTime(marker.timestamp)}`}
+                aria-label={`Remove ${marker.origin === "model" ? "predicted" : "added"} side switch at ${preciseTime(marker.timestamp)}`}
                 onClick={() => onChange(removeSideSwitchMarker(tracking, marker.id))}
               >
                 Remove

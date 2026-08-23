@@ -121,13 +121,25 @@ export type ProductionServeOutputs = {
   previousProduction: OnDeviceServeOutput;
 };
 
+export type ProductionStateOutput = {
+  rallyProbabilities: Float32Array;
+  deadStateProbabilities: Float32Array;
+};
+
+export type ProductionStateOutputs = {
+  allLabelsV2: ProductionStateOutput;
+  previousProduction: ProductionStateOutput;
+};
+
 export type ServingSideSide = "near" | "far";
 export type ServingSideVerdict = ServingSideSide | "review" | "not-serve";
 export type ServingSideDecisionSource =
   | "serve-head"
   | "production-rally-recovery"
   | "none";
-export type ServingSideReviewReason = "side-score" | "production-rally-recovery";
+export type ServingSideReviewReason =
+  | "side-score"
+  | "production-rally-recovery";
 
 export type ServingSideHeadEvidence = {
   modelId: string;
@@ -169,6 +181,31 @@ export type OnDeviceServingSideOutput = {
   candidates: ServingSideCandidateVerdict[];
 };
 
+export type SideSwitchCandidateKind =
+  | "adjacent-rally-boundary"
+  | "internal-dead-state-peak";
+
+export type SideSwitchCandidateVerdict = {
+  id: string;
+  timestamp: number;
+  probability: number;
+  kind: SideSwitchCandidateKind;
+  sourceRangeIds: string[];
+};
+
+export type OnDeviceSideSwitchOutput = {
+  modelId: string;
+  modelFingerprint: string;
+  featureVersion: "SIDE-SWITCH-UNION34-V1";
+  candidateContract: "range-boundaries-dead-peaks-v1";
+  features: {
+    rows: number;
+    columns: number;
+    values: Float64Array;
+  };
+  candidates: SideSwitchCandidateVerdict[];
+};
+
 export type OnDeviceSuppression = {
   modelId: string;
   artifactSha256: string;
@@ -196,6 +233,8 @@ export type OnDeviceAnalysis = {
     previousProduction: OnDeviceInterval[];
   };
   productionServeOutputs?: ProductionServeOutputs;
+  productionStateOutputs?: ProductionStateOutputs;
   servingSide?: OnDeviceServingSideOutput;
+  sideSwitch?: OnDeviceSideSwitchOutput;
   suppression?: OnDeviceSuppression;
 };

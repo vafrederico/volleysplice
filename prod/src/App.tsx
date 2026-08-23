@@ -28,6 +28,7 @@ import type {
   NormalizedRoi,
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
+  OnDeviceSideSwitchOutput,
   OnDeviceServingSideOutput,
 } from "@/lib/on-device/types";
 import {
@@ -221,6 +222,22 @@ export function App() {
     });
   }
 
+  function persistSideSwitchAnalysis(
+    projectIdToUpdate: string,
+    sideSwitch: OnDeviceSideSwitchOutput,
+  ) {
+    const project = projectsRef.current.find(
+      (candidate) => candidate.id === projectIdToUpdate,
+    );
+    if (!project?.analysis || project.status !== "ready") return;
+    commitProject({
+      ...project,
+      servingSideEnabled: true,
+      analysis: { ...project.analysis, sideSwitch },
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   function replacePreviewUrl(next: string | null) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = next;
@@ -308,7 +325,8 @@ export function App() {
       project.status !== "ready" ||
       project.importedFeedback ||
       (project.analysis.suppression &&
-        project.analysis.productionServeOutputs) ||
+        project.analysis.productionServeOutputs &&
+        project.analysis.productionStateOutputs) ||
       !project.analysis.featureNames ||
       !project.analysis.featureValues ||
       suppressionAugmentingRef.current.has(project.id)
@@ -638,6 +656,42 @@ export function App() {
           }
         }
       }
+      if (
+        running.servingSideEnabled !== false &&
+        result.productionComponents &&
+        result.productionStateOutputs
+      ) {
+        try {
+          const { inferSideSwitches } = await import(
+            "@/lib/on-device/side-switch"
+          );
+          const sideSwitch = await inferSideSwitches(
+            opened,
+            running.roi,
+            result as Parameters<typeof inferSideSwitches>[2],
+            (progress) => {
+              if (
+                !deletedProjectIdsRef.current.has(projectIdToRun) &&
+                mountedRef.current
+              ) {
+                setActiveProgress({
+                  stage: "inference",
+                  completed: progress.completed,
+                  total: progress.total,
+                  detail: progress.detail,
+                });
+              }
+            },
+          );
+          completedAnalysis = { ...completedAnalysis, sideSwitch };
+        } catch (cause) {
+          if (mountedRef.current) {
+            setError(
+              `Team-side switch markers could not be generated: ${cause instanceof Error ? cause.message : String(cause)}`,
+            );
+          }
+        }
+      }
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
       const ready: VolleyCutProject = {
         ...running,
@@ -845,7 +899,9 @@ export function App() {
       },
       productionComponents: selectedProject.analysis.productionComponents,
       productionServeOutputs: selectedProject.analysis.productionServeOutputs,
+      productionStateOutputs: selectedProject.analysis.productionStateOutputs,
       servingSide: selectedProject.analysis.servingSide,
+      sideSwitch: selectedProject.analysis.sideSwitch,
       suppression: selectedProject.analysis.suppression,
     };
   }, [selectedProject, selectedVideoUrl]);
@@ -859,9 +915,7 @@ export function App() {
         initialScoreTrackingEnabled={
           selectedProject.servingSideEnabled !== false
         }
-        importedInitialDraft={
-          selectedProject.importedFeedback?.initialDraft
-        }
+        importedInitialDraft={selectedProject.importedFeedback?.initialDraft}
         sourceFile={selectedSourceFile}
         sourceError={error}
         onAttachSource={(selected) =>
@@ -870,6 +924,9 @@ export function App() {
         onRequestSuppression={() => queueAttachedProject(selectedProject)}
         onServingSideAnalysis={(servingSide) =>
           persistServingSideAnalysis(selectedProject.id, servingSide)
+        }
+        onSideSwitchAnalysis={(sideSwitch) =>
+          persistSideSwitchAnalysis(selectedProject.id, sideSwitch)
         }
       />
     );
@@ -1243,9 +1300,9 @@ export function App() {
                   <span>
                     <strong>Generate serving-side score tracking</strong>
                     <small>
-                      Samples extra video frames after rally inference. Turn this
-                      off for a faster project setup; you can enable it later in
-                      the editor.
+                      Samples extra video frames after rally inference. Turn
+                      this off for a faster project setup; you can enable it
+                      later in the editor.
                     </small>
                   </span>
                 </label>

@@ -128,6 +128,7 @@ test("model verdict correction keeps its original verdict and manual markers can
   );
   tracking = removeServeMarker(tracking, "S001");
   tracking = addSideSwitchMarker(tracking, 13);
+  assert.equal(tracking.sideSwitchMarkers[0].origin, "manual");
   tracking = removeSideSwitchMarker(tracking, "X001");
   assert.equal(tracking.serveMarkers.length, 1);
   assert.equal(tracking.sideSwitchMarkers.length, 0);
@@ -138,7 +139,11 @@ test("model verdict correction keeps its original verdict and manual markers can
     id: "model-rally-1",
     origin: "model",
   });
-  assert.equal(tracking.serveMarkers.length, 0, "cached prediction stays removed");
+  assert.equal(
+    tracking.serveMarkers.length,
+    0,
+    "cached prediction stays removed",
+  );
 });
 
 test("persisted score tracking rejects invalid timestamps and duplicate marker IDs", () => {
@@ -168,22 +173,55 @@ test("ignored source sections filter points without changing stored markers", ()
   tracking = addServeMarker(tracking, 5, "near", { id: "S001" });
   tracking = addServeMarker(tracking, 10, "far", { id: "S002" });
   tracking = addServeMarker(tracking, 20, "near", { id: "S003" });
+  tracking = addSideSwitchMarker(tracking, 9.5, {
+    id: "switch-predicted",
+    origin: "model",
+    modelConfidence: 0.8,
+    modelEventId: "candidate-1",
+    rallyIds: ["R001", "R002"],
+  });
 
   const active = scoreTrackingOutsideIgnoredIntervals(tracking, [
     { start: 9, end: 11 },
   ]);
-  assert.deepEqual(active.serveMarkers.map((marker) => marker.id), ["S001", "S003"]);
+  assert.deepEqual(
+    active.serveMarkers.map((marker) => marker.id),
+    ["S001", "S003"],
+  );
+  assert.deepEqual(active.sideSwitchMarkers, []);
   assert.equal(deriveScoreAt(active).team1Score, 1);
   assert.equal(deriveScoreAt(active).team2Score, 0);
   assert.equal(deriveScoreAt(active).ignoredPointCount, 0);
   assert.equal(deriveScoreAt(active).points.length, 1);
-  assert.equal(tracking.serveMarkers.length, 3, "the cached/edit-layer markers stay intact");
+  assert.equal(
+    tracking.serveMarkers.length,
+    3,
+    "the cached/edit-layer markers stay intact",
+  );
 
   assert.equal(
     scoreTrackingOutsideIgnoredIntervals(tracking, []).serveMarkers,
     tracking.serveMarkers,
     "removing the ignored interval restores the original marker collection",
   );
+});
+
+test("removed model side switches stay tombstoned", () => {
+  let tracking = createScoreTracking();
+  tracking = addSideSwitchMarker(tracking, 15, {
+    id: "switch-candidate-1",
+    origin: "model",
+    modelConfidence: 0.75,
+    modelEventId: "candidate-1",
+    rallyIds: ["R001", "R002"],
+  });
+  tracking = removeSideSwitchMarker(tracking, "switch-candidate-1");
+  assert.deepEqual(tracking.removedModelMarkerIds, ["switch-candidate-1"]);
+  tracking = addSideSwitchMarker(tracking, 15, {
+    id: "switch-candidate-1",
+    origin: "model",
+  });
+  assert.equal(tracking.sideSwitchMarkers.length, 0);
 });
 
 test("disabled or suppressed rallies leave only visible markers in the scoring sequence", () => {
@@ -209,7 +247,10 @@ test("disabled or suppressed rallies leave only visible markers in the scoring s
     tracking,
     excludedRallyIds,
   );
-  assert.deepEqual(active.serveMarkers.map((marker) => marker.id), ["S001", "S003"]);
+  assert.deepEqual(
+    active.serveMarkers.map((marker) => marker.id),
+    ["S001", "S003"],
+  );
 
   const score = deriveScoreAt(active);
   assert.equal(score.team1Score, 1);
@@ -283,9 +324,7 @@ test("first leading padding stops looking ahead after crossing its serve marker"
   let tracking = createScoreTracking();
   tracking = addServeMarker(tracking, 2.5, "near", { id: "S001" });
   tracking = addServeMarker(tracking, 20, "far", { id: "S002" });
-  const ranges = [
-    { keepStart: 3, coreStart: 5, coreEnd: 12, keepEnd: 14 },
-  ];
+  const ranges = [{ keepStart: 3, coreStart: 5, coreEnd: 12, keepEnd: 14 }];
   const merged = [{ start: 3, end: 14 }];
 
   assert.equal(scoreBoundaryTimestamp(3, ranges, tracking, merged), 3);

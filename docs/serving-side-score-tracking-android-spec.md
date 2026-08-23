@@ -23,7 +23,9 @@ Android must implement:
 8. model-feedback schema v3 export/import parity; and
 9. cross-platform fixtures for features, inference, scoring, and rendering state.
 
-This version does not infer side switches, set boundaries, match format, serving player,
+The Android implementation described by this version does not infer side switches. The
+production browser now adds beta side-switch predictions through its separate full-union
+candidate model. Neither client infers set boundaries, match format, serving player,
 penalty points, or the winner of the final rally without a later serve. It does not put
 the point-history rail into the encoded video. It does not add serving-side columns to
 the existing F104/520 rally model input.

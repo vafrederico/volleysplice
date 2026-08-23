@@ -4,9 +4,11 @@
 
 The selected side-switch model is
 `side-switch-hard-negative-mining-v1/union34-top2-x2`. It is the current
-**research-only** winner, not a shipped production model. The port specified here must
-not be enabled in the editor until browser parity, device cost, and an independently
-reviewed validation set pass.
+research winner and is now shipped in the production browser as a score-tracking beta.
+Its outputs seed editable team-side switch markers; they do not bypass human correction,
+ignored/suppressed-range filtering, or model-marker deletion tombstones. Representative
+device profiling and an independently reviewed validation set remain required before
+removing the beta label.
 
 The immutable source bindings are:
 
@@ -15,7 +17,8 @@ The immutable source bindings are:
 | Current-winner pointer | `data/side-switch-current-research-winner-v1.json`, SHA-256 `163c7844267bc48410e89f86bd5cbf0a58b3145c1ec691932e4e3374dae7286c` |
 | Model | `models/side-switch-hard-negative-mining-v1/model.json`, SHA-256 `c2570481c30dec62f56ac3284cd4028763ffd8e72a9ad07e9908fec10df387e3` |
 | Feature artifact | `side-switch-full-union-v5-state-features-v1.json`, SHA-256 `9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551` |
-| Machine-readable port contract | [`data/side-switch-current-research-winner-production-port-v1.json`](../../data/side-switch-current-research-winner-production-port-v1.json), SHA-256 `48825e3e0b9ce11a6b67b8b7366d542d293e7b3e3eea4246e19f4dd9cd18613b` |
+| Machine-readable port contract | [`data/side-switch-current-research-winner-production-port-v1.json`](../../data/side-switch-current-research-winner-production-port-v1.json), SHA-256 `a327c0e13c675f2bd2eedf84c2b60277b6bc4bc273900ab2cfa9f8d868ef4fde` |
+| Browser runtime | [`side-switch-c2570481c30d.json`](../../prod/public/runtime/side-switch-c2570481c30d.json), SHA-256 `ab4197545fb916a37ee6ac1d69e74ddfc0123c09039cdfa88c4ef378dd3e27fc` |
 
 Hard-negative mining is training-only. The runtime remains one standardized 34-input
 logistic head, threshold `0.39884973953581804`, and a cadence-free local-peak/soft-count
@@ -23,7 +26,7 @@ decoder.
 
 ## Browser feature-generation graph
 
-The future web implementation needs this graph in addition to the current production
+The web implementation adds this graph after the current production
 rally analysis:
 
 ```text
@@ -138,19 +141,17 @@ Do not port these as dependencies of the selected winner:
 - the expanded internal-candidate specialist; or
 - the unpromoted boundary-only ablation.
 
-## Acceptance gates
+## Production-beta validation follow-up
 
-Before automatic editor use, require:
+The browser port has a pinned runtime, frozen classifier-row parity, pure candidate/state
+contract tests, deterministic decoder tests, score-marker lifecycle tests, and static
+production-build integrity checks. Before removing the beta label, complete:
 
-1. exact candidate inventory parity on all 11 audited recordings;
-2. all 34 browser features compared with the frozen Python artifact, with explicit
-   numeric tolerances and no reordered columns;
-3. classifier-logit and final proposal parity, including deterministic ties;
-4. peak memory and runtime measurements on representative phones; and
-5. evaluation on a new exhaustively reviewed recording set.
+1. broader browser visual-feature parity fixtures against frozen Python windows;
+2. peak memory and runtime measurements on representative phones; and
+3. evaluation on a new exhaustively reviewed recording set.
 
-The production editor should continue using its current rally model until all gates
-pass. A review-only timeline can be added earlier if it is clearly labeled experimental.
+The score tracker remains explicitly labeled **BETA** while these follow-ups remain.
 
 Verify that the contract still matches the frozen pointer, model, feature artifact,
 candidate generator, and decoder with:

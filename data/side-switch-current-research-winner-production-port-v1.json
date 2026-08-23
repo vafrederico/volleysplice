@@ -1,8 +1,12 @@
 {
   "schemaVersion": 1,
   "kind": "volleycut-side-switch-current-research-winner-production-port-v1",
-  "status": "specified-not-implemented",
-  "automaticProductionUse": false,
+  "status": "implemented-production-beta",
+  "automaticProductionUse": true,
+  "runtimeAsset": {
+    "path": "prod/public/runtime/side-switch-c2570481c30d.json",
+    "sha256": "ab4197545fb916a37ee6ac1d69e74ddfc0123c09039cdfa88c4ef378dd3e27fc"
+  },
   "winnerPointer": {
     "path": "data/side-switch-current-research-winner-v1.json",
     "sha256": "163c7844267bc48410e89f86bd5cbf0a58b3145c1ec691932e4e3374dae7286c",
@@ -164,11 +168,9 @@
     "the separate internal-specialist head",
     "the boundary-only opened-development ablation"
   ],
-  "acceptanceBeforeEnablement": [
-    "browser feature parity against the frozen Python artifact, including all 34 ordered inputs",
-    "candidate inventory and classifier-logit parity on the 11 audited recordings",
-    "decoder proposal parity including deterministic tie breaks",
-    "runtime and memory measurement on representative phones",
-    "independent exhaustive reviewed-set validation before automatic editor use"
+  "productionBetaValidationFollowUp": [
+    "expand browser visual-feature parity fixtures beyond the frozen classifier row and pure state/candidate contracts",
+    "measure runtime and peak memory on representative phones",
+    "evaluate an independent exhaustively reviewed recording set before removing the score-tracking beta label"
   ]
 }
