@@ -7,8 +7,8 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const expectedHashes = new Map([
   [
-    "android/VolleyCut-v0.10.4-arm64-release-signed.apk",
-    "c2bf98d6bfa73b4a0cab07db1ead79ca66e0e26fd3ce00520762c2e05408b75e",
+    "android/VolleyCut-v0.10.5-arm64-release-signed.apk",
+    "334cb90fc6fc90940abe8028639b30e90a57c6ca7df2d0906773d39f224f247e",
   ],
   [
     "runtime/model-1ca43e38eefc.json",
