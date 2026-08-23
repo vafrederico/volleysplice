@@ -818,6 +818,17 @@ gain; robust-logit and percentile calibration are rejected. A mirrored no-switch
 verified to be only the switch-score complement. See the
 [imbalance/calibration decision](../docs/research/side-switch-imbalance-calibration-2026-08-23.md).
 
+The internal-candidate penalty diagnostic reuses the same feature artifact and applies
+a soft kind-specific logit offset before the fixed adjacent+soft-count decoder:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-internal-peak-penalty.py
+```
+
+Its nested matched-control gain is small and it removes the only correct internal
+proposal, so the penalty is not retained as a runtime rule. See the
+[internal-peak penalty decision](../docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is

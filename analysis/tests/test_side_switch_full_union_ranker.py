@@ -8,6 +8,7 @@ from analysis.side_switch_full_union_ranker import (
     calibrate_recording_scores,
     decode_ranked_candidates,
     fit_weighted_logistic,
+    penalize_internal_candidates,
 )
 from analysis.side_switch_v3 import V3Event
 from analysis.side_switch_v6 import matrix_for
@@ -95,6 +96,17 @@ class SideSwitchFullUnionRankerTests(unittest.TestCase):
             1.0 - opposite.predict_proba(values),
             atol=1e-12,
         )
+
+    def test_internal_penalty_is_soft_and_kind_specific(self) -> None:
+        boundary = _row("boundary", 10.0)
+        internal = _row("internal", 20.0)
+        internal["kind"] = "internal-dead-state-peak"
+        adjusted = penalize_internal_candidates(
+            [boundary, internal], np.asarray([0.8, 0.8]), 1.0
+        )
+        self.assertAlmostEqual(adjusted[0], 0.8)
+        self.assertGreater(adjusted[1], 0.0)
+        self.assertLess(adjusted[1], 0.8)
 
 
 if __name__ == "__main__":

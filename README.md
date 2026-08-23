@@ -151,6 +151,12 @@ calibration is rejected. Training an otherwise identical no-switch head produces
 the numerical complement of the switch score, so future negative modeling must use a
 distinct continuity or hard-negative target. See the
 [`imbalance/calibration decision`](docs/research/side-switch-imbalance-calibration-2026-08-23.md).
+A candidate-type penalty loop then tests whether weak internal dead-state peaks should
+receive a soft negative prior. Nested ±4 F1 improves from a matched 53.47% control to
+54.90%, but the penalty is zero in 6/11 folds and removes the control's only correct
+internal proposal. It is rejected as a general rule; the next loop should improve
+internal-candidate representation or localization instead. See the
+[`internal-peak penalty decision`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

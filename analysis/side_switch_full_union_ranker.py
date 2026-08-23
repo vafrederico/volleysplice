@@ -226,6 +226,30 @@ def calibrate_recording_scores(
     return result
 
 
+def penalize_internal_candidates(
+    rows: Sequence[Mapping[str, Any]],
+    probabilities: np.ndarray,
+    penalty_logit: float,
+) -> np.ndarray:
+    """Apply a soft logit penalty to internal peaks without making a hard gate."""
+
+    scores = np.asarray(probabilities, dtype=np.float64)
+    if (
+        scores.shape != (len(rows),)
+        or not np.isfinite(scores).all()
+        or np.any((scores < 0) | (scores > 1))
+    ):
+        raise ValueError("internal penalty scores must be finite aligned probabilities")
+    if not math.isfinite(penalty_logit) or penalty_logit < 0:
+        raise ValueError("internal candidate penalty must be finite and nonnegative")
+    logits = np.asarray([_logit(float(value)) for value in scores])
+    internal = np.asarray(
+        [str(row.get("kind")) == "internal-dead-state-peak" for row in rows]
+    )
+    adjusted = np.clip(logits - penalty_logit * internal, -30.0, 30.0)
+    return 1.0 / (1.0 + np.exp(-adjusted))
+
+
 def fit_weighted_logistic(
     events: Sequence[V3Event],
     l2: float,

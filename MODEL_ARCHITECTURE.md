@@ -336,6 +336,14 @@ therefore remains one binary head; future negative modeling needs a genuinely di
 continuity/hard-negative target. See
 [`side-switch-imbalance-calibration-2026-08-23.md`](docs/research/side-switch-imbalance-calibration-2026-08-23.md).
 
+The next diagnostic keeps square-root balancing and the same fixed decoder, then applies
+a selected soft logit penalty only to internal dead-state-peak candidates. Nested ±4
+F1 rises from a matched 53.47% zero-penalty control to 54.90%, but six of eleven folds
+select no penalty and the penalized path suppresses the control's only correct internal
+proposal. The offset is therefore rejected as a general architectural rule. Candidate
+kind remains available as a feature; no hard type gate or runtime branch is added. See
+[`side-switch-internal-peak-penalty-2026-08-23.md`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:
