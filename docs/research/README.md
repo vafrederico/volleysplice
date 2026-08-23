@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch expanded internal-candidate experiment — 2026-08-23](./side-switch-expanded-internal-candidates-2026-08-23.md) — 92%→100% opened candidate coverage, exact reuse of 703 feature rows, nested ranker regression from 50.94%→42.74% F1, only 1/13 correct internal outputs, and rejection of global threshold expansion.
 - [Side-switch internal-peak penalty experiment — 2026-08-23](./side-switch-internal-peak-penalty-2026-08-23.md) — nested matched zero-penalty control, small 53.47%→54.90% ±4 F1 gain, unstable 6/11 zero-penalty selection, loss of the only correct internal proposal, and rejection of a global candidate-type prior.
 - [Side-switch imbalance/calibration experiment — 2026-08-23](./side-switch-imbalance-calibration-2026-08-23.md) — natural/square-root/full class weighting, raw/robust-logit/percentile nested evaluation, modest 50.94%→51.92% F1 gain, rejected recording calibration, and exact proof that a symmetric no-switch head is only the switch-score complement.
 - [Side-switch full-union feature/ranker experiment — 2026-08-23](./side-switch-full-union-ranker-2026-08-23.md) — exact 352-row/42-feature parity, all 704 candidates scoreable, nested-LOO 27 TP/29 FP/23 FN and 50.94% ±4 F1, rejected expanded continuity veto, on-device-compatible research contender without automatic winner replacement.

@@ -281,7 +281,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "config": config.to_dict(),
             **_metrics(values, markers_by_recording, 4.0, include_inventory=False),
         }
-    selected_id = _select_config(grid_results, recording_ids)
+    selected_id = (
+        str(args.fixed_config_id)
+        if args.fixed_config_id is not None
+        else _select_config(grid_results, recording_ids)
+    )
+    if selected_id not in candidates_by_config:
+        raise ValueError(f"unknown fixed candidate-union config: {selected_id}")
     selected_config = next(config for config in GRID if config.identifier == selected_id)
     selected_candidates = candidates_by_config[selected_id]
     selected_metrics = {
@@ -298,7 +304,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     loo_candidates: dict[str, list[dict[str, Any]]] = {}
     for held_out in recording_ids:
         fit_ids = [value for value in recording_ids if value != held_out]
-        config_id = _select_config(grid_results, fit_ids)
+        config_id = (
+            selected_id
+            if args.fixed_config_id is not None
+            else _select_config(grid_results, fit_ids)
+        )
         loo_selections[held_out] = config_id
         loo_candidates[held_out] = candidates_by_config[config_id][held_out]
     loo_metrics = _metrics(
@@ -343,7 +353,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     payload = {
         "schemaVersion": 1,
-        "kind": "volleycut-side-switch-candidate-union-evaluation-v1",
+        "kind": (
+            "volleycut-side-switch-candidate-union-fixed-evaluation-v1"
+            if args.fixed_config_id is not None
+            else "volleycut-side-switch-candidate-union-evaluation-v1"
+        ),
         "createdAt": datetime.now(UTC).isoformat(),
         "scope": {
             "status": "opened-development-only",
@@ -362,7 +376,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "selected": {
             "configId": selected_id,
             "config": selected_config.to_dict(),
-            "selectionScope": "all opened development recordings",
+            "selectionScope": (
+                "preregistered fixed configuration from the v1 opened-development grid"
+                if args.fixed_config_id is not None
+                else "all opened development recordings"
+            ),
             "metrics": selected_metrics,
         },
         "leaveOneRecordingOut": {
@@ -419,6 +437,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--v5-features", type=Path, default=DEFAULT_V5_FEATURES)
     parser.add_argument("--continuity", type=Path, default=DEFAULT_CONTINUITY)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--fixed-config-id",
+        help="emit one fixed grid configuration instead of selecting by target recall",
+    )
     parser.add_argument(
         "--enforce-source-hash", action=argparse.BooleanOptionalAction, default=True
     )

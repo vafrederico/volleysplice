@@ -375,8 +375,13 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     if model_path.exists() or evaluation_path.exists():
         raise FileExistsError("refusing to overwrite full-union ranker artifacts")
     hashes = {name: _sha256(path) for name, path in paths.items()}
-    if args.enforce_source_hash and hashes != EXPECTED_SHA256:
-        raise ValueError(f"full-union ranker source identity changed: {hashes}")
+    if args.enforce_source_hash:
+        expected = {
+            **EXPECTED_SHA256,
+            "features": str(args.expected_features_sha256),
+        }
+        if hashes != expected:
+            raise ValueError(f"full-union ranker source identity changed: {hashes}")
     features = _load(paths["features"])
     full_audit = _load(paths["fullAudit"])
     winner = _load(paths["winner"])
@@ -390,8 +395,12 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
         for recording_id in recording_ids
     }
     labels, label_audit = _candidate_labels(rows, markers)
-    if sum(labels.values()) != 46:
+    if sum(labels.values()) != args.expected_positive_candidates:
         raise ValueError("full-union positive candidate count changed")
+    uncovered_markers = sum(
+        len(value["uncoveredHumanTimes"]) for value in label_audit.values()
+    )
+    expanded = int(features["scope"]["candidates"]) != 704
 
     outer_scores = np.full(len(rows), np.nan)
     outer_predictions = np.zeros(len(rows), dtype=bool)
@@ -596,7 +605,11 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     created_at = datetime.now(UTC).isoformat()
     model_payload = {
         "schemaVersion": 1,
-        "kind": "volleycut-side-switch-full-union-ranker-v1",
+        "kind": (
+            "volleycut-side-switch-full-union-expanded-ranker-v1"
+            if expanded
+            else "volleycut-side-switch-full-union-ranker-v1"
+        ),
         "createdAt": created_at,
         "status": "research-only-opened-development",
         "classifier": final_classifier.to_dict(),
@@ -626,7 +639,11 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     }
     evaluation_payload = {
         "schemaVersion": 1,
-        "kind": "volleycut-side-switch-full-union-ranker-evaluation-v1",
+        "kind": (
+            "volleycut-side-switch-full-union-expanded-ranker-evaluation-v1"
+            if expanded
+            else "volleycut-side-switch-full-union-ranker-evaluation-v1"
+        ),
         "createdAt": created_at,
         "scope": {
             **features["scope"],
@@ -682,7 +699,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
         "sources": model_payload["sources"],
         "limitations": [
             "The 11 exhaustively reviewed recordings are opened development, not an untouched test set.",
-            "Four human markers remain outside the candidate union at +/-4 seconds and cannot be recovered by this ranker.",
+            f"{uncovered_markers} human markers remain outside the candidate union at +/-4 seconds and cannot be recovered by this ranker.",
             "Candidate-label assignment chooses one representative proposal per covered marker and is not frame-accurate switch segmentation.",
             "The frozen winner's gap-index cleanup is translated to chronological full-union candidate ordinals for its expanded-union diagnostic.",
         ],
@@ -704,6 +721,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--evaluation", type=Path, default=DEFAULT_EVALUATION)
     parser.add_argument(
+        "--expected-features-sha256",
+        default=EXPECTED_SHA256["features"],
+    )
+    parser.add_argument("--expected-positive-candidates", type=int, default=46)
+    parser.add_argument(
         "--enforce-source-hash", action=argparse.BooleanOptionalAction, default=True
     )
     return parser
@@ -711,11 +733,34 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     model, evaluation = run(_parser().parse_args())
+    nested = evaluation["metrics"]["nestedOuterLoo"]
     print(
         json.dumps(
             {
-                "selection": model["selection"],
-                "nestedOuterLoo": evaluation["metrics"]["nestedOuterLoo"],
+                "selection": {
+                    key: value
+                    for key, value in model["selection"].items()
+                    if key != "developmentMetrics"
+                },
+                "nestedOuterLoo": {
+                    "rowAveragePrecision": nested["rowAveragePrecision"],
+                    "withoutContinuity": {
+                        key: {
+                            name: value
+                            for name, value in metrics.items()
+                            if name != "byRecording"
+                        }
+                        for key, metrics in nested["withoutContinuity"].items()
+                    },
+                    "withContinuityVeto": {
+                        key: {
+                            name: value
+                            for name, value in metrics.items()
+                            if name != "byRecording"
+                        }
+                        for key, metrics in nested["withContinuityVeto"].items()
+                    },
+                },
             },
             indent=2,
         )

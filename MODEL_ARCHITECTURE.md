@@ -344,6 +344,14 @@ proposal. The offset is therefore rejected as a general architectural rule. Cand
 kind remains available as a feature; no hard type gate or runtime branch is added. See
 [`side-switch-internal-peak-penalty-2026-08-23.md`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
 
+The expanded-candidate diagnostic lowers the internal dead-state threshold from 0.98
+to 0.80 and peak separation from 14 to 10 seconds. This raises the internal universe
+from 80 to 228 and opened-scope candidate recall from 92% to 100%, but the unchanged
+32/34-input nested ranker falls to 42.74% ±4 F1. It selects 13 internal proposals with
+one TP. The 704-candidate architecture is therefore retained; the next internal path
+needs a distinct representation or head, not a lower global candidate threshold. See
+[`side-switch-expanded-internal-candidates-2026-08-23.md`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

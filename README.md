@@ -157,6 +157,12 @@ receive a soft negative prior. Nested ±4 F1 improves from a matched 53.47% cont
 internal proposal. It is rejected as a general rule; the next loop should improve
 internal-candidate representation or localization instead. See the
 [`internal-peak penalty decision`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
+The next loop lowers the internal dead-state threshold and reaches 100% candidate
+coverage with 852 windows. Ranking regresses: nested ±4 F1 falls from 50.94% to 42.74%,
+and only one of 13 emitted internal proposals is correct. The 704-candidate union is
+retained; future internal candidates need better evidence or a separate head rather
+than a lower global threshold. See the
+[`expanded internal-candidate decision`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

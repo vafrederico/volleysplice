@@ -179,17 +179,31 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         "v5Features": args.v5_features.expanduser().resolve(),
         "stateFeatures": args.state_features.expanduser().resolve(),
     }
+    if args.reuse_features is not None:
+        paths["reuseFeatures"] = args.reuse_features.expanduser().resolve()
     output = args.output.expanduser().resolve()
     if output.exists():
         raise FileExistsError(f"refusing to overwrite full-union features: {output}")
     hashes = {name: _sha256(path) for name, path in paths.items()}
-    if args.enforce_source_hash and hashes != EXPECTED_SHA256:
-        raise ValueError(f"full-union feature source identity changed: {hashes}")
+    if args.enforce_source_hash:
+        expected = {
+            **EXPECTED_SHA256,
+            "candidates": str(args.expected_candidate_sha256),
+        }
+        if args.reuse_features is not None:
+            if args.expected_reuse_sha256 is None:
+                raise ValueError("reused feature input requires its expected SHA-256")
+            expected["reuseFeatures"] = str(args.expected_reuse_sha256)
+        if hashes != expected:
+            raise ValueError(f"full-union feature source identity changed: {hashes}")
 
     manifest = _load(paths["manifest"])
     candidate_artifact = _load(paths["candidates"])
     v5_artifact = _load(paths["v5Features"])
     state_artifact = _load(paths["stateFeatures"])
+    reuse_artifact = (
+        _load(paths["reuseFeatures"]) if "reuseFeatures" in paths else None
+    )
     selected = candidate_artifact["selected"]["metrics"]["4.0"]
     recording_ids = tuple(candidate_artifact["scope"]["recordingIds"])
     records = {
@@ -211,6 +225,15 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
     }
     if len(old_rows) != 352:
         raise ValueError("frozen raw-phone parity universe changed")
+    reuse_rows = (
+        {str(row["eventId"]): row for row in reuse_artifact["rows"]}
+        if reuse_artifact is not None
+        else {}
+    )
+    if reuse_artifact is not None and len(reuse_rows) != int(
+        reuse_artifact["scope"]["candidates"]
+    ):
+        raise ValueError("reused feature artifact contains duplicate event IDs")
 
     old_heads, v2_heads = load_frozen_heads(V2_BUNDLE, OLD_MODEL_ROOT, OLD_HEAD_NAMES)
     if v2_heads.rally.feature_names != old_heads.rally.feature_names:
@@ -268,6 +291,8 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         window_by_candidate: dict[str, tuple[Any, Any, int | None]] = {}
         unique_windows: dict[tuple[float, float], Any] = {}
         for candidate in candidates:
+            if str(candidate["eventId"]) in reuse_rows:
+                continue
             before, after, boundary_index = candidate_windows(candidate, ranges)
             window_by_candidate[str(candidate["eventId"])] = (
                 before,
@@ -279,31 +304,57 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
 
         print(
             f"[{recording_number}/{len(recording_ids)}] Extracting {recording_id}: "
-            f"{len(candidates)} candidates, {len(unique_windows)} unique sequences",
+            f"{len(candidates)} candidates, {len(unique_windows)} new unique sequences",
             file=sys.stderr,
             flush=True,
         )
-        capture = cv2.VideoCapture(str(record["videoPath"]))
-        if not capture.isOpened():
-            raise RuntimeError(f"could not open source video: {record['videoPath']}")
         v4_summaries: dict[tuple[float, float], Any] = {}
         v5_summaries: dict[tuple[float, float], Any] = {}
-        try:
-            for key, window in sorted(unique_windows.items()):
-                frames = [
-                    _crop_and_resize(read_frame(capture, timestamp), record["roi"])
-                    for timestamp in whole_rally_sample_times(window.start, window.end)
-                ]
-                v4_summaries[key] = summarize_sequence(frames, geometry)
-                v5_summaries[key] = summarize_player_sequence(frames, geometry)
-        finally:
-            capture.release()
+        if unique_windows:
+            capture = cv2.VideoCapture(str(record["videoPath"]))
+            if not capture.isOpened():
+                raise RuntimeError(f"could not open source video: {record['videoPath']}")
+            try:
+                for key, window in sorted(unique_windows.items()):
+                    frames = [
+                        _crop_and_resize(read_frame(capture, timestamp), record["roi"])
+                        for timestamp in whole_rally_sample_times(window.start, window.end)
+                    ]
+                    v4_summaries[key] = summarize_sequence(frames, geometry)
+                    v5_summaries[key] = summarize_player_sequence(frames, geometry)
+            finally:
+                capture.release()
 
         kind_counts: dict[str, int] = {}
         for candidate in candidates:
             event_id = str(candidate["eventId"])
             kind = str(candidate["kind"])
             kind_counts[kind] = kind_counts.get(kind, 0) + 1
+            reused = reuse_rows.get(event_id)
+            if reused is not None:
+                identity_fields = (
+                    "eventId",
+                    "recordingId",
+                    "kind",
+                    "gapStart",
+                    "gapEnd",
+                    "transitionTime",
+                    "score",
+                    "sourceRangeId",
+                )
+                if any(
+                    reused.get(name) != candidate.get(name)
+                    for name in identity_fields
+                ):
+                    raise ValueError(f"reused candidate identity drifted for {event_id}")
+                parity_maximum = reused.get(
+                    "legacyParityMaximumAbsoluteDifference"
+                )
+                if parity_maximum is not None:
+                    parity_differences.append(float(parity_maximum))
+                    parity_rows += 1
+                rows.append(dict(reused))
+                continue
             before_window, after_window, boundary_index = window_by_candidate[event_id]
             before_key = _window_key(before_window.start, before_window.end)
             after_key = _window_key(after_window.start, after_window.end)
@@ -380,6 +431,12 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
 
         audits[recording_id] = {
             "candidates": len(candidates),
+            "reusedCandidates": sum(
+                str(candidate["eventId"]) in reuse_rows for candidate in candidates
+            ),
+            "newCandidates": sum(
+                str(candidate["eventId"]) not in reuse_rows for candidate in candidates
+            ),
             "candidateKinds": kind_counts,
             "uniqueComparisonSequences": len(unique_windows),
             "decodedFrames": len(unique_windows) * FRAMES_PER_SEQUENCE,
@@ -396,7 +453,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             "courtGeometry": geometry.to_dict(),
         }
 
-    if len(rows) != 704 or parity_rows != 352:
+    if len(rows) != args.expected_candidate_count or parity_rows != 352:
         raise ValueError(
             f"full-union counts changed: rows={len(rows)}, parityRows={parity_rows}"
         )
@@ -418,7 +475,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             ),
         },
         "profile": {
-            "name": "FULL-UNION-V5-STATE42",
+            "name": args.profile_name,
             "featureNames": [*VISUAL_FEATURE_NAMES, *PRODUCTION_STATE_FEATURE_NAMES],
             "primaryFrozenHeadFeatureNames": [
                 *VISUAL_FEATURE_NAMES,
@@ -458,6 +515,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             "All 11 raw-phone recordings are opened development scope, not an untouched test split.",
             "Internal candidates do not have two distinct decoded-rally serve anchors, so the frozen production-context head is not directly comparable there.",
             "Feature extraction alone does not select proposals or estimate precision.",
+            "Rows present in the bound reuse artifact retain their exact stored features; only newly added candidate windows are decoded.",
         ],
     }
     atomic_write_text(output, json.dumps(payload, indent=2, allow_nan=False) + "\n")
@@ -471,6 +529,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--v5-features", type=Path, default=DEFAULT_V5_FEATURES)
     parser.add_argument("--state-features", type=Path, default=DEFAULT_STATE_FEATURES)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--reuse-features", type=Path)
+    parser.add_argument(
+        "--expected-candidate-sha256",
+        default=EXPECTED_SHA256["candidates"],
+    )
+    parser.add_argument("--expected-reuse-sha256")
+    parser.add_argument("--expected-candidate-count", type=int, default=704)
+    parser.add_argument("--profile-name", default="FULL-UNION-V5-STATE42")
     parser.add_argument(
         "--enforce-source-hash", action=argparse.BooleanOptionalAction, default=True
     )
@@ -478,11 +544,12 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    payload = extract(_parser().parse_args())
+    args = _parser().parse_args()
+    payload = extract(args)
     print(
         json.dumps(
             {
-                "output": str(DEFAULT_OUTPUT),
+                "output": str(args.output),
                 "rows": payload["scope"]["candidates"],
                 "parityAudit": payload["parityAudit"],
             },

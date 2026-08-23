@@ -365,6 +365,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch FULL-UNION-V5-STATE42 | `PLAYER-ORIENTATION22+PRODUCTION-STATE20` for all 704 full-union candidates; whole-rally boundary summaries and fixed `[t-4,t-1]`/`[t+1,t+4]` internal flanks, seven 256×144 frames per window | Retained research, not production. Reproduces all 42 values for all 352 legacy rows exactly. The 34-input union ranker uses the V5+STATE10 primary subset plus candidate kind/score; nested-LOO reaches 50.94% ±4 F1, but strict F1 regresses and internal-peak transfer is weak. No browser/Android port. See [`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md). |
 | Side-switch recording score calibration | Within-recording robust logit median/MAD scaling or tied percentile ranks over full-union classifier scores | Rejected. Percentiles raise AP/recall but add false proposals; robust logits also fail to improve F1. Raw scores with square-root class balancing are retained as a candidate training objective. See [`side-switch-imbalance-calibration-2026-08-23.md`](docs/research/side-switch-imbalance-calibration-2026-08-23.md). |
 | Side-switch internal-peak soft penalty | Subtracts a selected 0–3 logit offset from `internal-dead-state-peak` classifier scores before the fixed local-peak plus soft-count decoder; boundary scores are unchanged | Rejected as a general prior. Nested ±4 F1 improves 53.47%→54.90% against a matched zero-penalty control, but 6/11 folds select zero and the penalty removes the control's only correct internal proposal. No runtime/UI port. See [`side-switch-internal-peak-penalty-2026-08-23.md`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md). |
+| Side-switch FULL-UNION-EXPANDED-V5-STATE42 | Same 42-value flank/boundary feature contract with internal `deadState >= 0.80`, 10-second score-ranked NMS, and 228 internal peaks; exact reuse of 703 prior rows plus 149 new windows | Rejected. Candidate recall reaches 100%, but nested ±4 ranker F1 falls 50.94%→42.74%; only 1/13 emitted internal proposals is correct. Adds 2,086 decoded frames during extraction and no runtime/UI port. See [`side-switch-expanded-internal-candidates-2026-08-23.md`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -516,6 +517,10 @@ The soft internal-candidate penalty runner is
 its [decision record](docs/research/side-switch-internal-peak-penalty-2026-08-23.md)
 rejects the type prior despite a small aggregate nested gain because it removes the only
 correct internal proposal and selects zero penalty in most folds.
+The expanded-candidate follow-up lowers the internal peak threshold and separation,
+reuses 703 exact feature rows, and extracts 149 new candidates. It reaches 100% opened
+candidate coverage but is rejected after nested ranker F1 falls to 42.74%. See the
+[expanded-candidate decision](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
 
 ### Side-switch v6 detected-player adaptive profile
 

@@ -829,6 +829,15 @@ Its nested matched-control gain is small and it removes the only correct interna
 proposal, so the penalty is not retained as a runtime rule. See the
 [internal-peak penalty decision](../docs/research/side-switch-internal-peak-penalty-2026-08-23.md).
 
+The expanded-candidate experiment fixes the v1 grid's 0.80 dead-state/10-second
+configuration, reuses exact prior feature rows, extracts only new windows, and reruns
+the nested ranker with explicit source hashes and candidate counts. The relevant tools
+accept `--fixed-config-id`, `--reuse-features`, `--expected-candidate-count`,
+`--expected-features-sha256`, and `--expected-positive-candidates` for this controlled
+variant. Perfect opened-scope candidate coverage does not transfer through ranking, so
+the 852-candidate artifact is rejected. See the
+[expanded internal-candidate decision](../docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
