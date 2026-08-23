@@ -845,9 +845,10 @@ PYTHONPATH=. .venv/bin/python scripts/train-side-switch-hard-negative-mining.py
 ```
 
 Mining and label access remain inside each fit scope. The final artifact is still one
-linear head, and the fixed union34/top-2/2× objective is retained after reaching 56.86%
-opened-development outer F1. See the
-[hard-negative decision](../docs/research/side-switch-hard-negative-mining-2026-08-23.md).
+linear head, and the fixed union34/top-2/2× objective is the current research winner
+after reaching 56.86% opened-development outer F1. It is not installed in production.
+See the
+[winner promotion](../docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
 ## Ball-presence feasibility pilot
 

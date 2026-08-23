@@ -2,6 +2,13 @@
 
 ## Decision
 
+Promotion update: after this experiment was recorded, the user explicitly promoted
+the fixed `union34-top2-x2` variant to the current research winner. The promotion does
+not authorize production use and preserves the original opened-development caveat.
+See the
+[`winner promotion record`](./side-switch-hard-negative-winner-promotion-2026-08-23.md)
+for the overall, per-video-average, and per-video result tables.
+
 Recording-balanced hard-negative mining is a useful training change and should be
 retained for the next side-switch model. The nested variant selector removes one false
 proposal at unchanged recall relative to its matched no-mining control: ±4-second F1
@@ -13,10 +20,11 @@ negatives per recording, and 2× negative loss—reaches **29 TP/23 FP/21 FN, 55
 precision, 58% recall, and 56.86% F1**. Its strict F1 is 45.10%. This fixed result is a
 development selection across the declared variant grid, not untouched-test evidence.
 
-Retain `union34-top2-x2` as the candidate objective for the next loop, but do not change
-the user-designated current-winner pointer or production inference. The exact mining
-strength varies across folds, and new reviewed sets are still required before any
-threshold or runtime promotion.
+The experiment originally retained `union34-top2-x2` as the candidate objective for
+the next loop without changing the winner pointer. The subsequent explicit promotion
+changes the research pointer only. The exact mining strength varies across folds, and
+new reviewed sets are still required before any production threshold or runtime
+promotion.
 
 ## Method
 

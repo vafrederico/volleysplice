@@ -100,8 +100,9 @@ The v5 player-isolation study improves exact precision to 25.00%; persistent ori
 was a validation-selected no-op, and v5 also remains research-only.
 The v6 quantized-person/adaptive-prototype study improves raw-phone row AP to 45.47% but
 regresses candidate-window exact F1 to 24.10%; it is not promoted and v5 remains the
-strongest base appearance specialist. The current decoder winner is the V5-state-based
-local-peak+soft-count cleanup described below. The 61-gap V5/V5-state/V6 proposal union is
+strongest base appearance specialist. The former decoder winner is the V5-state-based
+local-peak+soft-count cleanup described below; the current research winner is the
+full-union hard-negative model. The 61-gap V5/V5-state/V6 proposal union is
 available as three separate recording timelines in `/side-switch-review` because the
 earlier heuristic marker seeds are not exhaustive. That review page also exposes
 explicit/candidate/full-video human marker rails, a per-recording continuous-review
@@ -110,13 +111,14 @@ timelines. New full-video markers are stored separately from the frozen candidat
 decision artifact.
 The completed 50-event continuous review now provides exhaustive raw-phone truth: only
 33/50 switches are covered by any modern candidate gap with four-second boundary
-allowance. No-cadence V5-state leads the comparable macro-recall ranking at 56.36%,
-while local peak plus soft count has the best pooled F1 at 44.64%. The latter is the
-current user-designated research winner and forward baseline; it is not promoted to
-automatic inference. Its exact identity and source bindings are frozen in
+allowance. No-cadence V5-state led the original comparable macro-recall ranking at
+56.36%, while local peak plus soft count led pooled F1 at 44.64%. A later full-union
+hard-negative model is now the user-designated research winner: it produces 52
+proposals with 29 TP/23 FP/21 FN and 56.86% pooled F1. It is not promoted to automatic
+inference. Its exact identity, per-video results, and source bindings are frozen in
 [`data/side-switch-current-research-winner-v1.json`](data/side-switch-current-research-winner-v1.json).
 See the
-[`full-video marker audit`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
+[`winner promotion`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 The first rare-event follow-up preserves one V5 orientation observation per detected
 rally. Manual parity proves stable rally states can bracket all 50 switches, but the
 existing orientation sign recognizes only 21.32% of swapped-state observations and its
@@ -166,8 +168,8 @@ than a lower global threshold. See the
 Recording-balanced hard-negative mining then improves the retained 704-candidate head
 without adding inference work. The nested selector removes one FP at unchanged recall
 (53.47%→54.00% F1), while the fixed 34-input top-2/2× candidate reaches 56.86% F1.
-That objective is retained for further research, not promoted or installed as the
-current winner. See the
+By explicit user decision, that fixed variant is promoted to the current research
+winner, but it is not installed in production or either client. See the
 [`hard-negative mining decision`](docs/research/side-switch-hard-negative-mining-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
@@ -178,11 +180,11 @@ can cascade errors: exact recall rises 31.43%→80.00% and F1 30.14%→44.44%, r
 all cadence true positives, but proposals rise 38→91. It is tracked as a research-only
 decoder diagnostic; the next iteration needs appearance-local cluster suppression or a
 soft count prior before any on-device promotion.
-The follow-up confirms adjacent-gap peak suppression as the stable cleanup: its locked
+The follow-up confirmed adjacent-gap peak suppression as the stable cleanup: its locked
 raw-phone ablation raises exact F1 to 48.15%. Peak suppression plus a soft post-six
-penalty reaches 49.48% exact/57.73% ±2 candidate-conditioned F1 at 62 proposals and is
-the current research winner after the exhaustive audit. It still needs confirmation on
-new labels before promotion. A separate production rally/dead/serve context head wins
+penalty reaches 49.48% exact/57.73% ±2 candidate-conditioned F1 at 62 proposals and was
+the research winner after the exhaustive audit before being superseded by the
+full-union hard-negative model. A separate production rally/dead/serve context head wins
 historical validation but fails to improve retrospective exact F1, so production
 outputs remain soft features rather than eligibility gates.
 

@@ -1,5 +1,9 @@
 # Side-switch full-video marker audit — 2026-08-21
 
+> Superseded winner status: this audit selected local peak + soft count on 2026-08-21;
+> fixed `union34-top2-x2` replaced it as the current research winner on 2026-08-23.
+> See the [promotion record](./side-switch-hard-negative-winner-promotion-2026-08-23.md).
+
 ## Decision
 
 Keep the side-switch specialists out of automatic production use. The completed

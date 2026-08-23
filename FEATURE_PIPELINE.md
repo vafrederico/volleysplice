@@ -366,7 +366,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch recording score calibration | Within-recording robust logit median/MAD scaling or tied percentile ranks over full-union classifier scores | Rejected. Percentiles raise AP/recall but add false proposals; robust logits also fail to improve F1. Raw scores with square-root class balancing are retained as a candidate training objective. See [`side-switch-imbalance-calibration-2026-08-23.md`](docs/research/side-switch-imbalance-calibration-2026-08-23.md). |
 | Side-switch internal-peak soft penalty | Subtracts a selected 0–3 logit offset from `internal-dead-state-peak` classifier scores before the fixed local-peak plus soft-count decoder; boundary scores are unchanged | Rejected as a general prior. Nested ±4 F1 improves 53.47%→54.90% against a matched zero-penalty control, but 6/11 folds select zero and the penalty removes the control's only correct internal proposal. No runtime/UI port. See [`side-switch-internal-peak-penalty-2026-08-23.md`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md). |
 | Side-switch FULL-UNION-EXPANDED-V5-STATE42 | Same 42-value flank/boundary feature contract with internal `deadState >= 0.80`, 10-second score-ranked NMS, and 228 internal peaks; exact reuse of 703 prior rows plus 149 new windows | Rejected. Candidate recall reaches 100%, but nested ±4 ranker F1 falls 50.94%→42.74%; only 1/13 emitted internal proposals is correct. Adds 2,086 decoded frames during extraction and no runtime/UI port. See [`side-switch-expanded-internal-candidates-2026-08-23.md`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md). |
-| Side-switch recording-balanced hard-negative mining | Training-only upweighting of each fit recording's top-scoring labeled negative candidates after an initial square-root-balanced fit; no new model inputs | Retained candidate objective. Nested variant selection removes one FP at unchanged recall (53.47%→54.00% F1); fixed union34 top-2/2× reaches 56.86% opened-development F1. No inference/UI cost or port. See [`side-switch-hard-negative-mining-2026-08-23.md`](docs/research/side-switch-hard-negative-mining-2026-08-23.md). |
+| Side-switch recording-balanced hard-negative mining | Training-only upweighting of each fit recording's top-scoring labeled negative candidates after an initial square-root-balanced fit; no new model inputs | **Current research winner:** fixed union34 top-2/2× reaches 56.86% opened-development F1 and was explicitly promoted. Nested variant selection removes one FP at unchanged recall (53.47%→54.00% F1). No inference/UI cost or port; not production. See [`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -524,8 +524,9 @@ candidate coverage but is rejected after nested ranker F1 falls to 42.74%. See t
 [expanded-candidate decision](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
 The next retained objective mines hard negatives independently per fit recording and
 upweights them during a second linear-head fit. It changes training only; fixed
-union34/top-2/2× reaches 56.86% nested opened-development F1. See the
-[hard-negative decision](docs/research/side-switch-hard-negative-mining-2026-08-23.md).
+union34/top-2/2× reaches 56.86% outer-held opened-development F1 and is the current
+research winner. See the
+[winner promotion](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
 ### Side-switch v6 detected-player adaptive profile
 

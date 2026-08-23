@@ -33,7 +33,10 @@ ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
 REPORTS = ROOT / "reports/side-switch"
 DEFAULT_FEATURES = REPORTS / "side-switch-v5-player-orientation-features.json"
 DEFAULT_FULL_AUDIT = REPORTS / "side-switch-full-video-marker-evaluation-2026-08-21-r2.json"
-DEFAULT_WINNER = REPOSITORY / "data/side-switch-current-research-winner-v1.json"
+DEFAULT_WINNER = (
+    REPOSITORY
+    / "data/side-switch-research-winner-2026-08-21-local-peak-soft-count.json"
+)
 DEFAULT_MODEL = ROOT / "models/side-switch-continuity-verifier-v1/model.json"
 DEFAULT_EVALUATION = REPORTS / "side-switch-continuity-verifier-v1-evaluation.json"
 EXPECTED_SHA256 = {
@@ -188,7 +191,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     full_audit = _load(paths["fullAudit"])
     winner = _load(paths["winner"])
     if winner.get("winner", {}).get("evaluationDecoderId") != "cleanup/local-peak-soft-count":
-        raise ValueError("continuity verifier control is not the current winner")
+        raise ValueError("continuity control is not the archived 2026-08-21 winner")
     recording_ids = tuple(str(value) for value in full_audit["scope"]["recordingIds"])
     human_times = full_audit["scope"]["humanEventsByRecording"]
     markers_by_recording = {

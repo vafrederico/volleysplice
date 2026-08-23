@@ -291,10 +291,11 @@ excluding raw gap duration, and contributes soft log odds rather than eligibilit
 Local peaks transfer to raw-phone data, while the production-context validation gain
 does not: the historically selected peak+context variant cuts proposals 91→60 but
 leaves exact F1 flat at 44.21%. After the later exhaustive review, the user designated
-the locked peak+soft-count mechanism as the current research winner. It uses adjacent
-gap suppression plus a `0.25` post-six logit penalty, has no production-context weight,
-and reaches 44.64% end-to-end pooled F1 with 62 proposals. The historical artifact is
-not mutated, and the working winner is neither promoted nor ported. See
+the locked peak+soft-count mechanism as the research winner at that time. It uses
+adjacent gap suppression plus a `0.25` post-six logit penalty, has no production-context
+weight, and reaches 44.64% end-to-end pooled F1 with 62 proposals. It was superseded by the
+full-union hard-negative winner on 2026-08-23; its historical artifact remains frozen.
+See
 [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md).
 
 The later continuous full-video review exposes a larger architectural bottleneck. Only
@@ -302,8 +303,8 @@ The later continuous full-video review exposes a larger architectural bottleneck
 four-second boundary allowance. No decoder over the existing gap stream can exceed 66%
 end-to-end recall on this scope. The no-cadence head recovers 28 events; its remaining
 22 misses split into 17 upstream candidate misses and five decoder misses inside the
-available universe. Local peak plus soft count is the current baseline for that
-successor, but candidate generation still needs to become independent of the production
+available universe. Local peak plus soft count was the baseline for that successor,
+but candidate generation still needs to become independent of the production
 rally intervals; decoder cleanup alone cannot recover those 17 events. See
 [`side-switch-full-video-marker-audit-2026-08-21.md`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
 
@@ -355,10 +356,11 @@ needs a distinct representation or head, not a lower global candidate threshold.
 The hard-negative follow-up leaves the retained 704-candidate inference graph
 unchanged. During training it fits an initial square-root-weighted head, upweights the
 highest-scoring labeled negatives independently per recording, and refits. Nested
-variant selection reaches 54.00% ±4 F1; the retained fixed union34/top-2/2× candidate
-reaches 56.86%. The exported artifact is still one 34-input linear head, so mining adds
-no on-device operation. See
-[`side-switch-hard-negative-mining-2026-08-23.md`](docs/research/side-switch-hard-negative-mining-2026-08-23.md).
+variant selection reaches 54.00% ±4 F1; the fixed union34/top-2/2× variant reaches
+56.86% and is now the explicit research winner. The exported artifact is still one
+34-input linear head, so mining adds no on-device operation. It remains unported and is
+not production. See
+[`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
 ## Production inference and export flow
 

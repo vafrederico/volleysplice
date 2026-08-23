@@ -1,5 +1,9 @@
 # Side-switch V5 peak/count/context cleanup — 2026-08-20
 
+> Superseded on 2026-08-23: fixed `union34-top2-x2` is now the current research
+> winner. This document preserves the earlier decision and frozen experiment. See the
+> [promotion record](./side-switch-hard-negative-winner-promotion-2026-08-23.md).
+
 ## Current status — 2026-08-21
 
 After the exhaustive 50-event full-video review, the user designated **local peak +
