@@ -108,6 +108,23 @@ class SideSwitchFullUnionRankerTests(unittest.TestCase):
         self.assertGreater(adjusted[1], 0.0)
         self.assertLess(adjusted[1], 0.8)
 
+    def test_extra_sample_weights_must_be_positive_and_aligned(self) -> None:
+        rows = [_row("a", 0.0), _row("b", 1.0)]
+        rows[0]["features"] = {"x": 0.0}
+        rows[1]["features"] = {"x": 1.0}
+        events = [
+            V3Event("a", "video", "research", 1, 0, rows[0]),
+            V3Event("b", "video", "research", 2, 1, rows[1]),
+        ]
+        with self.assertRaises(ValueError):
+            fit_weighted_logistic(
+                events,
+                0.1,
+                ("x",),
+                0.5,
+                np.asarray([1.0, 0.0]),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -352,6 +352,14 @@ one TP. The 704-candidate architecture is therefore retained; the next internal 
 needs a distinct representation or head, not a lower global candidate threshold. See
 [`side-switch-expanded-internal-candidates-2026-08-23.md`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
 
+The hard-negative follow-up leaves the retained 704-candidate inference graph
+unchanged. During training it fits an initial square-root-weighted head, upweights the
+highest-scoring labeled negatives independently per recording, and refits. Nested
+variant selection reaches 54.00% ±4 F1; the retained fixed union34/top-2/2× candidate
+reaches 56.86%. The exported artifact is still one 34-input linear head, so mining adds
+no on-device operation. See
+[`side-switch-hard-negative-mining-2026-08-23.md`](docs/research/side-switch-hard-negative-mining-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

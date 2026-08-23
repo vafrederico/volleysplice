@@ -163,6 +163,12 @@ and only one of 13 emitted internal proposals is correct. The 704-candidate unio
 retained; future internal candidates need better evidence or a separate head rather
 than a lower global threshold. See the
 [`expanded internal-candidate decision`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md).
+Recording-balanced hard-negative mining then improves the retained 704-candidate head
+without adding inference work. The nested selector removes one FP at unchanged recall
+(53.47%→54.00% F1), while the fixed 34-input top-2/2× candidate reaches 56.86% F1.
+That objective is retained for further research, not promoted or installed as the
+current winner. See the
+[`hard-negative mining decision`](docs/research/side-switch-hard-negative-mining-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

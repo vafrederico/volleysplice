@@ -255,6 +255,7 @@ def fit_weighted_logistic(
     l2: float,
     feature_names: Sequence[str],
     class_balance_exponent: float,
+    extra_sample_weights: np.ndarray | None = None,
 ) -> V6Model:
     """Fit a linear head from natural to fully class-balanced weighting.
 
@@ -291,6 +292,15 @@ def fit_weighted_logistic(
     positive_weight = (len(labels) / (2.0 * positives)) ** class_balance_exponent
     negative_weight = (len(labels) / (2.0 * negatives)) ** class_balance_exponent
     sample_weights = np.where(labels == 1, positive_weight, negative_weight)
+    if extra_sample_weights is not None:
+        extra = np.asarray(extra_sample_weights, dtype=np.float64)
+        if (
+            extra.shape != (len(events),)
+            or not np.isfinite(extra).all()
+            or np.any(extra <= 0)
+        ):
+            raise ValueError("extra sample weights must be finite, positive, and aligned")
+        sample_weights *= extra
     sample_weights /= float(np.mean(sample_weights))
 
     dimensions = matrix.shape[1]
