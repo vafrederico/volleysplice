@@ -11,6 +11,9 @@
 > Focal and effective-number losses were then rejected after both fixed and nested
 > event-F1 regressions; see the
 > [loss decision](./side-switch-rare-event-losses-2026-08-23.md).
+> The non-reanchored latent score prior was also rejected because rally ordinal is not
+> point count; see the
+> [soft-prior decision](./side-switch-soft-score-prior-2026-08-23.md).
 
 ## Decision
 

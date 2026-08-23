@@ -886,6 +886,17 @@ Both objective families regress outer-held event F1, so square-root BCE remains 
 See the
 [rare-event loss decision](../docs/research/side-switch-rare-event-losses-2026-08-23.md).
 
+The non-reanchored latent score prior is evaluated with:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-soft-score-prior.py
+```
+
+It allows redo and missing-point transitions, but detected rally ordinal is not a
+reliable point count and every cadence variant regresses. See the
+[soft-prior decision](../docs/research/side-switch-soft-score-prior-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is

@@ -185,6 +185,11 @@ Matched focal and effective-number objectives also fail. Focal marginally improv
 AP but lowers event F1 to 53.85%; the best effective-number variant reaches 54.90%, and
 nested objective selection reaches 53.47%. Square-root BCE remains the winner. See the
 [`rare-event loss decision`](docs/research/side-switch-rare-event-losses-2026-08-23.md).
+A non-reanchored latent score prior then allows redo, normal, and missed-point
+transitions. Detected rally ordinal proves too different from point count: only 6/46
+positive candidates land on modulo seven. Exact cadence collapses and the best uncertain
+prior reaches 54.21% F1, so no cadence prior is retained. See the
+[`soft score-prior decision`](docs/research/side-switch-soft-score-prior-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

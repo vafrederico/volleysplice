@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch uncertain score/cadence prior — 2026-08-23](./side-switch-soft-score-prior-2026-08-23.md) — non-reanchored `+0/+1/+2` latent count, exact-cadence collapse, broad positive modulo distribution, uncertain-prior regression, and retention of the cadence-free winner.
 - [Side-switch focal and effective-number losses — 2026-08-23](./side-switch-rare-event-losses-2026-08-23.md) — exact focal/BFGS and effective-number objectives, promoted-control parity, slight focal AP gain but event regression, unstable nested selection, and retention of square-root BCE.
 - [Side-switch recording-reliability head — 2026-08-23](./side-switch-recording-reliability-2026-08-23.md) — nested per-video threshold-offset ridge head, 13 label-free quality/score summaries, direct-blur limitation, 11/11 control selections, fixed-variant precision regression, and rejection without pointer/runtime changes.
 - [Side-switch within-recording pairwise ranking — 2026-08-23](./side-switch-pairwise-ranking-2026-08-23.md) — recording-balanced pairwise logistic/AUC surrogate, exact promoted-control reproduction, slight row-AP gain but seven additional FP, nested event-F1 regression, and rejection without pointer/runtime changes.

@@ -382,6 +382,12 @@ outer-held event F1, and the nested objective selector also regresses. The promo
 linear head remains unchanged. See
 [`side-switch-rare-event-losses-2026-08-23.md`](docs/research/side-switch-rare-event-losses-2026-08-23.md).
 
+The soft cadence follow-up propagates a latent count from set start with `+0/+1/+2`
+redo/point/missed-point transitions and never re-anchors on predictions. Detected rally
+ordinal is not a usable point counter, and both exact and uncertain hazards regress.
+The architecture remains cadence-free. See
+[`side-switch-soft-score-prior-2026-08-23.md`](docs/research/side-switch-soft-score-prior-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:
