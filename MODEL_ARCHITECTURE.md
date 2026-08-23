@@ -362,6 +362,13 @@ variant selection reaches 54.00% ±4 F1; the fixed union34/top-2/2× variant rea
 not production. See
 [`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
+The pairwise follow-up preserves that entire inference graph and adds only a training
+loss over positive-minus-negative logits within each fit recording. Equal total pair
+weight per recording prevents long games from dominating. The best row-AP variant adds
+seven false event proposals at unchanged recall, and nested selection also regresses,
+so the pairwise term is rejected. See
+[`side-switch-pairwise-ranking-2026-08-23.md`](docs/research/side-switch-pairwise-ranking-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

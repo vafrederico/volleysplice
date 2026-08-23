@@ -850,6 +850,19 @@ after reaching 56.86% opened-development outer F1. It is not installed in produc
 See the
 [winner promotion](../docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
+The next rare-event objective compares within-recording pairwise ranking while holding
+that promoted control fixed:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-pairwise-ranking.py
+```
+
+Each fit video contributes equal total positive/negative pair weight. The pointwise
+control is reproduced exactly; every nonzero pairwise setting regresses event F1, so
+the objective is rejected without a runtime port. See the
+[pairwise decision](../docs/research/side-switch-pairwise-ranking-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is

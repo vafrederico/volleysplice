@@ -171,6 +171,11 @@ without adding inference work. The nested selector removes one FP at unchanged r
 By explicit user decision, that fixed variant is promoted to the current research
 winner, but it is not installed in production or either client. See the
 [`hard-negative mining decision`](docs/research/side-switch-hard-negative-mining-2026-08-23.md).
+A within-recording pairwise/AUC-surrogate follow-up keeps that winner's inputs, hard
+mining, and decoder fixed. Its weakest weight slightly raises row AP but adds seven FP
+without another TP (56.86%→53.21% F1); nested selection reaches 54.72%. The pairwise
+loss is rejected and the research-winner pointer remains unchanged. See the
+[`pairwise ranking decision`](docs/research/side-switch-pairwise-ranking-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

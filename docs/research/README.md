@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch within-recording pairwise ranking — 2026-08-23](./side-switch-pairwise-ranking-2026-08-23.md) — recording-balanced pairwise logistic/AUC surrogate, exact promoted-control reproduction, slight row-AP gain but seven additional FP, nested event-F1 regression, and rejection without pointer/runtime changes.
 - [Side-switch hard-negative winner promotion — 2026-08-23](./side-switch-hard-negative-winner-promotion-2026-08-23.md) — explicit research-only promotion of fixed union34/top-2/2×, overall and per-video TP/FP/FN/proposal tables, 56.86% pooled F1, former-winner archive, and immutable source bindings.
 - [Side-switch recording-balanced hard-negative mining — 2026-08-23](./side-switch-hard-negative-mining-2026-08-23.md) — fit-only per-recording mining, one-FP nested selector gain, fixed union34/top-2/2× result of 29 TP/23 FP and 56.86% F1, zero inference-cost change, and the original pre-promotion experiment decision.
 - [Side-switch expanded internal-candidate experiment — 2026-08-23](./side-switch-expanded-internal-candidates-2026-08-23.md) — 92%→100% opened candidate coverage, exact reuse of 703 feature rows, nested ranker regression from 50.94%→42.74% F1, only 1/13 correct internal outputs, and rejection of global threshold expansion.

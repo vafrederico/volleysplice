@@ -354,3 +354,171 @@ def fit_weighted_logistic(
         if float(np.max(np.abs(step_scale * step))) < 1e-8:
             break
     return V6Model(names, impute, mean, scale, weights, bias, 0.5, l2)
+
+
+def fit_within_recording_pairwise_logistic(
+    events: Sequence[V3Event],
+    l2: float,
+    feature_names: Sequence[str],
+    class_balance_exponent: float,
+    pairwise_strength: float,
+    pairwise_margin: float = 0.0,
+    extra_sample_weights: np.ndarray | None = None,
+) -> V6Model:
+    """Fit pointwise logistic loss plus a recording-balanced pairwise rank loss.
+
+    Every positive/negative pair is formed only within its recording. Each recording
+    contributes the same total pair weight, so longer games do not dominate the AUC
+    surrogate. A zero pairwise strength delegates to the ordinary fitter exactly.
+    """
+
+    if not math.isfinite(pairwise_strength) or pairwise_strength < 0:
+        raise ValueError("pairwise strength must be finite and nonnegative")
+    if not math.isfinite(pairwise_margin) or pairwise_margin < 0:
+        raise ValueError("pairwise margin must be finite and nonnegative")
+    if pairwise_strength == 0:
+        return fit_weighted_logistic(
+            events,
+            l2,
+            feature_names,
+            class_balance_exponent,
+            extra_sample_weights,
+        )
+    if l2 <= 0 or not math.isfinite(l2):
+        raise ValueError("l2 must be finite and positive")
+    if not 0 <= class_balance_exponent <= 1 or not math.isfinite(
+        class_balance_exponent
+    ):
+        raise ValueError("class-balance exponent must stay in [0, 1]")
+
+    names = tuple(feature_names)
+    values = matrix_for(events, names)
+    labels = labels_for(events)
+    positives = int(np.sum(labels == 1))
+    negatives = int(np.sum(labels == 0))
+    if not positives or not negatives:
+        raise ValueError("pairwise logistic fit needs both classes")
+    impute = np.asarray(
+        [
+            float(np.median(column[np.isfinite(column)]))
+            if np.any(np.isfinite(column))
+            else 0.0
+            for column in values.T
+        ]
+    )
+    filled = np.where(np.isfinite(values), values, impute)
+    mean = np.mean(filled, axis=0)
+    scale = np.std(filled, axis=0)
+    scale[scale < 1e-6] = 1.0
+    matrix = (filled - mean) / scale
+
+    positive_weight = (len(labels) / (2.0 * positives)) ** class_balance_exponent
+    negative_weight = (len(labels) / (2.0 * negatives)) ** class_balance_exponent
+    sample_weights = np.where(labels == 1, positive_weight, negative_weight)
+    if extra_sample_weights is not None:
+        extra = np.asarray(extra_sample_weights, dtype=np.float64)
+        if (
+            extra.shape != (len(events),)
+            or not np.isfinite(extra).all()
+            or np.any(extra <= 0)
+        ):
+            raise ValueError("extra sample weights must be finite, positive, and aligned")
+        sample_weights *= extra
+    sample_weights /= float(np.mean(sample_weights))
+
+    pair_differences: list[np.ndarray] = []
+    pair_weights: list[float] = []
+    recording_ids = sorted({event.recording_id for event in events})
+    eligible_recordings = []
+    indexes_by_recording: dict[str, tuple[list[int], list[int]]] = {}
+    for recording_id in recording_ids:
+        positive_indexes = [
+            index
+            for index, event in enumerate(events)
+            if event.recording_id == recording_id and event.label == 1
+        ]
+        negative_indexes = [
+            index
+            for index, event in enumerate(events)
+            if event.recording_id == recording_id and event.label == 0
+        ]
+        if positive_indexes and negative_indexes:
+            eligible_recordings.append(recording_id)
+            indexes_by_recording[recording_id] = (positive_indexes, negative_indexes)
+    if not eligible_recordings:
+        raise ValueError("pairwise logistic fit needs an in-recording positive/negative pair")
+    recording_weight = 1.0 / len(eligible_recordings)
+    for recording_id in eligible_recordings:
+        positive_indexes, negative_indexes = indexes_by_recording[recording_id]
+        local_weight = recording_weight / (
+            len(positive_indexes) * len(negative_indexes)
+        )
+        for positive_index in positive_indexes:
+            for negative_index in negative_indexes:
+                pair_differences.append(matrix[positive_index] - matrix[negative_index])
+                pair_weights.append(local_weight)
+    pair_matrix = np.asarray(pair_differences, dtype=np.float64)
+    pair_weight_array = np.asarray(pair_weights, dtype=np.float64)
+
+    dimensions = matrix.shape[1]
+    weights = np.zeros(dimensions)
+    bias = 0.0
+    design = np.column_stack((matrix, np.ones(len(matrix))))
+    regularizer = np.diag(np.r_[np.full(dimensions, l2), 0.0])
+
+    def objective(candidate_weights: np.ndarray, candidate_bias: float) -> float:
+        logits = matrix @ candidate_weights + candidate_bias
+        pointwise = float(
+            np.sum(
+                (np.logaddexp(0.0, logits) - labels * logits) * sample_weights
+            )
+            / np.sum(sample_weights)
+        )
+        pair_arguments = pairwise_margin - pair_matrix @ candidate_weights
+        pairwise = float(
+            np.sum(np.logaddexp(0.0, pair_arguments) * pair_weight_array)
+            / np.sum(pair_weight_array)
+        )
+        return (
+            pointwise
+            + pairwise_strength * pairwise
+            + 0.5 * l2 * float(candidate_weights @ candidate_weights)
+        )
+
+    for _ in range(100):
+        logits = np.clip(matrix @ weights + bias, -30.0, 30.0)
+        probabilities = 1.0 / (1.0 + np.exp(-logits))
+        error = (probabilities - labels) * sample_weights
+        gradient = design.T @ error / np.sum(sample_weights)
+        curvature = probabilities * (1.0 - probabilities) * sample_weights
+        hessian = (design.T * curvature) @ design / np.sum(sample_weights)
+
+        pair_arguments = np.clip(pairwise_margin - pair_matrix @ weights, -30.0, 30.0)
+        pair_probabilities = 1.0 / (1.0 + np.exp(-pair_arguments))
+        pair_scale = pair_weight_array / np.sum(pair_weight_array)
+        gradient[:-1] -= pairwise_strength * (
+            pair_matrix.T @ (pair_probabilities * pair_scale)
+        )
+        pair_curvature = pair_probabilities * (1.0 - pair_probabilities) * pair_scale
+        hessian[:-1, :-1] += pairwise_strength * (
+            (pair_matrix.T * pair_curvature) @ pair_matrix
+        )
+        gradient[:-1] += l2 * weights
+        hessian += regularizer
+        try:
+            step = np.linalg.solve(hessian, gradient)
+        except np.linalg.LinAlgError:
+            step = np.linalg.pinv(hessian) @ gradient
+        current_loss = objective(weights, bias)
+        step_scale = 1.0
+        while step_scale > 1e-5:
+            candidate_weights = weights - step_scale * step[:-1]
+            candidate_bias = bias - step_scale * float(step[-1])
+            if objective(candidate_weights, candidate_bias) <= current_loss + 1e-12:
+                break
+            step_scale *= 0.5
+        weights = candidate_weights
+        bias = candidate_bias
+        if float(np.max(np.abs(step_scale * step))) < 1e-8:
+            break
+    return V6Model(names, impute, mean, scale, weights, bias, 0.5, l2)

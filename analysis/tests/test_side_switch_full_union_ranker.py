@@ -7,6 +7,7 @@ from analysis.side_switch_full_union_ranker import (
     add_derived_features,
     calibrate_recording_scores,
     decode_ranked_candidates,
+    fit_within_recording_pairwise_logistic,
     fit_weighted_logistic,
     penalize_internal_candidates,
 )
@@ -124,6 +125,56 @@ class SideSwitchFullUnionRankerTests(unittest.TestCase):
                 0.5,
                 np.asarray([1.0, 0.0]),
             )
+
+    def test_zero_pairwise_strength_is_exact_pointwise_fit(self) -> None:
+        events = []
+        for index, (recording_id, value, label) in enumerate(
+            (
+                ("a", -2.0, 0),
+                ("a", 1.0, 1),
+                ("b", -1.0, 0),
+                ("b", 2.0, 1),
+            )
+        ):
+            row = _row(str(index), float(index))
+            row["recordingId"] = recording_id
+            row["features"] = {"x": value}
+            events.append(
+                V3Event(str(index), recording_id, "research", index + 1, label, row)
+            )
+        pointwise = fit_weighted_logistic(events, 0.1, ("x",), 0.5)
+        pairwise_zero = fit_within_recording_pairwise_logistic(
+            events, 0.1, ("x",), 0.5, 0.0
+        )
+        self.assertEqual(pointwise.to_dict(), pairwise_zero.to_dict())
+
+    def test_pairwise_loss_improves_within_recording_margin(self) -> None:
+        events = []
+        for index, (recording_id, value, label) in enumerate(
+            (
+                ("a", 0.0, 0),
+                ("a", 0.2, 1),
+                ("b", 2.0, 0),
+                ("b", 2.2, 1),
+            )
+        ):
+            row = _row(str(index), float(index))
+            row["recordingId"] = recording_id
+            row["features"] = {"x": value}
+            events.append(
+                V3Event(str(index), recording_id, "research", index + 1, label, row)
+            )
+        pointwise = fit_weighted_logistic(events, 0.1, ("x",), 0.5)
+        pairwise = fit_within_recording_pairwise_logistic(
+            events, 0.1, ("x",), 0.5, 2.0, 0.5
+        )
+        values = matrix_for(events, ("x",))
+        point_scores = pointwise.predict_proba(values)
+        pair_scores = pairwise.predict_proba(values)
+        self.assertGreater(
+            (pair_scores[1] - pair_scores[0]) + (pair_scores[3] - pair_scores[2]),
+            (point_scores[1] - point_scores[0]) + (point_scores[3] - point_scores[2]),
+        )
 
 
 if __name__ == "__main__":

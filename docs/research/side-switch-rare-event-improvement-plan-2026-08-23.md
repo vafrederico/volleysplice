@@ -1,5 +1,11 @@
 # Side-switch rare-event improvement plan — 2026-08-23
 
+> Execution update: fixed `union34-top2-x2` superseded the original control as the
+> current research winner. The subsequent within-recording pairwise/AUC-surrogate
+> direction was rejected. See the
+> [promotion](./side-switch-hard-negative-winner-promotion-2026-08-23.md) and
+> [pairwise decision](./side-switch-pairwise-ranking-2026-08-23.md).
+
 ## Decision
 
 Execute a sequence of small, separately committed side-switch experiments. Preserve
