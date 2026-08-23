@@ -731,6 +731,13 @@
 .scoreMarkerList > div:last-child {
   display: grid;
   gap: 4px;
+  max-height: 168px;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid #c5c3ba;
+  background: #eeece4;
 }
 
 .scoreMarkerList article {
@@ -2155,7 +2162,14 @@
 .cutCards {
   display: grid;
   gap: 7px;
+  max-height: min(55vh, 520px);
   margin-top: 12px;
+  padding: 7px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid #aaa;
+  background: #e4e3dc;
 }
 
 .cutCards article {
@@ -2457,8 +2471,6 @@
   .scoreMarkerList > div:last-child {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     max-height: 146px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
   }
 }
 
