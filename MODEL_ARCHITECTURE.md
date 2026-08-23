@@ -376,6 +376,12 @@ Every outer selector keeps zero offset; fixed nonzero heads trade one TP for at 
 six FP. The layer is rejected. See
 [`side-switch-recording-reliability-2026-08-23.md`](docs/research/side-switch-recording-reliability-2026-08-23.md).
 
+The next training-only comparison swaps square-root BCE for exact focal loss or
+effective-number class weights while preserving hard-negative mining. Neither improves
+outer-held event F1, and the nested objective selector also regresses. The promoted
+linear head remains unchanged. See
+[`side-switch-rare-event-losses-2026-08-23.md`](docs/research/side-switch-rare-event-losses-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

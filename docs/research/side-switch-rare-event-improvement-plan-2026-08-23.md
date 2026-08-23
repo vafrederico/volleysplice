@@ -8,6 +8,9 @@
 > The subsequent recording-reliability head was also rejected after every outer fold
 > selected zero offset; see the
 > [reliability decision](./side-switch-recording-reliability-2026-08-23.md).
+> Focal and effective-number losses were then rejected after both fixed and nested
+> event-F1 regressions; see the
+> [loss decision](./side-switch-rare-event-losses-2026-08-23.md).
 
 ## Decision
 

@@ -875,6 +875,17 @@ Nested recording selection retains zero offset in every fold, so the head is rej
 See the
 [recording-reliability decision](../docs/research/side-switch-recording-reliability-2026-08-23.md).
 
+Focal and effective-number loss variants are evaluated with:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-rare-event-losses.py
+```
+
+Both objective families regress outer-held event F1, so square-root BCE remains fixed.
+See the
+[rare-event loss decision](../docs/research/side-switch-rare-event-losses-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is

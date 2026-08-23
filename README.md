@@ -181,6 +181,10 @@ quality and score summaries. Nested selection rejects every nonzero offset; the 
 fixed head gains one TP but adds six FP (56.86%→55.05% F1). Direct blur is unavailable
 in the retained artifact, and the winner remains unchanged. See the
 [`recording-reliability decision`](docs/research/side-switch-recording-reliability-2026-08-23.md).
+Matched focal and effective-number objectives also fail. Focal marginally improves row
+AP but lowers event F1 to 53.85%; the best effective-number variant reaches 54.90%, and
+nested objective selection reaches 53.47%. Square-root BCE remains the winner. See the
+[`rare-event loss decision`](docs/research/side-switch-rare-event-losses-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
