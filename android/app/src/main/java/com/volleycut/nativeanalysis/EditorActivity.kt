@@ -275,7 +275,6 @@ private data class ExportUiState(
     val status: String = "idle",
     val progress: Int = 0,
     val detail: String = "",
-    val metrics: String? = null,
 )
 
 private fun ExportJobStatus.toUiState() = ExportUiState(
@@ -283,7 +282,6 @@ private fun ExportJobStatus.toUiState() = ExportUiState(
     status = status,
     progress = progress,
     detail = detail,
-    metrics = metrics,
 )
 
 private fun projectStatusLabel(
@@ -1804,7 +1802,6 @@ private fun EditorScreen(
                     status = intent.getStringExtra(ExportService.EXTRA_STATUS) ?: "running",
                     progress = intent.getIntExtra(ExportService.EXTRA_PROGRESS, 0),
                     detail = intent.getStringExtra(ExportService.EXTRA_DETAIL).orEmpty(),
-                    metrics = intent.getStringExtra(ExportService.EXTRA_METRICS),
                 )
             }
         }
@@ -2625,7 +2622,7 @@ private fun EditorScreen(
 
             SectionCard(
                 "EXPORT",
-                "MP4 video + training feedback JSON",
+                "MP4 video",
                 modifier = Modifier.guidedTourTarget("editor-export", guidedTourTargets),
             ) {
                 Text(
@@ -2642,35 +2639,42 @@ private fun EditorScreen(
                     Text(exportState.detail, color = Green, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                 } else if (exportState.detail.isNotBlank()) {
                     Text(exportState.detail, color = if (exportState.status == "failed") Danger else Green)
-                    exportState.metrics?.let { Text(it, fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = Muted) }
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         enabled = finalIntervals.isNotEmpty() && !exportPending,
                         onClick = {
                             pendingExportIntervals = finalIntervals
                             exportLauncher.launch(exportFilename(seed.displayName))
                         },
+                        modifier = Modifier.weight(1f),
                     ) { Text(if (exportPending) "Export queued" else "Queue MP4 export") }
                     OutlinedButton(
                         enabled = finalIntervals.isNotEmpty(),
                         onClick = { editListLauncher.launch(editListFilename(seed.displayName)) },
+                        modifier = Modifier.weight(1f),
                     ) { Text("Save edit list") }
+                }
+                if (exportPending) {
                     OutlinedButton(
-                        enabled = !feedbackExporting,
                         onClick = {
-                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
-                        },
-                    ) { Text(if (feedbackExporting) "Exporting feedback…" else "Export model feedback") }
-                    if (exportPending) {
-                        OutlinedButton(onClick = {
                             context.startService(
                                 Intent(context, ExportService::class.java)
                                     .setAction(ExportService.ACTION_CANCEL)
                                     .putExtra(ExportService.EXTRA_JOB_ID, exportState.jobId),
                             )
-                        }) { Text(if (exportState.status == "queued") "Remove from queue" else "Cancel export", color = Danger) }
-                    }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (exportState.status == "queued") "Remove from queue" else "Cancel export", color = Danger) }
+                }
+                TextButton(
+                    enabled = !feedbackExporting,
+                    onClick = {
+                        feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                    },
+                    modifier = Modifier.align(Alignment.Start),
+                ) {
+                    Text(if (feedbackExporting) "Exporting feedback…" else "Export model feedback", color = Muted)
                 }
                 Text(
                     "Model feedback includes source-aligned audiovisual features, probability traces, initial ranges, and your corrections. It never includes video bytes.",
@@ -2723,6 +2727,8 @@ internal fun ScoreTrackingPanel(
     val sortedServes = visibleTracking.serveMarkers.sortedWith(
         compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id },
     )
+    val reviewMarkers = sortedServes.filter { it.side == ServingSide.REVIEW }
+    val reviewMarkerIds = reviewMarkers.mapTo(mutableSetOf()) { it.id }
     val selected = sortedServes.firstOrNull { it.id == selectedMarkerId }
     val selectedIndex = selected?.let {
         sortedServes.indexOfFirst { marker -> marker.id == it.id }
@@ -2761,7 +2767,7 @@ internal fun ScoreTrackingPanel(
                     fontSize = 12.sp,
                 )
             } else {
-                val reviewCount = sortedServes.count { it.side == ServingSide.REVIEW }
+                val reviewCount = reviewMarkers.size
                 Text(
                     "${sortedServes.size} serves · ${visibleTracking.sideSwitchMarkers.size} switches" +
                         if (reviewCount > 0) " · $reviewCount need review" else "",
@@ -2837,14 +2843,23 @@ internal fun ScoreTrackingPanel(
                 val servingSideBusy = servingSideStatus == ServingSideAnalysisStatus.QUEUED ||
                     servingSideStatus == ServingSideAnalysisStatus.ANALYZING
                 val servingSideFailed = servingSideStatus == ServingSideAnalysisStatus.ERROR
+                val reviewPending = servingSideStatus == ServingSideAnalysisStatus.READY && reviewCount > 0
                 val reportedProgress = servingSideProgress?.coerceIn(0f, 1f) ?: 0f
                 Surface(
                     modifier = Modifier.fillMaxWidth().border(
                         1.dp,
-                        if (servingSideFailed) Orange else PaleGreen,
+                        when {
+                            servingSideFailed -> Orange
+                            reviewPending -> Warning
+                            else -> PaleGreen
+                        },
                         RoundedCornerShape(4.dp),
                     ),
-                    color = if (servingSideFailed) Color(0xFFFFEEE8) else Color(0xFFEEF6F0),
+                    color = when {
+                        servingSideFailed -> Color(0xFFFFEEE8)
+                        reviewPending -> Color(0xFFFFF7E6)
+                        else -> Color(0xFFEEF6F0)
+                    },
                     shape = RoundedCornerShape(4.dp),
                 ) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -2893,6 +2908,23 @@ internal fun ScoreTrackingPanel(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                 )
+                            }
+                        }
+                        if (reviewPending) {
+                            OutlinedButton(
+                                onClick = {
+                                    val selectedReviewIndex = reviewMarkers.indexOfFirst { it.id == selectedMarkerId }
+                                    val next = if (selectedReviewIndex >= 0) {
+                                        reviewMarkers[(selectedReviewIndex + 1) % reviewMarkers.size]
+                                    } else {
+                                        reviewMarkers.firstOrNull { it.timestampMs >= currentTimestampMs }
+                                            ?: reviewMarkers.first()
+                                    }
+                                    onSelect(next.id, next.timestampMs)
+                                },
+                                modifier = Modifier.align(Alignment.Start),
+                            ) {
+                                Text("Review next · $reviewCount")
                             }
                         }
                     }
@@ -2964,7 +2996,6 @@ internal fun ScoreTrackingPanel(
                     listOf(
                         ServingSide.NEAR to "Near",
                         ServingSide.FAR to "Far",
-                        ServingSide.REVIEW to "Review",
                     ).forEach { (side, label) ->
                         FilterChip(
                             selected = manualServingSide == side,
@@ -3039,7 +3070,11 @@ internal fun ScoreTrackingPanel(
 
                 val markerRows = buildList<Triple<String, Long, String>> {
                     sortedServes.forEachIndexed { index, marker ->
-                        val side = if (index == 0) "First serve" else marker.side.wireName
+                        val side = when {
+                            marker.side == ServingSide.REVIEW -> "Needs review"
+                            index == 0 -> "First serve"
+                            else -> marker.side.wireName
+                        }
                         add(Triple(marker.id, marker.timestampMs, "$side · ${marker.origin.wireName}"))
                     }
                     visibleTracking.sideSwitchMarkers.forEach { marker ->
@@ -3067,15 +3102,30 @@ internal fun ScoreTrackingPanel(
                     }
                     markerRows.forEach { (id, timestamp, label) ->
                         val selectedRow = id == selectedMarkerId
+                        val needsReview = id in reviewMarkerIds
                         Row(
                             Modifier
                                 .fillMaxWidth()
                                 .border(
                                     if (selectedRow) 2.dp else 1.dp,
-                                    if (selectedRow) Orange else Rail,
+                                    when {
+                                        selectedRow -> Orange
+                                        needsReview -> Warning
+                                        else -> Rail
+                                    },
                                     RoundedCornerShape(3.dp),
                                 )
-                                .background(Color.White, RoundedCornerShape(3.dp)),
+                                .background(
+                                    if (needsReview) Color(0xFFFFF7E6) else Color.White,
+                                    RoundedCornerShape(3.dp),
+                                )
+                                .semantics {
+                                    contentDescription = if (needsReview) {
+                                        "Score marker needs review"
+                                    } else {
+                                        "Score marker"
+                                    }
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             TextButton(
@@ -3183,41 +3233,31 @@ private fun ScoreOverlayPreview(snapshot: ScoreOverlaySnapshot, modifier: Modifi
         ) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 fun Modifier.cell(widthPx: Int, color: Long) = width(pxDp(widthPx))
-                    .fillMaxHeight().background(Color(color))
-                Text(
-                    snapshot.team1Name,
-                    Modifier.cell(layout.team1Width, ScoreOverlay.TEAM_1_COLOR).padding(horizontal = pxDp(layout.horizontalPadding)),
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    fontSize = with(density) { layout.fontSize.toSp() },
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    snapshot.team1ScoreLabel,
-                    Modifier.cell(layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR),
-                    color = Color.Black,
-                    textAlign = TextAlign.Center,
-                    fontSize = with(density) { layout.fontSize.toSp() },
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    snapshot.team2Name,
-                    Modifier.cell(layout.team2Width, ScoreOverlay.TEAM_2_COLOR).padding(horizontal = pxDp(layout.horizontalPadding)),
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    fontSize = with(density) { layout.fontSize.toSp() },
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    snapshot.team2ScoreLabel,
-                    Modifier.cell(layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR),
-                    color = Color.Black,
-                    textAlign = TextAlign.Center,
-                    fontSize = with(density) { layout.fontSize.toSp() },
-                    fontWeight = FontWeight.Bold,
-                )
+                    .fillMaxHeight()
+                    .background(Color(color))
+                @Composable
+                fun Cell(text: String, widthPx: Int, background: Long, foreground: Color, padded: Boolean) {
+                    Box(
+                        Modifier.cell(widthPx, background).then(
+                            if (padded) Modifier.padding(horizontal = pxDp(layout.horizontalPadding)) else Modifier,
+                        ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text,
+                            color = foreground,
+                            textAlign = TextAlign.Center,
+                            fontSize = with(density) { layout.fontSize.toSp() },
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Cell(snapshot.team1Name, layout.team1Width, ScoreOverlay.TEAM_1_COLOR, Color.White, true)
+                Cell(snapshot.team1ScoreLabel, layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR, Color.Black, false)
+                Cell(snapshot.team2Name, layout.team2Width, ScoreOverlay.TEAM_2_COLOR, Color.White, true)
+                Cell(snapshot.team2ScoreLabel, layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR, Color.Black, false)
             }
             Canvas(Modifier.fillMaxSize()) {
                 val stroke = layout.borderWidth.toFloat()
@@ -3408,8 +3448,8 @@ internal fun WholeTimeline(
                 .pointerInput(windowStartMs, windowEndMs, cuts, suggestions, serveMarkers, sideSwitchMarkers) {
                     detectTapGestures { offset ->
                         val time = timeAt(offset.x)
-                        val markerHitRadius = with(density) { 12.dp.toPx() }
-                        val markerIconHeight = with(density) { 15.dp.toPx() }
+                        val markerHitRadius = with(density) { 14.dp.toPx() }
+                        val markerIconHeight = with(density) { 20.dp.toPx() }
                         val marker = if (offset.y <= markerIconHeight) {
                             buildList<Pair<String, Long>> {
                                 serveMarkers.forEach { add(it.id to it.timestampMs) }
@@ -3531,26 +3571,100 @@ internal fun WholeTimeline(
                     drawRect(Color.White, Offset(x, 2f), Size(width, size.height - 4f), style = Stroke(3f))
                 }
             }
+            if (playheadMs in windowStartMs..windowEndMs) {
+                val playheadX = xAt(playheadMs)
+                drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
+            }
+            val markerCenterY = 7.dp.toPx()
+            val markerRadius = 5.dp.toPx()
+            val markerStemWidth = 1.5.dp.toPx()
+            val markerBorderWidth = 1.dp.toPx()
+            val markerDetailWidth = 1.15.dp.toPx()
             serveMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
                 val x = xAt(marker.timestampMs)
-                drawLine(Color.White, Offset(x, 4f), Offset(x, size.height), 1.5f)
-                drawCircle(Color.White, 5f, Offset(x, 6f))
+                drawLine(
+                    Color.White,
+                    Offset(x, markerCenterY + markerRadius),
+                    Offset(x, size.height),
+                    markerStemWidth,
+                )
+                drawCircle(Color.White, markerRadius, Offset(x, markerCenterY))
+                drawCircle(
+                    Ink, markerRadius, Offset(x, markerCenterY),
+                    style = Stroke(markerBorderWidth),
+                )
                 drawArc(
-                    Color.Black, -75f, 150f, false,
-                    Offset(x - 4f, 2f), Size(8f, 8f), style = Stroke(1f),
+                    Ink, -75f, 150f, false,
+                    Offset(x - markerRadius * .72f, markerCenterY - markerRadius * .72f),
+                    Size(markerRadius * 1.44f, markerRadius * 1.44f),
+                    style = Stroke(markerDetailWidth),
+                )
+                drawArc(
+                    Ink, 105f, 150f, false,
+                    Offset(x - markerRadius * .72f, markerCenterY - markerRadius * .72f),
+                    Size(markerRadius * 1.44f, markerRadius * 1.44f),
+                    style = Stroke(markerDetailWidth),
                 )
             }
             sideSwitchMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
                 val x = xAt(marker.timestampMs)
-                drawLine(Color.White, Offset(x, 4f), Offset(x, size.height), 1.5f)
-                drawLine(Color.White, Offset(x - 5f, 4f), Offset(x + 5f, 4f), 1.5f)
-                drawLine(Color.White, Offset(x - 5f, 4f), Offset(x - 2f, 1f), 1.5f)
-                drawLine(Color.White, Offset(x + 5f, 9f), Offset(x - 5f, 9f), 1.5f)
-                drawLine(Color.White, Offset(x + 5f, 9f), Offset(x + 2f, 12f), 1.5f)
-            }
-            if (playheadMs in windowStartMs..windowEndMs) {
-                val playheadX = xAt(playheadMs)
-                drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
+                drawLine(
+                    Color.White,
+                    Offset(x, markerCenterY + markerRadius),
+                    Offset(x, size.height),
+                    markerStemWidth,
+                )
+                drawCircle(Color.White, markerRadius, Offset(x, markerCenterY))
+                drawCircle(
+                    Ink, markerRadius, Offset(x, markerCenterY),
+                    style = Stroke(markerBorderWidth),
+                )
+                val arrowHalfWidth = 3.2.dp.toPx()
+                val arrowHead = 1.8.dp.toPx()
+                val arrowGap = 1.7.dp.toPx()
+                val arrowStroke = 1.3.dp.toPx()
+                drawLine(
+                    Orange,
+                    Offset(x - arrowHalfWidth, markerCenterY - arrowGap),
+                    Offset(x + arrowHalfWidth, markerCenterY - arrowGap),
+                    arrowStroke,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    Orange,
+                    Offset(x + arrowHalfWidth, markerCenterY - arrowGap),
+                    Offset(x + arrowHalfWidth - arrowHead, markerCenterY - arrowGap - arrowHead),
+                    arrowStroke,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    Orange,
+                    Offset(x + arrowHalfWidth, markerCenterY - arrowGap),
+                    Offset(x + arrowHalfWidth - arrowHead, markerCenterY - arrowGap + arrowHead),
+                    arrowStroke,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    Orange,
+                    Offset(x + arrowHalfWidth, markerCenterY + arrowGap),
+                    Offset(x - arrowHalfWidth, markerCenterY + arrowGap),
+                    arrowStroke,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    Orange,
+                    Offset(x - arrowHalfWidth, markerCenterY + arrowGap),
+                    Offset(x - arrowHalfWidth + arrowHead, markerCenterY + arrowGap - arrowHead),
+                    arrowStroke,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    Orange,
+                    Offset(x - arrowHalfWidth, markerCenterY + arrowGap),
+                    Offset(x - arrowHalfWidth + arrowHead, markerCenterY + arrowGap + arrowHead),
+                    arrowStroke,
+                    StrokeCap.Round,
+                )
             }
         }
     }

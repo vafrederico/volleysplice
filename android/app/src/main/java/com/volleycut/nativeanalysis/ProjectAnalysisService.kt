@@ -22,6 +22,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.ceil
 
 internal fun servingSideOverallProgress(stage: String, fraction: Double): Double {
     val bounded = fraction.coerceIn(0.0, 1.0)
@@ -63,33 +64,109 @@ internal fun projectCreationOverallProgress(
     }
 }
 
+internal data class ProjectNotificationStage(
+    val label: String,
+    val step: Int,
+    val stepCount: Int,
+    val progress: Double,
+) {
+    val title: String get() = "$label ($step/$stepCount)"
+    val progressPercent: Int get() = (progress.coerceIn(0.0, 1.0) * 100).toInt()
+}
+
+internal class NotificationStageSpeedTracker(
+    private val nanoTime: () -> Long = System::nanoTime,
+) {
+    private var stageKey: String? = null
+    private var startedNanos = 0L
+    private var startedProgress = 0.0
+
+    fun detail(filename: String, key: String, progress: Double): String {
+        val bounded = progress.coerceIn(0.0, 1.0)
+        val now = nanoTime()
+        if (stageKey != key || bounded + 0.001 < startedProgress) {
+            stageKey = key
+            startedNanos = now
+            startedProgress = bounded
+        }
+        val percent = (bounded * 100).toInt()
+        if (bounded >= 1.0) return "$filename · 100% · complete"
+        val elapsedSeconds = (now - startedNanos) / 1_000_000_000.0
+        val advanced = bounded - startedProgress
+        if (elapsedSeconds < 0.5 || advanced <= 0.0) {
+            return "$filename · $percent% · measuring speed"
+        }
+        val fractionPerSecond = advanced / elapsedSeconds
+        val etaSeconds = (1.0 - bounded) / fractionPerSecond
+        return String.format(
+            Locale.US,
+            "%s · %d%% · %.1f%%/s · ETA %s",
+            filename,
+            percent,
+            fractionPerSecond * 100.0,
+            formatNotificationDuration(etaSeconds),
+        )
+    }
+}
+
+internal fun projectCreationNotificationStage(
+    stage: String,
+    fraction: Double,
+    includeServingSide: Boolean,
+): ProjectNotificationStage {
+    val bounded = fraction.coerceIn(0.0, 1.0)
+    val stepCount = if (includeServingSide) 3 else 2
+    return when (stage) {
+        "opening", "video" -> ProjectNotificationStage(
+            "Video analysis", 1, stepCount, if (stage == "video") bounded else 0.0,
+        )
+        "audio" -> ProjectNotificationStage("Audio analysis", 2, stepCount, bounded * 0.80)
+        "normalizing" -> ProjectNotificationStage("Audio analysis", 2, stepCount, 0.80 + bounded * 0.10)
+        "inference" -> ProjectNotificationStage("Audio analysis", 2, stepCount, 0.90 + bounded * 0.10)
+        "serving-side", "serving-side-frames", "serving-side-features" -> {
+            if (includeServingSide) {
+                ProjectNotificationStage(
+                    "Serving-side analysis", 3, stepCount,
+                    servingSideOverallProgress(stage, bounded),
+                )
+            } else {
+                ProjectNotificationStage("Audio analysis", 2, stepCount, 1.0)
+            }
+        }
+        "complete" -> ProjectNotificationStage("Project ready", stepCount, stepCount, 1.0)
+        else -> ProjectNotificationStage("Video analysis", 1, stepCount, bounded)
+    }
+}
+
 internal fun projectInferenceNotificationDetail(
     filename: String,
     stats: AnalysisTypes.PerformanceStats?,
+    progressPercent: Int? = null,
 ): String {
-    if (stats == null || stats.framesPerSecond() <= 0.0) return filename
-    val etaSeconds = stats.etaSeconds()
-    val eta = if (!etaSeconds.isFinite() || etaSeconds < 0.0) {
-        "calculating"
-    } else {
-        val totalSeconds = etaSeconds.toLong().coerceAtLeast(0L)
-        val hours = totalSeconds / 3_600
-        val minutes = totalSeconds % 3_600 / 60
-        val seconds = totalSeconds % 60
-        when {
-            hours > 0 -> "${hours}h ${minutes}m"
-            minutes > 0 -> "${minutes}m ${seconds}s"
-            else -> "${seconds}s"
-        }
-    }
+    val prefix = if (progressPercent == null) filename else "$filename · ${progressPercent.coerceIn(0, 100)}%"
+    if (stats == null || stats.framesPerSecond() <= 0.0) return prefix
+    val eta = formatNotificationDuration(stats.etaSeconds())
     return String.format(
         Locale.US,
         "%s · %.1f fps · %.2fx realtime · ETA %s",
-        filename,
+        prefix,
         stats.framesPerSecond(),
         stats.realtimeRatio(),
         eta,
     )
+}
+
+private fun formatNotificationDuration(etaSeconds: Double): String {
+    if (!etaSeconds.isFinite() || etaSeconds < 0.0) return "calculating"
+    val totalSeconds = ceil(etaSeconds).toLong().coerceAtLeast(0L)
+    val hours = totalSeconds / 3_600
+    val minutes = totalSeconds % 3_600 / 60
+    val seconds = totalSeconds % 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m"
+        minutes > 0 -> "${minutes}m ${seconds}s"
+        else -> "${seconds}s"
+    }
 }
 
 /** Serial foreground queue so decoding continues while a different project is edited. */
@@ -138,7 +215,11 @@ class ProjectAnalysisService : Service() {
         queuedIds += projectId
         liveProjectIds += projectId
         if (wakeLock?.isHeld != true) wakeLock?.acquire(12 * 60 * 60 * 1_000L)
-        ensureForeground("Queued ${project.source.name}", true)
+        val notificationStage = projectCreationNotificationStage(
+            "opening", 0.0,
+            project.servingSideStatus != ServingSideAnalysisStatus.DISABLED,
+        )
+        ensureForeground("Queued ${project.source.name}", true, notificationStage.title)
         broadcast(projectId, ProjectStatus.QUEUED, 0.0, "queued", "Waiting for inference")
         if (!workerRunning) {
             workerRunning = true
@@ -162,7 +243,10 @@ class ProjectAnalysisService : Service() {
         queuedIds += projectId
         liveProjectIds += projectId
         if (wakeLock?.isHeld != true) wakeLock?.acquire(12 * 60 * 60 * 1_000L)
-        ensureForeground("Queued score tracking for ${project.source.name}", true)
+        ensureForeground(
+            "Queued ${project.source.name}", true,
+            ProjectNotificationStage("Serving-side analysis", 1, 1, 0.0).title,
+        )
         broadcast(
             projectId, null, 0.0, "serving-side-queued",
             "Waiting to generate serving-side features", servingSideJob = true,
@@ -222,9 +306,28 @@ class ProjectAnalysisService : Service() {
             )
         }
         broadcast(projectId, ProjectStatus.ANALYZING, 0.0, "opening", "Preparing game-window video + audio inference")
-        var latestProgressPercent = 0
+        val includeServingSide = project.servingSideStatus != ServingSideAnalysisStatus.DISABLED
+        var latestNotificationStage = projectCreationNotificationStage("opening", 0.0, includeServingSide)
         var latestPerformance: AnalysisTypes.PerformanceStats? = null
-        updateNotification(0, project.source.name, false)
+        val notificationSpeed = NotificationStageSpeedTracker()
+        fun notificationDetail(): String {
+            val stage = latestNotificationStage
+            return if (stage.step == 1 && latestPerformance != null) {
+                projectInferenceNotificationDetail(
+                    project.source.name, latestPerformance, stage.progressPercent,
+                )
+            } else {
+                notificationSpeed.detail(
+                    project.source.name, "${stage.step}/${stage.stepCount}", stage.progress,
+                )
+            }
+        }
+        updateNotification(
+            latestNotificationStage.progressPercent,
+            notificationDetail(),
+            false,
+            latestNotificationStage.title,
+        )
         try {
             val result = AnalysisEngine(this).analyze(
                 Uri.parse(project.source.uri),
@@ -239,14 +342,16 @@ class ProjectAnalysisService : Service() {
                         val overallProgress = projectCreationOverallProgress(
                             stage,
                             fraction,
-                            project.servingSideStatus != ServingSideAnalysisStatus.DISABLED,
+                            includeServingSide,
                         )
-                        val percent = (overallProgress * 100).toInt()
-                        latestProgressPercent = percent
+                        latestNotificationStage = projectCreationNotificationStage(
+                            stage, fraction, includeServingSide,
+                        )
                         updateNotification(
-                            percent,
-                            projectInferenceNotificationDetail(project.source.name, latestPerformance),
+                            latestNotificationStage.progressPercent,
+                            notificationDetail(),
                             false,
+                            latestNotificationStage.title,
                         )
                         broadcast(
                             projectId,
@@ -260,14 +365,15 @@ class ProjectAnalysisService : Service() {
                     override fun onPerformance(stats: AnalysisTypes.PerformanceStats) {
                         latestPerformance = stats
                         updateNotification(
-                            latestProgressPercent,
-                            projectInferenceNotificationDetail(project.source.name, stats),
+                            latestNotificationStage.progressPercent,
+                            notificationDetail(),
                             false,
+                            latestNotificationStage.title,
                         )
                         broadcastPerformance(projectId, stats)
                     }
                 },
-                project.servingSideStatus != ServingSideAnalysisStatus.DISABLED,
+                includeServingSide,
             )
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
                 NativeProjectStore.complete(this, projectId, result)
@@ -277,7 +383,8 @@ class ProjectAnalysisService : Service() {
                 val detail = "${result.ranges().size} merged ranges · $disagreements to validate · features cached"
                 Log.i(TAG, resultLog(projectId, project.analysisWindow, result).toString())
                 broadcast(projectId, ProjectStatus.READY, 1.0, "complete", detail)
-                updateNotification(100, "Ready: ${project.source.name}", false)
+                val completeStage = projectCreationNotificationStage("complete", 1.0, includeServingSide)
+                updateNotification(100, project.source.name, false, completeStage.title)
             }
         } catch (error: Exception) {
             if (NativeProjectStore.get(this, projectId) != null) {
@@ -293,7 +400,7 @@ class ProjectAnalysisService : Service() {
                     NativeProjectStore.updateStatus(this, projectId, ProjectStatus.ERROR, message)
                     Log.e(TAG, "Project $projectId failed", error)
                     broadcast(projectId, ProjectStatus.ERROR, 0.0, "failed", message)
-                    updateNotification(0, "Failed: ${project.source.name}", false)
+                    updateNotification(0, "Failed: ${project.source.name}", false, "Project inference failed")
                 }
             }
         } finally {
@@ -314,7 +421,11 @@ class ProjectAnalysisService : Service() {
             projectId, null, 0.0, "serving-side",
             "Generating serving-side features", servingSideJob = true,
         )
-        updateNotification(0, "Score tracking · ${project.source.name}", true)
+        val notificationSpeed = NotificationStageSpeedTracker()
+        updateNotification(
+            0, notificationSpeed.detail(project.source.name, "1/1", 0.0), true,
+            ProjectNotificationStage("Serving-side analysis", 1, 1, 0.0).title,
+        )
         try {
             val output = ServingSideInference.run(
                 this,
@@ -334,7 +445,12 @@ class ProjectAnalysisService : Service() {
                     override fun onProgress(stage: String, fraction: Double, detail: String) {
                         val overallProgress = servingSideOverallProgress(stage, fraction)
                         val percent = (overallProgress * 100).toInt()
-                        updateNotification(percent, "${project.source.name} · $detail", false)
+                        updateNotification(
+                            percent,
+                            notificationSpeed.detail(project.source.name, "1/1", overallProgress),
+                            false,
+                            ProjectNotificationStage("Serving-side analysis", 1, 1, overallProgress).title,
+                        )
                         broadcast(
                             projectId, null, overallProgress, stage, detail,
                             servingSideJob = true,
@@ -355,7 +471,12 @@ class ProjectAnalysisService : Service() {
                     projectId, null, 1.0, "serving-side-complete", detail,
                     servingSideJob = true,
                 )
-                updateNotification(100, "Score tracking ready: ${project.source.name}", false)
+                updateNotification(
+                    100,
+                    notificationSpeed.detail(project.source.name, "1/1", 1.0),
+                    false,
+                    "Score tracking ready (1/1)",
+                )
             }
         } catch (error: Exception) {
             if (NativeProjectStore.get(this, projectId) != null) {
@@ -388,7 +509,7 @@ class ProjectAnalysisService : Service() {
                     detail,
                     servingSideJob = true,
                 )
-                updateNotification(0, "Score tracking unavailable: ${project.source.name}", false)
+                updateNotification(0, project.source.name, false, "Score tracking unavailable")
             }
         } finally {
             synchronized(this) { deletingProjects.remove(projectId) }
@@ -465,12 +586,16 @@ class ProjectAnalysisService : Service() {
         })
     }
 
-    private fun ensureForeground(detail: String, indeterminate: Boolean) {
+    private fun ensureForeground(
+        detail: String,
+        indeterminate: Boolean,
+        title: String = "VolleyCut project inference",
+    ) {
         if (foreground) {
-            updateNotification(0, detail, indeterminate)
+            updateNotification(0, detail, indeterminate, title)
             return
         }
-        val notification = notification(0, detail, true, indeterminate)
+        val notification = notification(0, detail, true, indeterminate, title)
         if (Build.VERSION.SDK_INT >= 35) {
             startForeground(
                 NOTIFICATION_ID,
@@ -481,14 +606,25 @@ class ProjectAnalysisService : Service() {
         foreground = true
     }
 
-    private fun updateNotification(progress: Int, detail: String, indeterminate: Boolean) {
+    private fun updateNotification(
+        progress: Int,
+        detail: String,
+        indeterminate: Boolean,
+        title: String = "VolleyCut project inference",
+    ) {
         getSystemService(NotificationManager::class.java).notify(
             NOTIFICATION_ID,
-            notification(progress, detail, true, indeterminate),
+            notification(progress, detail, true, indeterminate, title),
         )
     }
 
-    private fun notification(progress: Int, detail: String, ongoing: Boolean, indeterminate: Boolean): Notification {
+    private fun notification(
+        progress: Int,
+        detail: String,
+        ongoing: Boolean,
+        indeterminate: Boolean,
+        title: String,
+    ): Notification {
         val content = PendingIntent.getActivity(
             this,
             0,
@@ -497,7 +633,7 @@ class ProjectAnalysisService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("VolleyCut project inference")
+            .setContentTitle(title)
             .setContentText(detail)
             .setContentIntent(content)
             .setOnlyAlertOnce(true)

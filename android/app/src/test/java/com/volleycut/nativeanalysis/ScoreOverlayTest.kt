@@ -1,6 +1,7 @@
 package com.volleycut.nativeanalysis
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.roundToInt
@@ -43,9 +44,11 @@ class ScoreOverlayTest {
     }
 
     @Test
-    fun sourceTimeMappingAddsEachRetainedClipStart() {
-        assertEquals(42_000, scoreOverlaySourceTimestampMs(42_000, 0))
-        assertEquals(43_250, scoreOverlaySourceTimestampMs(42_000, 1_250_999))
+    fun sourceTimeMappingUsesPresentationTimeLocalToEachRetainedClip() {
+        assertEquals(42_000, scoreOverlaySourceTimestampMs(42_000, 0, 0))
+        assertEquals(43_250, scoreOverlaySourceTimestampMs(42_000, 0, 1_250_999))
+        assertEquals(90_000, scoreOverlaySourceTimestampMs(90_000, 8_000_000, 8_000_000))
+        assertEquals(91_250, scoreOverlaySourceTimestampMs(90_000, 8_000_000, 9_250_999))
     }
 
     @Test
@@ -54,5 +57,28 @@ class ScoreOverlayTest {
         assertEquals(1080 to 1920, scoreOverlayDisplaySize(1920, 1080, 90))
         assertEquals(1920 to 1080, scoreOverlayDisplaySize(1920, 1080, 180))
         assertEquals(1080 to 1920, scoreOverlayDisplaySize(1920, 1080, 270))
+    }
+
+    @Test
+    fun exportSnapshotRoundTripFreezesScoreFiltersAndRallyGeometry() {
+        val original = ScoreExportSnapshot(
+            render = true,
+            scoreTracking = ScoreTracking(team1Name = "Falcons", team2Name = "Wolves"),
+            ignoredIntervals = listOf(IgnoredSourceInterval("I1", 1_000, 2_000, "timeout")),
+            excludedRallyIds = setOf("R002"),
+            rallyRanges = listOf(ScoreRallyRange(3_000, 4_000, 2_500, 4_500)),
+        )
+
+        val restored = ScoreExportSnapshotJson.decode(
+            ScoreExportSnapshotJson.encode(original),
+            10_000,
+        )
+
+        assertNotNull(restored)
+        assertEquals(original.render, restored?.render)
+        assertEquals(original.scoreTracking, restored?.scoreTracking)
+        assertEquals(original.ignoredIntervals, restored?.ignoredIntervals)
+        assertEquals(original.excludedRallyIds, restored?.excludedRallyIds)
+        assertEquals(original.rallyRanges, restored?.rallyRanges)
     }
 }

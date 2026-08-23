@@ -159,7 +159,10 @@ class ExportService : Service() {
         scoreSnapshot: ScoreExportSnapshot?,
     ) {
         val jobId = currentJob?.id ?: error("Export job missing")
+        var compositionStartUs = 0L
         val editedItems = intervals.map { interval ->
+            val intervalCompositionStartUs = compositionStartUs
+            compositionStartUs += (interval.endMs - interval.startMs) * 1_000L
             val mediaItem = MediaItem.Builder()
                 .setUri(source)
                 .setClippingConfiguration(
@@ -174,7 +177,11 @@ class ExportService : Service() {
                 if (scoreSnapshot?.render == true) {
                     setEffects(Effects(
                         emptyList(),
-                        listOf(OverlayEffect(listOf(ScoreCanvasOverlay(scoreSnapshot, interval.startMs)))),
+                        listOf(OverlayEffect(listOf(ScoreCanvasOverlay(
+                            scoreSnapshot,
+                            interval.startMs,
+                            intervalCompositionStartUs,
+                        )))),
                     ))
                 }
             }.build()

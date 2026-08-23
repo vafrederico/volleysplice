@@ -23,8 +23,11 @@ internal data class ScoreExportSnapshot(
     }
 }
 
-internal fun scoreOverlaySourceTimestampMs(sourceStartMs: Long, presentationTimeUs: Long): Long =
-    sourceStartMs + (presentationTimeUs / 1_000L).coerceAtLeast(0)
+internal fun scoreOverlaySourceTimestampMs(
+    sourceStartMs: Long,
+    compositionStartUs: Long,
+    presentationTimeUs: Long,
+): Long = sourceStartMs + ((presentationTimeUs - compositionStartUs) / 1_000L).coerceAtLeast(0)
 
 internal object ScoreExportSnapshotJson {
     fun encode(value: ScoreExportSnapshot) = JSONObject().apply {
@@ -80,11 +83,12 @@ internal object ScoreExportSnapshotJson {
 internal class ScoreCanvasOverlay(
     private val snapshot: ScoreExportSnapshot,
     private val sourceStartMs: Long,
+    private val compositionStartUs: Long,
 ) : CanvasOverlay(true) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     internal fun sourceTimestampMs(presentationTimeUs: Long): Long =
-        scoreOverlaySourceTimestampMs(sourceStartMs, presentationTimeUs)
+        scoreOverlaySourceTimestampMs(sourceStartMs, compositionStartUs, presentationTimeUs)
 
     override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)

@@ -43,8 +43,10 @@ The normative port contract is
 [`../docs/serving-side-score-tracking-android-spec.md`](../docs/serving-side-score-tracking-android-spec.md).
 That spec remains the normative feature/model/gate, cache, score, timeline, persistence, feedback,
 preview, and export contract. JVM contract tests and Android instrumentation fixtures cover the
-port; physical-device golden-video, rotation, export, and cross-runtime corpus gates must still be
-run before publishing a signed release that claims full device parity.
+port. Pixel instrumentation fixtures perform real H.264 Transformer exports for 0°, 90°, 180°,
+and 270° inputs, decode the results, and verify the output geometry and score cells baked into the
+output pixels. The cross-runtime corpus gate must still be run before publishing a signed release
+that claims full device parity.
 
 ## Target device and SDK
 

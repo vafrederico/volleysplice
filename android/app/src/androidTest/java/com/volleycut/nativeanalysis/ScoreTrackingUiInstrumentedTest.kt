@@ -9,7 +9,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -129,5 +134,45 @@ class ScoreTrackingUiInstrumentedTest {
         compose.waitUntil(2_000) { selectedId != null }
         assertEquals("S001", selectedId)
         assertEquals(null, seekTimestamp)
+    }
+
+    @Test
+    fun reviewPredictionsAreHighlightedAndCanBeSelectedFromStatus() {
+        var selectedId by mutableStateOf<String?>(null)
+        val tracking = ScoreTracking(
+            serveMarkers = listOf(
+                ServeMarker("S001", 1_000, ServingSide.REVIEW, ServeMarkerOrigin.MODEL),
+                ServeMarker("S002", 2_000, ServingSide.NEAR, ServeMarkerOrigin.MODEL),
+                ServeMarker("S003", 3_000, ServingSide.REVIEW, ServeMarkerOrigin.MODEL),
+            ),
+        )
+        compose.setContent {
+            MaterialTheme {
+                ScoreTrackingPanel(
+                    enabled = true,
+                    tracking = tracking,
+                    visibleTracking = tracking,
+                    visibleScore = ScoreReducer.deriveAt(tracking),
+                    selectedMarkerId = selectedId,
+                    manualServingSide = ServingSide.NEAR,
+                    currentTimestampMs = 0,
+                    servingSideStatus = ServingSideAnalysisStatus.READY,
+                    servingSideError = null,
+                    servingSideProgress = 1f,
+                    servingSideProgressDetail = null,
+                    onEnabledChange = {},
+                    onTracking = {},
+                    onSelect = { id, _ -> selectedId = id },
+                    onManualServingSide = {},
+                )
+            }
+        }
+
+        compose.onAllNodesWithText("Review").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("Score marker needs review").assertCountEquals(2)
+        compose.onNodeWithText("Review next · 2").performClick()
+        compose.runOnIdle { assertEquals("S001", selectedId) }
+        compose.onNodeWithText("Review next · 2").performClick()
+        compose.runOnIdle { assertEquals("S003", selectedId) }
     }
 }
