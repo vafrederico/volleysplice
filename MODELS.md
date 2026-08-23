@@ -65,6 +65,7 @@ a model study.
 | `PRODUCTION-STATE20` | 20 | Ten rally/dead-state/agreement/gap inputs plus ten serve-anchor/support inputs reduced from the two shipped production bundles; side-switch add-on, not part of F104 |
 | `PRODUCTION-CONTEXT19` | 19 | Nine rally/dead-state/agreement inputs plus all ten serve-anchor/support inputs from the shipped production bundles; excludes raw gap duration and suppression |
 | `PLAYER-ORIENTATION22+STATE10` | 32 | Validation-selected V5 production-state view: frozen V5 appearance plus the ten state/gating inputs; suppression excluded |
+| `V5-RALLY-PARITY2` | 2 | Diagnostic per-rally V5 orientation coordinate and quality; no learned head, production feature signature, or promotion |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
@@ -139,6 +140,12 @@ named artifact was metadata/re-export/finalization, not another fit.
 | `side-switch-v5-no-cadence-v1` | Side-switch gap, validation-selected PLAYER-ORIENTATION22+STATE10; same frozen split and rows as V5-state | Refits the V5 base/state heads, verifies exact learned-parameter parity with the cadence model, and replaces seven-point candidate windows, re-anchoring, spacing, and the six-event cap with independent all-gap thresholding. L2, threshold, and feature-view selection remain development-only. | Positive causal diagnostic, not promoted. Exact recall/F1 improve 31.43%/30.14%→80.00%/44.44%, retaining all 11 cadence true positives and recovering 17 more, but proposals rise 38→91 and false positives 27→63. Research artifact only; no review UI or inference-runtime port. |
 | `side-switch-v5-peak-cleanup-v1` | Frozen no-cadence V5-state head plus PRODUCTION-CONTEXT19 auxiliary head and cadence-free peak/count decoder | Compares eight locked combinations of adjacent/time NMS, a soft post-six logit penalty, and soft production-context log odds. There is no cadence, re-anchoring, hard count cap, production hard gate, or suppression input. Historical validation selects adjacent-gap peaks plus context weight 0.25. | **Current research winner:** locked `local-peak-soft-count`, selected by user after the exhaustive 50-event audit. It has 44.64% end-to-end pooled F1, 25 TP/37 FP/25 FN, and 62 proposals (5.64/video) under ±4-second boundary matching. The historical validation-selected context output remains immutable provenance. Research-only; no review UI/runtime port or automatic promotion. |
 | `side-switch-v6-production-state-v1` | Side-switch gap, validation-selected serve-grounded DETECTED-ADAPTIVE29+PRODUCTION-STATE20 | Same production-state/serve-grounding ablation applied to V6; all eight candidates tie on validation exact F1 and AP selects grounded+combined. | Rejected. Exact F1 falls 24.10%→17.91%, ±2 F1 40.96%→38.81%, and row AP 45.47%→36.23%; frozen V6 remains unchanged. |
+
+The `V5-RALLY-PARITY2` feasibility experiment does not appear as a trained-model row:
+it fits no head. Its fixed sign/persistence decoder is rejected after 21.32% swapped
+state recall and 5 TP/13 FP/45 FN at persistence two. The rally-level feature and
+artifact lineage are registered in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md) and the
+[decision record](docs/research/side-switch-parity-feasibility-2026-08-23.md).
 
 The Unicode ellipsis in three grouped rows abbreviates only the repeated artifact prefix:
 the complete names are

@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch parity feasibility — 2026-08-23](./side-switch-parity-feasibility-2026-08-23.md) — rally-level state extraction on the exhaustive 50-event scope, 100% truth-state bracketing oracle, strongly asymmetric V5 state emissions, failed persistence decoders, and retention of parity only as a candidate architecture pending a better state representation.
 - [Side-switch rare-event improvement plan — 2026-08-23](./side-switch-rare-event-improvement-plan-2026-08-23.md) — sourced execution plan for dense side-parity prediction, same-side verification, full-video candidate recovery, imbalance-aware ranking, recording calibration, and soft non-reanchored temporal priors.
 - [Side-switch full-video marker audit — 2026-08-21](./side-switch-full-video-marker-audit-2026-08-21.md) — exhaustive 50-event raw-phone truth, one-to-one strict/±4-second proposal matching, 66% candidate-coverage ceiling, all 19 decoder rankings with per-video TP/FP/FN/proposal averages, user selection of local peak + soft count as the current research winner, and continued non-promotion.
 - [Side-switch production-state and serve-grounding experiment — 2026-08-20](./side-switch-production-state-experiment-2026-08-20.md) — replay of both shipped rally/serve/dead-state bundles, soft-gate and serve-anchor ablations for V5/V6, modest V5 precision gain, V6/hard-gate rejection, and suppression quarantine.

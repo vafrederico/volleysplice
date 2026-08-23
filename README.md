@@ -117,6 +117,12 @@ automatic inference. Its exact identity and source bindings are frozen in
 [`data/side-switch-current-research-winner-v1.json`](data/side-switch-current-research-winner-v1.json).
 See the
 [`full-video marker audit`](docs/research/side-switch-full-video-marker-audit-2026-08-21.md).
+The first rare-event follow-up preserves one V5 orientation observation per detected
+rally. Manual parity proves stable rally states can bracket all 50 switches, but the
+existing orientation sign recognizes only 21.32% of swapped-state observations and its
+persistence-2 decoder finds 5/50 events. The parity architecture is retained for a
+better emission; this diagnostic is not a model promotion. See the
+[`parity feasibility decision`](docs/research/side-switch-parity-feasibility-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
