@@ -14,6 +14,9 @@
 > The non-reanchored latent score prior was also rejected because rally ordinal is not
 > point count; see the
 > [soft-prior decision](./side-switch-soft-score-prior-2026-08-23.md).
+> The separate expanded internal head also failed to add a held-out internal TP;
+> boundary-only is retained as a small precision candidate. See the
+> [internal-specialist decision](./side-switch-internal-specialist-2026-08-23.md).
 
 ## Decision
 

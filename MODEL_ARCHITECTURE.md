@@ -388,6 +388,13 @@ ordinal is not a usable point counter, and both exact and uncertain hazards regr
 The architecture remains cadence-free. See
 [`side-switch-soft-score-prior-2026-08-23.md`](docs/research/side-switch-soft-score-prior-2026-08-23.md).
 
+The internal-specialist follow-up splits retained boundaries from 228 expanded internal
+peaks and gives the latter a distinct transition/range/serve/peak head. Sparse support
+prevents transfer: no held-out internal TP is added. Dropping the internal branch
+entirely removes four FP and one TP and is retained as a small, unpromoted precision
+candidate. See
+[`side-switch-internal-specialist-2026-08-23.md`](docs/research/side-switch-internal-specialist-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

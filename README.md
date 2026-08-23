@@ -190,6 +190,11 @@ transitions. Detected rally ordinal proves too different from point count: only 
 positive candidates land on modulo seven. Exact cadence collapses and the best uncertain
 prior reaches 54.21% F1, so no cadence prior is retained. See the
 [`soft score-prior decision`](docs/research/side-switch-soft-score-prior-2026-08-23.md).
+Finally, a separate expanded internal-candidate head adds range, serve-anchor, peak,
+and transition geometry. It fails to add any held-out internal TP. A simpler
+boundary-only policy removes four FP and one TP, improving F1 56.86%→57.73% and strict
+F1 45.10%→47.42%; it is retained as an opened-development candidate, not promoted. See
+the [`internal-specialist decision`](docs/research/side-switch-internal-specialist-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch internal-candidate specialist — 2026-08-23](./side-switch-internal-specialist-2026-08-23.md) — separate transition/geometry heads over the 100%-coverage expanded union, no held-out internal TP recovery, 6.87% best internal AP, and a retained-but-unpromoted 57.73% boundary-only precision candidate.
 - [Side-switch uncertain score/cadence prior — 2026-08-23](./side-switch-soft-score-prior-2026-08-23.md) — non-reanchored `+0/+1/+2` latent count, exact-cadence collapse, broad positive modulo distribution, uncertain-prior regression, and retention of the cadence-free winner.
 - [Side-switch focal and effective-number losses — 2026-08-23](./side-switch-rare-event-losses-2026-08-23.md) — exact focal/BFGS and effective-number objectives, promoted-control parity, slight focal AP gain but event regression, unstable nested selection, and retention of square-root BCE.
 - [Side-switch recording-reliability head — 2026-08-23](./side-switch-recording-reliability-2026-08-23.md) — nested per-video threshold-offset ridge head, 13 label-free quality/score summaries, direct-blur limitation, 11/11 control selections, fixed-variant precision regression, and rejection without pointer/runtime changes.

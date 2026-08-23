@@ -897,6 +897,17 @@ It allows redo and missing-point transitions, but detected rally ordinal is not 
 reliable point count and every cadence variant regresses. See the
 [soft-prior decision](../docs/research/side-switch-soft-score-prior-2026-08-23.md).
 
+The expanded internal-candidate specialist is evaluated with:
+
+```bash
+PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+  scripts/train-side-switch-internal-specialist.py
+```
+
+The learned branch does not recover a held-out internal TP. Boundary-only is retained
+as a small opened-development precision candidate but is not promoted. See the
+[internal-specialist decision](../docs/research/side-switch-internal-specialist-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
