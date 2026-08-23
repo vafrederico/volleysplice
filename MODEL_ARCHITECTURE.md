@@ -326,6 +326,16 @@ regresses to 49.52% F1 and is rejected. No production graph or client runtime ch
 See
 [`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
 
+The imbalance follow-up holds that candidate/features/decoder path fixed and varies
+only the training prior and label-free recording score normalization. Square-root class
+balancing is the useful direction: nested selection removes two false positives at
+unchanged true positives, moving F1 from 50.94% to 51.92%. Robust-logit and percentile
+recording transforms are rejected. A symmetric head trained to predict no-switch is
+numerically just `1 - P(switch)` and adds no independent evidence. The architecture
+therefore remains one binary head; future negative modeling needs a genuinely distinct
+continuity/hard-negative target. See
+[`side-switch-imbalance-calibration-2026-08-23.md`](docs/research/side-switch-imbalance-calibration-2026-08-23.md).
+
 ## Production inference and export flow
 
 The complete production path is:

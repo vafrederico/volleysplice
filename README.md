@@ -143,6 +143,14 @@ peaks remain weakly ranked, and an expanded-distribution continuity veto regress
 the new head is retained as an on-device-compatible research contender without
 changing the current-winner pointer or production inference. See the
 [`full-union ranker decision`](docs/research/side-switch-full-union-ranker-2026-08-23.md).
+An imbalance/calibration loop then holds the full-union architecture fixed. Nested
+selection of natural, square-root-balanced, fully balanced, robust-logit, and percentile
+variants removes two false positives at unchanged recall, moving F1 from 50.94% to
+51.92%. Square-root weighting is retained as a candidate training objective; recording
+calibration is rejected. Training an otherwise identical no-switch head produces only
+the numerical complement of the switch score, so future negative modeling must use a
+distinct continuity or hard-negative target. See the
+[`imbalance/calibration decision`](docs/research/side-switch-imbalance-calibration-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard

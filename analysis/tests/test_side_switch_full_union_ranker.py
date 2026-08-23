@@ -5,8 +5,12 @@ import numpy as np
 from analysis.side_switch_full_union_ranker import (
     UnionDecoderSettings,
     add_derived_features,
+    calibrate_recording_scores,
     decode_ranked_candidates,
+    fit_weighted_logistic,
 )
+from analysis.side_switch_v3 import V3Event
+from analysis.side_switch_v6 import matrix_for
 
 
 def _row(event_id: str, time: float) -> dict[str, object]:
@@ -54,6 +58,43 @@ class SideSwitchFullUnionRankerTests(unittest.TestCase):
             ),
         )
         self.assertEqual(selected.tolist(), [True, False])
+
+    def test_recording_calibration_preserves_within_recording_order(self) -> None:
+        rows = [_row("a", 10.0), _row("b", 20.0), _row("c", 30.0)]
+        scores = np.asarray([0.1, 0.8, 0.6])
+        for method in ("robust-logit", "percentile"):
+            calibrated = calibrate_recording_scores(rows, scores, method)
+            self.assertEqual(np.argsort(calibrated).tolist(), np.argsort(scores).tolist())
+
+    def test_balanced_opposite_head_is_probability_complement(self) -> None:
+        rows = []
+        for index, (value, label) in enumerate(
+            ((-2.0, 0), (-1.0, 0), (1.0, 1), (2.0, 1))
+        ):
+            row = _row(str(index), float(index))
+            row["features"] = {"x": value}
+            rows.append(
+                V3Event(str(index), "video", "research", index + 1, label, row)
+            )
+        positive = fit_weighted_logistic(rows, 0.1, ("x",), 1.0)
+        opposite_rows = [
+            V3Event(
+                event.event_id,
+                event.recording_id,
+                event.role,
+                event.gap_order,
+                1 - event.label,
+                event.row,
+            )
+            for event in rows
+        ]
+        opposite = fit_weighted_logistic(opposite_rows, 0.1, ("x",), 1.0)
+        values = matrix_for(rows, ("x",))
+        np.testing.assert_allclose(
+            positive.predict_proba(values),
+            1.0 - opposite.predict_proba(values),
+            atol=1e-12,
+        )
 
 
 if __name__ == "__main__":

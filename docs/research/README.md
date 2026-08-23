@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch imbalance/calibration experiment — 2026-08-23](./side-switch-imbalance-calibration-2026-08-23.md) — natural/square-root/full class weighting, raw/robust-logit/percentile nested evaluation, modest 50.94%→51.92% F1 gain, rejected recording calibration, and exact proof that a symmetric no-switch head is only the switch-score complement.
 - [Side-switch full-union feature/ranker experiment — 2026-08-23](./side-switch-full-union-ranker-2026-08-23.md) — exact 352-row/42-feature parity, all 704 candidates scoreable, nested-LOO 27 TP/29 FP/23 FN and 50.94% ±4 F1, rejected expanded continuity veto, on-device-compatible research contender without automatic winner replacement.
 - [Side-switch full-trace candidate union — 2026-08-23](./side-switch-candidate-union-2026-08-23.md) — all 624 production boundaries plus 80 strong internal dead-state peaks, stable LOO selection, 66%→92% candidate recall, zero new inference/decode, half-universe frozen-feature gap, and continued non-promotion.
 - [Side-switch same-side continuity verifier — 2026-08-23](./side-switch-continuity-verifier-2026-08-23.md) — LOO conservative continuity-tail veto, 5 FP removed with all 25 TP retained, hard opposite-gate/add-only/quality rejections, immutable forward research threshold, and continued non-promotion.

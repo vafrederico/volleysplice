@@ -805,6 +805,19 @@ internal peaks remain weak, and the expanded continuity veto is rejected. The mo
 research-only and has no browser/Android port. See the
 [full-union decision record](../docs/research/side-switch-full-union-ranker-2026-08-23.md).
 
+The imbalance/calibration follow-up reuses that immutable feature artifact and fixes
+the prior L2/decoder while comparing natural, square-root, and full class balancing plus
+two label-free recording score transforms:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/train-side-switch-full-union-calibration.py
+```
+
+Square-root weighting is retained as a candidate objective after a modest nested F1
+gain; robust-logit and percentile calibration are rejected. A mirrored no-switch fit is
+verified to be only the switch-score complement. See the
+[imbalance/calibration decision](../docs/research/side-switch-imbalance-calibration-2026-08-23.md).
+
 ## Ball-presence feasibility pilot
 
 Ball presence is isolated from the production extractor until a detector is
