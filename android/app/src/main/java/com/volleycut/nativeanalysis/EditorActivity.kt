@@ -1553,11 +1553,13 @@ private fun EditorScreen(
     val scoreRallyRanges = draft.cuts.filter {
         it.included && (it.origin == CutOrigin.MANUAL || it.id in effectiveIds)
     }.map { ScoreRallyRange(it.coreStartMs, it.coreEndMs, it.keepStartMs, it.keepEndMs) }
+    val scoreMergedRanges = finalIntervals.map { ScoreMergedRange(it.startMs, it.endMs) }
     val preparedScoreOverlay = ScoreOverlay.prepare(
         draft.scoreTracking,
         draft.ignoredIntervals,
         excludedScoreRallyIds,
         scoreRallyRanges,
+        scoreMergedRanges,
     )
     val visibleScore = ScoreReducer.deriveAt(
         preparedScoreOverlay.tracking,
@@ -1565,6 +1567,7 @@ private fun EditorScreen(
             playbackPositionMs,
             preparedScoreOverlay.rallyRanges,
             preparedScoreOverlay.tracking,
+            preparedScoreOverlay.mergedRanges,
         ),
     )
     val activeSuggestions = EditorMath.activeSuggestions(draft, seed.suppression)
@@ -1733,6 +1736,9 @@ private fun EditorScreen(
                         ignoredIntervals = draft.ignoredIntervals,
                         excludedRallyIds = excludedScoreRallyIds,
                         rallyRanges = scoreRallyRanges,
+                        mergedRanges = requestedIntervals.map {
+                            ScoreMergedRange(it.startMs, it.endMs)
+                        },
                     )),
                 )
             }
@@ -2246,8 +2252,8 @@ private fun EditorScreen(
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
                     playheadMs = playbackPositionMs,
-                    serveMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.serveMarkers else emptyList(),
-                    sideSwitchMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.sideSwitchMarkers else emptyList(),
+                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
+                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
                     selectedScoreMarkerId = selectedScoreMarkerId,
                     onMarkerSelect = { markerId, timestampMs ->
                         selectedScoreMarkerId = markerId
@@ -2287,8 +2293,8 @@ private fun EditorScreen(
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
                     playheadMs = playbackPositionMs,
-                    serveMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.serveMarkers else emptyList(),
-                    sideSwitchMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.sideSwitchMarkers else emptyList(),
+                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
+                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
                     selectedScoreMarkerId = selectedScoreMarkerId,
                     onMarkerSelect = { markerId, timestampMs ->
                         selectedScoreMarkerId = markerId
@@ -3258,9 +3264,27 @@ private fun ScoreOverlayPreview(snapshot: ScoreOverlaySnapshot, modifier: Modifi
                         )
                     }
                 }
-                Cell(snapshot.team1Name, layout.team1Width, ScoreOverlay.TEAM_1_COLOR, Color.White, true)
+                Cell(
+                    ScoreOverlay.formatTeamLabel(
+                        snapshot.team1Name,
+                        snapshot.servingTeamId == ScoreTeamId.TEAM_1,
+                    ),
+                    layout.team1Width,
+                    ScoreOverlay.TEAM_1_COLOR,
+                    Color.White,
+                    true,
+                )
                 Cell(snapshot.team1ScoreLabel, layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR, Color.Black, false)
-                Cell(snapshot.team2Name, layout.team2Width, ScoreOverlay.TEAM_2_COLOR, Color.White, true)
+                Cell(
+                    ScoreOverlay.formatTeamLabel(
+                        snapshot.team2Name,
+                        snapshot.servingTeamId == ScoreTeamId.TEAM_2,
+                    ),
+                    layout.team2Width,
+                    ScoreOverlay.TEAM_2_COLOR,
+                    Color.White,
+                    true,
+                )
                 Cell(snapshot.team2ScoreLabel, layout.scoreWidth, ScoreOverlay.SCORE_BACKGROUND_COLOR, Color.Black, false)
             }
             Canvas(Modifier.fillMaxSize()) {

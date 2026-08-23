@@ -85,6 +85,70 @@ class ScoreReducerTest {
     }
 
     @Test
+    fun mergedRallyFragmentsDoNotAdvanceInsideAnInternalGapWithoutAServe() {
+        val tracking = tracking(
+            serve("S1", 5_000, ServingSide.NEAR),
+            serve("S2", 20_000, ServingSide.FAR),
+        )
+        val ranges = listOf(
+            ScoreRallyRange(5_000, 12_000, 3_000, 14_000),
+            ScoreRallyRange(20_000, 25_000, 16_000, 27_000),
+        )
+        val merged = listOf(ScoreMergedRange(3_000, 27_000))
+
+        assertEquals(13_000, ScoreReducer.scoreBoundaryTimestamp(13_000, ranges, tracking, merged))
+        assertEquals(15_000, ScoreReducer.scoreBoundaryTimestamp(15_000, ranges, tracking, merged))
+        assertEquals(19_000, ScoreReducer.scoreBoundaryTimestamp(19_000, ranges, tracking, merged))
+        assertEquals(20_000, ScoreReducer.scoreBoundaryTimestamp(20_000, ranges, tracking, merged))
+    }
+
+    @Test
+    fun serveInsideMergedPaddingActivatesTheUpcomingRallyState() {
+        val tracking = tracking(
+            serve("S1", 5_000, ServingSide.NEAR),
+            serve("S2", 18_000, ServingSide.FAR),
+            serve("S3", 30_000, ServingSide.NEAR),
+        )
+        val ranges = listOf(
+            ScoreRallyRange(5_000, 12_000, 3_000, 14_000),
+            ScoreRallyRange(20_000, 25_000, 16_000, 27_000),
+        )
+
+        assertEquals(
+            18_000,
+            ScoreReducer.scoreBoundaryTimestamp(
+                15_000,
+                ranges,
+                tracking,
+                listOf(ScoreMergedRange(3_000, 27_000)),
+            ),
+        )
+        assertEquals(
+            19_000,
+            ScoreReducer.scoreBoundaryTimestamp(
+                19_000,
+                ranges,
+                tracking,
+                listOf(ScoreMergedRange(3_000, 27_000)),
+            ),
+        )
+    }
+
+    @Test
+    fun firstLeadingPaddingStopsLookingAheadAfterCrossingItsServeMarker() {
+        val tracking = tracking(
+            serve("S1", 2_500, ServingSide.NEAR),
+            serve("S2", 20_000, ServingSide.FAR),
+        )
+        val ranges = listOf(ScoreRallyRange(5_000, 12_000, 3_000, 14_000))
+        val merged = listOf(ScoreMergedRange(3_000, 14_000))
+
+        assertEquals(3_000, ScoreReducer.scoreBoundaryTimestamp(3_000, ranges, tracking, merged))
+        assertEquals(3_500, ScoreReducer.scoreBoundaryTimestamp(3_500, ranges, tracking, merged))
+        assertEquals(4_500, ScoreReducer.scoreBoundaryTimestamp(4_500, ranges, tracking, merged))
+    }
+
+    @Test
     fun removingModelMarkerCreatesTombstoneAndReseedingDoesNotResurrectIt() {
         val output = output(ServingSideVerdict.NEAR)
         val seeded = ScoreReducer.seedModelMarkers(ScoreTracking(), output)

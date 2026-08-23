@@ -28,6 +28,7 @@ import {
 } from "./export-delivery";
 import { startServiceWorkerStreamDownload } from "./stream-download";
 import {
+  formatOverlayTeamLabel,
   prepareScoreOverlay,
   scoreOverlayLayout,
   scoreOverlaySnapshot,
@@ -146,13 +147,19 @@ function drawScoreOverlay(
   context.fillStyle = SCORE_OVERLAY_COLORS.teamText;
   context.textAlign = "center";
   context.fillText(
-    snapshot.team1Name,
+    formatOverlayTeamLabel(
+      snapshot.team1Name,
+      snapshot.servingTeamId === "team-1",
+    ),
     layout.team1Width / 2,
     layout.height / 2,
     layout.team1Width - layout.horizontalPadding * 2,
   );
   context.fillText(
-    snapshot.team2Name,
+    formatOverlayTeamLabel(
+      snapshot.team2Name,
+      snapshot.servingTeamId === "team-2",
+    ),
     team2X + layout.team2Width / 2,
     layout.height / 2,
     layout.team2Width - layout.horizontalPadding * 2,

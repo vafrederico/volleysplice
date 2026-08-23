@@ -1,9 +1,6 @@
-import { useMemo, type CSSProperties } from "react";
+import { type CSSProperties, useMemo } from "react";
 
-import {
-  formatOverlayScore,
-  SCORE_OVERLAY_COLORS,
-} from "@/lib/score-overlay";
+import { formatOverlayScore, SCORE_OVERLAY_COLORS } from "@/lib/score-overlay";
 import { deriveScoreAt, type ScoreTracking } from "@/lib/score-tracking";
 
 import styles from "./ScoreOverlay.module.css";
@@ -25,7 +22,13 @@ export function ScoreOverlay({
   );
   const team1Score = formatOverlayScore(score.team1Score);
   const team2Score = formatOverlayScore(score.team2Score);
-  const label = `${tracking.team1Name} ${team1Score}, ${tracking.team2Name} ${team2Score}`;
+  const servingTeamName =
+    score.servingTeamId === "team-1"
+      ? tracking.team1Name
+      : score.servingTeamId === "team-2"
+        ? tracking.team2Name
+        : null;
+  const label = `${tracking.team1Name} ${team1Score}, ${tracking.team2Name} ${team2Score}${servingTeamName ? `, ${servingTeamName} serving` : ""}`;
   const colors = {
     "--score-overlay-border": SCORE_OVERLAY_COLORS.border,
     "--score-overlay-team-1": SCORE_OVERLAY_COLORS.team1,
@@ -42,9 +45,23 @@ export function ScoreOverlay({
       role="img"
       style={colors}
     >
-      <span className={styles.team1Name}>{tracking.team1Name}</span>
+      <span className={styles.team1Name}>
+        <span className={styles.teamLabel}>{tracking.team1Name}</span>
+        {score.servingTeamId === "team-1" && (
+          <span className={styles.servingIcon} aria-hidden="true">
+            🏐
+          </span>
+        )}
+      </span>
       <strong className={styles.score}>{team1Score}</strong>
-      <span className={styles.team2Name}>{tracking.team2Name}</span>
+      <span className={styles.team2Name}>
+        <span className={styles.teamLabel}>{tracking.team2Name}</span>
+        {score.servingTeamId === "team-2" && (
+          <span className={styles.servingIcon} aria-hidden="true">
+            🏐
+          </span>
+        )}
+      </span>
       <strong className={styles.score}>{team2Score}</strong>
     </div>
   );

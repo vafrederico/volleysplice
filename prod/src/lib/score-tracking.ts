@@ -52,6 +52,11 @@ export type ScoreRallyRange = {
   keepEnd: number;
 };
 
+export type ScoreMergedRange = {
+  start: number;
+  end: number;
+};
+
 export type ScorePointStatus = "counted" | "ignored" | "review";
 
 export type DerivedScorePoint = {
@@ -200,28 +205,91 @@ export function orderedSideSwitchMarkers(
 }
 
 /**
- * During dead time and a rally's leading padding, show the score state at the
- * upcoming visible serve. Core and trailing-padding playback stays tied to the
- * real playhead so a completed rally is not advanced early.
+ * During dead time and a standalone rally's leading padding, show the score
+ * state at the upcoming visible serve. When multiple raw rally fragments are
+ * retained as one merged range, their internal padding/gaps stay on the
+ * current score unless an actual serve marker lies inside that bridge.
  */
 export function scoreBoundaryTimestamp(
   playbackTimestamp: number,
   rallyRanges: readonly ScoreRallyRange[],
   scoreTracking: Pick<ScoreTracking, "serveMarkers">,
+  mergedRanges: readonly ScoreMergedRange[] = [],
 ): number {
   const timestamp = Number.isFinite(playbackTimestamp)
     ? Math.max(0, playbackTimestamp)
     : 0;
+  const serves = orderedServeMarkers(scoreTracking);
+  const nextServeTimestamp = () =>
+    serves.find((marker) => marker.timestamp >= timestamp)?.timestamp ??
+    timestamp;
+  const paddingBoundaryTimestamp = (start: number, end: number) => {
+    const paddingServes = serves.filter(
+      (marker) => start <= marker.timestamp && marker.timestamp < end,
+    );
+    if (paddingServes.length === 0) return nextServeTimestamp();
+    return paddingServes.some((marker) => marker.timestamp <= timestamp)
+      ? timestamp
+      : paddingServes[0].timestamp;
+  };
+  const mergedRange = mergedRanges.find(
+    (range) => range.start <= timestamp && timestamp < range.end,
+  );
+  if (mergedRange) {
+    const mergedRallies = rallyRanges
+      .filter(
+        (range) =>
+          range.keepStart < mergedRange.end &&
+          mergedRange.start < range.keepEnd,
+      )
+      .sort(
+        (left, right) =>
+          left.coreStart - right.coreStart || left.coreEnd - right.coreEnd,
+    );
+    if (mergedRallies.length === 0) return timestamp;
+    if (timestamp < mergedRallies[0].coreStart) {
+      const previousMergedEnd = mergedRanges.reduce(
+        (latest, range) =>
+          range.end <= mergedRange.start ? Math.max(latest, range.end) : latest,
+        0,
+      );
+      return paddingBoundaryTimestamp(
+        previousMergedEnd,
+        mergedRallies[0].coreStart,
+      );
+    }
+    for (let index = 1; index < mergedRallies.length; index += 1) {
+      const previous = mergedRallies[index - 1];
+      const next = mergedRallies[index];
+      if (timestamp < previous.coreEnd) return timestamp;
+      if (timestamp < next.coreStart) {
+        const bridgeServes = serves.filter(
+          (marker) =>
+            previous.coreEnd <= marker.timestamp &&
+            marker.timestamp < next.coreStart,
+        );
+        if (bridgeServes.length === 0) return timestamp;
+        return bridgeServes.some((marker) => marker.timestamp <= timestamp)
+          ? timestamp
+          : bridgeServes[0].timestamp;
+      }
+    }
+    return timestamp;
+  }
   const insideRallyRange = rallyRanges.some(
     (range) => range.keepStart <= timestamp && timestamp < range.keepEnd,
   );
-  const insideLeadingPadding = rallyRanges.some(
+  const leadingPaddingRange = rallyRanges.find(
     (range) => range.keepStart <= timestamp && timestamp < range.coreStart,
   );
-  if (insideRallyRange && !insideLeadingPadding) return timestamp;
-  return orderedServeMarkers(scoreTracking).find(
-    (marker) => marker.timestamp >= timestamp,
-  )?.timestamp ?? timestamp;
+  if (insideRallyRange && !leadingPaddingRange) return timestamp;
+  if (leadingPaddingRange) {
+    return paddingBoundaryTimestamp(
+      leadingPaddingRange.keepStart,
+      leadingPaddingRange.coreStart,
+    );
+  }
+  return nextServeTimestamp();
 }
 
 export function isScoreTimestampIgnored(

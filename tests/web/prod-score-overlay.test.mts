@@ -35,6 +35,7 @@ test("overlay scores are always padded to at least two digits", () => {
 
 test("overlay snapshot follows source-timeline score history", () => {
   const prepared = prepareScoreOverlay({ scoreTracking: trackingFixture() });
+  assert.equal(scoreOverlaySnapshot(prepared, 1).servingTeamId, "team-1");
   assert.deepEqual(scoreOverlaySnapshot(prepared, 2), {
     team1Name: "Falcons",
     team1Score: 0,
@@ -42,6 +43,7 @@ test("overlay snapshot follows source-timeline score history", () => {
     team2Name: "Waves",
     team2Score: 0,
     team2ScoreLabel: "00",
+    servingTeamId: "team-1",
   });
   assert.deepEqual(
     {
@@ -77,6 +79,44 @@ test("overlay uses the next serve during dead time and leading padding", () => {
   assert.equal(scoreOverlaySnapshot(prepared, 6.5).team1ScoreLabel, "01");
   assert.equal(scoreOverlaySnapshot(prepared, 7.5).team1ScoreLabel, "01");
   assert.equal(scoreOverlaySnapshot(prepared, 12.5).team2ScoreLabel, "01");
+  assert.equal(scoreOverlaySnapshot(prepared, 7.5).servingTeamId, "team-1");
+  assert.equal(scoreOverlaySnapshot(prepared, 12.5).servingTeamId, "team-2");
+  assert.equal(scoreOverlaySnapshot(prepared, 13.5).servingTeamId, "team-2");
+  assert.equal(scoreOverlaySnapshot(prepared, 14).servingTeamId, "team-2");
+});
+
+test("overlay keeps one score state across merged fragments without an internal serve", () => {
+  const prepared = prepareScoreOverlay({
+    scoreTracking: trackingFixture(),
+    rallyRanges: [
+      { coreStart: 2, coreEnd: 5, keepStart: 1, keepEnd: 6 },
+      { coreStart: 8, coreEnd: 11, keepStart: 7, keepEnd: 12 },
+    ],
+    mergedRanges: [{ start: 1, end: 12 }],
+  });
+
+  const snapshot = scoreOverlaySnapshot(prepared, 6.5);
+  assert.equal(snapshot.team1ScoreLabel, "00");
+  assert.equal(snapshot.team2ScoreLabel, "00");
+  assert.equal(snapshot.servingTeamId, "team-1");
+});
+
+test("overlay does not award the first point after crossing a serve in leading padding", () => {
+  let tracking = createScoreTracking();
+  tracking = addServeMarker(tracking, 2.5, "near", { id: "S1" });
+  tracking = addServeMarker(tracking, 20, "far", { id: "S2" });
+  const prepared = prepareScoreOverlay({
+    scoreTracking: tracking,
+    rallyRanges: [
+      { coreStart: 5, coreEnd: 12, keepStart: 3, keepEnd: 14 },
+    ],
+    mergedRanges: [{ start: 3, end: 14 }],
+  });
+
+  const snapshot = scoreOverlaySnapshot(prepared, 4.5);
+  assert.equal(snapshot.team1ScoreLabel, "00");
+  assert.equal(snapshot.team2ScoreLabel, "00");
+  assert.equal(snapshot.servingTeamId, "team-1");
 });
 
 test("overlay layout grows for team names, stays bounded, and gives each score equal width", () => {

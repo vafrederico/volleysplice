@@ -24,7 +24,7 @@
   min-width: 0;
   align-items: center;
   justify-content: center;
-  padding: clamp(5px, .9vw, 12px) 8px;
+  padding: clamp(5px, 0.9vw, 12px) 8px;
   font-size: clamp(10px, 1.45vw, 17px);
   white-space: nowrap;
 }
@@ -39,6 +39,20 @@
   color: var(--score-overlay-team-text, #fff);
   font-weight: 700;
   text-overflow: ellipsis;
+}
+
+.teamLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.servingIcon {
+  flex: none;
+  margin-left: 0.35em;
+  font-family: sans-serif;
+  font-size: 1.05em;
+  line-height: 1;
 }
 
 .team1Name {

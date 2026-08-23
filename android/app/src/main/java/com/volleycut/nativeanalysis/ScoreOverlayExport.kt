@@ -17,9 +17,16 @@ internal data class ScoreExportSnapshot(
     val ignoredIntervals: List<IgnoredSourceInterval>,
     val excludedRallyIds: Set<String>,
     val rallyRanges: List<ScoreRallyRange>,
+    val mergedRanges: List<ScoreMergedRange> = emptyList(),
 ) {
     val prepared: PreparedScoreOverlay by lazy {
-        ScoreOverlay.prepare(scoreTracking, ignoredIntervals, excludedRallyIds, rallyRanges)
+        ScoreOverlay.prepare(
+            scoreTracking,
+            ignoredIntervals,
+            excludedRallyIds,
+            rallyRanges,
+            mergedRanges,
+        )
     }
 }
 
@@ -50,6 +57,12 @@ internal object ScoreExportSnapshotJson {
                 put("keepEndMs", it.keepEndMs)
             }) }
         })
+        put("mergedRanges", JSONArray().apply {
+            value.mergedRanges.forEach { put(JSONObject().apply {
+                put("startMs", it.startMs)
+                put("endMs", it.endMs)
+            }) }
+        })
     }.toString()
 
     fun decode(value: String, durationMs: Long): ScoreExportSnapshot? = runCatching {
@@ -59,6 +72,7 @@ internal object ScoreExportSnapshotJson {
         val ignored = json.getJSONArray("ignoredIntervals")
         val excluded = json.getJSONArray("excludedRallyIds")
         val ranges = json.getJSONArray("rallyRanges")
+        val merged = json.optJSONArray("mergedRanges") ?: JSONArray()
         ScoreExportSnapshot(
             json.optBoolean("render") && tracking.enabled,
             tracking,
@@ -74,6 +88,9 @@ internal object ScoreExportSnapshotJson {
                     it.getLong("coreStartMs"), it.getLong("coreEndMs"),
                     it.getLong("keepStartMs"), it.getLong("keepEndMs"),
                 )
+            } },
+            List(merged.length()) { index -> merged.getJSONObject(index).let {
+                ScoreMergedRange(it.getLong("startMs"), it.getLong("endMs"))
             } },
         )
     }.getOrNull()
@@ -107,13 +124,33 @@ internal class ScoreCanvasOverlay(
         canvas.clipPath(path)
         var left = 0f
         drawCell(canvas, left, layout.team1Width, layout.height, ScoreOverlay.TEAM_1_COLOR)
-        drawText(canvas, score.team1Name, left, layout.team1Width, layout, Color.WHITE)
+        drawText(
+            canvas,
+            ScoreOverlay.formatTeamLabel(
+                score.team1Name,
+                score.servingTeamId == ScoreTeamId.TEAM_1,
+            ),
+            left,
+            layout.team1Width,
+            layout,
+            Color.WHITE,
+        )
         left += layout.team1Width
         drawCell(canvas, left, layout.scoreWidth, layout.height, ScoreOverlay.SCORE_BACKGROUND_COLOR)
         drawText(canvas, score.team1ScoreLabel, left, layout.scoreWidth, layout, Color.BLACK)
         left += layout.scoreWidth
         drawCell(canvas, left, layout.team2Width, layout.height, ScoreOverlay.TEAM_2_COLOR)
-        drawText(canvas, score.team2Name, left, layout.team2Width, layout, Color.WHITE)
+        drawText(
+            canvas,
+            ScoreOverlay.formatTeamLabel(
+                score.team2Name,
+                score.servingTeamId == ScoreTeamId.TEAM_2,
+            ),
+            left,
+            layout.team2Width,
+            layout,
+            Color.WHITE,
+        )
         left += layout.team2Width
         drawCell(canvas, left, layout.scoreWidth, layout.height, ScoreOverlay.SCORE_BACKGROUND_COLOR)
         drawText(canvas, score.team2ScoreLabel, left, layout.scoreWidth, layout, Color.BLACK)
