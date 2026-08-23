@@ -362,6 +362,44 @@ variant selection reaches 54.00% ±4 F1; the fixed union34/top-2/2× variant rea
 not production. See
 [`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
+### Selected side-switch research-winner execution contract
+
+The selected graph is fixed independently of later rejected experiments:
+
+```text
+existing production range union + 4 Hz rally/dead-state traces
+                              |
+       624 adjacent boundaries + deadState>=0.98 internal peaks
+                              |
+        seven 256x144 frames in each of two candidate windows
+                              |
+          V5 visual22 + production state10 + candidate metadata2
+                              |
+        stored impute/mean/scale -> 34-input logistic classifier
+                              |
+ threshold 0.3988497395 -> candidate-index NMS -> post-six logit cost
+                              |
+                  research side-switch proposals
+```
+
+Adjacent boundaries compare the entire decoded range before and after the gap. Internal
+peaks compare `[t-4,t-1]` with `[t+1,t+4]` inside the containing range. The visual path
+uses recording-level net calibration, court normalization, frame translation alignment,
+motion-weighted HSV side palettes, and motion-component player proposals. The ten state
+inputs reduce both production bundles' range support plus rally/dead scores over the
+candidate gap. Candidate kind and generator score complete the ordered vector.
+
+The decoder sorts by score, keeps candidate ordinals at least two apart, gives six
+outputs no count cost, then subtracts `0.5` logits per additional selected output. It
+has no cadence, no re-anchoring, no time-distance NMS, and no hard cap. Serve-anchor
+features, suppression, recording reliability, the expanded union, internal specialist,
+and boundary-only ablation are not part of this winner.
+
+The exact browser implementation contract is
+[`side-switch-current-research-winner-production-port-v1.json`](data/side-switch-current-research-winner-production-port-v1.json).
+Until its parity and independent-validation gates pass, this graph is not connected to
+the production inference/export flow below.
+
 The pairwise follow-up preserves that entire inference graph and adds only a training
 loss over positive-minus-negative logits within each fit recording. Equal total pair
 weight per recording prevents long games from dominating. The best row-AP variant adds

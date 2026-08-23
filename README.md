@@ -119,6 +119,12 @@ inference. Its exact identity, per-video results, and source bindings are frozen
 [`data/side-switch-current-research-winner-v1.json`](data/side-switch-current-research-winner-v1.json).
 See the
 [`winner promotion`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
+Its future browser feature path is now frozen separately in the
+[`production-port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md):
+22 V5 visual comparison values, ten existing production rally/dead-state reductions,
+and two candidate metadata values over the retained 624-boundary/80-internal-peak
+union. The contract excludes serve anchors, suppression, cadence, expanded internal
+candidates, and later rejected heads. It remains specified but unimplemented.
 The first rare-event follow-up preserves one V5 orientation observation per detected
 rally. Manual parity proves stable rally states can bracket all 50 switches, but the
 existing orientation sign recognizes only 21.32% of swapped-state observations and its

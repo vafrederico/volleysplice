@@ -81,6 +81,17 @@ The source evaluation is
 `e67088b36d177d68c24587efcb186eab4201b5294532be1fdf978ef13aaacc4b`.
 Both live on the canonical labeling NAS root.
 
+## Production-port tracking
+
+The exact future browser inputs and execution order are now tracked without modifying
+the frozen winner pointer in the
+[`machine-readable port contract`](../../data/side-switch-current-research-winner-production-port-v1.json)
+and its
+[`implementation note`](./side-switch-current-winner-production-port-contract-2026-08-23.md).
+The selected runtime signature is V5 visual 22 + production state-gate 10 + candidate
+kind/score 2. Hard-negative mining remains training-only. The port is specified but not
+implemented or enabled.
+
 ## Sources
 
 - [Hard-negative mining experiment](./side-switch-hard-negative-mining-2026-08-23.md)

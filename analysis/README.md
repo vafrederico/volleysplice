@@ -850,6 +850,22 @@ after reaching 56.86% opened-development outer F1. It is not installed in produc
 See the
 [winner promotion](../docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
+The corresponding future web-app implementation is specified in the
+[production-port contract](../docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md)
+and its
+[machine-readable signature](../data/side-switch-current-research-winner-production-port-v1.json).
+The selected runtime needs the retained 0.98/14-second candidate union, sparse seven-frame
+256×144 V4/V5 comparison extraction, the first ten production-state fields, candidate
+kind/score, the model's stored preprocessing, and the cadence-free decoder. It does not
+need the serve-anchor ten, suppression, reliability, expanded-union, or specialist
+features. No production file currently claims that this port exists.
+
+Verify the checked-in specification against the frozen NAS artifacts with:
+
+```bash
+python scripts/verify-side-switch-current-winner-production-port.py
+```
+
 The next rare-event objective compares within-recording pairwise ranking while holding
 that promoted control fixed:
 

@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "kind": "volleycut-side-switch-current-research-winner-production-port-v1",
+  "status": "specified-not-implemented",
+  "automaticProductionUse": false,
+  "winnerPointer": {
+    "path": "data/side-switch-current-research-winner-v1.json",
+    "sha256": "163c7844267bc48410e89f86bd5cbf0a58b3145c1ec691932e4e3374dae7286c",
+    "winnerId": "side-switch-hard-negative-mining-v1/union34-top2-x2"
+  },
+  "sourceModel": {
+    "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/models/side-switch-hard-negative-mining-v1/model.json",
+    "sha256": "c2570481c30dec62f56ac3284cd4028763ffd8e72a9ad07e9908fec10df387e3",
+    "featureProfile": "FULL-UNION-V5-STATE42/union34",
+    "threshold": 0.39884973953581804
+  },
+  "sourceFeatures": {
+    "path": "/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-full-union-v5-state-features-v1.json",
+    "sha256": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
+    "storedFeatureCount": 42,
+    "selectedFeatureCount": 34
+  },
+  "runtimeDependencies": {
+    "analysisRateHz": 4.0,
+    "productionModelSources": [
+      "model-1ca43e38eefc",
+      "model-9c92b8e9333f"
+    ],
+    "ensembleAlgorithmVersion": "overlap-union-disagreement-v1",
+    "requiresDecodedProductionRanges": true,
+    "requiresRallyProbabilityTraces": true,
+    "requiresDeadStateProbabilityTraces": true,
+    "requiresServeProbabilityTraces": false,
+    "requiresSuppressionScores": false
+  },
+  "candidateGenerator": {
+    "adjacentRangeBoundaries": true,
+    "boundaryTransitionTime": "midpoint between the preceding range end and following range start",
+    "internalPeakSignal": "initialInference.probabilities.deadState",
+    "internalPeakThreshold": 0.98,
+    "internalPeakMinimumSeparationSeconds": 14.0,
+    "internalPeakRangeEdgeExclusionSeconds": 4.0,
+    "internalPeakProposalHalfWidthSeconds": 1.0
+  },
+  "visualExtraction": {
+    "roiSource": "the same normalized court ROI used by production analysis",
+    "frameWidth": 256,
+    "frameHeight": 144,
+    "framesPerComparisonWindow": 7,
+    "courtGeometryCalibration": "estimate recording-level net height from the first seven decoded rally ranges and map it to y=0.5",
+    "boundaryWindows": "the complete decoded range on each side of an adjacent boundary",
+    "internalWindows": {
+      "before": "[t-4,t-1] inside the containing decoded range",
+      "after": "[t+1,t+4] inside the containing decoded range"
+    },
+    "sampling": "seven evenly spaced samples from 8% through 92% of each comparison window, with the frozen short-window endpoint rules",
+    "operations": [
+      "piecewise vertical court normalization",
+      "upper-frame phase-correlation translation compensation",
+      "V4 broad/tight motion-weighted HSV side palettes",
+      "V5 motion-component player proposals and soft near/far foot-position assignment"
+    ]
+  },
+  "featureGroups": {
+    "v5Visual22": [
+      "v4BroadSameAssignmentCost",
+      "v4TightSameAssignmentCost",
+      "v4MeanSwapMargin",
+      "v4GlobalAppearanceChange",
+      "v4MaximumCameraShift",
+      "v4MinimumAlignmentResponse",
+      "playerSameAssignmentCost",
+      "playerSwappedAssignmentCost",
+      "playerSwapMargin",
+      "playerOrientationFlipEvidence",
+      "minimumPlayerSideSeparation",
+      "playerSideSeparationChange",
+      "beforePlayerPaletteInstability",
+      "afterPlayerPaletteInstability",
+      "playerGlobalAppearanceChange",
+      "minimumProposalCoverage",
+      "proposalCoverageChange",
+      "minimumProposalCount",
+      "proposalCountChange",
+      "minimumNearSupport",
+      "minimumFarSupport",
+      "sideSupportImbalanceChange"
+    ],
+    "productionState10": [
+      "productionBeforeSupportCount",
+      "productionAfterSupportCount",
+      "productionMinimumAdjacentSupportCount",
+      "productionMinimumAdjacentRallyPeak",
+      "productionGapLiveFraction",
+      "productionGapMeanRallyScore",
+      "productionGapPeakRallyScore",
+      "productionGapMeanDeadStateScore",
+      "productionGapPeakDeadStateScore",
+      "productionGapDurationSeconds"
+    ],
+    "candidateMetadata2": [
+      "candidateIsInternalDeadStatePeak",
+      "candidateGeneratorScore"
+    ]
+  },
+  "orderedFeatureNames": [
+    "v4BroadSameAssignmentCost",
+    "v4TightSameAssignmentCost",
+    "v4MeanSwapMargin",
+    "v4GlobalAppearanceChange",
+    "v4MaximumCameraShift",
+    "v4MinimumAlignmentResponse",
+    "playerSameAssignmentCost",
+    "playerSwappedAssignmentCost",
+    "playerSwapMargin",
+    "playerOrientationFlipEvidence",
+    "minimumPlayerSideSeparation",
+    "playerSideSeparationChange",
+    "beforePlayerPaletteInstability",
+    "afterPlayerPaletteInstability",
+    "playerGlobalAppearanceChange",
+    "minimumProposalCoverage",
+    "proposalCoverageChange",
+    "minimumProposalCount",
+    "proposalCountChange",
+    "minimumNearSupport",
+    "minimumFarSupport",
+    "sideSupportImbalanceChange",
+    "productionBeforeSupportCount",
+    "productionAfterSupportCount",
+    "productionMinimumAdjacentSupportCount",
+    "productionMinimumAdjacentRallyPeak",
+    "productionGapLiveFraction",
+    "productionGapMeanRallyScore",
+    "productionGapPeakRallyScore",
+    "productionGapMeanDeadStateScore",
+    "productionGapPeakDeadStateScore",
+    "productionGapDurationSeconds",
+    "candidateIsInternalDeadStatePeak",
+    "candidateGeneratorScore"
+  ],
+  "classifier": {
+    "kind": "impute-standardize-linear-logistic",
+    "parameterSource": "sourceModel.classifier",
+    "logitClip": [-30.0, 30.0],
+    "threshold": 0.39884973953581804
+  },
+  "decoder": {
+    "scoreOrder": "descending probability, then transition time, then event ID",
+    "minimumCandidateIndexSeparation": 2,
+    "minimumTimeSeparationSeconds": 0.0,
+    "freePredictionsPerRecording": 6,
+    "countPenaltyLogitPerExcessPrediction": 0.5,
+    "usesCadence": false,
+    "reanchorOnSelection": false,
+    "hardMaximumPredictions": null
+  },
+  "excludedFromPort": [
+    "the ten PRODUCTION-STATE20 serve-anchor features",
+    "suppression model scores or suppression gates",
+    "seven-point cadence or prediction re-anchoring",
+    "recording-reliability threshold offsets",
+    "expanded 0.80-threshold internal candidates",
+    "the separate internal-specialist head",
+    "the boundary-only opened-development ablation"
+  ],
+  "acceptanceBeforeEnablement": [
+    "browser feature parity against the frozen Python artifact, including all 34 ordered inputs",
+    "candidate inventory and classifier-logit parity on the 11 audited recordings",
+    "decoder proposal parity including deterministic tie breaks",
+    "runtime and memory measurement on representative phones",
+    "independent exhaustive reviewed-set validation before automatic editor use"
+  ]
+}

@@ -112,6 +112,23 @@ overlapping rally ranges. Ranges emitted by only one model are retained but mark
 disagreements, assigned a conservative review confidence below 50%, and highlighted
 with an orange striped treatment so **Review next** visits them before export.
 
+## Planned side-switch research port
+
+No side-switch classifier is currently installed in `public/runtime/` or connected to
+the editor. The selected research winner's future browser contract is tracked in
+[`side-switch-current-research-winner-production-port-v1.json`](../data/side-switch-current-research-winner-production-port-v1.json)
+and the
+[`implementation note`](../docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md).
+
+That port must reuse the existing production traces but add a sparse candidate-window
+visual pass: seven 256×144 frames for each side of every retained candidate, producing
+22 V5 visual values. Ten rally/dead-state reductions from the two shipped bundles and
+candidate kind/generator score complete the ordered 34-input vector. Serve-anchor
+features, suppression, cadence, the expanded union, and later specialist heads are not
+dependencies of the selected model. Do not add a runtime asset or automatic editor
+markers until the parity, device-cost, and independent-validation gates in the contract
+pass.
+
 Feature caches are versioned by the feature schema, extraction settings, source,
 media metadata, ROI, and runtime variant—not by the model—so compatible features can
 be reused across model upgrades. Persisted inference is separately keyed by an
