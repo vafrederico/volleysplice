@@ -382,7 +382,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
         },
         "sources": model_payload["sources"],
         "limitations": [
-            "Only three of the 46 positive candidate labels are internal peaks.",
+            "Only four of the 46 positive candidate labels are internal peaks.",
             "All recordings are opened development rather than an untouched test split.",
             "A type penalty can suppress false internal candidates but cannot create evidence for the four events outside the union.",
         ],

@@ -72,9 +72,17 @@ Penalty selection is split:
 The all-opened-development fit selects the 32-input view, a 1.0-logit penalty, and
 threshold `0.4246529678370791`. Its same-data 55.91% F1 is not a held-out claim and is
 not used for promotion. It emits no internal candidates, which reinforces the central
-failure: only three of the 46 positive candidate labels are internal peaks, and the
-current appearance/state representation does not reliably distinguish those three
-from the 77 negative internal candidates.
+failure: only four of the 46 positive candidate labels are internal peaks, and the
+current appearance/state representation does not reliably distinguish those four
+from the 76 negative internal candidates.
+
+**Artifact metadata erratum:** the immutable evaluation JSON's `limitations` array says
+three of 46 positive labels are internal peaks. Recomputing the exact one-to-one labels
+from its bound feature and marker sources gives four: `190429172` at 759.75,
+`203801418` at 652.25, and `212717581` at 719.5 and 912.5 seconds. Training, selection,
+and reported metrics used those computed labels and are unaffected; only that prose
+field was wrong. The runner source is corrected, while the immutable artifact and hash
+remain preserved.
 
 ## Interpretation
 
