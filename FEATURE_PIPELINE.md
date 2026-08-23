@@ -360,6 +360,7 @@ is accepted, and browser/Android parity is implemented.
 | Side-switch V5 no-cadence decoder | Reuses the frozen V5/V5-state rows and refitted linear heads; scores every reviewed inter-rally gap independently with no seven-point opportunity centers, re-anchoring, spacing, or count cap | Positive causal diagnostic, not production. Exact recall/F1 improve from 31.43%/30.14% to 80.00%/44.44%, but independent outputs rise from 38 to 91. The learned head parameters exactly match the cadence control, isolating the decoder effect. See [`side-switch-v5-no-cadence-2026-08-20.md`](docs/research/side-switch-v5-no-cadence-2026-08-20.md). |
 | Side-switch V5 peak/count/context cleanup | Frozen no-cadence V5-state probabilities, adjacent/time local-peak NMS, soft post-six count penalties, and a 19-input production rally/dead/serve context head that excludes raw gap duration | Mixed research result, not production. Local peaks transfer and the locked local-peak+soft-count ablation reaches 49.48% exact/57.73% ±2 F1 at 62 proposals. Soft production context wins historical validation but fails to improve retrospective exact F1. No hard gate, suppression input, review UI, or runtime port. See [`side-switch-v5-peak-cleanup-2026-08-20.md`](docs/research/side-switch-v5-peak-cleanup-2026-08-20.md). |
 | Side-switch V5 rally-parity diagnostic | One score-zero-anchored orientation coordinate and one support/separation quality value per production-detected rally, with full-marker parity labels and ±4-second transition masks | Candidate architecture retained, current emission rejected. Truth parity between stable rallies brackets 50/50 reviewed events, but the V5 sign has 95.93% state-zero recall versus 21.32% state-one recall; persistence-2 reaches only 5 TP/13 FP/45 FN. No fitted model or runtime port. See [`side-switch-parity-feasibility-2026-08-23.md`](docs/research/side-switch-parity-feasibility-2026-08-23.md). |
+| Side-switch CONTINUITY1 verifier | Recording-median/MAD normalized V5 `playerSwapMargin`, applied only to the current local-peak+soft-count proposals as a strong same-side continuity veto | Promising research layer, not production/current winner. LOO removes 5 FP with all 25 TP retained, raising precision/F1 40.32%/44.64%→43.86%/46.73%. Hard same-cheaper gating, quality abstention, verifier-alone, and add-only modes are rejected. See [`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md). |
 
 The broader unimplemented backlog, including tracklets, stereo cues, calibrated court
 geometry, and richer ball interactions, is in
@@ -460,6 +461,24 @@ extraction/evaluation:
 [`evaluate-side-switch-parity-feasibility.py`](scripts/evaluate-side-switch-parity-feasibility.py),
 and decision:
 [`side-switch-parity-feasibility-2026-08-23.md`](docs/research/side-switch-parity-feasibility-2026-08-23.md).
+
+### Side-switch CONTINUITY1 verifier
+
+`CONTINUITY1` reuses V5's scalar `playerSwapMargin = sameCost - swapCost` but gives it
+a separately constrained role. Within each complete recording, subtract the candidate-
+row median and divide by
+`max(1.4826 × median absolute deviation, 0.25 × standard deviation, 1e-6)`. Lower
+normalized values are stronger evidence that team-to-side assignment remains unchanged.
+The verifier can only veto a proposal already selected by the frozen local-peak+soft-
+count control; it is not a hard positive gate or a candidate generator.
+
+The final development threshold is `-0.8360349704653693`, chosen with a 90% fit-TP
+retention guardrail after LOO evaluation. It has no weight matrix or bias. Exact
+implementation: [`side_switch_continuity.py`](analysis/side_switch_continuity.py),
+training/evaluation:
+[`train-side-switch-continuity-verifier.py`](scripts/train-side-switch-continuity-verifier.py),
+and decision:
+[`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md).
 
 ### Side-switch v6 detected-player adaptive profile
 

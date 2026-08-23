@@ -123,6 +123,12 @@ existing orientation sign recognizes only 21.32% of swapped-state observations a
 persistence-2 decoder finds 5/50 events. The parity architecture is retained for a
 better emission; this diagnostic is not a model promotion. See the
 [`parity feasibility decision`](docs/research/side-switch-parity-feasibility-2026-08-23.md).
+The next follow-up uses extreme same-side continuity only as a conservative veto. In
+leave-one-recording-out evaluation it removes five false proposals without removing a
+true proposal, improving pooled F1 from 44.64% to 46.73%. A hard same-versus-swapped
+gate and add-only candidate use both fail, so the frozen verifier remains a research
+layer for the next union experiment rather than a new current winner. See the
+[`continuity verifier decision`](docs/research/side-switch-continuity-verifier-2026-08-23.md).
 The production-state follow-up reuses the on-device ensemble as soft V5 evidence and
 raises retrospective exact F1 to 30.14% while reducing proposals 44→38, but count
 accuracy and label completeness prevent promotion. Serve-grounded V6 regresses, hard
