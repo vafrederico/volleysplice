@@ -105,6 +105,7 @@ class ScoreTrackingUiInstrumentedTest {
                                 "S001", 5_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL,
                             )),
                             sideSwitchMarkers = emptyList(),
+                            selectedScoreMarkerId = null,
                             onMarkerSelect = { id, _ -> selectedId = id },
                             onSeek = { timestamp, _, _ -> seekTimestamp = timestamp },
                         )
@@ -146,27 +147,32 @@ class ScoreTrackingUiInstrumentedTest {
                 ServeMarker("S003", 3_000, ServingSide.REVIEW, ServeMarkerOrigin.MODEL),
             ),
         )
-        compose.setContent {
-            MaterialTheme {
-                ScoreTrackingPanel(
-                    enabled = true,
-                    tracking = tracking,
-                    visibleTracking = tracking,
-                    visibleScore = ScoreReducer.deriveAt(tracking),
-                    selectedMarkerId = selectedId,
-                    manualServingSide = ServingSide.NEAR,
-                    currentTimestampMs = 0,
-                    servingSideStatus = ServingSideAnalysisStatus.READY,
-                    servingSideError = null,
-                    servingSideProgress = 1f,
-                    servingSideProgressDetail = null,
-                    onEnabledChange = {},
-                    onTracking = {},
-                    onSelect = { id, _ -> selectedId = id },
-                    onManualServingSide = {},
-                )
+        compose.runOnUiThread {
+            compose.activity.setTurnScreenOn(true)
+            compose.activity.setShowWhenLocked(true)
+            compose.activity.setContent {
+                MaterialTheme {
+                    ScoreTrackingPanel(
+                        enabled = true,
+                        tracking = tracking,
+                        visibleTracking = tracking,
+                        visibleScore = ScoreReducer.deriveAt(tracking),
+                        selectedMarkerId = selectedId,
+                        manualServingSide = ServingSide.NEAR,
+                        currentTimestampMs = 0,
+                        servingSideStatus = ServingSideAnalysisStatus.READY,
+                        servingSideError = null,
+                        servingSideProgress = 1f,
+                        servingSideProgressDetail = null,
+                        onEnabledChange = {},
+                        onTracking = {},
+                        onSelect = { id, _ -> selectedId = id },
+                        onManualServingSide = {},
+                    )
+                }
             }
         }
+        compose.waitForIdle()
 
         compose.onAllNodesWithText("Review").assertCountEquals(0)
         compose.onAllNodesWithContentDescription("Score marker needs review").assertCountEquals(2)

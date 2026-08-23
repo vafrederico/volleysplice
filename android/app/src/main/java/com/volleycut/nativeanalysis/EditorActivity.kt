@@ -83,14 +83,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -98,16 +94,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -2252,6 +2248,7 @@ private fun EditorScreen(
                     playheadMs = playbackPositionMs,
                     serveMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.serveMarkers else emptyList(),
                     sideSwitchMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.sideSwitchMarkers else emptyList(),
+                    selectedScoreMarkerId = selectedScoreMarkerId,
                     onMarkerSelect = { markerId, timestampMs ->
                         selectedScoreMarkerId = markerId
                         seekTo(timestampMs)
@@ -2292,6 +2289,7 @@ private fun EditorScreen(
                     playheadMs = playbackPositionMs,
                     serveMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.serveMarkers else emptyList(),
                     sideSwitchMarkers = if (draft.scoreTracking.enabled) draft.scoreTracking.sideSwitchMarkers else emptyList(),
+                    selectedScoreMarkerId = selectedScoreMarkerId,
                     onMarkerSelect = { markerId, timestampMs ->
                         selectedScoreMarkerId = markerId
                         seekTo(timestampMs)
@@ -3140,7 +3138,7 @@ internal fun ScoreTrackingPanel(
                             ) {
                                 Column(Modifier.fillMaxWidth()) {
                                     Text(
-                                        "${if (tracking.serveMarkers.any { it.id == id }) "●" else "⇄"} ${preciseTime(timestamp)}",
+                                        "${if (tracking.serveMarkers.any { it.id == id }) "🏐" else "⇄"} ${preciseTime(timestamp)}",
                                         color = Ink,
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.SemiBold,
@@ -3426,15 +3424,28 @@ internal fun WholeTimeline(
     playheadMs: Long,
     serveMarkers: List<ServeMarker>,
     sideSwitchMarkers: List<SideSwitchMarker>,
+    selectedScoreMarkerId: String?,
     onMarkerSelect: (String, Long) -> Unit,
     onSeek: (Long, String?, String?) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
-        val resources = LocalContext.current.resources
-        val volleyballMarkerImage = remember(resources) {
-            ImageBitmap.imageResource(resources, R.drawable.volleycut_icon)
-        }
+        val markerTextMeasurer = rememberTextMeasurer()
+        val serveMarkerText = markerTextMeasurer.measure(
+            "🏐",
+            style = TextStyle(fontSize = 9.sp),
+            maxLines = 1,
+        )
+        val switchMarkerText = markerTextMeasurer.measure(
+            "⇄",
+            style = TextStyle(
+                color = Ink,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            ),
+            maxLines = 1,
+        )
         val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val windowSpanMs = (windowEndMs - windowStartMs).coerceAtLeast(1)
         fun timeAt(x: Float) = windowStartMs +
@@ -3585,91 +3596,73 @@ internal fun WholeTimeline(
                 val playheadX = xAt(playheadMs)
                 drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
             }
-            val markerCenterY = 7.dp.toPx()
-            val markerRadius = 5.dp.toPx()
-            val markerStemWidth = 1.5.dp.toPx()
-            val volleyballImageSize = 11.dp.toPx().roundToInt()
+            val markerCenterY = 10.dp.toPx()
+            val markerRadius = 8.dp.toPx()
+            val markerStemWidth = 1.dp.toPx()
+            val markerBorderWidth = 1.dp.toPx()
             serveMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
                 val x = xAt(marker.timestampMs)
                 drawLine(
-                    Color.White,
+                    Ink,
                     Offset(x, markerCenterY + markerRadius),
                     Offset(x, size.height),
                     markerStemWidth,
                 )
-                val imageLeft = x - volleyballImageSize / 2f
-                val imageTop = markerCenterY - volleyballImageSize / 2f
-                val ballClip = Path().apply {
-                    addOval(Rect(imageLeft, imageTop, imageLeft + volleyballImageSize, imageTop + volleyballImageSize))
-                }
-                clipPath(ballClip) {
-                    drawImage(
-                        image = volleyballMarkerImage,
-                        srcOffset = IntOffset(98, 27),
-                        srcSize = IntSize(268, 266),
-                        dstOffset = IntOffset(imageLeft.roundToInt(), imageTop.roundToInt()),
-                        dstSize = IntSize(volleyballImageSize, volleyballImageSize),
+                val needsReview = marker.side == ServingSide.REVIEW
+                drawCircle(
+                    if (needsReview) Color(0xFFFFE1C7) else Color.White,
+                    markerRadius,
+                    Offset(x, markerCenterY),
+                )
+                drawCircle(
+                    if (needsReview) Color(0xFFA84A16) else Ink,
+                    markerRadius,
+                    Offset(x, markerCenterY),
+                    style = Stroke(markerBorderWidth),
+                )
+                drawText(
+                    serveMarkerText,
+                    topLeft = Offset(
+                        x - serveMarkerText.size.width / 2f,
+                        markerCenterY - serveMarkerText.size.height / 2f,
+                    ),
+                )
+                if (marker.id == selectedScoreMarkerId) {
+                    drawCircle(
+                        Orange,
+                        markerRadius + 2.dp.toPx(),
+                        Offset(x, markerCenterY),
+                        style = Stroke(2.dp.toPx()),
                     )
                 }
             }
             sideSwitchMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->
                 val x = xAt(marker.timestampMs)
                 drawLine(
-                    Color.White,
+                    Ink,
                     Offset(x, markerCenterY + markerRadius),
                     Offset(x, size.height),
                     markerStemWidth,
                 )
-                drawCircle(Color.White, markerRadius, Offset(x, markerCenterY))
-                drawCircle(
-                    Ink, markerRadius, Offset(x, markerCenterY),
-                    style = Stroke(1.dp.toPx()),
+                val boxLeft = x - markerRadius
+                val boxTop = markerCenterY - markerRadius
+                drawRect(
+                    Color(0xFFDFFF35),
+                    Offset(boxLeft, boxTop),
+                    Size(markerRadius * 2f, markerRadius * 2f),
                 )
-                val arrowHalfWidth = 3.2.dp.toPx()
-                val arrowHead = 1.8.dp.toPx()
-                val arrowGap = 1.7.dp.toPx()
-                val arrowStroke = 1.3.dp.toPx()
-                drawLine(
-                    Orange,
-                    Offset(x - arrowHalfWidth, markerCenterY - arrowGap),
-                    Offset(x + arrowHalfWidth, markerCenterY - arrowGap),
-                    arrowStroke,
-                    StrokeCap.Round,
+                drawRect(
+                    Ink,
+                    Offset(boxLeft, boxTop),
+                    Size(markerRadius * 2f, markerRadius * 2f),
+                    style = Stroke(markerBorderWidth),
                 )
-                drawLine(
-                    Orange,
-                    Offset(x + arrowHalfWidth, markerCenterY - arrowGap),
-                    Offset(x + arrowHalfWidth - arrowHead, markerCenterY - arrowGap - arrowHead),
-                    arrowStroke,
-                    StrokeCap.Round,
-                )
-                drawLine(
-                    Orange,
-                    Offset(x + arrowHalfWidth, markerCenterY - arrowGap),
-                    Offset(x + arrowHalfWidth - arrowHead, markerCenterY - arrowGap + arrowHead),
-                    arrowStroke,
-                    StrokeCap.Round,
-                )
-                drawLine(
-                    Orange,
-                    Offset(x + arrowHalfWidth, markerCenterY + arrowGap),
-                    Offset(x - arrowHalfWidth, markerCenterY + arrowGap),
-                    arrowStroke,
-                    StrokeCap.Round,
-                )
-                drawLine(
-                    Orange,
-                    Offset(x - arrowHalfWidth, markerCenterY + arrowGap),
-                    Offset(x - arrowHalfWidth + arrowHead, markerCenterY + arrowGap - arrowHead),
-                    arrowStroke,
-                    StrokeCap.Round,
-                )
-                drawLine(
-                    Orange,
-                    Offset(x - arrowHalfWidth, markerCenterY + arrowGap),
-                    Offset(x - arrowHalfWidth + arrowHead, markerCenterY + arrowGap + arrowHead),
-                    arrowStroke,
-                    StrokeCap.Round,
+                drawText(
+                    switchMarkerText,
+                    topLeft = Offset(
+                        x - switchMarkerText.size.width / 2f,
+                        markerCenterY - switchMarkerText.size.height / 2f,
+                    ),
                 )
             }
         }
