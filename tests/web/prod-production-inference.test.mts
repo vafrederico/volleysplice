@@ -19,7 +19,7 @@ async function runtimeJson(fileName: string): Promise<unknown> {
   );
 }
 
-test("production inference retains both component serve-head outputs", async () => {
+test("production inference retains both component serve and rally-state outputs", async () => {
   const rows = 96;
   const columns = BASE_FEATURE_NAMES.length;
   const times = Float64Array.from({ length: rows }, (_, index) => index * 0.25);
@@ -86,5 +86,18 @@ test("production inference retains both component serve-head outputs", async () 
   assert.strictEqual(
     analysis.serveProbabilities,
     analysis.productionServeOutputs.allLabelsV2.probabilities,
+  );
+  assert.ok(analysis.productionStateOutputs);
+  assert.strictEqual(
+    analysis.productionStateOutputs.allLabelsV2.rallyProbabilities,
+    analysis.rallyProbabilities,
+  );
+  assert.deepEqual(
+    analysis.productionStateOutputs.previousProduction.rallyProbabilities,
+    expectedPreviousProduction.probabilities.rally,
+  );
+  assert.deepEqual(
+    analysis.productionStateOutputs.previousProduction.deadStateProbabilities,
+    expectedPreviousProduction.probabilities.deadState,
   );
 });

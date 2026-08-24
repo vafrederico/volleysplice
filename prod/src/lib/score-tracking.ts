@@ -1,4 +1,4 @@
-export const SCORE_TRACKING_SCHEMA_VERSION = 2 as const;
+export const SCORE_TRACKING_SCHEMA_VERSION = 3 as const;
 
 export const SCORE_TEAM_IDS = ["team-1", "team-2"] as const;
 export type ScoreTeamId = (typeof SCORE_TEAM_IDS)[number];
@@ -23,6 +23,10 @@ export type ServeMarker = {
 export type SideSwitchMarker = {
   id: string;
   timestamp: number;
+  origin: "model" | "manual";
+  modelConfidence?: number;
+  modelEventId?: string;
+  rallyIds?: string[];
 };
 
 /**
@@ -128,7 +132,18 @@ function validSideSwitchMarker(
     typeof value.id === "string" &&
     value.id.length > 0 &&
     finiteTimestamp(value.timestamp) &&
-    value.timestamp <= duration
+    value.timestamp <= duration &&
+    (value.origin === "model" || value.origin === "manual") &&
+    (value.modelConfidence === undefined ||
+      (typeof value.modelConfidence === "number" &&
+        Number.isFinite(value.modelConfidence) &&
+        value.modelConfidence >= 0 && value.modelConfidence <= 1)) &&
+    (value.modelEventId === undefined ||
+      (typeof value.modelEventId === "string" && value.modelEventId.length > 0)) &&
+    (value.rallyIds === undefined ||
+      (Array.isArray(value.rallyIds) &&
+        value.rallyIds.every((id) => typeof id === "string" && id.length > 0) &&
+        new Set(value.rallyIds).size === value.rallyIds.length))
   );
 }
 
@@ -175,11 +190,18 @@ export function migrateScoreTracking(
   duration: number,
 ): ScoreTracking | null {
   if (!isRecord(value)) return null;
-  const candidate = value.version === 1
+  const candidate = value.version === 1 || value.version === 2
     ? {
         ...value,
         version: SCORE_TRACKING_SCHEMA_VERSION,
-        removedModelMarkerIds: [],
+        sideSwitchMarkers: Array.isArray(value.sideSwitchMarkers)
+          ? value.sideSwitchMarkers.map((marker) => isRecord(marker)
+            ? { ...marker, origin: "manual" }
+            : marker)
+          : value.sideSwitchMarkers,
+        removedModelMarkerIds: value.version === 1
+          ? []
+          : value.removedModelMarkerIds,
       }
     : value;
   return isValidScoreTracking(candidate, duration) ? candidate : null;
@@ -315,6 +337,9 @@ export function scoreTrackingOutsideIgnoredIntervals(
     serveMarkers: scoreTracking.serveMarkers.filter(
       (marker) => !isScoreTimestampIgnored(marker.timestamp, ignoredIntervals),
     ),
+    sideSwitchMarkers: scoreTracking.sideSwitchMarkers.filter(
+      (marker) => !isScoreTimestampIgnored(marker.timestamp, ignoredIntervals),
+    ),
   };
 }
 
@@ -331,6 +356,9 @@ export function scoreTrackingOutsideExcludedRallies(
     ...scoreTracking,
     serveMarkers: scoreTracking.serveMarkers.filter(
       (marker) => !marker.rallyId || !excludedRallyIds.has(marker.rallyId),
+    ),
+    sideSwitchMarkers: scoreTracking.sideSwitchMarkers.filter(
+      (marker) => !marker.rallyIds?.some((id) => excludedRallyIds.has(id)),
     ),
   };
 }
@@ -529,21 +557,38 @@ export function removeServeMarker(
 export function addSideSwitchMarker(
   scoreTracking: ScoreTracking,
   timestamp: number,
-  id = nextMarkerId("X", scoreTracking),
+  idOrOptions: string | {
+    id?: string;
+    origin?: "model" | "manual";
+    modelConfidence?: number;
+    modelEventId?: string;
+    rallyIds?: string[];
+  } = {},
 ): ScoreTracking {
+  const options = typeof idOrOptions === "string" ? { id: idOrOptions } : idOrOptions;
+  const id = options.id ?? nextMarkerId("X", scoreTracking);
   if (
     !finiteTimestamp(timestamp) ||
     id.length === 0 ||
     scoreTracking.serveMarkers.some((marker) => marker.id === id) ||
     scoreTracking.sideSwitchMarkers.some((marker) => marker.id === id) ||
-    scoreTracking.removedModelMarkerIds.includes(id)
+    scoreTracking.removedModelMarkerIds.includes(id) ||
+    (options.modelConfidence !== undefined &&
+      (!Number.isFinite(options.modelConfidence) || options.modelConfidence < 0 || options.modelConfidence > 1))
   )
     return scoreTracking;
   return {
     ...scoreTracking,
     sideSwitchMarkers: [
       ...scoreTracking.sideSwitchMarkers,
-      { id, timestamp: Math.round(timestamp * 1000) / 1000 },
+      {
+        id,
+        timestamp: Math.round(timestamp * 1000) / 1000,
+        origin: options.origin ?? "manual",
+        ...(options.modelConfidence === undefined ? {} : { modelConfidence: options.modelConfidence }),
+        ...(options.modelEventId ? { modelEventId: options.modelEventId } : {}),
+        ...(options.rallyIds?.length ? { rallyIds: [...new Set(options.rallyIds)] } : {}),
+      },
     ].sort(compareTimestampAndId),
   };
 }
@@ -552,10 +597,16 @@ export function removeSideSwitchMarker(
   scoreTracking: ScoreTracking,
   markerId: string,
 ): ScoreTracking {
+  const removed = scoreTracking.sideSwitchMarkers.find(
+    (marker) => marker.id === markerId,
+  );
   return {
     ...scoreTracking,
     sideSwitchMarkers: scoreTracking.sideSwitchMarkers.filter(
       (marker) => marker.id !== markerId,
     ),
+    removedModelMarkerIds: removed?.origin === "model"
+      ? [...new Set([...scoreTracking.removedModelMarkerIds, markerId])]
+      : scoreTracking.removedModelMarkerIds,
   };
 }

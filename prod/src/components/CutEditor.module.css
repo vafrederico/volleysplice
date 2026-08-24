@@ -621,6 +621,10 @@
   opacity: .45;
 }
 
+.scoreInferenceProgress {
+  grid-column: 1 / -1;
+}
+
 .selectedServeEditor {
   display: grid;
   gap: 8px;

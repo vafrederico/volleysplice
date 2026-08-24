@@ -234,10 +234,11 @@ The specialist runner and policy are implemented in
 and
 [`android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java`](android/app/src/main/java/com/volleycut/nativeanalysis/SuppressionPolicyEngine.java).
 
-## Research-only side-switch specialist
+## Side-switch specialist lineage and production beta
 
 Side-switch classification is a separate candidate-marker pipeline and is not part of
-the production rally ensemble. `side-switch-specialist-v2` applies a class-balanced
+the production rally ensemble itself. The historical `side-switch-specialist-v2`
+applies a class-balanced
 logistic head to 34 inputs: 17 adaptive near/far and derived appearance scalars, each
 paired with a missingness indicator. The extractor calibrates court depth without team
 labels, first across the full candidate sequence and then locally with shrinkage, so
@@ -397,8 +398,9 @@ unchanged. During training it fits an initial square-root-weighted head, upweigh
 highest-scoring labeled negatives independently per recording, and refits. Nested
 variant selection reaches 54.00% ±4 F1; the fixed union34/top-2/2× variant reaches
 56.86% and is now the explicit research winner. The exported artifact is still one
-34-input linear head, so mining adds no on-device operation. It remains unported and is
-not production. See
+34-input linear head, so mining adds no on-device operation. That selected head is now
+ported to the production browser as a score-tracking beta; its training and selection
+evidence remain research artifacts. See
 [`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
 
 ### Selected side-switch research-winner execution contract
@@ -418,7 +420,7 @@ existing production range union + 4 Hz rally/dead-state traces
                               |
  threshold 0.3988497395 -> candidate-index NMS -> post-six logit cost
                               |
-                  research side-switch proposals
+                   team-side switch proposals
 ```
 
 Adjacent boundaries compare the entire decoded range before and after the gap. Internal
@@ -436,8 +438,9 @@ and boundary-only ablation are not part of this winner.
 
 The exact browser implementation contract is
 [`side-switch-current-research-winner-production-port-v1.json`](data/side-switch-current-research-winner-production-port-v1.json).
-Until its parity and independent-validation gates pass, this graph is not connected to
-the production inference/export flow below.
+The production browser runs it after rally inference and seeds editable switch markers;
+runtime/device profiling and independent exhaustive validation remain required before
+the score-tracking beta label is removed.
 
 The pairwise follow-up preserves that entire inference graph and adds only a training
 loss over positive-minus-negative logits within each fit recording. Equal total pair
@@ -607,7 +610,10 @@ add one manually. This is a product inference convention, not a learned score mo
 
 The production browser orchestration is in
 [`prod/src/lib/on-device/production-inference.ts`](prod/src/lib/on-device/production-inference.ts)
-and [`prod/src/App.tsx`](prod/src/App.tsx). Score reduction is in
+and [`prod/src/App.tsx`](prod/src/App.tsx). Side-switch inference is in
+[`prod/src/lib/on-device/side-switch-model.ts`](prod/src/lib/on-device/side-switch-model.ts)
+and [`prod/src/lib/on-device/side-switch.ts`](prod/src/lib/on-device/side-switch.ts).
+Score reduction is in
 [`prod/src/lib/score-tracking.ts`](prod/src/lib/score-tracking.ts), and optional MP4
 composition is in [`prod/src/lib/score-overlay.ts`](prod/src/lib/score-overlay.ts) and
 [`prod/src/lib/on-device/export.ts`](prod/src/lib/on-device/export.ts). The native Android

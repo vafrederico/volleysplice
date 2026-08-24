@@ -127,16 +127,20 @@ allowance. No-cadence V5-state led the original comparable macro-recall ranking 
 56.36%, while local peak plus soft count led pooled F1 at 44.64%. A later full-union
 hard-negative model is now the user-designated research winner: it produces 52
 proposals with 29 TP/23 FP/21 FN and 56.86% pooled F1. It is not promoted to automatic
-inference. Its exact identity, per-video results, and source bindings are frozen in
+inference outside the browser score-tracking beta. Its exact identity, per-video results,
+and source bindings are frozen in
 [`data/side-switch-current-research-winner-v1.json`](data/side-switch-current-research-winner-v1.json).
 See the
 [`winner promotion`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md).
-Its future browser feature path is now frozen separately in the
+Its browser feature path is frozen separately in the
 [`production-port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md):
 22 V5 visual comparison values, ten existing production rally/dead-state reductions,
 and two candidate metadata values over the retained 624-boundary/80-internal-peak
 union. The contract excludes serve anchors, suppression, cadence, expanded internal
-candidates, and later rejected heads. It remains specified but unimplemented.
+candidates, and later rejected heads. The production web app now runs that graph and
+turns decoded outputs into editable, tombstoned team-side switch markers. The score UI
+remains labeled beta pending representative-phone profiling and independent exhaustive
+validation.
 The first rare-event follow-up preserves one V5 orientation observation per detected
 rally. Manual parity proves stable rally states can bracket all 50 switches, but the
 existing orientation sign recognizes only 21.32% of swapped-state observations and its

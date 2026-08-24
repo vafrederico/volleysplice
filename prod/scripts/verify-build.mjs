@@ -23,6 +23,10 @@ const expectedHashes = new Map([
     "14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c",
   ],
   [
+    "runtime/side-switch-c2570481c30d.json",
+    "ab4197545fb916a37ee6ac1d69e74ddfc0123c09039cdfa88c4ef378dd3e27fc",
+  ],
+  [
     "runtime/suppression-39eddf581639.json",
     "ef0ad4eb93fa61ce1d403f083d91f7578cf9ff0f31fac797fde9ab8b73f42794",
   ],

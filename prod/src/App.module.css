@@ -186,7 +186,7 @@
 .roiGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .roiGrid label span { display: flex; justify-content: space-between; color: #77796f; font: 9px ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
 .roiGrid input { width: 100%; margin-top: 8px; accent-color: var(--orange); }
-.servingSideToggle {
+.sideSwitchToggle {
   margin-top: 18px;
   padding: 12px;
   display: flex;
@@ -196,14 +196,14 @@
   background: #fff;
   cursor: pointer;
 }
-.servingSideToggle[data-enabled="true"] {
+.sideSwitchToggle[data-enabled="true"] {
   border-color: #769322;
   background: #f7ffdb;
 }
-.servingSideToggle input { margin: 2px 0 0; accent-color: var(--orange); }
-.servingSideToggle > span { display: grid; gap: 4px; }
-.servingSideToggle strong { font-size: 11px; }
-.servingSideToggle small { color: #686b62; font: 500 9px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.sideSwitchToggle input { margin: 2px 0 0; accent-color: var(--orange); }
+.sideSwitchToggle > span { display: grid; gap: 4px; }
+.sideSwitchToggle strong { font-size: 11px; }
+.sideSwitchToggle small { color: #686b62; font: 500 9px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .analyzeButton { width: 100%; min-height: 48px; margin-top: 19px; padding: 13px; border: 0; color: var(--ink); background: var(--acid); cursor: pointer; font-size: 12px; font-weight: 800; }
 .analyzeButton:disabled { color: #8b8d84; background: #dddcd4; cursor: wait; }
 .runtimeNote { display: block; margin-top: 12px; }
@@ -222,26 +222,6 @@
 .progressCard output { color: var(--acid); font: 32px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .progressTrack { grid-column: 1 / -1; height: 8px; background: #44473e; }
 .progressTrack i { display: block; height: 100%; background: var(--acid); transition: width .2s linear; }
-.progressTiming {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px;
-}
-.progressTiming > div {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid #44473e;
-  background: #20221d;
-}
-.progressTiming span {
-  color: #a9aba2;
-  font: 600 9px ui-monospace, "SFMono-Regular", Consolas, monospace;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-.progressTiming strong { margin: 0; color: var(--acid); font: 700 17px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .progressCard > p { grid-column: 1 / -1; color: #a9aba2; line-height: 1.5; }
 
 .projectPanel {

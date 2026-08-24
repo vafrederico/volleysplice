@@ -218,7 +218,14 @@ export type ParsedScoreTrackingFeedback = {
       ignorePreviousPoint: boolean;
       rallyId?: string;
     }>;
-    sideSwitchMarkers: Array<{ id: string; timestamp: number }>;
+    sideSwitchMarkers: Array<{
+      id: string;
+      timestamp: number;
+      origin: "model" | "manual";
+      modelConfidence?: number;
+      modelEventId?: string;
+      rallyIds?: string[];
+    }>;
     removedModelMarkerIds: string[];
   };
   excludedRallyIds: string[];
@@ -749,6 +756,35 @@ function parseScoreTrackingFeedback(
         `${markerField}.timestamp`,
         duration,
       ),
+      origin:
+        marker.origin === undefined
+          ? ("manual" as const)
+          : choice(
+              marker.origin,
+              ["model", "manual"] as const,
+              `${markerField}.origin`,
+            ),
+      ...(marker.modelConfidence === undefined
+        ? {}
+        : {
+            modelConfidence: probability(
+              marker.modelConfidence,
+              `${markerField}.modelConfidence`,
+            ),
+          }),
+      ...(marker.modelEventId === undefined
+        ? {}
+        : {
+            modelEventId: string(
+              marker.modelEventId,
+              `${markerField}.modelEventId`,
+            ),
+          }),
+      ...(marker.rallyIds === undefined
+        ? {}
+        : {
+            rallyIds: stringArray(marker.rallyIds, `${markerField}.rallyIds`),
+          }),
     };
   });
   const removedModelMarkerIds = stringArray(

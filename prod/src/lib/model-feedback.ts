@@ -105,6 +105,18 @@ export type ModelFeedbackBundle = {
       };
       candidates: NonNullable<ProductAnalysis["servingSide"]>["candidates"];
     };
+    sideSwitch: null | {
+      modelId: string;
+      modelFingerprint: string;
+      featureVersion: string;
+      candidateContract: string;
+      features: {
+        rows: number;
+        columns: number;
+        values: EncodedNumericArray;
+      };
+      candidates: NonNullable<ProductAnalysis["sideSwitch"]>["candidates"];
+    };
     productionComponents: ProductAnalysis["productionComponents"];
     suppression: null | {
       modelId: string;
@@ -251,6 +263,11 @@ export function createModelFeedbackBundle(
       "Serving-side features and initial verdicts are unavailable because this analysis predates their retention; score-marker corrections are still included.",
     );
   }
+  if (!analysis.sideSwitch) {
+    warnings.push(
+      "Team-side switch features and initial predictions are unavailable because this analysis predates their retention; score-marker corrections are still included.",
+    );
+  }
   const materialized = materializeFinalCutIntervals(
     draft,
     analysis.suppression,
@@ -377,13 +394,10 @@ export function createModelFeedbackBundle(
             features: {
               rows: analysis.servingSide.features.rows,
               columns: analysis.servingSide.features.columns,
-              values: encodeNumericArray(
-                analysis.servingSide.features.values,
-                [
-                  analysis.servingSide.features.rows,
-                  analysis.servingSide.features.columns,
-                ],
-              ),
+              values: encodeNumericArray(analysis.servingSide.features.values, [
+                analysis.servingSide.features.rows,
+                analysis.servingSide.features.columns,
+              ]),
             },
             candidates: analysis.servingSide.candidates.map((candidate) => ({
               ...candidate,
@@ -392,18 +406,44 @@ export function createModelFeedbackBundle(
               serveEvidence: {
                 allLabelsV2: {
                   ...candidate.serveEvidence.allLabelsV2,
-                  nearestDetection: candidate.serveEvidence.allLabelsV2.nearestDetection
-                    ? { ...candidate.serveEvidence.allLabelsV2.nearestDetection }
+                  nearestDetection: candidate.serveEvidence.allLabelsV2
+                    .nearestDetection
+                    ? {
+                        ...candidate.serveEvidence.allLabelsV2.nearestDetection,
+                      }
                     : null,
                 },
                 previousProduction: {
                   ...candidate.serveEvidence.previousProduction,
-                  nearestDetection:
-                    candidate.serveEvidence.previousProduction.nearestDetection
-                      ? { ...candidate.serveEvidence.previousProduction.nearestDetection }
-                      : null,
+                  nearestDetection: candidate.serveEvidence.previousProduction
+                    .nearestDetection
+                    ? {
+                        ...candidate.serveEvidence.previousProduction
+                          .nearestDetection,
+                      }
+                    : null,
                 },
               },
+            })),
+          }
+        : null,
+      sideSwitch: analysis.sideSwitch
+        ? {
+            modelId: analysis.sideSwitch.modelId,
+            modelFingerprint: analysis.sideSwitch.modelFingerprint,
+            featureVersion: analysis.sideSwitch.featureVersion,
+            candidateContract: analysis.sideSwitch.candidateContract,
+            features: {
+              rows: analysis.sideSwitch.features.rows,
+              columns: analysis.sideSwitch.features.columns,
+              values: encodeNumericArray(analysis.sideSwitch.features.values, [
+                analysis.sideSwitch.features.rows,
+                analysis.sideSwitch.features.columns,
+              ]),
+            },
+            candidates: analysis.sideSwitch.candidates.map((candidate) => ({
+              ...candidate,
+              sourceRangeIds: [...candidate.sourceRangeIds],
             })),
           }
         : null,
@@ -425,8 +465,7 @@ export function createModelFeedbackBundle(
             weightsSha256: analysis.suppression.weightsSha256,
             decoderVersion: analysis.suppression.decoderVersion,
             policyContractVersion: analysis.suppression.policyContractVersion,
-            identicalPolicyResults:
-              analysis.suppression.identicalPolicyResults,
+            identicalPolicyResults: analysis.suppression.identicalPolicyResults,
             timestamps: encodeNumericArray(analysis.inferenceTimes, [
               analysis.inferenceTimes.length,
             ]),
@@ -476,9 +515,7 @@ export function createModelFeedbackBundle(
           sideSwitchMarkers: draft.scoreTracking.sideSwitchMarkers.map(
             (marker) => ({ ...marker }),
           ),
-          removedModelMarkerIds: [
-            ...draft.scoreTracking.removedModelMarkerIds,
-          ],
+          removedModelMarkerIds: [...draft.scoreTracking.removedModelMarkerIds],
         },
         excludedRallyIds,
         derivedFinalScore: deriveScoreAt(scoringTracking),

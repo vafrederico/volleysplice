@@ -3,9 +3,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AndroidAppBanner } from "@/components/AndroidAppBanner";
 import { CutEditor } from "@/components/CutEditor";
 import { GuidedTour } from "@/components/GuidedTour";
+import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
+import {
+  CORE_INFERENCE_STEP_IDS,
+  createInferenceProgressSteps,
+  finishInferenceStep,
+  type InferenceProgressStep,
+  overallInferenceProgress,
+  SCORE_INFERENCE_STEP_IDS,
+  updatePipelineInferenceSteps,
+  updateSpecialistInferenceStep,
+} from "@/lib/inference-progress";
 import { importModelFeedbackProject } from "@/lib/model-feedback-import";
 import {
   type AnalysisWindow,
@@ -28,6 +39,7 @@ import type {
   NormalizedRoi,
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
+  OnDeviceSideSwitchOutput,
   OnDeviceServingSideOutput,
 } from "@/lib/on-device/types";
 import {
@@ -132,7 +144,9 @@ export function App() {
   const [activeProgress, setActiveProgress] = useState<AnalysisProgress | null>(
     null,
   );
-  const [activeElapsedSeconds, setActiveElapsedSeconds] = useState(0);
+  const [activeInferenceSteps, setActiveInferenceSteps] = useState<
+    InferenceProgressStep[]
+  >([]);
   const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
   const [filesRevision, setFilesRevision] = useState(0);
 
@@ -145,7 +159,7 @@ export function App() {
     start: 0,
     end: 0,
   });
-  const [servingSideEnabled, setServingSideEnabled] = useState(true);
+  const [sideSwitchEnabled, setSideSwitchEnabled] = useState(false);
   const [candidateProgress, setCandidateProgress] =
     useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -161,7 +175,6 @@ export function App() {
   } | null>(null);
   const deletedProjectIdsRef = useRef(new Set<string>());
   const previewUrlRef = useRef<string | null>(null);
-  const elapsedTimerRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const resumePreviewAfterSeek = useRef(false);
   const candidateVideoRef = useRef<HTMLVideoElement>(null);
@@ -221,6 +234,23 @@ export function App() {
     });
   }
 
+  function persistSideSwitchAnalysis(
+    projectIdToUpdate: string,
+    sideSwitch: OnDeviceSideSwitchOutput,
+  ) {
+    const project = projectsRef.current.find(
+      (candidate) => candidate.id === projectIdToUpdate,
+    );
+    if (!project?.analysis || project.status !== "ready") return;
+    commitProject({
+      ...project,
+      servingSideEnabled: true,
+      sideSwitchEnabled: true,
+      analysis: { ...project.analysis, sideSwitch },
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   function replacePreviewUrl(next: string | null) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = next;
@@ -233,7 +263,7 @@ export function App() {
     setInfo(null);
     setRoi(FULL_FRAME_ROI);
     setAnalysisWindow({ start: 0, end: 0 });
-    setServingSideEnabled(true);
+    setSideSwitchEnabled(false);
     setCandidateProgress(null);
     setError(null);
     setWorkState("empty");
@@ -308,7 +338,8 @@ export function App() {
       project.status !== "ready" ||
       project.importedFeedback ||
       (project.analysis.suppression &&
-        project.analysis.productionServeOutputs) ||
+        project.analysis.productionServeOutputs &&
+        project.analysis.productionStateOutputs) ||
       !project.analysis.featureNames ||
       !project.analysis.featureValues ||
       suppressionAugmentingRef.current.has(project.id)
@@ -362,8 +393,6 @@ export function App() {
       mountedRef.current = false;
       activeMediaRef.current?.media.input.dispose();
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      if (elapsedTimerRef.current !== null)
-        window.clearInterval(elapsedTimerRef.current);
     };
   }, []);
 
@@ -516,7 +545,8 @@ export function App() {
       info,
       analysisWindow: normalizedWindow,
       roi,
-      servingSideEnabled,
+      servingSideEnabled: true,
+      sideSwitchEnabled,
       status: "queued",
       analysis: null,
       error: null,
@@ -558,18 +588,20 @@ export function App() {
       updatedAt: new Date().toISOString(),
     };
     commitProject(running);
+    setActiveInferenceSteps(
+      createInferenceProgressSteps([
+        ...CORE_INFERENCE_STEP_IDS,
+        ...SCORE_INFERENCE_STEP_IDS.filter(
+          (step) => step !== "side-switch" || running.sideSwitchEnabled !== false,
+        ),
+      ]),
+    );
     setActiveProgress({
       stage: "opening",
       completed: 0,
       total: 1,
       detail: "Opening the local source for queued inference",
     });
-    setActiveElapsedSeconds(0);
-    const startedAt = performance.now();
-    elapsedTimerRef.current = window.setInterval(() => {
-      if (mountedRef.current)
-        setActiveElapsedSeconds((performance.now() - startedAt) / 1000);
-    }, 500);
     const releaseWakeLock = await holdScreenWakeLock(setWakeLockState);
     let opened: OpenedMedia | null = null;
     try {
@@ -586,6 +618,13 @@ export function App() {
             mountedRef.current
           ) {
             setActiveProgress(nextProgress);
+            setActiveInferenceSteps((current) =>
+              updatePipelineInferenceSteps(
+                current,
+                nextProgress,
+                performance.now(),
+              ),
+            );
           }
         },
         {
@@ -603,34 +642,117 @@ export function App() {
       );
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
       let completedAnalysis = result;
-      if (
-        running.servingSideEnabled !== false &&
-        result.productionServeOutputs
-      ) {
+      const shouldInferServing = Boolean(result.productionServeOutputs);
+      const shouldInferSwitches = Boolean(
+        running.sideSwitchEnabled !== false &&
+          result.productionComponents &&
+          result.productionStateOutputs,
+      );
+      if (shouldInferServing || shouldInferSwitches) {
         try {
-          const { inferServingSides } = await import(
-            "@/lib/on-device/serving-side"
+          const { inferScoreSpecialists } = await import(
+            "@/lib/on-device/score-specialists"
           );
-          const servingSide = await inferServingSides(
+          const specialistOutput = await inferScoreSpecialists(
             opened,
             running.roi,
-            result,
-            (progress) => {
-              if (
-                !deletedProjectIdsRef.current.has(projectIdToRun) &&
-                mountedRef.current
-              ) {
-                setActiveProgress({
-                  stage: "inference",
-                  completed: progress.completed,
-                  total: progress.total,
-                  detail: progress.detail,
-                });
-              }
+            {
+              servingSide: shouldInferServing
+                ? {
+                    analysis: result,
+                    onProgress: (progress) => {
+                      if (
+                        !deletedProjectIdsRef.current.has(projectIdToRun) &&
+                        mountedRef.current
+                      ) {
+                        setActiveProgress({
+                          stage: "inference",
+                          completed: progress.completed,
+                          total: progress.total,
+                          detail: progress.detail,
+                        });
+                        setActiveInferenceSteps((current) =>
+                          updateSpecialistInferenceStep(
+                            current,
+                            "serving-side",
+                            progress,
+                            performance.now(),
+                          ),
+                        );
+                      }
+                    },
+                  }
+                : undefined,
+              sideSwitch: shouldInferSwitches
+                ? {
+                    analysis: {
+                      intervals: result.intervals,
+                      times: result.times,
+                      deadStateProbabilities: result.deadStateProbabilities,
+                      productionComponents: result.productionComponents!,
+                      productionStateOutputs: result.productionStateOutputs!,
+                    },
+                    onProgress: (progress) => {
+                      if (
+                        !deletedProjectIdsRef.current.has(projectIdToRun) &&
+                        mountedRef.current
+                      ) {
+                        setActiveProgress({
+                          stage: "inference",
+                          completed: progress.completed,
+                          total: progress.total,
+                          detail: progress.detail,
+                        });
+                        setActiveInferenceSteps((current) =>
+                          updateSpecialistInferenceStep(
+                            current,
+                            "side-switch",
+                            progress,
+                            performance.now(),
+                          ),
+                        );
+                      }
+                    },
+                  }
+                : undefined,
             },
           );
-          completedAnalysis = { ...result, servingSide };
+          if (specialistOutput.servingSide) {
+            setActiveInferenceSteps((current) =>
+              finishInferenceStep(
+                current,
+                "serving-side",
+                `Serving-side verdicts ready · ${specialistOutput.servingSide!.candidates.length} rallies`,
+                performance.now(),
+              ),
+            );
+          }
+          if (specialistOutput.sideSwitch) {
+            setActiveInferenceSteps((current) =>
+              finishInferenceStep(
+                current,
+                "side-switch",
+                `Team-side switch markers ready · ${specialistOutput.sideSwitch!.candidates.length} predicted`,
+                performance.now(),
+              ),
+            );
+          }
+          completedAnalysis = { ...result, ...specialistOutput };
         } catch (cause) {
+          for (const step of [
+            ...(shouldInferServing ? ["serving-side" as const] : []),
+            ...(shouldInferSwitches ? ["side-switch" as const] : []),
+          ]) {
+            setActiveInferenceSteps((current) =>
+              finishInferenceStep(
+                current,
+                step,
+                cause instanceof Error ? cause.message : String(cause),
+                performance.now(),
+                "error",
+              ),
+            );
+          }
           if (mountedRef.current) {
             setError(
               `Score tracking features could not be cached: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -660,11 +782,6 @@ export function App() {
       opened?.input.dispose();
       if (activeMediaRef.current?.projectId === projectIdToRun)
         activeMediaRef.current = null;
-      if (elapsedTimerRef.current !== null)
-        window.clearInterval(elapsedTimerRef.current);
-      elapsedTimerRef.current = null;
-      if (mountedRef.current)
-        setActiveElapsedSeconds((performance.now() - startedAt) / 1000);
       await releaseWakeLock();
       if (deletedProjectIdsRef.current.has(projectIdToRun)) {
         await deleteFeatureCachesForSource(running.source).catch(
@@ -686,6 +803,7 @@ export function App() {
         setQueueIds((current) => current.filter((id) => id !== next));
         setActiveJobId(null);
         setActiveProgress(null);
+        setActiveInferenceSteps([]);
         setWakeLockState("idle");
       }
     });
@@ -766,7 +884,10 @@ export function App() {
     ]);
   }
 
-  const activePercent = progressPercent(activeProgress);
+  const activePercent =
+    activeInferenceSteps.length > 0
+      ? overallInferenceProgress(activeInferenceSteps) * 100
+      : progressPercent(activeProgress);
   const queueLabel = activeJobId
     ? `${projects.find((project) => project.id === activeJobId)?.source.name ?? "Project"} · ${Math.round(activePercent)}%${queueIds.length > 1 ? ` · ${queueIds.length - 1} queued` : ""}`
     : queueIds.length > 0
@@ -845,7 +966,9 @@ export function App() {
       },
       productionComponents: selectedProject.analysis.productionComponents,
       productionServeOutputs: selectedProject.analysis.productionServeOutputs,
+      productionStateOutputs: selectedProject.analysis.productionStateOutputs,
       servingSide: selectedProject.analysis.servingSide,
+      sideSwitch: selectedProject.analysis.sideSwitch,
       suppression: selectedProject.analysis.suppression,
     };
   }, [selectedProject, selectedVideoUrl]);
@@ -859,9 +982,8 @@ export function App() {
         initialScoreTrackingEnabled={
           selectedProject.servingSideEnabled !== false
         }
-        importedInitialDraft={
-          selectedProject.importedFeedback?.initialDraft
-        }
+        sideSwitchEnabled={selectedProject.sideSwitchEnabled !== false}
+        importedInitialDraft={selectedProject.importedFeedback?.initialDraft}
         sourceFile={selectedSourceFile}
         sourceError={error}
         onAttachSource={(selected) =>
@@ -871,65 +993,16 @@ export function App() {
         onServingSideAnalysis={(servingSide) =>
           persistServingSideAnalysis(selectedProject.id, servingSide)
         }
+        onSideSwitchAnalysis={(sideSwitch) =>
+          persistSideSwitchAnalysis(selectedProject.id, sideSwitch)
+        }
       />
     );
   }
 
   const selectedIsActive = selectedProject?.id === activeJobId;
-  const displayedProgress = selectedIsActive
-    ? activeProgress
-    : candidateProgress;
+  const displayedProgress = selectedIsActive ? null : candidateProgress;
   const percent = progressPercent(displayedProgress);
-  const featurePerformance = displayedProgress?.performance ?? null;
-  const featureRate =
-    featurePerformance && featurePerformance.videoElapsedMs > 0
-      ? featurePerformance.generatedVideoSeconds /
-        (featurePerformance.videoElapsedMs / 1000)
-      : null;
-  const elapsedSeconds = selectedIsActive ? activeElapsedSeconds : 0;
-  const audioProgressPercent =
-    displayedProgress?.stage === "audio" && displayedProgress.total > 0
-      ? Math.min(
-          100,
-          Math.max(
-            0,
-            (displayedProgress.completed / displayedProgress.total) * 100,
-          ),
-        )
-      : null;
-  const audioPerformance = displayedProgress?.audioPerformance ?? null;
-  const audioElapsedSeconds = audioPerformance
-    ? audioPerformance.elapsedMs / 1000
-    : null;
-  const audioDecodeRate =
-    audioPerformance && audioPerformance.decodeElapsedMs > 0
-      ? audioPerformance.decodedAudioSeconds /
-        (audioPerformance.decodeElapsedMs / 1000)
-      : null;
-  const audioProcessingRate =
-    audioElapsedSeconds &&
-    displayedProgress?.stage === "audio" &&
-    displayedProgress.completed > 0
-      ? displayedProgress.completed / audioElapsedSeconds
-      : null;
-  const audioEtaSeconds =
-    audioProcessingRate &&
-    displayedProgress?.stage === "audio" &&
-    displayedProgress.total > displayedProgress.completed
-      ? (displayedProgress.total - displayedProgress.completed) /
-        audioProcessingRate
-      : audioProgressPercent !== null && audioProgressPercent >= 100
-        ? 0
-        : null;
-  const analysisEtaSeconds =
-    displayedProgress?.stage === "complete"
-      ? 0
-      : displayedProgress?.stage === "video" && featureRate && featureRate > 0
-        ? Math.max(0, displayedProgress.total - displayedProgress.completed) /
-          featureRate
-        : elapsedSeconds >= 2 && percent > 2
-          ? (elapsedSeconds * (100 - percent)) / percent
-          : null;
 
   return (
     <main className={styles.page}>
@@ -1229,23 +1302,22 @@ export function App() {
                   </div>
                 </div>
                 <label
-                  className={styles.servingSideToggle}
-                  data-enabled={servingSideEnabled || undefined}
+                  className={styles.sideSwitchToggle}
+                  data-enabled={sideSwitchEnabled || undefined}
                 >
                   <input
                     type="checkbox"
-                    checked={servingSideEnabled}
+                    checked={sideSwitchEnabled}
                     onChange={(event) =>
-                      setServingSideEnabled(event.currentTarget.checked)
+                      setSideSwitchEnabled(event.currentTarget.checked)
                     }
                     disabled={busy}
                   />
                   <span>
-                    <strong>Generate serving-side score tracking</strong>
+                    <strong>Generate team side-switch markers</strong>
                     <small>
-                      Samples extra video frames after rally inference. Turn this
-                      off for a faster project setup; you can enable it later in
-                      the editor.
+                      Enable this only for formats where teams change court
+                      sides during the recording.
                     </small>
                   </span>
                 </label>
@@ -1327,6 +1399,13 @@ export function App() {
         </section>
       )}
 
+      {selectedIsActive && activeInferenceSteps.length > 0 && (
+        <InferenceProgressPanel
+          steps={activeInferenceSteps}
+          wakeLockActive={wakeLockState === "active"}
+        />
+      )}
+
       {displayedProgress && (
         <section className={styles.progressCard} aria-live="polite">
           <div>
@@ -1337,60 +1416,8 @@ export function App() {
           <div className={styles.progressTrack}>
             <i style={{ width: `${percent}%` }} />
           </div>
-          {selectedIsActive && (
-            <div className={styles.progressTiming}>
-              <div>
-                <span>Elapsed</span>
-                <strong>{formatDuration(elapsedSeconds)}</strong>
-              </div>
-              <div>
-                <span>Estimated remaining</span>
-                <strong>
-                  {analysisEtaSeconds === null
-                    ? "Estimating…"
-                    : analysisEtaSeconds <= 1
-                      ? "Finishing…"
-                      : `About ${formatDuration(analysisEtaSeconds)}`}
-                </strong>
-              </div>
-              {audioProgressPercent !== null && (
-                <>
-                  <div>
-                    <span>Audio processing</span>
-                    <strong>{Math.round(audioProgressPercent)}%</strong>
-                  </div>
-                  <div>
-                    <span>Audio elapsed</span>
-                    <strong>
-                      {audioElapsedSeconds === null
-                        ? "Starting…"
-                        : formatDuration(audioElapsedSeconds)}
-                    </strong>
-                  </div>
-                  <div>
-                    <span>Audio remaining</span>
-                    <strong>
-                      {audioEtaSeconds === null
-                        ? "Estimating…"
-                        : audioEtaSeconds <= 1
-                          ? "Finishing…"
-                          : `About ${formatDuration(audioEtaSeconds)}`}
-                    </strong>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
           <p>
-            {displayedProgress.stage === "video" && featureRate
-              ? `${featureRate.toFixed(2)}× real-time feature generation`
-              : displayedProgress.stage === "audio" && audioProcessingRate
-                ? `${audioProcessingRate.toFixed(2)}× real-time audio processing${audioDecodeRate ? ` · ${audioDecodeRate.toFixed(2)}× decode` : ""}`
-                : "Feature extraction, audio analysis, and both model passes run locally."}
-            {displayedProgress.featureCache?.resumedRows
-              ? ` · resumed ${displayedProgress.featureCache.resumedRows.toLocaleString()} saved frames`
-              : ""}
-            {wakeLockState === "active" ? " · screen wake lock active" : ""}
+            Reading the selected file locally. No video leaves this browser.
           </p>
         </section>
       )}

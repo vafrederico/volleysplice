@@ -1,8 +1,8 @@
 import type { Mat } from "@techstark/opencv-js";
-import { CanvasSink } from "mediabunny";
 
 import { runtimeAssetUrl } from "../runtime-assets.ts";
 import type { OpenedMedia } from "./media.ts";
+import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
 import {
   composeServingSideVerdict,
   COURT_FLOW_OFFSETS_SECONDS,
@@ -631,65 +631,38 @@ function clampedTimestamp(anchor: number, offset: number, duration: number): num
   return Math.min(Math.max(0, anchor + offset), Math.max(0, duration - 0.01));
 }
 
-async function sampleGrayFrames(
-  cv: CvRuntime,
-  media: OpenedMedia,
-  roi: NormalizedRoi,
+function requestedFrameTimes(
   candidates: readonly OnDeviceInterval[],
-  onProgress?: (progress: ServingSideProgress) => void,
-): Promise<Map<number, GrayFrame>> {
-  const requested = [...new Set(candidates.flatMap((candidate) =>
+  duration: number,
+): number[] {
+  return [...new Set(candidates.flatMap((candidate) =>
     [...COURT_FLOW_OFFSETS_SECONDS, ...FLIGHT_OFFSETS_SECONDS].map((offset) =>
-      clampedTimestamp(candidate.start, offset, media.info.duration))))]
+      clampedTimestamp(candidate.start, offset, duration))))]
     .sort((left, right) => left - right);
-  const left = Math.round(roi.x * media.info.width);
-  const top = Math.round(roi.y * media.info.height);
-  const right = Math.round((roi.x + roi.width) * media.info.width);
-  const bottom = Math.round((roi.y + roi.height) * media.info.height);
-  const sink = new CanvasSink(media.videoTrack, {
-    crop: {
-      left,
-      top,
-      width: Math.max(1, right - left),
-      height: Math.max(1, bottom - top),
-    },
-    width: SERVING_SIDE_WIDTH,
-    height: SERVING_SIDE_HEIGHT,
-    fit: "fill",
-    poolSize: 1,
-    decoderOptions: { hardwareAcceleration: "prefer-hardware" },
-  });
-  const result = new Map<number, GrayFrame>();
-  const iterator = sink.canvasesAtTimestamps(requested);
-  let index = 0;
-  try {
-    for await (const wrapped of iterator) {
-      if (!wrapped) throw new Error(`No video frame was available at ${requested[index]} seconds.`);
-      const rgba = cv.imread(wrapped.canvas as unknown as HTMLCanvasElement);
-      const gray = new cv.Mat();
-      try {
-        cv.cvtColor(rgba, gray, cv.COLOR_RGBA2GRAY);
-        result.set(requested[index], Uint8Array.from(gray.data));
-      } finally {
-        rgba.delete();
-        gray.delete();
-      }
-      index += 1;
-      if (index % 8 === 0 || index === requested.length) {
-        onProgress?.({
-          stage: "frames",
-          completed: index,
-          total: requested.length,
-          detail: `Sampling serving-side windows · ${index}/${requested.length} frames`,
-        });
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      }
-    }
-  } finally {
-    await iterator.return(undefined);
-  }
-  if (index !== requested.length) throw new Error("Serving-side frame sampling ended early.");
-  return result;
+}
+
+export type ServingSideFramePlan = {
+  availableCandidateCount: number;
+  candidateCount: number;
+  requestedTimes: number[];
+};
+
+/** Builds the serving-side timestamps consumed by the shared production decoder. */
+export function servingSideFramePlan(
+  analysis: ServingSideAnalysisInput,
+  duration: number,
+  candidateLimit: number | null,
+): ServingSideFramePlan {
+  const available = candidateIntervals(analysis);
+  const requestedLimit = candidateLimit === null
+    ? available.length
+    : Math.max(1, Math.floor(candidateLimit));
+  const candidates = available.slice(0, requestedLimit);
+  return {
+    availableCandidateCount: available.length,
+    candidateCount: candidates.length,
+    requestedTimes: requestedFrameTimes(candidates, duration),
+  };
 }
 
 function framesForOffsets(
@@ -704,6 +677,89 @@ function framesForOffsets(
     if (!frame) throw new Error(`Missing sampled serving-side frame at ${timestamp} seconds.`);
     return frame;
   });
+}
+
+export type ServingSideFrameEvaluation = {
+  output: OnDeviceServingSideOutput;
+};
+
+async function servingSideOutputFromLoadedFrames(
+  cv: CvRuntime,
+  runtime: ServingSideRuntimeModel,
+  mediaDuration: number,
+  analysis: ServingSideAnalysisInput,
+  candidateLimit: number | null,
+  sampled: ReadonlyMap<number, GrayFrame>,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<ServingSideFrameEvaluation> {
+  const times = analysis.times ?? analysis.inferenceTimes;
+  const serveOutputs = analysis.productionServeOutputs;
+  if (!times || !serveOutputs) {
+    throw new Error("Serving-side inference requires both production serve-head outputs.");
+  }
+  const available = candidateIntervals(analysis);
+  const requestedLimit = candidateLimit === null
+    ? available.length
+    : Math.max(1, Math.floor(candidateLimit));
+  const candidates = available.slice(0, requestedLimit);
+  const columns = runtime.featureNames.length;
+  const raw = new Float64Array(candidates.length * columns);
+  for (let row = 0; row < candidates.length; row += 1) {
+    const candidate = candidates[row];
+    const court = extractCourtFlowRawFeatures(
+      cv,
+      framesForOffsets(sampled, candidate.start, COURT_FLOW_OFFSETS_SECONDS, mediaDuration),
+    );
+    const flight = extractFlightRawFeatures(
+      cv,
+      framesForOffsets(sampled, candidate.start, FLIGHT_OFFSETS_SECONDS, mediaDuration),
+    );
+    raw.set(court, row * columns);
+    raw.set(flight, row * columns + court.length);
+    onProgress?.(row + 1, candidates.length);
+    if ((row + 1) % 2 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  const ranked = tiedPercentileRanks(raw, candidates.length, columns);
+  return {
+    output: {
+      modelId: runtime.modelId,
+      modelFingerprint: runtime.fingerprint,
+      featureVersion: SERVING_SIDE_FEATURE_VERSION,
+      anchorContract: SERVING_SIDE_ANCHOR_CONTRACT,
+      features: { rows: candidates.length, columns, values: raw },
+      candidates: candidates.map((candidate, row) => composeServingSideVerdict(
+        candidate,
+        ranked.subarray(row * columns, (row + 1) * columns),
+        times,
+        serveOutputs.allLabelsV2,
+        serveOutputs.previousProduction,
+        runtime,
+      )),
+    },
+  };
+}
+
+/** Evaluates production serving-side features from frames sampled by the shared decoder. */
+export async function evaluateServingSideFrames(
+  mediaDuration: number,
+  analysis: ServingSideAnalysisInput,
+  candidateLimit: number | null,
+  sampled: ReadonlyMap<number, Uint8Array>,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<ServingSideFrameEvaluation> {
+  const [cv, runtime] = await Promise.all([
+    loadOpenCv(),
+    loadServingSideRuntime(),
+  ]);
+  return await servingSideOutputFromLoadedFrames(
+    cv,
+    runtime,
+    mediaDuration,
+    analysis,
+    candidateLimit,
+    sampled,
+    onProgress,
+  );
 }
 
 /**
@@ -737,56 +793,35 @@ export async function inferServingSides(
     };
   }
   onProgress?.({ stage: "loading", completed: 0, total: candidates.length, detail: "Loading serving-side model" });
-  const [cv, runtime] = await Promise.all([loadOpenCv(), loadServingSideRuntime()]);
-  const sampled = await sampleGrayFrames(cv, media, roi, candidates, onProgress);
-  const columns = runtime.featureNames.length;
-  const raw = new Float64Array(candidates.length * columns);
-  for (let row = 0; row < candidates.length; row += 1) {
-    const candidate = candidates[row];
-    const court = extractCourtFlowRawFeatures(
-      cv,
-      framesForOffsets(sampled, candidate.start, COURT_FLOW_OFFSETS_SECONDS, media.info.duration),
-    );
-    const flight = extractFlightRawFeatures(
-      cv,
-      framesForOffsets(sampled, candidate.start, FLIGHT_OFFSETS_SECONDS, media.info.duration),
-    );
-    raw.set(court, row * columns);
-    raw.set(flight, row * columns + court.length);
-    onProgress?.({
+  const plan = servingSideFramePlan(analysis, media.info.duration, null);
+  const sampled = await sampleSpecialistFramesSequentially(
+    media,
+    roi,
+    { servingSideTimes: plan.requestedTimes },
+    (completed, total) => onProgress?.({
+      stage: "frames",
+      completed,
+      total,
+      detail: `Decoding serving-side frames · ${completed}/${total}`,
+    }),
+  );
+  const evaluated = await evaluateServingSideFrames(
+    media.info.duration,
+    analysis,
+    null,
+    sampled.servingSide,
+    (completed, total) => onProgress?.({
       stage: "features",
-      completed: row + 1,
-      total: candidates.length,
-      detail: `Measuring serving side · ${row + 1}/${candidates.length} rallies`,
-    });
-    if ((row + 1) % 2 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  }
-  const ranked = tiedPercentileRanks(raw, candidates.length, columns);
-  const verdicts = candidates.map((candidate, row) => composeServingSideVerdict(
-    candidate,
-    ranked.subarray(row * columns, (row + 1) * columns),
-    times,
-    serveOutputs.allLabelsV2,
-    serveOutputs.previousProduction,
-    runtime,
-  ));
-  const output: OnDeviceServingSideOutput = {
-    modelId: runtime.modelId,
-    modelFingerprint: runtime.fingerprint,
-    featureVersion: SERVING_SIDE_FEATURE_VERSION,
-    anchorContract: SERVING_SIDE_ANCHOR_CONTRACT,
-    features: {
-      rows: candidates.length,
-      columns,
-      values: raw,
-    },
-    candidates: verdicts,
-  };
+      completed,
+      total,
+      detail: `Measuring serving side · ${completed}/${total} rallies`,
+    }),
+  );
   onProgress?.({
     stage: "complete",
     completed: candidates.length,
     total: candidates.length,
     detail: `Serving-side verdicts ready · ${candidates.length} rallies`,
   });
-  return output;
+  return evaluated.output;
 }

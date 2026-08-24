@@ -62,7 +62,7 @@ test("version ten production drafts migrate to enabled score tracking", () => {
   delete legacy.scoreTracking;
 
   assert.deepEqual(parseCutDraft(JSON.stringify(legacy), seed)?.scoreTracking, {
-    version: 2,
+    version: 3,
     enabled: true,
     team1Name: "Team 1",
     team2Name: "Team 2",
@@ -103,7 +103,7 @@ test("production drafts persist valid score tracking and reject invalid markers"
         rallyId: "R001",
       },
     ],
-    sideSwitchMarkers: [{ id: "switch-1", timestamp: 15 }],
+    sideSwitchMarkers: [{ id: "switch-1", timestamp: 15, origin: "manual" }],
   };
 
   assert.deepEqual(

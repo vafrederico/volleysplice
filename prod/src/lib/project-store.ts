@@ -6,6 +6,7 @@ import {
 } from "./on-device/analysis-window.ts";
 import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
 import { isReusableServingSideOutput } from "./on-device/serving-side-cache.ts";
+import { isReusableSideSwitchOutput } from "./on-device/side-switch-model.ts";
 import {
   SUPPRESSION_ARTIFACT_SHA256,
   SUPPRESSION_DECODER_VERSION,
@@ -48,8 +49,10 @@ export type VolleyCutProject = {
   info: OnDeviceMediaInfo;
   analysisWindow: AnalysisWindow;
   roi: NormalizedRoi;
-  /** Whether project creation should eagerly generate serving-side features. */
+  /** Legacy score-tracking preference retained for stored-project compatibility. */
   servingSideEnabled?: boolean;
+  /** Whether inference should generate team side-switch markers. */
+  sideSwitchEnabled?: boolean;
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
   error: string | null;
@@ -301,6 +304,31 @@ function validProductionServeOutputs(value: unknown, rows: number): boolean {
   );
 }
 
+function validProbabilityVector(value: unknown, rows: number): boolean {
+  return (
+    value instanceof Float32Array &&
+    value.length === rows &&
+    !value.some(
+      (probability) =>
+        !Number.isFinite(probability) || probability < 0 || probability > 1,
+    )
+  );
+}
+
+function validProductionStateOutputs(value: unknown, rows: number): boolean {
+  if (!value || typeof value !== "object") return false;
+  const outputs = value as Record<string, unknown>;
+  return (["allLabelsV2", "previousProduction"] as const).every((source) => {
+    const output = outputs[source];
+    if (!output || typeof output !== "object") return false;
+    const state = output as Record<string, unknown>;
+    return (
+      validProbabilityVector(state.rallyProbabilities, rows) &&
+      validProbabilityVector(state.deadStateProbabilities, rows)
+    );
+  });
+}
+
 function validSuppression(
   value: unknown,
   rows: number,
@@ -401,6 +429,14 @@ function validAnalysis(
         analysis.productionServeOutputs,
         analysis.times.length,
       )) &&
+    (analysis.productionStateOutputs === undefined ||
+      validProductionStateOutputs(
+        analysis.productionStateOutputs,
+        analysis.times.length,
+      )) &&
+    (analysis.sideSwitch === undefined ||
+      (analysis.sideSwitch !== null &&
+        typeof analysis.sideSwitch === "object")) &&
     (analysis.suppression === undefined ||
       validSuppression(
         analysis.suppression,
@@ -480,13 +516,19 @@ function validProject(value: unknown): value is VolleyCutProject {
     validRoi(project.roi) &&
     (project.servingSideEnabled === undefined ||
       typeof project.servingSideEnabled === "boolean") &&
+    (project.sideSwitchEnabled === undefined ||
+      typeof project.sideSwitchEnabled === "boolean") &&
     typeof project.status === "string" &&
     statuses.includes(project.status as ProjectStatus) &&
     (project.analysis === null ||
       validAnalysis(project.analysis, importedFeedbackPresent)) &&
     (project.error === null || typeof project.error === "string") &&
     (!importedFeedbackPresent ||
-      validImportedFeedback(project.importedFeedback, project.id, analysisId)) &&
+      validImportedFeedback(
+        project.importedFeedback,
+        project.id,
+        analysisId,
+      )) &&
     typeof project.createdAt === "string" &&
     typeof project.updatedAt === "string" &&
     (project.status !== "ready" || project.analysis !== null)
@@ -506,13 +548,13 @@ export function normalizeStoredProject(
     project.analysisWindow.end === analysisWindow.end
       ? project
       : { ...project, analysisWindow };
-  const normalizedProject =
+  const servingSideNormalizedProject =
     !windowNormalizedProject.importedFeedback &&
     windowNormalizedProject.analysis?.servingSide &&
-      !isReusableServingSideOutput(
-        windowNormalizedProject.analysis.servingSide,
-        windowNormalizedProject.analysis.intervals,
-      )
+    !isReusableServingSideOutput(
+      windowNormalizedProject.analysis.servingSide,
+      windowNormalizedProject.analysis.intervals,
+    )
       ? {
           ...windowNormalizedProject,
           analysis: {
@@ -521,6 +563,20 @@ export function normalizeStoredProject(
           },
         }
       : windowNormalizedProject;
+  const normalizedProject =
+    !servingSideNormalizedProject.importedFeedback &&
+    servingSideNormalizedProject.analysis?.sideSwitch &&
+    !isReusableSideSwitchOutput(
+      servingSideNormalizedProject.analysis.sideSwitch,
+    )
+      ? {
+          ...servingSideNormalizedProject,
+          analysis: {
+            ...servingSideNormalizedProject.analysis,
+            sideSwitch: undefined,
+          },
+        }
+      : servingSideNormalizedProject;
   if (
     normalizedProject.analysis &&
     !normalizedProject.importedFeedback &&
