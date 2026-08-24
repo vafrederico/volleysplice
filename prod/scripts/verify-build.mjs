@@ -7,8 +7,8 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const expectedHashes = new Map([
   [
-    "android/VolleyCut-v0.10.5-arm64-release-signed.apk",
-    "334cb90fc6fc90940abe8028639b30e90a57c6ca7df2d0906773d39f224f247e",
+    "android/VolleyCut-v0.10.6-arm64-release-signed.apk",
+    "7a1d6b64af16b2636e25726621fbe08c508f30da1a8d81cbc226177c2b971205",
   ],
   [
     "runtime/model-1ca43e38eefc.json",
@@ -44,9 +44,16 @@ const expectedHashes = new Map([
   ],
 ]);
 
+const canonicalLfAssets = new Set([
+  "runtime/side-switch-c2570481c30d.json",
+]);
+
 for (const [asset, expected] of expectedHashes) {
   const bytes = await readFile(resolve(appRoot, "dist", asset));
-  const actual = createHash("sha256").update(bytes).digest("hex");
+  const hashInput = canonicalLfAssets.has(asset)
+    ? Buffer.from(bytes.toString("utf8").replaceAll("\r\n", "\n"), "utf8")
+    : bytes;
+  const actual = createHash("sha256").update(hashInput).digest("hex");
   if (actual !== expected) {
     throw new Error(`${asset} integrity mismatch: expected ${expected}, got ${actual}`);
   }
