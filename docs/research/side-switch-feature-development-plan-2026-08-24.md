@@ -76,6 +76,36 @@ SHA-256: `dffc6f22cf77efa8c90d074c260ca17840372ec20f2680e6c82ed071336df94f`
 Next authorized comparison: E1, the fixed seven-value swap-interaction bundle, with no
 candidate, loss, threshold-protocol, or decoder change.
 
+### E1 — swap-specific interaction bundle — rejected 2026-08-24
+
+Appended the seven preregistered I1 values to the exact 34-input control. Candidate
+generation, labels, top-2/2x mining, L2, nested threshold selection, and decoder all
+remained fixed. E0 parity remained exact inside the E1 artifact.
+
+| Metric | E0 control | E1 interactions | E1 minus E0 |
+| --- | ---: | ---: | ---: |
+| Row AP | 44.4992% | 43.8544% | -0.6448 pp |
+| ±4 proposals / TP / FP / FN | 52 / 29 / 23 / 21 | 58 / 29 / 29 / 21 | +6 / 0 / +6 / 0 |
+| ±4 precision | 55.7692% | 50.0000% | -5.7692 pp |
+| ±4 recall | 58.0000% | 58.0000% | 0.0000 pp |
+| ±4 F1 | 56.8627% | 53.7037% | -3.1590 pp |
+| Strict F1 | 45.0980% | 40.7407% | -4.3573 pp |
+| Frozen high-player-change FP slice | 15 selected | 14 selected | -1 FP |
+
+Decision: **reject I1 and do not run leave-one-interaction-out pruning or add I1 to a
+combined model**. The bundle moved its named slice in the desired direction but added
+six false positives elsewhere at unchanged recall. It failed the primary-F1,
+precision, and strict-F1 gates. The result reinforces that algebraic interactions over
+the same local observation do not provide the missing persistence/reliability evidence.
+
+Artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-e1-interactions-v1.json`
+
+SHA-256: `90fa72e4b2fe33f6248a0cca543ceeba499fdad23984bdad59f82c843505faf8`
+
+Validation: all 110 focused side-switch tests pass. Next independent comparison: E2,
+the production-gap consensus/shape bundle.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

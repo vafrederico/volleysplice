@@ -27,6 +27,15 @@ BASE_FEATURE_NAMES = (
     *STATE_GATE_FEATURE_NAMES,
     *DERIVED_FEATURE_NAMES,
 )
+INTERACTION_FEATURE_NAMES = (
+    "jointSwapMarginMinimum",
+    "positiveSwapMarginProduct",
+    "swapMarginDisagreement",
+    "playerSwapSpecificity",
+    "courtSwapSpecificity",
+    "playerQualityGatedSwap",
+    "courtQualityGatedSwap",
+)
 L2 = 0.1
 CLASS_BALANCE_EXPONENT = 0.5
 HARD_NEGATIVES_PER_RECORDING = 2
@@ -69,6 +78,53 @@ BASELINE_PROFILE = FeatureProfile(
     identifier="union34-v1",
     feature_names=BASE_FEATURE_NAMES,
     hypothesis="exact promoted 34-input control",
+)
+
+
+def swap_interaction_features(features: Mapping[str, float]) -> dict[str, float]:
+    """Materialize the preregistered I1 swap-specific interaction bundle."""
+
+    player = float(features["playerSwapMargin"])
+    court = float(features["v4MeanSwapMargin"])
+    player_change = float(features["playerGlobalAppearanceChange"])
+    court_change = float(features["v4GlobalAppearanceChange"])
+    separation = float(features["minimumPlayerSideSeparation"])
+    coverage = float(features["minimumProposalCoverage"])
+    alignment = float(features["v4MinimumAlignmentResponse"])
+    values = (
+        player,
+        court,
+        player_change,
+        court_change,
+        separation,
+        coverage,
+        alignment,
+    )
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("I1 source features must be finite")
+
+    def specificity(margin: float, change: float) -> float:
+        return min(5.0, max(-5.0, margin / max(change, 0.02)))
+
+    return {
+        "jointSwapMarginMinimum": min(player, court),
+        "positiveSwapMarginProduct": max(player, 0.0) * max(court, 0.0),
+        "swapMarginDisagreement": abs(player - court),
+        "playerSwapSpecificity": specificity(player, player_change),
+        "courtSwapSpecificity": specificity(court, court_change),
+        "playerQualityGatedSwap": player * separation * coverage,
+        "courtQualityGatedSwap": court * alignment,
+    }
+
+
+INTERACTION_PROFILE = FeatureProfile(
+    identifier="union34-plus-interactions-i1",
+    feature_names=(*BASE_FEATURE_NAMES, *INTERACTION_FEATURE_NAMES),
+    hypothesis=(
+        "explicit swap agreement, specificity, and quality gates reduce generic "
+        "high-player-change false positives without losing covered switches"
+    ),
+    builder=swap_interaction_features,
 )
 
 

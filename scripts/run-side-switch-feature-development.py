@@ -16,8 +16,10 @@ from analysis.artifacts import atomic_write_text
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
     DECODER,
+    INTERACTION_PROFILE,
     concise_metrics,
     evaluate_profile,
+    metric_delta,
 )
 
 
@@ -27,12 +29,17 @@ DEFAULT_FEATURES = REPORTS / "side-switch-full-union-v5-state-features-v1.json"
 DEFAULT_AUDIT = REPORTS / "side-switch-full-video-marker-evaluation-2026-08-21-r2.json"
 DEFAULT_MODEL = ROOT / "models/side-switch-hard-negative-mining-v1/model.json"
 DEFAULT_EVALUATION = REPORTS / "side-switch-hard-negative-mining-v1-evaluation.json"
-DEFAULT_OUTPUT = REPORTS / "side-switch-feature-development-e0-baseline-v1.json"
+DEFAULT_IMPORTANCE = REPORTS / "side-switch-feature-importance-2026-08-24.json"
+DEFAULT_OUTPUTS = {
+    "E0": REPORTS / "side-switch-feature-development-e0-baseline-v1.json",
+    "E1": REPORTS / "side-switch-feature-development-e1-interactions-v1.json",
+}
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
     "audit": "142d6617aed7f20b51cdcdfc9b3e61c8c76beaf79a31fc2d7ee54fb0fdf27b89",
     "model": "c2570481c30dec62f56ac3284cd4028763ffd8e72a9ad07e9908fec10df387e3",
     "evaluation": "e67088b36d177d68c24587efcb186eab4201b5294532be1fdf978ef13aaacc4b",
+    "importance": "b2c501c61e9f7b3aeb2bbb04cf73f3f9793e1831053a7762c08993924daea14d",
 }
 
 
@@ -91,7 +98,9 @@ def _validate_e0(
         for fold in result["outerFolds"]
     }
     if actual_thresholds.keys() != expected_thresholds.keys() or any(
-        not np.isclose(actual_thresholds[key], expected_thresholds[key], atol=1e-12, rtol=0.0)
+        not np.isclose(
+            actual_thresholds[key], expected_thresholds[key], atol=1e-12, rtol=0.0
+        )
         for key in actual_thresholds
     ):
         raise ValueError("E0 outer thresholds do not reproduce the promoted control")
@@ -133,6 +142,76 @@ def _validate_e0(
     }
 
 
+def _selected_ids(result: Mapping[str, Any]) -> set[str]:
+    return {
+        str(row["eventId"])
+        for fold in result["outerFolds"]
+        for row in fold["heldCandidateScores"]
+        if bool(row["selected"])
+    }
+
+
+def _recording_deltas(
+    baseline: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for recording_id, before in baseline["primary"]["byRecording"].items():
+        after = candidate["primary"]["byRecording"][recording_id]
+        result[recording_id] = {
+            name: int(after[name]) - int(before[name])
+            for name in (
+                "proposals",
+                "truePositives",
+                "falsePositives",
+                "falseNegatives",
+            )
+        }
+    return result
+
+
+def _evaluate_e1_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    importance: Mapping[str, Any],
+) -> dict[str, Any]:
+    delta = metric_delta(baseline, candidate)
+    high_player_change_ids = {
+        str(row["candidateId"])
+        for row in importance["errorAnalysis"]["falsePositiveProposals"]
+        if any(
+            str(item["feature"]) == "playerGlobalAppearanceChange"
+            for item in row["topPositiveContributors"]
+        )
+    }
+    baseline_selected = _selected_ids(baseline)
+    candidate_selected = _selected_ids(candidate)
+    baseline_slice = len(high_player_change_ids & baseline_selected)
+    candidate_slice = len(high_player_change_ids & candidate_selected)
+    checks = {
+        "primaryF1GainAtLeast2pp": delta["primaryF1"] >= 0.02 - 1e-12,
+        "precisionDeclineNoMoreThan2pp": delta["primaryPrecision"] >= -0.02 - 1e-12,
+        "recallDeclineNoMoreThan2pp": delta["primaryRecall"] >= -0.02 - 1e-12,
+        "strictF1DeclineNoMoreThan1pp": delta["strictF1"] >= -0.01 - 1e-12,
+        "highPlayerChangeFalsePositiveSliceReduced": candidate_slice < baseline_slice,
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "checks": checks,
+        "delta": delta,
+        "targetSlice": {
+            "definition": (
+                "baseline false proposals where playerGlobalAppearanceChange was "
+                "among the five strongest positive logit contributors"
+            ),
+            "frozenCandidateIds": sorted(high_player_change_ids),
+            "baselineSelected": baseline_slice,
+            "candidateSelected": candidate_slice,
+            "change": candidate_slice - baseline_slice,
+        },
+        "byRecordingDelta": _recording_deltas(baseline, candidate),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     paths = {
         "features": args.features.expanduser().resolve(),
@@ -140,11 +219,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": args.model.expanduser().resolve(),
         "evaluation": args.evaluation.expanduser().resolve(),
     }
-    output = args.output.expanduser().resolve()
+    if args.experiment == "E1":
+        paths["importance"] = args.importance.expanduser().resolve()
+    output = (
+        args.output.expanduser().resolve()
+        if args.output is not None
+        else DEFAULT_OUTPUTS[args.experiment].resolve()
+    )
     if output.exists():
         raise FileExistsError(f"refusing to overwrite feature-development artifact: {output}")
     hashes = {name: _sha256(path) for name, path in paths.items()}
-    if args.enforce_source_hash and hashes != EXPECTED_SHA256:
+    expected_hashes = {
+        name: EXPECTED_SHA256[name]
+        for name in paths
+    }
+    if args.enforce_source_hash and hashes != expected_hashes:
         raise ValueError(f"feature-development source identity changed: {hashes}")
 
     feature_payload = _load(paths["features"])
@@ -162,25 +251,39 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for recording_id in recording_ids
     }
 
-    result = evaluate_profile(feature_payload["rows"], markers, BASELINE_PROFILE)
-    parity = _validate_e0(result, current_model, current_evaluation)
+    baseline = evaluate_profile(feature_payload["rows"], markers, BASELINE_PROFILE)
+    parity = _validate_e0(baseline, current_model, current_evaluation)
+    profiles: dict[str, Any] = {BASELINE_PROFILE.identifier: baseline}
+    comparison: dict[str, Any] | None = None
+    if args.experiment == "E1":
+        interaction = evaluate_profile(
+            feature_payload["rows"], markers, INTERACTION_PROFILE
+        )
+        profiles[INTERACTION_PROFILE.identifier] = interaction
+        comparison = _evaluate_e1_gate(
+            baseline, interaction, _load(paths["importance"])
+        )
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
     created_at = datetime.now(UTC).isoformat()
     payload = {
         "schemaVersion": 1,
-        "kind": "volleycut-side-switch-feature-development-e0-v1",
+        "kind": f"volleycut-side-switch-feature-development-{args.experiment.lower()}-v1",
         "createdAt": created_at,
         "status": "opened-development-only",
         "experiment": {
-            "id": "E0",
-            "name": "freeze-and-reproduce-control",
-            "decision": "baseline-only",
+            "id": args.experiment,
+            "name": (
+                "freeze-and-reproduce-control"
+                if args.experiment == "E0"
+                else "swap-specific-interactions"
+            ),
+            "decision": "baseline-only" if comparison is None else comparison["decision"],
         },
         "scope": {
             **feature_payload["scope"],
             "humanMarkers": sum(len(value) for value in markers.values()),
-            "positiveCandidateLabels": result["positiveCandidateLabels"],
+            "positiveCandidateLabels": baseline["positiveCandidateLabels"],
         },
         "protocol": {
             "outer": "leave one recording out",
@@ -189,8 +292,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "decoder": DECODER.to_dict(),
             "primaryPaddingSeconds": 4.0,
         },
-        "profiles": {BASELINE_PROFILE.identifier: result},
+        "profiles": profiles,
         "parity": parity,
+        "comparison": comparison,
         "sources": {
             **{
                 name: {"path": str(paths[name]), "sha256": hashes[name]}
@@ -201,7 +305,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "limitations": [
             "All 11 recordings and 50 markers are opened development data.",
-            "E0 validates experiment machinery; it is not a new model result.",
+            (
+                "E0 validates experiment machinery; it is not a new model result."
+                if args.experiment == "E0"
+                else "E1 formulae and gates were frozen in the checked-in development plan before this run."
+            ),
         ],
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -215,7 +323,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--audit", type=Path, default=DEFAULT_AUDIT)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--evaluation", type=Path, default=DEFAULT_EVALUATION)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--importance", type=Path, default=DEFAULT_IMPORTANCE)
+    parser.add_argument("--experiment", choices=tuple(DEFAULT_OUTPUTS), default="E0")
+    parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--enforce-source-hash", action=argparse.BooleanOptionalAction, default=True
     )
@@ -224,13 +334,17 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     payload = run(_parser().parse_args())
-    result = payload["profiles"][BASELINE_PROFILE.identifier]
+    metrics = {
+        name: concise_metrics(result)
+        for name, result in payload["profiles"].items()
+    }
     print(
         json.dumps(
             {
                 "experiment": payload["experiment"],
                 "parity": payload["parity"],
-                "metrics": concise_metrics(result),
+                "metrics": metrics,
+                "comparison": payload["comparison"],
             },
             indent=2,
         )

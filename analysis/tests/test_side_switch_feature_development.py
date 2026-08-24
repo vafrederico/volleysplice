@@ -5,8 +5,11 @@ import unittest
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
     BASE_FEATURE_NAMES,
+    INTERACTION_FEATURE_NAMES,
+    INTERACTION_PROFILE,
     apply_profile,
     metric_delta,
+    swap_interaction_features,
 )
 
 
@@ -66,6 +69,63 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
         self.assertEqual(delta["proposals"], -1)
         self.assertEqual(delta["truePositives"], 1)
         self.assertEqual(delta["falsePositives"], -2)
+
+    def test_swap_interactions_match_preregistered_formulas(self):
+        values = swap_interaction_features(
+            {
+                "playerSwapMargin": 0.4,
+                "v4MeanSwapMargin": 0.2,
+                "playerGlobalAppearanceChange": 0.1,
+                "v4GlobalAppearanceChange": 0.05,
+                "minimumPlayerSideSeparation": 0.5,
+                "minimumProposalCoverage": 0.25,
+                "v4MinimumAlignmentResponse": 0.8,
+            }
+        )
+        self.assertEqual(tuple(values), INTERACTION_FEATURE_NAMES)
+        self.assertAlmostEqual(values["jointSwapMarginMinimum"], 0.2)
+        self.assertAlmostEqual(values["positiveSwapMarginProduct"], 0.08)
+        self.assertAlmostEqual(values["swapMarginDisagreement"], 0.2)
+        self.assertAlmostEqual(values["playerSwapSpecificity"], 4.0)
+        self.assertAlmostEqual(values["courtSwapSpecificity"], 4.0)
+        self.assertAlmostEqual(values["playerQualityGatedSwap"], 0.05)
+        self.assertAlmostEqual(values["courtQualityGatedSwap"], 0.16)
+
+    def test_swap_specificity_floor_and_positive_product(self):
+        values = swap_interaction_features(
+            {
+                "playerSwapMargin": 0.2,
+                "v4MeanSwapMargin": -0.3,
+                "playerGlobalAppearanceChange": 0.0,
+                "v4GlobalAppearanceChange": 0.0,
+                "minimumPlayerSideSeparation": 0.5,
+                "minimumProposalCoverage": 0.25,
+                "v4MinimumAlignmentResponse": 0.8,
+            }
+        )
+        self.assertEqual(values["playerSwapSpecificity"], 5.0)
+        self.assertEqual(values["courtSwapSpecificity"], -5.0)
+        self.assertEqual(values["positiveSwapMarginProduct"], 0.0)
+
+    def test_interaction_profile_appends_exact_signature(self):
+        source = self._row()
+        source["features"].update(
+            {
+                "playerSwapMargin": 0.2,
+                "v4MeanSwapMargin": 0.1,
+                "playerGlobalAppearanceChange": 0.2,
+                "v4GlobalAppearanceChange": 0.2,
+                "minimumPlayerSideSeparation": 0.3,
+                "minimumProposalCoverage": 0.4,
+                "v4MinimumAlignmentResponse": 0.9,
+            }
+        )
+        row = apply_profile([source], INTERACTION_PROFILE)[0]
+        self.assertEqual(
+            tuple(INTERACTION_PROFILE.feature_names),
+            (*BASE_FEATURE_NAMES, *INTERACTION_FEATURE_NAMES),
+        )
+        self.assertTrue(all(name in row["features"] for name in INTERACTION_FEATURE_NAMES))
 
 
 if __name__ == "__main__":
