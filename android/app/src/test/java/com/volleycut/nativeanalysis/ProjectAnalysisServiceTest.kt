@@ -1,6 +1,8 @@
 package com.volleycut.nativeanalysis
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProjectAnalysisServiceTest {
@@ -50,9 +52,11 @@ class ProjectAnalysisServiceTest {
     fun servingSideProgressDoesNotResetBetweenFrameSamplingAndFeatureExtraction() {
         assertEquals(0.42, servingSideOverallProgress("serving-side-frames", 0.5), 0.0001)
         assertEquals(0.82, servingSideOverallProgress("serving-side-frames", 1.0), 0.0001)
-        assertEquals(0.82, servingSideOverallProgress("serving-side-features", 0.0), 0.0001)
-        assertEquals(0.905, servingSideOverallProgress("serving-side-features", 0.5), 0.0001)
-        assertEquals(1.0, servingSideOverallProgress("serving-side", 1.0), 0.0001)
+        assertEquals(0.65, servingSideOverallProgress("serving-side-features", 0.0), 0.0001)
+        assertEquals(0.71, servingSideOverallProgress("serving-side-features", 0.5), 0.0001)
+        assertEquals(0.77, servingSideOverallProgress("serving-side", 1.0), 0.0001)
+        assertEquals(0.88, servingSideOverallProgress("side-switch-features", 0.5), 0.0001)
+        assertEquals(1.0, servingSideOverallProgress("side-switch", 1.0), 0.0001)
     }
 
     @Test
@@ -68,8 +72,8 @@ class ProjectAnalysisServiceTest {
         assertEquals(95, projectCreationNotificationStage("inference", 0.5, true).progressPercent)
 
         val serving = projectCreationNotificationStage("serving-side-features", 0.5, true)
-        assertEquals("Serving-side analysis (3/3)", serving.title)
-        assertEquals(90, serving.progressPercent)
+        assertEquals("Score tracking analysis (3/3)", serving.title)
+        assertEquals(71, serving.progressPercent)
 
         val withoutServing = projectCreationNotificationStage("audio", 1.0, false)
         assertEquals("Audio analysis (2/2)", withoutServing.title)
@@ -99,5 +103,68 @@ class ProjectAnalysisServiceTest {
             "match.mp4 · 42% · 20.5%/s · ETA 3s",
             tracker.detail("match.mp4", "3/3", 0.42),
         )
+    }
+
+    @Test
+    fun callbackUpdatesAreRateLimitedButStagesAndCompletionRemainImmediate() {
+        var now = 0L
+        val throttle = CallbackEmissionThrottle(500_000_000L) { now }
+
+        assertTrue(throttle.shouldEmit("specialist-frames", 0.0))
+        now = 100_000_000L
+        assertFalse(throttle.shouldEmit("specialist-frames", 0.1))
+        now = 200_000_000L
+        assertTrue(throttle.shouldEmit("serving-side-features", 0.0))
+        now = 300_000_000L
+        assertTrue(throttle.shouldEmit("serving-side-features", 1.0))
+        now = 350_000_000L
+        assertFalse(throttle.shouldEmit("serving-side-features", 1.0))
+        now = 900_000_000L
+        assertTrue(throttle.shouldEmit("serving-side-features", 1.0))
+    }
+
+    @Test
+    fun liveInferenceMeasurementsFollowTheProductionStepOrder() {
+        var now = 0L
+        val tracker = InferenceProgressTracker(
+            includeCore = true,
+            includeServingSide = true,
+            includeSideSwitch = true,
+            nanoTime = { now },
+        )
+
+        tracker.update("video", 0.25, "Generating visual features")
+        now = 2_000_000_000L
+        val audio = tracker.update("audio", 0.5, "Generating audio features")
+        assertEquals(listOf("video", "audio", "rally", "serving-side", "side-switch"), audio.map { it.id })
+        assertEquals(InferenceStepStatus.COMPLETE, audio[0].status)
+        assertEquals(2_000.0, audio[0].elapsedMilliseconds, 0.001)
+        assertEquals(InferenceStepStatus.RUNNING, audio[1].status)
+        assertEquals(0.5, audio[1].fraction, 0.001)
+
+        now = 3_000_000_000L
+        val scoreFrames = tracker.update("specialist-frames", 0.5, "Shared score frames")
+        assertEquals(InferenceStepStatus.COMPLETE, scoreFrames[1].status)
+        assertEquals(InferenceStepStatus.COMPLETE, scoreFrames[2].status)
+        assertEquals(InferenceStepStatus.RUNNING, scoreFrames[3].status)
+        assertEquals(0.365, scoreFrames[3].fraction, 0.001)
+
+        val decoded = InferenceStepMeasurementsJson.decode(
+            InferenceStepMeasurementsJson.encode(scoreFrames),
+        )
+        assertEquals(scoreFrames, decoded)
+    }
+
+    @Test
+    fun scoreOnlyMeasurementsOmitDisabledTeamSwitchStep() {
+        val tracker = InferenceProgressTracker(
+            includeCore = false,
+            includeServingSide = true,
+            includeSideSwitch = false,
+        )
+
+        val steps = tracker.update("score-specialists", 0.0, "Loading serving-side model")
+        assertEquals(listOf("serving-side"), steps.map { it.id })
+        assertEquals(InferenceStepStatus.RUNNING, steps.single().status)
     }
 }

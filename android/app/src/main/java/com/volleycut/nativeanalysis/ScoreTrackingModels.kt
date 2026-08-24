@@ -6,7 +6,7 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-internal const val SCORE_TRACKING_SCHEMA_VERSION = 2
+internal const val SCORE_TRACKING_SCHEMA_VERSION = 3
 
 internal enum class ScoreTeamId(val wireName: String) {
     TEAM_1("team-1"), TEAM_2("team-2");
@@ -34,7 +34,14 @@ internal data class ServeMarker(
     val rallyId: String? = null,
 )
 
-internal data class SideSwitchMarker(val id: String, val timestampMs: Long)
+internal data class SideSwitchMarker(
+    val id: String,
+    val timestampMs: Long,
+    val origin: ServeMarkerOrigin = ServeMarkerOrigin.MANUAL,
+    val modelConfidence: Double? = null,
+    val modelEventId: String? = null,
+    val rallyIds: List<String> = emptyList(),
+)
 
 internal data class ScoreTracking(
     val version: Int = SCORE_TRACKING_SCHEMA_VERSION,
@@ -86,15 +93,17 @@ internal object ScoreReducer {
     fun seedModelMarkers(
         current: ScoreTracking,
         output: ServingSideOutput?,
+        sideSwitchOutput: SideSwitchOutput? = null,
+        sideSwitchEnabled: Boolean = true,
     ): ScoreTracking {
-        if (output == null) return current
+        if (output == null && sideSwitchOutput == null && sideSwitchEnabled) return current
         val existingByRally = current.serveMarkers
             .filter { it.rallyId != null }
             .associateBy { it.rallyId }
-        var tracking = current.copy(
+        var tracking = if (output != null) current.copy(
             serveMarkers = current.serveMarkers.filter { it.origin == ServeMarkerOrigin.MANUAL },
-        )
-        output.candidates.forEach { candidate ->
+        ) else current
+        output?.candidates?.forEach { candidate ->
             val id = "serve-${candidate.id}"
             val existing = existingByRally[candidate.id]
             val wasCorrected = existing?.modelSide != null && existing.side != existing.modelSide
@@ -120,6 +129,37 @@ internal object ScoreReducer {
                 rallyId = candidate.id,
             )).sortedWith(serveOrder))
         }
+        if (!sideSwitchEnabled) {
+            tracking = tracking.copy(
+                sideSwitchMarkers = tracking.sideSwitchMarkers.filter {
+                    it.origin == ServeMarkerOrigin.MANUAL
+                },
+            )
+        } else if (sideSwitchOutput != null) {
+            tracking = tracking.copy(
+                sideSwitchMarkers = tracking.sideSwitchMarkers.filter {
+                    it.origin == ServeMarkerOrigin.MANUAL
+                },
+            )
+            sideSwitchOutput.candidates.forEach { candidate ->
+                val id = "switch-${candidate.id}"
+                val used = tracking.serveMarkers.any { it.id == id } ||
+                    tracking.sideSwitchMarkers.any { it.id == id } ||
+                    id in tracking.removedModelMarkerIds
+                if (!used) {
+                    tracking = tracking.copy(
+                        sideSwitchMarkers = (tracking.sideSwitchMarkers + SideSwitchMarker(
+                            id = id,
+                            timestampMs = secondsToMs(candidate.timestamp),
+                            origin = ServeMarkerOrigin.MODEL,
+                            modelConfidence = candidate.probability,
+                            modelEventId = candidate.id,
+                            rallyIds = candidate.sourceRangeIds.distinct(),
+                        )).sortedWith(switchOrder),
+                    )
+                }
+            }
+        }
         return tracking
     }
 
@@ -127,10 +167,16 @@ internal object ScoreReducer {
         tracking: ScoreTracking,
         ignoredIntervals: List<IgnoredSourceInterval>,
         excludedRallyIds: Set<String>,
-    ): ScoreTracking = tracking.copy(serveMarkers = tracking.serveMarkers.filter { marker ->
-        ignoredIntervals.none { marker.timestampMs >= it.startMs && marker.timestampMs < it.endMs } &&
-            (marker.rallyId == null || marker.rallyId !in excludedRallyIds)
-    })
+    ): ScoreTracking = tracking.copy(
+        serveMarkers = tracking.serveMarkers.filter { marker ->
+            ignoredIntervals.none { marker.timestampMs >= it.startMs && marker.timestampMs < it.endMs } &&
+                (marker.rallyId == null || marker.rallyId !in excludedRallyIds)
+        },
+        sideSwitchMarkers = tracking.sideSwitchMarkers.filter { marker ->
+            ignoredIntervals.none { marker.timestampMs >= it.startMs && marker.timestampMs < it.endMs } &&
+                marker.rallyIds.none { it in excludedRallyIds }
+        },
+    )
 
     fun teamForServingSide(side: ServingSide, sideSwitchCount: Int): ScoreTeamId? {
         if (side == ServingSide.REVIEW) return null
@@ -283,9 +329,15 @@ internal object ScoreReducer {
         )
     }
 
-    fun removeSideSwitch(tracking: ScoreTracking, markerId: String): ScoreTracking = tracking.copy(
-        sideSwitchMarkers = tracking.sideSwitchMarkers.filterNot { it.id == markerId },
-    )
+    fun removeSideSwitch(tracking: ScoreTracking, markerId: String): ScoreTracking {
+        val removed = tracking.sideSwitchMarkers.firstOrNull { it.id == markerId }
+        return tracking.copy(
+            sideSwitchMarkers = tracking.sideSwitchMarkers.filterNot { it.id == markerId },
+            removedModelMarkerIds = if (removed?.origin == ServeMarkerOrigin.MODEL) {
+                tracking.removedModelMarkerIds + markerId
+            } else tracking.removedModelMarkerIds,
+        )
+    }
 }
 
 internal data class PreparedScoreOverlay(

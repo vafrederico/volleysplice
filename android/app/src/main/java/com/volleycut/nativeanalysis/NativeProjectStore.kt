@@ -58,13 +58,19 @@ internal data class NativeProject(
         AnalysisTypes.ProductionComponents.empty(),
     val productionServeOutputs: AnalysisTypes.ProductionServeOutputs =
         AnalysisTypes.ProductionServeOutputs.empty(),
+    val productionStateOutputs: AnalysisTypes.ProductionStateOutputs =
+        AnalysisTypes.ProductionStateOutputs.empty(),
     val servingSide: ServingSideOutput? = null,
+    val sideSwitch: SideSwitchOutput? = null,
     val servingSideStatus: ServingSideAnalysisStatus = ServingSideAnalysisStatus.NOT_RUN,
     val servingSideCacheIdentity: ServingSideCacheIdentity? = null,
     val servingSideError: String? = null,
+    val sideSwitchError: String? = null,
+    val sideSwitchEnabled: Boolean = false,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
     val modelId: String = FeatureSchema.MODEL_ID,
     val cacheMode: String = NativeFeatureCache.Mode.USE.wireName(),
+    val analysisMeasurements: List<AnalysisRunMeasurements> = emptyList(),
     val error: String? = null,
     val createdAtMs: Long,
     val updatedAtMs: Long,
@@ -82,8 +88,12 @@ internal data class NativeProject(
             gameEndMs = secondsToMs(analysisWindow.end()),
             productionComponents = productionComponents,
             productionServeOutputs = productionServeOutputs,
+            productionStateOutputs = productionStateOutputs,
             servingSide = servingSide,
             servingSideError = servingSideError,
+            sideSwitch = sideSwitch,
+            sideSwitchError = sideSwitchError,
+            sideSwitchEnabled = sideSwitchEnabled,
             scoreTrackingInitiallyEnabled = servingSideStatus != ServingSideAnalysisStatus.DISABLED,
             suppression = suppression,
         )
@@ -92,7 +102,7 @@ internal data class NativeProject(
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 4
+    private const val VERSION = 7
     private const val TAG = "VolleyCutProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -161,6 +171,44 @@ internal object NativeProjectStore {
         return current.copy(
             servingSideStatus = status,
             servingSideError = error,
+            sideSwitchError = if (current.sideSwitchEnabled) error else null,
+            updatedAtMs = System.currentTimeMillis(),
+        ).also { save(context, it) }
+    }
+
+    @Synchronized
+    fun recordAnalysisMeasurement(
+        context: Context,
+        id: String,
+        measurement: AnalysisRunMeasurements,
+    ): NativeProject? {
+        val current = get(context, id) ?: return null
+        return current.copy(
+            analysisMeasurements = replaceAnalysisMeasurement(
+                current.analysisMeasurements,
+                measurement,
+            ),
+            updatedAtMs = System.currentTimeMillis(),
+        ).also { save(context, it) }
+    }
+
+    @Synchronized
+    fun updateSideSwitchEnabled(
+        context: Context,
+        id: String,
+        enabled: Boolean,
+    ): NativeProject? {
+        val current = get(context, id) ?: return null
+        return current.copy(
+            sideSwitchEnabled = enabled,
+            sideSwitchError = if (enabled) current.sideSwitchError else null,
+            servingSideStatus = when {
+                current.servingSideStatus == ServingSideAnalysisStatus.DISABLED ->
+                    ServingSideAnalysisStatus.DISABLED
+                current.servingSide == null -> current.servingSideStatus
+                enabled && current.sideSwitch == null -> ServingSideAnalysisStatus.NOT_RUN
+                else -> ServingSideAnalysisStatus.READY
+            },
             updatedAtMs = System.currentTimeMillis(),
         ).also { save(context, it) }
     }
@@ -184,19 +232,29 @@ internal object NativeProjectStore {
             },
             productionComponents = result.productionComponents(),
             productionServeOutputs = result.productionServeOutputs(),
+            productionStateOutputs = result.productionStateOutputs(),
             servingSide = result.servingSide(),
+            sideSwitch = result.sideSwitch(),
             servingSideStatus = when {
                 current.servingSideStatus == ServingSideAnalysisStatus.DISABLED ->
                     ServingSideAnalysisStatus.DISABLED
-                result.servingSide() != null -> ServingSideAnalysisStatus.READY
-                result.servingSideError() != null -> ServingSideAnalysisStatus.ERROR
+                result.servingSide() != null &&
+                    (!current.sideSwitchEnabled || result.sideSwitch() != null) ->
+                    ServingSideAnalysisStatus.READY
+                result.servingSideError() != null || result.sideSwitchError() != null ->
+                    ServingSideAnalysisStatus.ERROR
                 else -> ServingSideAnalysisStatus.NOT_RUN
             },
             servingSideCacheIdentity = null,
             servingSideError = result.servingSideError(),
+            sideSwitchError = result.sideSwitchError(),
             suppression = result.suppression(),
             modelId = FeatureSchema.MODEL_ID,
             cacheMode = NativeFeatureCache.Mode.USE.wireName(),
+            analysisMeasurements = replaceAnalysisMeasurement(
+                current.analysisMeasurements,
+                AnalysisRunMeasurements.fromResult(result),
+            ),
             error = null,
             updatedAtMs = System.currentTimeMillis(),
         ).withServingSideCacheIdentity()
@@ -211,13 +269,27 @@ internal object NativeProjectStore {
         context: Context,
         id: String,
         output: ServingSideOutput,
+        sideSwitch: SideSwitchOutput?,
+        productionStateOutputs: AnalysisTypes.ProductionStateOutputs? = null,
+        profile: ScoreSpecialistInference.Profile? = null,
     ): NativeProject? {
         val current = get(context, id) ?: return null
         val completed = current.copy(
             servingSide = output,
-            servingSideStatus = ServingSideAnalysisStatus.READY,
+            sideSwitch = sideSwitch,
+            productionStateOutputs = productionStateOutputs ?: current.productionStateOutputs,
+            servingSideStatus = if (!current.sideSwitchEnabled || sideSwitch != null) {
+                ServingSideAnalysisStatus.READY
+            } else ServingSideAnalysisStatus.NOT_RUN,
             servingSideCacheIdentity = null,
             servingSideError = null,
+            sideSwitchError = null,
+            analysisMeasurements = profile?.let {
+                replaceAnalysisMeasurement(
+                    current.analysisMeasurements,
+                    AnalysisRunMeasurements.fromScoreProfile(it),
+                )
+            } ?: current.analysisMeasurements,
             updatedAtMs = System.currentTimeMillis(),
         ).withServingSideCacheIdentity()
         return completed.also {
@@ -359,6 +431,7 @@ internal object NativeProjectStore {
         roi: AnalysisTypes.Roi,
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
         analyzeServingSide: Boolean = true,
+        sideSwitchEnabled: Boolean = false,
     ): NativeProject {
         val now = System.currentTimeMillis()
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, media.durationSeconds())
@@ -372,6 +445,7 @@ internal object NativeProjectStore {
             servingSideStatus = if (analyzeServingSide) {
                 ServingSideAnalysisStatus.QUEUED
             } else ServingSideAnalysisStatus.DISABLED,
+            sideSwitchEnabled = sideSwitchEnabled,
             createdAtMs = now,
             updatedAtMs = now,
         ).withServingSideCacheIdentity()
@@ -393,6 +467,7 @@ internal object NativeProjectStore {
     fun fromResult(context: Context, result: AnalysisTypes.AnalysisResult): NativeProject {
         val source = source(context, result.source(), result.displayName())
         val now = System.currentTimeMillis()
+        val sideSwitchEnabled = result.sideSwitch() != null || result.sideSwitchError() != null
         return NativeProject(
             id = projectId(source, result.media().durationSeconds()),
             source = source,
@@ -409,13 +484,20 @@ internal object NativeProjectStore {
             },
             productionComponents = result.productionComponents(),
             productionServeOutputs = result.productionServeOutputs(),
+            productionStateOutputs = result.productionStateOutputs(),
             servingSide = result.servingSide(),
+            sideSwitch = result.sideSwitch(),
+            sideSwitchEnabled = sideSwitchEnabled,
             servingSideStatus = when {
-                result.servingSide() != null -> ServingSideAnalysisStatus.READY
-                result.servingSideError() != null -> ServingSideAnalysisStatus.ERROR
+                result.servingSide() != null &&
+                    (!sideSwitchEnabled || result.sideSwitch() != null) ->
+                    ServingSideAnalysisStatus.READY
+                result.servingSideError() != null || result.sideSwitchError() != null ->
+                    ServingSideAnalysisStatus.ERROR
                 else -> ServingSideAnalysisStatus.NOT_RUN
             },
             servingSideError = result.servingSideError(),
+            sideSwitchError = result.sideSwitchError(),
             suppression = result.suppression(),
             createdAtMs = now,
             updatedAtMs = now,
@@ -450,14 +532,21 @@ internal object NativeProjectStore {
             ranges = seed.ranges,
             productionComponents = seed.productionComponents,
             productionServeOutputs = seed.productionServeOutputs,
+            productionStateOutputs = seed.productionStateOutputs,
             servingSide = seed.servingSide,
+            sideSwitch = seed.sideSwitch,
+            sideSwitchEnabled = seed.sideSwitchEnabled,
             servingSideStatus = when {
                 !seed.scoreTrackingInitiallyEnabled -> ServingSideAnalysisStatus.DISABLED
-                seed.servingSide != null -> ServingSideAnalysisStatus.READY
-                seed.servingSideError != null -> ServingSideAnalysisStatus.ERROR
+                seed.servingSide != null &&
+                    (!seed.sideSwitchEnabled || seed.sideSwitch != null) ->
+                    ServingSideAnalysisStatus.READY
+                seed.servingSideError != null || seed.sideSwitchError != null ->
+                    ServingSideAnalysisStatus.ERROR
                 else -> ServingSideAnalysisStatus.NOT_RUN
             },
             servingSideError = seed.servingSideError,
+            sideSwitchError = seed.sideSwitchError,
             suppression = seed.suppression,
             createdAtMs = now,
             updatedAtMs = now,
@@ -530,6 +619,7 @@ internal object NativeProjectStore {
         put("status", project.status.wireName)
         put("modelId", project.modelId)
         put("cacheMode", project.cacheMode)
+        put("analysisMeasurements", AnalysisMeasurementsJson.encode(project.analysisMeasurements))
         put("error", project.error ?: JSONObject.NULL)
         put("createdAtMs", project.createdAtMs)
         put("updatedAtMs", project.updatedAtMs)
@@ -543,11 +633,15 @@ internal object NativeProjectStore {
         })
         put("productionComponents", encodeProductionComponents(project.productionComponents))
         put("productionServeOutputs", ServingSideJson.encodeServeOutputs(project.productionServeOutputs))
+        put("productionStateOutputs", SideSwitchJson.encodeStateOutputs(project.productionStateOutputs))
         put("servingSide", project.servingSide?.let(ServingSideJson::encodeOutput) ?: JSONObject.NULL)
+        put("sideSwitch", project.sideSwitch?.let(SideSwitchJson::encodeOutput) ?: JSONObject.NULL)
         put("servingSideStatus", project.servingSideStatus.wireName)
         put("servingSideCacheIdentity", project.servingSideCacheIdentity?.let(::encodeServingSideCacheIdentity)
             ?: JSONObject.NULL)
         put("servingSideError", project.servingSideError ?: JSONObject.NULL)
+        put("sideSwitchError", project.sideSwitchError ?: JSONObject.NULL)
+        put("sideSwitchEnabled", project.sideSwitchEnabled)
         put("suppression", project.suppression?.let(::encodeSuppression) ?: JSONObject.NULL)
     }
 
@@ -611,7 +705,11 @@ internal object NativeProjectStore {
             productionServeOutputs = json.optJSONObject("productionServeOutputs")?.let {
                 ServingSideJson.decodeServeOutputs(it)
             } ?: AnalysisTypes.ProductionServeOutputs.empty(),
+            productionStateOutputs = json.optJSONObject("productionStateOutputs")?.let {
+                SideSwitchJson.decodeStateOutputs(it)
+            } ?: AnalysisTypes.ProductionStateOutputs.empty(),
             servingSide = json.optJSONObject("servingSide")?.let(ServingSideJson::decodeOutput),
+            sideSwitch = json.optJSONObject("sideSwitch")?.let(SideSwitchJson::decodeOutput),
             servingSideStatus = if (json.has("servingSideStatus")) {
                 ServingSideAnalysisStatus.fromWireName(json.optString("servingSideStatus"))
                     ?: return null
@@ -624,9 +722,17 @@ internal object NativeProjectStore {
                 ?.let(::decodeServingSideCacheIdentity),
             servingSideError = if (json.isNull("servingSideError")) null
                 else json.optString("servingSideError").takeIf(String::isNotBlank),
+            sideSwitchError = if (json.isNull("sideSwitchError")) null
+                else json.optString("sideSwitchError").takeIf(String::isNotBlank),
+            sideSwitchEnabled = if (json.has("sideSwitchEnabled")) {
+                json.getBoolean("sideSwitchEnabled")
+            } else json.optJSONObject("sideSwitch") != null,
             suppression = json.optJSONObject("suppression")?.let(::decodeSuppression),
             modelId = json.optString("modelId"),
             cacheMode = json.optString("cacheMode", NativeFeatureCache.Mode.USE.wireName()),
+            analysisMeasurements = AnalysisMeasurementsJson.decode(
+                json.optJSONArray("analysisMeasurements"),
+            ),
             error = if (json.isNull("error")) null else json.optString("error"),
             createdAtMs = json.getLong("createdAtMs"),
             updatedAtMs = json.getLong("updatedAtMs"),
@@ -671,17 +777,25 @@ internal object NativeProjectStore {
                     normalized.servingSideCacheIdentity, normalized, normalized.servingSide,
                 )
             ) {
-                normalized.copy(servingSideStatus = ServingSideAnalysisStatus.READY)
+                normalized.copy(servingSideStatus = if (
+                    !normalized.sideSwitchEnabled || normalized.sideSwitch != null
+                ) ServingSideAnalysisStatus.READY else ServingSideAnalysisStatus.NOT_RUN)
             } else normalized.copy(
                 servingSide = null,
+                sideSwitch = null,
                 servingSideStatus = ServingSideAnalysisStatus.NOT_RUN,
                 servingSideCacheIdentity = null,
                 servingSideError = "Serving-side cache identity changed; rerun analysis to restore it.",
+                sideSwitchError = if (normalized.sideSwitchEnabled) {
+                    "Team-switch cache identity changed; rerun analysis to restore it."
+                } else null,
             )
         }
         return normalized.copy(
             status = ProjectStatus.QUEUED,
             ranges = emptyList(),
+            servingSide = null,
+            sideSwitch = null,
             servingSideStatus = if (normalized.servingSideStatus == ServingSideAnalysisStatus.DISABLED) {
                 ServingSideAnalysisStatus.DISABLED
             } else ServingSideAnalysisStatus.QUEUED,

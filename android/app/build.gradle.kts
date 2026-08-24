@@ -94,8 +94,27 @@ val verifyServingSideAsset by tasks.registering {
     }
 }
 
+val verifySideSwitchAsset by tasks.registering {
+    val asset = layout.projectDirectory.file(
+        "src/main/assets/side-switch-c2570481c30d.json",
+    )
+    inputs.file(asset)
+    doLast {
+        val expected = "ab4197545fb916a37ee6ac1d69e74ddfc0123c09039cdfa88c4ef378dd3e27fc"
+        val canonical = asset.asFile.readText(Charsets.UTF_8)
+            .replace("\r\n", "\n")
+            .toByteArray(Charsets.UTF_8)
+        val actual = MessageDigest.getInstance("SHA-256")
+            .digest(canonical)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        check(actual == expected) {
+            "Frozen team-switch asset hash mismatch: expected $expected, got $actual"
+        }
+    }
+}
+
 tasks.named("preBuild").configure {
-    dependsOn(verifySuppressionAsset, verifyServingSideAsset)
+    dependsOn(verifySuppressionAsset, verifyServingSideAsset, verifySideSwitchAsset)
 }
 
 dependencies {

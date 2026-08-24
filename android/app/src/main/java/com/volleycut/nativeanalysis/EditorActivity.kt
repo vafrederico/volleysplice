@@ -230,8 +230,11 @@ private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorS
     },
     productionComponents = result.productionComponents(),
     productionServeOutputs = result.productionServeOutputs(),
+    productionStateOutputs = result.productionStateOutputs(),
     servingSide = result.servingSide(),
     servingSideError = result.servingSideError(),
+    sideSwitch = result.sideSwitch(),
+    sideSwitchError = result.sideSwitchError(),
     suppression = result.suppression(),
 )
 
@@ -317,6 +320,7 @@ private data class InferenceUiState(
     val stage: String = "",
     val detail: String = "",
     val performance: AnalysisTypes.PerformanceStats? = null,
+    val stepMeasurements: List<InferenceStepMeasurement> = emptyList(),
     val error: String? = null,
 )
 
@@ -373,6 +377,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var inference by remember { mutableStateOf(InferenceUiState()) }
     var useCache by remember { mutableStateOf(true) }
     var analyzeServingSide by remember { mutableStateOf(true) }
+    var generateSideSwitchMarkers by remember { mutableStateOf(false) }
     var cacheBytes by remember { mutableLongStateOf(NativeFeatureCache.totalBytes(context)) }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
@@ -582,13 +587,20 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     selected.roi,
                     analysisWindow,
                     analyzeServingSide,
+                    generateSideSwitchMarkers,
                 )
                 val existing = NativeProjectStore.findMatching(context, candidate)
                 val reusable = useCache && existing?.status == ProjectStatus.READY &&
                     existing.modelId == FeatureSchema.MODEL_ID
                 if (reusable) {
-                    var opened = checkNotNull(existing)
-                    if (opened.servingSide == null) {
+                    var opened = NativeProjectStore.updateSideSwitchEnabled(
+                        context,
+                        checkNotNull(existing).id,
+                        generateSideSwitchMarkers,
+                    ) ?: existing
+                    val missingRequestedScoreOutput = opened.servingSide == null ||
+                        (opened.sideSwitchEnabled && opened.sideSwitch == null)
+                    if (missingRequestedScoreOutput) {
                         opened = NativeProjectStore.updateServingSideStatus(
                             context,
                             opened.id,
@@ -725,6 +737,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         ProjectAnalysisService.EXTRA_SERVING_SIDE_JOB,
                         false,
                     )
+                    val stepMeasurements = InferenceStepMeasurementsJson.decode(
+                        intent.getStringExtra(ProjectAnalysisService.EXTRA_STAGE_MEASUREMENTS),
+                    )
                     inference = inference.copy(
                         projectId = projectId,
                         servingSideJob = servingSideJob,
@@ -735,6 +750,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                             .coerceIn(0.0, 1.0).toFloat(),
                         stage = stage,
                         detail = intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL).orEmpty(),
+                        stepMeasurements = stepMeasurements.ifEmpty {
+                            inference.stepMeasurements
+                        },
                         error = if (status == ProjectStatus.ERROR || stage == "serving-side-failed") {
                             intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL)
                         } else null,
@@ -838,6 +856,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 gameEndMs = 0
                 inference = InferenceUiState(detail = "Choose a recording for the new project")
                 analyzeServingSide = true
+                generateSideSwitchMarkers = false
                 relinkMessage = null
                 relinkFailed = false
             },
@@ -866,6 +885,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 state = inference,
                 useCache = useCache,
                 analyzeServingSide = analyzeServingSide,
+                generateSideSwitchMarkers = generateSideSwitchMarkers,
                 cacheBytes = cacheBytes,
                 queueCount = queueCount,
                 gameStartMs = gameStartMs,
@@ -890,6 +910,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 },
                 onUseCache = { useCache = it },
                 onAnalyzeServingSide = { analyzeServingSide = it },
+                onGenerateSideSwitchMarkers = { generateSideSwitchMarkers = it },
                 onClearCache = {
                     NativeFeatureCache.clearAll(context)
                     cacheBytes = 0
@@ -932,6 +953,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     ProjectAnalysisService.enqueue(context, queued.id)
                 },
             )
+            if (selectedProject.analysisMeasurements.isNotEmpty()) {
+                AnalysisMeasurementsCard(selectedProject.analysisMeasurements)
+            }
         }
     } else {
         val currentSeed = checkNotNull(selectedProject.editorSeed())
@@ -954,6 +978,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 servingSideProgressDetail = inference.takeIf {
                     it.projectId == selectedProject.id && it.servingSideJob
                 }?.detail,
+                servingSideStepMeasurements = inference.takeIf {
+                    it.projectId == selectedProject.id && it.servingSideJob
+                }?.stepMeasurements.orEmpty(),
                 sourceAvailable = sourceAvailable,
                 relinkingSource = relinkingSource,
                 relinkMessage = relinkMessage,
@@ -1111,16 +1138,22 @@ private fun ProjectInferenceCard(
             color = Muted,
         )
         if (project.status == ProjectStatus.ANALYZING || state.progress > 0f) {
-            LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+            if (state.stepMeasurements.isEmpty()) {
+                LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+            }
         }
         val detail = state.detail.ifBlank { project.error.orEmpty() }
-        if (state.stage.isNotBlank() || detail.isNotBlank()) Text(
+        if (state.stepMeasurements.isEmpty() &&
+            (state.stage.isNotBlank() || detail.isNotBlank())
+        ) Text(
             "${state.stage.ifBlank { project.status.wireName }.uppercase(Locale.US)} · $detail",
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
             color = if (project.status == ProjectStatus.ERROR) Danger else Ink,
         )
-        state.performance?.let { stats ->
+        state.performance?.takeIf {
+            state.stepMeasurements.isEmpty() && state.stage == "video"
+        }?.let { stats ->
             Text(
                 String.format(
                     Locale.US,
@@ -1136,6 +1169,12 @@ private fun ProjectInferenceCard(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
                 color = Muted,
+            )
+        }
+        if (state.stepMeasurements.isNotEmpty()) {
+            InferenceProgressMeasurementsPanel(
+                steps = state.stepMeasurements,
+                performance = state.performance,
             )
         }
         Text(
@@ -1162,12 +1201,261 @@ private fun ProjectInferenceCard(
 }
 
 @Composable
+private fun InferenceProgressMeasurementsPanel(
+    steps: List<InferenceStepMeasurement>,
+    performance: AnalysisTypes.PerformanceStats? = null,
+    compact: Boolean = false,
+) {
+    if (steps.isEmpty()) return
+    Surface(
+        modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(8.dp)),
+        color = Paper,
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(if (compact) 8.dp else 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
+        ) {
+            steps.forEachIndexed { index, step ->
+                val percent = (step.fraction * 100).roundToInt()
+                val elapsedSeconds = step.elapsedMilliseconds / 1_000.0
+                val etaSeconds = if (
+                    step.status == InferenceStepStatus.RUNNING &&
+                    step.fraction >= .03 && elapsedSeconds >= .5
+                ) elapsedSeconds * (1.0 - step.fraction) / step.fraction else null
+                val measuredRate = when {
+                    step.id == "video" && performance != null && performance.realtimeRatio() > 0.0 ->
+                        String.format(Locale.US, "%.2fx realtime", performance.realtimeRatio())
+                    step.status == InferenceStepStatus.RUNNING && elapsedSeconds >= .5 && step.fraction > 0.0 ->
+                        String.format(Locale.US, "%.1f%%/s", step.fraction * 100.0 / elapsedSeconds)
+                    step.status == InferenceStepStatus.COMPLETE -> "Completed"
+                    step.status == InferenceStepStatus.ERROR -> "Stopped"
+                    step.status == InferenceStepStatus.PENDING -> "Waiting"
+                    else -> "Measuring…"
+                }
+                val metrics = when (step.status) {
+                    InferenceStepStatus.RUNNING ->
+                        "$percent% · $measuredRate · ${measurementDuration(step.elapsedMilliseconds)} elapsed · " +
+                            if (etaSeconds != null) "ETA ${secondsLabel(etaSeconds)}" else "estimating ETA"
+                    InferenceStepStatus.COMPLETE -> buildList {
+                        add("${measurementDuration(step.elapsedMilliseconds)} elapsed")
+                        if (measuredRate != "Completed") add(measuredRate)
+                    }.joinToString(" · ")
+                    InferenceStepStatus.ERROR ->
+                        "Stopped after ${measurementDuration(step.elapsedMilliseconds)}"
+                    InferenceStepStatus.PENDING -> null
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            (index + 1).toString().padStart(2, '0'),
+                            color = Muted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                        )
+                        Text(
+                            step.label,
+                            Modifier.weight(1f).padding(horizontal = 8.dp),
+                            fontSize = if (compact) 11.sp else 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            when (step.status) {
+                                InferenceStepStatus.PENDING -> "QUEUED"
+                                InferenceStepStatus.RUNNING -> "RUNNING"
+                                InferenceStepStatus.COMPLETE -> "DONE"
+                                InferenceStepStatus.ERROR -> "ERROR"
+                            },
+                            color = when (step.status) {
+                                InferenceStepStatus.RUNNING -> Orange
+                                InferenceStepStatus.COMPLETE -> Green
+                                InferenceStepStatus.ERROR -> Danger
+                                InferenceStepStatus.PENDING -> Muted
+                            },
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    LinearProgressIndicator(
+                        progress = { step.fraction.toFloat() },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    metrics?.let {
+                        Text(
+                            it,
+                            color = Muted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                        )
+                    }
+                    if (step.status == InferenceStepStatus.RUNNING ||
+                        step.status == InferenceStepStatus.ERROR
+                    ) {
+                        Text(step.detail, color = Muted, fontSize = 9.sp, maxLines = 2)
+                    }
+                }
+                if (index < steps.lastIndex) HorizontalDivider(color = Rail)
+            }
+            Text(
+                "Total elapsed · ${measurementDuration(steps.sumOf { it.elapsedMilliseconds })}",
+                color = Muted,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnalysisMeasurementsCard(runs: List<AnalysisRunMeasurements>) {
+    var expandedRun by remember(runs) { mutableStateOf<String?>(null) }
+    SectionCard(
+        "ANALYSIS MEASUREMENTS",
+        if (runs.isEmpty()) "Stored with this project after inference"
+        else "${runs.size} saved ${if (runs.size == 1) "run" else "runs"} · persisted in project information",
+    ) {
+        if (runs.isEmpty()) {
+            Text(
+                "This project predates saved measurements. The next full or score-tracking inference run will populate this card.",
+                color = Muted,
+                fontSize = 12.sp,
+            )
+            return@SectionCard
+        }
+        runs.forEachIndexed { runIndex, run ->
+            val runKey = "${run.kind.wireName}-${run.completedAtMs}"
+            val stages = run.stageMilliseconds.filter { (key, value) ->
+                value > 0.0 && !(key == "inference" && "rally_inference" in run.stageMilliseconds)
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(6.dp)),
+                color = Paper,
+                shape = RoundedCornerShape(6.dp),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(run.kind.label, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (run.succeeded) "COMPLETED" else "STOPPED · ${run.error.orEmpty()}",
+                                color = if (run.succeeded) Green else Danger,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                maxLines = 2,
+                            )
+                        }
+                        Text(
+                            measurementDuration(run.totalMilliseconds),
+                            color = Ink,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    stages.forEach { (key, milliseconds) ->
+                        MeasurementRow(measurementLabel(key), milliseconds)
+                    }
+                    measurementCounterSummary(run.counters)?.let { summary ->
+                        Text(summary, color = Muted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                    }
+                    if (run.profileMilliseconds.isNotEmpty()) {
+                        TextButton(onClick = {
+                            expandedRun = if (expandedRun == runKey) null else runKey
+                        }) {
+                            Text(
+                                if (expandedRun == runKey) "Hide detailed feature timings"
+                                else "Show ${run.profileMilliseconds.size} detailed feature timings",
+                            )
+                        }
+                        if (expandedRun == runKey) {
+                            Text(
+                                "Profiler measurements can overlap because parent and child operations are both retained.",
+                                color = Muted,
+                                fontSize = 10.sp,
+                            )
+                            run.profileMilliseconds.forEach { (key, milliseconds) ->
+                                MeasurementRow(measurementLabel(key), milliseconds, compact = true)
+                            }
+                        }
+                    }
+                }
+            }
+            if (runIndex < runs.lastIndex) Spacer(Modifier.height(2.dp))
+        }
+    }
+}
+
+@Composable
+private fun MeasurementRow(label: String, milliseconds: Double, compact: Boolean = false) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            Modifier.weight(1f),
+            color = if (compact) Muted else Ink,
+            fontSize = if (compact) 10.sp else 12.sp,
+        )
+        Text(
+            measurementDuration(milliseconds),
+            color = Muted,
+            fontFamily = FontFamily.Monospace,
+            fontSize = if (compact) 10.sp else 12.sp,
+        )
+    }
+}
+
+private fun measurementDuration(milliseconds: Double): String = when {
+    !milliseconds.isFinite() || milliseconds < 0.0 -> "—"
+    milliseconds < 1.0 -> String.format(Locale.US, "%.2f ms", milliseconds)
+    milliseconds < 1_000.0 -> String.format(Locale.US, "%.0f ms", milliseconds)
+    else -> compactTime(milliseconds.roundToLong())
+}
+
+private fun measurementLabel(key: String): String = when (key) {
+    "open" -> "Open recording and cache"
+    "video", "video_decode_and_features" -> "Video feature generation"
+    "audio", "audio_decode_and_features" -> "Audio feature generation"
+    "contextualize" -> "Context and percentile features"
+    "rally", "rally_inference" -> "Rally model inference"
+    "score_specialists" -> "Score-tracking specialists"
+    "score_planning" -> "Score request planning"
+    "score_frame_decode" -> "Shared score-frame decoding"
+    "serving-side", "serving_side" -> "Serving-side features and model"
+    "side-switch", "side_switch" -> "Team-switch features and model"
+    else -> key.split('/').joinToString(" · ") { segment ->
+        segment.replace('_', ' ').replaceFirstChar { character ->
+            character.titlecase(Locale.US)
+        }
+    }
+}
+
+private fun measurementCounterSummary(counters: Map<String, Long>): String? {
+    val parts = buildList {
+        counters["sample_rows"]?.let { add(String.format(Locale.US, "%,d feature rows", it)) }
+        counters["decoded_video_frames"]?.let {
+            add(String.format(Locale.US, "%,d decoded video frames", it))
+        }
+        counters["shared_requested_frames"]?.let {
+            add(String.format(Locale.US, "%,d requested score frames", it))
+        }
+        counters["score_decoder_output_frames"]?.let {
+            add(String.format(Locale.US, "%,d score decoder outputs", it))
+        }
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
+@Composable
 private fun NewProjectCard(
     selected: SourceSelection?,
     preparing: Boolean,
     state: InferenceUiState,
     useCache: Boolean,
     analyzeServingSide: Boolean,
+    generateSideSwitchMarkers: Boolean,
     cacheBytes: Long,
     queueCount: Int,
     gameStartMs: Long,
@@ -1180,6 +1468,7 @@ private fun NewProjectCard(
     onFullVideo: () -> Unit,
     onUseCache: (Boolean) -> Unit,
     onAnalyzeServingSide: (Boolean) -> Unit,
+    onGenerateSideSwitchMarkers: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onBenchmark: (() -> Unit)?,
     guidedTourTargets: GuidedTourTargets? = null,
@@ -1243,7 +1532,9 @@ private fun NewProjectCard(
                 Text("Prepare score tracking", fontWeight = FontWeight.SemiBold)
                 Text(
                     if (analyzeServingSide) {
-                        "Generate serving-side features and predictions during project creation"
+                        if (generateSideSwitchMarkers) {
+                            "Generate serve-side and team-switch predictions during project creation"
+                        } else "Generate serve-side predictions during project creation"
                     } else {
                         "Create faster; enabling score tracking later will run this analysis"
                     },
@@ -1256,6 +1547,35 @@ private fun NewProjectCard(
                 checked = analyzeServingSide,
                 onCheckedChange = onAnalyzeServingSide,
             )
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Rail, RoundedCornerShape(4.dp))
+                .clickable(enabled = !preparing && analyzeServingSide) {
+                    onGenerateSideSwitchMarkers(!generateSideSwitchMarkers)
+                },
+            color = Color.White,
+            shape = RoundedCornerShape(4.dp),
+        ) {
+            Row(
+                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Checkbox(
+                    enabled = !preparing && analyzeServingSide,
+                    checked = generateSideSwitchMarkers,
+                    onCheckedChange = onGenerateSideSwitchMarkers,
+                )
+                Column(Modifier.padding(top = 4.dp)) {
+                    Text("Generate team side-switch markers", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Enable this only for formats where teams change court sides during the recording.",
+                        fontSize = 12.sp,
+                        color = Muted,
+                    )
+                }
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -1500,6 +1820,7 @@ private fun EditorScreen(
     analysisRunning: Boolean,
     servingSideProgress: Float?,
     servingSideProgressDetail: String?,
+    servingSideStepMeasurements: List<InferenceStepMeasurement>,
     sourceAvailable: Boolean?,
     relinkingSource: Boolean,
     relinkMessage: String?,
@@ -1619,9 +1940,17 @@ private fun EditorScreen(
             .copy(updatedAtMs = System.currentTimeMillis())
     }
 
-    LaunchedEffect(project.servingSideCacheIdentity) {
-        val output = project.servingSide ?: return@LaunchedEffect
-        val seeded = ScoreReducer.seedModelMarkers(draft.scoreTracking, output)
+    LaunchedEffect(
+        project.servingSideCacheIdentity,
+        project.sideSwitch?.modelFingerprint,
+        project.sideSwitchEnabled,
+    ) {
+        val seeded = ScoreReducer.seedModelMarkers(
+            draft.scoreTracking,
+            project.servingSide,
+            project.sideSwitch,
+            project.sideSwitchEnabled,
+        )
         if (seeded != draft.scoreTracking) updateDraft { it.copy(scoreTracking = seeded) }
     }
 
@@ -2126,18 +2455,22 @@ private fun EditorScreen(
                     servingSideError = project.servingSideError,
                     servingSideProgress = servingSideProgress,
                     servingSideProgressDetail = servingSideProgressDetail,
+                    servingSideStepMeasurements = servingSideStepMeasurements,
+                    sideSwitchEnabled = project.sideSwitchEnabled,
                     modifier = Modifier.guidedTourTarget("editor-score-panel", guidedTourTargets),
                     toggleModifier = Modifier.guidedTourTarget("editor-score-toggle", guidedTourTargets),
                     onEnabledChange = { enabled ->
                         updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(enabled = enabled)) }
-                        if (enabled && project.servingSide == null &&
+                        val missingRequestedScoreOutput = project.servingSide == null ||
+                            (project.sideSwitchEnabled && project.sideSwitch == null)
+                        if (enabled && missingRequestedScoreOutput &&
                             project.servingSideStatus != ServingSideAnalysisStatus.QUEUED &&
                             project.servingSideStatus != ServingSideAnalysisStatus.ANALYZING
                         ) {
                             if (sourceAvailable == false) {
                                 message = "Re-link the source video to prepare score tracking"
                             } else {
-                                message = "Queued serving-side feature generation"
+                                message = "Queued score-tracking feature generation"
                                 scope.launch {
                                     val queued = withContext(Dispatchers.IO) {
                                         NativeProjectStore.updateServingSideStatus(
@@ -2693,6 +3026,8 @@ private fun EditorScreen(
                 )
             }
 
+            AnalysisMeasurementsCard(project.analysisMeasurements)
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { confirmReset = true }) { Text("Reset editor") }
                 if (BuildConfig.DEBUG) {
@@ -2727,6 +3062,8 @@ internal fun ScoreTrackingPanel(
     servingSideError: String?,
     servingSideProgress: Float?,
     servingSideProgressDetail: String?,
+    servingSideStepMeasurements: List<InferenceStepMeasurement> = emptyList(),
+    sideSwitchEnabled: Boolean = true,
     onEnabledChange: (Boolean) -> Unit,
     onTracking: (ScoreTracking) -> Unit,
     onSelect: (String, Long) -> Unit,
@@ -2762,7 +3099,7 @@ internal fun ScoreTrackingPanel(
                         fontWeight = FontWeight.Black,
                         letterSpacing = .8.sp,
                     )
-                    Text("Serving-side point history", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Serve and team-side history", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
                 Switch(
                     checked = enabled,
@@ -2772,7 +3109,7 @@ internal fun ScoreTrackingPanel(
             }
             if (!enabled) {
                 Text(
-                    "Use serving-side markers to track points. This choice is saved with the project.",
+                    "Use inferred serve and team-switch markers to track points. This choice is saved with the project.",
                     color = Muted,
                     fontSize = 12.sp,
                 )
@@ -2873,36 +3210,44 @@ internal fun ScoreTrackingPanel(
                     shape = RoundedCornerShape(4.dp),
                 ) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(
-                            when (servingSideStatus) {
-                                ServingSideAnalysisStatus.QUEUED -> "SCORE TRACKING QUEUED"
-                                ServingSideAnalysisStatus.ANALYZING -> "GENERATING SERVING-SIDE FEATURES"
-                                ServingSideAnalysisStatus.READY -> "SERVE MARKERS READY"
-                                ServingSideAnalysisStatus.ERROR -> "SERVING-SIDE ANALYSIS NEEDS ATTENTION"
-                                ServingSideAnalysisStatus.DISABLED,
-                                ServingSideAnalysisStatus.NOT_RUN -> "SERVE MARKERS NOT PREPARED"
-                            },
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            when {
-                                servingSideBusy && !servingSideProgressDetail.isNullOrBlank() ->
-                                    servingSideProgressDetail
-                                servingSideBusy -> "This can take a while. You can keep editing while it runs."
-                                servingSideFailed -> servingSideError ?: "Serving-side analysis failed. Disable and re-enable score tracking to retry."
-                                servingSideStatus == ServingSideAnalysisStatus.READY && reviewCount > 0 ->
-                                    "$reviewCount model ${if (reviewCount == 1) "verdict needs" else "verdicts need"} review."
-                                servingSideStatus == ServingSideAnalysisStatus.READY ->
-                                    "Serving-side predictions are ready to edit."
-                                else -> "Enable score tracking to generate serving-side features and predictions."
-                            },
-                            color = Muted,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                        )
-                        if (servingSideBusy) {
+                        if (!servingSideBusy || servingSideStepMeasurements.isEmpty()) {
+                            Text(
+                                when (servingSideStatus) {
+                                    ServingSideAnalysisStatus.QUEUED -> "SCORE TRACKING QUEUED"
+                                    ServingSideAnalysisStatus.ANALYZING -> "GENERATING SCORE-TRACKING FEATURES"
+                                    ServingSideAnalysisStatus.READY -> if (sideSwitchEnabled) {
+                                        "SERVE + SWITCH MARKERS READY"
+                                    } else "SERVE MARKERS READY"
+                                    ServingSideAnalysisStatus.ERROR -> "SCORE-TRACKING ANALYSIS NEEDS ATTENTION"
+                                    ServingSideAnalysisStatus.DISABLED,
+                                    ServingSideAnalysisStatus.NOT_RUN -> "SCORE MARKERS NOT PREPARED"
+                                },
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                when {
+                                    servingSideBusy && !servingSideProgressDetail.isNullOrBlank() ->
+                                        servingSideProgressDetail
+                                    servingSideBusy -> "This can take a while. You can keep editing while it runs."
+                                    servingSideFailed -> servingSideError ?: "Score-tracking analysis failed. Disable and re-enable score tracking to retry."
+                                    servingSideStatus == ServingSideAnalysisStatus.READY && reviewCount > 0 ->
+                                        "$reviewCount model ${if (reviewCount == 1) "verdict needs" else "verdicts need"} review."
+                                    servingSideStatus == ServingSideAnalysisStatus.READY ->
+                                        if (sideSwitchEnabled) {
+                                            "Serve-side and team-switch predictions are ready to edit."
+                                        } else "Serve-side predictions are ready; automatic team switches are off."
+                                    else -> if (sideSwitchEnabled) {
+                                        "Enable score tracking to generate serve-side and team-switch predictions."
+                                    } else "Enable score tracking to generate serve-side predictions."
+                                },
+                                color = Muted,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                            )
+                        }
+                        if (servingSideBusy && servingSideStepMeasurements.isEmpty()) {
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2919,6 +3264,12 @@ internal fun ScoreTrackingPanel(
                                     fontSize = 10.sp,
                                 )
                             }
+                        }
+                        if (servingSideStepMeasurements.isNotEmpty()) {
+                            InferenceProgressMeasurementsPanel(
+                                steps = servingSideStepMeasurements,
+                                compact = true,
+                            )
                         }
                         if (reviewPending) {
                             OutlinedButton(

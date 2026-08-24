@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 
 /** Stores only enough metadata to reopen the most recent editor after process death. */
 internal object EditorProjectStore {
-    private const val VERSION = 3
+    private const val VERSION = 5
     private const val TAG = "VolleyCutEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
@@ -42,8 +42,12 @@ internal object EditorProjectStore {
                     }
                 })
                 put("productionServeOutputs", ServingSideJson.encodeServeOutputs(seed.productionServeOutputs))
+                put("productionStateOutputs", SideSwitchJson.encodeStateOutputs(seed.productionStateOutputs))
                 put("servingSide", seed.servingSide?.let(ServingSideJson::encodeOutput) ?: JSONObject.NULL)
                 put("servingSideError", seed.servingSideError ?: JSONObject.NULL)
+                put("sideSwitch", seed.sideSwitch?.let(SideSwitchJson::encodeOutput) ?: JSONObject.NULL)
+                put("sideSwitchError", seed.sideSwitchError ?: JSONObject.NULL)
+                put("sideSwitchEnabled", seed.sideSwitchEnabled)
                 put("scoreTrackingInitiallyEnabled", seed.scoreTrackingInitiallyEnabled)
             }.toString())
             try {
@@ -90,9 +94,18 @@ internal object EditorProjectStore {
             productionServeOutputs = json.optJSONObject("productionServeOutputs")?.let {
                 ServingSideJson.decodeServeOutputs(it)
             } ?: AnalysisTypes.ProductionServeOutputs.empty(),
+            productionStateOutputs = json.optJSONObject("productionStateOutputs")?.let {
+                SideSwitchJson.decodeStateOutputs(it)
+            } ?: AnalysisTypes.ProductionStateOutputs.empty(),
             servingSide = json.optJSONObject("servingSide")?.let(ServingSideJson::decodeOutput),
             servingSideError = if (json.isNull("servingSideError")) null
                 else json.optString("servingSideError").takeIf(String::isNotBlank),
+            sideSwitch = json.optJSONObject("sideSwitch")?.let(SideSwitchJson::decodeOutput),
+            sideSwitchError = if (json.isNull("sideSwitchError")) null
+                else json.optString("sideSwitchError").takeIf(String::isNotBlank),
+            sideSwitchEnabled = if (json.has("sideSwitchEnabled")) {
+                json.getBoolean("sideSwitchEnabled")
+            } else json.optJSONObject("sideSwitch") != null,
             scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", true),
         ).takeIf { seed ->
             seed.durationMs > 0 && seed.sourceUri.isNotBlank() &&

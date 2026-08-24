@@ -27,9 +27,13 @@ import kotlin.math.ceil
 internal fun servingSideOverallProgress(stage: String, fraction: Double): Double {
     val bounded = fraction.coerceIn(0.0, 1.0)
     return when (stage) {
+        "score-specialists" -> 0.01
+        "specialist-frames" -> 0.02 + bounded * 0.63
+        "serving-side-features" -> 0.65 + bounded * 0.12
+        "serving-side" -> 0.77
+        "side-switch-features" -> 0.77 + bounded * 0.22
+        "side-switch" -> if (bounded >= 1.0) 1.0 else 0.77
         "serving-side-frames" -> 0.02 + bounded * 0.80
-        "serving-side-features" -> 0.82 + bounded * 0.17
-        "serving-side" -> if (bounded >= 1.0) 1.0 else 0.01
         else -> bounded
     }
 }
@@ -48,7 +52,9 @@ internal fun projectCreationOverallProgress(
             "audio" -> 0.42 + 0.16 * bounded
             "normalizing" -> 0.58 + 0.06 * bounded
             "inference" -> 0.64 + 0.06 * bounded
-            "serving-side", "serving-side-frames", "serving-side-features" ->
+            "score-specialists", "specialist-frames", "serving-side",
+            "serving-side-frames", "serving-side-features",
+            "side-switch", "side-switch-features" ->
                 0.70 + 0.30 * servingSideOverallProgress(stage, bounded)
             else -> bounded
         }
@@ -59,7 +65,8 @@ internal fun projectCreationOverallProgress(
         "audio" -> 0.65 + 0.19 * bounded
         "normalizing" -> 0.84 + 0.07 * bounded
         "inference" -> 0.91 + 0.08 * bounded
-        "serving-side" -> 0.99
+        "serving-side", "side-switch", "score-specialists", "specialist-frames",
+        "serving-side-features", "side-switch-features" -> 0.99
         else -> bounded
     }
 }
@@ -109,6 +116,29 @@ internal class NotificationStageSpeedTracker(
     }
 }
 
+internal class CallbackEmissionThrottle(
+    private val minimumIntervalNanos: Long = 500_000_000L,
+    private val nanoTime: () -> Long = System::nanoTime,
+) {
+    private var lastKey: String? = null
+    private var lastProgress = Double.NaN
+    private var lastEmissionNanos: Long? = null
+
+    fun shouldEmit(key: String, progress: Double): Boolean {
+        val bounded = progress.coerceIn(0.0, 1.0)
+        val now = nanoTime()
+        val stageChanged = key != lastKey
+        val reachedCompletion = bounded >= 1.0 &&
+            (stageChanged || !lastProgress.isFinite() || lastProgress < 1.0)
+        val intervalElapsed = lastEmissionNanos?.let { now - it >= minimumIntervalNanos } ?: true
+        if (!stageChanged && !reachedCompletion && !intervalElapsed) return false
+        lastKey = key
+        lastProgress = bounded
+        lastEmissionNanos = now
+        return true
+    }
+}
+
 internal fun projectCreationNotificationStage(
     stage: String,
     fraction: Double,
@@ -123,10 +153,11 @@ internal fun projectCreationNotificationStage(
         "audio" -> ProjectNotificationStage("Audio analysis", 2, stepCount, bounded * 0.80)
         "normalizing" -> ProjectNotificationStage("Audio analysis", 2, stepCount, 0.80 + bounded * 0.10)
         "inference" -> ProjectNotificationStage("Audio analysis", 2, stepCount, 0.90 + bounded * 0.10)
-        "serving-side", "serving-side-frames", "serving-side-features" -> {
+        "score-specialists", "specialist-frames", "serving-side", "serving-side-frames",
+        "serving-side-features", "side-switch", "side-switch-features" -> {
             if (includeServingSide) {
                 ProjectNotificationStage(
-                    "Serving-side analysis", 3, stepCount,
+                    "Score tracking analysis", 3, stepCount,
                     servingSideOverallProgress(stage, bounded),
                 )
             } else {
@@ -245,11 +276,11 @@ class ProjectAnalysisService : Service() {
         if (wakeLock?.isHeld != true) wakeLock?.acquire(12 * 60 * 60 * 1_000L)
         ensureForeground(
             "Queued ${project.source.name}", true,
-            ProjectNotificationStage("Serving-side analysis", 1, 1, 0.0).title,
+            ProjectNotificationStage("Score tracking analysis", 1, 1, 0.0).title,
         )
         broadcast(
             projectId, null, 0.0, "serving-side-queued",
-            "Waiting to generate serving-side features", servingSideJob = true,
+            "Waiting to generate score-tracking features", servingSideJob = true,
         )
         if (!workerRunning) {
             workerRunning = true
@@ -305,11 +336,26 @@ class ProjectAnalysisService : Service() {
                 this, projectId, ServingSideAnalysisStatus.ANALYZING,
             )
         }
-        broadcast(projectId, ProjectStatus.ANALYZING, 0.0, "opening", "Preparing game-window video + audio inference")
         val includeServingSide = project.servingSideStatus != ServingSideAnalysisStatus.DISABLED
+        val stepTracker = InferenceProgressTracker(
+            includeCore = true,
+            includeServingSide = includeServingSide,
+            includeSideSwitch = includeServingSide && project.sideSwitchEnabled,
+        )
+        val openingDetail = "Preparing game-window video + audio inference"
+        broadcast(
+            projectId,
+            ProjectStatus.ANALYZING,
+            0.0,
+            "opening",
+            openingDetail,
+            measurements = stepTracker.update("opening", 0.0, openingDetail),
+        )
         var latestNotificationStage = projectCreationNotificationStage("opening", 0.0, includeServingSide)
         var latestPerformance: AnalysisTypes.PerformanceStats? = null
         val notificationSpeed = NotificationStageSpeedTracker()
+        val progressUpdates = CallbackEmissionThrottle()
+        val performanceUpdates = CallbackEmissionThrottle(1_000_000_000L)
         fun notificationDetail(): String {
             val stage = latestNotificationStage
             return if (stage.step == 1 && latestPerformance != null) {
@@ -339,6 +385,7 @@ class ProjectAnalysisService : Service() {
                 cancelled,
                 object : AnalysisTypes.ProgressListener {
                     override fun onProgress(stage: String, fraction: Double, detail: String) {
+                        val measurements = stepTracker.update(stage, fraction, detail)
                         val overallProgress = projectCreationOverallProgress(
                             stage,
                             fraction,
@@ -347,6 +394,7 @@ class ProjectAnalysisService : Service() {
                         latestNotificationStage = projectCreationNotificationStage(
                             stage, fraction, includeServingSide,
                         )
+                        if (!progressUpdates.shouldEmit(stage, fraction)) return
                         updateNotification(
                             latestNotificationStage.progressPercent,
                             notificationDetail(),
@@ -359,21 +407,21 @@ class ProjectAnalysisService : Service() {
                             overallProgress,
                             stage,
                             detail,
+                            measurements = measurements,
                         )
                     }
 
                     override fun onPerformance(stats: AnalysisTypes.PerformanceStats) {
                         latestPerformance = stats
-                        updateNotification(
-                            latestNotificationStage.progressPercent,
-                            notificationDetail(),
-                            false,
-                            latestNotificationStage.title,
-                        )
+                        val fraction = if (stats.totalFrames() > 0) {
+                            stats.generatedFrames().toDouble() / stats.totalFrames()
+                        } else 0.0
+                        if (!performanceUpdates.shouldEmit("performance", fraction)) return
                         broadcastPerformance(projectId, stats)
                     }
                 },
                 includeServingSide,
+                project.sideSwitchEnabled,
             )
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
                 NativeProjectStore.complete(this, projectId, result)
@@ -382,7 +430,20 @@ class ProjectAnalysisService : Service() {
                 }
                 val detail = "${result.ranges().size} merged ranges · $disagreements to validate · features cached"
                 Log.i(TAG, resultLog(projectId, project.analysisWindow, result).toString())
-                broadcast(projectId, ProjectStatus.READY, 1.0, "complete", detail)
+                if (result.servingSideError() != null) {
+                    stepTracker.markError("serving-side", result.servingSideError())
+                }
+                if (result.sideSwitchError() != null) {
+                    stepTracker.markError("side-switch", result.sideSwitchError())
+                }
+                broadcast(
+                    projectId,
+                    ProjectStatus.READY,
+                    1.0,
+                    "complete",
+                    detail,
+                    measurements = stepTracker.snapshot(),
+                )
                 val completeStage = projectCreationNotificationStage("complete", 1.0, includeServingSide)
                 updateNotification(100, project.source.name, false, completeStage.title)
             }
@@ -393,13 +454,38 @@ class ProjectAnalysisService : Service() {
                     broadcast(projectId, ProjectStatus.QUEUED, 0.0, "queued", "Inference interrupted; ready to resume")
                 } else if (timedOut) {
                     val detail = "Android stopped project inference after its background time limit. Retry when the app is ready."
+                    NativeProjectStore.recordAnalysisMeasurement(
+                        this,
+                        projectId,
+                        stepTracker.failedRun(AnalysisRunKind.PROJECT, detail),
+                    )
                     NativeProjectStore.updateStatus(this, projectId, ProjectStatus.ERROR, detail)
-                    broadcast(projectId, ProjectStatus.ERROR, 0.0, "timeout", detail)
+                    broadcast(
+                        projectId, ProjectStatus.ERROR, 0.0, "timeout", detail,
+                        measurements = stepTracker.markError(
+                            stepTracker.snapshot().firstOrNull {
+                                it.status == InferenceStepStatus.RUNNING
+                            }?.id ?: "rally",
+                            detail,
+                        ),
+                    )
                 } else {
                     val message = error.message ?: error.javaClass.simpleName
+                    val failedStep = stepTracker.snapshot().firstOrNull {
+                        it.status == InferenceStepStatus.RUNNING
+                    }?.id ?: "rally"
+                    val measurements = stepTracker.markError(failedStep, message)
+                    NativeProjectStore.recordAnalysisMeasurement(
+                        this,
+                        projectId,
+                        stepTracker.failedRun(AnalysisRunKind.PROJECT, message),
+                    )
                     NativeProjectStore.updateStatus(this, projectId, ProjectStatus.ERROR, message)
                     Log.e(TAG, "Project $projectId failed", error)
-                    broadcast(projectId, ProjectStatus.ERROR, 0.0, "failed", message)
+                    broadcast(
+                        projectId, ProjectStatus.ERROR, 0.0, "failed", message,
+                        measurements = measurements,
+                    )
                     updateNotification(0, "Failed: ${project.source.name}", false, "Project inference failed")
                 }
             }
@@ -417,59 +503,90 @@ class ProjectAnalysisService : Service() {
         NativeProjectStore.updateServingSideStatus(
             this, projectId, ServingSideAnalysisStatus.ANALYZING,
         )
+        val stepTracker = InferenceProgressTracker(
+            includeCore = false,
+            includeServingSide = true,
+            includeSideSwitch = project.sideSwitchEnabled,
+        )
+        val initialDetail = if (project.sideSwitchEnabled) {
+            "Generating serve-side and team-switch features"
+        } else "Generating serve-side features; automatic team switches are off"
         broadcast(
             projectId, null, 0.0, "serving-side",
-            "Generating serving-side features", servingSideJob = true,
+            initialDetail,
+            servingSideJob = true,
+            measurements = stepTracker.update("score-specialists", 0.0, initialDetail),
         )
         val notificationSpeed = NotificationStageSpeedTracker()
+        val progressUpdates = CallbackEmissionThrottle()
         updateNotification(
             0, notificationSpeed.detail(project.source.name, "1/1", 0.0), true,
-            ProjectNotificationStage("Serving-side analysis", 1, 1, 0.0).title,
+            ProjectNotificationStage("Score tracking analysis", 1, 1, 0.0).title,
         )
         try {
-            val output = ServingSideInference.run(
+            val ranges = project.ranges.map {
+                AnalysisTypes.Interval(
+                    it.startMs / 1_000.0,
+                    it.endMs / 1_000.0,
+                    it.confidence,
+                    it.agreement,
+                )
+            }
+            val stateOutputs = if (project.sideSwitchEnabled) {
+                ProductionStateLoader.loadIfMissing(this, project)
+            } else project.productionStateOutputs
+            val output = ScoreSpecialistInference.run(
                 this,
                 Uri.parse(project.source.uri),
                 project.media,
                 project.roi,
-                project.ranges.map {
-                    AnalysisTypes.Interval(
-                        it.startMs / 1_000.0,
-                        it.endMs / 1_000.0,
-                        it.confidence,
-                        it.agreement,
-                    )
-                },
+                ranges,
                 project.productionServeOutputs,
+                stateOutputs,
+                project.productionComponents,
                 object : AnalysisTypes.ProgressListener {
                     override fun onProgress(stage: String, fraction: Double, detail: String) {
+                        val measurements = stepTracker.update(stage, fraction, detail)
                         val overallProgress = servingSideOverallProgress(stage, fraction)
+                        if (!progressUpdates.shouldEmit(stage, fraction)) return
                         val percent = (overallProgress * 100).toInt()
                         updateNotification(
                             percent,
                             notificationSpeed.detail(project.source.name, "1/1", overallProgress),
                             false,
-                            ProjectNotificationStage("Serving-side analysis", 1, 1, overallProgress).title,
+                            ProjectNotificationStage("Score tracking analysis", 1, 1, overallProgress).title,
                         )
                         broadcast(
                             projectId, null, overallProgress, stage, detail,
                             servingSideJob = true,
+                            measurements = measurements,
                         )
                     }
 
                     override fun onPerformance(stats: AnalysisTypes.PerformanceStats) = Unit
                 },
                 cancelled::get,
+                project.sideSwitchEnabled,
             )
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
-                NativeProjectStore.completeServingSide(this, projectId, output)
-                val reviewCount = output.candidates.count {
+                NativeProjectStore.completeServingSide(
+                    this, projectId, output.servingSide, output.sideSwitch, stateOutputs,
+                    output.profile,
+                )
+                val reviewCount = output.servingSide.candidates.count {
                     it.verdict == ServingSideVerdict.REVIEW
                 }
-                val detail = "${output.candidates.size} serve candidates · $reviewCount to review"
+                val detail = buildString {
+                    append(output.servingSide.candidates.size).append(" serves · ")
+                    if (project.sideSwitchEnabled) {
+                        append(output.sideSwitch?.candidates?.size ?: 0).append(" switches · ")
+                    }
+                    append(reviewCount).append(" to review")
+                }
                 broadcast(
                     projectId, null, 1.0, "serving-side-complete", detail,
                     servingSideJob = true,
+                    measurements = stepTracker.update("complete", 1.0, detail),
                 )
                 updateNotification(
                     100,
@@ -485,10 +602,19 @@ class ProjectAnalysisService : Service() {
                         NativeProjectStore.updateServingSideStatus(
                             this, projectId, ServingSideAnalysisStatus.QUEUED,
                         )
-                        "Serving-side inference interrupted; ready to resume"
+                        "Score-tracking inference interrupted; ready to resume"
                     }
                     timedOut -> {
-                        val message = "Android stopped serving-side inference after its background time limit. Retry by enabling score tracking again."
+                        val message = "Android stopped score-tracking inference after its background time limit. Retry by enabling score tracking again."
+                        val failedStep = stepTracker.snapshot().firstOrNull {
+                            it.status == InferenceStepStatus.RUNNING
+                        }?.id ?: "serving-side"
+                        stepTracker.markError(failedStep, message)
+                        NativeProjectStore.recordAnalysisMeasurement(
+                            this,
+                            projectId,
+                            stepTracker.failedRun(AnalysisRunKind.SCORE_SPECIALISTS, message),
+                        )
                         NativeProjectStore.updateServingSideStatus(
                             this, projectId, ServingSideAnalysisStatus.ERROR, message,
                         )
@@ -496,10 +622,19 @@ class ProjectAnalysisService : Service() {
                     }
                     else -> {
                         val message = error.message ?: error.javaClass.simpleName
+                        val failedStep = stepTracker.snapshot().firstOrNull {
+                            it.status == InferenceStepStatus.RUNNING
+                        }?.id ?: "serving-side"
+                        stepTracker.markError(failedStep, message)
+                        NativeProjectStore.recordAnalysisMeasurement(
+                            this,
+                            projectId,
+                            stepTracker.failedRun(AnalysisRunKind.SCORE_SPECIALISTS, message),
+                        )
                         NativeProjectStore.updateServingSideStatus(
                             this, projectId, ServingSideAnalysisStatus.ERROR, message,
                         )
-                        Log.e(TAG, "Serving-side inference failed for $projectId", error)
+                        Log.e(TAG, "Score-tracking inference failed for $projectId", error)
                         message
                     }
                 }
@@ -508,6 +643,7 @@ class ProjectAnalysisService : Service() {
                     if (cancelled.get() && !timedOut) "serving-side-queued" else "serving-side-failed",
                     detail,
                     servingSideJob = true,
+                    measurements = stepTracker.snapshot(),
                 )
                 updateNotification(0, project.source.name, false, "Score tracking unavailable")
             }
@@ -561,6 +697,7 @@ class ProjectAnalysisService : Service() {
         stage: String,
         detail: String,
         servingSideJob: Boolean = false,
+        measurements: List<InferenceStepMeasurement> = emptyList(),
     ) {
         sendBroadcast(Intent(ACTION_UPDATE).setPackage(packageName).apply {
             putExtra(EXTRA_PROJECT_ID, projectId)
@@ -569,6 +706,9 @@ class ProjectAnalysisService : Service() {
             putExtra(EXTRA_STAGE, stage)
             putExtra(EXTRA_DETAIL, detail)
             putExtra(EXTRA_SERVING_SIDE_JOB, servingSideJob)
+            if (measurements.isNotEmpty()) {
+                putExtra(EXTRA_STAGE_MEASUREMENTS, InferenceStepMeasurementsJson.encode(measurements))
+            }
         })
     }
 
@@ -730,6 +870,7 @@ class ProjectAnalysisService : Service() {
         const val EXTRA_REALTIME = "project_realtime"
         const val EXTRA_ETA_SECONDS = "project_eta_seconds"
         const val EXTRA_SERVING_SIDE_JOB = "project_serving_side_job"
+        const val EXTRA_STAGE_MEASUREMENTS = "project_stage_measurements"
 
         fun enqueue(context: Context, projectId: String) {
             ContextCompat.startForegroundService(

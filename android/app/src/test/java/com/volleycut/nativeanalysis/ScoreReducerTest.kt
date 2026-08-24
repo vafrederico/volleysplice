@@ -159,6 +159,65 @@ class ScoreReducerTest {
     }
 
     @Test
+    fun inferredSwitchesSeedEditableMarkersAndDeletionCreatesATombstone() {
+        val output = SideSwitchOutput(
+            rows = 1,
+            features = DoubleArray(SIDE_SWITCH_FEATURE_COLUMNS),
+            candidates = listOf(SideSwitchPrediction(
+                "switch:boundary:R001:R002",
+                3.0,
+                .91,
+                SideSwitchCandidateKind.ADJACENT_RALLY_BOUNDARY,
+                listOf("R001", "R002"),
+            )),
+        )
+        val seeded = ScoreReducer.seedModelMarkers(ScoreTracking(), null, output)
+        val marker = seeded.sideSwitchMarkers.single()
+        assertEquals("switch-switch:boundary:R001:R002", marker.id)
+        assertEquals(ServeMarkerOrigin.MODEL, marker.origin)
+        assertEquals(.91, marker.modelConfidence ?: 0.0, 0.0)
+        val removed = ScoreReducer.removeSideSwitch(seeded, marker.id)
+        val reseeded = ScoreReducer.seedModelMarkers(removed, null, output)
+        assertTrue(marker.id in reseeded.removedModelMarkerIds)
+        assertTrue(reseeded.sideSwitchMarkers.isEmpty())
+    }
+
+    @Test
+    fun disabledSwitchInferenceRemovesModelMarkersButPreservesManualMarkers() {
+        val tracking = ScoreTracking(sideSwitchMarkers = listOf(
+            SideSwitchMarker("manual", 1_000),
+            SideSwitchMarker(
+                "switch-model", 2_000, origin = ServeMarkerOrigin.MODEL,
+                modelEventId = "model",
+            ),
+        ))
+
+        val seeded = ScoreReducer.seedModelMarkers(
+            tracking, null, null, sideSwitchEnabled = false,
+        )
+
+        assertEquals(listOf("manual"), seeded.sideSwitchMarkers.map { it.id })
+    }
+
+    @Test
+    fun ignoredIntervalsAndExcludedRalliesHideSwitchesWithoutDeletingThem() {
+        val tracking = ScoreTracking(sideSwitchMarkers = listOf(
+            SideSwitchMarker("ignored", 1_500, rallyIds = listOf("R001", "R002")),
+            SideSwitchMarker("excluded", 3_000, rallyIds = listOf("R003", "R004")),
+            SideSwitchMarker("visible", 4_500, rallyIds = listOf("R005", "R006")),
+        ))
+
+        val visible = ScoreReducer.visibleTracking(
+            tracking,
+            listOf(IgnoredSourceInterval("ignored-1", 1_000, 2_000, "camera obstruction")),
+            setOf("R004"),
+        )
+
+        assertEquals(listOf("visible"), visible.sideSwitchMarkers.map { it.id })
+        assertEquals(3, tracking.sideSwitchMarkers.size)
+    }
+
+    @Test
     fun deferredServingResultsDoNotOverrideTheCurrentScoreToggle() {
         val seeded = ScoreReducer.seedModelMarkers(
             ScoreTracking(enabled = false),
@@ -208,7 +267,7 @@ class ScoreReducerTest {
     }
 
     @Test
-    fun scoreWireRoundTripsAndVersionOneDraftMigratesToVersionTwo() {
+    fun scoreWireRoundTripsAndVersionOneDraftMigratesToCurrentVersion() {
         val value = tracking(
             ServeMarker(
                 "M1", 1_250, ServingSide.FAR, ServeMarkerOrigin.MANUAL,

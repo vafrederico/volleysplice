@@ -162,6 +162,47 @@ public final class AnalysisTypes {
         }
     }
 
+    public record ProductionStateOutput(
+            String modelId,
+            double[] times,
+            float[] rallyProbabilities,
+            float[] deadStateProbabilities
+    ) {
+        public static ProductionStateOutput empty(String modelId) {
+            return new ProductionStateOutput(
+                    modelId, new double[0], new float[0], new float[0]
+            );
+        }
+
+        @Override public boolean equals(Object value) {
+            if (this == value) return true;
+            if (!(value instanceof ProductionStateOutput other)) return false;
+            return modelId.equals(other.modelId)
+                    && Arrays.equals(times, other.times)
+                    && Arrays.equals(rallyProbabilities, other.rallyProbabilities)
+                    && Arrays.equals(deadStateProbabilities, other.deadStateProbabilities);
+        }
+
+        @Override public int hashCode() {
+            int result = modelId.hashCode();
+            result = 31 * result + Arrays.hashCode(times);
+            result = 31 * result + Arrays.hashCode(rallyProbabilities);
+            return 31 * result + Arrays.hashCode(deadStateProbabilities);
+        }
+    }
+
+    public record ProductionStateOutputs(
+            ProductionStateOutput allLabelsV2,
+            ProductionStateOutput previousProduction
+    ) {
+        public static ProductionStateOutputs empty() {
+            return new ProductionStateOutputs(
+                    ProductionStateOutput.empty(FeatureSchema.ALL_LABELS_V2_MODEL_ID),
+                    ProductionStateOutput.empty(FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID)
+            );
+        }
+    }
+
     public record SuppressionSuggestion(
             String logicalId,
             String fragmentId,
@@ -252,8 +293,11 @@ public final class AnalysisTypes {
             List<Interval> ranges,
             ProductionComponents productionComponents,
             ProductionServeOutputs productionServeOutputs,
+            ProductionStateOutputs productionStateOutputs,
             ServingSideOutput servingSide,
             String servingSideError,
+            SideSwitchOutput sideSwitch,
+            String sideSwitchError,
             SuppressionAnalysis suppression,
             Map<String, Long> stageMilliseconds,
             Map<String, Double> profileMilliseconds,

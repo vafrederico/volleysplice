@@ -23,13 +23,14 @@ Android must implement:
 8. model-feedback schema v3 export/import parity; and
 9. cross-platform fixtures for features, inference, scoring, and rendering state.
 
-The Android implementation described by this version does not infer side switches. The
-production browser adds beta side-switch predictions through its full-union candidate
-model and routes those frame requests through the same sequential specialist pass as
-serving-side inference. Neither client infers set boundaries, match format, serving player,
-penalty points, or the winner of the final rally without a later serve. It does not put
-the point-history rail into the encoded video. It does not add serving-side columns to
-the existing F104/520 rally model input.
+Both Android and the production browser can add beta side-switch predictions through
+the frozen full-union candidate model. Each client unions those frame requests with
+serving-side requests in one shared specialist decode; Android uses the parity-tested
+five-second gap-aware schedule and the browser uses its full sequential pass. Neither
+client infers set boundaries, match format, serving player, penalty points, or the winner
+of the final rally without a later serve. It does not put the point-history rail into the
+encoded video. It does not add serving-side columns to the existing F104/520 rally model
+input.
 
 ## Canonical browser sources
 
@@ -61,8 +62,8 @@ decode selected game window and produce F104 rows
   -> retain both serve probability arrays and decoded contacts
   -> build the overlap-union production intervals and agreement provenance
   -> run the suppression specialist
-  -> build serving-side timestamps and optional browser side-switch timestamps
-  -> open/reuse the source and decode their union in one full sequential specialist pass
+  -> build serving-side timestamps and optional side-switch timestamps
+  -> open/reuse the source and decode their union in one shared specialist pass
   -> compute all raw 237-column rows
   -> tied-rank every column over the complete candidate set
   -> run fixed-flight v3 and the hybrid gate
@@ -71,9 +72,9 @@ decode selected game window and produce F104 rows
 ```
 
 Serving-side generation is part of initial inference, before a new project's editor is
-shown, and has no setup opt-out. The production browser has a separate default-off option
-for formats that require inferred team side-switch markers; it does not control serving-
-side output.
+shown, and has no setup opt-out. Both clients have a separate per-project, default-off
+option for formats that require inferred team side-switch markers; it does not control
+serving-side output.
 
 The browser treats a serving-side extraction failure as recoverable: it reports the
 failure, still opens the editor with the completed rally/suppression analysis, and offers
@@ -396,9 +397,18 @@ projects default to score tracking enabled and final-video rendering disabled wi
 losing cuts or suppression state. Serving-side feature generation is part of new-project
 inference and is persisted separately from rally inference. A later recovery run must
 queue only missing serving-side feature generation and inference, retain all edits, and
-merge the resulting model markers without re-running the rally models. The browser's
-default-off side-switch option is a distinct preference and has no Android inference
-equivalent in this version.
+merge the resulting model markers without re-running the rally models. The default-off
+side-switch option is a distinct persisted project preference on both clients. Enabling
+it adds side-switch requests and inference to the shared score specialist stage;
+disabling it must skip that work and suppress only model-origin switch markers while
+preserving manual switch markers.
+
+Android persists completed full-project and deferred score-specialist timing runs in
+the native project record. The editor exposes the high-level stage durations and an
+expandable profiler breakdown in an **Analysis measurements** card. While inference is
+active, the project screen mirrors the browser's step panel for video features, audio
+features, rally inference, serving side, and the optional side-switch step, including
+per-step progress, elapsed time, measured rate, and ETA.
 
 Android's current feedback exporter is schema v1. This feature requires parity with
 `volleycut-model-feedback` schema v3:

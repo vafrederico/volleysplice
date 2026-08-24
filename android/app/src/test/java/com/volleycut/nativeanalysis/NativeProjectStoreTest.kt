@@ -15,6 +15,43 @@ class NativeProjectStoreTest {
     )
 
     @Test
+    fun teamSwitchInferenceIsOptInAndRoundTripsWhenEnabled() {
+        val media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm")
+        val roi = AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default")
+
+        val defaultProject = NativeProjectStore.newQueued(source, media, roi)
+        val enabledProject = NativeProjectStore.newQueued(
+            source, media, roi, sideSwitchEnabled = true,
+        )
+
+        assertEquals(false, defaultProject.sideSwitchEnabled)
+        assertEquals(true, enabledProject.sideSwitchEnabled)
+        assertEquals(
+            true,
+            NativeProjectStore.decode(NativeProjectStore.encode(enabledProject))?.sideSwitchEnabled,
+        )
+    }
+
+    @Test
+    fun legacyTeamSwitchProjectsInferOptInOnlyFromExistingOutput() {
+        val withoutOutput = NativeProjectStore.encode(readyProject()).apply {
+            remove("sideSwitchEnabled")
+        }
+        val withOutput = NativeProjectStore.encode(readyProject().copy(
+            sideSwitch = SideSwitchOutput(
+                rows = 0,
+                features = doubleArrayOf(),
+                candidates = emptyList(),
+            ),
+        )).apply {
+            remove("sideSwitchEnabled")
+        }
+
+        assertEquals(false, NativeProjectStore.decode(withoutOutput)?.sideSwitchEnabled)
+        assertEquals(true, NativeProjectStore.decode(withOutput)?.sideSwitchEnabled)
+    }
+
+    @Test
     fun queuedProjectCanExplicitlySkipServingSideAnalysis() {
         val project = NativeProjectStore.newQueued(
             source,
@@ -108,6 +145,51 @@ class NativeProjectStoreTest {
         assertNotNull(restored)
         assertEquals(project, restored)
         assertEquals(project.ranges, restored?.editorSeed()?.ranges)
+    }
+
+    @Test
+    fun projectAnalysisMeasurementsRoundTripAndLegacyProjectsDefaultEmpty() {
+        val measurement = AnalysisRunMeasurements(
+            kind = AnalysisRunKind.PROJECT,
+            completedAtMs = 1_700_000_000_000,
+            succeeded = true,
+            totalMilliseconds = 12_345.5,
+            stageMilliseconds = linkedMapOf(
+                "video_decode_and_features" to 8_000.0,
+                "audio_decode_and_features" to 2_000.0,
+            ),
+            profileMilliseconds = linkedMapOf("video/opencv_feature_call" to 1_250.25),
+            counters = linkedMapOf("sample_rows" to 500L),
+        )
+        val project = readyProject().copy(analysisMeasurements = listOf(measurement))
+
+        val encoded = NativeProjectStore.encode(project)
+        val restored = requireNotNull(NativeProjectStore.decode(encoded))
+        assertEquals(listOf(measurement), restored.analysisMeasurements)
+
+        encoded.remove("analysisMeasurements")
+        assertEquals(
+            emptyList<AnalysisRunMeasurements>(),
+            NativeProjectStore.decode(encoded)?.analysisMeasurements,
+        )
+    }
+
+    @Test
+    fun newerMeasurementReplacesOnlyTheSameRunKind() {
+        val projectRun = AnalysisRunMeasurements(
+            AnalysisRunKind.PROJECT, 100L, true, totalMilliseconds = 10.0,
+            stageMilliseconds = mapOf("video" to 8.0),
+        )
+        val oldScoreRun = AnalysisRunMeasurements(
+            AnalysisRunKind.SCORE_SPECIALISTS, 200L, true, totalMilliseconds = 20.0,
+            stageMilliseconds = mapOf("serving_side" to 4.0),
+        )
+        val newScoreRun = oldScoreRun.copy(completedAtMs = 300L, totalMilliseconds = 15.0)
+
+        assertEquals(
+            listOf(projectRun, newScoreRun),
+            replaceAnalysisMeasurement(listOf(projectRun, oldScoreRun), newScoreRun),
+        )
     }
 
     @Test

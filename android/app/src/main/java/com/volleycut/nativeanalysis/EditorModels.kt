@@ -56,8 +56,13 @@ internal data class EditorSeed(
         AnalysisTypes.ProductionComponents.empty(),
     val productionServeOutputs: AnalysisTypes.ProductionServeOutputs =
         AnalysisTypes.ProductionServeOutputs.empty(),
+    val productionStateOutputs: AnalysisTypes.ProductionStateOutputs =
+        AnalysisTypes.ProductionStateOutputs.empty(),
     val servingSide: ServingSideOutput? = null,
     val servingSideError: String? = null,
+    val sideSwitch: SideSwitchOutput? = null,
+    val sideSwitchError: String? = null,
+    val sideSwitchEnabled: Boolean = false,
     val scoreTrackingInitiallyEnabled: Boolean = true,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
 ) {
@@ -192,6 +197,8 @@ internal object EditorMath {
         scoreTracking = ScoreReducer.seedModelMarkers(
             ScoreTracking(enabled = seed.scoreTrackingInitiallyEnabled),
             seed.servingSide,
+            seed.sideSwitch,
+            seed.sideSwitchEnabled,
         ),
     )
 

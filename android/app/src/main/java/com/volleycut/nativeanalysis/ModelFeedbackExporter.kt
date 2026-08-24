@@ -96,6 +96,12 @@ internal object ModelFeedbackExporter {
                     ?: "Serving-side features and initial verdicts are unavailable; score-marker corrections are still included.",
             )
         }
+        if (project.sideSwitchEnabled && project.sideSwitch == null) {
+            warnings.put(
+                project.sideSwitchError
+                    ?: "Team-switch features and inferred markers are unavailable; manual switch corrections are still included.",
+            )
+        }
 
         val inferredCuts = draft.cuts.filter { it.origin == CutOrigin.INFERRED }
         val manualCuts = draft.cuts.filter { it.origin == CutOrigin.MANUAL }
@@ -259,6 +265,7 @@ internal object ModelFeedbackExporter {
                     }
                 }
                 put("servingSide", project.servingSide?.let(::servingSideFeedback) ?: JSONObject.NULL)
+                put("sideSwitch", project.sideSwitch?.let(::sideSwitchFeedback) ?: JSONObject.NULL)
             })
             put("corrections", JSONObject().apply {
                 put("updatedAt", Instant.ofEpochMilli(updatedAtMs).toString())
@@ -557,6 +564,27 @@ internal object ModelFeedbackExporter {
                     put("allLabelsV2", evidenceJson(candidate.allLabelsV2Evidence))
                     put("previousProduction", evidenceJson(candidate.previousProductionEvidence))
                 })
+            }) }
+        })
+    }
+
+    private fun sideSwitchFeedback(value: SideSwitchOutput) = JSONObject().apply {
+        put("modelId", value.modelId)
+        put("modelFingerprint", value.modelFingerprint)
+        put("featureVersion", value.featureVersion)
+        put("candidateContract", value.candidateContract)
+        put("features", JSONObject().apply {
+            put("rows", value.rows)
+            put("columns", value.columns)
+            put("values", encode(value.features, intArrayOf(value.rows, value.columns)))
+        })
+        put("candidates", JSONArray().apply {
+            value.candidates.forEach { candidate -> put(JSONObject().apply {
+                put("id", candidate.id)
+                put("timestamp", candidate.timestamp)
+                put("probability", candidate.probability)
+                put("kind", candidate.kind.wireName)
+                put("sourceRangeIds", JSONArray(candidate.sourceRangeIds))
             }) }
         })
     }

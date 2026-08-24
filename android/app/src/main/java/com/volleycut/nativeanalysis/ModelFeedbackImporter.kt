@@ -104,6 +104,7 @@ internal object ModelFeedbackImporter {
             }
         } ?: AnalysisTypes.ProductionServeOutputs.empty()
         val servingSide = inference.optJSONObject("servingSide")?.let(::decodeServingSide)
+        val sideSwitchEnabled = inference.optJSONObject("sideSwitch") != null
         val suppression = inference.optJSONObject("suppression")?.let(::decodeSuppression)
         val id = "import-${UUID.randomUUID()}"
         val projectSource = ProjectSource(
@@ -138,6 +139,7 @@ internal object ModelFeedbackImporter {
             } ?: AnalysisTypes.ProductionComponents.empty(),
             productionServeOutputs = serveOutputs,
             servingSide = servingSide,
+            sideSwitchEnabled = sideSwitchEnabled,
             servingSideStatus = if (servingSide == null) {
                 ServingSideAnalysisStatus.NOT_RUN
             } else ServingSideAnalysisStatus.READY,
@@ -230,7 +232,12 @@ internal object ModelFeedbackImporter {
             userTouchedCutIds = buildSet {
                 repeat(touchedJson.length()) { add(touchedJson.getString(it)) }
             },
-            scoreTracking = ScoreReducer.seedModelMarkers(score, seed.servingSide),
+            scoreTracking = ScoreReducer.seedModelMarkers(
+                score,
+                seed.servingSide,
+                seed.sideSwitch,
+                seed.sideSwitchEnabled,
+            ),
             renderScoreOverlay = false,
         )
         require(draft.cuts.map { it.id }.distinct().size == draft.cuts.size &&

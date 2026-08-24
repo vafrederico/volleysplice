@@ -144,6 +144,8 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         val scoreTracking = ScoreReducer.seedModelMarkers(
             restoredScore ?: ScoreTracking(enabled = seed.scoreTrackingInitiallyEnabled),
             seed.servingSide,
+            seed.sideSwitch,
+            seed.sideSwitchEnabled,
         )
         val draft = EditorDraft(
             sourceRevision = json.getString("sourceRevision"),

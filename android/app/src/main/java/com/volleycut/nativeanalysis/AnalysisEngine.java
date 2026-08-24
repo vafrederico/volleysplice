@@ -84,6 +84,25 @@ final class AnalysisEngine {
             AnalysisTypes.VideoDecoderOptions decoderOptions,
             NativeFeatureCache.Mode cacheMode,
             AnalysisTypes.AnalysisWindow requestedWindow,
+            AtomicBoolean cancelled,
+            AnalysisTypes.ProgressListener progress,
+            boolean includeServingSide,
+            boolean includeSideSwitch
+    ) throws IOException, JSONException {
+        return analyze(
+                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
+                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
+                cancelled, progress, includeServingSide, includeSideSwitch
+        );
+    }
+
+    AnalysisTypes.AnalysisResult analyze(
+            Uri uri,
+            boolean fullFrame,
+            int sourceFrameLimit,
+            AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.Mode cacheMode,
+            AnalysisTypes.AnalysisWindow requestedWindow,
             AnalysisTypes.AnalysisStages stages,
             AnalysisTypes.AudioDecoderMode audioDecoderMode,
             AtomicBoolean cancelled,
@@ -107,6 +126,26 @@ final class AnalysisEngine {
             AtomicBoolean cancelled,
             AnalysisTypes.ProgressListener progress,
             boolean includeServingSide
+    ) throws IOException, JSONException {
+        return analyze(
+                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
+                stages, audioDecoderMode, cancelled, progress, includeServingSide, includeServingSide
+        );
+    }
+
+    AnalysisTypes.AnalysisResult analyze(
+            Uri uri,
+            boolean fullFrame,
+            int sourceFrameLimit,
+            AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.Mode cacheMode,
+            AnalysisTypes.AnalysisWindow requestedWindow,
+            AnalysisTypes.AnalysisStages stages,
+            AnalysisTypes.AudioDecoderMode audioDecoderMode,
+            AtomicBoolean cancelled,
+            AnalysisTypes.ProgressListener progress,
+            boolean includeServingSide,
+            boolean includeSideSwitch
     ) throws IOException, JSONException {
         long totalStarted = System.nanoTime();
         long threadCpuStarted = Debug.threadCpuTimeNanos();
@@ -279,8 +318,12 @@ final class AnalysisEngine {
                 AnalysisTypes.ProductionComponents.empty();
         AnalysisTypes.ProductionServeOutputs productionServeOutputs =
                 AnalysisTypes.ProductionServeOutputs.empty();
+        AnalysisTypes.ProductionStateOutputs productionStateOutputs =
+                AnalysisTypes.ProductionStateOutputs.empty();
         ServingSideOutput servingSide = null;
         String servingSideError = null;
+        SideSwitchOutput sideSwitch = null;
+        String sideSwitchError = null;
         AnalysisTypes.SuppressionAnalysis suppression = null;
         if (stages.inference()) {
             progress.onProgress("inference", 0, "Running all-labels v2 model stack on CPU");
@@ -324,6 +367,20 @@ final class AnalysisEngine {
                             previousResult.serveDetections()
                     )
             );
+            productionStateOutputs = new AnalysisTypes.ProductionStateOutputs(
+                    new AnalysisTypes.ProductionStateOutput(
+                            FeatureSchema.ALL_LABELS_V2_MODEL_ID,
+                            times.clone(),
+                            allLabelsResult.rallyProbabilities().clone(),
+                            allLabelsResult.deadStateProbabilities().clone()
+                    ),
+                    new AnalysisTypes.ProductionStateOutput(
+                            FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID,
+                            times.clone(),
+                            previousResult.rallyProbabilities().clone(),
+                            previousResult.deadStateProbabilities().clone()
+                    )
+            );
             operation = System.nanoTime();
             SuppressionModelRunner.Result suppressionResult =
                     new SuppressionModelRunner(context).run(
@@ -349,29 +406,49 @@ final class AnalysisEngine {
             operation = System.nanoTime();
             if (includeServingSide) {
                 try {
-                    servingSide = ServingSideInference.INSTANCE.run(
+                    ScoreSpecialistInference.Result scoreSpecialists =
+                            ScoreSpecialistInference.INSTANCE.run(
                             context, uri, media, roi, ranges, productionServeOutputs,
-                            progress, cancelled::get
+                            productionStateOutputs, productionComponents, progress, cancelled::get,
+                            includeSideSwitch
+                    );
+                    servingSide = scoreSpecialists.getServingSide();
+                    sideSwitch = scoreSpecialists.getSideSwitch();
+                    appendProfile(
+                            profile, "", scoreSpecialists.getProfile().measurementProfile()
                     );
                 } catch (Exception error) {
                     if (cancelled.get()) throw new IOException("Analysis cancelled", error);
                     servingSideError = error.getMessage() == null
-                            ? "Serving-side analysis failed" : error.getMessage();
-                    android.util.Log.w("VolleyCutAnalysis", "Recoverable serving-side failure", error);
+                            ? "Score-specialist analysis failed" : error.getMessage();
+                    sideSwitchError = includeSideSwitch ? servingSideError : null;
+                    android.util.Log.w("VolleyCutAnalysis", "Recoverable score-specialist failure", error);
                     progress.onProgress(
-                            "serving-side", 1,
-                            "Serving-side scoring unavailable; rally analysis is complete"
+                            "score-specialists", 1,
+                            includeSideSwitch
+                                    ? "Score tracking features unavailable; rally analysis is complete"
+                                    : "Serving-side features unavailable; rally analysis is complete"
                     );
                 }
             } else {
                 progress.onProgress(
-                        "serving-side", 1,
-                        "Serving-side features skipped; enable score tracking later to generate them"
+                        "score-specialists", 1,
+                        "Score features skipped; enable score tracking later to generate them"
                 );
             }
-            profile.put("inference/serving_side", elapsedMilliseconds(operation));
+            profile.put("inference/score_specialists", elapsedMilliseconds(operation));
+            timings.put("rally_inference", Math.max(
+                    0L,
+                    elapsedMs(stage) - Math.round(profile.get("inference/score_specialists"))
+            ));
+            timings.put(
+                    "score_specialists",
+                    Math.round(profile.get("inference/score_specialists"))
+            );
         } else {
             progress.onProgress("inference", 1, "Model inference not selected");
+            timings.put("rally_inference", 0L);
+            timings.put("score_specialists", 0L);
         }
         timings.put("inference", stages.inference() ? elapsedMs(stage) : 0L);
         long total = elapsedMs(totalStarted);
@@ -415,8 +492,11 @@ final class AnalysisEngine {
                 List.copyOf(ranges),
                 productionComponents,
                 productionServeOutputs,
+                productionStateOutputs,
                 servingSide,
                 servingSideError,
+                sideSwitch,
+                sideSwitchError,
                 suppression,
                 timings,
                 profile,

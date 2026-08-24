@@ -4,6 +4,11 @@ import android.content.Context
 import android.net.Uri
 
 internal object ServingSideInference {
+    internal data class FramePlan(
+        val candidates: List<ServingSideModelRunner.CandidateInterval>,
+        val requestedTimes: DoubleArray,
+    )
+
     internal fun clampedTimestamp(anchor: Double, offset: Double, duration: Double): Double =
         (anchor + offset).coerceIn(0.0, (duration - 0.01).coerceAtLeast(0.0))
 
@@ -16,6 +21,17 @@ internal object ServingSideInference {
         }
     }.distinct().sorted().toDoubleArray()
 
+    internal fun framePlan(
+        ranges: List<AnalysisTypes.Interval>,
+        duration: Double,
+    ): FramePlan {
+        val seeds = ranges.map {
+            SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence(), it.agreement())
+        }
+        val candidates = ServingSideModelRunner.candidates(seeds)
+        return FramePlan(candidates, requestedTimestamps(candidates, duration))
+    }
+
     fun run(
         context: Context,
         uri: Uri,
@@ -26,22 +42,29 @@ internal object ServingSideInference {
         progress: AnalysisTypes.ProgressListener,
         cancelled: () -> Boolean,
     ): ServingSideOutput {
-        val seeds = ranges.map {
-            SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence(), it.agreement())
-        }
-        val candidates = ServingSideModelRunner.candidates(seeds)
-        if (candidates.isEmpty()) return ServingSideOutput(
-            rows = 0,
-            rawFeatures = doubleArrayOf(),
-            candidates = emptyList(),
-        )
-        validateServeOutputs(serveOutputs)
         val duration = media.durationSeconds()
-        val requested = requestedTimestamps(candidates, duration)
+        val plan = framePlan(ranges, duration)
+        if (plan.candidates.isEmpty()) return emptyOutput()
         progress.onProgress("serving-side", 0.0, "Sampling serving-side windows")
         val sampled = ServingSideFrameDecoder(context).decode(
-            uri, media, roi, requested, progress, cancelled,
+            uri, media, roi, plan.requestedTimes, progress, cancelled,
         )
+        return evaluate(
+            context, duration, plan.candidates, serveOutputs, sampled, progress, cancelled,
+        )
+    }
+
+    internal fun evaluate(
+        context: Context,
+        duration: Double,
+        candidates: List<ServingSideModelRunner.CandidateInterval>,
+        serveOutputs: AnalysisTypes.ProductionServeOutputs,
+        sampled: Map<Double, ByteArray>,
+        progress: AnalysisTypes.ProgressListener,
+        cancelled: () -> Boolean,
+    ): ServingSideOutput {
+        if (candidates.isEmpty()) return emptyOutput()
+        validateServeOutputs(serveOutputs)
         val runtime = context.assets.open(SERVING_SIDE_RUNTIME_ASSET).use(ServingSideRuntimeParser::read)
         val raw = DoubleArray(candidates.size * SERVING_SIDE_FEATURE_COLUMNS)
         candidates.forEachIndexed { row, candidate ->
@@ -82,6 +105,12 @@ internal object ServingSideInference {
             candidates = verdicts,
         )
     }
+
+    private fun emptyOutput() = ServingSideOutput(
+        rows = 0,
+        rawFeatures = doubleArrayOf(),
+        candidates = emptyList(),
+    )
 
     private fun validateServeOutputs(outputs: AnalysisTypes.ProductionServeOutputs) {
         listOf(outputs.allLabelsV2(), outputs.previousProduction()).forEach { output ->

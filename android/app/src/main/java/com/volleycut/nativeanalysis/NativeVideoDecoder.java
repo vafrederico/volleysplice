@@ -880,10 +880,26 @@ final class NativeVideoDecoder {
     }
 
     static Mat imageToAnalysisRgba(Image image, AnalysisTypes.Roi roi, int rotation) {
+        return imageToRgba(
+                image, roi, rotation,
+                FeatureSchema.ANALYSIS_WIDTH, FeatureSchema.ANALYSIS_HEIGHT
+        );
+    }
+
+    static Mat imageToRgba(
+            Image image,
+            AnalysisTypes.Roi roi,
+            int rotation,
+            int outputWidth,
+            int outputHeight
+    ) {
+        if (outputWidth <= 0 || outputHeight <= 0) {
+            throw new IllegalArgumentException("Output dimensions must be positive");
+        }
         Image.Plane[] planes = image.getPlanes();
         if (planes.length < 3) throw new IllegalArgumentException("YUV image has fewer than three planes");
         Rect crop = image.getCropRect();
-        byte[] rgba = new byte[FeatureSchema.ANALYSIS_WIDTH * FeatureSchema.ANALYSIS_HEIGHT * 4];
+        byte[] rgba = new byte[outputWidth * outputHeight * 4];
         ByteBuffer yBuffer = planes[0].getBuffer().duplicate();
         ByteBuffer uBuffer = planes[1].getBuffer().duplicate();
         ByteBuffer vBuffer = planes[2].getBuffer().duplicate();
@@ -895,10 +911,10 @@ final class NativeVideoDecoder {
         int vPixelStride = planes[2].getPixelStride();
 
         int outputIndex = 0;
-        for (int y = 0; y < FeatureSchema.ANALYSIS_HEIGHT; y++) {
-            double displayV = roi.y() + (y + 0.5) / FeatureSchema.ANALYSIS_HEIGHT * roi.height();
-            for (int x = 0; x < FeatureSchema.ANALYSIS_WIDTH; x++) {
-                double displayU = roi.x() + (x + 0.5) / FeatureSchema.ANALYSIS_WIDTH * roi.width();
+        for (int y = 0; y < outputHeight; y++) {
+            double displayV = roi.y() + (y + 0.5) / outputHeight * roi.height();
+            for (int x = 0; x < outputWidth; x++) {
+                double displayU = roi.x() + (x + 0.5) / outputWidth * roi.width();
                 double sourceU;
                 double sourceV;
                 switch (rotation) {
@@ -927,14 +943,12 @@ final class NativeVideoDecoder {
                 rgba[outputIndex++] = (byte) 255;
             }
         }
-        Mat result = new Mat(FeatureSchema.ANALYSIS_HEIGHT, FeatureSchema.ANALYSIS_WIDTH, CvType.CV_8UC4);
+        Mat result = new Mat(outputHeight, outputWidth, CvType.CV_8UC4);
         result.put(0, 0, rgba);
         return result;
     }
 
-    private static final class YuvCropSampler {
-        private static final int PIXEL_COUNT = FeatureSchema.ANALYSIS_WIDTH
-                * FeatureSchema.ANALYSIS_HEIGHT;
+    static final class YuvCropSampler {
         private static final int[] Y_COMPONENT = new int[256];
         private static final int[] RED_FROM_V = new int[256];
         private static final int[] GREEN_FROM_U = new int[256];
@@ -959,16 +973,42 @@ final class NativeVideoDecoder {
         private final int uPixelStride;
         private final int vRowStride;
         private final int vPixelStride;
-        private final int[] yOffsets = new int[PIXEL_COUNT];
-        private final int[] uOffsets = new int[PIXEL_COUNT];
-        private final int[] vOffsets = new int[PIXEL_COUNT];
-        private final byte[] rgba = new byte[PIXEL_COUNT * 4];
+        private final int outputWidth;
+        private final int outputHeight;
+        private final int pixelCount;
+        private final int[] yOffsets;
+        private final int[] uOffsets;
+        private final int[] vOffsets;
+        private final byte[] rgba;
 
         YuvCropSampler(Image image, AnalysisTypes.Roi roi, int rotation) {
+            this(
+                    image, roi, rotation,
+                    FeatureSchema.ANALYSIS_WIDTH, FeatureSchema.ANALYSIS_HEIGHT
+            );
+        }
+
+        YuvCropSampler(
+                Image image,
+                AnalysisTypes.Roi roi,
+                int rotation,
+                int outputWidth,
+                int outputHeight
+        ) {
+            if (outputWidth <= 0 || outputHeight <= 0) {
+                throw new IllegalArgumentException("Output dimensions must be positive");
+            }
             Image.Plane[] planes = image.getPlanes();
             if (planes.length < 3) {
                 throw new IllegalArgumentException("YUV image has fewer than three planes");
             }
+            this.outputWidth = outputWidth;
+            this.outputHeight = outputHeight;
+            pixelCount = outputWidth * outputHeight;
+            yOffsets = new int[pixelCount];
+            uOffsets = new int[pixelCount];
+            vOffsets = new int[pixelCount];
+            rgba = new byte[pixelCount * 4];
             crop = new Rect(image.getCropRect());
             yRowStride = planes[0].getRowStride();
             yPixelStride = planes[0].getPixelStride();
@@ -978,12 +1018,12 @@ final class NativeVideoDecoder {
             vPixelStride = planes[2].getPixelStride();
 
             int index = 0;
-            for (int y = 0; y < FeatureSchema.ANALYSIS_HEIGHT; y++) {
+            for (int y = 0; y < outputHeight; y++) {
                 double displayV = roi.y()
-                        + (y + 0.5) / FeatureSchema.ANALYSIS_HEIGHT * roi.height();
-                for (int x = 0; x < FeatureSchema.ANALYSIS_WIDTH; x++) {
+                        + (y + 0.5) / outputHeight * roi.height();
+                for (int x = 0; x < outputWidth; x++) {
                     double displayU = roi.x()
-                            + (x + 0.5) / FeatureSchema.ANALYSIS_WIDTH * roi.width();
+                            + (x + 0.5) / outputWidth * roi.width();
                     double sourceU;
                     double sourceV;
                     switch (rotation) {
@@ -1027,7 +1067,7 @@ final class NativeVideoDecoder {
             ByteBuffer uBuffer = planes[1].getBuffer().duplicate();
             ByteBuffer vBuffer = planes[2].getBuffer().duplicate();
             int outputIndex = 0;
-            for (int index = 0; index < PIXEL_COUNT; index++) {
+            for (int index = 0; index < pixelCount; index++) {
                 int yValue = yBuffer.get(yOffsets[index]) & 0xff;
                 int uValue = uBuffer.get(uOffsets[index]) & 0xff;
                 int vValue = vBuffer.get(vOffsets[index]) & 0xff;
@@ -1042,8 +1082,8 @@ final class NativeVideoDecoder {
                 rgba[outputIndex++] = (byte) 255;
             }
             Mat result = new Mat(
-                    FeatureSchema.ANALYSIS_HEIGHT,
-                    FeatureSchema.ANALYSIS_WIDTH,
+                    outputHeight,
+                    outputWidth,
                     CvType.CV_8UC4
             );
             result.put(0, 0, rgba);

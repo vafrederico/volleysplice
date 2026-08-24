@@ -80,7 +80,7 @@ class ServingSidePersistenceTest {
         val intervals = EditorMath.finalIntervals(draft, project.suppression)
         val editList = editListJson(seed, draft, intervals)
         assertTrue(editList.getBoolean("renderScoreOverlay"))
-        assertEquals(2, editList.getJSONObject("scoreTracking").getInt("version"))
+        assertEquals(3, editList.getJSONObject("scoreTracking").getInt("version"))
         assertEquals("Falcons", editList.getJSONObject("scoreTracking").getString("team1Name"))
 
         val times = project.productionServeOutputs.allLabelsV2().times()
@@ -103,7 +103,12 @@ class ServingSidePersistenceTest {
                 .getJSONObject("features").getJSONObject("values").getString("dataType"),
         )
         assertEquals(
-            2,
+            SIDE_SWITCH_MODEL_ID,
+            bundle.getJSONObject("initialInference").getJSONObject("sideSwitch")
+                .getString("modelId"),
+        )
+        assertEquals(
+            3,
             bundle.getJSONObject("corrections").getJSONObject("scoreTracking")
                 .getJSONObject("state").getInt("version"),
         )
@@ -113,6 +118,7 @@ class ServingSidePersistenceTest {
 
         val imported = ModelFeedbackImporter.parse(bundle.toString(), 1234)
         assertEquals(ProjectStatus.READY, imported.project.status)
+        assertTrue(imported.project.sideSwitchEnabled)
         assertEquals(
             "sampled-sha256-v1:" + "a".repeat(64),
             imported.project.source.sampledFingerprint,
@@ -218,7 +224,18 @@ class ServingSidePersistenceTest {
                 listOf(AnalysisTypes.Interval(1.0, 5.0, .8f, ProductionEnsemble.BOTH_MODELS)),
             ),
             productionServeOutputs = AnalysisTypes.ProductionServeOutputs(all, previous),
+            productionStateOutputs = AnalysisTypes.ProductionStateOutputs(
+                AnalysisTypes.ProductionStateOutput(
+                    FeatureSchema.ALL_LABELS_V2_MODEL_ID,
+                    times.clone(), floatArrayOf(.8f, .7f), floatArrayOf(.1f, .2f),
+                ),
+                AnalysisTypes.ProductionStateOutput(
+                    FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID,
+                    times.clone(), floatArrayOf(.75f, .65f), floatArrayOf(.15f, .25f),
+                ),
+            ),
             servingSide = serving,
+            sideSwitch = SideSwitchModelRunner.emptyOutput(),
             suppression = AnalysisTypes.SuppressionAnalysis(
                 FeatureSchema.SUPPRESSION_MODEL_ID,
                 FeatureSchema.SUPPRESSION_ARTIFACT_SHA256,
