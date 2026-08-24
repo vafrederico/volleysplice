@@ -16,6 +16,7 @@ from analysis.artifacts import atomic_write_text
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
     DECODER,
+    GAP_SHAPE_PROFILE,
     INTERACTION_PROFILE,
     concise_metrics,
     evaluate_profile,
@@ -30,9 +31,11 @@ DEFAULT_AUDIT = REPORTS / "side-switch-full-video-marker-evaluation-2026-08-21-r
 DEFAULT_MODEL = ROOT / "models/side-switch-hard-negative-mining-v1/model.json"
 DEFAULT_EVALUATION = REPORTS / "side-switch-hard-negative-mining-v1-evaluation.json"
 DEFAULT_IMPORTANCE = REPORTS / "side-switch-feature-importance-2026-08-24.json"
+DEFAULT_GAP_FEATURES = REPORTS / "side-switch-gap-shape-features-v1.json"
 DEFAULT_OUTPUTS = {
     "E0": REPORTS / "side-switch-feature-development-e0-baseline-v1.json",
     "E1": REPORTS / "side-switch-feature-development-e1-interactions-v1.json",
+    "E2": REPORTS / "side-switch-feature-development-e2-gap-shape-v1.json",
 }
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
@@ -40,6 +43,7 @@ EXPECTED_SHA256 = {
     "model": "c2570481c30dec62f56ac3284cd4028763ffd8e72a9ad07e9908fec10df387e3",
     "evaluation": "e67088b36d177d68c24587efcb186eab4201b5294532be1fdf978ef13aaacc4b",
     "importance": "b2c501c61e9f7b3aeb2bbb04cf73f3f9793e1831053a7762c08993924daea14d",
+    "gapFeatures": "0f89dbbf7d7cda896100e3f0730a17ecbaba5dfd1cd0525993199a5246c5a777",
 }
 
 
@@ -183,6 +187,54 @@ def _evaluate_e1_gate(
             for item in row["topPositiveContributors"]
         )
     }
+
+
+def _evaluate_e2_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    importance: Mapping[str, Any],
+) -> dict[str, Any]:
+    delta = metric_delta(baseline, candidate)
+    gap_supported_ids = {
+        str(row["candidateId"])
+        for row in importance["errorAnalysis"]["falsePositiveProposals"]
+        if any(
+            str(item["feature"])
+            in {
+                "productionGapMeanDeadStateScore",
+                "productionGapPeakDeadStateScore",
+                "productionGapDurationSeconds",
+            }
+            for item in row["topPositiveContributors"]
+        )
+    }
+    baseline_selected = _selected_ids(baseline)
+    candidate_selected = _selected_ids(candidate)
+    baseline_slice = len(gap_supported_ids & baseline_selected)
+    candidate_slice = len(gap_supported_ids & candidate_selected)
+    checks = {
+        "primaryF1GainAtLeast2pp": delta["primaryF1"] >= 0.02 - 1e-12,
+        "precisionDeclineNoMoreThan2pp": delta["primaryPrecision"] >= -0.02 - 1e-12,
+        "recallDeclineNoMoreThan2pp": delta["primaryRecall"] >= -0.02 - 1e-12,
+        "strictF1DeclineNoMoreThan1pp": delta["strictF1"] >= -0.01 - 1e-12,
+        "gapSupportedFalsePositiveSliceReduced": candidate_slice < baseline_slice,
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "checks": checks,
+        "delta": delta,
+        "targetSlice": {
+            "definition": (
+                "baseline false proposals where a current dead-state mean, peak, or "
+                "gap-duration input was among the five strongest positive contributors"
+            ),
+            "frozenCandidateIds": sorted(gap_supported_ids),
+            "baselineSelected": baseline_slice,
+            "candidateSelected": candidate_slice,
+            "change": candidate_slice - baseline_slice,
+        },
+        "byRecordingDelta": _recording_deltas(baseline, candidate),
+    }
     baseline_selected = _selected_ids(baseline)
     candidate_selected = _selected_ids(candidate)
     baseline_slice = len(high_player_change_ids & baseline_selected)
@@ -219,8 +271,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": args.model.expanduser().resolve(),
         "evaluation": args.evaluation.expanduser().resolve(),
     }
-    if args.experiment == "E1":
+    if args.experiment in {"E1", "E2"}:
         paths["importance"] = args.importance.expanduser().resolve()
+    if args.experiment == "E2":
+        paths["gapFeatures"] = args.gap_features.expanduser().resolve()
     output = (
         args.output.expanduser().resolve()
         if args.output is not None
@@ -237,6 +291,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(f"feature-development source identity changed: {hashes}")
 
     feature_payload = _load(paths["features"])
+    experiment_rows = feature_payload["rows"]
+    if args.experiment == "E2":
+        gap_payload = _load(paths["gapFeatures"])
+        if gap_payload["scope"] != feature_payload["scope"] or [
+            str(row["eventId"]) for row in gap_payload["rows"]
+        ] != [str(row["eventId"]) for row in feature_payload["rows"]]:
+            raise ValueError("E2 gap feature artifact does not match the frozen row universe")
+        experiment_rows = gap_payload["rows"]
     audit = _load(paths["audit"])
     current_model = _load(paths["model"])
     current_evaluation = _load(paths["evaluation"])
@@ -251,7 +313,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for recording_id in recording_ids
     }
 
-    baseline = evaluate_profile(feature_payload["rows"], markers, BASELINE_PROFILE)
+    baseline = evaluate_profile(experiment_rows, markers, BASELINE_PROFILE)
     parity = _validate_e0(baseline, current_model, current_evaluation)
     profiles: dict[str, Any] = {BASELINE_PROFILE.identifier: baseline}
     comparison: dict[str, Any] | None = None
@@ -262,6 +324,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         profiles[INTERACTION_PROFILE.identifier] = interaction
         comparison = _evaluate_e1_gate(
             baseline, interaction, _load(paths["importance"])
+        )
+    elif args.experiment == "E2":
+        gap_shape = evaluate_profile(experiment_rows, markers, GAP_SHAPE_PROFILE)
+        profiles[GAP_SHAPE_PROFILE.identifier] = gap_shape
+        comparison = _evaluate_e2_gate(
+            baseline, gap_shape, _load(paths["importance"])
         )
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
@@ -276,7 +344,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "name": (
                 "freeze-and-reproduce-control"
                 if args.experiment == "E0"
-                else "swap-specific-interactions"
+                else (
+                    "swap-specific-interactions"
+                    if args.experiment == "E1"
+                    else "production-gap-consensus-and-shape"
+                )
             ),
             "decision": "baseline-only" if comparison is None else comparison["decision"],
         },
@@ -308,7 +380,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             (
                 "E0 validates experiment machinery; it is not a new model result."
                 if args.experiment == "E0"
-                else "E1 formulae and gates were frozen in the checked-in development plan before this run."
+                else (
+                    f"{args.experiment} formulae and gates were frozen in the checked-in "
+                    "development plan before this run."
+                )
             ),
         ],
     }
@@ -324,6 +399,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--evaluation", type=Path, default=DEFAULT_EVALUATION)
     parser.add_argument("--importance", type=Path, default=DEFAULT_IMPORTANCE)
+    parser.add_argument("--gap-features", type=Path, default=DEFAULT_GAP_FEATURES)
     parser.add_argument("--experiment", choices=tuple(DEFAULT_OUTPUTS), default="E0")
     parser.add_argument("--output", type=Path)
     parser.add_argument(

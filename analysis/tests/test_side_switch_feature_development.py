@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import unittest
 
+import numpy as np
+
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
     BASE_FEATURE_NAMES,
+    GAP_SHAPE_FEATURE_NAMES,
     INTERACTION_FEATURE_NAMES,
     INTERACTION_PROFILE,
     apply_profile,
+    gap_shape_features,
     metric_delta,
     swap_interaction_features,
 )
@@ -126,6 +130,34 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
             (*BASE_FEATURE_NAMES, *INTERACTION_FEATURE_NAMES),
         )
         self.assertTrue(all(name in row["features"] for name in INTERACTION_FEATURE_NAMES))
+
+    def test_gap_shape_features_match_consensus_trace(self):
+        times = np.arange(0.0, 3.25, 0.25)
+        dead = np.asarray(
+            [0.0, 0.0, 0.0, 0.0, 0.8, 0.9, 1.0, 0.9, 0.1, 0.1, 0.1, 0.1, 0.1]
+        )
+        values = gap_shape_features(times, dead, dead, 1.0, 2.0, 3.25)
+        self.assertEqual(tuple(values), GAP_SHAPE_FEATURE_NAMES)
+        self.assertAlmostEqual(values["productionGapConsensusDeadMean"], 0.9)
+        self.assertAlmostEqual(values["productionGapDeadDisagreementMean"], 0.0)
+        self.assertAlmostEqual(values["productionGapConsensusDeadIntegral"], 0.9)
+        self.assertAlmostEqual(values["productionGapConsensusAbove80Fraction"], 1.0)
+        self.assertAlmostEqual(
+            values["productionGapConsensusLongestRun80Seconds"], 1.0
+        )
+        self.assertAlmostEqual(values["productionGapDeadPeakProminence"], 0.9)
+        self.assertAlmostEqual(values["productionGapDeadEntryContrast"], 0.9)
+        self.assertAlmostEqual(values["productionGapDeadExitContrast"], 0.8)
+
+    def test_gap_shape_uses_minimum_bundle_consensus(self):
+        times = np.arange(0.0, 2.25, 0.25)
+        first = np.ones(len(times))
+        second = np.full(len(times), 0.4)
+        values = gap_shape_features(times, first, second, 0.5, 1.5, 2.25)
+        self.assertAlmostEqual(values["productionGapConsensusDeadMean"], 0.4)
+        self.assertAlmostEqual(values["productionGapDeadDisagreementMean"], 0.6)
+        self.assertEqual(values["productionGapConsensusAbove80Fraction"], 0.0)
+        self.assertEqual(values["productionGapConsensusLongestRun80Seconds"], 0.0)
 
 
 if __name__ == "__main__":

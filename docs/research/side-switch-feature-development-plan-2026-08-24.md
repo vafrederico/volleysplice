@@ -106,6 +106,45 @@ SHA-256: `90fa72e4b2fe33f6248a0cca543ceeba499fdad23984bdad59f82c843505faf8`
 Validation: all 110 focused side-switch tests pass. Next independent comparison: E2,
 the production-gap consensus/shape bundle.
 
+### E2 — production gap consensus/shape bundle — rejected 2026-08-24
+
+Replayed the two frozen production bundles over cached F104 features and appended the
+eight preregistered G1 reductions. Extraction added no video frames, preserved all 704
+candidate IDs/order and every existing feature value, and remained within the frozen
+all-labels-v2 probability tolerance. The ranker comparison changed no candidate,
+label, loss, threshold-selection, or decoder setting.
+
+| Metric | E0 control | E2 gap shape | E2 minus E0 |
+| --- | ---: | ---: | ---: |
+| Row AP | 44.4992% | 44.6966% | +0.1974 pp |
+| ±4 proposals / TP / FP / FN | 52 / 29 / 23 / 21 | 44 / 27 / 17 / 23 | -8 / -2 / -6 / +2 |
+| ±4 precision | 55.7692% | 61.3636% | +5.5944 pp |
+| ±4 recall | 58.0000% | 54.0000% | -4.0000 pp |
+| ±4 F1 | 56.8627% | 57.4468% | +0.5841 pp |
+| Strict F1 | 45.0980% | 44.6809% | -0.4172 pp |
+| Frozen gap-supported FP slice | 17 selected | 9 selected | -8 FP |
+
+Decision: **reject G1 as a standalone feature contender and do not enter E3 compact
+combination**. It is a strong precision-oriented diagnostic—six FP removed and the
+target slice cut by eight—but loses two TP, reduces recall by four points, and misses
+the +2-point F1 gate. Preserve the trace-enriched artifact for later P1/P2 diagnostics;
+do not ship or combine the eight-value bundle as currently defined.
+
+Feature artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-gap-shape-features-v1.json`
+
+Feature SHA-256: `0f89dbbf7d7cda896100e3f0730a17ecbaba5dfd1cd0525993199a5246c5a777`
+
+Evaluation artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-e2-gap-shape-v1.json`
+
+Evaluation SHA-256:
+`1546d1183dc7912b1dc079b7abdc294b1b49c286999d2117083d99c372c69c4d`
+
+Validation: all 112 focused side-switch tests pass. Because neither E1 nor E2 passed,
+E3 is skipped. Next work is the shared Visual Summary V2 extraction needed to compare
+Q1, C1, and P1 independently.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

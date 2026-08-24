@@ -36,6 +36,16 @@ INTERACTION_FEATURE_NAMES = (
     "playerQualityGatedSwap",
     "courtQualityGatedSwap",
 )
+GAP_SHAPE_FEATURE_NAMES = (
+    "productionGapConsensusDeadMean",
+    "productionGapDeadDisagreementMean",
+    "productionGapConsensusDeadIntegral",
+    "productionGapConsensusAbove80Fraction",
+    "productionGapConsensusLongestRun80Seconds",
+    "productionGapDeadPeakProminence",
+    "productionGapDeadEntryContrast",
+    "productionGapDeadExitContrast",
+)
 L2 = 0.1
 CLASS_BALANCE_EXPONENT = 0.5
 HARD_NEGATIVES_PER_RECORDING = 2
@@ -126,6 +136,116 @@ INTERACTION_PROFILE = FeatureProfile(
     ),
     builder=swap_interaction_features,
 )
+
+
+GAP_SHAPE_PROFILE = FeatureProfile(
+    identifier="union34-plus-gap-shape-g1",
+    feature_names=(*BASE_FEATURE_NAMES, *GAP_SHAPE_FEATURE_NAMES),
+    hypothesis=(
+        "two-bundle dead-state consensus and temporal gap shape distinguish true "
+        "side-switch transitions from other long dead intervals"
+    ),
+)
+
+
+def _window_values(
+    times: np.ndarray, values: np.ndarray, start: float, end: float
+) -> np.ndarray:
+    mask = (times >= start) & (times < end)
+    selected = values[mask]
+    if not len(selected):
+        selected = values[[int(np.argmin(np.abs(times - (start + end) / 2.0)))]]
+    return selected
+
+
+def _longest_true_run(values: np.ndarray) -> int:
+    longest = 0
+    current = 0
+    for value in values:
+        if bool(value):
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
+
+
+def gap_shape_features(
+    times: np.ndarray,
+    first_dead_scores: np.ndarray,
+    second_dead_scores: np.ndarray,
+    gap_start: float,
+    gap_end: float,
+    duration: float,
+) -> dict[str, float]:
+    """Return the preregistered G1 reductions from two resident 4 Hz traces."""
+
+    trace_times = np.asarray(times, dtype=np.float64)
+    first = np.asarray(first_dead_scores, dtype=np.float64)
+    second = np.asarray(second_dead_scores, dtype=np.float64)
+    if (
+        trace_times.ndim != 1
+        or not len(trace_times)
+        or first.shape != trace_times.shape
+        or second.shape != trace_times.shape
+        or not np.isfinite(trace_times).all()
+        or not np.isfinite(first).all()
+        or not np.isfinite(second).all()
+        or np.any(np.diff(trace_times) <= 0)
+        or np.any((first < 0.0) | (first > 1.0))
+        or np.any((second < 0.0) | (second > 1.0))
+    ):
+        raise ValueError("G1 traces must be finite aligned increasing probabilities")
+    if (
+        not math.isfinite(gap_start)
+        or not math.isfinite(gap_end)
+        or not math.isfinite(duration)
+        or duration <= 0.0
+        or gap_end <= gap_start
+        or gap_start < 0.0
+        or gap_end > duration + 1e-6
+    ):
+        raise ValueError("G1 candidate gap is invalid")
+
+    consensus = np.minimum(first, second)
+    disagreement = np.abs(first - second)
+    gap_consensus = _window_values(trace_times, consensus, gap_start, gap_end)
+    gap_disagreement = _window_values(trace_times, disagreement, gap_start, gap_end)
+    pre = _window_values(
+        trace_times, consensus, max(0.0, gap_start - 1.0), gap_start
+    )
+    post = _window_values(
+        trace_times, consensus, gap_end, min(duration, gap_end + 1.0)
+    )
+    entry = _window_values(
+        trace_times, consensus, gap_start, min(gap_end, gap_start + 1.0)
+    )
+    exit_values = _window_values(
+        trace_times, consensus, max(gap_start, gap_end - 1.0), gap_end
+    )
+    consensus_mean = float(np.mean(gap_consensus))
+    values = {
+        "productionGapConsensusDeadMean": consensus_mean,
+        "productionGapDeadDisagreementMean": float(np.mean(gap_disagreement)),
+        "productionGapConsensusDeadIntegral": consensus_mean
+        * (gap_end - gap_start),
+        "productionGapConsensusAbove80Fraction": float(
+            np.mean(gap_consensus >= 0.80)
+        ),
+        "productionGapConsensusLongestRun80Seconds": 0.25
+        * _longest_true_run(gap_consensus >= 0.80),
+        "productionGapDeadPeakProminence": float(np.max(gap_consensus))
+        - max(float(np.mean(pre)), float(np.mean(post))),
+        "productionGapDeadEntryContrast": float(np.mean(entry))
+        - float(np.mean(pre)),
+        "productionGapDeadExitContrast": float(np.mean(exit_values))
+        - float(np.mean(post)),
+    }
+    if tuple(values) != GAP_SHAPE_FEATURE_NAMES or not all(
+        math.isfinite(value) for value in values.values()
+    ):
+        raise ValueError("G1 feature signature or values changed")
+    return values
 
 
 def apply_profile(
