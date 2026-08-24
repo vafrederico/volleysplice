@@ -73,6 +73,7 @@ class ServingSidePersistenceTest {
             updatedAtMs = 1_728_000_000_000,
             scoreTracking = corrected,
             renderScoreOverlay = true,
+            renderScoreTimeline = true,
             selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.BALANCED,
             suppressionDecisionOverrides = mapOf("suppression-fixture" to SuppressionDecision.KEEP),
             suppressionScopeOverrides = mapOf("suppression-fixture" to SuppressionScope.VETO_REGION),
@@ -80,6 +81,7 @@ class ServingSidePersistenceTest {
         val intervals = EditorMath.finalIntervals(draft, project.suppression)
         val editList = editListJson(seed, draft, intervals)
         assertTrue(editList.getBoolean("renderScoreOverlay"))
+        assertTrue(editList.getBoolean("renderScoreTimeline"))
         assertEquals(3, editList.getJSONObject("scoreTracking").getInt("version"))
         assertEquals("Falcons", editList.getJSONObject("scoreTracking").getString("team1Name"))
 
@@ -133,6 +135,7 @@ class ServingSidePersistenceTest {
         assertNotNull(imported.project.suppression)
         assertEquals(setOf("serve-R999"), imported.draft.scoreTracking.removedModelMarkerIds)
         assertFalse(imported.draft.renderScoreOverlay)
+        assertFalse(imported.draft.renderScoreTimeline)
         assertEquals(ServingSide.FAR, imported.draft.scoreTracking.serveMarkers.first().side)
         assertTrue(imported.draft.scoreTracking.serveMarkers.first().ignorePreviousPoint)
         assertArrayEquals(

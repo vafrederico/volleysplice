@@ -241,7 +241,7 @@ export function GuidedTour({
         return {
           label: editorLabel("editor-score-overlay"),
           title: "Put the score on the final video",
-          body: "Render score on final video is off by default for each project. Turn it on to preview the source-timestamped Team 1 and Team 2 score box at the top-left of the player and burn the same box into the exported MP4. Team names and corrected serve, replay, suppression, ignored-range, and side-switch decisions all feed this display.",
+          body: "Render score on final video is off by default for each project. Turn it on to preview the source-timestamped Team 1 and Team 2 score box at the top-left of the player and burn the same box into the exported MP4. A second toggle then lets you include the timed point-history rails. Team names and corrected serve, replay, suppression, ignored-range, and side-switch decisions all feed this display.",
           action: "Next: export video",
         };
       case "editor-export-video":

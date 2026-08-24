@@ -1,68 +1,95 @@
-import { type CSSProperties, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
-import { formatOverlayScore, SCORE_OVERLAY_COLORS } from "@/lib/score-overlay";
-import { deriveScoreAt, type ScoreTracking } from "@/lib/score-tracking";
+import {
+  drawScoreOverlayScoreboard,
+  drawScorePointTimeline,
+  type PreparedScoreOverlay,
+  scoreOverlayLayout,
+  scoreOverlaySnapshot,
+  scorePointTimelineSnapshot,
+} from "@/lib/score-overlay";
 
 import styles from "./ScoreOverlay.module.css";
 
 type ScoreOverlayProps = {
-  tracking: ScoreTracking;
+  prepared: PreparedScoreOverlay;
   timestamp: number;
+  videoWidth: number;
+  videoHeight: number;
   className?: string;
 };
 
 export function ScoreOverlay({
-  tracking,
+  prepared,
   timestamp,
+  videoWidth,
+  videoHeight,
   className,
 }: ScoreOverlayProps) {
+  const scoreboardCanvas = useRef<HTMLCanvasElement>(null);
+  const timelineCanvas = useRef<HTMLCanvasElement>(null);
   const score = useMemo(
-    () => deriveScoreAt(tracking, timestamp),
-    [timestamp, tracking],
+    () => scoreOverlaySnapshot(prepared, timestamp),
+    [prepared, timestamp],
   );
-  const team1Score = formatOverlayScore(score.team1Score);
-  const team2Score = formatOverlayScore(score.team2Score);
+  const timeline = useMemo(
+    () =>
+      prepared.renderPointTimeline
+        ? scorePointTimelineSnapshot(prepared, timestamp)
+        : { points: [], opacity: 0 },
+    [prepared, timestamp],
+  );
+  const width = Math.max(1, Math.round(videoWidth));
+  const height = Math.max(1, Math.round(videoHeight));
+
+  useEffect(() => {
+    const context = scoreboardCanvas.current?.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, width, height);
+    drawScoreOverlayScoreboard(context, width, height, score);
+  }, [height, score, width]);
+
+  useEffect(() => {
+    const context = timelineCanvas.current?.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, width, height);
+    const shortestEdge = Math.max(1, Math.min(width, height));
+    const provisionalHeight = Math.round(
+      Math.min(76, Math.max(36, shortestEdge * 0.064)),
+    );
+    context.font = `700 ${Math.round(provisionalHeight * 0.39)}px sans-serif`;
+    const layout = scoreOverlayLayout(context, width, height, score);
+    drawScorePointTimeline(context, width, height, layout, timeline, 1);
+  }, [height, score, timeline, width]);
+
   const servingTeamName =
     score.servingTeamId === "team-1"
-      ? tracking.team1Name
+      ? score.team1Name
       : score.servingTeamId === "team-2"
-        ? tracking.team2Name
+        ? score.team2Name
         : null;
-  const label = `${tracking.team1Name} ${team1Score}, ${tracking.team2Name} ${team2Score}${servingTeamName ? `, ${servingTeamName} serving` : ""}`;
-  const colors = {
-    "--score-overlay-border": SCORE_OVERLAY_COLORS.border,
-    "--score-overlay-team-1": SCORE_OVERLAY_COLORS.team1,
-    "--score-overlay-team-2": SCORE_OVERLAY_COLORS.team2,
-    "--score-overlay-team-text": SCORE_OVERLAY_COLORS.teamText,
-    "--score-overlay-score-background": SCORE_OVERLAY_COLORS.scoreBackground,
-    "--score-overlay-score-text": SCORE_OVERLAY_COLORS.scoreText,
-  } as CSSProperties;
+  const label = `${score.team1Name} ${score.team1ScoreLabel}, ${score.team2Name} ${score.team2ScoreLabel}${servingTeamName ? `, ${servingTeamName} serving` : ""}`;
 
   return (
     <div
       className={[styles.overlay, className].filter(Boolean).join(" ")}
       aria-label={label}
       role="img"
-      style={colors}
     >
-      <span className={styles.team1Name}>
-        <span className={styles.teamLabel}>{tracking.team1Name}</span>
-        {score.servingTeamId === "team-1" && (
-          <span className={styles.servingIcon} aria-hidden="true">
-            🏐
-          </span>
-        )}
-      </span>
-      <strong className={styles.score}>{team1Score}</strong>
-      <span className={styles.team2Name}>
-        <span className={styles.teamLabel}>{tracking.team2Name}</span>
-        {score.servingTeamId === "team-2" && (
-          <span className={styles.servingIcon} aria-hidden="true">
-            🏐
-          </span>
-        )}
-      </span>
-      <strong className={styles.score}>{team2Score}</strong>
+      <canvas
+        ref={scoreboardCanvas}
+        width={width}
+        height={height}
+        aria-hidden="true"
+      />
+      <canvas
+        ref={timelineCanvas}
+        width={width}
+        height={height}
+        aria-hidden="true"
+        className={styles.timeline}
+        style={{ opacity: prepared.renderPointTimeline ? timeline.opacity : 0 }}
+      />
     </div>
   );
 }

@@ -10,9 +10,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.CanvasOverlay
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 internal data class ScoreExportSnapshot(
     val render: Boolean,
+    val renderPointTimeline: Boolean = true,
     val scoreTracking: ScoreTracking,
     val ignoredIntervals: List<IgnoredSourceInterval>,
     val excludedRallyIds: Set<String>,
@@ -39,6 +41,7 @@ internal fun scoreOverlaySourceTimestampMs(
 internal object ScoreExportSnapshotJson {
     fun encode(value: ScoreExportSnapshot) = JSONObject().apply {
         put("render", value.render)
+        put("renderPointTimeline", value.renderPointTimeline)
         put("scoreTracking", ScoreTrackingJson.encode(value.scoreTracking))
         put("ignoredIntervals", JSONArray().apply {
             value.ignoredIntervals.forEach { put(JSONObject().apply {
@@ -74,22 +77,23 @@ internal object ScoreExportSnapshotJson {
         val ranges = json.getJSONArray("rallyRanges")
         val merged = json.optJSONArray("mergedRanges") ?: JSONArray()
         ScoreExportSnapshot(
-            json.optBoolean("render") && tracking.enabled,
-            tracking,
-            List(ignored.length()) { index -> ignored.getJSONObject(index).let {
+            render = json.optBoolean("render") && tracking.enabled,
+            renderPointTimeline = json.optBoolean("renderPointTimeline", true),
+            scoreTracking = tracking,
+            ignoredIntervals = List(ignored.length()) { index -> ignored.getJSONObject(index).let {
                 IgnoredSourceInterval(
                     it.getString("id"), it.getLong("startMs"), it.getLong("endMs"),
                     it.getString("reason"),
                 )
             } },
-            buildSet { repeat(excluded.length()) { add(excluded.getString(it)) } },
-            List(ranges.length()) { index -> ranges.getJSONObject(index).let {
+            excludedRallyIds = buildSet { repeat(excluded.length()) { add(excluded.getString(it)) } },
+            rallyRanges = List(ranges.length()) { index -> ranges.getJSONObject(index).let {
                 ScoreRallyRange(
                     it.getLong("coreStartMs"), it.getLong("coreEndMs"),
                     it.getLong("keepStartMs"), it.getLong("keepEndMs"),
                 )
             } },
-            List(merged.length()) { index -> merged.getJSONObject(index).let {
+            mergedRanges = List(merged.length()) { index -> merged.getJSONObject(index).let {
                 ScoreMergedRange(it.getLong("startMs"), it.getLong("endMs"))
             } },
         )
@@ -110,7 +114,9 @@ internal class ScoreCanvasOverlay(
     override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         if (!snapshot.render) return
-        val score = ScoreOverlay.snapshot(snapshot.prepared, sourceTimestampMs(presentationTimeUs))
+        val sourceTimeMs = sourceTimestampMs(presentationTimeUs)
+        val score = ScoreOverlay.snapshot(snapshot.prepared, sourceTimeMs)
+        val timeline = ScoreOverlay.pointTimelineSnapshot(snapshot.prepared, sourceTimeMs)
         paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         val layout = ScoreOverlay.layout(canvas.width, canvas.height, score) { text, fontSize ->
             paint.textSize = fontSize.toFloat()
@@ -166,6 +172,65 @@ internal class ScoreCanvasOverlay(
         canvas.drawLine(divider, 0f, divider, layout.height.toFloat(), paint)
         canvas.drawPath(path, paint)
         paint.style = Paint.Style.FILL
+        if (snapshot.renderPointTimeline) {
+            drawPointTimeline(canvas, layout, timeline)
+        }
+    }
+
+    private fun drawPointTimeline(
+        canvas: Canvas,
+        scoreLayout: ScoreOverlayLayout,
+        timeline: ScorePointTimelineSnapshot,
+    ) {
+        if (timeline.points.isEmpty() || timeline.opacity <= 0f) return
+        val visiblePoints = ScoreOverlay.visiblePointTimelineEntries(
+            canvas.width,
+            scoreLayout,
+            timeline.points,
+        )
+        if (visiblePoints.isEmpty()) return
+        val layout = ScoreOverlay.pointTimelineLayout(
+            canvas.width,
+            canvas.height,
+            scoreLayout,
+            visiblePoints.size,
+        )
+        if (layout.columnSpacing <= 0f || layout.circleRadius <= 0f) return
+        paint.alpha = (timeline.opacity * 255).roundToInt().coerceIn(0, 255)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = layout.lineWidth
+        listOf(
+            Triple(ScoreTeamId.TEAM_1, layout.team1CenterY, ScoreOverlay.TEAM_1_COLOR),
+            Triple(ScoreTeamId.TEAM_2, layout.team2CenterY, ScoreOverlay.TEAM_2_COLOR),
+        ).forEach { (teamId, y, color) ->
+            val lastPointIndex = visiblePoints.indexOfLast { it.winnerTeamId == teamId }
+            if (lastPointIndex < 0) return@forEach
+            val lastX = layout.startX + layout.columnSpacing * (lastPointIndex + .5f)
+            paint.color = color.toInt()
+            canvas.drawLine(layout.startX, y, lastX, y, paint)
+        }
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = layout.fontSize
+        visiblePoints.forEachIndexed { index, point ->
+            val x = layout.startX + layout.columnSpacing * (index + .5f)
+            val y = if (point.winnerTeamId == ScoreTeamId.TEAM_1) {
+                layout.team1CenterY
+            } else layout.team2CenterY
+            paint.style = Paint.Style.FILL
+            paint.color = if (point.winnerTeamId == ScoreTeamId.TEAM_1) {
+                ScoreOverlay.TEAM_1_COLOR.toInt()
+            } else ScoreOverlay.TEAM_2_COLOR.toInt()
+            canvas.drawCircle(x, y, layout.circleRadius, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = layout.lineWidth
+            paint.color = ScoreOverlay.BORDER_COLOR.toInt()
+            canvas.drawCircle(x, y, layout.circleRadius, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = ScoreOverlay.POINT_TEXT_COLOR.toInt()
+            val baseline = y - (paint.ascent() + paint.descent()) / 2f
+            canvas.drawText(point.teamPointNumber.toString(), x, baseline, paint)
+        }
+        paint.alpha = 255
     }
 
     private fun drawCell(canvas: Canvas, left: Float, width: Int, height: Int, color: Long) {

@@ -68,6 +68,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         put("suppressionContractVersion", draft.suppressionContractVersion)
         put("scoreTracking", ScoreTrackingJson.encode(draft.scoreTracking))
         put("renderScoreOverlay", draft.renderScoreOverlay)
+        put("renderScoreTimeline", draft.renderScoreTimeline)
         put("cuts", JSONArray().apply {
             draft.cuts.forEach { cut -> put(JSONObject().apply {
                 put("id", cut.id)
@@ -180,6 +181,11 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             ),
             scoreTracking = scoreTracking,
             renderScoreOverlay = if (persistedVersion >= 6) {
+                json.optBoolean("renderScoreOverlay")
+            } else false,
+            renderScoreTimeline = if (persistedVersion >= 7) {
+                json.optBoolean("renderScoreTimeline")
+            } else if (persistedVersion >= 6) {
                 json.optBoolean("renderScoreOverlay")
             } else false,
         )

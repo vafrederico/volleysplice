@@ -160,7 +160,7 @@ class ScoreTrackingUiInstrumentedTest {
                         selectedMarkerId = selectedId,
                         manualServingSide = ServingSide.NEAR,
                         currentTimestampMs = 0,
-                        servingSideStatus = ServingSideAnalysisStatus.READY,
+                        servingSideStatus = ServingSideAnalysisStatus.NOT_RUN,
                         servingSideError = null,
                         servingSideProgress = 1f,
                         servingSideProgressDetail = null,

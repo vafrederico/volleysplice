@@ -61,6 +61,7 @@ import type { ExportProgress, VideoExportMode } from "@/lib/on-device/export";
 import { openLocalMedia } from "@/lib/on-device/media";
 import { modelDisplayName } from "@/lib/on-device/ensemble";
 import { requestPlayingSeek } from "@/lib/on-device/player";
+import { prepareScoreOverlay } from "@/lib/score-overlay";
 import {
   addServeMarker,
   addSideSwitchMarker,
@@ -308,6 +309,24 @@ export function CutEditor({
       finalIntervals,
     ),
     [activeScoreRallyRanges, activeScoreTracking, finalIntervals, playbackTime],
+  );
+  const preparedScoreOverlay = useMemo(
+    () => prepareScoreOverlay({
+      scoreTracking: draft.scoreTracking,
+      renderPointTimeline: draft.renderScoreTimeline,
+      excludedRallyIds: [...excludedRallyIds],
+      ignoredIntervals: draft.ignoredIntervals,
+      rallyRanges: activeScoreRallyRanges,
+      mergedRanges: finalIntervals,
+    }),
+    [
+      activeScoreRallyRanges,
+      draft.ignoredIntervals,
+      draft.renderScoreTimeline,
+      draft.scoreTracking,
+      excludedRallyIds,
+      finalIntervals,
+    ],
   );
 
   useEffect(() => {
@@ -789,13 +808,32 @@ export function CutEditor({
   }
 
   function toggleScoreOverlay(renderScoreOverlay: boolean) {
-    updateDraft((current) => ({ ...current, renderScoreOverlay }));
+    updateDraft((current) => ({
+      ...current,
+      renderScoreOverlay,
+      renderScoreTimeline: renderScoreOverlay
+        ? current.renderScoreTimeline
+        : false,
+    }));
+  }
+
+  function toggleScoreTimeline(renderScoreTimeline: boolean) {
+    updateDraft((current) => ({
+      ...current,
+      renderScoreTimeline: current.renderScoreOverlay && renderScoreTimeline,
+    }));
   }
 
   function selectServeMarker(markerId: string, timestamp: number) {
     setSelectedServeMarkerId(markerId);
     seekTo(timestamp, false);
     setEditorMessage(`Selected serve marker at ${preciseTime(timestamp)}.`);
+  }
+
+  function selectSideSwitchMarker(markerId: string, timestamp: number) {
+    setSelectedServeMarkerId(markerId);
+    seekTo(timestamp, false);
+    setEditorMessage(`Selected team-side switch at ${preciseTime(timestamp)}.`);
   }
 
   function updateCut(id: string, mutate: (cut: EditableCut) => EditableCut) {
@@ -1456,6 +1494,7 @@ export function CutEditor({
       ignoredIntervals: draft.ignoredIntervals,
       scoreTracking: draft.scoreTracking,
       renderScoreOverlay: draft.renderScoreOverlay,
+      renderScoreTimeline: draft.renderScoreTimeline,
       suppression: {
         selectedPolicy: draft.selectedSuppressionPolicy,
         artifact: initialAnalysis.suppression
@@ -1563,6 +1602,7 @@ export function CutEditor({
             scoreOverlay: draft.scoreTracking.enabled && draft.renderScoreOverlay
               ? {
                   scoreTracking: draft.scoreTracking,
+                  renderPointTimeline: draft.renderScoreTimeline,
                   excludedRallyIds: [...excludedRallyIds],
                   ignoredIntervals: draft.ignoredIntervals,
                   rallyRanges: activeScoreRallyRanges,
@@ -1781,7 +1821,7 @@ export function CutEditor({
               title={`Team side switch · ${preciseTime(marker.timestamp)} · applies to next serve`}
               onClick={(event) => {
                 event.stopPropagation();
-                seekTo(marker.timestamp, false);
+                selectSideSwitchMarker(marker.id, marker.timestamp);
               }}
             >
               <span aria-hidden="true">⇄</span>
@@ -2002,23 +2042,45 @@ export function CutEditor({
               </span>
             </label>
             {draft.scoreTracking.enabled && (
-              <label
-                className={`${styles.cutPreviewToggle} ${styles.scoreOverlayToggle}`}
-                data-enabled={draft.renderScoreOverlay || undefined}
-                data-tour="editor-score-overlay"
-              >
-                <input
-                  type="checkbox"
-                  checked={draft.renderScoreOverlay}
-                  onChange={(event) => toggleScoreOverlay(event.currentTarget.checked)}
-                />
-                <span>
-                  <strong>Render score on final video</strong>
-                  <small>
-                    Preview the score box on the player and include it in the exported MP4.
-                  </small>
-                </span>
-              </label>
+              <>
+                <label
+                  className={`${styles.cutPreviewToggle} ${styles.scoreOverlayToggle}`}
+                  data-enabled={draft.renderScoreOverlay || undefined}
+                  data-tour="editor-score-overlay"
+                >
+                  <input
+                    type="checkbox"
+                    checked={draft.renderScoreOverlay}
+                    onChange={(event) => toggleScoreOverlay(event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Render score on final video</strong>
+                    <small>
+                      Preview the score box on the player and include it in the exported MP4.
+                    </small>
+                  </span>
+                </label>
+                {draft.renderScoreOverlay && (
+                  <label
+                    className={`${styles.cutPreviewToggle} ${styles.scoreTimelineToggle}`}
+                    data-enabled={draft.renderScoreTimeline || undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={draft.renderScoreTimeline}
+                      onChange={(event) =>
+                        toggleScoreTimeline(event.currentTarget.checked)
+                      }
+                    />
+                    <span>
+                      <strong>Render point timeline</strong>
+                      <small>
+                        Show the two team rails beside the score when a new point starts.
+                      </small>
+                    </span>
+                  </label>
+                )}
+              </>
             )}
           </div>
           {chromeOnIos && (
@@ -2172,7 +2234,7 @@ export function CutEditor({
                 )}
                 onChange={updateScoreTracking}
                 onSelectServeMarker={selectServeMarker}
-                onSeek={(timestamp) => seekTo(timestamp, false)}
+                onSelectSideSwitchMarker={selectSideSwitchMarker}
                 onRunInference={() => {
                   scoreInferenceStartedRef.current = false;
                   void runScoreInference();
@@ -2299,8 +2361,10 @@ export function CutEditor({
             {draft.scoreTracking.enabled && draft.renderScoreOverlay && (
               <ScoreOverlay
                 className={styles.videoScoreOverlay}
-                tracking={activeScoreTracking}
-                timestamp={scoreBoundaryTime}
+                prepared={preparedScoreOverlay}
+                timestamp={playbackTime}
+                videoWidth={initialAnalysis.width}
+                videoHeight={initialAnalysis.height}
               />
             )}
             <div className={styles.timecode}>

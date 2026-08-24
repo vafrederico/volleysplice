@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import type { InferenceProgressStep } from "@/lib/inference-progress";
@@ -6,17 +6,18 @@ import {
   addServeMarker,
   addSideSwitchMarker,
   deriveScoreAt,
+  nextReviewServeMarker,
   orderedServeMarkers,
   orderedSideSwitchMarkers,
   removeServeMarker,
   removeSideSwitchMarker,
+  type ScoreIgnoredInterval,
+  type ScoreTracking,
+  type ServingSide,
   scoreTrackingOutsideExcludedRallies,
   scoreTrackingOutsideIgnoredIntervals,
   setPreviousPointIgnored,
   setServeMarkerSide,
-  type ScoreTracking,
-  type ScoreIgnoredInterval,
-  type ServingSide,
 } from "@/lib/score-tracking";
 
 import styles from "./CutEditor.module.css";
@@ -34,7 +35,7 @@ type ScoreTrackingPanelProps = {
   canRunInference: boolean;
   onChange: (tracking: ScoreTracking) => void;
   onSelectServeMarker: (id: string, timestamp: number) => void;
-  onSeek: (timestamp: number) => void;
+  onSelectSideSwitchMarker: (id: string, timestamp: number) => void;
   onRunInference: () => void;
 };
 
@@ -65,18 +66,23 @@ export function ScoreTrackingPanel({
   canRunInference,
   onChange,
   onSelectServeMarker,
-  onSeek,
+  onSelectSideSwitchMarker,
   onRunInference,
 }: ScoreTrackingPanelProps) {
   const [manualSide, setManualSide] = useState<ServingSide>("near");
+  const markerRowsRef = useRef(new Map<string, HTMLElement>());
   const activeTracking = useMemo(
-    () => scoreTrackingOutsideExcludedRallies(
-      scoreTrackingOutsideIgnoredIntervals(tracking, ignoredIntervals),
-      excludedRallyIds,
-    ),
+    () =>
+      scoreTrackingOutsideExcludedRallies(
+        scoreTrackingOutsideIgnoredIntervals(tracking, ignoredIntervals),
+        excludedRallyIds,
+      ),
     [excludedRallyIds, ignoredIntervals, tracking],
   );
-  const serves = useMemo(() => orderedServeMarkers(activeTracking), [activeTracking]);
+  const serves = useMemo(
+    () => orderedServeMarkers(activeTracking),
+    [activeTracking],
+  );
   const switches = useMemo(
     () => orderedSideSwitchMarkers(activeTracking),
     [activeTracking],
@@ -85,32 +91,72 @@ export function ScoreTrackingPanel({
     () => deriveScoreAt(activeTracking, scoreBoundaryTime),
     [activeTracking, scoreBoundaryTime],
   );
-  const finalScore = useMemo(() => deriveScoreAt(activeTracking), [activeTracking]);
+  const finalScore = useMemo(
+    () => deriveScoreAt(activeTracking),
+    [activeTracking],
+  );
   const pointTimeline = useMemo(
-    () => score.points.flatMap((point, rallyIndex) =>
-      point.status === "counted" && point.winnerTeamId
-        ? [{
-            id: point.serveMarkerId,
-            rallyNumber: rallyIndex + 1,
-            winnerTeamId: point.winnerTeamId,
-            teamPointNumber: point.winnerTeamId === "team-1"
-              ? point.team1ScoreAfter
-              : point.team2ScoreAfter,
-          }]
-        : []
-    ),
+    () =>
+      score.points.flatMap((point, rallyIndex) =>
+        point.status === "counted" && point.winnerTeamId
+          ? [
+              {
+                id: point.serveMarkerId,
+                rallyNumber: rallyIndex + 1,
+                winnerTeamId: point.winnerTeamId,
+                teamPointNumber:
+                  point.winnerTeamId === "team-1"
+                    ? point.team1ScoreAfter
+                    : point.team2ScoreAfter,
+              },
+            ]
+          : [],
+      ),
     [score.points],
   );
   const ignoredServeCount = tracking.serveMarkers.length - serves.length;
-  const selected = serves.find((marker) => marker.id === selectedServeMarkerId) ?? null;
+  const reviewMarkers = serves.filter(
+    (marker) => marker.side === "review",
+  );
+  const selected =
+    serves.find((marker) => marker.id === selectedServeMarkerId) ??
+    null;
   const selectedIndex = selected
     ? serves.findIndex((marker) => marker.id === selected.id)
     : -1;
-  const servingName = score.servingTeamId === "team-1"
-    ? tracking.team1Name
-    : score.servingTeamId === "team-2"
-      ? tracking.team2Name
-      : "Review needed";
+  const reviewSummary =
+    reviewMarkers.length === 0
+      ? "No active serve verdicts need review"
+      : reviewMarkers.length === 1
+        ? "1 active serve verdict needs review"
+        : `${reviewMarkers.length} active serve verdicts need review`;
+  const displayedInferenceMessage = inferenceMessage
+    ? /\d+ serve verdicts? need review/i.test(inferenceMessage)
+      ? inferenceMessage.replace(
+          /\d+ serve verdicts? need review/i,
+          reviewSummary.toLowerCase(),
+        )
+      : inferenceStatus === "done"
+        ? `${inferenceMessage.replace(/[.\s]+$/, "")} · ${reviewSummary.toLowerCase()}.`
+        : inferenceMessage
+    : "The first serve sets the initial server. Each later serve identifies the previous rally winner; the last rally needs a later or manually added serve to be counted.";
+  const servingName =
+    score.servingTeamId === "team-1"
+      ? tracking.team1Name
+      : score.servingTeamId === "team-2"
+        ? tracking.team2Name
+        : "Review needed";
+
+  useEffect(() => {
+    if (!selectedServeMarkerId) return;
+    const frame = requestAnimationFrame(() => {
+      markerRowsRef.current.get(selectedServeMarkerId)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedServeMarkerId, serves, switches]);
 
   return (
     <aside
@@ -125,6 +171,9 @@ export function ScoreTrackingPanel({
         </div>
         <small>
           {serves.length} serves · {switches.length} switches
+          {reviewMarkers.length > 0
+            ? ` · ${reviewMarkers.length} need review`
+            : ""}
           {ignoredServeCount > 0 ? ` · ${ignoredServeCount} ignored` : ""}
         </small>
       </header>
@@ -135,10 +184,12 @@ export function ScoreTrackingPanel({
           <input
             aria-label="Team 1 name"
             value={tracking.team1Name}
-            onChange={(event) => onChange({
-              ...tracking,
-              team1Name: event.currentTarget.value || "Team 1",
-            })}
+            onChange={(event) =>
+              onChange({
+                ...tracking,
+                team1Name: event.currentTarget.value || "Team 1",
+              })
+            }
           />
           <output>{score.team1Score}</output>
         </label>
@@ -147,10 +198,12 @@ export function ScoreTrackingPanel({
           <input
             aria-label="Team 2 name"
             value={tracking.team2Name}
-            onChange={(event) => onChange({
-              ...tracking,
-              team2Name: event.currentTarget.value || "Team 2",
-            })}
+            onChange={(event) =>
+              onChange({
+                ...tracking,
+                team2Name: event.currentTarget.value || "Team 2",
+              })
+            }
           />
           <output>{score.team2Score}</output>
         </label>
@@ -158,9 +211,11 @@ export function ScoreTrackingPanel({
           Serving now: <strong>{servingName}</strong>
           {score.servingSide ? ` · ${sideLabel(score.servingSide)} side` : ""}
         </p>
-        {(finalScore.reviewPointCount > 0 || finalScore.ignoredPointCount > 0) && (
+        {(finalScore.reviewPointCount > 0 ||
+          finalScore.ignoredPointCount > 0) && (
           <small>
-            {finalScore.reviewPointCount} unresolved · {finalScore.ignoredPointCount} replayed/ignored
+            {finalScore.reviewPointCount} unresolved ·{" "}
+            {finalScore.ignoredPointCount} replayed/ignored
           </small>
         )}
       </div>
@@ -176,19 +231,37 @@ export function ScoreTrackingPanel({
                   ? "Serve markers ready"
                   : "No serve markers yet"}
           </strong>
-          <small>
-            {inferenceMessage ??
-              "The first serve sets the initial server. Each later serve identifies the previous rally winner; the last rally needs a later or manually added serve to be counted."}
-          </small>
+          <small>{displayedInferenceMessage}</small>
         </div>
-        {(canRunInference || inferenceStatus === "running") && (
-          <button
-            type="button"
-            disabled={!canRunInference || inferenceStatus === "running"}
-            onClick={onRunInference}
-          >
-            Find score markers
-          </button>
+        {(reviewMarkers.length > 0 ||
+          canRunInference ||
+          inferenceStatus === "running") && (
+          <div className={styles.scoreInferenceActions}>
+            {reviewMarkers.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = nextReviewServeMarker(
+                    serves,
+                    selectedServeMarkerId,
+                    playbackTime,
+                  );
+                  if (next) onSelectServeMarker(next.id, next.timestamp);
+                }}
+              >
+                Review next · {reviewMarkers.length}
+              </button>
+            )}
+            {(canRunInference || inferenceStatus === "running") && (
+              <button
+                type="button"
+                disabled={!canRunInference || inferenceStatus === "running"}
+                onClick={onRunInference}
+              >
+                Find score markers
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -222,23 +295,34 @@ export function ScoreTrackingPanel({
                 key={side}
                 aria-pressed={selected?.side === side}
                 data-active={selected?.side === side || undefined}
-                onClick={() => selected && onChange(
-                  setServeMarkerSide(tracking, selected.id, side),
-                )}
+                onClick={() =>
+                  selected &&
+                  onChange(setServeMarkerSide(tracking, selected.id, side))
+                }
               >
                 {sideLabel(side)}
               </button>
             ))}
           </div>
         </fieldset>
-        <label className={styles.replayToggle} data-disabled={selectedIndex <= 0 || undefined}>
+        <label
+          className={styles.replayToggle}
+          data-disabled={selectedIndex <= 0 || undefined}
+        >
           <input
             type="checkbox"
             disabled={!selected || selectedIndex <= 0}
             checked={selected?.ignorePreviousPoint ?? false}
-            onChange={(event) => selected && onChange(
-              setPreviousPointIgnored(tracking, selected.id, event.currentTarget.checked),
-            )}
+            onChange={(event) =>
+              selected &&
+              onChange(
+                setPreviousPointIgnored(
+                  tracking,
+                  selected.id,
+                  event.currentTarget.checked,
+                ),
+              )
+            }
           />
           <span>
             <strong>Ignore/replay previous point</strong>
@@ -254,7 +338,9 @@ export function ScoreTrackingPanel({
             <select
               aria-label="Side for missing serve marker"
               value={manualSide}
-              onChange={(event) => setManualSide(event.currentTarget.value as ServingSide)}
+              onChange={(event) =>
+                setManualSide(event.currentTarget.value as ServingSide)
+              }
             >
               <option value="near">Near</option>
               <option value="far">Far</option>
@@ -267,7 +353,8 @@ export function ScoreTrackingPanel({
               const next = addServeMarker(tracking, playbackTime, manualSide);
               onChange(next);
               const added = next.serveMarkers.find(
-                (marker) => !tracking.serveMarkers.some((old) => old.id === marker.id),
+                (marker) =>
+                  !tracking.serveMarkers.some((old) => old.id === marker.id),
               );
               if (added) onSelectServeMarker(added.id, added.timestamp);
             }}
@@ -311,10 +398,12 @@ export function ScoreTrackingPanel({
                 </span>
               ))}
             </div>
-            {([
-              ["team-1", tracking.team1Name],
-              ["team-2", tracking.team2Name],
-            ] as const).map(([teamId, teamName]) => (
+            {(
+              [
+                ["team-1", tracking.team1Name],
+                ["team-2", tracking.team2Name],
+              ] as const
+            ).map(([teamId, teamName]) => (
               <div
                 className={styles.pointTimelineRow}
                 data-team={teamId}
@@ -331,33 +420,60 @@ export function ScoreTrackingPanel({
                     key={`${teamId}-${point.id}`}
                     title={`Rally ${point.rallyNumber}${point.winnerTeamId === teamId ? ` · ${teamName} point ${point.teamPointNumber}` : ""}`}
                   >
-                    {point.winnerTeamId === teamId && <i>{point.teamPointNumber}</i>}
+                    {point.winnerTeamId === teamId && (
+                      <i>{point.teamPointNumber}</i>
+                    )}
                   </span>
                 ))}
               </div>
             ))}
           </div>
         ) : (
-          <small className={styles.pointTimelineEmpty}>No points awarded yet</small>
+          <small className={styles.pointTimelineEmpty}>
+            No points awarded yet
+          </small>
         )}
       </section>
 
-      <section className={styles.scoreMarkerList} aria-label="Score marker list">
+      <section
+        className={styles.scoreMarkerList}
+        aria-label="Score marker list"
+      >
         <div>
           <span>MARKERS</span>
-          <small>Markers can be removed</small>
+          <small>
+            {reviewMarkers.length > 0
+              ? `${reviewMarkers.length} need review · `
+              : ""}
+            Markers can be removed
+          </small>
         </div>
         <div>
           {serves.map((marker, index) => (
-            <article key={marker.id} data-selected={marker.id === selected?.id || undefined}>
+            <article
+              key={marker.id}
+              ref={(node) => {
+                if (node) markerRowsRef.current.set(marker.id, node);
+                else markerRowsRef.current.delete(marker.id);
+              }}
+              data-selected={marker.id === selected?.id || undefined}
+              data-review={marker.side === "review" || undefined}
+            >
               <button
                 type="button"
+                aria-label={`Serve marker at ${preciseTime(marker.timestamp)}${marker.side === "review" ? ", needs review" : ""}`}
                 onClick={() => onSelectServeMarker(marker.id, marker.timestamp)}
               >
                 <span aria-hidden="true">🏐</span>
                 <strong>{preciseTime(marker.timestamp)}</strong>
                 <small>
-                  {index === 0 ? "First serve" : sideLabel(marker.side)} · {marker.origin}
+                  {marker.side === "review"
+                    ? "Needs review"
+                    : index === 0
+                      ? "First serve"
+                      : sideLabel(marker.side)}{" "}
+                  ·{" "}
+                  {marker.origin}
                 </small>
               </button>
               <button
@@ -371,8 +487,22 @@ export function ScoreTrackingPanel({
             </article>
           ))}
           {switches.map((marker) => (
-            <article key={marker.id}>
-              <button type="button" onClick={() => onSeek(marker.timestamp)}>
+            <article
+              key={marker.id}
+              ref={(node) => {
+                if (node) markerRowsRef.current.set(marker.id, node);
+                else markerRowsRef.current.delete(marker.id);
+              }}
+              data-selected={
+                marker.id === selectedServeMarkerId || undefined
+              }
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  onSelectSideSwitchMarker(marker.id, marker.timestamp)
+                }
+              >
                 <span aria-hidden="true">⇄</span>
                 <strong>{preciseTime(marker.timestamp)}</strong>
                 <small>
@@ -386,7 +516,9 @@ export function ScoreTrackingPanel({
                 type="button"
                 className={styles.removeMarker}
                 aria-label={`Remove ${marker.origin === "model" ? "predicted" : "added"} side switch at ${preciseTime(marker.timestamp)}`}
-                onClick={() => onChange(removeSideSwitchMarker(tracking, marker.id))}
+                onClick={() =>
+                  onChange(removeSideSwitchMarker(tracking, marker.id))
+                }
               >
                 Remove
               </button>

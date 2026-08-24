@@ -239,6 +239,7 @@ internal object ModelFeedbackImporter {
                 seed.sideSwitchEnabled,
             ),
             renderScoreOverlay = false,
+            renderScoreTimeline = false,
         )
         require(draft.cuts.map { it.id }.distinct().size == draft.cuts.size &&
             draft.beforePaddingMs in 0..MAX_PADDING_MS &&

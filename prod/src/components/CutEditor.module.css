@@ -265,8 +265,7 @@
 
 .videoScoreOverlay {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   z-index: 2;
 }
 
@@ -585,6 +584,11 @@
   gap: 3px;
 }
 
+.scoreInferenceActions {
+  align-content: stretch;
+  gap: 6px !important;
+}
+
 .scoreInference strong,
 .scoreInference small,
 .selectedServeEditor strong,
@@ -749,6 +753,17 @@
   grid-template-columns: minmax(0, 1fr) auto;
   border: 1px solid #c5c3ba;
   background: #fff;
+}
+
+.scoreMarkerList article[data-review="true"] {
+  border-color: #c19135;
+  background: #fff7e6;
+  box-shadow: inset 4px 0 0 #c19135;
+}
+
+.scoreMarkerList article[data-review="true"] small {
+  color: #7a5000;
+  font-weight: 700;
 }
 
 .scoreMarkerList article[data-selected="true"] {
@@ -1417,6 +1432,15 @@
 }
 
 .scoreOverlayToggle[data-enabled="true"] {
+  border-color: var(--cut-acid);
+}
+
+.scoreTimelineToggle {
+  margin-left: 22px;
+  border-left: 3px solid var(--cut-blue);
+}
+
+.scoreTimelineToggle[data-enabled="true"] {
   border-color: var(--cut-acid);
 }
 

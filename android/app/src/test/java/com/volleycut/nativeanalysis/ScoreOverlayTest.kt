@@ -44,6 +44,45 @@ class ScoreOverlayTest {
     }
 
     @Test
+    fun pointTimelineRevealsAtLeadingPaddingHoldsAndFades() {
+        val tracking = ScoreTracking(
+            serveMarkers = listOf(
+                ServeMarker("S1", 1_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL),
+                ServeMarker("S2", 5_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL),
+                ServeMarker("S3", 10_000, ServingSide.FAR, ServeMarkerOrigin.MANUAL),
+            ),
+        )
+        val prepared = ScoreOverlay.prepare(
+            tracking,
+            emptyList(),
+            emptySet(),
+            listOf(
+                ScoreRallyRange(1_000, 3_000, 500, 3_500),
+                ScoreRallyRange(5_000, 8_000, 4_000, 8_500),
+                ScoreRallyRange(10_000, 13_000, 9_000, 13_500),
+            ),
+        )
+
+        assertEquals(
+            listOf(ScorePointTimelineEntry("S2", ScoreTeamId.TEAM_1, 1)),
+            ScoreOverlay.pointTimelineSnapshot(prepared, 4_000).points,
+        )
+        assertEquals(0f, ScoreOverlay.pointTimelineSnapshot(prepared, 4_000).opacity, .0001f)
+        assertEquals(.5f, ScoreOverlay.pointTimelineSnapshot(prepared, 4_125).opacity, .0001f)
+        assertEquals(1f, ScoreOverlay.pointTimelineSnapshot(prepared, 4_250).opacity, .0001f)
+        assertEquals(1f, ScoreOverlay.pointTimelineSnapshot(prepared, 6_250).opacity, .0001f)
+        assertEquals(.5f, ScoreOverlay.pointTimelineSnapshot(prepared, 6_425).opacity, .0001f)
+        assertEquals(0f, ScoreOverlay.pointTimelineSnapshot(prepared, 6_600).opacity, .0001f)
+        assertEquals(
+            listOf(
+                ScorePointTimelineEntry("S2", ScoreTeamId.TEAM_1, 1),
+                ScorePointTimelineEntry("S3", ScoreTeamId.TEAM_2, 1),
+            ),
+            ScoreOverlay.pointTimelineSnapshot(prepared, 9_250).points,
+        )
+    }
+
+    @Test
     fun layoutMatchesResponsiveContractAcrossSd1080pAnd4k() {
         listOf(640 to 480, 1920 to 1080, 3840 to 2160).forEach { (width, height) ->
             val snapshot = ScoreOverlaySnapshot(
@@ -69,6 +108,28 @@ class ScoreOverlayTest {
         assertEquals(234, layout.team1Width)
         assertEquals(234, layout.team2Width)
         assertEquals(648, layout.width)
+
+        val longPoints = List(38) { index ->
+            ScorePointTimelineEntry(
+                "S${index + 1}",
+                if (index % 2 == 0) ScoreTeamId.TEAM_1 else ScoreTeamId.TEAM_2,
+                index / 2 + 1,
+            )
+        }
+        val visiblePoints = ScoreOverlay.visiblePointTimelineEntries(1920, layout, longPoints)
+        val timeline = ScoreOverlay.pointTimelineLayout(1920, 1080, layout, visiblePoints.size)
+        assertEquals(layout.width.toFloat(), timeline.startX, .0001f)
+        assertTrue(timeline.team1CenterY < timeline.team2CenterY)
+        assertTrue(visiblePoints.size < longPoints.size)
+        assertEquals("S${39 - visiblePoints.size}", visiblePoints.first().serveMarkerId)
+        assertEquals("S38", visiblePoints.last().serveMarkerId)
+        assertTrue(timeline.columnSpacing * visiblePoints.size <= 1920 - layout.width)
+        assertTrue(timeline.circleRadius > 0)
+        assertTrue(timeline.lineWidth >= 2)
+
+        val shortTimeline = ScoreOverlay.pointTimelineLayout(1920, 1080, layout, 8)
+        assertEquals(layout.height * .58f, shortTimeline.columnSpacing, .0001f)
+        assertTrue(shortTimeline.circleRadius > layout.height * .17f)
     }
 
     @Test
@@ -91,6 +152,7 @@ class ScoreOverlayTest {
     fun exportSnapshotRoundTripFreezesScoreFiltersAndRallyGeometry() {
         val original = ScoreExportSnapshot(
             render = true,
+            renderPointTimeline = false,
             scoreTracking = ScoreTracking(team1Name = "Falcons", team2Name = "Wolves"),
             ignoredIntervals = listOf(IgnoredSourceInterval("I1", 1_000, 2_000, "timeout")),
             excludedRallyIds = setOf("R002"),
@@ -105,6 +167,7 @@ class ScoreOverlayTest {
 
         assertNotNull(restored)
         assertEquals(original.render, restored?.render)
+        assertEquals(original.renderPointTimeline, restored?.renderPointTimeline)
         assertEquals(original.scoreTracking, restored?.scoreTracking)
         assertEquals(original.ignoredIntervals, restored?.ignoredIntervals)
         assertEquals(original.excludedRallyIds, restored?.excludedRallyIds)

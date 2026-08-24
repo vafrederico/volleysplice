@@ -302,8 +302,13 @@ This reducer is intentionally rules-light. It does not enforce a score limit, wi
 sets, rotations, or sanctions.
 
 Before reduction, remove serve markers whose timestamps fall in ignored source intervals
-and model-linked markers whose rallies are disabled or effectively suppressed. Filtering
-must not mutate cached inference. Manual markers without a rally ID survive rally filters.
+and model-linked serve markers whose rallies are disabled or effectively suppressed.
+Filtering must not mutate cached inference. Manual markers without a rally ID survive
+rally filters.
+Side-switch markers are global match state and are never filtered merely because one of
+their provenance `sourceRangeIds` is disabled or suppressed; otherwise later serves would
+be assigned to the wrong team. They remain subject to ignored-time filtering and explicit
+user removal.
 
 During dead time and a retained rally's leading padding, preview/export uses the closest
 next visible serve timestamp as the score boundary. During the core and trailing padding,
@@ -334,6 +339,12 @@ Required controls:
 
 - editable Team 1 and Team 2 names;
 - current score and current server;
+- a **Review next** action whenever unresolved serve verdicts remain; it selects and seeks
+  to the next `review` serve after the current selection, or after the playhead when the
+  selection is not unresolved, and wraps from the last unresolved serve to the first.
+  Serves in suppressed rallies or ignored source time are outside this review queue and
+  do not contribute to its unresolved count. Active unresolved serves are visibly marked
+  as needing review in the marker list;
 - selected predicted/manual serve correction to Near or Far (no separate Review button);
 - ignore/replay previous point;
 - add missing serve at current timestamp with selected side;
@@ -347,7 +358,8 @@ Timeline rendering:
 - serve marker: thin vertical line with small ball icon;
 - side switch: thin vertical line with small two-arrows icon;
 - marker lines sit visually above ranges but never intercept seek/drag gestures;
-- the icon remains clickable and seeks/selects its marker;
+- the icon remains clickable and seeks/selects its marker, and the marker list scrolls
+  the matching serve or side-switch row into view;
 - tapping or dragging elsewhere on the rail retains normal timeline behavior; and
 - predicted serve markers are removable exactly like manual markers.
 
@@ -362,6 +374,11 @@ score tracking is enabled. Place it indented under **Play final cut only**. Enab
 must immediately show the overlay over the editor player and include it in the next MP4
 export. The UI must not claim a material speed difference relative to the normal export;
 both current platform exporters already encode their requested output.
+
+`renderScoreTimeline` is a separate per-project Boolean, defaults false, and appears
+directly below **Render score on final video** only while `renderScoreOverlay` is on.
+It independently controls the timed point-history rails in both player preview and MP4
+export. Turning `renderScoreOverlay` off also sets `renderScoreTimeline` off.
 
 The overlay is one top-left row:
 
@@ -380,6 +397,19 @@ Team 1 name 🏐 | 00 | Team 2 name | 00
 - scores padded to at least two digits; and
 - total overlay width capped at 96% of the display/video width, shrinking name cells
   proportionally but preserving their minimum size when necessary.
+
+When an awarded point becomes visible at the next rally's leading-padding boundary, show
+the awarded-point history in the remaining top band immediately to the score row's right.
+It is a transparent horizontal timeline with two stacked rails: Team 1 red `#d9342b` above
+Team 2 blue `#2367c9`. Each awarded rally contributes only the winning team's circle,
+using the same team color and containing that team's running point number in white. Use a
+strong 2 px or thicker rail and generous normal circle/column spacing, compressing only as
+needed for a single visible column. Once the remaining video width is full, remove the
+oldest point circles from the left and keep the newest history at normal spacing. Do not
+render a separate rally-number rail or label. Fade the timeline in over 250 ms, keep it fully
+visible for 2 seconds, and fade it out over 350 ms; the score row remains visible throughout.
+Preview and export derive this opacity from the same source-timeline boundary so the encoded
+result matches the player.
 
 The Android preview renderer and Media3 export effect must consume the same pure score
 snapshot/layout rules. At export queue time, freeze the score state, filtered rally IDs,
@@ -424,9 +454,10 @@ Large numeric arrays use base64 little-endian encoding and explicit dtype/shape 
 documented in [`../prod/docs/model-feedback-bundle.md`](../prod/docs/model-feedback-bundle.md).
 Raw video bytes are never part of the bundle.
 
-The `renderScoreOverlay` preference is an editor/export preference and is included in
-the edit-list JSON. It is not currently part of feedback schema v3; Android should match
-that behavior unless the schema is deliberately revised on both platforms.
+The `renderScoreOverlay` and `renderScoreTimeline` preferences are editor/export
+preferences and are included in the edit-list JSON. They are not currently part of
+feedback schema v3; Android should match that behavior unless the schema is deliberately
+revised on both platforms.
 
 ## Android implementation map
 

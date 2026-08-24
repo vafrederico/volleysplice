@@ -173,8 +173,7 @@ internal object ScoreReducer {
                 (marker.rallyId == null || marker.rallyId !in excludedRallyIds)
         },
         sideSwitchMarkers = tracking.sideSwitchMarkers.filter { marker ->
-            ignoredIntervals.none { marker.timestampMs >= it.startMs && marker.timestampMs < it.endMs } &&
-                marker.rallyIds.none { it in excludedRallyIds }
+            ignoredIntervals.none { marker.timestampMs >= it.startMs && marker.timestampMs < it.endMs }
         },
     )
 
@@ -368,6 +367,27 @@ internal data class ScoreOverlayLayout(
     val horizontalPadding: Int,
 )
 
+internal data class ScorePointTimelineEntry(
+    val serveMarkerId: String,
+    val winnerTeamId: ScoreTeamId,
+    val teamPointNumber: Int,
+)
+
+internal data class ScorePointTimelineSnapshot(
+    val points: List<ScorePointTimelineEntry>,
+    val opacity: Float,
+)
+
+internal data class ScorePointTimelineLayout(
+    val startX: Float,
+    val team1CenterY: Float,
+    val team2CenterY: Float,
+    val columnSpacing: Float,
+    val circleRadius: Float,
+    val lineWidth: Float,
+    val fontSize: Float,
+)
+
 internal object ScoreOverlay {
     const val BORDER_COLOR = 0xff000000
     const val TEAM_1_COLOR = 0xffd9342b
@@ -375,6 +395,10 @@ internal object ScoreOverlay {
     const val TEAM_TEXT_COLOR = 0xffffffff
     const val SCORE_BACKGROUND_COLOR = 0xffffffff
     const val SCORE_TEXT_COLOR = 0xff000000
+    const val POINT_TEXT_COLOR = 0xffffffff
+    const val POINT_TIMELINE_FADE_IN_MS = 250L
+    const val POINT_TIMELINE_HOLD_MS = 2_000L
+    const val POINT_TIMELINE_FADE_OUT_MS = 350L
 
     fun prepare(
         scoreTracking: ScoreTracking,
@@ -398,6 +422,63 @@ internal object ScoreOverlay {
             prepared.tracking.team2Name, score.team2Score, formatScore(score.team2Score),
             score.servingTeamId,
         )
+    }
+
+    private fun pointRevealTimestamp(
+        prepared: PreparedScoreOverlay,
+        pointTimestampMs: Long,
+    ): Long {
+        val containingRange = prepared.rallyRanges
+            .filter { pointTimestampMs >= it.keepStartMs && pointTimestampMs < it.keepEndMs }
+            .minWithOrNull(
+                compareBy<ScoreRallyRange> {
+                    if (pointTimestampMs >= it.coreStartMs && pointTimestampMs < it.coreEndMs) 0 else 1
+                }.thenBy { abs(it.coreStartMs - pointTimestampMs) },
+            ) ?: return pointTimestampMs
+        val candidate = containingRange.keepStartMs
+        val boundary = ScoreReducer.scoreBoundaryTimestamp(
+            candidate,
+            prepared.rallyRanges,
+            prepared.tracking,
+            prepared.mergedRanges,
+        )
+        return if (boundary >= pointTimestampMs) candidate else pointTimestampMs
+    }
+
+    fun pointTimelineSnapshot(
+        prepared: PreparedScoreOverlay,
+        sourceTimestampMs: Long,
+    ): ScorePointTimelineSnapshot {
+        val boundary = ScoreReducer.scoreBoundaryTimestamp(
+            sourceTimestampMs,
+            prepared.rallyRanges,
+            prepared.tracking,
+            prepared.mergedRanges,
+        )
+        val score = ScoreReducer.deriveAt(prepared.tracking, boundary)
+        val points = score.points.mapNotNull { point ->
+            val winner = point.winnerTeamId
+            if (point.status != ScorePointStatus.COUNTED || winner == null) null else {
+                ScorePointTimelineEntry(
+                    point.serveMarkerId,
+                    winner,
+                    if (winner == ScoreTeamId.TEAM_1) point.team1ScoreAfter else point.team2ScoreAfter,
+                )
+            }
+        }
+        val latest = score.points.lastOrNull {
+            it.status == ScorePointStatus.COUNTED && it.winnerTeamId != null
+        } ?: return ScorePointTimelineSnapshot(points, 0f)
+        val age = sourceTimestampMs - pointRevealTimestamp(prepared, latest.timestampMs)
+        val holdEnd = POINT_TIMELINE_FADE_IN_MS + POINT_TIMELINE_HOLD_MS
+        val fadeOutEnd = holdEnd + POINT_TIMELINE_FADE_OUT_MS
+        val opacity = when {
+            age < 0 || age >= fadeOutEnd -> 0f
+            age < POINT_TIMELINE_FADE_IN_MS -> age.toFloat() / POINT_TIMELINE_FADE_IN_MS.toFloat()
+            age < holdEnd -> 1f
+            else -> 1f - (age - holdEnd).toFloat() / POINT_TIMELINE_FADE_OUT_MS.toFloat()
+        }
+        return ScorePointTimelineSnapshot(points, opacity.coerceIn(0f, 1f))
     }
 
     fun formatScore(score: Int) = max(0, score).toString().padStart(2, '0')
@@ -445,6 +526,44 @@ internal object ScoreOverlay {
             height, team1Width, team2Width, scoreWidth, borderWidth,
             (height * 0.24).roundToInt(), fontSize, horizontalPadding,
         )
+    }
+
+    fun pointTimelineLayout(
+        videoWidth: Int,
+        videoHeight: Int,
+        scoreLayout: ScoreOverlayLayout,
+        pointCount: Int,
+    ): ScorePointTimelineLayout {
+        val availableWidth = max(0, videoWidth - scoreLayout.width).toFloat()
+        val normalColumnSpacing = scoreLayout.height * .58f
+        val columnSpacing = if (pointCount > 0 && availableWidth > 0f) {
+            minOf(normalColumnSpacing, availableWidth)
+        } else 0f
+        return ScorePointTimelineLayout(
+            startX = scoreLayout.width.toFloat(),
+            team1CenterY = scoreLayout.height * .28f,
+            team2CenterY = scoreLayout.height * .72f,
+            columnSpacing = columnSpacing,
+            circleRadius = minOf(
+                scoreLayout.height * .18f,
+                columnSpacing * .36f,
+                videoHeight * .04f,
+            ),
+            lineWidth = max(2f, scoreLayout.borderWidth * 1.5f),
+            fontSize = max(1f, minOf(scoreLayout.height * .18f, columnSpacing * .52f)),
+        )
+    }
+
+    fun visiblePointTimelineEntries(
+        videoWidth: Int,
+        scoreLayout: ScoreOverlayLayout,
+        points: List<ScorePointTimelineEntry>,
+    ): List<ScorePointTimelineEntry> {
+        val availableWidth = max(0, videoWidth - scoreLayout.width).toFloat()
+        if (availableWidth <= 0f || points.isEmpty()) return emptyList()
+        val normalColumnSpacing = scoreLayout.height * .58f
+        val maximumVisiblePoints = max(1, (availableWidth / normalColumnSpacing).toInt())
+        return if (points.size <= maximumVisiblePoints) points else points.takeLast(maximumVisiblePoints)
     }
 }
 

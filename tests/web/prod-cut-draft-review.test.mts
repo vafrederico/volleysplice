@@ -27,16 +27,19 @@ test("production drafts persist reviewed model ranges", () => {
   const draft = createCutDraft(seed);
   draft.reviewedCutIds = ["R001"];
   draft.renderScoreOverlay = true;
+  draft.renderScoreTimeline = true;
 
   const restored = parseCutDraft(JSON.stringify(draft), seed);
 
   assert.deepEqual(restored?.reviewedCutIds, ["R001"]);
   assert.equal(restored?.renderScoreOverlay, true);
+  assert.equal(restored?.renderScoreTimeline, true);
   assert.deepEqual(restored?.cuts, JSON.parse(JSON.stringify(draft.cuts)));
 });
 
 test("score overlay export defaults off and migrates older drafts", () => {
   assert.equal(createCutDraft(seed).renderScoreOverlay, false);
+  assert.equal(createCutDraft(seed).renderScoreTimeline, false);
 
   const legacy = createCutDraft(seed) as unknown as Record<string, unknown>;
   legacy.version = 12;
@@ -45,6 +48,20 @@ test("score overlay export defaults off and migrates older drafts", () => {
   assert.equal(
     parseCutDraft(JSON.stringify(legacy), seed)?.renderScoreOverlay,
     false,
+  );
+  assert.equal(
+    parseCutDraft(JSON.stringify(legacy), seed)?.renderScoreTimeline,
+    false,
+  );
+
+  const priorOverlayDraft = createCutDraft(seed) as unknown as Record<string, unknown>;
+  priorOverlayDraft.version = 13;
+  priorOverlayDraft.renderScoreOverlay = true;
+  delete priorOverlayDraft.renderScoreTimeline;
+  assert.equal(
+    parseCutDraft(JSON.stringify(priorOverlayDraft), seed)?.renderScoreTimeline,
+    true,
+    "version 13 preserves the timeline behavior that was bundled with score rendering",
   );
 });
 

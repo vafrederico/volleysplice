@@ -5,7 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
-internal const val EDITOR_DRAFT_VERSION = 6
+internal const val EDITOR_DRAFT_VERSION = 7
 internal const val DEFAULT_BEFORE_PADDING_MS = 2_000L
 internal const val DEFAULT_AFTER_PADDING_MS = 2_000L
 internal const val DEFAULT_JOIN_GAP_MS = 3_000L
@@ -135,6 +135,7 @@ internal data class EditorDraft(
     val suppressionContractVersion: String = FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION,
     val scoreTracking: ScoreTracking = ScoreTracking(),
     val renderScoreOverlay: Boolean = false,
+    val renderScoreTimeline: Boolean = false,
 )
 
 internal data class JoinedGap(val startMs: Long, val endMs: Long)

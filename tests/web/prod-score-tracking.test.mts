@@ -7,6 +7,7 @@ import {
   createScoreTracking,
   deriveScoreAt,
   isValidScoreTracking,
+  nextReviewServeMarker,
   removeServeMarker,
   removeSideSwitchMarker,
   scoreBoundaryTimestamp,
@@ -146,6 +147,68 @@ test("model verdict correction keeps its original verdict and manual markers can
   );
 });
 
+test("review navigation seeks forward and wraps among unresolved serve markers", () => {
+  let tracking = createScoreTracking();
+  tracking = addServeMarker(tracking, 5, "review", { id: "review-1" });
+  tracking = addServeMarker(tracking, 10, "near", { id: "ready" });
+  tracking = addServeMarker(tracking, 20, "review", { id: "review-2" });
+
+  assert.equal(
+    nextReviewServeMarker(tracking.serveMarkers, "", 12)?.id,
+    "review-2",
+  );
+  assert.equal(
+    nextReviewServeMarker(tracking.serveMarkers, "review-2", 20)?.id,
+    "review-1",
+  );
+  assert.equal(
+    nextReviewServeMarker(tracking.serveMarkers, "review-1", 5)?.id,
+    "review-2",
+  );
+  assert.equal(
+    nextReviewServeMarker(
+      tracking.serveMarkers.filter((marker) => marker.side !== "review"),
+      "",
+      0,
+    ),
+    null,
+  );
+});
+
+test("review navigation and counts use only active serve markers", () => {
+  let tracking = createScoreTracking();
+  tracking = addServeMarker(tracking, 5, "review", {
+    id: "ignored-review",
+    origin: "model",
+    rallyId: "R001",
+  });
+  tracking = addServeMarker(tracking, 10, "review", {
+    id: "suppressed-review",
+    origin: "model",
+    rallyId: "R002",
+  });
+  tracking = addServeMarker(tracking, 20, "review", {
+    id: "active-review",
+    origin: "model",
+    rallyId: "R003",
+  });
+
+  const active = scoreTrackingOutsideExcludedRallies(
+    scoreTrackingOutsideIgnoredIntervals(tracking, [{ start: 4, end: 6 }]),
+    new Set(["R002"]),
+  );
+  const activeReviews = active.serveMarkers.filter(
+    (marker) => marker.side === "review",
+  );
+
+  assert.deepEqual(
+    activeReviews.map((marker) => marker.id),
+    ["active-review"],
+  );
+  assert.equal(nextReviewServeMarker(active.serveMarkers, "", 0)?.id, "active-review");
+  assert.equal(tracking.serveMarkers.length, 3, "filtered reviews remain cached");
+});
+
 test("persisted score tracking rejects invalid timestamps and duplicate marker IDs", () => {
   let tracking = createScoreTracking();
   tracking = addServeMarker(tracking, 5, "near", { id: "same" });
@@ -241,6 +304,12 @@ test("disabled or suppressed rallies leave only visible markers in the scoring s
     origin: "model",
     rallyId: "R003",
   });
+  tracking = addSideSwitchMarker(tracking, 15, {
+    id: "X001",
+    origin: "model",
+    modelEventId: "switch-1",
+    rallyIds: ["R002", "R003"],
+  });
 
   const excludedRallyIds = new Set(["R002"]);
   const active = scoreTrackingOutsideExcludedRallies(
@@ -251,10 +320,15 @@ test("disabled or suppressed rallies leave only visible markers in the scoring s
     active.serveMarkers.map((marker) => marker.id),
     ["S001", "S003"],
   );
+  assert.deepEqual(
+    active.sideSwitchMarkers.map((marker) => marker.id),
+    ["X001"],
+    "suppression must not hide global side-switch state",
+  );
 
   const score = deriveScoreAt(active);
-  assert.equal(score.team1Score, 1);
-  assert.equal(score.team2Score, 0);
+  assert.equal(score.team1Score, 0);
+  assert.equal(score.team2Score, 1);
   assert.equal(score.ignoredPointCount, 0);
   assert.equal(score.points.length, active.serveMarkers.length - 1);
   assert.equal(tracking.serveMarkers.length, 3, "cached markers stay intact");

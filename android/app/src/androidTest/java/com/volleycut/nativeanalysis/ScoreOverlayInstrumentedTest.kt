@@ -3,6 +3,7 @@ package com.volleycut.nativeanalysis
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Base64
@@ -50,6 +51,73 @@ class ScoreOverlayInstrumentedTest {
         assertEquals(ScoreOverlay.SCORE_BACKGROUND_COLOR.toInt(), bitmap.getPixel(90, 5))
         assertEquals(ScoreOverlay.TEAM_2_COLOR.toInt(), bitmap.getPixel(138, 5))
         assertEquals(Color.TRANSPARENT, bitmap.getPixel(500, 100))
+        bitmap.recycle()
+    }
+
+    @Test
+    fun exportCanvasDrawsTheTimedPointTimelineBesideTheScoreboard() {
+        val snapshot = ScoreExportSnapshot(
+            render = true,
+            scoreTracking = ScoreTracking(
+                team1Name = "Falcons",
+                team2Name = "Wolves",
+                serveMarkers = listOf(
+                    ServeMarker("S1", 1_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL),
+                    ServeMarker("S2", 5_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL),
+                ),
+            ),
+            ignoredIntervals = emptyList(),
+            excludedRallyIds = emptySet(),
+            rallyRanges = listOf(ScoreRallyRange(5_000, 7_000, 4_000, 8_000)),
+        )
+        val bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        ScoreCanvasOverlay(snapshot, sourceStartMs = 0, compositionStartUs = 0)
+            .onDraw(canvas, 4_250_000)
+
+        val score = ScoreOverlay.snapshot(snapshot.prepared, 4_250)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val scoreLayout = ScoreOverlay.layout(640, 480, score) { text, fontSize ->
+            paint.textSize = fontSize.toFloat()
+            paint.measureText(text)
+        }
+        val timeline = ScoreOverlay.pointTimelineLayout(640, 480, scoreLayout, 1)
+        val sampleX = (timeline.startX + timeline.columnSpacing * .5f + timeline.circleRadius * .65f).toInt()
+        val sampleY = timeline.team1CenterY.toInt()
+        assertColorNear(ScoreOverlay.TEAM_1_COLOR.toInt(), bitmap.getPixel(sampleX, sampleY))
+        bitmap.recycle()
+    }
+
+    @Test
+    fun exportCanvasOmitsPointTimelineWhenItsToggleIsOff() {
+        val snapshot = ScoreExportSnapshot(
+            render = true,
+            renderPointTimeline = false,
+            scoreTracking = ScoreTracking(
+                serveMarkers = listOf(
+                    ServeMarker("S1", 1_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL),
+                    ServeMarker("S2", 5_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL),
+                ),
+            ),
+            ignoredIntervals = emptyList(),
+            excludedRallyIds = emptySet(),
+            rallyRanges = listOf(ScoreRallyRange(5_000, 7_000, 4_000, 8_000)),
+        )
+        val bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        ScoreCanvasOverlay(snapshot, sourceStartMs = 0, compositionStartUs = 0)
+            .onDraw(canvas, 4_250_000)
+
+        val score = ScoreOverlay.snapshot(snapshot.prepared, 4_250)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val scoreLayout = ScoreOverlay.layout(640, 480, score) { text, fontSize ->
+            paint.textSize = fontSize.toFloat()
+            paint.measureText(text)
+        }
+        val timeline = ScoreOverlay.pointTimelineLayout(640, 480, scoreLayout, 1)
+        val sampleX = (timeline.startX + timeline.columnSpacing * .5f + timeline.circleRadius * .65f).toInt()
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(sampleX, timeline.team1CenterY.toInt()))
         bitmap.recycle()
     }
 

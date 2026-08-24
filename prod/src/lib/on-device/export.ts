@@ -28,14 +28,12 @@ import {
 } from "./export-delivery";
 import { startServiceWorkerStreamDownload } from "./stream-download";
 import {
-  formatOverlayTeamLabel,
+  drawScoreOverlay,
   prepareScoreOverlay,
-  scoreOverlayLayout,
+  scorePointTimelineSnapshot,
   scoreOverlaySnapshot,
-  SCORE_OVERLAY_COLORS,
   type PreparedScoreOverlay,
   type ScoreOverlayOptions,
-  type ScoreOverlaySnapshot,
 } from "../score-overlay";
 
 export type { ExportInterval } from "./export-math";
@@ -87,113 +85,6 @@ function createExportCanvas(width: number, height: number): {
   const context = canvas.getContext("2d", { alpha: false });
   if (!context) throw new Error("This browser cannot draw the score overlay.");
   return { canvas, context };
-}
-
-function scoreOverlayPath(
-  context: ExportCanvasContext,
-  width: number,
-  height: number,
-  borderWidth: number,
-  radius: number,
-): void {
-  const inset = borderWidth / 2;
-  const right = width - inset;
-  const bottom = height - inset;
-  context.beginPath();
-  context.moveTo(inset, inset);
-  context.lineTo(right, inset);
-  context.lineTo(right, bottom - radius);
-  context.quadraticCurveTo(right, bottom, right - radius, bottom);
-  context.lineTo(inset, bottom);
-  context.closePath();
-}
-
-function drawScoreOverlay(
-  context: ExportCanvasContext,
-  videoWidth: number,
-  videoHeight: number,
-  snapshot: ScoreOverlaySnapshot,
-): void {
-  const shortestEdge = Math.max(1, Math.min(videoWidth, videoHeight));
-  const provisionalHeight = Math.round(
-    Math.min(76, Math.max(36, shortestEdge * 0.064)),
-  );
-  context.font = `700 ${Math.round(provisionalHeight * 0.39)}px sans-serif`;
-  const layout = scoreOverlayLayout(context, videoWidth, videoHeight, snapshot);
-  const firstScoreX = layout.team1Width;
-  const team2X = firstScoreX + layout.scoreWidth;
-  const secondScoreX = team2X + layout.team2Width;
-
-  context.save();
-  scoreOverlayPath(
-    context,
-    layout.width,
-    layout.height,
-    layout.borderWidth,
-    layout.radius,
-  );
-  context.clip();
-  context.fillStyle = SCORE_OVERLAY_COLORS.team1;
-  context.fillRect(0, 0, layout.team1Width, layout.height);
-  context.fillStyle = SCORE_OVERLAY_COLORS.scoreBackground;
-  context.fillRect(firstScoreX, 0, layout.scoreWidth, layout.height);
-  context.fillStyle = SCORE_OVERLAY_COLORS.team2;
-  context.fillRect(team2X, 0, layout.team2Width, layout.height);
-  context.fillStyle = SCORE_OVERLAY_COLORS.scoreBackground;
-  context.fillRect(secondScoreX, 0, layout.scoreWidth, layout.height);
-
-  context.font = `700 ${layout.fontSize}px sans-serif`;
-  context.textBaseline = "middle";
-  context.fillStyle = SCORE_OVERLAY_COLORS.teamText;
-  context.textAlign = "center";
-  context.fillText(
-    formatOverlayTeamLabel(
-      snapshot.team1Name,
-      snapshot.servingTeamId === "team-1",
-    ),
-    layout.team1Width / 2,
-    layout.height / 2,
-    layout.team1Width - layout.horizontalPadding * 2,
-  );
-  context.fillText(
-    formatOverlayTeamLabel(
-      snapshot.team2Name,
-      snapshot.servingTeamId === "team-2",
-    ),
-    team2X + layout.team2Width / 2,
-    layout.height / 2,
-    layout.team2Width - layout.horizontalPadding * 2,
-  );
-  context.fillStyle = SCORE_OVERLAY_COLORS.scoreText;
-  context.textAlign = "center";
-  context.fillText(
-    snapshot.team1ScoreLabel,
-    firstScoreX + layout.scoreWidth / 2,
-    layout.height / 2,
-  );
-  context.fillText(
-    snapshot.team2ScoreLabel,
-    secondScoreX + layout.scoreWidth / 2,
-    layout.height / 2,
-  );
-
-  context.strokeStyle = SCORE_OVERLAY_COLORS.border;
-  context.lineWidth = layout.borderWidth;
-  for (const x of [firstScoreX, team2X, secondScoreX]) {
-    context.beginPath();
-    context.moveTo(x, 0);
-    context.lineTo(x, layout.height);
-    context.stroke();
-  }
-  scoreOverlayPath(
-    context,
-    layout.width,
-    layout.height,
-    layout.borderWidth,
-    layout.radius,
-  );
-  context.stroke();
-  context.restore();
 }
 
 function safeBaseName(filename: string): string {
@@ -445,6 +336,8 @@ export async function exportRawQualityReel(
                   media.info.width,
                   media.info.height,
                   scoreOverlaySnapshot(preparedScoreOverlay, sample.timestamp),
+                  scorePointTimelineSnapshot(preparedScoreOverlay, sample.timestamp),
+                  preparedScoreOverlay.renderPointTimeline,
                 );
                 const overlaidSample = new VideoSample(overlaySurface.canvas, {
                   timestamp: outputTimestamp,

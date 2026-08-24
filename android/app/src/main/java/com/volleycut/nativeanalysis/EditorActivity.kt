@@ -43,6 +43,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -2061,6 +2064,7 @@ private fun EditorScreen(
                     ExportService.EXTRA_SCORE_SNAPSHOT,
                     ScoreExportSnapshotJson.encode(ScoreExportSnapshot(
                         render = draft.renderScoreOverlay && draft.scoreTracking.enabled,
+                        renderPointTimeline = draft.renderScoreTimeline,
                         scoreTracking = draft.scoreTracking,
                         ignoredIntervals = draft.ignoredIntervals,
                         excludedRallyIds = excludedScoreRallyIds,
@@ -2437,8 +2441,38 @@ private fun EditorScreen(
                         }
                         Switch(
                             checked = draft.renderScoreOverlay,
-                            onCheckedChange = { enabled -> updateDraft { it.copy(renderScoreOverlay = enabled) } },
+                            onCheckedChange = { enabled ->
+                                updateDraft {
+                                    it.copy(
+                                        renderScoreOverlay = enabled,
+                                        renderScoreTimeline = if (enabled) it.renderScoreTimeline else false,
+                                    )
+                                }
+                            },
                         )
+                    }
+                    if (draft.renderScoreOverlay) {
+                        Row(
+                            modifier = Modifier.padding(start = 36.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Render point timeline", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Show the two team rails beside the score when a new point starts",
+                                    fontSize = 12.sp,
+                                    color = Muted,
+                                )
+                            }
+                            Switch(
+                                checked = draft.renderScoreTimeline,
+                                onCheckedChange = { enabled ->
+                                    updateDraft {
+                                        it.copy(renderScoreTimeline = it.renderScoreOverlay && enabled)
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -2515,8 +2549,10 @@ private fun EditorScreen(
                             Modifier.width(maxWidth).height(maxWidth / videoAspect)
                         }
                         ScoreOverlayPreview(
-                            ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
-                            videoModifier.align(Alignment.Center),
+                            snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
+                            timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
+                            renderTimeline = draft.renderScoreTimeline,
+                            modifier = videoModifier.align(Alignment.Center),
                         )
                     }
                 }
@@ -3190,7 +3226,7 @@ internal fun ScoreTrackingPanel(
                 val servingSideBusy = servingSideStatus == ServingSideAnalysisStatus.QUEUED ||
                     servingSideStatus == ServingSideAnalysisStatus.ANALYZING
                 val servingSideFailed = servingSideStatus == ServingSideAnalysisStatus.ERROR
-                val reviewPending = servingSideStatus == ServingSideAnalysisStatus.READY && reviewCount > 0
+                val reviewPending = reviewCount > 0
                 val reportedProgress = servingSideProgress?.coerceIn(0f, 1f) ?: 0f
                 Surface(
                     modifier = Modifier.fillMaxWidth().border(
@@ -3232,7 +3268,7 @@ internal fun ScoreTrackingPanel(
                                         servingSideProgressDetail
                                     servingSideBusy -> "This can take a while. You can keep editing while it runs."
                                     servingSideFailed -> servingSideError ?: "Score-tracking analysis failed. Disable and re-enable score tracking to retry."
-                                    servingSideStatus == ServingSideAnalysisStatus.READY && reviewCount > 0 ->
+                                    reviewCount > 0 ->
                                         "$reviewCount model ${if (reviewCount == 1) "verdict needs" else "verdicts need"} review."
                                     servingSideStatus == ServingSideAnalysisStatus.READY ->
                                         if (sideSwitchEnabled) {
@@ -3442,26 +3478,33 @@ internal fun ScoreTrackingPanel(
                         add(Triple(marker.id, marker.timestampMs, "Team side switch"))
                     }
                 }.sortedWith(compareBy<Triple<String, Long, String>> { it.second }.thenBy { it.first })
+                val markerListState = rememberLazyListState()
+                LaunchedEffect(selectedMarkerId, markerRows) {
+                    val selectedRowIndex = markerRows.indexOfFirst { it.first == selectedMarkerId }
+                    if (selectedRowIndex >= 0) markerListState.animateScrollToItem(selectedRowIndex)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("MARKERS", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
                     Text("${markerRows.size} · tap to select", color = Muted, fontSize = 10.sp)
                 }
-                Column(
+                LazyColumn(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(max = 252.dp)
                         .border(1.dp, Rail, RoundedCornerShape(4.dp))
                         .background(Paper, RoundedCornerShape(4.dp))
-                        .verticalScroll(rememberScrollState())
                         .padding(4.dp)
                         .semantics { contentDescription = "Score marker list" },
+                    state = markerListState,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (markerRows.isEmpty()) {
-                        Text("No score markers have been added.", Modifier.padding(10.dp), color = Muted, fontSize = 11.sp)
+                        item {
+                            Text("No score markers have been added.", Modifier.padding(10.dp), color = Muted, fontSize = 11.sp)
+                        }
                     }
-                    markerRows.forEach { (id, timestamp, label) ->
+                    items(markerRows, key = { it.first }) { (id, timestamp, label) ->
                         val selectedRow = id == selectedMarkerId
                         val needsReview = id in reviewMarkerIds
                         Row(
@@ -3568,7 +3611,12 @@ private fun ScoreTimelinePointRow(label: String, values: List<String?>, accent: 
 }
 
 @Composable
-private fun ScoreOverlayPreview(snapshot: ScoreOverlaySnapshot, modifier: Modifier = Modifier) {
+private fun ScoreOverlayPreview(
+    snapshot: ScoreOverlaySnapshot,
+    timeline: ScorePointTimelineSnapshot,
+    renderTimeline: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     BoxWithConstraints(modifier) {
@@ -3646,6 +3694,71 @@ private fun ScoreOverlayPreview(snapshot: ScoreOverlaySnapshot, modifier: Modifi
                 drawLine(Color.Black, Offset(divider, 0f), Offset(divider, size.height), stroke)
                 divider += pxDp(layout.team2Width).toPx()
                 drawLine(Color.Black, Offset(divider, 0f), Offset(divider, size.height), stroke)
+            }
+        }
+        val visibleTimelinePoints = ScoreOverlay.visiblePointTimelineEntries(
+            videoWidthPx,
+            layout,
+            timeline.points,
+        )
+        if (renderTimeline && visibleTimelinePoints.isNotEmpty() && timeline.opacity > 0f) {
+            val pointLayout = ScoreOverlay.pointTimelineLayout(
+                videoWidthPx,
+                videoHeightPx,
+                layout,
+                visibleTimelinePoints.size,
+            )
+            val pointTextStyle = androidx.compose.ui.text.TextStyle(
+                color = Color(ScoreOverlay.POINT_TEXT_COLOR).copy(alpha = timeline.opacity),
+                fontSize = with(density) { pointLayout.fontSize.toSp() },
+                fontWeight = FontWeight.Black,
+            )
+            val pointTexts = visibleTimelinePoints.map { point ->
+                measurer.measure(point.teamPointNumber.toString(), style = pointTextStyle)
+            }
+            Canvas(Modifier.fillMaxSize()) {
+                listOf(
+                    Triple(ScoreTeamId.TEAM_1, pointLayout.team1CenterY, Color(ScoreOverlay.TEAM_1_COLOR)),
+                    Triple(ScoreTeamId.TEAM_2, pointLayout.team2CenterY, Color(ScoreOverlay.TEAM_2_COLOR)),
+                ).forEach { (teamId, y, color) ->
+                    val lastPointIndex = visibleTimelinePoints.indexOfLast { it.winnerTeamId == teamId }
+                    if (lastPointIndex < 0) return@forEach
+                    val lastX = pointLayout.startX + pointLayout.columnSpacing * (lastPointIndex + .5f)
+                    drawLine(
+                        color.copy(alpha = timeline.opacity),
+                        Offset(pointLayout.startX, y),
+                        Offset(lastX, y),
+                        pointLayout.lineWidth,
+                    )
+                }
+                visibleTimelinePoints.forEachIndexed { index, point ->
+                    val x = pointLayout.startX + pointLayout.columnSpacing * (index + .5f)
+                    val y = if (point.winnerTeamId == ScoreTeamId.TEAM_1) {
+                        pointLayout.team1CenterY
+                    } else pointLayout.team2CenterY
+                    val fill = if (point.winnerTeamId == ScoreTeamId.TEAM_1) {
+                        Color(ScoreOverlay.TEAM_1_COLOR)
+                    } else Color(ScoreOverlay.TEAM_2_COLOR)
+                    drawCircle(
+                        fill.copy(alpha = timeline.opacity),
+                        pointLayout.circleRadius,
+                        Offset(x, y),
+                    )
+                    drawCircle(
+                        Color(ScoreOverlay.BORDER_COLOR).copy(alpha = timeline.opacity),
+                        pointLayout.circleRadius,
+                        Offset(x, y),
+                        style = Stroke(pointLayout.lineWidth),
+                    )
+                    val text = pointTexts[index]
+                    drawText(
+                        text,
+                        topLeft = Offset(
+                            x - text.size.width / 2f,
+                            y - text.size.height / 2f,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -4459,6 +4572,7 @@ internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<
         })
         put("scoreTracking", ScoreTrackingJson.encodeWire(draft.scoreTracking))
         put("renderScoreOverlay", draft.renderScoreOverlay)
+        put("renderScoreTimeline", draft.renderScoreTimeline)
     }
 
 private fun exportFilename(sourceName: String): String {

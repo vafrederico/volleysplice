@@ -200,7 +200,7 @@ class ScoreReducerTest {
     }
 
     @Test
-    fun ignoredIntervalsAndExcludedRalliesHideSwitchesWithoutDeletingThem() {
+    fun ignoredIntervalsHideSwitchesButExcludedRalliesDoNot() {
         val tracking = ScoreTracking(sideSwitchMarkers = listOf(
             SideSwitchMarker("ignored", 1_500, rallyIds = listOf("R001", "R002")),
             SideSwitchMarker("excluded", 3_000, rallyIds = listOf("R003", "R004")),
@@ -213,7 +213,7 @@ class ScoreReducerTest {
             setOf("R004"),
         )
 
-        assertEquals(listOf("visible"), visible.sideSwitchMarkers.map { it.id })
+        assertEquals(listOf("excluded", "visible"), visible.sideSwitchMarkers.map { it.id })
         assertEquals(3, tracking.sideSwitchMarkers.size)
     }
 

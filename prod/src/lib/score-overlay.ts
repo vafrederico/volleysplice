@@ -17,10 +17,16 @@ export const SCORE_OVERLAY_COLORS = {
   teamText: "#ffffff",
   scoreBackground: "#ffffff",
   scoreText: "#000000",
+  pointText: "#ffffff",
 } as const;
+
+export const SCORE_POINT_TIMELINE_FADE_IN_SECONDS = 0.25;
+export const SCORE_POINT_TIMELINE_HOLD_SECONDS = 2;
+export const SCORE_POINT_TIMELINE_FADE_OUT_SECONDS = 0.35;
 
 export type ScoreOverlayOptions = {
   scoreTracking: ScoreTracking;
+  renderPointTimeline?: boolean;
   excludedRallyIds?: readonly string[];
   ignoredIntervals?: readonly ScoreIgnoredInterval[];
   rallyRanges?: readonly ScoreRallyRange[];
@@ -29,6 +35,7 @@ export type ScoreOverlayOptions = {
 
 export type PreparedScoreOverlay = {
   scoreTracking: ScoreTracking;
+  renderPointTimeline: boolean;
   rallyRanges: readonly ScoreRallyRange[];
   mergedRanges: readonly ScoreMergedRange[];
 };
@@ -55,6 +62,27 @@ export type ScoreOverlayLayout = {
   horizontalPadding: number;
 };
 
+export type ScorePointTimelineEntry = {
+  serveMarkerId: string;
+  winnerTeamId: ScoreTeamId;
+  teamPointNumber: number;
+};
+
+export type ScorePointTimelineSnapshot = {
+  points: readonly ScorePointTimelineEntry[];
+  opacity: number;
+};
+
+export type ScorePointTimelineLayout = {
+  startX: number;
+  team1CenterY: number;
+  team2CenterY: number;
+  columnSpacing: number;
+  circleRadius: number;
+  lineWidth: number;
+  fontSize: number;
+};
+
 export function formatOverlayScore(score: number): string {
   return String(Math.max(0, Math.trunc(score))).padStart(2, "0");
 }
@@ -79,6 +107,7 @@ export function prepareScoreOverlay(
   );
   return {
     scoreTracking,
+    renderPointTimeline: options.renderPointTimeline ?? true,
     rallyRanges: options.rallyRanges ?? [],
     mergedRanges: options.mergedRanges ?? [],
   };
@@ -103,6 +132,93 @@ export function scoreOverlaySnapshot(
     team2Score: score.team2Score,
     team2ScoreLabel: formatOverlayScore(score.team2Score),
     servingTeamId: score.servingTeamId,
+  };
+}
+
+function pointRevealTimestamp(
+  prepared: PreparedScoreOverlay,
+  pointTimestamp: number,
+): number {
+  const containingRange = [...prepared.rallyRanges]
+    .filter(
+      (range) =>
+        pointTimestamp >= range.keepStart && pointTimestamp < range.keepEnd,
+    )
+    .sort((left, right) => {
+      const leftContainsCore =
+        pointTimestamp >= left.coreStart && pointTimestamp < left.coreEnd;
+      const rightContainsCore =
+        pointTimestamp >= right.coreStart && pointTimestamp < right.coreEnd;
+      if (leftContainsCore !== rightContainsCore)
+        return leftContainsCore ? -1 : 1;
+      return (
+        Math.abs(left.coreStart - pointTimestamp) -
+        Math.abs(right.coreStart - pointTimestamp)
+      );
+    })[0];
+  if (!containingRange) return pointTimestamp;
+  const candidate = containingRange.keepStart;
+  const boundary = scoreBoundaryTimestamp(
+    candidate,
+    prepared.rallyRanges,
+    prepared.scoreTracking,
+    prepared.mergedRanges,
+  );
+  return boundary >= pointTimestamp ? candidate : pointTimestamp;
+}
+
+export function scorePointTimelineSnapshot(
+  prepared: PreparedScoreOverlay,
+  sourceTimestamp: number,
+): ScorePointTimelineSnapshot {
+  const boundaryTimestamp = scoreBoundaryTimestamp(
+    sourceTimestamp,
+    prepared.rallyRanges,
+    prepared.scoreTracking,
+    prepared.mergedRanges,
+  );
+  const score = deriveScoreAt(prepared.scoreTracking, boundaryTimestamp);
+  const points = score.points.flatMap((point) =>
+    point.status === "counted" && point.winnerTeamId
+      ? [
+          {
+            serveMarkerId: point.serveMarkerId,
+            winnerTeamId: point.winnerTeamId,
+            teamPointNumber:
+              point.winnerTeamId === "team-1"
+                ? point.team1ScoreAfter
+                : point.team2ScoreAfter,
+          },
+        ]
+      : [],
+  );
+  const latest = [...score.points]
+    .reverse()
+    .find((point) => point.status === "counted" && point.winnerTeamId);
+  if (!latest || points.length === 0) return { points, opacity: 0 };
+
+  const age =
+    sourceTimestamp - pointRevealTimestamp(prepared, latest.timestamp);
+  const fadeInEnd = SCORE_POINT_TIMELINE_FADE_IN_SECONDS;
+  const holdEnd = fadeInEnd + SCORE_POINT_TIMELINE_HOLD_SECONDS;
+  const fadeOutEnd = holdEnd + SCORE_POINT_TIMELINE_FADE_OUT_SECONDS;
+  const opacity =
+    age < 0 || age >= fadeOutEnd
+      ? 0
+      : age < fadeInEnd
+        ? age / SCORE_POINT_TIMELINE_FADE_IN_SECONDS
+        : age < holdEnd
+          ? 1
+          : 1 - (age - holdEnd) / SCORE_POINT_TIMELINE_FADE_OUT_SECONDS;
+  const boundedOpacity = Math.max(0, Math.min(1, opacity));
+  return {
+    points,
+    opacity:
+      boundedOpacity < 1e-6
+        ? 0
+        : boundedOpacity > 1 - 1e-6
+          ? 1
+          : boundedOpacity,
   };
 }
 
@@ -172,4 +288,247 @@ export function scoreOverlayLayout(
     fontSize,
     horizontalPadding,
   };
+}
+
+export function scorePointTimelineLayout(
+  videoWidth: number,
+  videoHeight: number,
+  scoreLayout: ScoreOverlayLayout,
+  pointCount: number,
+): ScorePointTimelineLayout {
+  const availableWidth = Math.max(0, videoWidth - scoreLayout.width);
+  const normalColumnSpacing = scoreLayout.height * 0.58;
+  const columnSpacing =
+    pointCount > 0 && availableWidth > 0
+      ? Math.min(normalColumnSpacing, availableWidth)
+      : 0;
+  return {
+    startX: scoreLayout.width,
+    team1CenterY: scoreLayout.height * 0.28,
+    team2CenterY: scoreLayout.height * 0.72,
+    columnSpacing,
+    circleRadius: Math.min(
+      scoreLayout.height * 0.18,
+      columnSpacing * 0.36,
+      videoHeight * 0.04,
+    ),
+    lineWidth: Math.max(2, scoreLayout.borderWidth * 1.5),
+    fontSize: Math.max(
+      1,
+      Math.round(Math.min(scoreLayout.height * 0.18, columnSpacing * 0.52)),
+    ),
+  };
+}
+
+export function visibleScorePointTimelineEntries(
+  videoWidth: number,
+  scoreLayout: ScoreOverlayLayout,
+  points: readonly ScorePointTimelineEntry[],
+): readonly ScorePointTimelineEntry[] {
+  const availableWidth = Math.max(0, videoWidth - scoreLayout.width);
+  if (availableWidth <= 0 || points.length === 0) return [];
+  const normalColumnSpacing = scoreLayout.height * 0.58;
+  const maximumVisiblePoints = Math.max(
+    1,
+    Math.floor(availableWidth / normalColumnSpacing),
+  );
+  return points.length <= maximumVisiblePoints
+    ? points
+    : points.slice(points.length - maximumVisiblePoints);
+}
+
+export type ScoreOverlayCanvasContext =
+  | CanvasRenderingContext2D
+  | OffscreenCanvasRenderingContext2D;
+
+function scoreOverlayPath(
+  context: ScoreOverlayCanvasContext,
+  width: number,
+  height: number,
+  borderWidth: number,
+  radius: number,
+): void {
+  const inset = borderWidth / 2;
+  const right = width - inset;
+  const bottom = height - inset;
+  context.beginPath();
+  context.moveTo(inset, inset);
+  context.lineTo(right, inset);
+  context.lineTo(right, bottom - radius);
+  context.quadraticCurveTo(right, bottom, right - radius, bottom);
+  context.lineTo(inset, bottom);
+  context.closePath();
+}
+
+export function drawScoreOverlayScoreboard(
+  context: ScoreOverlayCanvasContext,
+  videoWidth: number,
+  videoHeight: number,
+  snapshot: ScoreOverlaySnapshot,
+): ScoreOverlayLayout {
+  const shortestEdge = Math.max(1, Math.min(videoWidth, videoHeight));
+  const provisionalHeight = Math.round(
+    Math.min(76, Math.max(36, shortestEdge * 0.064)),
+  );
+  context.font = `700 ${Math.round(provisionalHeight * 0.39)}px sans-serif`;
+  const layout = scoreOverlayLayout(context, videoWidth, videoHeight, snapshot);
+  const firstScoreX = layout.team1Width;
+  const team2X = firstScoreX + layout.scoreWidth;
+  const secondScoreX = team2X + layout.team2Width;
+
+  context.save();
+  scoreOverlayPath(
+    context,
+    layout.width,
+    layout.height,
+    layout.borderWidth,
+    layout.radius,
+  );
+  context.clip();
+  context.fillStyle = SCORE_OVERLAY_COLORS.team1;
+  context.fillRect(0, 0, layout.team1Width, layout.height);
+  context.fillStyle = SCORE_OVERLAY_COLORS.scoreBackground;
+  context.fillRect(firstScoreX, 0, layout.scoreWidth, layout.height);
+  context.fillStyle = SCORE_OVERLAY_COLORS.team2;
+  context.fillRect(team2X, 0, layout.team2Width, layout.height);
+  context.fillStyle = SCORE_OVERLAY_COLORS.scoreBackground;
+  context.fillRect(secondScoreX, 0, layout.scoreWidth, layout.height);
+
+  context.font = `700 ${layout.fontSize}px sans-serif`;
+  context.textBaseline = "middle";
+  context.fillStyle = SCORE_OVERLAY_COLORS.teamText;
+  context.textAlign = "center";
+  context.fillText(
+    formatOverlayTeamLabel(
+      snapshot.team1Name,
+      snapshot.servingTeamId === "team-1",
+    ),
+    layout.team1Width / 2,
+    layout.height / 2,
+    layout.team1Width - layout.horizontalPadding * 2,
+  );
+  context.fillText(
+    formatOverlayTeamLabel(
+      snapshot.team2Name,
+      snapshot.servingTeamId === "team-2",
+    ),
+    team2X + layout.team2Width / 2,
+    layout.height / 2,
+    layout.team2Width - layout.horizontalPadding * 2,
+  );
+  context.fillStyle = SCORE_OVERLAY_COLORS.scoreText;
+  context.fillText(
+    snapshot.team1ScoreLabel,
+    firstScoreX + layout.scoreWidth / 2,
+    layout.height / 2,
+  );
+  context.fillText(
+    snapshot.team2ScoreLabel,
+    secondScoreX + layout.scoreWidth / 2,
+    layout.height / 2,
+  );
+
+  context.strokeStyle = SCORE_OVERLAY_COLORS.border;
+  context.lineWidth = layout.borderWidth;
+  for (const x of [firstScoreX, team2X, secondScoreX]) {
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, layout.height);
+    context.stroke();
+  }
+  scoreOverlayPath(
+    context,
+    layout.width,
+    layout.height,
+    layout.borderWidth,
+    layout.radius,
+  );
+  context.stroke();
+  context.restore();
+  return layout;
+}
+
+export function drawScorePointTimeline(
+  context: ScoreOverlayCanvasContext,
+  videoWidth: number,
+  videoHeight: number,
+  scoreLayout: ScoreOverlayLayout,
+  timeline: ScorePointTimelineSnapshot,
+  opacity = timeline.opacity,
+): void {
+  if (timeline.points.length === 0 || opacity <= 0) return;
+  const visiblePoints = visibleScorePointTimelineEntries(
+    videoWidth,
+    scoreLayout,
+    timeline.points,
+  );
+  if (visiblePoints.length === 0) return;
+  const layout = scorePointTimelineLayout(
+    videoWidth,
+    videoHeight,
+    scoreLayout,
+    visiblePoints.length,
+  );
+  if (layout.columnSpacing <= 0 || layout.circleRadius <= 0) return;
+  context.save();
+  context.globalAlpha *= Math.max(0, Math.min(1, opacity));
+  context.lineWidth = layout.lineWidth;
+  for (const [teamId, y, color] of [
+    ["team-1", layout.team1CenterY, SCORE_OVERLAY_COLORS.team1],
+    ["team-2", layout.team2CenterY, SCORE_OVERLAY_COLORS.team2],
+  ] as const) {
+    let lastPointIndex = -1;
+    visiblePoints.forEach((point, index) => {
+      if (point.winnerTeamId === teamId) lastPointIndex = index;
+    });
+    if (lastPointIndex < 0) continue;
+    const lastX = layout.startX + layout.columnSpacing * (lastPointIndex + 0.5);
+    context.strokeStyle = color;
+    context.beginPath();
+    context.moveTo(layout.startX, y);
+    context.lineTo(lastX, y);
+    context.stroke();
+  }
+  context.font = `800 ${layout.fontSize}px sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  visiblePoints.forEach((point, index) => {
+    const x = layout.startX + layout.columnSpacing * (index + 0.5);
+    const y =
+      point.winnerTeamId === "team-1"
+        ? layout.team1CenterY
+        : layout.team2CenterY;
+    context.beginPath();
+    context.arc(x, y, layout.circleRadius, 0, Math.PI * 2);
+    context.fillStyle =
+      point.winnerTeamId === "team-1"
+        ? SCORE_OVERLAY_COLORS.team1
+        : SCORE_OVERLAY_COLORS.team2;
+    context.fill();
+    context.strokeStyle = SCORE_OVERLAY_COLORS.border;
+    context.lineWidth = layout.lineWidth;
+    context.stroke();
+    context.fillStyle = SCORE_OVERLAY_COLORS.pointText;
+    context.fillText(String(point.teamPointNumber), x, y);
+  });
+  context.restore();
+}
+
+export function drawScoreOverlay(
+  context: ScoreOverlayCanvasContext,
+  videoWidth: number,
+  videoHeight: number,
+  snapshot: ScoreOverlaySnapshot,
+  timeline: ScorePointTimelineSnapshot,
+  renderPointTimeline = true,
+): void {
+  const layout = drawScoreOverlayScoreboard(
+    context,
+    videoWidth,
+    videoHeight,
+    snapshot,
+  );
+  if (renderPointTimeline) {
+    drawScorePointTimeline(context, videoWidth, videoHeight, layout, timeline);
+  }
 }
