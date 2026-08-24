@@ -43,6 +43,39 @@ Do not retry the already failed variants under new names:
 - do not fit another internal specialist from the existing flank/geometry values; and
 - do not append the ten existing serve-anchor values.
 
+## Execution ledger
+
+This section is the append-only decision log for the implementation loop. A later
+experiment may supersede a decision, but completed results should not be rewritten.
+
+### E0 — exact baseline reconstruction — complete 2026-08-24
+
+Implemented a reusable named-profile runner with the frozen square-root logistic,
+top-2/2x recording-balanced hard-negative mining, nested recording-held-out threshold
+selection, and the current decoder. The new runner independently reconstructs the
+promoted artifacts.
+
+| E0 parity check | Reconstructed result | Expected result | Status |
+| --- | ---: | ---: | --- |
+| Row AP | 44.4992% | 44.4992% | Exact |
+| ±4 proposals / TP / FP / FN | 52 / 29 / 23 / 21 | 52 / 29 / 23 / 21 | Exact |
+| ±4 precision / recall / F1 | 55.7692% / 58.0000% / 56.8627% | 55.7692% / 58.0000% / 56.8627% | Exact |
+| Strict proposals / TP / FP / FN | 52 / 23 / 29 / 27 | 52 / 23 / 29 / 27 | Exact |
+| Strict F1 | 45.0980% | 45.0980% | Exact |
+| Outer thresholds | 11/11 exact | 11/11 | Exact |
+| Final classifier parameters | Exact to `1e-12` | Promoted classifier | Exact |
+
+Decision: **pass E0 and use this runner for subsequent profiles**. This is machinery
+validation, not a new model gain. All 107 focused side-switch tests pass.
+
+Artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-e0-baseline-v1.json`
+
+SHA-256: `dffc6f22cf77efa8c90d074c260ca17840372ec20f2680e6c82ed071336df94f`
+
+Next authorized comparison: E1, the fixed seven-value swap-interaction bundle, with no
+candidate, loss, threshold-protocol, or decoder change.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
