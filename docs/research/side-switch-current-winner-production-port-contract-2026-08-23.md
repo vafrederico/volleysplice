@@ -96,8 +96,11 @@ Each sequence must reproduce the Python V4/V5 operations:
 - Hellinger assignment, palette-instability, coverage, proposal-count, and support
   reductions.
 
-This is a new 256×144 sparse-candidate pass. The current 192×108, 4 Hz production base
-features are not numerically interchangeable with these inputs.
+These remain candidate-specific 256×144 conversions, but their requested timestamps are
+routed through the same full-sequential source decode as the 192×108 serving-side
+specialist frames. Sharing source decoding does not make the two feature banks
+interchangeable: each specialist retains its own dimensions, color conversion, timestamp
+schedule, feature math, and classifier contract.
 
 ## Exact ordered features
 

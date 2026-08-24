@@ -54,10 +54,16 @@ tracking is enabled by default per project; model markers remain editable and re
 while ignored, disabled, and suppressed rally markers are filtered from the derived score
 without changing the retained model output.
 
-Serving-side extraction is a recoverable stage: if it fails, the browser reports the
+Serving-side timestamps and optional team side-switch timestamps use one shared full
+sequential video pass. Only requested samples are converted into each model's frozen pixel
+format, after which feature generation and inference remain independent. Serving-side
+inference always runs. Team side-switch inference is controlled by a new-project option
+that defaults off for formats without court-side changes.
+
+Score-specialist extraction is a recoverable stage: if it fails, the browser reports the
 error and still opens the editor with the completed rally/suppression analysis. When the
-source and both retained serve outputs are available, the score panel can rerun and save
-the serving-side stage without repeating the main feature pipeline.
+source and required retained production outputs are available, the score panel can rerun
+and save only the missing specialist work without repeating the main feature pipeline.
 
 The optional **Render score on final video** setting is available only while score
 tracking is enabled and defaults off per project. When enabled, the editor previews the
@@ -151,7 +157,8 @@ with an orange striped treatment so **Review next** visits them before export.
 
 The selected research winner is installed as a production score-tracking beta. After
 the rally ensemble completes, the browser retains both production bundles' rally and
-dead-state traces, runs the sparse 256×144 comparison pass, and adds the decoded outputs
+dead-state traces, routes its requested 256×144 comparison frames from the shared full
+sequential specialist pass, and adds the decoded outputs
 as editable team-side switch markers. Predicted markers retain confidence, source-range
 IDs, and deletion tombstones so ignored/suppressed footage filters them without changing
 the cached inference and a removed prediction does not reappear.
@@ -161,8 +168,8 @@ The exact browser contract is tracked in
 and the
 [`implementation note`](../docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md).
 
-The port reuses the existing production traces and adds a sparse candidate-window
-visual pass: seven 256×144 frames for each side of every retained candidate, producing
+The port reuses the existing production traces and adds a candidate-window visual path:
+seven 256×144 frames for each side of every retained candidate, producing
 22 V5 visual values. Ten rally/dead-state reductions from the two shipped bundles and
 candidate kind/generator score complete the ordered 34-input vector. Serve-anchor
 features, suppression, cadence, the expanded union, and later specialist heads are not
