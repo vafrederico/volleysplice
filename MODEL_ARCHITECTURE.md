@@ -12,24 +12,27 @@ VolleyCut's production architecture is a lightweight, on-device audiovisual sign
 processing system. It does not explicitly detect the volleyball, players, net, score,
 or named volleyball actions. Instead, it learns statistical patterns that distinguish
 live rallies, serve contact, end-of-play transitions, common false positives, and—in
-the production browser—the physical camera-space serving side.
+the production browser—the physical camera-space serving side and team side changes.
 
 The currently deployed rally/export system contains seven logistic classifiers:
 
 - two independent three-head rally-model bundles, used as a recall-safety ensemble; and
 - one false-positive suppression head, used as an optional, review-first veto.
 
-The production browser adds one class-balanced logistic serving-side classifier. Its
-hybrid serve gate is deterministic and reuses the two existing serve heads and their
-decoded rally intervals; it is not a ninth learned classifier. The browser therefore
-runs eight learned classifiers in total.
+The production browser always adds one class-balanced logistic serving-side classifier.
+Its hybrid serve gate is deterministic and reuses the two existing serve heads and their
+decoded rally intervals. An optional, default-off score-tracking branch adds the
+`union34-top2-x2` side-switch logistic classifier. The hybrid gate and side-switch
+post-decoder are deterministic composition, not learned heads. The browser therefore
+runs eight learned classifiers normally and nine when side-switch inference is enabled.
 
 The seven rally/suppression classifiers run locally in both the production browser and
 native Android applications. Those clients share the same F104/520 model artifacts,
 temporal decoders, ensemble rules, and suppression-policy contract. Serving-side fixed-
-flight v3 and its hybrid gate are additionally deployed in the production browser with a
-checked-in runtime artifact and browser tests. Android does not yet implement or package
-that eighth classifier; the cross-platform port is specified in
+flight v3 and its hybrid gate are additionally deployed in the production browser and
+implemented on Android with physical-device release gates still pending. The side-switch
+classifier and its checked-in runtime are browser-only. The cross-platform serving-side
+contract is specified in
 [`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
 ## What the models look for
@@ -122,6 +125,28 @@ The exact offsets, formulas, names, ranking rule, and feature-count expansion ar
 in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). All 237 visual columns and their within-
 recording ranks are separate from F104/520, while serve-head scores and ensemble rally
 agreement are reused gate evidence rather than side-model inputs.
+
+The optional production-browser side-switch path is another candidate-conditioned branch:
+
+```text
+Production range boundaries + retained internal dead-state peaks
+                              |
+       two seven-frame 256x144 comparison windows -> V5 visual22
+                              |
+            both production bundles -> production state10
+                              |
+                 candidate kind + generator score2
+                              |
+                    34 ordered runtime inputs
+                              |
+        union34 logistic score -> adjacent NMS -> post-six cost
+```
+
+Serving-side and side-switch timestamp schedules are unioned and decoded in one full
+sequential specialist pass. Requested source samples are rendered independently to each
+model's frozen pixel format, then feature extraction, ranking, classification, and
+post-decoding proceed separately. This sharing changes execution cost only; neither
+feature signature, model artifact, cache identity, nor inference output contract changes.
 
 ## Three-head rally-model bundles
 
@@ -438,9 +463,12 @@ and boundary-only ablation are not part of this winner.
 
 The exact browser implementation contract is
 [`side-switch-current-research-winner-production-port-v1.json`](data/side-switch-current-research-winner-production-port-v1.json).
-The production browser runs it after rally inference and seeds editable switch markers;
-runtime/device profiling and independent exhaustive validation remain required before
-the score-tracking beta label is removed.
+The production browser runs it after rally inference and seeds editable switch markers
+when the default-off project option is enabled. Its frame schedule shares the one full
+sequential specialist decode with serving-side inference; the 34-input extractor and
+decoder remain independent after frame routing. Representative-device profiling and
+independent exhaustive validation remain required before the score-tracking beta label is
+removed.
 
 The pairwise follow-up preserves that entire inference graph and adds only a training
 loss over positive-minus-negative logits within each fit recording. Equal total pair
@@ -541,41 +569,39 @@ extraction/inference scripts. The historical v1 non-promotion remains documented
 The complete selected production path is:
 
 ```text
-Decode video and audio once
-           |
-Extract and cache 104 base features at 4 fps
-           |
-Normalize and gather 520 contextual inputs
-           |
-           |-- run all-labels-v2 rally/serve/dead-state heads
-           `-- run previous-production rally/serve/dead-state heads
-                           |
-              union the two rally outputs
-                           |
-             mark agreement and disagreement
-                           |
-       run suppression head and build gated suggestions
-                           |
-             for each saved candidate anchor
-                   |                    |
-                   |                    `-- extract/rank 237 serving-side inputs
-                   |                                   |
-                   |                          fixed-flight near/far score
-                   |
-                   `-- inspect both serve heads and production-rally agreement
-                                      |
-                       hybrid gate: serve-head / rally recovery / not-serve
-                                      |
-                      add side-score and recovery review reasons
-                           |
-             seed editable source-time serve markers
-                           |
+Decode main video at 4 fps and decode audio
+                     |
+       extract and cache 104 base features
+                     |
+      normalize and gather 520 contextual inputs
+                     |
+        |-- all-labels-v2 rally/serve/dead-state heads
+        `-- previous-production rally/serve/dead-state heads
+                               |
+          union rally outputs and mark agreement
+                               |
+        suppression head and gated suggestions
+                               |
+       build required serving timestamps and, when enabled,
+                 optional side-switch timestamps
+                               |
+          one full sequential specialist video pass
+                    over the timestamp union
+                 /                             \
+  192x108 grayscale serving frames       256x144 BGR switch frames
+                 |                             |
+ extract/rank SERVSIDE237-FLIGHT      extract SIDE-SWITCH-UNION34-V1
+                 |                             |
+ fixed-flight near/far + hybrid gate    union34 score + post-decoder
+                 |                             |
+       editable serve markers             editable switch markers
+                 \                             /
        derive point winners from each following server
-                           |
+                               |
             human review and manual corrections
-                           |
+                               |
         add export padding and join short positive gaps
-                           |
+                               |
              preview or export MP4, optionally with score
 ```
 
@@ -589,17 +615,19 @@ New edit drafts default to:
 Manual include/exclude decisions, boundary edits, ignored intervals, and selected
 suppression overrides are materialized before preview and export.
 
-Serving-side candidates are generated after the browser's rally/suppression analysis
+Score-specialist candidates are generated after the browser's rally/suppression analysis
 result for a new project and before the editor is shown. Every included merged production
-interval start is an anchor. The raw 237-column matrix, verdict evidence, and model
-identity are stored with the project; tied ranks are recomputed over the complete
-candidate set during inference. Editor ignored ranges and disabled/suppressed rallies
-filter markers after inference and never cause video reprocessing.
+interval start is a serving-side anchor. Side-switch candidates are generated only when
+the project's default-off side-switch option is enabled. The two requested timestamp sets
+share one sequential decode, while their feature matrices and model outputs remain
+separate. The raw matrices, verdict/proposal evidence, and model identities are stored
+with the project. Editor ignored ranges and disabled/suppressed rallies filter markers
+after inference and never cause video reprocessing.
 
-If serving-side extraction alone fails, the browser reports the error and opens the
-editor with the already-complete rally/suppression result; a connected source plus the
-two retained serve outputs allows the user to rerun that stage. A failure is not stored
-as a valid serving-side cache.
+If the shared specialist stage fails, the browser reports the error and opens the editor
+with the already-complete rally/suppression result. A connected source plus the retained
+production outputs allows the user to rerun only the missing specialist work. A failure
+is not stored as a valid serving-side or side-switch cache.
 
 The score reducer treats the first visible serve as the initial server and awards no
 point. Every later serve awards the preceding rally to the team that serves next, unless
@@ -610,7 +638,11 @@ add one manually. This is a product inference convention, not a learned score mo
 
 The production browser orchestration is in
 [`prod/src/lib/on-device/production-inference.ts`](prod/src/lib/on-device/production-inference.ts)
-and [`prod/src/App.tsx`](prod/src/App.tsx). Side-switch inference is in
+and [`prod/src/App.tsx`](prod/src/App.tsx). Shared specialist planning and sampling are in
+[`prod/src/lib/on-device/score-specialists.ts`](prod/src/lib/on-device/score-specialists.ts)
+and
+[`prod/src/lib/on-device/specialist-frame-sampling.ts`](prod/src/lib/on-device/specialist-frame-sampling.ts).
+Side-switch inference is in
 [`prod/src/lib/on-device/side-switch-model.ts`](prod/src/lib/on-device/side-switch-model.ts)
 and [`prod/src/lib/on-device/side-switch.ts`](prod/src/lib/on-device/side-switch.ts).
 Score reduction is in

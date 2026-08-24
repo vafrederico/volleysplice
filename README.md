@@ -140,7 +140,10 @@ union. The contract excludes serve anchors, suppression, cadence, expanded inter
 candidates, and later rejected heads. The production web app now runs that graph and
 turns decoded outputs into editable, tombstoned team-side switch markers. The score UI
 remains labeled beta pending representative-phone profiling and independent exhaustive
-validation.
+validation. New projects default side-switch inference off for formats without court-side
+changes. When enabled, its requested frames share one full sequential specialist decode
+with the always-on serving-side model; the two frozen feature/model contracts remain
+independent after sampling.
 The first rare-event follow-up preserves one V5 orientation observation per detected
 rally. Manual parity proves stable rally states can bracket all 50 switches, but the
 existing orientation sign recognizes only 21.32% of swapped-state observations and its

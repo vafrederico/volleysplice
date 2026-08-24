@@ -24,8 +24,9 @@ Android must implement:
 9. cross-platform fixtures for features, inference, scoring, and rendering state.
 
 The Android implementation described by this version does not infer side switches. The
-production browser now adds beta side-switch predictions through its separate full-union
-candidate model. Neither client infers set boundaries, match format, serving player,
+production browser adds beta side-switch predictions through its full-union candidate
+model and routes those frame requests through the same sequential specialist pass as
+serving-side inference. Neither client infers set boundaries, match format, serving player,
 penalty points, or the winner of the final rally without a later serve. It does not put
 the point-history rail into the encoded video. It does not add serving-side columns to
 the existing F104/520 rally model input.
@@ -60,7 +61,8 @@ decode selected game window and produce F104 rows
   -> retain both serve probability arrays and decoded contacts
   -> build the overlap-union production intervals and agreement provenance
   -> run the suppression specialist
-  -> open/reuse the source and sample serving-side windows at every included interval start
+  -> build serving-side timestamps and optional browser side-switch timestamps
+  -> open/reuse the source and decode their union in one full sequential specialist pass
   -> compute all raw 237-column rows
   -> tied-rank every column over the complete candidate set
   -> run fixed-flight v3 and the hybrid gate
@@ -69,8 +71,9 @@ decode selected game window and produce F104 rows
 ```
 
 Serving-side generation is part of initial inference, before a new project's editor is
-shown. It is not controlled by the score-UI toggle. The toggle controls presentation,
-not whether the durable model output exists.
+shown, and has no setup opt-out. The production browser has a separate default-off option
+for formats that require inferred team side-switch markers; it does not control serving-
+side output.
 
 The browser treats a serving-side extraction failure as recoverable: it reports the
 failure, still opens the editor with the completed rally/suppression analysis, and offers
@@ -151,7 +154,8 @@ Flight offsets:
 ```
 
 Frame selection must be specified and parity-tested. If native MediaExtractor/MediaCodec
-cannot return the same visual sample as browser `CanvasSink`, record the timestamp/frame
+cannot return the same visual sample as the browser's sequential `VideoSampleSink` path,
+record the timestamp/frame
 selection delta and prove final score/verdict acceptance on the release corpus rather
 than assuming compatibility.
 
@@ -389,11 +393,12 @@ path. Android must verify 0°, 90°, 180°, and 270° inputs and avoid applying 
 
 Android must version and atomically migrate its native project/editor schemas. Existing
 projects default to score tracking enabled and final-video rendering disabled without
-losing cuts or suppression state. New-project setup may explicitly skip the additional
-serving-side feature pass; that choice starts score tracking disabled and is persisted separately
-from rally inference. Enabling score tracking later must queue only the missing serving-side
-feature generation and inference, retain all edits, and merge the resulting model markers without
-re-running the rally models.
+losing cuts or suppression state. Serving-side feature generation is part of new-project
+inference and is persisted separately from rally inference. A later recovery run must
+queue only missing serving-side feature generation and inference, retain all edits, and
+merge the resulting model markers without re-running the rally models. The browser's
+default-off side-switch option is a distinct preference and has no Android inference
+equivalent in this version.
 
 Android's current feedback exporter is schema v1. This feature requires parity with
 `volleycut-model-feedback` schema v3:

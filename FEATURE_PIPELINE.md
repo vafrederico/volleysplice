@@ -40,9 +40,14 @@ schema. The following precedence applies when rebuilding or diagnosing drift:
    [`audio-features.ts`](prod/src/lib/on-device/audio-features.ts),
    [`pipeline.ts`](prod/src/lib/on-device/pipeline.ts), and
    [`feature-math.ts`](prod/src/lib/on-device/feature-math.ts).
-   The separate serving-side browser implementation is
-   [`serving-side-model.ts`](prod/src/lib/on-device/serving-side-model.ts) and
-   [`serving-side.ts`](prod/src/lib/on-device/serving-side.ts).
+   The production score-specialist implementations are
+   [`serving-side-model.ts`](prod/src/lib/on-device/serving-side-model.ts),
+   [`serving-side.ts`](prod/src/lib/on-device/serving-side.ts),
+   [`side-switch-model.ts`](prod/src/lib/on-device/side-switch-model.ts), and
+   [`side-switch.ts`](prod/src/lib/on-device/side-switch.ts). Their timestamp schedules
+   are unioned by [`score-specialists.ts`](prod/src/lib/on-device/score-specialists.ts)
+   and sampled by
+   [`specialist-frame-sampling.ts`](prod/src/lib/on-device/specialist-frame-sampling.ts).
 5. The Android equivalents begin at
    [`FeatureSchema.java`](android/app/src/main/java/com/volleycut/nativeanalysis/FeatureSchema.java),
    [`NativeVideoDecoder.java`](android/app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java),
@@ -365,7 +370,7 @@ the work Android must reproduce:
 
 | Capability | Browser status | Android requirement |
 | --- | --- | --- |
-| Video decode, source timestamps, and ROI cropping | Implemented with `CanvasSink`, display-oriented ROI crop, 192×108 `fit: fill`, and exact clamped offsets | Seek the same frames at the same source timestamps and preserve display orientation before the ROI crop. |
+| Video decode, source timestamps, and ROI cropping | Requested timestamps are routed through one full sequential `VideoSampleSink` pass shared with the optional side-switch branch. Requested serving frames use the display-oriented ROI crop, 192×108 `fit: fill`, grayscale conversion, and exact clamped offsets. | Select the same frames at the same source timestamps and preserve display orientation before the ROI crop. Decoder strategy is an execution detail; converted pixels and feature rows must remain equivalent. |
 | Court-flow values | Implemented as 82 values | Port the fixed top/bottom 32% ROI-relative service bands, median-translation-compensated Farnebäck flow, 3×3 opening, connected components, phase summaries, and deltas exactly. |
 | Concentrated-flight values | Implemented as 155 values | Port the affine-compensated flight flow, p90 residual-energy isolation, 4×6 summaries, components, and transitions exactly. |
 | Recording normalization | Implemented as column-wise stable tied midranks over all candidates; singleton rank is 0.5 | Do not reuse F104 normalization. Match stable tie behavior and reject non-finite raw values. |
@@ -467,25 +472,26 @@ Production-rally agreement and serve-head scores are gate evidence, not addition
 members of the 237-input side feature vector. The gate does not create, delete, or
 move production rally intervals.
 
-## Research-only feature registry
+## Production-browser side-switch pipeline
 
-Research-only columns must not be added to the production schema or model bundle until
-their experiment passes the declared development gate, their production execution cost
-is accepted, and browser/Android parity is implemented.
+The browser deploys the selected hard-negative side-switch winner as an optional score-
+tracking beta. New projects default this branch off because not every competition format
+changes court sides. Enabling it changes only whether side-switch candidates are sampled
+and inferred; serving-side extraction remains required.
 
-### Selected side-switch winner port profile
+### Frozen union34 runtime profile
 
 The current side-switch research winner is fixed to
 `FULL-UNION-V5-STATE42/union34`; it does **not** consume all 42 stored values. Its exact
 runtime vector is 34 ordered inputs:
 
-| Runtime group | Inputs | Production action |
+| Runtime group | Inputs | Runtime behavior |
 | --- | ---: | --- |
-| V5 visual comparison | 22 | Add a sparse 256×144 candidate-window extractor: recording-level net normalization, seven frames per window, phase alignment, broad/tight HSV palettes, and motion-component player proposals. |
+| V5 visual comparison | 22 | Sample the declared seven-frame 256×144 windows from the shared full sequential pass, then apply recording-level net normalization, phase alignment, broad/tight HSV palettes, and motion-component player proposals. |
 | Production state | 10 | Reuse both shipped bundles' range, rally, and dead-state traces to compute support, adjacent-rally peak, gap-live, gap-score, and gap-duration reductions. |
 | Candidate metadata | 2 | Emit boundary/internal kind and the internal dead-state generator score; boundary score is zero. |
 
-Candidate generation also belongs to the port: every adjacent production range boundary
+Candidate generation also belongs to the runtime: every adjacent production range boundary
 plus `deadState >= 0.98` peaks with four-second range-edge exclusion, 14-second
 within-range NMS, and one-second proposal half-width. The selected head does not use
 serve-anchor fields, suppression scores, cadence, reliability offsets, the expanded
@@ -496,7 +502,25 @@ gates are frozen in the
 [`machine-readable port contract`](data/side-switch-current-research-winner-production-port-v1.json)
 and the
 [`production-port decision record`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md).
-This is a specified research port, not an extension of the deployed F104 schema.
+The serving-side and side-switch timestamp schedules are unioned before decoding. One
+continuous sequential pass emits all intervening source frames and converts only requested
+timestamps: 192×108 grayscale for serving side and 256×144 BGR for side switches. Exact
+timestamp overlap is converted for both consumers. Feature extraction and inference remain
+model-specific after sampling, so the frozen `SERVSIDE237-FLIGHT` and
+`SIDE-SWITCH-UNION34-V1` contracts do not change. The cutover therefore requires no
+retraining and does not invalidate compatible persisted outputs.
+
+The browser runtime is
+`prod/public/runtime/side-switch-c2570481c30d.json`; the Android port remains absent.
+This separate candidate-conditioned branch is not an extension of the deployed F104/520
+rally schema.
+
+## Extended feature registry and research lineage
+
+Entries below include deployed specialist branches as well as retained or rejected
+research representations. Research-only columns must not enter a production model until
+their experiment passes the declared development gate, execution cost is accepted, and
+required client parity is implemented.
 
 | Feature or representation | Definition/source | Status and decision |
 | --- | --- | --- |
@@ -525,11 +549,11 @@ This is a specified research port, not an extension of the deployed F104 schema.
 | Side-switch V5 rally-parity diagnostic | One score-zero-anchored orientation coordinate and one support/separation quality value per production-detected rally, with full-marker parity labels and ±4-second transition masks | Candidate architecture retained, current emission rejected. Truth parity between stable rallies brackets 50/50 reviewed events, but the V5 sign has 95.93% state-zero recall versus 21.32% state-one recall; persistence-2 reaches only 5 TP/13 FP/45 FN. No fitted model or runtime port. See [`side-switch-parity-feasibility-2026-08-23.md`](docs/research/side-switch-parity-feasibility-2026-08-23.md). |
 | Side-switch CONTINUITY1 verifier | Recording-median/MAD normalized V5 `playerSwapMargin`, applied only to the current local-peak+soft-count proposals as a strong same-side continuity veto | Promising research layer, not production/current winner. LOO removes 5 FP with all 25 TP retained, raising precision/F1 40.32%/44.64%→43.86%/46.73%. Hard same-cheaper gating, quality abstention, verifier-alone, and add-only modes are rejected. See [`side-switch-continuity-verifier-2026-08-23.md`](docs/research/side-switch-continuity-verifier-2026-08-23.md). |
 | Side-switch full-trace candidate union | Every adjacent production rally boundary plus score-ranked `deadState >= 0.98` peaks inside ranges, with four-second edge exclusion, 14-second NMS, and two-second peak windows | Retained upstream research generator, not a model/final decoder. Adds 80 internal peaks to 624 boundaries and raises ±4 candidate recall 66%→92% with identical LOO selection and no new inference/decode. Only 352/704 windows have frozen V5 features. See [`side-switch-candidate-union-2026-08-23.md`](docs/research/side-switch-candidate-union-2026-08-23.md). |
-| Side-switch FULL-UNION-V5-STATE42 | `PLAYER-ORIENTATION22+PRODUCTION-STATE20` for all 704 full-union candidates; whole-rally boundary summaries and fixed `[t-4,t-1]`/`[t+1,t+4]` internal flanks, seven 256×144 frames per window | Retained source profile for the current research winner. The selected `union34` runtime subset is exactly V5 visual 22 + state-gate 10 + candidate kind/score 2; serve-anchor 10 are stored but unused. Python parity is exact on 352 legacy rows; browser/Android generation remains unimplemented. See [`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md) and the [`port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md). |
+| Side-switch FULL-UNION-V5-STATE42 | `PLAYER-ORIENTATION22+PRODUCTION-STATE20` for all 704 full-union candidates; whole-rally boundary summaries and fixed `[t-4,t-1]`/`[t+1,t+4]` internal flanks, seven 256×144 frames per window | Source profile for the deployed browser beta. The production `union34` subset is exactly V5 visual 22 + state-gate 10 + candidate kind/score 2; the ten stored serve-anchor values remain unused. Python parity is exact on 352 legacy rows, and the browser runtime has a frozen Python-row classifier fixture. Android generation remains unimplemented. See [`side-switch-full-union-ranker-2026-08-23.md`](docs/research/side-switch-full-union-ranker-2026-08-23.md) and the [`port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md). |
 | Side-switch recording score calibration | Within-recording robust logit median/MAD scaling or tied percentile ranks over full-union classifier scores | Rejected. Percentiles raise AP/recall but add false proposals; robust logits also fail to improve F1. Raw scores with square-root class balancing are retained as a candidate training objective. See [`side-switch-imbalance-calibration-2026-08-23.md`](docs/research/side-switch-imbalance-calibration-2026-08-23.md). |
 | Side-switch internal-peak soft penalty | Subtracts a selected 0–3 logit offset from `internal-dead-state-peak` classifier scores before the fixed local-peak plus soft-count decoder; boundary scores are unchanged | Rejected as a general prior. Nested ±4 F1 improves 53.47%→54.90% against a matched zero-penalty control, but 6/11 folds select zero and the penalty removes the control's only correct internal proposal. No runtime/UI port. See [`side-switch-internal-peak-penalty-2026-08-23.md`](docs/research/side-switch-internal-peak-penalty-2026-08-23.md). |
 | Side-switch FULL-UNION-EXPANDED-V5-STATE42 | Same 42-value flank/boundary feature contract with internal `deadState >= 0.80`, 10-second score-ranked NMS, and 228 internal peaks; exact reuse of 703 prior rows plus 149 new windows | Rejected. Candidate recall reaches 100%, but nested ±4 ranker F1 falls 50.94%→42.74%; only 1/13 emitted internal proposals is correct. Adds 2,086 decoded frames during extraction and no runtime/UI port. See [`side-switch-expanded-internal-candidates-2026-08-23.md`](docs/research/side-switch-expanded-internal-candidates-2026-08-23.md). |
-| Side-switch recording-balanced hard-negative mining | Training-only upweighting of each fit recording's top-scoring labeled negative candidates after an initial square-root-balanced fit; no new model inputs | **Current research winner:** fixed union34 top-2/2× reaches 56.86% opened-development F1 and was explicitly promoted. Runtime is the 34-input feature subset and cadence-free adjacent+soft-count decoder above; mining adds no inference operation. The production port is specified but unimplemented. See [`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md) and the [`port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md). |
+| Side-switch recording-balanced hard-negative mining | Training-only upweighting of each fit recording's top-scoring labeled negative candidates after an initial square-root-balanced fit; no new model inputs | **Current research winner and production-browser beta:** fixed union34 top-2/2× reaches 56.86% opened-development F1. Runtime is the checked-in 34-input linear head and cadence-free adjacent+soft-count decoder above; mining adds no inference operation. The browser port is implemented and Android remains unimplemented. See [`side-switch-hard-negative-winner-promotion-2026-08-23.md`](docs/research/side-switch-hard-negative-winner-promotion-2026-08-23.md) and the [`port contract`](docs/research/side-switch-current-winner-production-port-contract-2026-08-23.md). |
 | Side-switch within-recording pairwise rank loss | Training-only all-positive/all-negative logit differences formed inside each fit recording, with equal total pair weight per video; no new model inputs | Rejected. λ=0.25 raises row AP 44.50%→44.73% but adds seven FP with no TP gain, reducing ±4 F1 56.86%→53.21%; nested selection reaches 54.72%. Zero strength reproduces the current winner exactly. See [`side-switch-pairwise-ranking-2026-08-23.md`](docs/research/side-switch-pairwise-ranking-2026-08-23.md). |
 | Side-switch recording reliability | Thirteen per-video quality/score summaries: camera shift, alignment, player separation, proposal coverage, palette instability, appearance change, serve anchor/confidence, score distribution, threshold exceedance, and candidate density | Rejected. Direct blur is absent from the retained artifact. Nested selection chooses no reliability offset in 11/11 folds; the best fixed offset gains 1 TP but adds 6 FP and lowers F1 56.86%→55.05%. See [`side-switch-recording-reliability-2026-08-23.md`](docs/research/side-switch-recording-reliability-2026-08-23.md). |
 | Side-switch focal/effective-number objectives | Training-only focal modulation at gamma 1/2 or effective-number class weights at beta 0.9/0.99/0.999; no new inputs | Rejected. Focal slightly raises AP but lowers event F1 to 53.85%; best effective-number F1 is 54.90%; nested objective selection reaches 53.47% versus the 56.86% control. See [`side-switch-rare-event-losses-2026-08-23.md`](docs/research/side-switch-rare-event-losses-2026-08-23.md). |
