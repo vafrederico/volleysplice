@@ -49,8 +49,10 @@ export type VolleyCutProject = {
   info: OnDeviceMediaInfo;
   analysisWindow: AnalysisWindow;
   roi: NormalizedRoi;
-  /** Whether project creation should eagerly generate serving-side features. */
+  /** Legacy score-tracking preference retained for stored-project compatibility. */
   servingSideEnabled?: boolean;
+  /** Whether inference should generate team side-switch markers. */
+  sideSwitchEnabled?: boolean;
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
   error: string | null;
@@ -514,6 +516,8 @@ function validProject(value: unknown): value is VolleyCutProject {
     validRoi(project.roi) &&
     (project.servingSideEnabled === undefined ||
       typeof project.servingSideEnabled === "boolean") &&
+    (project.sideSwitchEnabled === undefined ||
+      typeof project.sideSwitchEnabled === "boolean") &&
     typeof project.status === "string" &&
     statuses.includes(project.status as ProjectStatus) &&
     (project.analysis === null ||

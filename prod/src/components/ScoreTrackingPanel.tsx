@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 
+import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
+import type { InferenceProgressStep } from "@/lib/inference-progress";
 import {
   addServeMarker,
   addSideSwitchMarker,
@@ -28,6 +30,7 @@ type ScoreTrackingPanelProps = {
   selectedServeMarkerId: string;
   inferenceStatus: "idle" | "running" | "done" | "error";
   inferenceMessage: string | null;
+  inferenceSteps: readonly InferenceProgressStep[];
   canRunInference: boolean;
   onChange: (tracking: ScoreTracking) => void;
   onSelectServeMarker: (id: string, timestamp: number) => void;
@@ -58,6 +61,7 @@ export function ScoreTrackingPanel({
   selectedServeMarkerId,
   inferenceStatus,
   inferenceMessage,
+  inferenceSteps,
   canRunInference,
   onChange,
   onSelectServeMarker,
@@ -187,6 +191,12 @@ export function ScoreTrackingPanel({
           </button>
         )}
       </div>
+
+      {inferenceSteps.length > 0 && (
+        <div className={styles.scoreInferenceProgress}>
+          <InferenceProgressPanel steps={inferenceSteps} compact />
+        </div>
+      )}
 
       <section className={styles.selectedServeEditor}>
         <div>

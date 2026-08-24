@@ -1,7 +1,7 @@
 import type { Mat } from "@techstark/opencv-js";
-import { CanvasSink } from "mediabunny";
 
 import type { OpenedMedia } from "./media.ts";
+import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
 import {
   decodeSideSwitchCandidates,
   emptySideSwitchOutput,
@@ -11,11 +11,11 @@ import {
   SIDE_SWITCH_CANDIDATE_CONTRACT,
   SIDE_SWITCH_FEATURE_NAMES,
   SIDE_SWITCH_FEATURE_VERSION,
+  type SideSwitchAnalysisInput,
+  type SideSwitchCandidateProposal,
   sideSwitchCalibrationTimes,
   sideSwitchCandidateSampleTimes,
   sideSwitchStateFeatures,
-  type SideSwitchAnalysisInput,
-  type SideSwitchCandidateProposal,
 } from "./side-switch-model.ts";
 import type { NormalizedRoi, OnDeviceSideSwitchOutput } from "./types.ts";
 import { loadOpenCv, phaseCorrelate } from "./visual-features.ts";
@@ -905,74 +905,19 @@ function estimateCourtGeometry(
   };
 }
 
-async function sampleFrames(
-  cv: CvRuntime,
-  media: OpenedMedia,
-  roi: NormalizedRoi,
+function requestedColorFrameTimes(
   requestedTimes: readonly number[],
-  onProgress?: (progress: SideSwitchProgress) => void,
-): Promise<Map<string, ColorFrame>> {
-  const requested = [
+  duration: number,
+): number[] {
+  return [
     ...new Set(
       requestedTimes
-        .map((time) => clampedTimestamp(time, media.info.duration))
+        .map((time) => clampedTimestamp(time, duration))
         .map(timestampKey),
     ),
   ]
     .map(Number)
     .sort((left, right) => left - right);
-  const left = Math.round(roi.x * media.info.width);
-  const top = Math.round(roi.y * media.info.height);
-  const right = Math.round((roi.x + roi.width) * media.info.width);
-  const bottom = Math.round((roi.y + roi.height) * media.info.height);
-  const sink = new CanvasSink(media.videoTrack, {
-    crop: {
-      left,
-      top,
-      width: Math.max(1, right - left),
-      height: Math.max(1, bottom - top),
-    },
-    width: WIDTH,
-    height: HEIGHT,
-    fit: "fill",
-    poolSize: 1,
-    decoderOptions: { hardwareAcceleration: "prefer-hardware" },
-  });
-  const result = new Map<string, ColorFrame>();
-  const iterator = sink.canvasesAtTimestamps(requested);
-  let index = 0;
-  try {
-    for await (const wrapped of iterator) {
-      if (!wrapped)
-        throw new Error(
-          `No side-switch frame was available at ${requested[index]} seconds.`,
-        );
-      const rgba = cv.imread(wrapped.canvas as unknown as HTMLCanvasElement);
-      const bgr = new cv.Mat();
-      try {
-        cv.cvtColor(rgba, bgr, cv.COLOR_RGBA2BGR);
-        result.set(timestampKey(requested[index]), Uint8Array.from(bgr.data));
-      } finally {
-        rgba.delete();
-        bgr.delete();
-      }
-      index += 1;
-      if (index % 8 === 0 || index === requested.length) {
-        onProgress?.({
-          stage: "frames",
-          completed: index,
-          total: requested.length,
-          detail: `Sampling team-side switch windows · ${index}/${requested.length} frames`,
-        });
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      }
-    }
-  } finally {
-    await iterator.return(undefined);
-  }
-  if (index !== requested.length)
-    throw new Error("Side-switch frame sampling ended early.");
-  return result;
 }
 
 function framesAt(
@@ -1001,33 +946,30 @@ function comparisonFrames(
   ];
 }
 
-export async function inferSideSwitches(
-  media: OpenedMedia,
-  roi: NormalizedRoi,
+export type SideSwitchFrameEvaluation = {
+  output: OnDeviceSideSwitchOutput;
+  candidateProbabilities: Float64Array;
+};
+
+async function sideSwitchOutputFromLoadedFrames(
+  cv: CvRuntime,
+  runtime: Awaited<ReturnType<typeof loadSideSwitchRuntime>>,
+  mediaDuration: number,
   analysis: SideSwitchAnalysisInput,
-  onProgress?: (progress: SideSwitchProgress) => void,
-): Promise<OnDeviceSideSwitchOutput> {
-  onProgress?.({
-    stage: "loading",
-    completed: 0,
-    total: 1,
-    detail: "Loading team-side switch model",
-  });
-  const [cv, runtime] = await Promise.all([
-    loadOpenCv(),
-    loadSideSwitchRuntime(),
-  ]);
-  const candidates = generateSideSwitchCandidates(analysis, runtime);
-  if (candidates.length === 0) return emptySideSwitchOutput(runtime);
-  const calibrationTimes = sideSwitchCalibrationTimes(analysis.intervals);
-  const requested = [
-    ...calibrationTimes,
-    ...candidates.flatMap(sideSwitchCandidateSampleTimes),
-  ];
-  const sampled = await sampleFrames(cv, media, roi, requested, onProgress);
+  candidates: readonly SideSwitchCandidateProposal[],
+  calibrationTimes: readonly number[],
+  sampled: ReadonlyMap<string, ColorFrame>,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<SideSwitchFrameEvaluation> {
+  if (candidates.length === 0) {
+    return {
+      output: emptySideSwitchOutput(runtime),
+      candidateProbabilities: new Float64Array(0),
+    };
+  }
   const geometry = estimateCourtGeometry(
     cv,
-    framesAt(sampled, calibrationTimes, media.info.duration),
+    framesAt(sampled, calibrationTimes, mediaDuration),
   );
   const columns = SIDE_SWITCH_FEATURE_NAMES.length;
   const features = new Float64Array(candidates.length * columns);
@@ -1036,7 +978,7 @@ export async function inferSideSwitches(
     const [beforeFrames, afterFrames] = comparisonFrames(
       sampled,
       candidate,
-      media.info.duration,
+      mediaDuration,
     );
     const beforeBroad = summarizeBroad(cv, beforeFrames, geometry);
     const afterBroad = summarizeBroad(cv, afterFrames, geometry);
@@ -1054,40 +996,153 @@ export async function inferSideSwitches(
       candidate.kind === "internal-dead-state-peak" ? 1 : 0;
     features[row * columns + visual.length + state.length + 1] =
       candidate.generatorScore;
-    onProgress?.({
-      stage: "features",
-      completed: row + 1,
-      total: candidates.length,
-      detail: `Comparing team sides · ${row + 1}/${candidates.length} candidates`,
-    });
-    if ((row + 1) % 2 === 0)
+    onProgress?.(row + 1, candidates.length);
+    if ((row + 1) % 2 === 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
   }
-  const probabilities = predictSideSwitchProbabilities(runtime, features);
+  const candidateProbabilities = predictSideSwitchProbabilities(
+    runtime,
+    features,
+  );
   const selected = decodeSideSwitchCandidates(
     runtime,
     candidates,
-    probabilities,
+    candidateProbabilities,
   );
-  const output: OnDeviceSideSwitchOutput = {
-    modelId: runtime.modelId,
-    modelFingerprint: runtime.fingerprint,
-    featureVersion: SIDE_SWITCH_FEATURE_VERSION,
-    candidateContract: SIDE_SWITCH_CANDIDATE_CONTRACT,
-    features: { rows: candidates.length, columns, values: features },
-    candidates: selected.map((index) => ({
-      id: candidates[index].id,
-      timestamp: candidates[index].transitionTime,
-      probability: probabilities[index],
-      kind: candidates[index].kind,
-      sourceRangeIds: [...candidates[index].sourceRangeIds],
-    })),
+  return {
+    candidateProbabilities,
+    output: {
+      modelId: runtime.modelId,
+      modelFingerprint: runtime.fingerprint,
+      featureVersion: SIDE_SWITCH_FEATURE_VERSION,
+      candidateContract: SIDE_SWITCH_CANDIDATE_CONTRACT,
+      features: { rows: candidates.length, columns, values: features },
+      candidates: selected.map((index) => ({
+        id: candidates[index].id,
+        timestamp: candidates[index].transitionTime,
+        probability: candidateProbabilities[index],
+        kind: candidates[index].kind,
+        sourceRangeIds: [...candidates[index].sourceRangeIds],
+      })),
+    },
   };
+}
+
+function sideSwitchCandidates(
+  analysis: SideSwitchAnalysisInput,
+  runtime: Awaited<ReturnType<typeof loadSideSwitchRuntime>>,
+  candidateLimit: number | null,
+): SideSwitchCandidateProposal[] {
+  const available = generateSideSwitchCandidates(analysis, runtime);
+  const requestedLimit =
+    candidateLimit === null
+      ? available.length
+      : Math.max(1, Math.floor(candidateLimit));
+  return available.slice(0, requestedLimit);
+}
+
+export type SideSwitchFramePlan = {
+  candidateCount: number;
+  requestedTimes: number[];
+};
+
+export async function sideSwitchFramePlan(
+  analysis: SideSwitchAnalysisInput,
+  duration: number,
+): Promise<SideSwitchFramePlan> {
+  const runtime = await loadSideSwitchRuntime();
+  const candidates = sideSwitchCandidates(analysis, runtime, null);
+  return {
+    candidateCount: candidates.length,
+    requestedTimes:
+      candidates.length === 0
+        ? []
+        : requestedColorFrameTimes(
+            [
+              ...sideSwitchCalibrationTimes(analysis.intervals),
+              ...candidates.flatMap(sideSwitchCandidateSampleTimes),
+            ],
+            duration,
+          ),
+  };
+}
+
+/** Evaluates production side-switch features from frames sampled by the shared decoder. */
+export async function evaluateSideSwitchFrames(
+  mediaDuration: number,
+  analysis: SideSwitchAnalysisInput,
+  candidateLimit: number | null,
+  sampled: ReadonlyMap<string, Uint8Array>,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<SideSwitchFrameEvaluation> {
+  const runtime = await loadSideSwitchRuntime();
+  const candidates = sideSwitchCandidates(analysis, runtime, candidateLimit);
+  if (candidates.length === 0) {
+    return {
+      output: emptySideSwitchOutput(runtime),
+      candidateProbabilities: new Float64Array(0),
+    };
+  }
+  const cv = await loadOpenCv();
+  return await sideSwitchOutputFromLoadedFrames(
+    cv,
+    runtime,
+    mediaDuration,
+    analysis,
+    candidates,
+    sideSwitchCalibrationTimes(analysis.intervals),
+    sampled,
+    onProgress,
+  );
+}
+
+export async function inferSideSwitches(
+  media: OpenedMedia,
+  roi: NormalizedRoi,
+  analysis: SideSwitchAnalysisInput,
+  onProgress?: (progress: SideSwitchProgress) => void,
+): Promise<OnDeviceSideSwitchOutput> {
+  onProgress?.({
+    stage: "loading",
+    completed: 0,
+    total: 1,
+    detail: "Loading team-side switch model",
+  });
+  const plan = await sideSwitchFramePlan(analysis, media.info.duration);
+  if (plan.candidateCount === 0) {
+    return emptySideSwitchOutput(await loadSideSwitchRuntime());
+  }
+  const sampled = await sampleSpecialistFramesSequentially(
+    media,
+    roi,
+    { sideSwitchTimes: plan.requestedTimes },
+    (completed, total) =>
+      onProgress?.({
+        stage: "frames",
+        completed,
+        total,
+        detail: `Decoding team-side frames · ${completed}/${total}`,
+      }),
+  );
+  const evaluated = await evaluateSideSwitchFrames(
+    media.info.duration,
+    analysis,
+    null,
+    sampled.sideSwitch,
+    (completed, total) =>
+      onProgress?.({
+        stage: "features",
+        completed,
+        total,
+        detail: `Comparing team sides · ${completed}/${total} candidates`,
+      }),
+  );
   onProgress?.({
     stage: "complete",
-    completed: output.candidates.length,
-    total: output.candidates.length,
-    detail: `Team-side switch markers ready · ${output.candidates.length} predicted`,
+    completed: evaluated.output.candidates.length,
+    total: evaluated.output.candidates.length,
+    detail: `Team-side switch markers ready · ${evaluated.output.candidates.length} predicted`,
   });
-  return output;
+  return evaluated.output;
 }
