@@ -161,7 +161,93 @@ No browser or Android port begins from the label-free engineering artifact.
 
 No T1 feature artifact or T1 label result existed when this contract was written.
 
-### Extraction — pending
+### Extraction — completed, engineering gate failed 2026-08-24
 
-### New-data evaluation — waiting for eligible labels
+Implementation commits:
 
+- `d46b136` — descriptor, tracklet, transport, tests, and immutable extractor;
+- `8cb8f1c` — exact current-profile audit for 42 stored diagnostics versus the
+  materialized 34-input model signature.
+
+The first detector pass correctly refused to write an artifact because its final audit
+incorrectly expected exactly 34 stored JSON values. The source rows store 42 diagnostics;
+the current model selects 32 of them and materializes two candidate-metadata inputs. The
+correction was regression-tested and preflighted across all 624 boundaries. No partial
+artifact or label result existed from the failed pass.
+
+Immutable artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t1-endpoint-identity-transport-features-v1.json`
+- SHA-256: `982c6955b9eda279bbd98a74e274e7644d8fa348fdd59da4949e11a9b2b0e5f4`
+- module SHA-256: `a96d24cdde70eee1e94bcc0ee30f7f2d20a2e83946d72c517b09552d2516d4c1`
+- extractor SHA-256: `7741db59aab22faaa1dfad7a665a3bb5b0338c1007efacaec81415b44e5859aa`
+
+Parity and resource gates pass:
+
+- 704 exact rows: 624 eligible boundaries and 80 explicitly ineligible internals;
+- all old feature values, candidate IDs, and row order are exact;
+- 635 endpoint windows, 1,905 frame requests, and 7,620 detector tile calls;
+- zero frame/detector errors;
+- 838.855 seconds (13m58.855s), below the 3,600-second budget; and
+- 254.359 MiB peak RSS, below the 768-MiB budget.
+
+Label-free observability is viable:
+
+| Gate | Requirement | Observed | Result |
+| --- | ---: | ---: | --- |
+| Endpoint has any tracklet | ≥90% | 99.84% | Pass |
+| Endpoint has both court sides | ≥60% | 70.08% | Pass |
+| Boundary has nonzero bidirectional coverage | ≥50% | 54.33% | Pass |
+| Every core value varies | Required | 3/3 | Pass |
+| Maximum absolute core/existing Spearman | <0.98 | **0.9931** | **Fail** |
+
+The failed correlation is between `bidirectionalMatchedIdentityMinimum` and
+`transportCoverageMinimum`. They also have the same 45.67% zero fraction. The former
+is therefore mostly a rescaled version of whether both directional assignments have
+support, rather than an independent identity-quality signal.
+
+Other label-free distributions are:
+
+| Value | Median | Interquartile range | Existing-input maximum correlation |
+| --- | ---: | ---: | ---: |
+| `appearanceTransportSwapMargin` | -0.14185 | [-0.23142, -0.05072] | 0.468 with `minimumNearSupport` |
+| `bidirectionalMatchedIdentityMinimum` | 0.08330 | [0, 0.19778] | 0.365 with `minimumFarSupport` |
+| `transportCoverageMinimum` | 0.12076 | [0, 0.28116] | 0.371 with `minimumFarSupport` |
+
+The swap margin is not a duplicate of the current model and spans
+`[-0.41964, 0.23714]`. The representation failure is specifically the two support
+columns, not complete collapse of endpoint appearance transport.
+
+Per-recording both-side observability is also heterogeneous. It falls to 44.23% in
+`161923155`, 32.20% in `183701800`, and 40.91% in the conflict recording `193307688`,
+where far-side tracklets average only 0.46, 0.36, and 0.47 per endpoint respectively.
+This must be reported in any future validation; a pooled coverage pass cannot conceal
+those recording-level weaknesses.
+
+Decision: **T1 fails the engineering novelty gate and stops before labels**. No
+classifier, threshold, event metric, feature importance, or model-selection claim was
+computed. Do not drop a column and retrospectively call this T1 a pass.
+
+### Separately versioned T2 direction
+
+A future label-independent T2 contract should decompose support from appearance:
+
+1. retain `appearanceTransportSwapMargin` as the primary transport direction;
+2. replace raw matched mass with
+   `conditionalCrossSideIdentitySimilarityMinimum`, calculated per direction as
+   `matchedIdentityMass / max(coverage, epsilon)` and then minimized;
+3. keep `transportCoverageMinimum` as an observability/reliability diagnostic, not a
+   third core model input; and
+4. require per-recording, not only pooled, side-observability reporting before label
+   evaluation.
+
+That formula is motivated solely by label-free redundancy. It must receive its own
+preregistration and non-redundancy extraction gate; it is not an authorized T1 rescue.
+It should reuse this immutable artifact's directional transport diagnostics, so no
+video decode is required to establish its label-free engineering properties.
+
+### New-data evaluation — not run; waiting for eligible labels
+
+The absence of a model result is intentional. T1 failed before that stage, and no
+newly collected recording-held side-switch gold exists. The current 50-marker audit
+was never loaded by the extractor or used to judge T1.
