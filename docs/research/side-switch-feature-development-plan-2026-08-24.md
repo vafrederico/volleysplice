@@ -310,6 +310,7 @@ gate decision, and commit boundary.
 | M1 foreground motion | `3fd5241` | Reject | AP +4.11 pp, but no TP gain, +7 FP, precision -5.93 pp, and F1 -3.27 pp. |
 | T1 endpoint transport | `d46b136`, `8cb8f1c` | Engineering reject | Coverage passes, but matched identity mass and coverage are redundant at Spearman ρ=0.9931; labels remain unread. |
 | T2 conditional transport | `911ea47` | Engineering pass | Core ρ falls to 0.1024 and conditional-similarity/coverage ρ to 0.8204; model evaluation waits for new gold. |
+| T2 opened training | `d2c528a` | Exploratory reject | Recall unchanged at 52%; +2 FP, precision -1.85 pp, F1 -0.98 pp, strict F1 -2.71 pp. |
 
 Validation after M1: all 127 focused `test_side_switch*.py` tests pass. The M1
 extraction preserved all 704 rows and existing features exactly, completed 3,744 flow
@@ -351,6 +352,21 @@ This amendment overrides the earlier no-reuse rule only for an exploratory analy
 It does not make the 50 markers untouched, cannot promote T2, and does not authorize a
 browser or Android port. Append the measured result here after the run; do not rewrite
 the earlier label-free decision.
+
+#### Measured result
+
+The exact full-union E0 parity check passed. On the matched 624-boundary universe, T2
+keeps 26 TP and 24 FN but increases FP from 26 to 28. Precision changes from 50.00% to
+48.15%, recall remains 52.00%, F1 changes from 50.98% to 50.00%, and strict F1 changes
+from 41.18% to 38.46%. Row AP also falls 0.89 points.
+
+The swap-margin coefficient ranks only 32nd of 36 and changes sign across five of 11
+outer-fit models. Conditional identity similarity is positive in all 11 fits but ranks
+24th and, alone, exchanges two FP for one TP. T2 therefore lacks a transferable
+directional identity signal and a specificity mechanism. Reject the exact T2 head;
+retain the measurements only as diagnostics and prioritize better team isolation plus
+separate candidate recovery. Full details and the immutable artifact are recorded in
+the T2 plan.
 
 ## Evidence that determines the direction
 

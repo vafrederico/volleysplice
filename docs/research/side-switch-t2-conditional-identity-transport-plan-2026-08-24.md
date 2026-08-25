@@ -198,3 +198,86 @@ comparison.
 
 Output path:
 `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t2-conditional-transport-opened-v1.json`.
+
+### Opened-development training result — rejected 2026-08-24
+
+Implementation checkpoint: `d2c528a`. The runner first reconstructed the full-union
+E0 control exactly, including all event counts, all 11 outer thresholds, row AP, and
+the final classifier parameters. It then fit the matched boundary-only T0 and T2
+profiles under the frozen nested protocol.
+
+| Boundary-only metric | T0 control | T2 two-value core | T2 minus T0 |
+| --- | ---: | ---: | ---: |
+| Candidate rows / positive candidate labels | 624 / 43 | 624 / 43 | 0 / 0 |
+| Row AP | 43.5623% | 42.6765% | -0.8859 pp |
+| Row Brier score | 0.054533 | 0.054948 | +0.000415 |
+| +/-4 proposals / TP / FP / FN | 52 / 26 / 26 / 24 | 54 / 26 / 28 / 24 | +2 / 0 / +2 / 0 |
+| +/-4 precision | 50.0000% | 48.1481% | -1.8519 pp |
+| +/-4 recall | 52.0000% | 52.0000% | 0.0000 pp |
+| +/-4 F1 | 50.9804% | 50.0000% | -0.9804 pp |
+| Strict F1 | 41.1765% | 38.4615% | -2.7149 pp |
+
+T2 recovers one covered T0 miss in recording `161923155`, but loses one T0 true
+proposal in `210449857`. It adds false proposals in `164327879`, `171720964`, and
+`203801418`, while removing one in `212717581`: zero net TP and two net FP. The frozen
+weak-transport false slice falls only from 17 to 16. Thus the recall and slice checks
+pass descriptively, but the primary-F1 and strict-F1 gates fail.
+
+The learned coefficients explain why the engineering pass did not become a useful
+model result:
+
+| T2 feature | Full-data standardized coefficient | Absolute rank of 36 | Outer-fit sign stability | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| `appearanceTransportSwapMargin` | +0.00679 | 32 | 6 positive / 5 negative | Effectively devalued; direction does not transfer across recordings. |
+| `conditionalCrossSideIdentitySimilarityMinimum` | +0.06788 | 24 | 11 positive / 0 negative | Stable but weak positive evidence; not sufficiently switch-specific. |
+
+The raw separation is correspondingly small. Conditional similarity averages
+`0.3762` on positive candidate rows and `0.3614` on negative rows. Swap margin averages
+`-0.1091` on positive rows and `-0.1463` on negative rows, but even true rows usually
+remain on the formula's nominal continuity-supporting side of zero. The classifier
+therefore cannot treat positive swap direction as reliable switch proof.
+
+The preregistered descriptive single-value fits confirm the roles:
+
+| Addition to T0 | TP / FP / FN | Precision | Recall | F1 | Change from T0 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Swap margin only | 25 / 25 / 25 | 50.00% | 50.00% | 50.00% | -0.98 pp F1 |
+| Conditional similarity only | 27 / 28 / 23 | 49.09% | 54.00% | 51.43% | +0.45 pp F1 |
+
+Conditional similarity alone can trade two added FP for one recovered TP, but that is
+far below the frozen gain requirement and is not an authorized post-hoc winner. The
+two-value model's additive head cannot repair the unstable directional input.
+
+The non-calibrated composition diagnostic is also negative: T2 boundaries plus exact
+E0 internal selections produce 27 TP, 32 FP, 23 FN, 45.76% precision, 54.00% recall,
+and 49.54% F1, versus 56.86% for full-union E0. This diagnostic cannot select a model,
+but it rules out casually merging the boundary head into the current runtime.
+
+Decision: **reject the exact T2 core on opened development evidence**. Keep both
+values as research diagnostics, but do not add them to the shipped head, prune down to
+the conditional-only post-hoc arm, tune a new threshold, or port either feature.
+
+The next feature version should change information quality rather than add more
+algebra over these two values:
+
+1. improve team isolation in the endpoint descriptor (jersey-dominant torso regions,
+   background/skin rejection, and side-balanced multi-frame tracklets) until genuine
+   switches produce a transferable positive transport margin;
+2. report and gate per-direction observability explicitly, because zero bidirectional
+   support still affects 45.67% of boundaries and differs materially by recording;
+3. only after transport direction is stable, preregister a compact joint condition
+   requiring direction, identity similarity, and reliability—do not tune interactions
+   on these 50 labels; and
+4. keep candidate recovery separate: the boundary universe covers only 43 of 50
+   markers, so no boundary feature can recover the remaining seven. The full union
+   covers 46 of 50, leaving four events that require a new candidate source.
+
+Immutable result artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t2-conditional-transport-opened-v1.json`
+- SHA-256: `e21b56dfed42e4752996c0354ae2a3b80ed391d99ad0a1447165d44e38ad4a98`
+- runner SHA-256: `863c7d4e5afb49e51eef98de0cf7d2335028e7f3c1036d0297e901e048c04964`
+- feature-development module SHA-256: `e067b4c67185d509a00789270354ad3642bc1604844b584b319c8f89e4f52e6e`
+
+Validation: all 140 focused `test_side_switch*.py` tests pass. This is a completed
+training result on opened development data, not independent validation.

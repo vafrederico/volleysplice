@@ -406,6 +406,29 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
 The implementation is
 [`analyze-side-switch-feature-importance.py`](../../scripts/analyze-side-switch-feature-importance.py).
 
+## T2 trained-feature follow-up — 2026-08-24
+
+The later endpoint-identity T2 engineering pass was explicitly trained on the same
+opened development labels under a matched 624-boundary nested comparison. It does not
+improve the model: precision moves from 50.00% to 48.15%, recall remains 52.00%, F1
+moves from 50.98% to 50.00%, and strict F1 loses 2.71 points.
+
+Feature importance identifies two different failures. The directional
+`appearanceTransportSwapMargin` is nearly ignored (standardized coefficient `+0.0068`,
+rank 32/36) and changes sign in five of 11 outer fits. The conditional identity value
+is stable but weak (`+0.0679`, rank 24/36, positive in 11/11 fits); by itself it gains
+one TP while adding two FP. This is general match/observability evidence, not enough
+evidence that teams actually exchanged sides.
+
+This result sharpens the feature direction: improve player/team isolation until
+cross-side transport direction transfers across recordings, then test one frozen
+joint direction-similarity-reliability condition. Do not append more transformations
+of the current unstable margin. Candidate work remains separate because the boundary
+scope contains candidates for only 43 of 50 markers and the full union for 46 of 50.
+
+The complete protocol, per-recording changes, ablations, and artifact hashes are in
+[the T2 decision record](./side-switch-t2-conditional-identity-transport-plan-2026-08-24.md).
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
