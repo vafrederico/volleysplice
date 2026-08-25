@@ -561,6 +561,16 @@ only for an otherwise empty side. It tests coverage restoration without relaxing
 track qualification or diluting stable descriptors. The construction and frozen gates
 are in [Side-switch T11 empty-side fallback tracklet transport](./side-switch-t11-empty-side-fallback-tracklet-transport-plan-2026-08-25.md).
 
+#### T11 engineering result — reject before labels
+
+T11 uses 88 typed fallback sides, restores exact T5 visibility, and retains 0.5726
+mean separation. Reliable-swap coverage passes at 19.55%, but positive margins reach
+24.36% (152/624), seven boundaries short of T7's 159/624 gate. It stops before labels.
+
+The remaining representational mismatch is pooled-team-to-individual assignment. T12
+should use player-unit transport only for stable-to-stable side pairs and exact pooled
+team transport otherwise. This is derivable from frozen diagnostics without video.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

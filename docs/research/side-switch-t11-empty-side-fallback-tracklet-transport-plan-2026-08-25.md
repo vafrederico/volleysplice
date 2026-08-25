@@ -71,3 +71,38 @@ still cannot authorize promotion without new recording-held gold.
 
 No T11 code, artifact, feature value, model profile, or model result existed when this
 contract was committed.
+
+### Engineering result — reject before labels
+
+Implementation is committed at `e57a00b`. The four-worker extraction wrote the
+immutable 31,782,290-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t11-empty-side-fallback-tracklet-transport-features-v1.json`
+
+SHA-256: `aa0b6abfa6324350b7944728757ee2867e7ab6c35eadfc1e085f73339e74a6d5`.
+
+All row, prior-feature, stable-tracklet, activation, availability, resource, novelty,
+and reliability gates pass. T11 uses 88 fallback sides and restores exact T5
+availability while retaining high separation:
+
+| Engineering measurement | Result | Frozen requirement | Check |
+| --- | ---: | ---: | --- |
+| Both-team endpoint availability | 81.1024% | exact T5 | Pass |
+| Four-team boundary visibility | 68.75% | exact T5 | Pass |
+| Mean minimum team separation | 0.572562 | >=0.373860 | Pass |
+| Positive raw transport margin | 24.3590% (152/624) | >=25.4808% | **Fail** |
+| Nonzero reliable swap evidence | 19.5513% (122/624) | >=19.3910% | Pass |
+| Conditional-similarity/coverage Spearman | 0.640299 | <0.90 | Pass |
+
+The run completed 635 endpoints, 3,175 frames, and 25,400 tile calls without errors
+in 414.402 seconds (6m54.402s) at 1,144.934 MiB peak RSS.
+
+Decision: **reject T11 and stop before labels**. It misses only seven positive-margin
+boundaries. No label, audit, feedback, or model artifact was loaded.
+
+The next isolated hypothesis is type-consistent hierarchical transport. For each side
+pair, use T10 one-to-one player units only when both sides have stable units; otherwise
+compare their exact T5 pooled team descriptors. This removes pooled-team-to-individual
+matching without changing either underlying representation or tuning a cost. The
+frozen T11/T10/T5 diagnostics are sufficient for a label-free transformation; no
+video or detector pass is required.

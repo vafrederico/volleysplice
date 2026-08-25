@@ -558,6 +558,17 @@ representation should not relax track qualification. It should retain stable T10
 units and add one separately typed T5 pooled fallback unit only for an otherwise empty
 side, testing whether coverage can be restored without diluting stable identities.
 
+## T11 empty-side fallback follow-up — 2026-08-25
+
+T11 restores exact T5 visibility with 88 typed fallback sides while preserving strong
+0.5726 separation. Reliable swap reaches 19.55% and passes its gate; positive margins
+rise from T10's 23.72% to 24.36% but remain seven boundaries below T7's target.
+
+The likely remaining mismatch is representational type, not support: T11 can compare
+one pooled team fallback directly with one individual stable player. The next
+experiment should select player-unit transport only for stable-to-stable pairs and
+the exact pooled-team comparison otherwise, leaving both source representations fixed.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
