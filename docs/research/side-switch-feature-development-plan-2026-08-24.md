@@ -463,6 +463,15 @@ explicit outlier rejection. It must restore team separation, positive transport,
 reliable-swap coverage before labels. The full contract is frozen in
 [Side-switch T6 robust dominant-jersey consensus](./side-switch-t6-dominant-jersey-consensus-plan-2026-08-25.md).
 
+#### T6 engineering result — reject before labels
+
+Dominant medoid consensus restores mean team separation from 0.3196 to 0.5010 and
+raises positive raw swap margins from 19.87% to 28.04%. Hard rejection is too sparse:
+both-team visibility falls to 61.57%, four-team visibility to 42.31%, and nonzero
+reliable swap evidence to 14.42%. T6 stops before training. A future representation
+must use soft robust weighting or explicit appearance modes while retaining T5
+availability; do not tune the observed radius on this opened scope.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

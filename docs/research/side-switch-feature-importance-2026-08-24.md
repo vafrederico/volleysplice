@@ -483,6 +483,21 @@ but the intended reliable-swap feature is also negative in 11/11. The model lear
 that T5's confidently pooled positive-swap evidence is counter-evidence, so stronger
 outlier rejection is a representation requirement rather than optional cleanup.
 
+## T6 dominant-consensus follow-up — 2026-08-25
+
+T6 tests hard dominant-mode outlier rejection without labels. It restores the missing
+identity specificity: mean team separation rises 0.3196 to 0.5010 and positive raw
+swap margins rise 19.87% to 28.04%. But 4,120 rejected observations reduce both-team
+visibility to 61.57%, four-team visibility to 42.31%, and reliable swap coverage to
+14.42%. It therefore stops before model training.
+
+Together T5/T6 show that neither extreme is suitable. Full pooling has coverage but
+misleading identity; hard consensus has identity but insufficient temporal support.
+The remaining feature direction is a soft robust mixture that retains team
+availability while weighting dominant/secondary appearance modes and exposing mode
+entropy/support as reliability. This should be tested on new recording-held evidence,
+not by selecting another distance radius on the repeatedly opened scope.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

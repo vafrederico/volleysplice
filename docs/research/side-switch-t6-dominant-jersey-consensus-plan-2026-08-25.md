@@ -95,3 +95,49 @@ Opened labels cannot authorize promotion or runtime work.
 
 No T6 code, feature artifact, feature values, model profile, or model result existed
 when this contract was committed.
+
+### Extraction — separation restored, coverage/reliability reject 2026-08-25
+
+Implementation checkpoint: `97a7d8e`.
+
+| Engineering metric | T5 | T6 | Requirement | Result |
+| --- | ---: | ---: | ---: | --- |
+| Both-team endpoint visibility | 81.10% | 61.57% | >=T4 74.17% | **Fail** |
+| Weakest recording both teams | 42.31% | 23.08% | >=35% | **Fail** |
+| Four-team boundary visibility | 68.75% | 42.31% | >=T4 58.33% | **Fail** |
+| Mean minimum team separation | 0.3196 | 0.5010 | gain >=0.03 | Pass (+0.1814) |
+| Positive raw transport margin | 19.87% | 28.04% | gain >=3 pp | Pass (+8.17 pp) |
+| Reliable swap evidence nonzero | 16.19% | 14.42% | gain >=3 pp | **Fail (-1.76 pp)** |
+| Mean dominant-mode support | — | 61.35% | >=60% | Pass |
+| Rejected observations | 0 | 4,120 | >0 | Pass |
+
+Parity, variation, novelty, all correlation gates, resources, and no-error checks pass.
+The strongest T6/T4 core correlation is only `0.5426`, T6/T5 is `0.4830`, and
+T6/existing is `0.2496`. The run performs the exact 3,175 frame requests and 25,400
+tile calls in 1,560.258 seconds (26m00.258s) at 243.141 MiB peak RSS.
+
+The hard consensus succeeds at its narrow goal: separation rises substantially and
+the raw direction becomes positive more often. It fails as a usable observation
+representation because a radius of `0.38` rejects 4,120 observations and often leaves
+the winning mode in fewer than two frames. Visibility drops in every recording;
+`161923155` falls to 23.08%, `183701800` to 32.20%, and `193307688` to 48.48%.
+Consequently, the stronger raw direction is gated away often enough that reliable swap
+coverage falls rather than rises.
+
+Decision: **reject T6 before labels**. No T6 model, precision/recall result,
+coefficient, threshold, ablation, or runtime port exists. T5 and T6 bound the design
+problem: unconditional pooling preserves coverage but blurs identity; hard membership
+restores identity but destroys coverage. A future representation should keep T5 team
+availability and use continuous robust weights or an explicit dominant/secondary-mode
+mixture, reporting mode entropy/support as reliability rather than discarding every
+outlier. Given the repeated opened-scope iterations, that direction should be frozen
+and evaluated with new recording-held labels rather than tuning another radius here.
+
+Immutable artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t6-dominant-jersey-consensus-features-v1.json`
+- SHA-256: `e53dafc72f1645936c6c4618bb201d33413216ad203550f2a05b6e14b0db89e4`
+- module SHA-256: `a4fcbfadcfbd3a21e8ef786b9b89d14dce7d8cf0e7e1336059a4e08eaf66528e`
+- extractor SHA-256: `049ddc4e9be8e27954e5b6e4cf339663c3f494409dffbc8dcc393a2dc87eac51`
+
+Validation: all 161 focused `test_side_switch*.py` tests pass.
