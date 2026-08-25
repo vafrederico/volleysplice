@@ -4,6 +4,7 @@ Research notes are decision records, not product guarantees. Availability was ch
 
 ## Current decision
 
+- [Side-switch feature loop handoff — 2026-08-25](./side-switch-feature-loop-handoff-2026-08-25.md) — machine-transfer and continuation record: completed T4–T8 outcomes, interrupted/atomic T9 status, immutable external artifact identities, exact resume commands, data-mount requirements, and Git/T3 session handoff guidance.
 - [Side-switch feature development plan — 2026-08-24](./side-switch-feature-development-plan-2026-08-24.md) — exact swap-interaction, gap-shape, directional-quality, scene-confounder, multi-rally persistence, anonymous-state, candidate, experiment, runtime-versioning, and promotion plan; shared extraction batches with one semantic model change per comparison.
 - [Side-switch M1 foreground-motion experiment — 2026-08-24](./side-switch-m1-foreground-motion-plan-2026-08-24.md) — frozen boundary-only residual-flow experiment and rejected result: AP +4.11 pp but no TP gain, +7 FP, F1 -3.27 pp; feature diagnosis and staged endpoint-identity-transport direction.
 - [Side-switch T1 endpoint-identity transport — 2026-08-24](./side-switch-t1-endpoint-identity-transport-plan-2026-08-24.md) — label-free player-tracklet transport extraction with viable coverage but a failed non-redundancy gate (ρ=0.9931), no label/model run, and the separately versioned support-versus-similarity T2 direction.

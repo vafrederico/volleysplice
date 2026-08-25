@@ -511,6 +511,13 @@ for permissive nearest-mode Chamfer cost. It must preserve exact T5 visibility w
 reaching T4 separation and T7 directional coverage before labels. The frozen contract
 is in [Side-switch T9 mass-preserving mode transport](./side-switch-t9-mass-preserving-mode-transport-plan-2026-08-25.md).
 
+#### T9 handoff status — extraction restart required
+
+T9 code and tests are committed at `46d850b`. A label-free extraction was interrupted
+at the beginning of recording 6 of 11 for a machine handoff. No atomic output exists,
+so there is no T9 engineering or model result and the next machine must restart the
+full extraction. See [the continuation handoff](./side-switch-feature-loop-handoff-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

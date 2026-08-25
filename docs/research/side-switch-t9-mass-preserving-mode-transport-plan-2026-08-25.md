@@ -81,3 +81,15 @@ required.
 
 No T9 code, artifact, feature value, model profile, or model result existed when this
 contract was committed.
+
+### Implementation and interrupted extraction — 2026-08-25
+
+The analytic transport module, focused tests, and label-free extractor are committed
+at `46d850b`. The first full extraction reached the beginning of recording 6 of 11
+and was intentionally interrupted for a machine handoff. The process is no longer
+running. Atomic output means no T9 artifact or partial feature result exists. Restart
+the full extraction from recording 1; do not interpret the interrupted attempt as an
+engineering result or change any frozen gate.
+
+Continuation details are in
+[the side-switch feature loop handoff](./side-switch-feature-loop-handoff-2026-08-25.md).
