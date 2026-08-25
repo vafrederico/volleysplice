@@ -246,6 +246,9 @@ preregistration and non-redundancy extraction gate; it is not an authorized T1 r
 It should reuse this immutable artifact's directional transport diagnostics, so no
 video decode is required to establish its label-free engineering properties.
 
+The exact follow-up contract is frozen in
+[Side-switch T2 conditional identity transport](./side-switch-t2-conditional-identity-transport-plan-2026-08-24.md).
+
 ### New-data evaluation — not run; waiting for eligible labels
 
 The absence of a model result is intentional. T1 failed before that stage, and no

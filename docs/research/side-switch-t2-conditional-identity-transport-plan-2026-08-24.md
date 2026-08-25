@@ -1,0 +1,109 @@
+# Side-switch T2 conditional identity transport — 2026-08-24
+
+## Decision and scope
+
+T2 is a separately versioned, label-free decomposition of the rejected T1 core. T1
+showed viable player-tracklet coverage, but its matched identity mass and transport
+coverage were redundant at Spearman `rho = 0.9931`. T2 asks whether appearance quality
+conditional on having a match is independent enough from coverage to form a compact
+future model input.
+
+T2 is not a T1 model rescue:
+
+- no detector thresholds, descriptors, tracklets, assignments, or video frames change;
+- no label, marker audit, feedback file, model score, or T1 event result is read;
+- the sole input is immutable T1 artifact SHA-256
+  `982c6955b9eda279bbd98a74e274e7644d8fa348fdd59da4949e11a9b2b0e5f4`;
+- all 704 rows, candidate IDs/order, and prior feature values must remain exact; and
+- the output is an engineering artifact, not a trained model or promotion candidate.
+
+## Frozen formula
+
+For each T1 directional reduction `d` in `nearFar` and `farNear`, define:
+
+```text
+conditionalSimilarity_d =
+    0                                      if coverage_d = 0
+    matchedIdentityMass_d / coverage_d     otherwise
+```
+
+The T1 transport construction guarantees matched identity mass is coverage multiplied
+by the reliability-weighted mean `(1 - Hellinger cost)` of matched pairs, so the ratio
+is finite and lies in `[0,1]`. Use exact zero handling; no learned epsilon, floor, or
+imputation is permitted.
+
+The future T2 model core contains exactly two features:
+
+| Feature | Definition |
+| --- | --- |
+| `appearanceTransportSwapMargin` | Exact T1 value: mean same-side assignment cost minus mean cross-side cost. |
+| `conditionalCrossSideIdentitySimilarityMinimum` | Minimum conditional similarity of near-before→far-after and far-before→near-after. |
+
+`transportCoverageMinimum` remains in the artifact as a diagnostic and future
+reliability/abstention input, but it is not a T2 core model feature.
+
+Every eligible row also stores both directional conditional similarities as
+diagnostics. The 80 internal rows remain explicitly ineligible and receive no T2 model
+values.
+
+## Immutable transformation contract
+
+Output path:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t2-conditional-identity-transport-features-v1.json`.
+
+The transformer must verify and record:
+
+- exact T1 input hash and T1 engineering decision `fail` caused only by the frozen
+  non-redundancy check;
+- 704 rows, including 624 eligible boundaries and 80 ineligible internals;
+- exact preservation of every T1 row ID/order and every prior numeric feature;
+- finite `[0,1]` conditional values on all boundaries;
+- exact zero whenever the corresponding directional coverage is zero;
+- no video, detector, manifest, audit, feedback, or label source loaded;
+- transformer/module hashes embedded at write time;
+- wall time no more than 60 seconds and peak RSS no more than 256 MiB; and
+- atomic refusal to overwrite an existing artifact.
+
+## Label-free engineering gates
+
+T2 is validation-ready only if all checks pass:
+
+- both core features are nonconstant;
+- `conditionalCrossSideIdentitySimilarityMinimum` is nonzero on at least 50% of the
+  624 boundaries, matching the minimum T1 bidirectional-observability requirement;
+- absolute Spearman correlation between the two T2 core features is below `0.90`;
+- absolute Spearman correlation between conditional similarity and
+  `transportCoverageMinimum` is below `0.90`;
+- no T2 core feature has absolute Spearman correlation at or above `0.98` with any of
+  the existing 34 model inputs; and
+- all parity, range, zero-semantics, and resource checks pass.
+
+These thresholds were frozen before calculating any T2 value. If T2 fails, do not
+change the ratio, aggregate by mean instead of minimum, or add an epsilon on this
+opened artifact.
+
+## Future model evaluation
+
+Even an engineering pass does not authorize evaluation on the repeatedly opened 50
+markers. After at least ten new recording-held videos with roughly 40 side switches
+exist:
+
+1. reproduce the matched boundary-only 34-input T0 control;
+2. add only the exact two-value T2 core;
+3. use fold-local preprocessing, hard negatives, thresholds, and decoder;
+4. require the existing +2.0 pp F1, precision/recall, strict timing, target-slice, and
+   recording-robustness gates; and
+5. keep coverage-based abstention and candidate expansion as separate experiments.
+
+No browser or Android port begins from this engineering artifact.
+
+## Execution ledger
+
+### Preregistration — frozen 2026-08-24
+
+No T2 artifact or T2 values had been calculated when this contract was committed.
+
+### Transformation — pending
+
+### New-data evaluation — waiting for eligible labels
+
