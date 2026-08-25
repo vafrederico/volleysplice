@@ -401,6 +401,14 @@ three reductions remain exact. Temporal propagation is not mixed into this compa
 The full engineering and conditional model contract is frozen in
 [Side-switch T4 selective far-court high-resolution detection](./side-switch-t4-selective-far-court-detection-plan-2026-08-24.md).
 
+#### T4 engineering result — pass
+
+Selective far-court detection raises both-team endpoint coverage from 44.57% to
+74.17%, four-team boundary coverage from 26.12% to 58.33%, and the weakest recording
+from 3.39% to 32.69%. Every parity, novelty, nonzero, per-recording, resource, and
+no-error gate passes. T4 is therefore authorized for the frozen opened-development
+T0-versus-T4 model comparison; it is not promoted.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

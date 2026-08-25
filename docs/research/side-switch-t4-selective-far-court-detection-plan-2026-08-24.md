@@ -123,3 +123,41 @@ Opened-development success cannot authorize promotion or browser/Android work.
 
 No T4 module, extractor, feature artifact, feature value, or model result existed when
 this contract was committed.
+
+### Extraction — engineering pass 2026-08-24
+
+Implementation checkpoint: `9b7b22f`.
+
+The full selective-crop pass succeeds on every frozen engineering gate:
+
+| Engineering metric | T3 | T4 | Requirement | Result |
+| --- | ---: | ---: | ---: | --- |
+| Endpoint any qualified team | 99.69% | 99.69% | >=90% | Pass |
+| Endpoint both qualified teams | 44.57% | 74.17% | >=60%, gain >=10 pp | Pass (+29.61 pp) |
+| Boundary four-team observability | 26.12% | 58.33% | >=50%, gain >=15 pp | Pass (+32.21 pp) |
+| Weakest recording both-team coverage | 3.39% | 32.69% | >=20% | Pass |
+| Reliable swap evidence nonzero | 7.69% | 17.79% | >=5% | Pass |
+| Maximum core/core absolute Spearman | — | 0.6124 | <0.98 | Pass |
+| Maximum core/existing absolute Spearman | — | 0.2635 | <0.98 | Pass |
+
+All 704 rows, prior values, IDs, and order are exact. The run completes 3,175 frame
+requests and 25,400 detector tile calls without errors in 1,554.240 seconds
+(25m54.240s) at 233.742 MiB peak RSS.
+
+The improvement transfers across all recordings. Notably, both-team coverage moves
+from 3.39% to 57.63% in `183701800`, 12.12% to 65.15% in conflict recording
+`193307688`, 30.16% to 93.65% in `203801418`, and 37.04% to 70.37% in `190429172`.
+The weakest result is now `161923155` at 32.69%, above the predeclared floor.
+
+Decision: **T4 passes engineering and enters the frozen opened-development model
+comparison**. This validates selective-crop observability and feature novelty, not
+precision, recall, or promotion.
+
+Immutable feature artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t4-selective-far-court-detection-features-v1.json`
+- SHA-256: `443c0ded15cfddbb5e156f670c895375c8c43caede032a9b3ef5ae445ca4113a`
+- module SHA-256: `606168dbd6ff13b399a2c952faa6f497cf2772237ccee33070b6561fba0613f8`
+- extractor SHA-256: `441317c732a7fee864b6e0437633512d61e3af6c7db14d12f826a77432e0af8a`
+
+Validation after extraction: all 151 focused `test_side_switch*.py` tests pass.
