@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from itertools import permutations
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import cv2
 import numpy as np
@@ -92,6 +92,20 @@ def endpoint_sample_times(start: float, end: float) -> tuple[float, ...]:
         raise ValueError("T1 endpoint window must be finite and positive")
     duration = end - start
     return tuple(start + duration * fraction for fraction in ENDPOINT_FRAME_FRACTIONS)
+
+
+def materialized_profile_feature(row: Mapping[str, Any], name: str) -> float:
+    """Read a stored feature or the two current candidate-metadata inputs."""
+
+    features = row["features"]
+    if name in features:
+        return float(features[name])
+    if name == "candidateIsInternalDeadStatePeak":
+        return float(str(row["kind"]) == "internal-dead-state-peak")
+    if name == "candidateGeneratorScore":
+        raw_score = row.get("score")
+        return float(raw_score) if raw_score is not None else 0.0
+    raise KeyError(f"T1 cannot materialize current profile feature {name}")
 
 
 def _normalize_histogram(values: np.ndarray) -> np.ndarray:

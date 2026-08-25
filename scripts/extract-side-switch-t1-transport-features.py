@@ -20,6 +20,7 @@ import numpy as np
 
 from analysis.artifacts import atomic_write_text
 from analysis.side_switch_appearance import read_frame
+from analysis.side_switch_feature_development import BASE_FEATURE_NAMES
 from analysis.side_switch_player_detector import (
     QuantizedPersonDetector,
     detector_identity,
@@ -29,6 +30,7 @@ from analysis.side_switch_t1_transport import (
     T1_CORE_FEATURE_NAMES,
     T1_FEATURE_NAMES,
     endpoint_sample_times,
+    materialized_profile_feature,
     summarize_endpoint,
     transport_features,
 )
@@ -323,11 +325,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         > 1e-15
         for name in T1_CORE_FEATURE_NAMES
     }
-    existing_names = tuple(
-        name
-        for name in source_rows[0]["features"]
-        if name not in T1_FEATURE_NAMES
-    )
+    existing_names = tuple(BASE_FEATURE_NAMES)
     if len(existing_names) != 34:
         raise ValueError("T1 expected the exact existing 34-input signature")
     correlations: list[dict[str, Any]] = []
@@ -338,7 +336,10 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         compare_names = (*T1_CORE_FEATURE_NAMES[index + 1 :], *existing_names)
         for right_name in compare_names:
             right_values = np.asarray(
-                [row["features"][right_name] for row in boundary_feature_rows]
+                [
+                    materialized_profile_feature(row, right_name)
+                    for row in boundary_feature_rows
+                ]
             )
             value = _spearman(left_values, right_values)
             if value is not None:

@@ -13,6 +13,7 @@ from analysis.side_switch_t1_transport import (
     appearance_descriptor,
     build_tracklets,
     endpoint_sample_times,
+    materialized_profile_feature,
     transport_features,
     transport_reduction,
 )
@@ -66,6 +67,21 @@ class SideSwitchT1TransportTest(unittest.TestCase):
         self.assertEqual(value.shape, (64,))
         self.assertTrue(np.isfinite(value).all())
         self.assertAlmostEqual(float(np.sum(value)), 1.0)
+
+    def test_current_profile_metadata_materializes_beyond_stored_features(self) -> None:
+        row = {
+            "kind": "adjacent-rally-boundary",
+            "score": None,
+            "features": {"stored": 0.25},
+        }
+        self.assertEqual(materialized_profile_feature(row, "stored"), 0.25)
+        self.assertEqual(
+            materialized_profile_feature(row, "candidateIsInternalDeadStatePeak"),
+            0.0,
+        )
+        self.assertEqual(
+            materialized_profile_feature(row, "candidateGeneratorScore"), 0.0
+        )
 
     def test_tracklets_link_consistent_observations(self) -> None:
         frames = [
