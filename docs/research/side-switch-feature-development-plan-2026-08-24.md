@@ -723,6 +723,15 @@ representativeness-gated, and cross-representation transformations. No credible 
 remains on the same opened artifacts without violating a frozen no-tuning rule; new
 representation or recording-held gold is required.
 
+### T20 compact medoid/disagreement candidate — preregistered 2026-08-25
+
+At the user's explicit request, the loop reopens only to assemble the future-validation
+candidate identified by T14/T19: exact T14 raw stable-medoid direction plus exact T19
+cross-representation disagreement, appended to the production 34 inputs. This is
+declared adaptive selection, not independent validation or a revision of prior
+rejections. The exact copy, model, and development-screen contract is frozen in
+[Side-switch T20 compact medoid/disagreement candidate](./side-switch-t20-compact-medoid-disagreement-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
