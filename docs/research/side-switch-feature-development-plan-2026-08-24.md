@@ -368,6 +368,17 @@ retain the measurements only as diagnostics and prioritize better team isolation
 separate candidate recovery. Full details and the immutable artifact are recorded in
 the T2 plan.
 
+### T3 team-isolated jersey transport — preregistered 2026-08-24
+
+The next loop changes the raw representation rather than transforming T2 again. It
+uses five-frame shoulder-to-hip jersey descriptors, explicit background/skin rejection,
+multi-frame-only player tracklets, anonymous pooled team descriptors, and one frozen
+three-value direction/swap/continuity bundle. Candidate recovery stays separate.
+
+The exact extraction, engineering, model, importance, stop, and non-promotion contract
+is frozen in
+[Side-switch T3 team-isolated jersey transport](./side-switch-t3-team-isolated-jersey-transport-plan-2026-08-24.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
