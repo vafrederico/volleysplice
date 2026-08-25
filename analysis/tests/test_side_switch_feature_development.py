@@ -18,6 +18,7 @@ from analysis.side_switch_feature_development import (
     T2_CONDITIONAL_ONLY_PROFILE,
     T2_PROFILE,
     T2_SWAP_ONLY_PROFILE,
+    T4_PROFILE,
     apply_profile,
     gap_shape_features,
     metric_delta,
@@ -188,6 +189,17 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
         self.assertEqual(
             T2_CONDITIONAL_ONLY_PROFILE.feature_names,
             (*BASE_FEATURE_NAMES, T2_CORE_FEATURE_NAMES[1]),
+        )
+
+    def test_t4_profile_appends_only_selective_far_jersey_core(self):
+        from analysis.side_switch_t4_selective_far import T4_CORE_FEATURE_NAMES
+
+        self.assertEqual(
+            T4_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *T4_CORE_FEATURE_NAMES)
+        )
+        self.assertEqual(len(T4_PROFILE.feature_names), 37)
+        self.assertNotIn(
+            "selectiveFarJerseyTeamReliabilityMinimum", T4_PROFILE.feature_names
         )
 
     def test_gap_shape_features_match_consensus_trace(self):
