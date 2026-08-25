@@ -22,6 +22,7 @@ from analysis.side_switch_t2_transport import T2_CORE_FEATURE_NAMES
 from analysis.side_switch_t4_selective_far import T4_CORE_FEATURE_NAMES
 from analysis.side_switch_t5_court_tracking import T5_CORE_FEATURE_NAMES
 from analysis.side_switch_t14_dominant_tracklet_medoid import T14_CORE_FEATURE_NAMES
+from analysis.side_switch_t16_source_resolved import T16_CORE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
@@ -215,6 +216,16 @@ T14_PROFILE = FeatureProfile(
     hypothesis=(
         "a single stable-tracklet jersey medoid removes secondary-role mixture while "
         "preserving anonymous team transport direction"
+    ),
+)
+
+
+T16_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-source-resolved-medoid-t16",
+    feature_names=(*BASE_FEATURE_NAMES, *T16_CORE_FEATURE_NAMES),
+    hypothesis=(
+        "separate signed near-source and far-source medoid assignment advantages "
+        "preserve transferable direction hidden by averaging or consensus"
     ),
 )
 
