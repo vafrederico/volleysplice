@@ -61,3 +61,31 @@ and positive reliable-swap coefficient in the full fit and >=9/11 outer fits.
 
 No T14 code, artifact, feature value, model profile, or model result existed when this
 contract was committed.
+
+### Engineering result — pass; model comparison authorized
+
+The video-audit clarification is committed at `aaa3dcb`; implementation is committed
+at `387cbe6`. The four-worker extraction wrote the immutable 39,577,763-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t14-dominant-tracklet-medoid-features-v1.json`
+
+SHA-256: `d68e0d9a2aa72e1fe3cb06f413fdb43dacd52b9090dd4241863596459f8b9753`.
+
+Every frozen label-free gate passes:
+
+| Engineering measurement | Result | Frozen requirement | Check |
+| --- | ---: | ---: | --- |
+| Both-team/four-team visibility | 81.1024% / 68.75% | exact T5 | Pass |
+| Multi-tracklet / fallback sides | 795 / 45 | both active | Pass |
+| Mean medoid-to-pool distance | 0.224519 | >=0.01 | Pass |
+| Mean minimum team separation | 0.406364 | >=0.373860 | Pass |
+| Positive raw margin | 33.0128% (206/624) | >=25.4808% | Pass |
+| Nonzero reliable swap | 25.00% (156/624) | >=19.3910% | Pass |
+| Strongest prior-family correlation | 0.642725 | <0.98 | Pass |
+
+Extraction completed 635 endpoints, 3,175 frames, and 25,400 tile calls without
+errors in 436.648 seconds (7m16.648s) at 1,183.723 MiB peak RSS.
+
+Decision: **T14 passes engineering and enters the frozen matched model comparison**.
+This authorizes only implementation/commit of the exact `34 + T14 core` runner before
+labels are opened; it is not a precision, recall, F1, or promotion result.
