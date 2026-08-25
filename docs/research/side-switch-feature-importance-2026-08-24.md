@@ -639,6 +639,11 @@ Worst-side medoid-to-pooled similarity produces an active, nonredundant signed m
 mean gate `0.4697`, positive support on 68.75%, and strongest T14 |ρ| `0.9173`. Every
 label-free gate passes; the one-value matched model is authorized but pending.
 
+The matched result rejects that interpretation at event level. Its coefficient is
+positive in 10/11 folds, yet F1 remains 50.94%, strict F1 regresses 1.55 points, no
+covered miss is recovered, and the intended low-quality false slice is unchanged.
+Representativeness is a fitted association, not an effective veto.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

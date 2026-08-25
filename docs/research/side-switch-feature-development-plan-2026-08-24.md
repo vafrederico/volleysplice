@@ -693,6 +693,13 @@ The symmetric gate is positive on 68.75% of boundaries, active on all rows, aver
 0.4697, and changes ordering enough (strongest T14 |ρ|=0.9173). All frozen engineering
 gates pass. Exact `34 + T18 one-value core` wiring must be committed before labels.
 
+#### T18 model result — reject
+
+The T18 coefficient is positive in 10/11 folds, but boundary F1 is unchanged
+(50.98%→50.94%), strict F1 falls 1.55 points, no covered miss is recovered, and the
+low-representativeness false slice is unchanged. It trails T14 by 4.29 points. Reject
+the quality gate without threshold or aggregation tuning.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

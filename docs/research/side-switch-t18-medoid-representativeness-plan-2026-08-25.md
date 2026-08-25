@@ -69,3 +69,21 @@ runtime, and memory gate passes.
 
 Decision: **T18 passes engineering**. Only the exact 35-input model wiring is now
 authorized before label access.
+
+### Matched model result — reject
+
+The exact 35-input wiring was committed at `3447dd8`. The one-shot model wrote the
+942,641-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t18-medoid-representativeness-opened-v1.json`
+
+SHA-256: `488b20863cca787d54e973e4f106ad98e6314418a151edffeaf768213492b7dd`.
+
+The coefficient is positive in the full fit (`+0.087936`) and 10/11 folds, but event
+behavior fails: boundary F1 is effectively unchanged at 50.94% (−0.04 point), strict
+F1 falls 1.55 points, T18 recovers none of five covered misses, and retains all nine
+bottom-quartile representativeness false boundaries. It trails T14 by 4.29 points.
+
+Decision: **reject T18**. Medoid-to-pooled distance is associated with the fitted
+score but does not provide the intended event-level quality control. Do not tune the
+gate, quartile, or aggregation.
