@@ -97,11 +97,18 @@ jerseyCrossSideSimilarityMinimum =
     min(1 - cost(near_before, far_after),
         1 - cost(far_before, near_after))
 
-jerseyReliabilityGate = min(
-    jerseyCrossSideSimilarityMinimum,
+jerseyBaseReliabilityGate = min(
     four team reliabilities,
     before/after near-vs-far team separation,
     four team cohesions)
+
+jerseySwapReliabilityGate = min(
+    jerseyBaseReliabilityGate,
+    jerseyCrossSideSimilarityMinimum)
+
+jerseyContinuityReliabilityGate = min(
+    jerseyBaseReliabilityGate,
+    minimum same-side similarity)
 ```
 
 The first and only T3 model bundle contains:
@@ -109,8 +116,8 @@ The first and only T3 model bundle contains:
 | Feature | Frozen definition | Intended role |
 | --- | --- | --- |
 | `jerseyTeamTransportSwapMargin` | Same cost minus swapped cost. | Transferable exchange direction. |
-| `jerseyReliableSwapEvidence` | `max(margin, 0) * jerseyReliabilityGate`. | Positive evidence only for reliable, separated, bidirectional team exchange. |
-| `jerseyReliableContinuityEvidence` | `max(-margin, 0) * jerseyReliabilityGate`. | Reliable same-side continuity veto. |
+| `jerseyReliableSwapEvidence` | `max(margin, 0) * jerseySwapReliabilityGate`. | Positive evidence only for reliable, separated, bidirectional team exchange. |
+| `jerseyReliableContinuityEvidence` | `max(-margin, 0) * jerseyContinuityReliabilityGate`. | Reliable same-side continuity veto. |
 
 Do not append raw conditional similarity or reliability to the first head. They are
 diagnostics, not independent additive switch evidence.
@@ -169,3 +176,12 @@ browser or Android work starts from opened-development evidence.
 
 No T3 module, extractor, artifact, feature value, or label result existed when this
 contract was committed.
+
+### Pre-extraction contract correction — frozen 2026-08-24
+
+The first synthetic unit test showed that one shared gate containing cross-side
+similarity forces continuity evidence to zero for a perfect same-side-retention case.
+Before any video extraction or label read, the gate was split as specified above:
+shared observability/separation/cohesion, cross-side similarity only for swap evidence,
+and same-side similarity only for continuity evidence. No threshold or descriptor
+setting changed.
