@@ -7,8 +7,10 @@ import argparse
 import json
 import resource
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -115,7 +117,6 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         or str(t9["parity"]["candidateIdAndOrder"]) != "exact"
     ):
         raise ValueError("T10 requires the exact failed T9 engineering artifact")
-    detector = QuantizedPersonDetector(detector_dir, opencv_threads=args.opencv_threads)
     source_rows = [dict(row) for row in t9["rows"]]
     t4_priors = _t4_endpoint_priors(source_rows)
     if len(t4_priors) != EXPECTED_ENDPOINTS:
@@ -126,7 +127,23 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
         rows_by_recording[str(row["recordingId"])].append(row)
     endpoints: dict[tuple[str, float, float], Any] = {}
     extraction_audit: dict[str, Any] = {}
-    for number, recording_id in enumerate(recording_ids, 1):
+    if args.recording_workers < 1:
+        raise ValueError("T10 recording workers must be positive")
+    thread_state = threading.local()
+
+    def process_recording(
+        number: int, recording_id: str
+    ) -> tuple[
+        str,
+        dict[tuple[str, float, float], Any],
+        dict[str, Any],
+    ]:
+        detector = getattr(thread_state, "detector", None)
+        if detector is None:
+            detector = QuantizedPersonDetector(
+                detector_dir, opencv_threads=args.opencv_threads
+            )
+            thread_state.detector = detector
         boundaries = [
             row
             for row in rows_by_recording[recording_id]
@@ -157,6 +174,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError(f"could not open T10 video: {video_path}")
         local_started = time.perf_counter()
         local: list[Any] = []
+        local_endpoints: dict[tuple[str, float, float], Any] = {}
         local_matches = True
         try:
             for key, window in sorted(windows.items(), key=lambda value: value[0][1:]):
@@ -167,7 +185,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 ]
                 summary = summarize_tracklet_unit_endpoint(frames, net_y_ratio, detector)
-                endpoints[key] = summary
+                local_endpoints[key] = summary
                 local.append(summary)
                 local_matches = local_matches and _matches_t4(summary, t4_priors[key])
         finally:
@@ -182,7 +200,7 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
                 ]
             )
         )
-        extraction_audit[recording_id] = {
+        audit = {
             "videoPath": str(video_path),
             "videoSizeBytes": int(prior_audit["videoSizeBytes"]),
             "videoSha256": str(prior_audit["videoSha256"]),
@@ -199,6 +217,23 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             "trackletRepresentationMatchesT4": local_matches,
             "elapsedSeconds": time.perf_counter() - local_started,
         }
+        print(
+            f"[{number}/{len(recording_ids)}] {recording_id}: complete",
+            file=sys.stderr,
+            flush=True,
+        )
+        return recording_id, local_endpoints, audit
+
+    maximum_workers = min(args.recording_workers, len(recording_ids))
+    with ThreadPoolExecutor(max_workers=maximum_workers) as executor:
+        futures = [
+            executor.submit(process_recording, number, recording_id)
+            for number, recording_id in enumerate(recording_ids, 1)
+        ]
+        for future in futures:
+            recording_id, local_endpoints, audit = future.result()
+            endpoints.update(local_endpoints)
+            extraction_audit[recording_id] = audit
     if len(endpoints) != EXPECTED_ENDPOINTS:
         raise ValueError("T10 endpoint count changed")
 
@@ -395,6 +430,8 @@ def extract(args: argparse.Namespace) -> dict[str, Any]:
             "wallTimePassed": elapsed <= 3600.0,
             "peakMemoryPassed": peak_memory <= 768.0,
         },
+        "recordingWorkers": maximum_workers,
+        "opencvThreadsPerWorker": args.opencv_threads,
     }
     if (
         performance["frameRequests"] != EXPECTED_FRAMES
@@ -483,7 +520,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--t9-features", type=Path, default=DEFAULT_T9)
     parser.add_argument("--detector-dir", type=Path, default=DEFAULT_DETECTOR_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--opencv-threads", type=int, default=12)
+    parser.add_argument("--recording-workers", type=int, default=2)
+    parser.add_argument("--opencv-threads", type=int, default=6)
     parser.add_argument(
         "--enforce-source-hash", action=argparse.BooleanOptionalAction, default=True
     )
