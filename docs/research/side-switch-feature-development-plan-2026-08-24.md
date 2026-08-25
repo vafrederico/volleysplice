@@ -732,6 +732,13 @@ declared adaptive selection, not independent validation or a revision of prior
 rejections. The exact copy, model, and development-screen contract is frozen in
 [Side-switch T20 compact medoid/disagreement candidate](./side-switch-t20-compact-medoid-disagreement-plan-2026-08-25.md).
 
+#### T20 engineering result — pass; adaptive model pending
+
+The transformation preserves all 704 rows/prior values, copies both sources bit
+exactly, and reproduces T14's 206 positive margins and T19's 617 nonzero disagreements.
+All engineering gates pass in 0.319 seconds. Exact 36-input model wiring must be
+committed before the adaptive label diagnostic.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

@@ -79,3 +79,20 @@ authorize runtime changes.
 No T20-specific feature names, transformation, profile, artifact, model result, or
 metric existed when this contract was committed. All T14/T19 source values and opened
 results were already known and are explicit adaptive provenance.
+
+### Engineering result — pass; adaptive model diagnostic authorized
+
+Implementation is committed at `a9ac52d`. The no-video transformation wrote the
+40,795,701-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t20-compact-medoid-disagreement-features-v1.json`
+
+SHA-256: `f770eed53f85dd79f398a23e37d0706e80925971a300538082088ad59e0d5c1e`.
+
+All 704 rows and prior values match exactly. Both source copies are bit-exact, all 80
+internal rows are zero, positive medoid margins equal T14 at 206/624, and nonzero
+disagreement equals T19 at 617/624. Transformation time is 0.319 seconds at 143.563
+MiB RSS.
+
+Decision: **T20 passes engineering**. Commit the exact 36-input runner before loading
+labels for the declared adaptive diagnostic.

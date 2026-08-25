@@ -658,6 +658,13 @@ agreement is real but insufficient. Together with T15–T18, this exhausts credi
 cached-transform follow-ups; T20 is intentionally not manufactured from opened-data
 tuning.
 
+## T20 compact candidate engineering — 2026-08-25
+
+The user-authorized compact assembly copies T14 raw medoid direction and T19
+disagreement exactly. Row/prior parity and both source-count identities pass; no video
+or labels are loaded. This validates implementation only and authorizes the declared
+adaptive 36-input diagnostic.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
