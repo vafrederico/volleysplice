@@ -96,3 +96,32 @@ MiB RSS.
 
 Decision: **T20 passes engineering**. Commit the exact 36-input runner before loading
 labels for the declared adaptive diagnostic.
+
+### Adaptive opened-development diagnostic — screen fail
+
+The exact 36-input runner was committed at `38e006a` before the one-shot diagnostic.
+It wrote the 943,228-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t20-compact-medoid-disagreement-opened-v1.json`
+
+SHA-256: `b8f4bdb45d8f3c7fc679efbb372c6145a1e00e4b32c3783cecd5e901adaa0e9b`.
+
+| Boundary-only metric | T0 | T20 | Change |
+| --- | ---: | ---: | ---: |
+| Row AP | 43.5623% | 43.5318% | −0.0306 pp |
+| ±4 proposals / TP / FP / FN | 52 / 26 / 26 / 24 | 54 / 28 / 26 / 22 | +2 / +2 / 0 / −2 |
+| ±4 precision | 50.00% | 51.8519% | +1.8519 pp |
+| ±4 recall | 52.00% | 56.00% | +4.00 pp |
+| ±4 F1 | 50.9804% | 53.8462% | +2.8658 pp |
+| Strict F1 | 41.1765% | 42.3077% | +1.1312 pp |
+
+T20 is 0.3808 point above T19 but 1.3919 points below T14. It recovers one covered
+T0 miss, but retains all seven frozen T4/T14 direction-disagreement false boundaries.
+The compact medoid coefficient is positive (`+0.096130`) in the full fit and 11/11
+outer fits; compact disagreement is negative (`-0.075071`) in the full fit and 11/11.
+
+Decision: **the adaptive development screen fails** on the T14 comparator and false
+slice. The candidate is fully implemented and semantically stable, but it does not
+advance to promotion or receive priority for new-recording validation under the
+declared gate. Do not retune the feature set, disagreement weight, threshold, or
+decoder on these 11 recordings.

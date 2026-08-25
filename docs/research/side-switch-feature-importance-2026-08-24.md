@@ -665,6 +665,12 @@ disagreement exactly. Row/prior parity and both source-count identities pass; no
 or labels are loaded. This validates implementation only and authorizes the declared
 adaptive 36-input diagnostic.
 
+The adaptive model has semantically stable coefficients in all 11 folds and improves
+T0 F1 by 2.87 points through two added TP with no added FP. It still trails T14 by
+1.39 points and does not remove any of seven targeted disagreement false boundaries.
+The compact candidate is implemented but fails its development screen; this result is
+not independent validation.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

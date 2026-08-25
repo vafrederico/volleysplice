@@ -739,6 +739,14 @@ exactly, and reproduces T14's 206 positive margins and T19's 617 nonzero disagre
 All engineering gates pass in 0.319 seconds. Exact 36-input model wiring must be
 committed before the adaptive label diagnostic.
 
+#### T20 adaptive diagnostic — screen fail
+
+T20 improves boundary F1 50.98%→53.85%, adding two TP without additional FP. Both
+intended coefficient signs transfer in all 11 folds, and T20 edges T19 by 0.38 point.
+It remains 1.39 points below T14 and leaves all seven disagreement-slice false
+boundaries selected. The compact implementation is complete, but the declared screen
+fails; do not promote, prioritize held validation, or tune it on the opened set.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
