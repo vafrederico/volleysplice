@@ -541,6 +541,19 @@ separately from conditional appearance similarity and has no tunable unmatched c
 The construction, label-free gates, and conditional model comparison are frozen in
 [Side-switch T10 tracklet-unit jersey transport](./side-switch-t10-tracklet-unit-jersey-transport-plan-2026-08-25.md).
 
+#### T10 engineering result — reject before labels
+
+T10 exactly preserves T4's 74.17% both-team endpoint and 58.33% four-team boundary
+visibility while raising mean separation to 0.5845. Conditional similarity and
+coverage are nonredundant at Spearman 0.7767. Positive margins reach 23.72% versus the
+required 25.48%, and reliable-swap coverage reaches 17.15% versus 19.39%, so T10 stops
+before labels. Its 364 visible boundaries contain 148 positive margins versus T4's
+147: stable equal player units improve identity but do not restore missing tracklets.
+
+The next isolated representation retains T10 units and uses one typed T5 pooled
+fallback unit only when a court side has no qualifying player tracklet. Do not lower
+the observed T10 tracklet threshold or tune its assignment cost.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

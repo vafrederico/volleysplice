@@ -544,6 +544,20 @@ and expose one-to-one match coverage separately from conditional jersey similari
 This is a new representation hypothesis, not authorization to tune T9 on the opened
 recordings.
 
+## T10 tracklet-unit follow-up — 2026-08-25
+
+T10 validates the stable-player-unit part of the hypothesis. Mean minimum team
+separation rises to 0.5845, cross-match coverage remains distinct from conditional
+appearance at Spearman 0.7767, and the 364 four-team-visible boundaries contain 148
+positive margins versus T4's 147. Exact one-to-one player-unit matching is therefore
+directionally at least as useful as T4 pooling on the same observable scope.
+
+The frozen all-boundary gates still fail because T10 inherits T4's 58.33% four-team
+visibility: positive margins are 23.72% and reliable-swap coverage is 17.15%. The next
+representation should not relax track qualification. It should retain stable T10
+units and add one separately typed T5 pooled fallback unit only for an otherwise empty
+side, testing whether coverage can be restored without diluting stable identities.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

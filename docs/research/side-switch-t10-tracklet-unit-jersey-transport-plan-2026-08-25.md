@@ -97,3 +97,50 @@ opened-scope success still requires new recording-held gold before promotion.
 
 No T10 code, artifact, feature value, model profile, or model result existed when this
 contract was committed.
+
+### Implementation and extraction — 2026-08-25
+
+The module, focused tests, and initial serial extractor are committed at `478fa6e`.
+That first run was intentionally stopped during recording 3 before any atomic output
+existed, after the user requested recording-level parallelism. Commit `9c84303` adds
+two deterministic recording workers with independent decoders/detectors and ordered
+parent merge; it changes execution only, not the frozen representation or gates.
+
+The restarted extraction completed and wrote the immutable 27,329,902-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t10-tracklet-unit-jersey-transport-features-v1.json`
+
+SHA-256: `10ab41ebab069f20edf7b720152dc0ec94ef982f12a88200ec564b6c63849cce`.
+
+### Engineering result — reject before labels
+
+T10 preserves all 704 rows/prior values and exactly reproduces every stored T4
+tracklet count, selected-player count, and availability measurement. The equal-unit
+representation is strongly separated and nonredundant, but misses both frozen
+direction-coverage gates:
+
+| Engineering measurement | Result | Frozen requirement | Check |
+| --- | ---: | ---: | --- |
+| Both-team endpoint availability | 74.1732% | exact T4 | Pass |
+| Weakest-recording availability | 32.6923% | exact T4 | Pass |
+| Four-team boundary visibility | 58.3333% | exact T4 | Pass |
+| Mean minimum team separation | 0.584519 | >=0.373860 | Pass |
+| Positive raw transport margin | 23.7179% (148/624) | >=25.4808% | **Fail** |
+| Nonzero reliable swap evidence | 17.1474% (107/624) | >=19.3910% | **Fail** |
+| Nonzero cross-match coverage | 58.3333% | >=50% | Pass |
+| Conditional-similarity/coverage Spearman | 0.776695 | <0.90 | Pass |
+
+Every core and novelty check passes. The two-worker run completed exactly 635
+endpoints, 3,175 frames, and 25,400 detector tile calls without errors in 611.610
+seconds (10m11.610s) at 631.914 MiB peak RSS.
+
+Decision: **reject T10 and stop before labels**. No label, audit, feedback, or model
+artifact was loaded. There is no T10 precision, recall, F1, or coefficient result.
+
+The 364 four-team-visible boundaries contain 148 positive T10 margins, compared with
+147 for T4 on the same visibility scope. The representation improves conditional
+direction and separation but cannot meet an all-boundary gate while retaining T4's
+tracklet availability. T11 should preserve every T10 stable player unit and introduce
+one explicitly typed T5 pooled fallback unit only for a side with no qualifying
+tracklet. This restores observation coverage without changing T10's link threshold,
+unit cost, or stable-track representation.
