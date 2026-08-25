@@ -54,3 +54,20 @@ promotion or runtime work.
 ### Preregistration — frozen 2026-08-25
 
 No T19 code, values, artifact, profile, or result existed at this commit.
+
+### Engineering result — pass; model comparison authorized
+
+Implementation is committed at `7f9de96`. The transformation wrote the 40,537,567-byte
+artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t19-cross-representation-consensus-features-v1.json`
+
+SHA-256: `ab4b474fdbaee20bf884093a37eba25e79b6e93172f0dbfe619c3b0546c421e5`.
+
+Consensus is positive on 24.52% and negative on 75.16%; disagreement is nonzero on
+98.88%. Core/core Spearman is `-0.209400`, while consensus correlates `0.866367` with
+T4 raw margin and `0.881434` with T14 raw margin. Every frozen parity, support,
+formula, novelty, runtime, and memory gate passes.
+
+Decision: **T19 passes engineering**. Only exact `34 + T19 two-value core` model
+wiring may now be committed before label access.

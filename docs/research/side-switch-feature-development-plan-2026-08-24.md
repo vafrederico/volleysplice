@@ -707,6 +707,12 @@ margins into an equal-weight signed consensus and absolute disagreement value. I
 tests representation agreement as reliability without revisiting failed internal
 gates. See [Side-switch T19 cross-representation jersey consensus](./side-switch-t19-cross-representation-consensus-plan-2026-08-25.md).
 
+#### T19 engineering result — pass; model pending
+
+Consensus spans both signs, disagreement is active on 98.88%, core/core ρ is −0.2094,
+and consensus remains distinct from both T4 (ρ=0.8664) and T14 (ρ=0.8814). All frozen
+engineering gates pass. Exact 36-input model wiring must precede labels.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

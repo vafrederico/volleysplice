@@ -644,6 +644,13 @@ positive in 10/11 folds, yet F1 remains 50.94%, strict F1 regresses 1.55 points,
 covered miss is recovered, and the intended low-quality false slice is unchanged.
 Representativeness is a fitted association, not an effective veto.
 
+## T19 cross-representation consensus engineering — 2026-08-25
+
+Equal-weight T4/T14 consensus and absolute disagreement pass every label-free gate.
+Consensus spans both signs and is distinct from each raw source; disagreement is
+active on 98.88% and only weakly correlated with consensus. The fixed two-value model
+is authorized but pending.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
