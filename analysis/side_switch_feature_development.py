@@ -21,6 +21,7 @@ from analysis.side_switch_production_state import STATE_GATE_FEATURE_NAMES
 from analysis.side_switch_t2_transport import T2_CORE_FEATURE_NAMES
 from analysis.side_switch_t4_selective_far import T4_CORE_FEATURE_NAMES
 from analysis.side_switch_t5_court_tracking import T5_CORE_FEATURE_NAMES
+from analysis.side_switch_t14_dominant_tracklet_medoid import T14_CORE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
@@ -204,6 +205,16 @@ T5_PROFILE = FeatureProfile(
     hypothesis=(
         "court-constrained anonymous team tracking increases temporal coverage while "
         "preserving enough jersey transport direction to improve side-switch ranking"
+    ),
+)
+
+
+T14_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-dominant-tracklet-medoid-t14",
+    feature_names=(*BASE_FEATURE_NAMES, *T14_CORE_FEATURE_NAMES),
+    hypothesis=(
+        "a single stable-tracklet jersey medoid removes secondary-role mixture while "
+        "preserving anonymous team transport direction"
     ),
 )
 

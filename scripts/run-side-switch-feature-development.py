@@ -28,6 +28,7 @@ from analysis.side_switch_feature_development import (
     T2_SWAP_ONLY_PROFILE,
     T4_PROFILE,
     T5_PROFILE,
+    T14_PROFILE,
     concise_metrics,
     evaluate_profile,
     evaluate_predictions,
@@ -36,6 +37,7 @@ from analysis.side_switch_feature_development import (
 from analysis.side_switch_t2_transport import T2_CORE_FEATURE_NAMES
 from analysis.side_switch_t4_selective_far import T4_CORE_FEATURE_NAMES
 from analysis.side_switch_t5_court_tracking import T5_CORE_FEATURE_NAMES
+from analysis.side_switch_t14_dominant_tracklet_medoid import T14_CORE_FEATURE_NAMES
 
 
 ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
@@ -57,6 +59,9 @@ DEFAULT_T4_FEATURES = (
 DEFAULT_T5_FEATURES = (
     REPORTS / "side-switch-t5-court-constrained-temporal-team-tracking-features-v1.json"
 )
+DEFAULT_T14_FEATURES = (
+    REPORTS / "side-switch-t14-dominant-tracklet-medoid-features-v1.json"
+)
 DEFAULT_T4_MODEL_RESULT = (
     REPORTS / "side-switch-feature-development-t4-selective-far-opened-v1.json"
 )
@@ -71,6 +76,7 @@ DEFAULT_OUTPUTS = {
     "T2": REPORTS / "side-switch-feature-development-t2-conditional-transport-opened-v1.json",
     "T4": REPORTS / "side-switch-feature-development-t4-selective-far-opened-v1.json",
     "T5": REPORTS / "side-switch-feature-development-t5-court-tracking-diagnostic-v1.json",
+    "T14": REPORTS / "side-switch-feature-development-t14-dominant-tracklet-medoid-opened-v1.json",
 }
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
@@ -84,6 +90,7 @@ EXPECTED_SHA256 = {
     "t2Features": "fc7e36306f4570e8c93b788f8471cd11d3fe865a1e8dc4699c673e8334aa281c",
     "t4Features": "443c0ded15cfddbb5e156f670c895375c8c43caede032a9b3ef5ae445ca4113a",
     "t5Features": "25d8a23563f803058f23ba2da23df0e82283ab893afd143b5f39200d96fcb460",
+    "t14Features": "d68e0d9a2aa72e1fe3cb06f413fdb43dacd52b9090dd4241863596459f8b9753",
     "t4ModelResult": "16d617fb8427517b45c31196877d7482cb019f8902b989e5b2db19cfcef0020b",
 }
 
@@ -1087,6 +1094,193 @@ def _t5_coefficient_importance(candidate: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _evaluate_t14_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+    t4_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    delta = metric_delta(baseline, candidate)
+    baseline_scores = _held_rows(baseline)
+    candidate_selected = _selected_ids(candidate)
+    reliable_swap_name = "dominantTrackletJerseyReliableSwapEvidence"
+    feature_values = {
+        str(row["eventId"]): float(row["features"][reliable_swap_name])
+        for row in rows
+    }
+    covered_miss_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if (
+            int(row["label"]) == 1
+            and not bool(row["selected"])
+            and feature_values[str(row["eventId"])] > 0.0
+        )
+    }
+    zero_evidence_false_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if (
+            int(row["label"]) == 0
+            and bool(row["selected"])
+            and feature_values[str(row["eventId"])] == 0.0
+        )
+    }
+    recovered_covered = len(covered_miss_ids & candidate_selected)
+    retained_zero_evidence_false = len(zero_evidence_false_ids & candidate_selected)
+    recording_deltas = _recording_deltas(baseline, candidate)
+    total_true_positive_gain = int(delta["truePositives"])
+    maximum_recording_gain = max(
+        (int(value["truePositives"]) for value in recording_deltas.values()),
+        default=0,
+    )
+    regressing_recordings = sorted(
+        recording_id
+        for recording_id, value in recording_deltas.items()
+        if int(value["truePositives"]) < 0
+    )
+    gain_depends_on_one_recording = (
+        total_true_positive_gain > 0
+        and total_true_positive_gain - maximum_recording_gain <= 0
+        and len(regressing_recordings) >= 3
+    )
+    t4_profile = t4_result["profiles"][
+        "boundary-union34-plus-selective-far-jersey-t4"
+    ]
+    t4_f1 = float(t4_profile["primary"]["f1"])
+    candidate_f1 = float(candidate["primary"]["f1"])
+    classifier = candidate["fullDevelopment"]["classifier"]
+    names = [str(name) for name in classifier["featureNames"]]
+    full_reliable_weight = float(
+        classifier["weights"][names.index(reliable_swap_name)]
+    )
+    outer_reliable_weights = []
+    for fold in candidate["outerFolds"]:
+        fit = fold["fitStandardizedWeights"]
+        fit_names = [str(name) for name in fit["featureNames"]]
+        outer_reliable_weights.append(
+            float(fit["weights"][fit_names.index(reliable_swap_name)])
+        )
+    positive_outer_fits = sum(value > 0.0 for value in outer_reliable_weights)
+    checks = {
+        **_standalone_checks(delta),
+        "primaryF1GainOverT4AtLeast0_5pp": candidate_f1 - t4_f1
+        >= 0.005 - 1e-12,
+        "coveredBoundaryMissesRecovered": recovered_covered > 0,
+        "zeroReliableSwapEvidenceFalseBoundarySliceReduced": (
+            retained_zero_evidence_false < len(zero_evidence_false_ids)
+        ),
+        "recordingRobustness": not gain_depends_on_one_recording,
+        "reliableSwapCoefficientPositiveInFullFit": full_reliable_weight > 0.0,
+        "reliableSwapCoefficientPositiveInAtLeast9Of11OuterFits": (
+            positive_outer_fits >= 9
+        ),
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "interpretation": "exploratory-opened-development-only",
+        "checks": checks,
+        "delta": delta,
+        "immutableT4Comparison": {
+            "t4PrimaryF1": t4_f1,
+            "t14PrimaryF1": candidate_f1,
+            "delta": candidate_f1 - t4_f1,
+        },
+        "reliableSwapCoefficientGate": {
+            "feature": reliable_swap_name,
+            "fullDevelopmentStandardizedCoefficient": full_reliable_weight,
+            "outerFitCoefficients": outer_reliable_weights,
+            "outerFitPositiveCount": positive_outer_fits,
+            "requiredPositiveOuterFits": 9,
+        },
+        "targetSlices": {
+            "coveredBoundaryMisses": {
+                "definition": (
+                    "positive T0 misses with nonzero dominant-tracklet reliable "
+                    "swap evidence"
+                ),
+                "frozenCandidateIds": sorted(covered_miss_ids),
+                "baselineSelected": 0,
+                "candidateSelected": recovered_covered,
+                "change": recovered_covered,
+            },
+            "zeroReliableSwapEvidenceFalseBoundaries": {
+                "definition": (
+                    "T0-selected false boundaries with exactly zero "
+                    "dominantTrackletJerseyReliableSwapEvidence"
+                ),
+                "frozenCandidateIds": sorted(zero_evidence_false_ids),
+                "baselineSelected": len(zero_evidence_false_ids),
+                "candidateSelected": retained_zero_evidence_false,
+                "change": retained_zero_evidence_false - len(zero_evidence_false_ids),
+            },
+        },
+        "recordingRobustness": {
+            "gainDependsOnOneRecordingWhileAtLeastThreeRegress": gain_depends_on_one_recording,
+            "totalTruePositiveGain": total_true_positive_gain,
+            "maximumSingleRecordingTruePositiveGain": maximum_recording_gain,
+            "truePositiveGainWithoutBestRecording": total_true_positive_gain
+            - maximum_recording_gain,
+            "regressingRecordingIds": regressing_recordings,
+        },
+        "byRecordingDelta": recording_deltas,
+        "conflictRecording193307688": recording_deltas.get(
+            "raw-no-backup-PXL_20260816_193307688"
+        ),
+    }
+
+
+def _t14_coefficient_importance(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    classifier = candidate["fullDevelopment"]["classifier"]
+    names = [str(name) for name in classifier["featureNames"]]
+    weights = [float(value) for value in classifier["weights"]]
+    ranks = {
+        name: rank
+        for rank, name in enumerate(
+            sorted(names, key=lambda name: (-abs(weights[names.index(name)]), name)),
+            1,
+        )
+    }
+    fold_weights = {name: [] for name in T14_CORE_FEATURE_NAMES}
+    for fold in candidate["outerFolds"]:
+        fit = fold["fitStandardizedWeights"]
+        fit_names = [str(name) for name in fit["featureNames"]]
+        for name in T14_CORE_FEATURE_NAMES:
+            fold_weights[name].append(float(fit["weights"][fit_names.index(name)]))
+    features = []
+    for name in T14_CORE_FEATURE_NAMES:
+        weight = weights[names.index(name)]
+        values = fold_weights[name]
+        expected_sign = 1 if weight > 0 else -1 if weight < 0 else 0
+        same_sign = sum(
+            (1 if value > 0 else -1 if value < 0 else 0) == expected_sign
+            for value in values
+        )
+        features.append(
+            {
+                "feature": name,
+                "fullDevelopmentStandardizedCoefficient": weight,
+                "absoluteCoefficientRankAmong37": ranks[name],
+                "outerFitCoefficients": values,
+                "outerFitPositiveCount": sum(value > 0 for value in values),
+                "outerFitNegativeCount": sum(value < 0 for value in values),
+                "outerFitSameSignAsFullCount": same_sign,
+                "outerFitSameSignAsFullFraction": same_sign / len(values),
+                "outerFitMean": float(np.mean(values)),
+                "outerFitStandardDeviation": float(np.std(values)),
+                "outerFitMinimum": min(values),
+                "outerFitMaximum": max(values),
+            }
+        )
+    return {
+        "coefficientContract": (
+            "weights act on fold-standardized inputs; magnitudes are comparable "
+            "within a fit but do not establish causal importance"
+        ),
+        "features": features,
+    }
+
+
 def _e6_composition_diagnostic(
     rows: list[Mapping[str, Any]],
     markers: Mapping[str, list[Mapping[str, Any]]],
@@ -1245,6 +1439,36 @@ def _t5_composition_diagnostic(
     }
 
 
+def _t14_composition_diagnostic(
+    rows: list[Mapping[str, Any]],
+    markers: Mapping[str, list[Mapping[str, Any]]],
+    full_baseline: Mapping[str, Any],
+    dominant_tracklet: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected_ids = {
+        str(row["eventId"])
+        for row in _held_rows(dominant_tracklet)
+        if bool(row["selected"])
+    }
+    selected_ids.update(
+        str(row["eventId"])
+        for row in _held_rows(full_baseline)
+        if bool(row["selected"]) and str(row["kind"]) == "internal-dead-state-peak"
+    )
+    predictions = np.asarray(
+        [str(row["eventId"]) in selected_ids for row in rows], dtype=bool
+    )
+    return {
+        "mergeContract": {
+            "boundaryBranch": "T14 outer-held selection with boundary-fit threshold",
+            "internalBranch": "exact full-union E0 outer-held internal selections",
+            "selectionUse": "diagnostic only; T14 decision uses boundary-only comparison",
+        },
+        "primary": evaluate_predictions(rows, predictions, markers, 4.0, inventory=True),
+        "strict": evaluate_predictions(rows, predictions, markers, 0.0, inventory=True),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     paths = {
         "features": args.features.expanduser().resolve(),
@@ -1266,6 +1490,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         paths["t4Features"] = args.t4_features.expanduser().resolve()
     if args.experiment == "T5":
         paths["t5Features"] = args.t5_features.expanduser().resolve()
+        paths["t4ModelResult"] = args.t4_model_result.expanduser().resolve()
+    if args.experiment == "T14":
+        paths["t14Features"] = args.t14_features.expanduser().resolve()
         paths["t4ModelResult"] = args.t4_model_result.expanduser().resolve()
     output = (
         args.output.expanduser().resolve()
@@ -1400,6 +1627,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ):
             raise ValueError("T5 artifact does not match the authorized engineering reject")
         experiment_rows = t5_payload["rows"]
+    elif args.experiment == "T14":
+        t14_payload = _load(paths["t14Features"])
+        if [str(row["eventId"]) for row in t14_payload["rows"]] != [
+            str(row["eventId"]) for row in feature_payload["rows"]
+        ]:
+            raise ValueError("T14 artifact does not match the frozen row universe")
+        parity = t14_payload["parity"]
+        if (
+            str(t14_payload["engineeringDecision"]) != "pass"
+            or int(parity["rows"]) != 704
+            or int(parity["eligibleBoundaryRows"]) != 624
+            or int(parity["ineligibleInternalRows"]) != 80
+            or str(parity["priorFeatureValues"]) != "exact"
+            or str(parity["candidateIdAndOrder"]) != "exact"
+            or tuple(t14_payload["contract"]["futureFirstHeadFeatureNames"])
+            != T14_CORE_FEATURE_NAMES
+            or not all(bool(value) for value in t14_payload["engineering"]["checks"].values())
+        ):
+            raise ValueError("T14 artifact did not pass frozen engineering gates")
+        experiment_rows = t14_payload["rows"]
     audit = _load(paths["audit"])
     current_model = _load(paths["model"])
     current_evaluation = _load(paths["evaluation"])
@@ -1552,6 +1799,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         composition_diagnostic = _t5_composition_diagnostic(
             experiment_rows, markers, baseline, court_tracking
         )
+    elif args.experiment == "T14":
+        boundary_rows = [
+            row
+            for row in experiment_rows
+            if str(row["kind"]) == "adjacent-rally-boundary"
+        ]
+        boundary_baseline = evaluate_profile(
+            boundary_rows, markers, BOUNDARY_BASELINE_PROFILE
+        )
+        dominant_tracklet = evaluate_profile(boundary_rows, markers, T14_PROFILE)
+        profiles[BOUNDARY_BASELINE_PROFILE.identifier] = boundary_baseline
+        profiles[T14_PROFILE.identifier] = dominant_tracklet
+        comparison = _evaluate_t14_gate(
+            boundary_baseline,
+            dominant_tracklet,
+            boundary_rows,
+            _load(paths["t4ModelResult"]),
+        )
+        feature_importance = _t14_coefficient_importance(dominant_tracklet)
+        composition_diagnostic = _t14_composition_diagnostic(
+            experiment_rows, markers, baseline, dominant_tracklet
+        )
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
     created_at = datetime.now(UTC).isoformat()
@@ -1573,6 +1842,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "T2": "boundary-conditional-identity-transport-opened-development",
                 "T4": "boundary-selective-far-jersey-transport-opened-development",
                 "T5": "boundary-court-tracked-jersey-diagnostic-after-engineering-reject",
+                "T14": "boundary-dominant-tracklet-medoid-opened-development",
             }[args.experiment],
             "decision": "baseline-only" if comparison is None else comparison["decision"],
         },
@@ -1597,6 +1867,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if args.experiment == "T4"
             else _load(paths["t5Features"])["performance"]
             if args.experiment == "T5"
+            else _load(paths["t14Features"])["performance"]
+            if args.experiment == "T14"
             else None
         ),
         "profiles": profiles,
@@ -1640,6 +1912,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "This result cannot reverse the engineering rejection or authorize tuning, promotion, or runtime work.",
                 ]
                 if args.experiment == "T5"
+                else [
+                    "T14 was trained only because every frozen engineering gate passed.",
+                    "A T14 gain cannot authorize promotion or runtime porting without new recording-held gold.",
+                    "The exact three-value T14 bundle is not pruned or tuned on this opened result.",
+                ]
+                if args.experiment == "T14"
                 else []
             ),
         ],
@@ -1662,6 +1940,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--t2-features", type=Path, default=DEFAULT_T2_FEATURES)
     parser.add_argument("--t4-features", type=Path, default=DEFAULT_T4_FEATURES)
     parser.add_argument("--t5-features", type=Path, default=DEFAULT_T5_FEATURES)
+    parser.add_argument("--t14-features", type=Path, default=DEFAULT_T14_FEATURES)
     parser.add_argument("--t4-model-result", type=Path, default=DEFAULT_T4_MODEL_RESULT)
     parser.add_argument("--experiment", choices=tuple(DEFAULT_OUTPUTS), default="E0")
     parser.add_argument("--output", type=Path)

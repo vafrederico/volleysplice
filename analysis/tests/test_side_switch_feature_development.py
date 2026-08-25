@@ -20,6 +20,7 @@ from analysis.side_switch_feature_development import (
     T2_SWAP_ONLY_PROFILE,
     T4_PROFILE,
     T5_PROFILE,
+    T14_PROFILE,
     apply_profile,
     gap_shape_features,
     metric_delta,
@@ -212,6 +213,19 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
         self.assertEqual(len(T5_PROFILE.feature_names), 37)
         self.assertNotIn(
             "courtTrackedFarJerseyTeamReliabilityMinimum", T5_PROFILE.feature_names
+        )
+
+    def test_t14_profile_appends_only_dominant_tracklet_core(self):
+        from analysis.side_switch_t14_dominant_tracklet_medoid import (
+            T14_CORE_FEATURE_NAMES,
+        )
+
+        self.assertEqual(
+            T14_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *T14_CORE_FEATURE_NAMES)
+        )
+        self.assertEqual(len(T14_PROFILE.feature_names), 37)
+        self.assertNotIn(
+            "dominantTrackletJerseyTeamReliabilityMinimum", T14_PROFILE.feature_names
         )
 
     def test_gap_shape_features_match_consensus_trace(self):
