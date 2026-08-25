@@ -179,3 +179,44 @@ Use the already frozen nested recording-held-out model protocol and report match
 immutable T4, and T5. Preserve the originally frozen T5 model checks as descriptive
 diagnostics. Commit the model runner before loading labels and record the result once;
 do not adapt T5 after inspection.
+
+### Diagnostic model result — reject confirmed 2026-08-25
+
+Model-runner checkpoint: `d0dfdbd`.
+
+| Held-out boundary metric | T0 | T4 | T5 |
+| --- | ---: | ---: | ---: |
+| Proposals | 52 | 56 | 57 |
+| True positives | 26 | 28 | 28 |
+| False positives | 26 | 28 | 29 |
+| False negatives | 24 | 22 | 22 |
+| Precision | 50.00% | 50.00% | 49.12% |
+| Recall | 52.00% | 56.00% | 56.00% |
+| F1 | 50.98% | 52.83% | 52.34% |
+| Strict F1 | 41.18% | 41.51% | 42.99% |
+| Row average precision | 0.4356 | 0.4446 | 0.4471 |
+| Row Brier score | 0.05453 | 0.05431 | 0.05426 |
+
+T5 gains two TP and three FP over T0. It improves recall by four points but loses
+0.88 point of precision, producing only +1.36 F1 points—below the original +2-point
+gate—and trails T4 F1 by 0.49 point. It selects none of the four T0 misses with
+nonzero T5 reliable-swap evidence, although it reduces the selected zero-evidence
+false-boundary slice from 21 to 18. Conflict recording `193307688` is unchanged.
+
+The coefficients explain the mismatch. Raw transport direction remains useful and
+stable (`+0.1459`, rank 14/37, positive 11/11 folds), while continuity remains a strong
+stable veto (`-0.1725`, rank 11/37, negative 11/11). The supposedly reliable swap
+value becomes a stable negative feature (`-0.0413`, rank 29/37, negative 11/11), the
+opposite of its intended semantics. Thus unconditional team pooling creates confident
+positive swap values that correlate with false rather than true switches.
+
+Decision: **the authorized diagnostic confirms the T5 rejection**. No tuning,
+ablation, promotion, or port follows. Robust dominant-jersey consensus must repair the
+directional reliability before another selection-eligible model comparison.
+
+Immutable diagnostic model artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t5-court-tracking-diagnostic-v1.json`
+- SHA-256: `e60dff3748f0156dc63de72ddd07ea77b73b5d7f96ef82a4945a33ff72920138`
+- runner SHA-256: `3a4c6602a59e0a9de921171cd616064bb18d3ebfe356720d974267367a06cb42`
+- model module SHA-256: `d837090a3e0bc014ab2818ee87d6d970273453f3377feefa7df639fffe54d699`

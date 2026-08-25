@@ -447,6 +447,14 @@ the failed engineering gate, trigger pruning/tuning, authorize promotion, or ent
 runtime. The exact 34+3 head and existing nested recording-held-out protocol remain
 unchanged.
 
+#### T5 diagnostic model result — reject confirmed
+
+T5 raises recall from 52.00% to 56.00% but lowers precision from 50.00% to 49.12%; F1
+rises only 50.98% to 52.34% and remains 0.49 point below T4. Raw transport and the
+continuity veto are stable in all 11 folds, but reliable swap evidence is negative in
+all 11 folds—the opposite of its intended meaning. The explicitly authorized run
+therefore confirms rather than reverses the engineering rejection.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

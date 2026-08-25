@@ -476,6 +476,13 @@ preserving team separation while keeping T5's coverage. T5 was not trained, so t
 is no T5 precision, recall, F1, or coefficient importance to compare. Full details are
 in [the T5 decision record](./side-switch-t5-court-constrained-temporal-team-tracking-plan-2026-08-24.md).
 
+The later user-authorized diagnostic model confirms this attribution. T5 recall rises
+52.00% to 56.00%, precision falls 50.00% to 49.12%, and F1 reaches 52.34%, below T4's
+52.83%. Raw direction is positive in 11/11 folds and continuity is negative in 11/11,
+but the intended reliable-swap feature is also negative in 11/11. The model learns
+that T5's confidently pooled positive-swap evidence is counter-evidence, so stronger
+outlier rejection is a representation requirement rather than optional cleanup.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
