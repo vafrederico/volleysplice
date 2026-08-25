@@ -113,3 +113,56 @@ port without new recording-held gold.
 
 No T5 module, extractor, feature artifact, feature value, model profile, or model result
 existed when this contract was committed.
+
+### Extraction — visibility gain, directional-reliability reject 2026-08-24
+
+Implementation checkpoint: `167f7ac`.
+
+The full label-free pass preserves every prior row/value and improves the intended
+team-observation coverage, but fails the preregistered reliable-swap gate:
+
+| Engineering metric | T4 | T5 | Requirement | Result |
+| --- | ---: | ---: | ---: | --- |
+| Endpoint any qualified team | 99.69% | 99.84% | >=90% | Pass |
+| Endpoint both qualified teams | 74.17% | 81.10% | gain >=5 pp | Pass (+6.93 pp) |
+| Weakest recording both teams | 32.69% | 42.31% | >=35% | Pass |
+| Boundary four-team visibility | 58.33% | 68.75% | gain >=5 pp | Pass (+10.42 pp) |
+| Reliable swap evidence nonzero | 17.79% | 16.19% | gain >=3 pp | **Fail (-1.60 pp)** |
+| Maximum core/core absolute Spearman | — | 0.6100 | <0.98 | Pass |
+| Maximum core/T4-core absolute Spearman | — | 0.7553 | <0.98 | Pass |
+| Maximum core/existing absolute Spearman | — | 0.2801 | <0.98 | Pass |
+
+All 704 rows, 624 boundaries, 80 internal rows, prior feature values, IDs, and order
+remain exact. The run performs 3,175 frame requests and 25,400 detector tile calls
+without errors in 1,551.543 seconds (25m51.543s), with 236.172 MiB peak RSS.
+
+Coverage improves in every recording. The weakest recording `161923155` rises from
+32.69% to 42.31%; `193307688` rises 65.15% to 80.30%; and `190429172` rises 70.37%
+to 79.63%. Thus the rejected result is not caused by missing teams or one bad camera.
+
+The component behavior identifies the failure. Mean minimum team reliability rises
+from `0.0876` to `0.1579`, minimum cohesion rises from `0.3921` to `0.4487`, and
+nonzero continuity evidence rises from 40.54% to 52.56%. However, mean between-team
+separation falls from `0.3739` to `0.3196`, and positive raw swap margins fall from
+23.56% to 19.87%. Pooling every retained jersey across a court side makes a stable
+side-state descriptor, but blurs the team-specific appearance required for directional
+transport. Plausible label-free mechanisms are the differently dressed libero,
+within-side jersey outliers, and occasional retained non-player detections; the
+artifact alone does not distinguish them causally.
+
+Decision: **reject T5 at engineering and stop before labels**. No T5 model profile,
+training, threshold selection, precision/recall result, coefficient importance,
+ablation, merge diagnostic, or runtime port exists. The next representation, if
+pursued, should retain T4's selective crop and T5's court-side temporal ownership but
+replace unconditional averaging with a separately frozen robust dominant-jersey mode
+(for example, a multi-frame medoid/consensus cluster with explicit outlier support).
+Do not retune the T5 reliability gate or train the failed bundle.
+
+Immutable artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t5-court-constrained-temporal-team-tracking-features-v1.json`
+- SHA-256: `25d8a23563f803058f23ba2da23df0e82283ab893afd143b5f39200d96fcb460`
+- module SHA-256: `c415c3146b7a630b5d62812c85e6073a2ba09e071d641985003c5059b0ef0e0b`
+- extractor SHA-256: `306fb046a2909cce1c5b954f7c00778d40f6d2c17197654252f3520860239739`
+
+Validation after extraction: all 156 focused `test_side_switch*.py` tests pass.

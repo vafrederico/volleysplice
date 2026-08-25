@@ -428,6 +428,17 @@ label, or model setting. Engineering gains over T4 and a conditional matched mod
 comparison are frozen in
 [Side-switch T5 court-constrained temporal team tracking](./side-switch-t5-court-constrained-temporal-team-tracking-plan-2026-08-24.md).
 
+#### T5 engineering result — reject before labels
+
+Court-side team tracking improves both-team endpoint coverage from 74.17% to 81.10%,
+four-team boundary visibility from 58.33% to 68.75%, and the weakest recording from
+32.69% to 42.31%. It nevertheless stops before training because reliable swap evidence
+falls from 17.79% to 16.19% instead of gaining three points. Unconditional temporal
+pooling improves reliability/continuity but reduces between-team separation and
+positive transport margins. The next isolated representation should test a robust
+dominant-jersey consensus that rejects within-side appearance outliers; do not tune or
+train T5.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

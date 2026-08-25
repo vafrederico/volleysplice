@@ -456,6 +456,26 @@ tracklets. Keep resolution, descriptor, model protocol, and candidate source fix
 the effect remains attributable. Full details and immutable artifacts are in
 [the T4 decision record](./side-switch-t4-selective-far-court-detection-plan-2026-08-24.md).
 
+## T5 court-tracking follow-up — 2026-08-24
+
+T5 replaces individual-player linkage with an anonymous team-state track for each
+court side across T4's same five frames. This succeeds as an observability mechanism:
+both-team endpoint coverage rises from 74.17% to 81.10%, four-team boundary visibility
+rises from 58.33% to 68.75%, and every recording exceeds 42% both-team coverage.
+
+It fails before labels because direction gets worse. Reliable swap evidence is nonzero
+on 16.19% rather than T4's 17.79%, missing a frozen required gain of three points.
+The raw positive swap-margin rate also falls 23.56% to 19.87%, while continuity rises
+40.54% to 52.56%. Team reliability and cohesion improve, but between-team separation
+falls from 0.3739 to 0.3196.
+
+This narrows the feature direction again: court-side temporal ownership is useful, but
+averaging every retained jersey is too permissive. A subsequent representation should
+select a dominant multi-frame jersey mode and report outlier/secondary-mode support,
+preserving team separation while keeping T5's coverage. T5 was not trained, so there
+is no T5 precision, recall, F1, or coefficient importance to compare. Full details are
+in [the T5 decision record](./side-switch-t5-court-constrained-temporal-team-tracking-plan-2026-08-24.md).
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
