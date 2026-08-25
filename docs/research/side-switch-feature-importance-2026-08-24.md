@@ -615,6 +615,13 @@ appears on 125/624, while 451 disagree or tie. T15 is rejected before labels. Th
 rules out the bilateral-minimum representation without implying that either source
 advantage is individually uninformative.
 
+## T16 source-resolved medoid engineering — 2026-08-25
+
+The exact near/far decomposition passes every label-free gate. Each source spans both
+signs, the sources disagree/tie on 72.28% of boundaries, their mutual Spearman is
+`-0.4228`, and neither is redundant with T14 or earlier inputs. This authorizes the
+frozen matched model but is not yet a label result.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

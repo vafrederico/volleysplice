@@ -652,6 +652,13 @@ the 451 T15 disagreements contain stable camera-relative information. The exact
 no-video transformation and matched-model gates are frozen in
 [Side-switch T16 source-resolved medoid transport](./side-switch-t16-source-resolved-medoid-plan-2026-08-25.md).
 
+#### T16 engineering result — pass; model pending
+
+Both signed source values have broad positive/negative support, disagree on 72.28% of
+rows, correlate `-0.4228` with one another, and remain novel versus every prior family
+(strongest T14 relationship `0.5593`). All frozen engineering gates pass. Exact
+`34 + T16 two-value core` model wiring must be committed before T16 label access.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

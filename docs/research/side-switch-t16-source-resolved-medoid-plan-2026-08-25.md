@@ -50,3 +50,20 @@ opened-development evidence only and cannot authorize promotion or runtime work.
 
 No T16 code, feature artifact, model profile, or result existed when this contract was
 committed. T14/T15 opened-development outcomes are explicit hypothesis provenance.
+
+### Engineering result — pass; model comparison authorized
+
+Implementation is committed at `941aa23`. The no-video transformation wrote the
+40,036,226-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t16-source-resolved-medoid-features-v1.json`
+
+SHA-256: `11bcedafe98284bd306398f44946720767a5323275aea38a7948ae43d7d01692`.
+
+Near-source values are 29.65% positive and 64.74% negative; far-source values are
+43.43% positive and 42.79% negative. Source disagreement/ties reach 72.28%, and the
+near/far Spearman correlation is `-0.422785`. The strongest T14 relationship is only
+`0.559289`; every parity, support, novelty, runtime, and memory gate passes.
+
+Decision: **T16 passes engineering**. This authorizes only committing the exact
+`34 + T16 two-value core` runner before its opened label comparison.
