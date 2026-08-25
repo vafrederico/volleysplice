@@ -74,3 +74,22 @@ authorize promotion, runtime work, or further within-T15 formula selection.
 No T15 code, feature value, artifact, or model result existed when this contract was
 committed. T14's opened result was used only to choose the bilateral-consensus
 hypothesis and is explicitly part of this experiment's adaptive provenance.
+
+### Engineering result — reject before model
+
+Implementation is committed at `f9a8bb4`. The label-free JSON transformation wrote
+the 39,880,254-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t15-bilateral-medoid-consensus-features-v1.json`
+
+SHA-256: `a5ce28158177b33d9e1864c6b94a03762fa79b394e344253815474eef039b497`.
+
+Exact parity, formula reconstruction, nonconstancy, novelty, runtime, and memory all
+pass. Bilateral continuity is nonzero on 125/624 rows (20.0321%), but bilateral swap
+is nonzero on only 48/624 (7.6923%), below the frozen 10% gate. The remaining 451 rows
+have source disagreement or a tie.
+
+Decision: **reject T15 before model access**. No T15 label/model comparison was run.
+Do not soften the bilateral minimum after observing the shortfall. The high
+disagreement rate instead motivates a separately preregistered source-decomposition
+experiment.

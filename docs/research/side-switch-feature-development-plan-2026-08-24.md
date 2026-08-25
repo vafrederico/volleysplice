@@ -637,6 +637,13 @@ transformation of the pinned T14 reductions, with an adaptive opened-development
 model gate declared before T15 values are computed. The frozen contract is in
 [Side-switch T15 bilateral medoid consensus](./side-switch-t15-bilateral-medoid-consensus-plan-2026-08-25.md).
 
+#### T15 engineering result — reject before model
+
+Only 48/624 boundaries (7.69%) have bilateral swap agreement, missing the frozen 10%
+gate; continuity agreement reaches 125/624 (20.03%). All other gates pass, and 451
+boundaries disagree or tie across the two source sides. No T15 label/model run occurs.
+The minimum is not softened after observation.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

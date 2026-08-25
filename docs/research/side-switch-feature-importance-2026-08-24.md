@@ -607,6 +607,14 @@ robustness gates. This is evidence for a useful raw role-robust direction and ag
 the inherited reliability products; it does not authorize pruning or sign tuning on
 the opened labels.
 
+## T15 bilateral medoid consensus engineering — 2026-08-25
+
+Strict agreement is too sparse for the declared model: only 48/624 boundaries have
+both source sides prefer swapping, versus the frozen 10% minimum. Continuity agreement
+appears on 125/624, while 451 disagree or tie. T15 is rejected before labels. This
+rules out the bilateral-minimum representation without implying that either source
+advantage is individually uninformative.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
