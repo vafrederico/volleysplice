@@ -185,3 +185,62 @@ Before any video extraction or label read, the gate was split as specified above
 shared observability/separation/cohesion, cross-side similarity only for swap evidence,
 and same-side similarity only for continuity evidence. No threshold or descriptor
 setting changed.
+
+### Extraction — engineering reject 2026-08-24
+
+Implementation checkpoint: `4595299`.
+
+The full label-free pass completed with exact candidate/feature parity, no frame or
+detector errors, and within both resource budgets. It fails the predeclared team
+observability gates:
+
+| Engineering gate | Requirement | Observed | Result |
+| --- | ---: | ---: | --- |
+| Endpoint has any qualified team | >=90% | 99.69% | Pass |
+| Endpoint has both qualified teams | >=60% | 44.57% | **Fail** |
+| Boundary has four teams and bidirectional similarity | >=50% | 26.12% | **Fail** |
+| All three core values vary | Required | 3/3 | Pass |
+| Reliable swap evidence nonzero | >=5% | 7.69% | Pass |
+| Maximum core/core absolute Spearman | <0.98 | 0.4228 | Pass |
+| Maximum core/existing absolute Spearman | <0.98 | 0.4172 | Pass |
+| Rows / old values / order | Exact | Exact | Pass |
+| Wall time | <=3,600s | 1,246.584s | Pass |
+| Peak RSS | <=768 MiB | 267.301 MiB | Pass |
+
+The failure is strongly asymmetric and recording-dependent. Mean near-team reliability
+is `0.226` to `0.500` across recordings, but far-team reliability falls to `0.0233` in
+`161923155`, `0.0046` in `183701800`, `0.0118` in conflict recording `193307688`,
+`0.0278` in `203801418`, and `0.0367` in `190429172`. Both-team endpoint coverage in
+those recordings is respectively 17.31%, 3.39%, 12.12%, 30.16%, and 37.04%. The same
+camera-distance weakness seen in T1 remains despite five samples and stronger
+tracklets.
+
+The mask itself is operational: 675 of 6,961 selected descriptors (9.70%) use the
+frozen background-rejection fallback, and extraction remains finite. The limiting
+factor is not a constant or duplicate feature. It is failure to obtain a repeated
+far-side player/team observation. Consequently, 73.88% of boundaries have zero
+four-team reliability, reliable swap evidence is zero on 92.31%, and reliable
+continuity evidence is zero on 81.57%.
+
+Decision: **reject T3 at the engineering gate and stop before labels**. No classifier,
+threshold, event precision/recall, feature importance, single-feature pruning, merge
+diagnostic, or runtime port was run. Relaxing the two-frame requirement would turn
+single noisy far detections into team identities and would violate the frozen
+contract.
+
+The next representation dependency is selective far-side localization, not another
+jersey formula. A separately preregistered version should either use smaller
+far-court-owned detector tiles at higher effective player resolution or a
+court-constrained temporal tracker that can accumulate sub-threshold far players.
+It must prove per-recording far-team coverage before recomputing transport. Candidate
+recovery remains a separate experiment because it cannot repair missing endpoint
+teams.
+
+Immutable artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t3-team-isolated-jersey-transport-features-v1.json`
+- SHA-256: `b8f3a6ea8fa7acc8ca7962179f43e186ff988087d94f7bfc3fa05beb1c5793c5`
+- module SHA-256: `c7823cbbafdeeaef719dbe178aeeb25a5a20cfc803377a1345c6cb8321e9a7c4`
+- extractor SHA-256: `c8d1fc9d0b93f1bb6f64c2d2842aeba14c9255fbf75089a951f2a27af5340ecd`
+
+Validation: all 147 focused `test_side_switch*.py` tests pass.

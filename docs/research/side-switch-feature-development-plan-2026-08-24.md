@@ -379,6 +379,18 @@ The exact extraction, engineering, model, importance, stop, and non-promotion co
 is frozen in
 [Side-switch T3 team-isolated jersey transport](./side-switch-t3-team-isolated-jersey-transport-plan-2026-08-24.md).
 
+#### T3 measured result — engineering reject
+
+The five-frame extraction preserves all 704 rows and old values exactly and passes
+resource, novelty, variation, and no-error checks. It stops before labels because only
+44.57% of endpoints contain both qualified teams (60% required) and only 26.12% of
+boundaries contain all four teams (50% required). Far-team reliability collapses in
+the same distant/conflict recordings that weakened T1. No model was trained.
+
+The next dependency is separately versioned selective far-side localization or
+court-constrained tracking. Do not relax the multi-frame team requirement or transform
+the 73.88% zero-reliability boundary rows into another model input.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
