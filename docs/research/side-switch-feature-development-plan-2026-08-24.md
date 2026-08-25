@@ -419,6 +419,15 @@ other model gate. The raw transport margin and continuity veto have perfectly st
 prune or port T4. Retain its selective far crop as the input to a separately frozen
 court-constrained temporal-tracking experiment designed to improve track reliability.
 
+### T5 court-constrained temporal team tracking — preregistered 2026-08-24
+
+T5 preserves T4 detection and replaces individual player assignment with one anonymous
+team-state track per court side across the same five frames. It still requires evidence
+in at least two distinct frames and changes no crop, detector, descriptor, candidate,
+label, or model setting. Engineering gains over T4 and a conditional matched model
+comparison are frozen in
+[Side-switch T5 court-constrained temporal team tracking](./side-switch-t5-court-constrained-temporal-team-tracking-plan-2026-08-24.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

@@ -1,0 +1,115 @@
+# Side-switch T5 court-constrained temporal team tracking — 2026-08-24
+
+## Decision and isolation
+
+T5 tests the tracking remediation identified by T4. It preserves T4's native source
+frames, full-ROI near detector pass, selective far-court crop, pinned `224 x 224`
+detector, score threshold, five endpoint fractions, jersey descriptor, skin/background
+rejection, candidate rows, labels, model protocol, and transport equations.
+
+Only temporal ownership changes. T3/T4 attempt to assign individual players between
+frames before pooling tracklets into a team. T5 uses the stronger volleyball constraint:
+inside one stable rally endpoint, every retained player on a court side belongs to the
+same anonymous team. It therefore tracks one near-side and one far-side team state
+through the five frames without claiming persistent player identities.
+
+No new frame, optical flow, detector threshold, crop, interpolation, proxy resolution,
+model label, candidate source, or decoder change is part of T5. T4 remains rejected and
+is used only as the immutable engineering/model comparator.
+
+## Frozen temporal team tracker
+
+Reuse T4's maximum three selected jersey observations per side per frame. For each
+non-empty side/frame:
+
+1. set each observation weight to `max(confidence * support, 1e-6)`;
+2. form a normalized weighted mean of the 64-value jersey descriptors;
+3. set frame reliability to `mean(confidence) * sqrt(mean(support))`; and
+4. retain the frame descriptor, reliability, and observation count.
+
+For one court-side team track:
+
+- require non-empty observations in at least two distinct frames; a one-frame team is
+  unavailable and cannot enter transport;
+- form the temporal descriptor as the normalized frame-reliability-weighted mean of
+  all available frame descriptors;
+- set reliability to `mean(available frame reliability) *
+  (0.40 + 0.60 * available_frames / 5)`;
+- set cohesion to one minus the frame-reliability-weighted mean Hellinger distance from
+  each available frame descriptor to the temporal descriptor; and
+- report available frames and observations explicitly in diagnostics.
+
+The existing x court bounds, canonical-y court bounds, and near/far split at canonical
+y `0.56` remain the ownership constraints. Team names remain anonymous and local to an
+endpoint. The same team-transport cost and reliability gates compare before-near,
+before-far, after-near, and after-far.
+
+The T5 model values use a new prefix:
+
+1. `courtTrackedFarJerseyTeamTransportSwapMargin`;
+2. `courtTrackedFarJerseyReliableSwapEvidence`; and
+3. `courtTrackedFarJerseyReliableContinuityEvidence`.
+
+All diagnostics use `courtTrackedFarJersey`. No T3 or T4 value enters the T5 head.
+
+## Immutable sources and label-free engineering gates
+
+The T4 feature source is pinned to SHA-256
+`443c0ded15cfddbb5e156f670c895375c8c43caede032a9b3ef5ae445ca4113a`.
+Its model result is not loaded during extraction.
+
+Output path:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t5-court-constrained-temporal-team-tracking-features-v1.json`.
+
+T5 reaches labels only if every gate passes:
+
+- exact preservation of 704 IDs/order and every T4 prior value;
+- 624 eligible boundaries and 80 explicitly ineligible internal rows;
+- at least 90% pooled endpoint any-team coverage;
+- at least 79.17% pooled endpoint both-team coverage, a gain of at least five
+  percentage points over T4's 74.17%;
+- no recording below 35% endpoint both-team coverage;
+- at least 63.33% four-team boundary visibility, a gain of at least five points over
+  T4's 58.33%;
+- reliable swap evidence nonzero on at least 20.79% of boundaries, a gain of at least
+  three points over T4's 17.79%;
+- all three core values finite and nonconstant;
+- maximum absolute T5 core/core, T5 core/T4 core, and T5 core/existing-34 Spearman
+  correlation below `0.98`;
+- exactly 635 endpoint windows, 3,175 frame requests, and 25,400 detector tile calls;
+- no frame/detector errors, wall time at most 60 minutes, and peak RSS at most
+  768 MiB; and
+- no audit, feedback, label, or model result loaded.
+
+Failure stops before labels. Do not lower the two-frame team requirement, retune the
+reliability equation, add observations, or fall back to T4 values after observing the
+artifact.
+
+## Frozen opened-development evaluation
+
+If engineering passes, train the exact matched boundary T0 and exact `34 + T5 core`
+head under the established nested recording-held-out protocol. Also load the immutable
+T4 opened-development artifact with SHA-256
+`16d617fb8427517b45c31196877d7482cb019f8902b989e5b2db19cfcef0020b`
+for a fixed result comparison, not for fitting or threshold selection.
+
+T5 must satisfy every T4 model guardrail: at least +2.0 percentage points pooled
+`+/-4 s` F1 over T0; no more than two points lost in precision or recall; no more than
+one point lost in strict F1; recovery of at least one T0 miss with nonzero T5 reliable
+swap evidence; reduction of T0-selected false boundaries with zero T5 reliable swap
+evidence; and recording robustness. In addition, T5 F1 must exceed immutable T4 F1 by
+at least 0.5 point. This prevents a different representation from passing without
+improving on the experiment that motivated it.
+
+Report event counts, row AP/Brier, recording deltas, all three standardized
+coefficients, rank among 37, 11-fold sign stability, and the diagnostic merge with
+exact E0 internal selections. Do not run single-value pruning unless the full T5 bundle
+passes every gate. Opened-development success cannot authorize promotion or a runtime
+port without new recording-held gold.
+
+## Execution ledger
+
+### Preregistration — frozen 2026-08-24
+
+No T5 module, extractor, feature artifact, feature value, model profile, or model result
+existed when this contract was committed.
