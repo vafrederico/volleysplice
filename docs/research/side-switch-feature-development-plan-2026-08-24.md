@@ -666,6 +666,13 @@ direction is positive in all 11 folds; far-source direction is negative in the f
 fit and positive in only 4/11. The frozen both-source semantic and T14-comparator gates
 fail. Do not prune to the near side from this opened result.
 
+### T17 relative source assignment contrast — preregistered 2026-08-25
+
+T17 divides each source's same-minus-swapped cost by its own same-plus-swapped cost,
+testing whether raw Hellinger scale causes T16's far-source instability. Both sources
+remain mandatory and the normalization must change rank ordering before any model.
+See [Side-switch T17 relative source assignment contrast](./side-switch-t17-relative-source-contrast-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
