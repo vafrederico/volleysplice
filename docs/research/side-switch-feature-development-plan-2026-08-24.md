@@ -700,6 +700,13 @@ The T18 coefficient is positive in 10/11 folds, but boundary F1 is unchanged
 low-representativeness false slice is unchanged. It trails T14 by 4.29 points. Reject
 the quality gate without threshold or aggregation tuning.
 
+### T19 cross-representation jersey consensus — preregistered 2026-08-25
+
+T19 fuses the independently constructed raw T4 pooled-team and T14 stable-medoid
+margins into an equal-weight signed consensus and absolute disagreement value. It
+tests representation agreement as reliability without revisiting failed internal
+gates. See [Side-switch T19 cross-representation jersey consensus](./side-switch-t19-cross-representation-consensus-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
