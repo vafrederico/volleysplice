@@ -71,3 +71,27 @@ formula, novelty, runtime, and memory gate passes.
 
 Decision: **T19 passes engineering**. Only exact `34 + T19 two-value core` model
 wiring may now be committed before label access.
+
+### Matched model result — reject; adaptive loop stops
+
+The exact 36-input wiring was committed at `c466730`. The one-shot comparison wrote
+the 938,387-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t19-cross-representation-consensus-opened-v1.json`
+
+SHA-256: `b67e2502f05cba27ba9a0b1fc19fd614506264b8319db0befd0bd17b33c615c7`.
+
+Boundary F1 improves 50.98%→53.47% (+2.48 points), with one added TP and two removed
+FP. Consensus is positive in the full fit (`+0.107102`) and all 11 folds;
+disagreement is negative in the full fit (`-0.064633`) and all 11 folds. Despite that
+perfect semantic transfer, T19 trails T14 by 1.77 points and retains all seven frozen
+T4/T14 sign-disagreement false boundaries. The T14-comparator and target-slice gates
+fail.
+
+Decision: **reject T19 and stop before T20**. T15–T19 exhaust the credible transforms
+of the cached T4/T14 representations: bilateral minimum, source decomposition, source
+normalization, medoid representativeness, and cross-representation fusion. A T20 on
+these same opened artifacts would require forbidden post-result source pruning,
+softened consensus, fusion-weight selection, or quality-gate tuning. Resume only with
+a genuinely new representation or new recording-held gold; do not manufacture T20 to
+reach an experiment number.

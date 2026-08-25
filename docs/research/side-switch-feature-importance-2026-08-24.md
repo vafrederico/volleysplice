@@ -651,6 +651,13 @@ Consensus spans both signs and is distinct from each raw source; disagreement is
 active on 98.88% and only weakly correlated with consensus. The fixed two-value model
 is authorized but pending.
 
+The matched result confirms those semantics in every fold: consensus is positive and
+disagreement negative 11/11. Event F1 reaches 53.47% (+2.48 points over T0) but trails
+T14 by 1.77 points, and the disagreement false slice is unchanged. Thus representation
+agreement is real but insufficient. Together with T15–T18, this exhausts credible
+cached-transform follow-ups; T20 is intentionally not manufactured from opened-data
+tuning.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

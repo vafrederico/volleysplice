@@ -713,6 +713,16 @@ Consensus spans both signs, disagreement is active on 98.88%, core/core ρ is �
 and consensus remains distinct from both T4 (ρ=0.8664) and T14 (ρ=0.8814). All frozen
 engineering gates pass. Exact 36-input model wiring must precede labels.
 
+#### T19 model result — reject; stop before T20
+
+T19 improves boundary F1 50.98%→53.47%, adds one TP, and removes two FP. Both semantic
+coefficients transfer with their expected signs in 11/11 folds, but T19 remains 1.77
+points below T14 and leaves all seven sign-disagreement false boundaries selected.
+Reject it. T15–T19 have now exhausted bilateral, source-resolved, normalized,
+representativeness-gated, and cross-representation transformations. No credible T20
+remains on the same opened artifacts without violating a frozen no-tuning rule; new
+representation or recording-held gold is required.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
