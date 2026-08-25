@@ -145,6 +145,38 @@ Validation: all 112 focused side-switch tests pass. Because neither E1 nor E2 pa
 E3 is skipped. Next work is the shared Visual Summary V2 extraction needed to compare
 Q1, C1, and P1 independently.
 
+### Visual Summary V2 extraction foundation — complete 2026-08-24
+
+Implemented one label-independent shared video pass for Q1, C1, and boundary-only P1.
+The immutable artifact stores compact per-range/internal-flank player, court, alignment,
+background, and frame-global summaries; flattened candidate features; exact sample
+times; candidate/observation references; current feedback and frozen-inference hashes;
+and SHA-256 identities for all 11 source videos. Human side-switch markers were not
+read by the extractor.
+
+| Foundation check | Result | Status |
+| --- | ---: | --- |
+| Candidate rows / current visual values checked | 704 / 15,488 | Complete |
+| Maximum current-visual reconstruction difference | `4.999999997e-9` | Pass (`<= 1e-8`) |
+| Unique cached sequences | 795 | Complete |
+| Cached / naive frame requests | 5,565 / 9,856 | 43.54% fewer |
+| Source video bytes bound | 44.59 GiB across 11 videos | Complete |
+| Extraction frame errors | 0 | Pass |
+| Wall time / peak resident memory | 1,730.03 s / 182.09 MiB | Recorded |
+
+The 795 observations consist of every decoded stable range plus distinct internal
+flanks. P1 values exist only on the 624 adjacent-boundary rows. Q1 and C1 exist on all
+704 rows. This is an extraction/parity success, not a model result; none of the new
+families has passed an accuracy gate yet.
+
+Artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-visual-summary-v2-features-v1.json`
+
+SHA-256: `6ce23b43018d04045ba783510ad86ef3c6d8767fdc435c7684481fca89ba4871`
+
+Next independent comparisons: E4 Q1, E5 C1, and E6 boundary-only P1. They must use
+the cached rows without another video decode.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
@@ -311,6 +343,32 @@ For internal candidates, retain the existing `[t-4, t-1]` and `[t+1, t+4]` flank
 summaries as separate observation kinds. Do not pretend they are full stable rallies.
 Internal temporal persistence will require a later within-range representation and is
 not part of the first boundary-persistence experiment.
+
+### Frozen Visual Summary V2 implementation contract — 2026-08-24
+
+The shared extraction run freezes the following details before E4–E6 are trained:
+
+- Q1 removes the 11 collapsed fields named in its replacement table and adds the 14
+  explicit before/after values. The resulting profile has 37 inputs; it does not keep
+  the old minima or absolute-change fields.
+- `cameraShiftDispersion` is the median Euclidean distance of the seven accepted,
+  frame-normalized translation vectors from their component-wise median, pooled as
+  the worse before/after value. Rejected phase-correlation estimates are neutral zero
+  vectors, while their response remains present in the raw observation.
+- `alignmentResidualP90` is the worse before/after 90th percentile of absolute aligned
+  grayscale residuals from the seven-frame temporal median, normalized by 255.
+- `backgroundAppearanceChange` uses a 52-bin HSV palette after excluding pixels in
+  motion above `10/255` and player-proposal boxes. `sceneCutScore` is the maximum
+  adjacent 52-bin global-HSV Hellinger distance across the ordered seven before frames,
+  the gap edge, and the seven after frames.
+- P1 uses exactly `K = 3` decoded ranges per side. At a recording edge with fewer than
+  two observations on a side, unavailable within-side continuity is encoded as neutral
+  `0.0`, and `minimumPersistentContextFraction` exposes the missing context. No P1
+  value is imputed onto internal-flank candidates.
+
+All four families are extracted together from shared frames, but Q1, C1, and P1 remain
+independent model comparisons. The cache must reconstruct all existing 22 visual
+values within `1e-8` for all 704 rows before any result is admissible.
 
 ### Research artifact contract
 
