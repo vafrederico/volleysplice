@@ -15,6 +15,7 @@ import numpy as np
 from analysis.artifacts import atomic_write_text
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
+    C1_PROFILE,
     DECODER,
     GAP_SHAPE_PROFILE,
     INTERACTION_PROFILE,
@@ -39,6 +40,7 @@ DEFAULT_OUTPUTS = {
     "E1": REPORTS / "side-switch-feature-development-e1-interactions-v1.json",
     "E2": REPORTS / "side-switch-feature-development-e2-gap-shape-v1.json",
     "E4": REPORTS / "side-switch-feature-development-e4-directional-q1-v1.json",
+    "E5": REPORTS / "side-switch-feature-development-e5-camera-c1-v1.json",
 }
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
@@ -320,6 +322,65 @@ def _evaluate_e4_gate(
     }
 
 
+def _evaluate_e5_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    from analysis.side_switch_visual_summary_v2 import C1_FEATURE_NAMES
+
+    delta = metric_delta(baseline, candidate)
+    thresholds = {
+        name: float(
+            np.quantile(
+                [float(row["features"][name]) for row in rows],
+                0.75,
+            )
+        )
+        for name in C1_FEATURE_NAMES
+    }
+    baseline_false_selected = {
+        str(row["eventId"])
+        for fold in baseline["outerFolds"]
+        for row in fold["heldCandidateScores"]
+        if bool(row["selected"]) and int(row["label"]) == 0
+    }
+    scene_confounded = {
+        str(row["eventId"])
+        for row in rows
+        if any(
+            float(row["features"][name]) >= thresholds[name]
+            for name in C1_FEATURE_NAMES
+        )
+    }
+    frozen_ids = baseline_false_selected & scene_confounded
+    candidate_selected = _selected_ids(candidate)
+    checks = {
+        **_standalone_checks(delta),
+        "highSceneInstabilityFalsePositiveSliceReduced": len(
+            frozen_ids & candidate_selected
+        )
+        < len(frozen_ids),
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "checks": checks,
+        "delta": delta,
+        "targetSlice": {
+            "definition": (
+                "baseline false proposals at or above the all-row 75th percentile "
+                "for at least one frozen C1 diagnostic"
+            ),
+            "featureThresholds": thresholds,
+            "frozenCandidateIds": sorted(frozen_ids),
+            "baselineSelected": len(frozen_ids),
+            "candidateSelected": len(frozen_ids & candidate_selected),
+            "change": len(frozen_ids & candidate_selected) - len(frozen_ids),
+        },
+        "byRecordingDelta": _recording_deltas(baseline, candidate),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     paths = {
         "features": args.features.expanduser().resolve(),
@@ -331,7 +392,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         paths["importance"] = args.importance.expanduser().resolve()
     if args.experiment == "E2":
         paths["gapFeatures"] = args.gap_features.expanduser().resolve()
-    if args.experiment == "E4":
+    if args.experiment in {"E4", "E5"}:
         paths["visualFeatures"] = args.visual_features.expanduser().resolve()
     output = (
         args.output.expanduser().resolve()
@@ -357,18 +418,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ] != [str(row["eventId"]) for row in feature_payload["rows"]]:
             raise ValueError("E2 gap feature artifact does not match the frozen row universe")
         experiment_rows = gap_payload["rows"]
-    elif args.experiment == "E4":
+    elif args.experiment in {"E4", "E5"}:
         visual_payload = _load(paths["visualFeatures"])
         if visual_payload["scope"] != feature_payload["scope"] or [
             str(row["eventId"]) for row in visual_payload["rows"]
         ] != [str(row["eventId"]) for row in feature_payload["rows"]]:
             raise ValueError(
-                "E4 visual-summary artifact does not match the frozen row universe"
+                f"{args.experiment} visual-summary artifact does not match the frozen row universe"
             )
         if visual_payload["parity"]["status"] != "exact-within-tolerance" or float(
             visual_payload["parity"]["maximumAbsoluteDifference"]
         ) > 1e-8:
-            raise ValueError("E4 visual-summary artifact did not pass current parity")
+            raise ValueError(
+                f"{args.experiment} visual-summary artifact did not pass current parity"
+            )
         experiment_rows = visual_payload["rows"]
     audit = _load(paths["audit"])
     current_model = _load(paths["model"])
@@ -406,6 +469,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         directional = evaluate_profile(experiment_rows, markers, Q1_PROFILE)
         profiles[Q1_PROFILE.identifier] = directional
         comparison = _evaluate_e4_gate(baseline, directional, experiment_rows)
+    elif args.experiment == "E5":
+        camera = evaluate_profile(experiment_rows, markers, C1_PROFILE)
+        profiles[C1_PROFILE.identifier] = camera
+        comparison = _evaluate_e5_gate(baseline, camera, experiment_rows)
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
     created_at = datetime.now(UTC).isoformat()
@@ -421,6 +488,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "E1": "swap-specific-interactions",
                 "E2": "production-gap-consensus-and-shape",
                 "E4": "directional-observation-quality-replacement",
+                "E5": "camera-and-scene-confounders",
             }[args.experiment],
             "decision": "baseline-only" if comparison is None else comparison["decision"],
         },

@@ -209,6 +209,38 @@ SHA-256: `62ec47b13fb385114a5283b769042bd3d9c85e511ec87ca3a242c2bfeb2e5c80`
 Next independent comparison: E5, the four-value C1 camera/scene-confounder bundle on
 top of the original 34-input control.
 
+### E5 — camera and scene confounders — rejected 2026-08-24
+
+Appended only the four frozen C1 values to the original 34-input control. The model
+therefore tested additive camera/scene evidence without Q1, I1, G1, C2 interactions,
+new candidates, or any training/decoder change. E0 parity remained exact.
+
+| Metric | E0 control | E5 C1 | E5 minus E0 |
+| --- | ---: | ---: | ---: |
+| Row AP | 44.4992% | 48.1418% | +3.6426 pp |
+| Row Brier score | 0.054145 | 0.051670 | -0.002475 |
+| ±4 proposals / TP / FP / FN | 52 / 29 / 23 / 21 | 61 / 30 / 31 / 20 | +9 / +1 / +8 / -1 |
+| ±4 precision | 55.7692% | 49.1803% | -6.5889 pp |
+| ±4 recall | 58.0000% | 60.0000% | +2.0000 pp |
+| ±4 F1 | 56.8627% | 54.0541% | -2.8087 pp |
+| Strict F1 | 45.0980% | 43.2432% | -1.8548 pp |
+| Frozen high-scene-instability FP slice | 14 selected | 11 selected | -3 FP |
+
+Decision: **reject C1 as an additive feature contender and do not run C2 or add C1 to
+a combined model**. The row-level AP/Brier gains and target-slice reduction show that
+the measurements contain diagnostic information, but nested event selection converts
+that ranking movement into eight added false positives for one recovered event. C1
+fails the primary-F1, precision, and strict-F1 gates. Preserve the four raw values for
+error review; do not ship this 38-input head.
+
+Artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-e5-camera-c1-v1.json`
+
+SHA-256: `708ac5d224beea7a0d740f5d5235bf3b121ee73882dc2837cad26ebc6faaa3e9`
+
+Next independent comparison: E6, boundary-only P1 persistence. Its selection decision
+must be made on the matched boundary-only comparison, not the merged union metric.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
@@ -401,6 +433,9 @@ The shared extraction run freezes the following details before E4–E6 are train
   after window has lower proposal coverage or lower proposal count than the before
   window. In addition to the common accuracy gates, Q1 must select fewer of these
   post-observation-collapse false proposals.
+- The C1 target slice is frozen as baseline outer-held false proposals at or above the
+  all-row 75th percentile for at least one of the four C1 diagnostics. In addition to
+  the common accuracy gates, C1 must reduce this high-scene-instability slice.
 
 All four families are extracted together from shared frames, but Q1, C1, and P1 remain
 independent model comparisons. The cache must reconstruct all existing 22 visual

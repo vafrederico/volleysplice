@@ -7,6 +7,7 @@ import numpy as np
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
     BASE_FEATURE_NAMES,
+    C1_PROFILE,
     GAP_SHAPE_FEATURE_NAMES,
     INTERACTION_FEATURE_NAMES,
     INTERACTION_PROFILE,
@@ -142,6 +143,13 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
         self.assertTrue(set(Q1_FEATURE_NAMES).issubset(Q1_PROFILE.feature_names))
         self.assertTrue(
             set(Q1_REMOVED_FEATURE_NAMES).isdisjoint(Q1_PROFILE.feature_names)
+        )
+
+    def test_c1_profile_appends_exact_camera_bundle(self):
+        from analysis.side_switch_visual_summary_v2 import C1_FEATURE_NAMES
+
+        self.assertEqual(
+            C1_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *C1_FEATURE_NAMES)
         )
 
     def test_gap_shape_features_match_consensus_trace(self):

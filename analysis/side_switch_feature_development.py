@@ -21,6 +21,7 @@ from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
 from analysis.side_switch_visual_summary_v2 import (
+    C1_FEATURE_NAMES,
     Q1_FEATURE_NAMES,
     Q1_REMOVED_FEATURE_NAMES,
 )
@@ -110,6 +111,16 @@ Q1_PROFILE = FeatureProfile(
     hypothesis=(
         "raw before/after observation quality distinguishes post-transition collapse "
         "from stable two-sided visibility better than minima and absolute changes"
+    ),
+)
+
+
+C1_PROFILE = FeatureProfile(
+    identifier="union34-plus-camera-c1",
+    feature_names=(*BASE_FEATURE_NAMES, *C1_FEATURE_NAMES),
+    hypothesis=(
+        "explicit translation instability, residual, background replacement, and "
+        "scene-cut evidence reduce generic visual-change false positives"
     ),
 )
 
