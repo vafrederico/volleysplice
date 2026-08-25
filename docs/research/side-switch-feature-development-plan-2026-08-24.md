@@ -594,6 +594,17 @@ before-side source. It preserves the frozen reductions while removing route-type
 asymmetry from the margin. The transformation is frozen in
 [Side-switch T13 source-symmetric routing](./side-switch-t13-source-symmetric-routing-plan-2026-08-25.md).
 
+#### T13 engineering result — reject before labels
+
+Source-symmetric routing retains 0.5348 separation and 19.55% reliable swap but drops
+positive margins to 23.72%. Conditional similarity remains redundant with T11/T12.
+This shows T12's apparent margin gain depended materially on route asymmetry, so the
+routing family stops before labels.
+
+T14 should test a new role-robust representation: the unweighted medoid of stable
+player tracklets as dominant jersey identity, plus exact pooled fallback only when no
+stable tracklet exists.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

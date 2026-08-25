@@ -581,6 +581,16 @@ different representation types. A source-consistent router should choose one typ
 both destinations from each before-side source, so the margin measures appearance
 assignment rather than route availability.
 
+## T13 source-symmetric routing follow-up — 2026-08-25
+
+Enforcing one route per before-side removes T12's directional gain: positive margins
+return to 23.72%, while conditional similarity remains >=0.983 correlated with the
+prior hierarchy. The routing branch is therefore exhausted before labels.
+
+The next independent representation should target secondary player roles rather than
+coverage routing. A medoid over stable player-tracklet jerseys gives each player one
+vote while resisting a libero/outlier, and requires no observed distance threshold.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

@@ -54,3 +54,29 @@ recording-held gold.
 
 No T13 code, artifact, feature value, model profile, or model result existed when this
 contract was committed.
+
+### Engineering result — reject before labels
+
+Implementation is committed at `9df4233`. Immutable artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t13-source-symmetric-routing-features-v1.json`
+
+Size: 34,852,049 bytes. SHA-256:
+`232a26201edf16fe104dec965e73bb9f1864162baa13749187b0d3ad4970972e`.
+
+T13 uses 824 stable and 424 pooled before-side routes with exact route symmetry.
+Separation remains 0.534842 and reliable swap passes at 19.5513%, but positive margins
+fall to 23.7179% (148/624). Conditional similarity is also redundant with T11 at
+0.983110 and T12 at 0.997307 Spearman. The transformation took 0.594 seconds at
+127.711 MiB RSS.
+
+Decision: **reject T13 and stop before labels**. No label or model source was loaded.
+The T12 gain does not survive source-route symmetry, so no further routing variant is
+authorized on this scope.
+
+The next representation should address player-role appearance directly. T14 will
+select the unweighted Hellinger medoid of each side's stable player tracklets as its
+dominant jersey identity, with deterministic stored-order ties. Only an empty stable
+side receives the exact T5 pooled fallback. This tests tracklet-level resistance to a
+libero or other secondary role without changing track qualification or tuning a
+distance threshold.
