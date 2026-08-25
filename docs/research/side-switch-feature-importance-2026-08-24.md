@@ -498,6 +498,22 @@ availability while weighting dominant/secondary appearance modes and exposing mo
 entropy/support as reliability. This should be tested on new recording-held evidence,
 not by selecting another distance radius on the repeatedly opened scope.
 
+## T7 soft-consensus follow-up — 2026-08-25
+
+T7 retains every observation while continuously downweighting distance from the T6
+medoid. It recovers exact T5 visibility and improves directional availability:
+positive raw swap margins rise from 19.87% to 25.48%, and reliable swap evidence from
+16.19% to 19.39%. The price is incomplete identity recovery. Mean minimum team
+separation reaches only 0.3387, well below the preregistered 0.3796 target and still
+below T4's 0.3739.
+
+This resolves the hard-versus-soft question without labels. A single weighted mean
+cannot simultaneously preserve intermittent team observations and keep distinct
+jersey identities sharp. The next feature should retain a bounded set of appearance
+modes per court side, expose primary/secondary support and ambiguity, and compare
+mode sets across the boundary. That changes representation topology rather than
+tuning T6/T7's already observed distance scale.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

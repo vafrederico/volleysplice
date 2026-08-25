@@ -479,6 +479,15 @@ continuous distance weight. It must retain exact T5 availability while restoring
 separation and T4-level reliable swap coverage before labels. The contract is frozen
 in [Side-switch T7 soft robust jersey consensus](./side-switch-t7-soft-robust-jersey-consensus-plan-2026-08-25.md).
 
+#### T7 engineering result — reject before labels
+
+T7 exactly retains T5 availability and improves positive raw transport margins to
+25.48% and reliable-swap coverage to 19.39%. It fails only the frozen separation
+gate: mean minimum team separation reaches 0.3387 rather than the required 0.3796.
+The feature therefore stops before labels. The result rules out another single
+descriptor average: the next experiment should represent each court side as an
+explicit small appearance-mode set and perform set-to-set endpoint transport.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
