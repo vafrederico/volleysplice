@@ -488,6 +488,14 @@ The feature therefore stops before labels. The result rules out another single
 descriptor average: the next experiment should represent each court side as an
 explicit small appearance-mode set and perform set-to-set endpoint transport.
 
+### T8 explicit two-mode jersey transport — preregistered 2026-08-25
+
+T8 preserves all T5 observations but represents a court-side team with two
+deterministic weighted medoid modes and compares mode sets by symmetric weighted
+Chamfer distance. It must retain exact T5 visibility while reaching T4 separation and
+T7 directional coverage before labels. The frozen construction and gates are in
+[Side-switch T8 explicit two-mode jersey transport](./side-switch-t8-two-mode-jersey-transport-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
