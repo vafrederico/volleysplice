@@ -153,3 +153,48 @@ No eligible new side-switch gold appeared during this loop. The repeatedly opene
 markers remain outside the transformation and model-selection path. The next action is
 data collection/freeze, followed by one untouched T0-versus-T2 nested comparison under
 the already frozen gates. Do not port T2 or tune a threshold before that result.
+
+### Opened-development training amendment — authorized and frozen 2026-08-24
+
+The user explicitly requested that T2 be trained now to determine whether the two
+engineering-ready values make a measurable difference. This authorizes one
+**exploratory development** run on the existing 50 markers; it does not reclassify
+those markers as new validation data and does not authorize promotion or a runtime
+port.
+
+Freeze the comparison before reading any T2 label result:
+
+- use exactly the 624 adjacent-rally boundaries and all 50 opened markers;
+- T0 is the matched ordered 34-input boundary control;
+- T2 appends exactly `appearanceTransportSwapMargin` and
+  `conditionalCrossSideIdentitySimilarityMinimum`;
+- preserve square-root class balancing, L2 `0.1`, top-2/2x per-recording hard-negative
+  mining, nested recording-held-out threshold selection, and the current decoder;
+- report outer-held row AP/Brier, +/-4-second and strict event metrics, all 11
+  recording deltas, and the existing recording-robustness rule; and
+- union each boundary branch with the exact E0 outer-held internal selections only as
+  a non-calibrated composition diagnostic. The boundary-only result selects the
+  exploratory decision.
+
+The frozen target slices are:
+
+1. **covered boundary misses:** positive candidate rows not selected by T0, with T2
+   counted as useful only if it recovers at least one; and
+2. **weak-transport false boundaries:** T0-selected false rows where either T2 core
+   value is at or below that value's median across all 624 label-independent boundary
+   rows. T2 must retain fewer of these rows.
+
+The descriptive pass gate remains at least `+2.0` percentage points outer-held
+F1, no more than `2.0` points lost in precision or recall, no more than `1.0` point
+lost in strict F1, both target-slice checks, and recording robustness. Passing this
+gate means only "promising on opened development data."
+
+Feature-importance reporting is also frozen before the run. Report each T2 value's
+full-development standardized logistic coefficient, absolute-coefficient rank among
+all 36 inputs, and sign consistency across the 11 outer-fit models. Run the two
+single-value additions (`34 + swap margin` and `34 + conditional similarity`) only as
+descriptive ablations; they cannot replace, prune, or tune the frozen two-value T2
+comparison.
+
+Output path:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t2-conditional-transport-opened-v1.json`.

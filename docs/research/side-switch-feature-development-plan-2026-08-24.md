@@ -339,6 +339,19 @@ T2 now implements that decomposition and passes every label-free engineering gat
 The exact two-value profile is dormant: it must not be evaluated on the reused 50
 markers or ported before a newly collected recording-held T0-versus-T2 comparison.
 
+### T2 opened-development training — explicitly authorized 2026-08-24
+
+After the label-free closeout, the user explicitly authorized training T2 on the
+existing 50-marker scope to answer the narrower development question: does the frozen
+two-value representation change the learned model and its outer-held behavior here?
+The exact comparison, target slices, coefficient diagnostics, and descriptive
+single-value ablations were frozen in the T2 plan before running the model.
+
+This amendment overrides the earlier no-reuse rule only for an exploratory analysis.
+It does not make the 50 markers untouched, cannot promote T2, and does not authorize a
+browser or Android port. Append the measured result here after the run; do not rewrite
+the earlier label-free decision.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
