@@ -644,6 +644,14 @@ gate; continuity agreement reaches 125/624 (20.03%). All other gates pass, and 4
 boundaries disagree or tie across the two source sides. No T15 label/model run occurs.
 The minimum is not softened after observation.
 
+### T16 source-resolved medoid transport — preregistered 2026-08-25
+
+T16 retains the exact signed near-source and far-source assignment advantages as two
+separate inputs rather than averaging them or requiring agreement. It tests whether
+the 451 T15 disagreements contain stable camera-relative information. The exact
+no-video transformation and matched-model gates are frozen in
+[Side-switch T16 source-resolved medoid transport](./side-switch-t16-source-resolved-medoid-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
