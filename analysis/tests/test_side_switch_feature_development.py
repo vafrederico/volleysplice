@@ -12,6 +12,7 @@ from analysis.side_switch_feature_development import (
     GAP_SHAPE_FEATURE_NAMES,
     INTERACTION_FEATURE_NAMES,
     INTERACTION_PROFILE,
+    M1_PROFILE,
     Q1_PROFILE,
     P1_PROFILE,
     apply_profile,
@@ -160,6 +161,14 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
         self.assertEqual(BOUNDARY_BASELINE_PROFILE.feature_names, BASE_FEATURE_NAMES)
         self.assertEqual(
             P1_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *P1_FEATURE_NAMES)
+        )
+
+    def test_m1_profiles_are_matched_except_foreground_motion_bundle(self):
+        from analysis.side_switch_m1_motion import M1_FEATURE_NAMES
+
+        self.assertEqual(BOUNDARY_BASELINE_PROFILE.feature_names, BASE_FEATURE_NAMES)
+        self.assertEqual(
+            M1_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *M1_FEATURE_NAMES)
         )
 
     def test_gap_shape_features_match_consensus_trace(self):

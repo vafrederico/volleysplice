@@ -16,6 +16,7 @@ from analysis.side_switch_full_union_ranker import (
     fit_weighted_logistic,
 )
 from analysis.side_switch_full_video import event_metric_counts, monotonic_interval_match
+from analysis.side_switch_m1_motion import M1_FEATURE_NAMES
 from analysis.side_switch_production_state import STATE_GATE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
@@ -139,6 +140,16 @@ P1_PROFILE = FeatureProfile(
     hypothesis=(
         "robust K=3 within-side continuity and cross-boundary swap agreement recover "
         "weak persistent switches while vetoing transient visual changes"
+    ),
+)
+
+
+M1_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-foreground-motion-m1",
+    feature_names=(*BASE_FEATURE_NAMES, *M1_FEATURE_NAMES),
+    hypothesis=(
+        "camera-compensated bidirectional foreground motion through court depth "
+        "separates physical side exchanges from generic palette and scene changes"
     ),
 )
 

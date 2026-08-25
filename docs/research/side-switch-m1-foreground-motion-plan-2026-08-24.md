@@ -136,6 +136,38 @@ do not tune the flux floor, pair count, or gap sampling on these 50 opened event
   recordings with explicit physical-exchange annotations.
 - Do not port M1 until it passes untouched validation and the product latency budget.
 
+## Execution ledger
+
+### M1 extraction — completed 2026-08-24
+
+Implementation:
+
+- `analysis/side_switch_m1_motion.py`
+- `analysis/tests/test_side_switch_m1_motion.py`
+- `scripts/extract-side-switch-m1-motion-features.py`
+
+Immutable artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-m1-foreground-motion-features-v1.json`
+- SHA-256: `b3ac34aaccec6395526a69341832e048e7ef763543790c2e87873236d569cb3b`
+- rows: 704 total, 624 eligible boundaries, 80 explicitly ineligible internal rows
+- frame requests: 7,488; exact unique timestamps: 7,454; flow pairs: 3,744
+- frame errors: 0
+- elapsed: 2,123.919 seconds (35m23.919s), below the frozen 3,600-second gate
+- peak RSS: 261.230 MiB, below the frozen 512-MiB gate
+- row order, candidate IDs, and every pre-existing feature value: exact
+- label use: none
+
+The extractor and reduction module hashes embedded in the artifact match the
+checked-in implementation. The artifact is now immutable; the nested comparison must
+consume this exact hash. Product latency remains unmeasured.
+
+### M1 nested comparison — pending
+
+The matched boundary-only control, eight-feature M1 head, target slices, recording
+robustness rule, and diagnostic full-union composition have been implemented. No model
+result has been inspected at this checkpoint.
+
 ## Relationship to the completed loop
 
 This is the separately specified experiment required by the M1 section of the
