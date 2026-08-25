@@ -605,6 +605,13 @@ T14 should test a new role-robust representation: the unweighted medoid of stabl
 player tracklets as dominant jersey identity, plus exact pooled fallback only when no
 stable tracklet exists.
 
+### T14 dominant tracklet medoid — preregistered 2026-08-25
+
+T14 represents each nonempty stable side by the unweighted medoid of its player
+tracklet jersey descriptors and retains exact T5 pooled fallback only for an empty
+stable side. This tests role/outlier resistance without an observed radius. The frozen
+contract is in [Side-switch T14 dominant tracklet medoid](./side-switch-t14-dominant-tracklet-medoid-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
