@@ -1,5 +1,18 @@
 # Side-switch feature loop handoff — 2026-08-25
 
+## Continuation outcome
+
+The destination-machine restart completed T9. The immutable 23,590,218-byte artifact
+has SHA-256 `c21f4f5360185ae37904e622ab5caf3c0edeb13dfd58506a6ab814aa57b9c5e2`.
+Engineering failed only the positive-margin and reliable-swap gates (20.51% and
+16.51%, respectively), so labels and model artifacts remained unopened. The canonical
+result and next representation hypothesis are recorded in
+[the T9 plan](./side-switch-t9-mass-preserving-mode-transport-plan-2026-08-25.md).
+
+The remainder of this document preserves the state and instructions at the original
+machine-transfer boundary for provenance; its restart/absence statements are
+historical rather than current instructions.
+
 ## Handoff state
 
 Branch: `t3code/analyze-side-switching-features`

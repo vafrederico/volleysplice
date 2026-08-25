@@ -511,12 +511,26 @@ for permissive nearest-mode Chamfer cost. It must preserve exact T5 visibility w
 reaching T4 separation and T7 directional coverage before labels. The frozen contract
 is in [Side-switch T9 mass-preserving mode transport](./side-switch-t9-mass-preserving-mode-transport-plan-2026-08-25.md).
 
-#### T9 handoff status — extraction restart required
+#### T9 engineering result — reject before labels
 
-T9 code and tests are committed at `46d850b`. A label-free extraction was interrupted
-at the beginning of recording 6 of 11 for a machine handoff. No atomic output exists,
-so there is no T9 engineering or model result and the next machine must restart the
-full extraction. See [the continuation handoff](./side-switch-feature-loop-handoff-2026-08-25.md).
+The restarted extraction preserved all 704 rows, prior values, T8 modes, and exact T5
+visibility. Mass preservation is materially active: mean available-pair cost rises
+from T8's 0.3470 to 0.3991, and mean minimum team separation reaches 0.4178, above
+T4's 0.3739. Directionality still fails both frozen gates. Positive margins reach
+only 20.51% versus T7's required 25.48%, and reliable-swap coverage reaches only
+16.51% versus 19.39%. T9 therefore stops before labels; no model result exists.
+
+The 23,590,218-byte artifact has SHA-256
+`c21f4f5360185ae37904e622ab5caf3c0edeb13dfd58506a6ab814aa57b9c5e2`.
+Extraction completed all 635 endpoints, 3,175 frames, and 25,400 detector tile calls
+without errors in 1,031.629 seconds at 373.285 MiB peak RSS.
+
+Do not tune T8/T9 modes, supports, set costs, or gates on this opened scope. The next
+representation hypothesis is tracklet-first team appearance: form persistent player
+tracklets before aggregation, count stable player identities rather than repeated
+detector observations as appearance units, and separate one-to-one match coverage from
+conditional jersey similarity. Any such T10 requires a new preregistration and cannot
+be promoted without unseen recording-held evidence.
 
 ## Evidence that determines the direction
 

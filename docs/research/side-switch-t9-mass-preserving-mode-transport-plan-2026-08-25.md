@@ -93,3 +93,46 @@ engineering result or change any frozen gate.
 
 Continuation details are in
 [the side-switch feature loop handoff](./side-switch-feature-loop-handoff-2026-08-25.md).
+
+### Completed engineering result — reject before labels
+
+The restarted extraction completed on the destination machine and wrote the immutable
+23,590,218-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t9-mass-preserving-mode-transport-features-v1.json`
+
+SHA-256: `c21f4f5360185ae37904e622ab5caf3c0edeb13dfd58506a6ab814aa57b9c5e2`.
+
+T9 preserved all 704 candidate IDs/order and every prior feature value exactly. It
+also preserved T8's mode representation and exact T5 availability: 81.1024%
+both-team endpoints, 42.3077% in the weakest recording, and 68.75% four-team
+boundaries. All three core values were finite and nonconstant; every frozen
+correlation check passed.
+
+| Engineering measurement | Result | Frozen requirement | Check |
+| --- | ---: | ---: | --- |
+| Mean minimum team separation | 0.417759 | >=0.373860 | Pass |
+| Positive raw transport margin | 20.5128% | >=25.4808% | **Fail** |
+| Nonzero reliable swap evidence | 16.5064% | >=19.3910% | **Fail** |
+| Mean available-pair mass cost | 0.399094 | — | — |
+| Paired T8 Chamfer cost | 0.346971 | — | — |
+| Mean mass-cost increase | +0.052123 | >=+0.01 | Pass |
+
+The full extraction made exactly 635 endpoint windows, 3,175 frame requests, and
+25,400 detector tile calls with no errors. It completed in 1,031.629 seconds
+(17m11.629s) at 373.285 MiB peak RSS, within both frozen budgets.
+
+Decision: **reject T9 and stop before labels**. Exact mass preservation is active and
+raises separation beyond T4, but it recovers only part of T8's lost directionality:
+positive margins improve from T8's 18.43% to 20.51% and reliable-swap coverage from
+14.58% to 16.51%, both still below T7. No label, audit, feedback, or model artifact
+was loaded, and there is no T9 precision, recall, F1, or coefficient result.
+
+This result rules out another post-hoc change to the observed T8/T9 mode supports or
+set cost on this opened scope. The next representation hypothesis is tracklet-first
+team appearance: construct persistent multi-frame player tracklets before team
+aggregation, give each stable player tracklet one appearance unit rather than using
+detector-observation frequency as transport mass, and expose one-to-one match coverage
+separately from conditional jersey similarity. That is a new raw representation, not
+a tuned T9 transport variant, and requires its own preregistration and unseen-recording
+promotion evidence.

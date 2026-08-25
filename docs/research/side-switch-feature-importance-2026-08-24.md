@@ -526,6 +526,24 @@ correspondence. Exact two-by-two optimal transport is the smallest attributable 
 change: it prevents both source modes from explaining themselves through the same
 destination mode while respecting their measured support.
 
+## T9 mass-preserving follow-up — 2026-08-25
+
+T9 confirms that balanced mode transport is active and repairs separation: the mean
+available-pair cost rises 0.3470 to 0.3991 and minimum team separation rises 0.3707 to
+0.4178, above T4. It does not recover enough same-versus-swapped direction. Positive
+margins rise only 18.43% to 20.51%, below T7's 25.48%, and reliable-swap coverage rises
+only 14.58% to 16.51%, below T7's 19.39%. T9 therefore fails before labels, so there
+is no precision, recall, F1, or coefficient attribution to report.
+
+The remaining problem is upstream of the set-distance formula. T8/T9 mass is the
+frequency of retained detector observations, not a stable count of player identities;
+balanced transport can preserve that mass exactly without making independently built
+endpoint modes directionally comparable. The next representation should build
+persistent player tracklets first, assign one appearance unit per stable tracklet,
+and expose one-to-one match coverage separately from conditional jersey similarity.
+This is a new representation hypothesis, not authorization to tune T9 on the opened
+recordings.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
