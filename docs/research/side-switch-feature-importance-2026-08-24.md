@@ -429,6 +429,33 @@ scope contains candidates for only 43 of 50 markers and the full union for 46 of
 The complete protocol, per-recording changes, ablations, and artifact hashes are in
 [the T2 decision record](./side-switch-t2-conditional-identity-transport-plan-2026-08-24.md).
 
+## T4 selective-resolution follow-up — 2026-08-24
+
+T4 applies the same pinned detector to a smaller native far-court crop before the
+jersey/team transport stack. This fixes much of the missing-observation problem:
+both-team endpoint coverage rises from 44.57% to 74.17%, and four-team boundary
+coverage rises from 26.12% to 58.33%.
+
+In the exact held-recording boundary comparison, T4 preserves precision at 50.00%,
+raises recall from 52.00% to 56.00%, and raises F1 from 50.98% to 52.83%. That is a
+real directional improvement—two net TP for two net FP—but the +1.8498-point F1 gain
+misses the preregistered +2.0-point gate. T4 is therefore rejected rather than rounded
+up or tuned after inspection.
+
+The importance pattern is more informative than the binary decision. Raw jersey-team
+transport is positive in 11/11 outer fits (`+0.1053`, rank 17/37), and continuity is a
+stable negative veto in 11/11 (`-0.1577`, rank 13/37). The reliability-gated swap
+value is nearly zero (`+0.0059`, rank 34/37) and changes sign in four folds. Selective
+resolution made transport direction learnable; sparse/unstable tracking reliability
+now limits how confidently that direction can be used.
+
+The next feature direction is not a larger proxy or threshold adjustment. Preserve
+the T4 crop and add court-constrained temporal tracking as a separate version, aiming
+to convert intermittent far-player observations into longer, reliable anonymous-team
+tracklets. Keep resolution, descriptor, model protocol, and candidate source fixed so
+the effect remains attributable. Full details and immutable artifacts are in
+[the T4 decision record](./side-switch-t4-selective-far-court-detection-plan-2026-08-24.md).
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

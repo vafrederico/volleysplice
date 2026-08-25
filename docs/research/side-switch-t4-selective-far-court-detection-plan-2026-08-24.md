@@ -161,3 +161,73 @@ Immutable feature artifact:
 - extractor SHA-256: `441317c732a7fee864b6e0437633512d61e3af6c7db14d12f826a77432e0af8a`
 
 Validation after extraction: all 151 focused `test_side_switch*.py` tests pass.
+
+### Opened-development model — near miss, rejected 2026-08-24
+
+Model-runner checkpoint: `78cf55e`. The run used the exact frozen 624-boundary
+comparison: the same labels, recording-held-out outer folds, inner threshold selection,
+hard-negative policy, decoder, and 34 baseline inputs. T4 appends only the three named
+core values, producing an exact 37-input head.
+
+| Held-out event metric | Matched T0 | T4 | Delta |
+| --- | ---: | ---: | ---: |
+| Proposals | 52 | 56 | +4 |
+| True positives | 26 | 28 | +2 |
+| False positives | 26 | 28 | +2 |
+| False negatives | 24 | 22 | -2 |
+| Precision | 50.00% | 50.00% | 0.00 pp |
+| Recall | 52.00% | 56.00% | +4.00 pp |
+| F1 | 50.98% | 52.83% | +1.85 pp |
+| Strict F1 | 41.18% | 41.51% | +0.33 pp |
+| Row average precision | 0.4356 | 0.4446 | +0.0090 |
+| Row Brier score | 0.05453 | 0.05431 | -0.00022 |
+
+T4 passes six of seven model checks. It recovers one of the three T0 misses with
+nonzero reliable swap evidence, reduces selected zero-reliable-swap false boundaries
+from 21 to 19, preserves precision, raises recall, preserves strict F1, and passes the
+recording-robustness rule. It fails the primary decision gate because the required F1
+gain is at least 2.00 percentage points and the observed gain is 1.8498 points. The
+0.1502-point shortfall is not rounded into a pass.
+
+The net gain is concentrated but does not trigger the frozen robustness failure:
+`161923155` gains two TP and one FP, `210449857` gains one TP and one FP, and conflict
+recording `193307688` loses one TP. The other eight recordings have unchanged event
+counts. Across individual selections, T4 adds three TP and four FP while removing one
+TP and two FP.
+
+#### Feature direction learned from T4
+
+The raw transport direction is credible: `selectiveFarJerseyTeamTransportSwapMargin`
+has coefficient `+0.1053`, rank 17/37 by absolute standardized coefficient, and is
+positive in all 11 outer fits. Reliable continuity is stronger and consistently acts
+as a veto: coefficient `-0.1577`, rank 13/37, negative in all 11 fits. In contrast,
+`selectiveFarJerseyReliableSwapEvidence` is effectively unused: coefficient `+0.0059`,
+rank 34/37, with only seven positive outer-fold signs.
+
+This resolves the resolution question empirically. Giving distant players about twice
+the effective detector pixels materially improves observability and supplies stable
+transport/continuity signal, so `224 x 224` full-ROI detection was a real bottleneck.
+Resolution alone is not the complete model bottleneck: reliable swap evidence remains
+nonzero on only 17.79% of boundaries, and four new FP arrive with the added recall.
+
+The next isolated feature experiment should therefore preserve the selective far crop
+and add court-constrained temporal tracking between its five samples. It should target
+track continuity and reliability, especially on the far side, rather than enlarge the
+proxy or tune the model threshold. Candidate outputs should remain the same three
+semantic reductions, under a new versioned prefix, so the comparison measures whether
+tracking turns unstable or zero-gated transport into reliable direction evidence.
+Freeze and test that bundle as a whole; do not prune T4 after this failed gate, do not
+combine tracking with a detector-resolution change, and do not port T4.
+
+Decision: **T4 is rejected for promotion and runtime work, but selective far-court
+detection is retained as the engineering foundation for a separately preregistered
+tracking experiment.**
+
+Immutable model artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t4-selective-far-opened-v1.json`
+- SHA-256: `16d617fb8427517b45c31196877d7482cb019f8902b989e5b2db19cfcef0020b`
+- runner SHA-256: `65ac8e9dee004b4dd130ad9173ac568c5993192f31168de5674a53477b8f2a41`
+- model module SHA-256: `63be32333891e2e0e01521e6ef99e6d1281ba844c74aff40e4ac548145b80c42`
+
+Validation after modeling: all 152 focused `test_side_switch*.py` tests pass.

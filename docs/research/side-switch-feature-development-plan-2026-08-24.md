@@ -409,6 +409,16 @@ from 3.39% to 32.69%. Every parity, novelty, nonzero, per-recording, resource, a
 no-error gate passes. T4 is therefore authorized for the frozen opened-development
 T0-versus-T4 model comparison; it is not promoted.
 
+#### T4 model result — near miss, rejected
+
+Against the exact boundary T0, T4 holds precision at 50.00%, raises recall from
+52.00% to 56.00%, and raises F1 from 50.98% to 52.83%. The +1.85-point F1 gain misses
+the frozen +2.00-point requirement by 0.15 point, so T4 fails despite passing every
+other model gate. The raw transport margin and continuity veto have perfectly stable
+11/11 fold signs; the explicitly reliable swap value is weak and sign-unstable. Do not
+prune or port T4. Retain its selective far crop as the input to a separately frozen
+court-constrained temporal-tracking experiment designed to improve track reliability.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
