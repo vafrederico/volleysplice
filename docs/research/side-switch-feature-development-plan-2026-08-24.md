@@ -628,6 +628,15 @@ positive full fit and >=9/11 positive folds. Reliable continuity is also negativ
 all 11. T14 is rejected without bundle pruning, sign reversal, gate tuning, promotion,
 or runtime work.
 
+### T15 bilateral medoid consensus — preregistered 2026-08-25
+
+T15 replaces T14's mean of near/far assignment advantages with two bilateral
+agreement values: swap evidence exists only when both sources prefer crossing, and
+continuity evidence only when both prefer staying. It is an exact, label-free
+transformation of the pinned T14 reductions, with an adaptive opened-development
+model gate declared before T15 values are computed. The frozen contract is in
+[Side-switch T15 bilateral medoid consensus](./side-switch-t15-bilateral-medoid-consensus-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
