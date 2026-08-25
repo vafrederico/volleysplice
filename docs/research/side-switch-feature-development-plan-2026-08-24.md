@@ -455,6 +455,14 @@ continuity veto are stable in all 11 folds, but reliable swap evidence is negati
 all 11 folds—the opposite of its intended meaning. The explicitly authorized run
 therefore confirms rather than reverses the engineering rejection.
 
+### T6 robust dominant-jersey consensus — preregistered 2026-08-25
+
+T6 preserves selective resolution and court-side temporal ownership while replacing
+T5's unconditional pooling with a fixed-radius, multi-frame dominant jersey medoid and
+explicit outlier rejection. It must restore team separation, positive transport, and
+reliable-swap coverage before labels. The full contract is frozen in
+[Side-switch T6 robust dominant-jersey consensus](./side-switch-t6-dominant-jersey-consensus-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
