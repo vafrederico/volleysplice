@@ -680,6 +680,13 @@ source remains redundant (`ρ=0.9907` versus the frozen `<0.98` gate). All other
 pass. T17 stops before labels, ruling out simple same-plus-swapped cost scale as the
 far-source explanation.
 
+### T18 medoid representativeness transport — preregistered 2026-08-25
+
+T18 symmetrically gates the signed T14 medoid margin by the worst of four exact
+medoid-to-pooled-team similarities. It tests role ambiguity without selecting a
+camera source, changing medoids, or tuning a distance radius. See
+[Side-switch T18 medoid representativeness transport](./side-switch-t18-medoid-representativeness-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
