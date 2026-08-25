@@ -291,6 +291,41 @@ Loop outcome: no E1/E2/Q1/C1/P1 family passes every gate. The compact winner rem
 the original 34-input E0 control. Runtime porting and untouched-validation promotion
 are not authorized by these opened-development results.
 
+### Execution closeout — 2026-08-24
+
+The requested controlled loop is complete through its predeclared stop condition.
+Every attempted family has a source-bound immutable artifact, paired nested result,
+gate decision, and commit boundary.
+
+| Step | Commit | Decision | Primary reason |
+| --- | --- | --- | --- |
+| Research/importance | `9bc3130` | Complete | Established 34-feature attribution and error slices. |
+| E0 machinery | `115e0e3` | Exact | Reproduced the promoted control to `1e-12`. |
+| E1 interactions | `791e31a` | Reject | -3.16 pp F1; +6 FP. |
+| E2 gap shape | `099073d` | Reject | Precision improved, but recall fell 4 pp and F1 gained only 0.58 pp. |
+| Visual Summary V2 | `8159854` | Complete | 704-row visual parity; 43.54% fewer frame requests. |
+| E4 Q1 direction | `519d77a` | Reject | -2.66 pp F1; +5 FP at unchanged recall. |
+| E5 C1 scene | `1b4bd1a` | Reject | AP improved, but -2.81 pp event F1 and +8 FP. |
+| E6 P1 persistence | `58d09b3` | Reject | Aggregate gain depends on one recording; four recordings lose TP. |
+
+Validation after E6: all 121 focused `test_side_switch*.py` tests pass, the worktree is
+clean at the recorded commit boundary, and the final E6 artifact independently asserts
+the failed recording-robustness gate and diagnostic-only merge contract.
+
+E3 and E7 are skipped because no cheap/full-union family passed every standalone gate.
+E8/P2 is skipped because P1 did not satisfy its transfer entry condition. E9 untouched
+validation and browser/Android porting are skipped because there is no new winner.
+
+The next feature loop should not be another algebraic or palette-persistence search on
+these 50 opened events. Before implementing M1, write a separate experiment contract
+that freezes gap-frame cadence, foreground/tracking method, feature versus candidate
+role, frame/latency budget, target error slice, and source-held-out gate. In parallel,
+the data direction is to obtain at least 20 exhaustively reviewed internal-positive
+candidates across at least eight recordings and a new untouched validation set. Better
+team isolation should be tested before a more flexible classifier, because player
+appearance remains the most important family but currently supplies more positive
+logit support to false proposals than true proposals.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
