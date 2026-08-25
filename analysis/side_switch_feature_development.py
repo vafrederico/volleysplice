@@ -24,6 +24,7 @@ from analysis.side_switch_t5_court_tracking import T5_CORE_FEATURE_NAMES
 from analysis.side_switch_t14_dominant_tracklet_medoid import T14_CORE_FEATURE_NAMES
 from analysis.side_switch_t16_source_resolved import T16_CORE_FEATURE_NAMES
 from analysis.side_switch_t18_representativeness import T18_CORE_FEATURE_NAMES
+from analysis.side_switch_t19_cross_representation import T19_CORE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
@@ -237,6 +238,16 @@ T18_PROFILE = FeatureProfile(
     hypothesis=(
         "worst-side medoid-to-pooled representativeness suppresses role-ambiguous "
         "signed transport while retaining coherent dominant-team direction"
+    ),
+)
+
+
+T19_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-cross-representation-consensus-t19",
+    feature_names=(*BASE_FEATURE_NAMES, *T19_CORE_FEATURE_NAMES),
+    hypothesis=(
+        "agreement between independent pooled-team and stable-medoid jersey transport "
+        "provides reliable direction while disagreement identifies confounding"
     ),
 )
 
