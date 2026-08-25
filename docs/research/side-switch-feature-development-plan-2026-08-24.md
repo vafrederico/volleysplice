@@ -472,6 +472,13 @@ reliable swap evidence to 14.42%. T6 stops before training. A future representat
 must use soft robust weighting or explicit appearance modes while retaining T5
 availability; do not tune the observed radius on this opened scope.
 
+### T7 soft robust jersey consensus — preregistered 2026-08-25
+
+T7 retains every T5 observation and uses T6's dominant medoid only to apply a fixed
+continuous distance weight. It must retain exact T5 availability while restoring team
+separation and T4-level reliable swap coverage before labels. The contract is frozen
+in [Side-switch T7 soft robust jersey consensus](./side-switch-t7-soft-robust-jersey-consensus-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
