@@ -32,6 +32,7 @@ from analysis.side_switch_feature_development import (
     T16_PROFILE,
     T18_PROFILE,
     T19_PROFILE,
+    T20_PROFILE,
     concise_metrics,
     evaluate_profile,
     evaluate_predictions,
@@ -44,6 +45,7 @@ from analysis.side_switch_t14_dominant_tracklet_medoid import T14_CORE_FEATURE_N
 from analysis.side_switch_t16_source_resolved import T16_CORE_FEATURE_NAMES
 from analysis.side_switch_t18_representativeness import T18_CORE_FEATURE_NAMES
 from analysis.side_switch_t19_cross_representation import T19_CORE_FEATURE_NAMES
+from analysis.side_switch_t20_compact_candidate import T20_CORE_FEATURE_NAMES
 
 
 ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
@@ -71,11 +73,15 @@ DEFAULT_T14_FEATURES = (
 DEFAULT_T16_FEATURES = REPORTS / "side-switch-t16-source-resolved-medoid-features-v1.json"
 DEFAULT_T18_FEATURES = REPORTS / "side-switch-t18-medoid-representativeness-features-v1.json"
 DEFAULT_T19_FEATURES = REPORTS / "side-switch-t19-cross-representation-consensus-features-v1.json"
+DEFAULT_T20_FEATURES = REPORTS / "side-switch-t20-compact-medoid-disagreement-features-v1.json"
 DEFAULT_T4_MODEL_RESULT = (
     REPORTS / "side-switch-feature-development-t4-selective-far-opened-v1.json"
 )
 DEFAULT_T14_MODEL_RESULT = (
     REPORTS / "side-switch-feature-development-t14-dominant-tracklet-medoid-opened-v1.json"
+)
+DEFAULT_T19_MODEL_RESULT = (
+    REPORTS / "side-switch-feature-development-t19-cross-representation-consensus-opened-v1.json"
 )
 DEFAULT_OUTPUTS = {
     "E0": REPORTS / "side-switch-feature-development-e0-baseline-v1.json",
@@ -92,6 +98,7 @@ DEFAULT_OUTPUTS = {
     "T16": REPORTS / "side-switch-feature-development-t16-source-resolved-medoid-opened-v1.json",
     "T18": REPORTS / "side-switch-feature-development-t18-medoid-representativeness-opened-v1.json",
     "T19": REPORTS / "side-switch-feature-development-t19-cross-representation-consensus-opened-v1.json",
+    "T20": REPORTS / "side-switch-feature-development-t20-compact-medoid-disagreement-opened-v1.json",
 }
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
@@ -109,8 +116,10 @@ EXPECTED_SHA256 = {
     "t16Features": "11bcedafe98284bd306398f44946720767a5323275aea38a7948ae43d7d01692",
     "t18Features": "0efab13db25849a74413fc595e2753c735d1c9eb00ae4afaf8b73b9007ef8949",
     "t19Features": "ab4b474fdbaee20bf884093a37eba25e79b6e93172f0dbfe619c3b0546c421e5",
+    "t20Features": "f770eed53f85dd79f398a23e37d0706e80925971a300538082088ad59e0d5c1e",
     "t4ModelResult": "16d617fb8427517b45c31196877d7482cb019f8902b989e5b2db19cfcef0020b",
     "t14ModelResult": "ba6b7493f4d2c98a5d6bd755947a1f917ce4a5d0b69a9cb07c7b48c903d54f06",
+    "t19ModelResult": "b67e2502f05cba27ba9a0b1fc19fd614506264b8319db0befd0bd17b33c615c7",
 }
 
 
@@ -1695,6 +1704,204 @@ def _t19_coefficient_importance(candidate: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _evaluate_t20_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+    t14_result: Mapping[str, Any],
+    t19_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    delta = metric_delta(baseline, candidate)
+    baseline_scores = _held_rows(baseline)
+    candidate_selected = _selected_ids(candidate)
+    margin_name, disagreement_name = T20_CORE_FEATURE_NAMES
+    margin_values = {
+        str(row["eventId"]): float(row["features"][margin_name]) for row in rows
+    }
+    source_values = {
+        str(row["eventId"]): (
+            float(row["features"]["selectiveFarJerseyTeamTransportSwapMargin"]),
+            float(row["features"]["dominantTrackletJerseyTeamTransportSwapMargin"]),
+        )
+        for row in rows
+    }
+    covered_miss_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if int(row["label"]) == 1
+        and not bool(row["selected"])
+        and margin_values[str(row["eventId"])] > 0.0
+    }
+    disagreement_false_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if int(row["label"]) == 0
+        and bool(row["selected"])
+        and source_values[str(row["eventId"])][0]
+        * source_values[str(row["eventId"])][1]
+        <= 0.0
+    }
+    recovered_covered = len(covered_miss_ids & candidate_selected)
+    retained_disagreement_false = len(disagreement_false_ids & candidate_selected)
+    recording_deltas = _recording_deltas(baseline, candidate)
+    total_true_positive_gain = int(delta["truePositives"])
+    maximum_recording_gain = max(
+        (int(value["truePositives"]) for value in recording_deltas.values()), default=0
+    )
+    regressing_recordings = sorted(
+        recording_id
+        for recording_id, value in recording_deltas.items()
+        if int(value["truePositives"]) < 0
+    )
+    gain_depends_on_one_recording = (
+        total_true_positive_gain > 0
+        and total_true_positive_gain - maximum_recording_gain <= 0
+        and len(regressing_recordings) >= 3
+    )
+    t14_f1 = float(
+        t14_result["profiles"][
+            "boundary-union34-plus-dominant-tracklet-medoid-t14"
+        ]["primary"]["f1"]
+    )
+    t19_f1 = float(
+        t19_result["profiles"][
+            "boundary-union34-plus-cross-representation-consensus-t19"
+        ]["primary"]["f1"]
+    )
+    candidate_f1 = float(candidate["primary"]["f1"])
+    classifier = candidate["fullDevelopment"]["classifier"]
+    names = [str(name) for name in classifier["featureNames"]]
+    full_weights = {
+        name: float(classifier["weights"][names.index(name)])
+        for name in T20_CORE_FEATURE_NAMES
+    }
+    outer_weights = {name: [] for name in T20_CORE_FEATURE_NAMES}
+    for fold in candidate["outerFolds"]:
+        fit = fold["fitStandardizedWeights"]
+        fit_names = [str(name) for name in fit["featureNames"]]
+        for name in T20_CORE_FEATURE_NAMES:
+            outer_weights[name].append(float(fit["weights"][fit_names.index(name)]))
+    margin_positive_count = sum(value > 0.0 for value in outer_weights[margin_name])
+    disagreement_negative_count = sum(
+        value < 0.0 for value in outer_weights[disagreement_name]
+    )
+    checks = {
+        **_standalone_checks(delta),
+        "primaryF1GainOverT14AtLeast0_5pp": candidate_f1 - t14_f1
+        >= 0.005 - 1e-12,
+        "primaryF1NoLowerThanT19": candidate_f1 >= t19_f1 - 1e-12,
+        "coveredBoundaryMissesRecovered": recovered_covered > 0,
+        "crossRepresentationSignDisagreementFalseSliceReduced": (
+            retained_disagreement_false < len(disagreement_false_ids)
+        ),
+        "recordingRobustness": not gain_depends_on_one_recording,
+        "compactMarginCoefficientPositiveInFullFit": full_weights[margin_name] > 0.0,
+        "compactMarginCoefficientPositiveInAtLeast9Of11OuterFits": (
+            margin_positive_count >= 9
+        ),
+        "compactDisagreementCoefficientNegativeInFullFit": (
+            full_weights[disagreement_name] < 0.0
+        ),
+        "compactDisagreementCoefficientNegativeInAtLeast9Of11OuterFits": (
+            disagreement_negative_count >= 9
+        ),
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "interpretation": "adaptive-opened-development-screen-only",
+        "independentValidation": False,
+        "checks": checks,
+        "delta": delta,
+        "immutableComparisons": {
+            "t14PrimaryF1": t14_f1,
+            "t19PrimaryF1": t19_f1,
+            "t20PrimaryF1": candidate_f1,
+            "deltaOverT14": candidate_f1 - t14_f1,
+            "deltaOverT19": candidate_f1 - t19_f1,
+        },
+        "coefficientGates": {
+            margin_name: {
+                "expectedSign": "positive",
+                "fullDevelopmentStandardizedCoefficient": full_weights[margin_name],
+                "outerFitCoefficients": outer_weights[margin_name],
+                "outerFitExpectedSignCount": margin_positive_count,
+                "requiredExpectedSignOuterFits": 9,
+            },
+            disagreement_name: {
+                "expectedSign": "negative",
+                "fullDevelopmentStandardizedCoefficient": full_weights[disagreement_name],
+                "outerFitCoefficients": outer_weights[disagreement_name],
+                "outerFitExpectedSignCount": disagreement_negative_count,
+                "requiredExpectedSignOuterFits": 9,
+            },
+        },
+        "targetSlices": {
+            "coveredBoundaryMisses": {
+                "definition": "positive T0 misses with positive compact medoid margin",
+                "frozenCandidateIds": sorted(covered_miss_ids),
+                "baselineSelected": 0,
+                "candidateSelected": recovered_covered,
+                "change": recovered_covered,
+            },
+            "crossRepresentationSignDisagreementFalseBoundaries": {
+                "definition": "T0-selected false boundaries whose T4/T14 directions disagree or include zero",
+                "frozenCandidateIds": sorted(disagreement_false_ids),
+                "baselineSelected": len(disagreement_false_ids),
+                "candidateSelected": retained_disagreement_false,
+                "change": retained_disagreement_false - len(disagreement_false_ids),
+            },
+        },
+        "recordingRobustness": {
+            "gainDependsOnOneRecordingWhileAtLeastThreeRegress": gain_depends_on_one_recording,
+            "totalTruePositiveGain": total_true_positive_gain,
+            "maximumSingleRecordingTruePositiveGain": maximum_recording_gain,
+            "truePositiveGainWithoutBestRecording": total_true_positive_gain
+            - maximum_recording_gain,
+            "regressingRecordingIds": regressing_recordings,
+        },
+        "byRecordingDelta": recording_deltas,
+    }
+
+
+def _t20_coefficient_importance(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    classifier = candidate["fullDevelopment"]["classifier"]
+    names = [str(name) for name in classifier["featureNames"]]
+    weights = [float(value) for value in classifier["weights"]]
+    ranks = {
+        name: rank
+        for rank, name in enumerate(
+            sorted(names, key=lambda name: (-abs(weights[names.index(name)]), name)), 1
+        )
+    }
+    fold_weights = {name: [] for name in T20_CORE_FEATURE_NAMES}
+    for fold in candidate["outerFolds"]:
+        fit = fold["fitStandardizedWeights"]
+        fit_names = [str(name) for name in fit["featureNames"]]
+        for name in T20_CORE_FEATURE_NAMES:
+            fold_weights[name].append(float(fit["weights"][fit_names.index(name)]))
+    return {
+        "coefficientContract": (
+            "weights act on fold-standardized inputs; this adaptive assembly was "
+            "selected from opened T14/T19 results"
+        ),
+        "features": [
+            {
+                "feature": name,
+                "fullDevelopmentStandardizedCoefficient": weights[names.index(name)],
+                "absoluteCoefficientRankAmong36": ranks[name],
+                "outerFitCoefficients": fold_weights[name],
+                "outerFitPositiveCount": sum(value > 0 for value in fold_weights[name]),
+                "outerFitNegativeCount": sum(value < 0 for value in fold_weights[name]),
+                "outerFitMean": float(np.mean(fold_weights[name])),
+                "outerFitStandardDeviation": float(np.std(fold_weights[name])),
+                "outerFitMinimum": min(fold_weights[name]),
+                "outerFitMaximum": max(fold_weights[name]),
+            }
+            for name in T20_CORE_FEATURE_NAMES
+        ],
+    }
+
+
 def _e6_composition_diagnostic(
     rows: list[Mapping[str, Any]],
     markers: Mapping[str, list[Mapping[str, Any]]],
@@ -1953,6 +2160,36 @@ def _t19_composition_diagnostic(
     }
 
 
+def _t20_composition_diagnostic(
+    rows: list[Mapping[str, Any]],
+    markers: Mapping[str, list[Mapping[str, Any]]],
+    full_baseline: Mapping[str, Any],
+    compact: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected_ids = {
+        str(row["eventId"])
+        for row in _held_rows(compact)
+        if bool(row["selected"])
+    }
+    selected_ids.update(
+        str(row["eventId"])
+        for row in _held_rows(full_baseline)
+        if bool(row["selected"]) and str(row["kind"]) == "internal-dead-state-peak"
+    )
+    predictions = np.asarray(
+        [str(row["eventId"]) in selected_ids for row in rows], dtype=bool
+    )
+    return {
+        "mergeContract": {
+            "boundaryBranch": "T20 outer-held selection with boundary-fit threshold",
+            "internalBranch": "exact full-union E0 outer-held internal selections",
+            "selectionUse": "adaptive diagnostic only; T20 screen uses boundary comparison",
+        },
+        "primary": evaluate_predictions(rows, predictions, markers, 4.0, inventory=True),
+        "strict": evaluate_predictions(rows, predictions, markers, 0.0, inventory=True),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     paths = {
         "features": args.features.expanduser().resolve(),
@@ -1987,6 +2224,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.experiment == "T19":
         paths["t19Features"] = args.t19_features.expanduser().resolve()
         paths["t14ModelResult"] = args.t14_model_result.expanduser().resolve()
+    if args.experiment == "T20":
+        paths["t20Features"] = args.t20_features.expanduser().resolve()
+        paths["t14ModelResult"] = args.t14_model_result.expanduser().resolve()
+        paths["t19ModelResult"] = args.t19_model_result.expanduser().resolve()
     output = (
         args.output.expanduser().resolve()
         if args.output is not None
@@ -2194,6 +2435,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ):
             raise ValueError("T19 artifact did not pass frozen engineering gates")
         experiment_rows = t19_payload["rows"]
+    elif args.experiment == "T20":
+        t20_payload = _load(paths["t20Features"])
+        if [str(row["eventId"]) for row in t20_payload["rows"]] != [
+            str(row["eventId"]) for row in feature_payload["rows"]
+        ]:
+            raise ValueError("T20 artifact does not match the frozen row universe")
+        parity = t20_payload["parity"]
+        if (
+            str(t20_payload["engineeringDecision"]) != "pass"
+            or int(parity["rows"]) != 704
+            or int(parity["eligibleBoundaryRows"]) != 624
+            or int(parity["ineligibleInternalRows"]) != 80
+            or str(parity["priorFeatureValues"]) != "exact"
+            or str(parity["candidateIdAndOrder"]) != "exact"
+            or tuple(t20_payload["contract"]["futureFirstHeadFeatureNames"])
+            != T20_CORE_FEATURE_NAMES
+            or not all(bool(value) for value in t20_payload["engineering"]["checks"].values())
+        ):
+            raise ValueError("T20 artifact did not pass frozen engineering gates")
+        experiment_rows = t20_payload["rows"]
     audit = _load(paths["audit"])
     current_model = _load(paths["model"])
     current_evaluation = _load(paths["evaluation"])
@@ -2406,6 +2667,29 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         comparison = _evaluate_t19_gate(boundary_baseline, cross_consensus, boundary_rows, _load(paths["t14ModelResult"]))
         feature_importance = _t19_coefficient_importance(cross_consensus)
         composition_diagnostic = _t19_composition_diagnostic(experiment_rows, markers, baseline, cross_consensus)
+    elif args.experiment == "T20":
+        boundary_rows = [
+            row
+            for row in experiment_rows
+            if str(row["kind"]) == "adjacent-rally-boundary"
+        ]
+        boundary_baseline = evaluate_profile(
+            boundary_rows, markers, BOUNDARY_BASELINE_PROFILE
+        )
+        compact = evaluate_profile(boundary_rows, markers, T20_PROFILE)
+        profiles[BOUNDARY_BASELINE_PROFILE.identifier] = boundary_baseline
+        profiles[T20_PROFILE.identifier] = compact
+        comparison = _evaluate_t20_gate(
+            boundary_baseline,
+            compact,
+            boundary_rows,
+            _load(paths["t14ModelResult"]),
+            _load(paths["t19ModelResult"]),
+        )
+        feature_importance = _t20_coefficient_importance(compact)
+        composition_diagnostic = _t20_composition_diagnostic(
+            experiment_rows, markers, baseline, compact
+        )
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
     created_at = datetime.now(UTC).isoformat()
@@ -2431,6 +2715,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "T16": "boundary-source-resolved-medoid-opened-development",
                 "T18": "boundary-representative-medoid-opened-development",
                 "T19": "boundary-cross-representation-consensus-opened-development",
+                "T20": "boundary-compact-medoid-disagreement-adaptive-development",
             }[args.experiment],
             "decision": "baseline-only" if comparison is None else comparison["decision"],
         },
@@ -2463,6 +2748,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if args.experiment == "T18"
             else _load(paths["t19Features"])["performance"]
             if args.experiment == "T19"
+            else _load(paths["t20Features"])["performance"]
+            if args.experiment == "T20"
             else None
         ),
         "profiles": profiles,
@@ -2530,6 +2817,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "The equal fusion weights and disagreement semantics are not retuned on this result.",
                 ]
                 if args.experiment == "T19"
+                else [
+                    "T20 feature selection is explicitly adaptive to opened T14/T19 results.",
+                    "The T20 screen is implementation and candidate-freeze evidence, not independent validation.",
+                    "A pass requires new recording-held gold before promotion or runtime work.",
+                ]
+                if args.experiment == "T20"
                 else []
             ),
         ],
@@ -2556,8 +2849,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--t16-features", type=Path, default=DEFAULT_T16_FEATURES)
     parser.add_argument("--t18-features", type=Path, default=DEFAULT_T18_FEATURES)
     parser.add_argument("--t19-features", type=Path, default=DEFAULT_T19_FEATURES)
+    parser.add_argument("--t20-features", type=Path, default=DEFAULT_T20_FEATURES)
     parser.add_argument("--t4-model-result", type=Path, default=DEFAULT_T4_MODEL_RESULT)
     parser.add_argument("--t14-model-result", type=Path, default=DEFAULT_T14_MODEL_RESULT)
+    parser.add_argument("--t19-model-result", type=Path, default=DEFAULT_T19_MODEL_RESULT)
     parser.add_argument("--experiment", choices=tuple(DEFAULT_OUTPUTS), default="E0")
     parser.add_argument("--output", type=Path)
     parser.add_argument(

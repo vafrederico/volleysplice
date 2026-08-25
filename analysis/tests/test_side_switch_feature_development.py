@@ -24,6 +24,7 @@ from analysis.side_switch_feature_development import (
     T16_PROFILE,
     T18_PROFILE,
     T19_PROFILE,
+    T20_PROFILE,
     apply_profile,
     gap_shape_features,
     metric_delta,
@@ -254,6 +255,14 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
             T19_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *T19_CORE_FEATURE_NAMES)
         )
         self.assertEqual(len(T19_PROFILE.feature_names), 36)
+
+    def test_t20_profile_appends_only_compact_candidate_core(self):
+        from analysis.side_switch_t20_compact_candidate import T20_CORE_FEATURE_NAMES
+
+        self.assertEqual(
+            T20_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *T20_CORE_FEATURE_NAMES)
+        )
+        self.assertEqual(len(T20_PROFILE.feature_names), 36)
 
     def test_gap_shape_features_match_consensus_trace(self):
         times = np.arange(0.0, 3.25, 0.25)

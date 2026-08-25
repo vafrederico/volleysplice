@@ -25,6 +25,7 @@ from analysis.side_switch_t14_dominant_tracklet_medoid import T14_CORE_FEATURE_N
 from analysis.side_switch_t16_source_resolved import T16_CORE_FEATURE_NAMES
 from analysis.side_switch_t18_representativeness import T18_CORE_FEATURE_NAMES
 from analysis.side_switch_t19_cross_representation import T19_CORE_FEATURE_NAMES
+from analysis.side_switch_t20_compact_candidate import T20_CORE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
@@ -248,6 +249,16 @@ T19_PROFILE = FeatureProfile(
     hypothesis=(
         "agreement between independent pooled-team and stable-medoid jersey transport "
         "provides reliable direction while disagreement identifies confounding"
+    ),
+)
+
+
+T20_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-compact-medoid-disagreement-t20",
+    feature_names=(*BASE_FEATURE_NAMES, *T20_CORE_FEATURE_NAMES),
+    hypothesis=(
+        "compact stable-medoid direction plus independent representation disagreement "
+        "retains T14 recall while penalizing appearance-route conflict"
     ),
 )
 
