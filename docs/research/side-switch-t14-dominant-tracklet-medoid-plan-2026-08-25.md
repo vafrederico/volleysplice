@@ -23,6 +23,10 @@ evidence. Cross/same similarity, reliability, separation, and gates remain diagn
 
 Pin T13 artifact SHA-256
 `232a26201edf16fe104dec965e73bb9f1864162baa13749187b0d3ad4970972e`.
+T13 is a transformation and does not duplicate top-level video audit records, so load
+T11 SHA-256 `aa0b6abfa6324350b7944728757ee2867e7ab6c35eadfc1e085f73339e74a6d5`
+only for its immutable `extractionAudit` video paths, ROI, and court geometry. T13
+remains the sole row/prior-feature source; no T11 feature value is recomputed or added.
 Output:
 `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t14-dominant-tracklet-medoid-features-v1.json`.
 
