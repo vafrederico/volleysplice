@@ -554,6 +554,13 @@ The next isolated representation retains T10 units and uses one typed T5 pooled
 fallback unit only when a court side has no qualifying player tracklet. Do not lower
 the observed T10 tracklet threshold or tune its assignment cost.
 
+### T11 empty-side fallback tracklet transport — preregistered 2026-08-25
+
+T11 preserves every T10 stable player unit and adds exactly one typed T5 pooled unit
+only for an otherwise empty side. It tests coverage restoration without relaxing
+track qualification or diluting stable descriptors. The construction and frozen gates
+are in [Side-switch T11 empty-side fallback tracklet transport](./side-switch-t11-empty-side-fallback-tracklet-transport-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
