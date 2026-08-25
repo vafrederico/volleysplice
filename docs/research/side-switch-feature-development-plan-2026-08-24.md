@@ -241,6 +241,56 @@ SHA-256: `708ac5d224beea7a0d740f5d5235bf3b121ee73882dc2837cad26ebc6faaa3e9`
 Next independent comparison: E6, boundary-only P1 persistence. Its selection decision
 must be made on the matched boundary-only comparison, not the merged union metric.
 
+### E6 — boundary multi-rally persistence — rejected on robustness 2026-08-24
+
+Compared the nine fixed K=3 P1 values on 624 adjacent-boundary rows against a matched
+boundary-only 34-input control. Both heads used the same 42 positive candidate labels,
+50 human markers, nested recording-held-out thresholds, top-2/2x hard negatives, and
+decoder. The original full-union E0 reconstruction remained exact and was used only
+to preserve its selected internal rows in a separately declared merge diagnostic.
+
+| Boundary-only metric | Matched control | E6 P1 | P1 minus control |
+| --- | ---: | ---: | ---: |
+| Row AP | 43.5623% | 59.2786% | +15.7162 pp |
+| Row Brier score | 0.054533 | 0.047467 | -0.007067 |
+| ±4 proposals / TP / FP / FN | 52 / 26 / 26 / 24 | 51 / 27 / 24 / 23 | -1 / +1 / -2 / -1 |
+| ±4 precision | 50.0000% | 52.9412% | +2.9412 pp |
+| ±4 recall | 52.0000% | 54.0000% | +2.0000 pp |
+| ±4 F1 | 50.9804% | 53.4653% | +2.4850 pp |
+| Strict F1 | 41.1765% | 43.5644% | +2.3879 pp |
+| Covered boundary misses selected | 0 | 5 of 17 | +5 |
+| Nonpersistent false-boundary slice | 26 selected | 16 selected | -10 FP |
+
+The aggregate and target-slice gates pass, but transfer does not. One recording
+(`161923155`) supplies +3 TP; without that largest per-recording gain, the overall TP
+change is -2. Four other recordings (`180646590`, `183701800`, `190429172`, and
+`193307688`) each lose one TP. The predeclared conflict recording `193307688` removes
+one FP but also loses one TP. P1 therefore fails the recording-robustness gate.
+
+The explicitly non-calibrated composition diagnostic unions P1 boundary selections
+with the exact E0 internal selections and performs no new cross-kind suppression. It
+produces 56 proposals, 28 TP, 28 FP, 22 FN, 50.00% precision, 56.00% recall, and
+52.83% F1; this is 4.03 points below the 56.86% full-union E0 control. Strict F1 is
+41.51%, also below E0's 45.10%.
+
+Decision: **reject P1 for promotion and stop the palette-state branch**. The large AP
+gain proves that multi-rally context contains useful information, but the current
+player/court palettes do not transfer consistently enough across recordings. Do not
+run P1 feature pruning, E7 compact assembly, or E8/P2 state decoding on this evidence.
+Per the predeclared entry condition, P2 remains blocked. Preserve P1 diagnostics for
+future error review, then prioritize better team isolation or a separately specified
+M1 foreground-motion experiment rather than tuning K or persistence percentiles on
+the same 50 opened events.
+
+Artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-e6-persistence-p1-v1.json`
+
+SHA-256: `85941fd0f100bcdc7b5b8efe72f4d4d97757957c6296e51f7f84d360e1cb5e81`
+
+Loop outcome: no E1/E2/Q1/C1/P1 family passes every gate. The compact winner remains
+the original 34-input E0 control. Runtime porting and untouched-validation promotion
+are not authorized by these opened-development results.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
@@ -436,6 +486,17 @@ The shared extraction run freezes the following details before E4–E6 are train
 - The C1 target slice is frozen as baseline outer-held false proposals at or above the
   all-row 75th percentile for at least one of the four C1 diagnostics. In addition to
   the common accuracy gates, C1 must reduce this high-scene-instability slice.
+- P1 is selected only on a matched boundary-only comparison. It must select at least
+  one positive boundary candidate missed by that boundary-only control and reduce the
+  control's selected false-boundary slice where
+  `crossModalityPersistentMinimum <= 0`, in addition to the common gates. The overall
+  composition diagnostic unions P1-selected boundaries with the exact E0-selected
+  internal rows; it does not compare probabilities or add cross-kind suppression, so
+  one-to-one event matching exposes any duplicate cost. That merge cannot select P1.
+- The existing recording-robustness rule is operationalized for E6 as a failure when
+  the total TP gain is positive, removing the single largest per-recording TP gain
+  makes it non-positive, and at least three other recordings lose TP. This prevents a
+  pooled one-event gain from passing when persistence does not transfer broadly.
 
 All four families are extracted together from shared frames, but Q1, C1, and P1 remain
 independent model comparisons. The cache must reconstruct all existing 22 visual

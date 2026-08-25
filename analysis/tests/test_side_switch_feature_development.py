@@ -7,11 +7,13 @@ import numpy as np
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
     BASE_FEATURE_NAMES,
+    BOUNDARY_BASELINE_PROFILE,
     C1_PROFILE,
     GAP_SHAPE_FEATURE_NAMES,
     INTERACTION_FEATURE_NAMES,
     INTERACTION_PROFILE,
     Q1_PROFILE,
+    P1_PROFILE,
     apply_profile,
     gap_shape_features,
     metric_delta,
@@ -150,6 +152,14 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
 
         self.assertEqual(
             C1_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *C1_FEATURE_NAMES)
+        )
+
+    def test_p1_profiles_are_matched_except_persistence_bundle(self):
+        from analysis.side_switch_visual_summary_v2 import P1_FEATURE_NAMES
+
+        self.assertEqual(BOUNDARY_BASELINE_PROFILE.feature_names, BASE_FEATURE_NAMES)
+        self.assertEqual(
+            P1_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *P1_FEATURE_NAMES)
         )
 
     def test_gap_shape_features_match_consensus_trace(self):

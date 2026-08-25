@@ -15,13 +15,16 @@ import numpy as np
 from analysis.artifacts import atomic_write_text
 from analysis.side_switch_feature_development import (
     BASELINE_PROFILE,
+    BOUNDARY_BASELINE_PROFILE,
     C1_PROFILE,
     DECODER,
     GAP_SHAPE_PROFILE,
     INTERACTION_PROFILE,
+    P1_PROFILE,
     Q1_PROFILE,
     concise_metrics,
     evaluate_profile,
+    evaluate_predictions,
     metric_delta,
 )
 
@@ -41,6 +44,7 @@ DEFAULT_OUTPUTS = {
     "E2": REPORTS / "side-switch-feature-development-e2-gap-shape-v1.json",
     "E4": REPORTS / "side-switch-feature-development-e4-directional-q1-v1.json",
     "E5": REPORTS / "side-switch-feature-development-e5-camera-c1-v1.json",
+    "E6": REPORTS / "side-switch-feature-development-e6-persistence-p1-v1.json",
 }
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
@@ -381,6 +385,140 @@ def _evaluate_e5_gate(
     }
 
 
+def _held_rows(result: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    return [
+        row
+        for fold in result["outerFolds"]
+        for row in fold["heldCandidateScores"]
+    ]
+
+
+def _evaluate_e6_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    delta = metric_delta(baseline, candidate)
+    baseline_scores = _held_rows(baseline)
+    candidate_selected = _selected_ids(candidate)
+    covered_miss_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if int(row["label"]) == 1 and not bool(row["selected"])
+    }
+    persistent_values = {
+        str(row["eventId"]): float(
+            row["features"]["crossModalityPersistentMinimum"]
+        )
+        for row in rows
+    }
+    transient_false_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if (
+            int(row["label"]) == 0
+            and bool(row["selected"])
+            and persistent_values[str(row["eventId"])] <= 0.0
+        )
+    }
+    recovered_covered = len(covered_miss_ids & candidate_selected)
+    retained_transient_false = len(transient_false_ids & candidate_selected)
+    recording_deltas = _recording_deltas(baseline, candidate)
+    total_true_positive_gain = int(delta["truePositives"])
+    maximum_recording_gain = max(
+        (int(value["truePositives"]) for value in recording_deltas.values()),
+        default=0,
+    )
+    regressing_recordings = sorted(
+        recording_id
+        for recording_id, value in recording_deltas.items()
+        if int(value["truePositives"]) < 0
+    )
+    gain_depends_on_one_recording = (
+        total_true_positive_gain > 0
+        and total_true_positive_gain - maximum_recording_gain <= 0
+        and len(regressing_recordings) >= 3
+    )
+    checks = {
+        **_standalone_checks(delta),
+        "coveredBoundaryMissesRecovered": recovered_covered > 0,
+        "nonPersistentFalseBoundarySliceReduced": retained_transient_false
+        < len(transient_false_ids),
+        "recordingRobustness": not gain_depends_on_one_recording,
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "checks": checks,
+        "delta": delta,
+        "targetSlices": {
+            "coveredBoundaryMisses": {
+                "definition": (
+                    "positive boundary candidates not selected by the matched "
+                    "boundary-only outer-held control"
+                ),
+                "frozenCandidateIds": sorted(covered_miss_ids),
+                "baselineSelected": 0,
+                "candidateSelected": recovered_covered,
+                "change": recovered_covered,
+            },
+            "nonPersistentFalseBoundaries": {
+                "definition": (
+                    "matched-control selected false boundaries with "
+                    "crossModalityPersistentMinimum <= 0"
+                ),
+                "frozenCandidateIds": sorted(transient_false_ids),
+                "baselineSelected": len(transient_false_ids),
+                "candidateSelected": retained_transient_false,
+                "change": retained_transient_false - len(transient_false_ids),
+            },
+        },
+        "recordingRobustness": {
+            "gainDependsOnOneRecordingWhileAtLeastThreeRegress": gain_depends_on_one_recording,
+            "totalTruePositiveGain": total_true_positive_gain,
+            "maximumSingleRecordingTruePositiveGain": maximum_recording_gain,
+            "truePositiveGainWithoutBestRecording": total_true_positive_gain
+            - maximum_recording_gain,
+            "regressingRecordingIds": regressing_recordings,
+        },
+        "byRecordingDelta": recording_deltas,
+        "conflictRecording193307688": recording_deltas.get(
+            "raw-no-backup-PXL_20260816_193307688"
+        ),
+    }
+
+
+def _e6_composition_diagnostic(
+    rows: list[Mapping[str, Any]],
+    markers: Mapping[str, list[Mapping[str, Any]]],
+    full_baseline: Mapping[str, Any],
+    persistence: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected_ids = {
+        str(row["eventId"])
+        for row in _held_rows(persistence)
+        if bool(row["selected"])
+    }
+    selected_ids.update(
+        str(row["eventId"])
+        for row in _held_rows(full_baseline)
+        if bool(row["selected"]) and str(row["kind"]) == "internal-dead-state-peak"
+    )
+    predictions = np.asarray(
+        [str(row["eventId"]) in selected_ids for row in rows], dtype=bool
+    )
+    return {
+        "mergeContract": {
+            "boundaryBranch": "P1 outer-held selection with boundary-fit threshold",
+            "internalBranch": "exact full-union E0 outer-held internal selections",
+            "probabilityCalibration": "none across branches; merge selected IDs only",
+            "crossKindSuppression": "none in diagnostic; one-to-one event matching penalizes duplicates",
+            "selectionUse": "diagnostic only; E6 decision uses boundary-only comparison",
+        },
+        "primary": evaluate_predictions(rows, predictions, markers, 4.0, inventory=True),
+        "strict": evaluate_predictions(rows, predictions, markers, 0.0, inventory=True),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     paths = {
         "features": args.features.expanduser().resolve(),
@@ -392,7 +530,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         paths["importance"] = args.importance.expanduser().resolve()
     if args.experiment == "E2":
         paths["gapFeatures"] = args.gap_features.expanduser().resolve()
-    if args.experiment in {"E4", "E5"}:
+    if args.experiment in {"E4", "E5", "E6"}:
         paths["visualFeatures"] = args.visual_features.expanduser().resolve()
     output = (
         args.output.expanduser().resolve()
@@ -418,7 +556,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ] != [str(row["eventId"]) for row in feature_payload["rows"]]:
             raise ValueError("E2 gap feature artifact does not match the frozen row universe")
         experiment_rows = gap_payload["rows"]
-    elif args.experiment in {"E4", "E5"}:
+    elif args.experiment in {"E4", "E5", "E6"}:
         visual_payload = _load(paths["visualFeatures"])
         if visual_payload["scope"] != feature_payload["scope"] or [
             str(row["eventId"]) for row in visual_payload["rows"]
@@ -451,6 +589,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     parity = _validate_e0(baseline, current_model, current_evaluation)
     profiles: dict[str, Any] = {BASELINE_PROFILE.identifier: baseline}
     comparison: dict[str, Any] | None = None
+    composition_diagnostic: dict[str, Any] | None = None
     if args.experiment == "E1":
         interaction = evaluate_profile(
             feature_payload["rows"], markers, INTERACTION_PROFILE
@@ -473,6 +612,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         camera = evaluate_profile(experiment_rows, markers, C1_PROFILE)
         profiles[C1_PROFILE.identifier] = camera
         comparison = _evaluate_e5_gate(baseline, camera, experiment_rows)
+    elif args.experiment == "E6":
+        boundary_rows = [
+            row
+            for row in experiment_rows
+            if str(row["kind"]) == "adjacent-rally-boundary"
+        ]
+        boundary_baseline = evaluate_profile(
+            boundary_rows, markers, BOUNDARY_BASELINE_PROFILE
+        )
+        persistence = evaluate_profile(boundary_rows, markers, P1_PROFILE)
+        profiles[BOUNDARY_BASELINE_PROFILE.identifier] = boundary_baseline
+        profiles[P1_PROFILE.identifier] = persistence
+        comparison = _evaluate_e6_gate(
+            boundary_baseline, persistence, boundary_rows
+        )
+        composition_diagnostic = _e6_composition_diagnostic(
+            experiment_rows, markers, baseline, persistence
+        )
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
     created_at = datetime.now(UTC).isoformat()
@@ -489,6 +646,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "E2": "production-gap-consensus-and-shape",
                 "E4": "directional-observation-quality-replacement",
                 "E5": "camera-and-scene-confounders",
+                "E6": "boundary-multi-rally-persistence",
             }[args.experiment],
             "decision": "baseline-only" if comparison is None else comparison["decision"],
         },
@@ -507,6 +665,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "profiles": profiles,
         "parity": parity,
         "comparison": comparison,
+        "compositionDiagnostic": composition_diagnostic,
         "sources": {
             **{
                 name: {"path": str(paths[name]), "sha256": hashes[name]}
