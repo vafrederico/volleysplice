@@ -327,6 +327,9 @@ In parallel, obtain at least 20 exhaustively reviewed internal-positive candidat
 across at least eight recordings and a new untouched validation set. See the M1 record
 for the exact T0/T1/reliability sequence.
 
+The exact T1 engineering and future-evaluation contract is now frozen in
+[Side-switch T1 endpoint-identity transport](./side-switch-t1-endpoint-identity-transport-plan-2026-08-24.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
