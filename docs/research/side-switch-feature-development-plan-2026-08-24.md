@@ -687,6 +687,12 @@ medoid-to-pooled-team similarities. It tests role ambiguity without selecting a
 camera source, changing medoids, or tuning a distance radius. See
 [Side-switch T18 medoid representativeness transport](./side-switch-t18-medoid-representativeness-plan-2026-08-25.md).
 
+#### T18 engineering result — pass; model pending
+
+The symmetric gate is positive on 68.75% of boundaries, active on all rows, averages
+0.4697, and changes ordering enough (strongest T14 |ρ|=0.9173). All frozen engineering
+gates pass. Exact `34 + T18 one-value core` wiring must be committed before labels.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

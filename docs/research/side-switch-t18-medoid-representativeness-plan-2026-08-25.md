@@ -52,3 +52,20 @@ runtime changes.
 ### Preregistration — frozen 2026-08-25
 
 No T18 code, values, artifact, profile, or result existed at this commit.
+
+### Engineering result — pass; model comparison authorized
+
+Implementation is committed at `040a2eb`. The transformation wrote the 40,357,628-byte
+artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t18-medoid-representativeness-features-v1.json`
+
+SHA-256: `0efab13db25849a74413fc595e2753c735d1c9eb00ae4afaf8b73b9007ef8949`.
+
+The gate is positive on 68.75% of boundaries, below `0.99` on 100%, and has mean
+`0.469657`. The transformed margin is nonzero on 68.75%; its strongest T14
+relationship has magnitude `0.917324`. Every frozen parity, activity, sign, novelty,
+runtime, and memory gate passes.
+
+Decision: **T18 passes engineering**. Only the exact 35-input model wiring is now
+authorized before label access.

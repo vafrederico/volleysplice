@@ -633,6 +633,12 @@ Per-source normalization changes the near ordering modestly (`ρ=0.9695` versus 
 but leaves far ordering redundant (`ρ=0.9907`). T17 is rejected before labels. The
 far-source instability is therefore not explained by a simple absolute cost scale.
 
+## T18 medoid representativeness engineering — 2026-08-25
+
+Worst-side medoid-to-pooled similarity produces an active, nonredundant signed margin:
+mean gate `0.4697`, positive support on 68.75%, and strongest T14 |ρ| `0.9173`. Every
+label-free gate passes; the one-value matched model is authorized but pending.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
