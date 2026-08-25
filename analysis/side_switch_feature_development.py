@@ -20,6 +20,7 @@ from analysis.side_switch_m1_motion import M1_FEATURE_NAMES
 from analysis.side_switch_production_state import STATE_GATE_FEATURE_NAMES
 from analysis.side_switch_t2_transport import T2_CORE_FEATURE_NAMES
 from analysis.side_switch_t4_selective_far import T4_CORE_FEATURE_NAMES
+from analysis.side_switch_t5_court_tracking import T5_CORE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
@@ -193,6 +194,16 @@ T4_PROFILE = FeatureProfile(
         "selective high-resolution far-court detection makes anonymous jersey-team "
         "transport observable enough to recover true side switches and suppress "
         "unsupported boundary changes"
+    ),
+)
+
+
+T5_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-court-tracked-far-jersey-t5",
+    feature_names=(*BASE_FEATURE_NAMES, *T5_CORE_FEATURE_NAMES),
+    hypothesis=(
+        "court-constrained anonymous team tracking increases temporal coverage while "
+        "preserving enough jersey transport direction to improve side-switch ranking"
     ),
 )
 
