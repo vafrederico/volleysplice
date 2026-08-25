@@ -578,6 +578,15 @@ stable units; every other pair uses exact T5 pooled-team reduction. It removes
 pooled-to-individual comparisons without a blend or threshold. The pure label-free
 transformation is frozen in [Side-switch T12 type-consistent hierarchical transport](./side-switch-t12-type-consistent-hierarchical-transport-plan-2026-08-25.md).
 
+#### T12 engineering result — reject before labels
+
+T12 uses 2,833 stable and 911 pooled reductions. Positive margins pass at 26.92%,
+reliable swap passes at 19.87%, and separation remains 0.5348. It stops before labels
+because conditional cross similarity remains redundant with T11 at Spearman 0.9866.
+
+T13 should make routing symmetric per before-side source across the same and swapped
+destinations, preventing the margin itself from comparing different route types.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

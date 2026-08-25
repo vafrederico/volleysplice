@@ -569,6 +569,18 @@ one pooled team fallback directly with one individual stable player. The next
 experiment should select player-unit transport only for stable-to-stable pairs and
 the exact pooled-team comparison otherwise, leaving both source representations fixed.
 
+## T12 type-consistent hierarchy follow-up — 2026-08-25
+
+Pairwise like-with-like routing raises positive margins to 26.92% and reliable swap to
+19.87%, both above the frozen T7 gates, while retaining 0.5348 separation. It still
+fails before labels because conditional cross similarity is redundant with T11 at
+Spearman 0.9866.
+
+The routing also exposes a new confound: same and swapped alternatives can use
+different representation types. A source-consistent router should choose one type for
+both destinations from each before-side source, so the margin measures appearance
+assignment rather than route availability.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

@@ -61,3 +61,31 @@ recording-held gold.
 
 No T12 code, artifact, feature value, model profile, or model result existed when this
 contract was committed.
+
+### Engineering result — reject before labels
+
+Implementation is committed at `e683bab`. The immutable 33,267,385-byte artifact is:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t12-type-consistent-hierarchical-transport-features-v1.json`
+
+SHA-256: `8941f5f369d98c3e25f8070f6fc13fb206858729750d930e8c5b55648cf4275d`.
+
+T12 uses 2,833 stable-player and 911 pooled-team reductions. Direction, reliability,
+separation, parity, resource, and every other novelty gate pass:
+
+| Engineering measurement | Result | Frozen requirement | Check |
+| --- | ---: | ---: | --- |
+| Mean minimum team separation | 0.534842 | >=0.373860 | Pass |
+| Positive raw margin | 26.9231% (168/624) | >=25.4808% | Pass |
+| Nonzero reliable swap | 19.8718% (124/624) | >=19.3910% | Pass |
+| Strongest T11 correlation | 0.986633 | <0.98 | **Fail** |
+
+The failed pair is T12 versus T11 conditional cross similarity. Transformation took
+0.560 seconds at 124.590 MiB RSS and loaded no video, detector, labels, or model.
+
+Decision: **reject T12 and stop before labels**. Do not prune the observed T12 bundle.
+The next representation should instead make route selection symmetric across the two
+assignment hypotheses. For each before-side source, select stable-player transport for
+both possible after-side destinations only when all three involved sides are stable;
+otherwise use pooled-team transport for both. This prevents a same-versus-swapped
+margin from comparing unlike route types.
