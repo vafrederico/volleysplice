@@ -622,6 +622,11 @@ signs, the sources disagree/tie on 72.28% of boundaries, their mutual Spearman i
 `-0.4228`, and neither is redundant with T14 or earlier inputs. This authorizes the
 frozen matched model but is not yet a label result.
 
+The matched result then separates the sources sharply: near direction is positive in
+11/11 outer fits (`+0.1359` full), while far direction is positive in only 4/11 and
+nearly null (`-0.0051` full). F1 reaches 53.70%, below T14's 55.24%. T16 is rejected;
+the opened asymmetry cannot justify a near-only model.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization

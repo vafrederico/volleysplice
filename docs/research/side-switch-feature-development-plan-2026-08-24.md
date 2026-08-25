@@ -659,6 +659,13 @@ rows, correlate `-0.4228` with one another, and remain novel versus every prior 
 (strongest T14 relationship `0.5593`). All frozen engineering gates pass. Exact
 `34 + T16 two-value core` model wiring must be committed before T16 label access.
 
+#### T16 model result — reject
+
+T16 raises boundary F1 50.98%→53.70% but remains 1.53 points below T14. Near-source
+direction is positive in all 11 folds; far-source direction is negative in the full
+fit and positive in only 4/11. The frozen both-source semantic and T14-comparator gates
+fail. Do not prune to the near side from this opened result.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

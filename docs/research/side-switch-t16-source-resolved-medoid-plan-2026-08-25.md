@@ -67,3 +67,22 @@ near/far Spearman correlation is `-0.422785`. The strongest T14 relationship is 
 
 Decision: **T16 passes engineering**. This authorizes only committing the exact
 `34 + T16 two-value core` runner before its opened label comparison.
+
+### Matched model result — reject
+
+The exact 36-input wiring was committed at `5526672` before the one-shot T16 label
+run. It wrote the 949,095-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t16-source-resolved-medoid-opened-v1.json`
+
+SHA-256: `040d970e942819f0f7dd3bea0e9fc9ec46b4de0f15c7a015a777fa6508e69a05`.
+
+Boundary F1 improves 50.98%→53.70% (+2.72 points) with 29 TP / 29 FP, but trails T14
+by 1.53 points. The near-source coefficient is positive in the full fit (`+0.135892`)
+and all 11 folds. The far-source coefficient is nearly zero and negative in the full
+fit (`-0.005076`), with only 4/11 positive folds. The T14 comparator and both-source
+semantic gates fail; other event, slice, and recording checks pass.
+
+Decision: **reject T16 without pruning to the observed near source**. A follow-up may
+test a separately frozen scale-free assignment contrast for both sources, but may not
+drop or reweight one T16 input from this opened result.
