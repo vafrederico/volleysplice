@@ -532,6 +532,15 @@ detector observations as appearance units, and separate one-to-one match coverag
 conditional jersey similarity. Any such T10 requires a new preregistration and cannot
 be promoted without unseen recording-held evidence.
 
+### T10 tracklet-unit jersey transport — preregistered 2026-08-25
+
+T10 preserves T4's selective-far five-frame player tracklets as equal identity units
+instead of collapsing them into one team average or weighting endpoint-local modes by
+detector-observation frequency. Exact one-to-one jersey matching publishes coverage
+separately from conditional appearance similarity and has no tunable unmatched cost.
+The construction, label-free gates, and conditional model comparison are frozen in
+[Side-switch T10 tracklet-unit jersey transport](./side-switch-t10-tracklet-unit-jersey-transport-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
