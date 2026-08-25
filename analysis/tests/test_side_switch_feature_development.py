@@ -15,6 +15,7 @@ from analysis.side_switch_feature_development import (
     M1_PROFILE,
     Q1_PROFILE,
     P1_PROFILE,
+    T2_PROFILE,
     apply_profile,
     gap_shape_features,
     metric_delta,
@@ -170,6 +171,14 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
         self.assertEqual(
             M1_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *M1_FEATURE_NAMES)
         )
+
+    def test_t2_profile_appends_only_conditional_transport_core(self):
+        from analysis.side_switch_t2_transport import T2_CORE_FEATURE_NAMES
+
+        self.assertEqual(
+            T2_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *T2_CORE_FEATURE_NAMES)
+        )
+        self.assertNotIn("transportCoverageMinimum", T2_PROFILE.feature_names)
 
     def test_gap_shape_features_match_consensus_trace(self):
         times = np.arange(0.0, 3.25, 0.25)

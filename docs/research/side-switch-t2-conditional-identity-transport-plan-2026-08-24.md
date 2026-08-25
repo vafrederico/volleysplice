@@ -103,7 +103,53 @@ No browser or Android port begins from this engineering artifact.
 
 No T2 artifact or T2 values had been calculated when this contract was committed.
 
-### Transformation — pending
+### Transformation — engineering pass 2026-08-24
 
-### New-data evaluation — waiting for eligible labels
+Implementation checkpoint: `911ea47`.
 
+Immutable artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t2-conditional-identity-transport-features-v1.json`
+- SHA-256: `fc7e36306f4570e8c93b788f8471cd11d3fe865a1e8dc4699c673e8334aa281c`
+- module SHA-256: `138c4e7f5719f035fd1cd4ce188758d1f37d80ce156e458547b86cbd9c8dc3b9`
+- transformer SHA-256: `e1f778d4b193c20c86b24b77f758ff2820b7a5205e1cbfd9048591c3af17dbf6`
+
+Every frozen engineering gate passes:
+
+| Gate | Requirement | Observed | Result |
+| --- | ---: | ---: | --- |
+| Two core values vary | Required | 2/2 | Pass |
+| Conditional similarity nonzero | ≥50% | 54.33% | Pass |
+| Core-to-core absolute Spearman | <0.90 | 0.1024 | Pass |
+| Conditional-similarity/coverage absolute Spearman | <0.90 | 0.8204 | Pass |
+| Maximum correlation with existing 34 inputs | <0.98 | 0.4677 | Pass |
+| Conditional range and zero semantics | Exact | Exact | Pass |
+| Wall time | ≤60s | 0.135s | Pass |
+| Peak RSS | ≤256 MiB | 63.387 MiB | Pass |
+
+The conditional value has median `0.52208`, interquartile range `[0, 0.68939]`, and
+range `[0, 0.89872]`. Its 45.67% zero fraction is the honest consequence of missing
+bidirectional support; among supported boundaries, it now represents appearance
+similarity rather than support magnitude. The conditional/coverage correlation remains
+material at 0.8204, so future results must still report coverage, but the two are no
+longer near-duplicates.
+
+`appearanceTransportSwapMargin` and conditional similarity correlate only 0.1024.
+The strongest relationship to an existing current-model input remains the swap
+margin versus `minimumNearSupport` at -0.4677, comfortably inside the novelty gate.
+
+The exact dormant future model profile is implemented as
+`boundary-union34-plus-conditional-identity-transport-t2`: the current ordered 34
+inputs followed by only the two frozen T2 core values. It deliberately excludes
+`transportCoverageMinimum`. No opened-label runner is wired to this profile.
+
+Decision: **T2 passes label-free engineering and is validation-ready, but is not a
+model winner**. This result validates representation independence, not precision,
+recall, feature importance, or event F1.
+
+### New-data evaluation — not run; waiting for eligible labels
+
+No eligible new side-switch gold appeared during this loop. The repeatedly opened 50
+markers remain outside the transformation and model-selection path. The next action is
+data collection/freeze, followed by one untouched T0-versus-T2 nested comparison under
+the already frozen gates. Do not port T2 or tune a threshold before that result.

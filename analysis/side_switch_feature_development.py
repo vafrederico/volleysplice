@@ -18,6 +18,7 @@ from analysis.side_switch_full_union_ranker import (
 from analysis.side_switch_full_video import event_metric_counts, monotonic_interval_match
 from analysis.side_switch_m1_motion import M1_FEATURE_NAMES
 from analysis.side_switch_production_state import STATE_GATE_FEATURE_NAMES
+from analysis.side_switch_t2_transport import T2_CORE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
@@ -150,6 +151,16 @@ M1_PROFILE = FeatureProfile(
     hypothesis=(
         "camera-compensated bidirectional foreground motion through court depth "
         "separates physical side exchanges from generic palette and scene changes"
+    ),
+)
+
+
+T2_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-conditional-identity-transport-t2",
+    feature_names=(*BASE_FEATURE_NAMES, *T2_CORE_FEATURE_NAMES),
+    hypothesis=(
+        "endpoint appearance prefers cross-side transport after a switch while "
+        "coverage-conditional identity similarity separates match quality from support"
     ),
 )
 

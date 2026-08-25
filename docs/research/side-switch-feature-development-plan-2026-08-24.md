@@ -309,6 +309,7 @@ gate decision, and commit boundary.
 | E6 P1 persistence | `58d09b3` | Reject | Aggregate gain depends on one recording; four recordings lose TP. |
 | M1 foreground motion | `3fd5241` | Reject | AP +4.11 pp, but no TP gain, +7 FP, precision -5.93 pp, and F1 -3.27 pp. |
 | T1 endpoint transport | `d46b136`, `8cb8f1c` | Engineering reject | Coverage passes, but matched identity mass and coverage are redundant at Spearman ρ=0.9931; labels remain unread. |
+| T2 conditional transport | `911ea47` | Engineering pass | Core ρ falls to 0.1024 and conditional-similarity/coverage ρ to 0.8204; model evaluation waits for new gold. |
 
 Validation after M1: all 127 focused `test_side_switch*.py` tests pass. The M1
 extraction preserved all 704 rows and existing features exactly, completed 3,744 flow
@@ -333,6 +334,10 @@ The exact T1 engineering and future-evaluation contract is now frozen in
 Its extraction passed parity, cost, and observability gates but failed the preregistered
 non-redundancy gate before any label/model evaluation. A future T2 must separate
 conditional identity similarity from coverage rather than appending both raw values.
+
+T2 now implements that decomposition and passes every label-free engineering gate.
+The exact two-value profile is dormant: it must not be evaluated on the reused 50
+markers or ported before a newly collected recording-held T0-versus-T2 comparison.
 
 ## Evidence that determines the direction
 
