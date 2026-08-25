@@ -673,6 +673,13 @@ testing whether raw Hellinger scale causes T16's far-source instability. Both so
 remain mandatory and the normalization must change rank ordering before any model.
 See [Side-switch T17 relative source assignment contrast](./side-switch-t17-relative-source-contrast-plan-2026-08-25.md).
 
+#### T17 engineering result — reject before model
+
+The normalized near source is distinct from T16 (`ρ=0.9695`), but the normalized far
+source remains redundant (`ρ=0.9907` versus the frozen `<0.98` gate). All other checks
+pass. T17 stops before labels, ruling out simple same-plus-swapped cost scale as the
+far-source explanation.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

@@ -50,3 +50,21 @@ changes, or source pruning even if it passes.
 ### Preregistration — frozen 2026-08-25
 
 No T17 code, values, artifact, profile, or model result existed at this commit.
+
+### Engineering result — reject before model
+
+Implementation is committed at `19056a5`. The 40,185,165-byte transformation artifact
+is:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-t17-relative-source-contrast-features-v1.json`
+
+SHA-256: `200ac7445e6e8b8b64b97aa07b25164761da3526a59a2eebca2e0b7dae5c35dd`.
+
+All parity, support, sign, formula, resource, and older-family novelty checks pass.
+Near normalization changes ordering enough (`ρ=0.969536` versus raw T16), but far
+normalization does not (`ρ=0.990720`), failing the frozen corresponding-T16 `<0.98`
+gate.
+
+Decision: **reject T17 before label/model access**. Do not replace the denominator or
+relax novelty. Absolute assignment-cost scale does not materially explain the
+far-source ordering instability.

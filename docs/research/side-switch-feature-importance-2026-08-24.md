@@ -627,6 +627,12 @@ The matched result then separates the sources sharply: near direction is positiv
 nearly null (`-0.0051` full). F1 reaches 53.70%, below T14's 55.24%. T16 is rejected;
 the opened asymmetry cannot justify a near-only model.
 
+## T17 relative source contrast engineering — 2026-08-25
+
+Per-source normalization changes the near ordering modestly (`ρ=0.9695` versus T16)
+but leaves far ordering redundant (`ρ=0.9907`). T17 is rejected before labels. The
+far-source instability is therefore not explained by a simple absolute cost scale.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
