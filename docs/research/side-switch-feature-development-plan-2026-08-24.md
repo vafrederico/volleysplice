@@ -587,6 +587,13 @@ because conditional cross similarity remains redundant with T11 at Spearman 0.98
 T13 should make routing symmetric per before-side source across the same and swapped
 destinations, preventing the margin itself from comparing different route types.
 
+### T13 source-symmetric routing — preregistered 2026-08-25
+
+T13 selects one stable-player or pooled-team route for both destinations from each
+before-side source. It preserves the frozen reductions while removing route-type
+asymmetry from the margin. The transformation is frozen in
+[Side-switch T13 source-symmetric routing](./side-switch-t13-source-symmetric-routing-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
