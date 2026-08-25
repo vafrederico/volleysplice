@@ -571,6 +571,13 @@ The remaining representational mismatch is pooled-team-to-individual assignment.
 should use player-unit transport only for stable-to-stable side pairs and exact pooled
 team transport otherwise. This is derivable from frozen diagnostics without video.
 
+### T12 type-consistent hierarchical transport — preregistered 2026-08-25
+
+T12 selects exact T10 stable-player reduction for a pair only when both sides contain
+stable units; every other pair uses exact T5 pooled-team reduction. It removes
+pooled-to-individual comparisons without a blend or threshold. The pure label-free
+transformation is frozen in [Side-switch T12 type-consistent hierarchical transport](./side-switch-t12-type-consistent-hierarchical-transport-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
