@@ -391,6 +391,16 @@ The next dependency is separately versioned selective far-side localization or
 court-constrained tracking. Do not relax the multi-frame team requirement or transform
 the 73.88% zero-reliability boundary rows into another model input.
 
+### T4 selective far-court detection — preregistered 2026-08-24
+
+T4 isolates the first resolution remediation: the pinned detector remains `224 x 224`,
+but its far-side pass owns a smaller native far-court band before resizing. Near-side
+detections remain full-ROI; T3 jersey masks, five-frame tracking, team pooling, and
+three reductions remain exact. Temporal propagation is not mixed into this comparison.
+
+The full engineering and conditional model contract is frozen in
+[Side-switch T4 selective far-court high-resolution detection](./side-switch-t4-selective-far-court-detection-plan-2026-08-24.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
