@@ -166,3 +166,16 @@ Immutable artifact:
 - extractor SHA-256: `306fb046a2909cce1c5b954f7c00778d40f6d2c17197654252f3520860239739`
 
 Validation after extraction: all 156 focused `test_side_switch*.py` tests pass.
+
+### User-authorized diagnostic model override — 2026-08-25
+
+After the engineering rejection was committed, the user explicitly requested training
+to observe precision and recall. This authorizes one exact diagnostic `34 + T5 core`
+run on the already opened 50-marker development scope. It does not revise the failed
+engineering decision, make T5 selection-eligible, authorize pruning/tuning, or permit
+promotion/runtime work.
+
+Use the already frozen nested recording-held-out model protocol and report matched T0,
+immutable T4, and T5. Preserve the originally frozen T5 model checks as descriptive
+diagnostics. Commit the model runner before loading labels and record the result once;
+do not adapt T5 after inspection.

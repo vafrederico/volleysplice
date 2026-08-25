@@ -439,6 +439,14 @@ positive transport margins. The next isolated representation should test a robus
 dominant-jersey consensus that rejects within-side appearance outliers; do not tune or
 train T5.
 
+#### T5 diagnostic training override — authorized 2026-08-25
+
+The user explicitly authorized one matched T5 training run after the engineering
+rejection to measure precision and recall. This is diagnostic only: it cannot reverse
+the failed engineering gate, trigger pruning/tuning, authorize promotion, or enter a
+runtime. The exact 34+3 head and existing nested recording-held-out protocol remain
+unchanged.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
