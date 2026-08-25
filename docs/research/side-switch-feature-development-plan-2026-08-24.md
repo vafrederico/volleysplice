@@ -496,6 +496,14 @@ Chamfer distance. It must retain exact T5 visibility while reaching T4 separatio
 T7 directional coverage before labels. The frozen construction and gates are in
 [Side-switch T8 explicit two-mode jersey transport](./side-switch-t8-two-mode-jersey-transport-plan-2026-08-25.md).
 
+#### T8 engineering result — reject before labels
+
+T8 retains exact T5 visibility and makes the representation materially multimodal,
+with 90.69% of available tracks carrying a >=20% secondary mode. Separation reaches
+0.3707, close to T4, but nearest-mode transport drops positive margins to 18.43% and
+reliable-swap coverage to 14.58%. T8 stops before labels. The next isolated change is
+mass-preserving optimal transport over the same two modes.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

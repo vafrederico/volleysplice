@@ -97,3 +97,27 @@ required.
 
 No T8 code, artifact, feature value, model profile, or model result existed when this
 contract was committed.
+
+### Engineering result — reject before labels
+
+The completed feature artifact is
+`side-switch-t8-two-mode-jersey-transport-features-v1.json`, SHA-256
+`4da68234930052d3669e7b40b003a6c6633068bd88f18e7629ae56536ff5d302`.
+It preserves all 704 rows, prior values, and ordering and exactly matches T5's 81.10%
+both-team endpoint availability, 42.31% weakest-recording availability, and 68.75%
+four-team boundary visibility. All 1,166 multi-observation tracks produce two modes,
+no observation is discarded, and 90.69% of available tracks have a secondary mode
+with at least 20% support. The modes are therefore material rather than decorative.
+
+Set separation improves substantially over T7, from 0.3387 to 0.3707, but narrowly
+misses T4's frozen 0.3739 gate. More importantly, directional evidence regresses:
+positive raw margins fall from T7's 25.48% to 18.43%, and reliable-swap coverage falls
+from 19.39% to 14.58%. Extraction completes error-free in 1,574.43 seconds at 246.95
+MiB RSS.
+
+The failure is consistent with the symmetric nearest-mode cost allowing several
+modes to select the same opposite mode. The representation preserves diversity but
+does not preserve appearance mass or enforce distinct correspondences. Per contract,
+T8 stops before labels and has no precision, recall, F1, or coefficient result. The
+next isolated version should retain the frozen two modes and replace only Chamfer
+cost with exact support-mass optimal transport.

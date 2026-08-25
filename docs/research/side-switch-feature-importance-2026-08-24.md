@@ -514,6 +514,18 @@ modes per court side, expose primary/secondary support and ambiguity, and compar
 mode sets across the boundary. That changes representation topology rather than
 tuning T6/T7's already observed distance scale.
 
+## T8 explicit-mode follow-up — 2026-08-25
+
+T8 confirms that explicit modes repair most of the separation loss: 0.3387 rises to
+0.3707 while exact T5 visibility is retained. Yet symmetric nearest-mode matching is
+too permissive. Positive margins fall to 18.43% and reliable swap evidence to 14.58%,
+even though secondary modes are substantive on 90.69% of available tracks.
+
+The feature direction should keep the two modes but require mass-preserving
+correspondence. Exact two-by-two optimal transport is the smallest attributable next
+change: it prevents both source modes from explaining themselves through the same
+destination mode while respecting their measured support.
+
 ## Limitations
 
 - The 11 recordings are opened development evidence, not an independent generalization
