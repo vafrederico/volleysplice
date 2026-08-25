@@ -504,6 +504,13 @@ with 90.69% of available tracks carrying a >=20% secondary mode. Separation reac
 reliable-swap coverage to 14.58%. T8 stops before labels. The next isolated change is
 mass-preserving optimal transport over the same two modes.
 
+### T9 mass-preserving mode transport — preregistered 2026-08-25
+
+T9 keeps T8's exact two modes and substitutes analytic support-mass optimal transport
+for permissive nearest-mode Chamfer cost. It must preserve exact T5 visibility while
+reaching T4 separation and T7 directional coverage before labels. The frozen contract
+is in [Side-switch T9 mass-preserving mode transport](./side-switch-t9-mass-preserving-mode-transport-plan-2026-08-25.md).
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
