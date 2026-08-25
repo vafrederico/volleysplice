@@ -89,3 +89,39 @@ errors in 436.648 seconds (7m16.648s) at 1,183.723 MiB peak RSS.
 Decision: **T14 passes engineering and enters the frozen matched model comparison**.
 This authorizes only implementation/commit of the exact `34 + T14 core` runner before
 labels are opened; it is not a precision, recall, F1, or promotion result.
+
+### Matched model result — reject
+
+The exact 37-input model wiring was committed at `b01bf07` before the label/audit and
+model artifacts were loaded. The one-shot opened-development comparison wrote the
+946,875-byte artifact:
+
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-t14-dominant-tracklet-medoid-opened-v1.json`
+
+SHA-256: `ba6b7493f4d2c98a5d6bd755947a1f917ce4a5d0b69a9cb07c7b48c903d54f06`.
+
+| Boundary-only metric | T0 | T14 | Change |
+| --- | ---: | ---: | ---: |
+| Row AP | 43.5623% | 44.0401% | +0.4777 pp |
+| ±4 proposals / TP / FP / FN | 52 / 26 / 26 / 24 | 55 / 29 / 26 / 21 | +3 / +3 / 0 / -3 |
+| ±4 precision | 50.00% | 52.7273% | +2.7273 pp |
+| ±4 recall | 52.00% | 58.00% | +6.00 pp |
+| ±4 F1 | 50.9804% | 55.2381% | +4.2577 pp |
+| Strict F1 | 41.1765% | 43.8095% | +2.6331 pp |
+
+T14 also exceeds immutable T4 F1 by 2.4079 points. It recovers one of five frozen
+covered misses, removes three of 20 zero-reliable-evidence false boundaries, and its
+three-TP gain remains positive after removing the best recording. Every event,
+target-slice, and recording guardrail therefore passes.
+
+The semantic coefficient gate fails decisively. Raw transport margin is positive in
+the full fit (`+0.105827`) and all 11 outer fits, but reliable swap is negative in the
+full fit (`-0.077673`) and all 11 outer fits; reliable continuity is likewise negative
+in all 11 (`-0.084315` full fit). The required reliable-swap count was at least 9/11,
+and the observed count is 0/11.
+
+Decision: **reject T14 despite the F1 gain**. The result says the medoid raw direction
+is useful, but the preregistered reliability semantics are contradicted consistently.
+Do not prune the bundle, reverse signs, tune gates, promote, or port it on these opened
+labels. Any continuation must be a separately preregistered representation rather
+than a T14 ablation.

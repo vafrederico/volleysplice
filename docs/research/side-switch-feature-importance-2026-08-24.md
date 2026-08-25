@@ -591,13 +591,21 @@ The next independent representation should target secondary player roles rather 
 coverage routing. A medoid over stable player-tracklet jerseys gives each player one
 vote while resisting a libero/outlier, and requires no observed distance threshold.
 
-## T14 dominant tracklet medoid engineering — 2026-08-25
+## T14 dominant tracklet medoid result — 2026-08-25
 
 The role-robust representation passes every label-free gate. It retains exact T5
 visibility, separation 0.4064, positive margins 33.01%, and reliable swap 25.00%; its
 strongest relationship to a prior family is only 0.6427 Spearman. The medoid differs
 materially from pooled appearance (mean distance 0.2245), confirming that the result
-is not a no-op. A matched model comparison is authorized but not yet a model result.
+is not a no-op.
+
+The matched model raises boundary F1 50.98%→55.24% and adds three TP without adding
+FP. Raw medoid transport has a positive coefficient in all 11 folds, but both gated
+semantics reverse consistently: reliable swap and reliable continuity are negative in
+all 11 outer fits. T14 therefore fails its semantic gate despite passing all event and
+robustness gates. This is evidence for a useful raw role-robust direction and against
+the inherited reliability products; it does not authorize pruning or sign tuning on
+the opened labels.
 
 ## Limitations
 

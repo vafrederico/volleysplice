@@ -612,13 +612,21 @@ tracklet jersey descriptors and retains exact T5 pooled fallback only for an emp
 stable side. This tests role/outlier resistance without an observed radius. The frozen
 contract is in [Side-switch T14 dominant tracklet medoid](./side-switch-t14-dominant-tracklet-medoid-plan-2026-08-25.md).
 
-#### T14 engineering result — pass; model pending
+#### T14 result — engineering pass, model reject
 
 T14 exactly restores T5 visibility, selects among 795 multi-tracklet sides, and uses
 45 empty-side fallbacks. Mean medoid-to-pool distance is 0.2245, separation is 0.4064,
 positive margins reach 33.01%, and reliable swap reaches 25.00%. Every parity,
 resource, direction, separation, and novelty gate passes. The exact matched
-`34 + T14 three-value core` model wiring must be committed before labels are loaded.
+`34 + T14 three-value core` wiring was committed before labels were loaded.
+
+The opened comparison raises boundary F1 from 50.98% to 55.24% (+4.26 points), beats
+T4 by 2.41 points, adds three TP without adding FP, and passes every event, slice, and
+recording guardrail. It nevertheless fails the frozen semantic gate: reliable swap
+has a negative coefficient in the full fit and all 11 outer fits, versus the required
+positive full fit and >=9/11 positive folds. Reliable continuity is also negative in
+all 11. T14 is rejected without bundle pruning, sign reversal, gate tuning, promotion,
+or runtime work.
 
 ## Evidence that determines the direction
 
