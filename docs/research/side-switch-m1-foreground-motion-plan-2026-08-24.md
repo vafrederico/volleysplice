@@ -16,6 +16,11 @@ The first M1 arm is **boundary-only and feature-only**:
 - loss, hard negatives, nested thresholds, and decoder: unchanged; and
 - no P1, Q1, C1, I1, G1, P2, or internal-specialist values in the M1 head.
 
+Post-run bookkeeping correction: the checked-in E6 artifact and the exact M1 matched
+control both contain **43**, not 42, positive boundary candidate rows. The earlier
+count above was a documentation transcription error, not an evaluation filter: both
+heads consumed the same 624 rows, fold-local labels, 50 markers, and protocol.
+
 This arm cannot recover the four current human events with no candidate. It tests only
 whether new motion evidence improves ranking and selection of covered boundaries.
 
@@ -162,11 +167,108 @@ The extractor and reduction module hashes embedded in the artifact match the
 checked-in implementation. The artifact is now immutable; the nested comparison must
 consume this exact hash. Product latency remains unmeasured.
 
-### M1 nested comparison — pending
+### M1 nested comparison — rejected 2026-08-24
 
-The matched boundary-only control, eight-feature M1 head, target slices, recording
-robustness rule, and diagnostic full-union composition have been implemented. No model
-result has been inspected at this checkpoint.
+Immutable result artifact:
+
+- path: `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-m1-foreground-motion-v1.json`
+- SHA-256: `f918e44201372e4088dba390022f202e32abc4459bcdac24897d1e0101a10c3d`
+- implementation checkpoint: `3fd5241`
+
+| Boundary-only metric | Matched 34-input control | M1 motion | M1 minus control |
+| --- | ---: | ---: | ---: |
+| Row AP | 43.5623% | 47.6697% | +4.1073 pp |
+| Row Brier score | 0.054533 | 0.053722 | -0.000811 |
+| ±4 proposals / TP / FP / FN | 52 / 26 / 26 / 24 | 59 / 26 / 33 / 24 | +7 / 0 / +7 / 0 |
+| ±4 precision | 50.0000% | 44.0678% | -5.9322 pp |
+| ±4 recall | 52.0000% | 52.0000% | 0.0000 pp |
+| ±4 F1 | 50.9804% | 47.7064% | -3.2740 pp |
+| Strict F1 | 41.1765% | 38.5321% | -2.6444 pp |
+
+M1 passes the recall guardrail, both target-slice checks, and the formal recording
+robustness rule. It recovers two of 17 matched-control covered misses and reduces the
+15-row low-exchange false slice by two. It nevertheless fails the primary F1,
+precision, and strict-timing gates. Selection changes make the failure concrete: M1
+adds two positives and 11 negatives, while removing two positives and four negatives.
+The net result is unchanged TP and seven extra FP.
+
+The two recovered rows are `161923155:R029:R030` and `203801418:R038:R039`. The two
+lost positive rows are `193307688:R010:R011` and `212717581:R021:R022`. Thus the
+predeclared conflict recording `193307688` loses one TP, despite the aggregate
+recording-robustness Boolean passing because only two recordings regress.
+
+The diagnostic composition of M1 boundary selections with exact E0 internal
+selections is also worse than the promoted union: 64 proposals, 27 TP, 37 FP, 23 FN,
+42.19% precision, 54.00% recall, and 47.37% F1. This is not a candidate for promotion.
+
+### What the eight features actually represented
+
+The following full-development standardized coefficients and class summaries are
+descriptive diagnostics, not held-out causal importance and not a basis for retuning
+M1 on these opened labels.
+
+| Feature | Std. weight | Positive mean | Negative mean | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| `netBandMotionFractionMean` | +0.1350 | 0.6852 | 0.6425 | Largest positive M1 term, but the 11 newly selected FP average 0.7052. Net-band activity is not switch-specific. |
+| `foregroundExchangeImbalance` | -0.1123 | 0.000758 | 0.001366 | Useful mainly as an asymmetry veto, not positive exchange evidence. |
+| `nearToFarForegroundFluxMean` | -0.1089 | 0.000836 | 0.001429 | Larger raw near-to-far motion is more typical of negatives. |
+| `edgeStableMotionMinimum` | -0.0696 | 0.8561 | 0.8588 | Almost no class separation. |
+| `coordinatedExchangeDurationSeconds` | -0.0853 | 0 | 0.0289 | Every positive is zero; it cannot recover recall. |
+| `coordinatedExchangePairFraction` | -0.0587 | 0 | 0.00229 | Nonzero for only 1.28% of all boundaries and for no positives. |
+| `bidirectionalExchangeMinimum` | +0.0097 | 0.0000785 | 0.0000693 | Intended core signal has negligible fitted influence. |
+| `farToNearForegroundFluxMean` | -0.0078 | 0.0000788 | 0.0000755 | Negligible separation and fitted influence. |
+
+The observed directional flux scale is mostly around `1e-5` to `1e-4`, so the frozen
+`0.001` coordination floor almost never activates. That floor must not now be lowered
+and rerun on the same 50 markers. More importantly, even the continuous values show
+that dense gap motion is dominated by generic player/referee/ball-retrieval movement:
+the head's AP gain comes from motion location and low asymmetry, not from the intended
+bidirectional physical-exchange construct.
+
+### Decision and next feature direction
+
+Decision: **reject M1**, retain its immutable diagnostics, and do not port it. Do not
+run M1 leave-one-feature-out pruning, threshold rescue, a new absolute flux floor, or
+more gap-pair counts on this opened development set.
+
+The next representation should be endpoint identity transport rather than more dense
+flow inside the dead gap. A concrete T1 bundle should compare stable live observations
+before and after a boundary and contain:
+
+- `appearanceTransportSwapMargin`: optimal player/team-embedding assignment cost for
+  same-side versus swapped-side endpoints;
+- `bidirectionalMatchedIdentityMinimum`: smaller of near-before→far-after and
+  far-before→near-after matched identity mass;
+- `sameSideIdentityRetentionPenalty`: evidence that identities incorrectly remain on
+  their previous side;
+- `endpointTeamSeparationMinimum`: weakest within-endpoint team/side embedding
+  separation;
+- `transportCoverageMinimum`: weakest matched-player coverage across the four endpoint
+  side sets; and
+- `sceneContinuityConfidence`: a reliability gate for cuts, occlusion, and camera
+  replacement between endpoints.
+
+Player/person masks must exclude referee, audience, ball, and background motion. Use
+court footpoints plus appearance embeddings, not palette alone, and retain assignment
+uncertainty rather than forcing a swap when few players are visible.
+
+Implement the shared masks, embeddings, endpoint summaries, and assignment matrix in
+one label-independent extraction batch because they reuse the same decoded frames.
+Keep model experiments separate:
+
+1. T0: reproduce the 624-row boundary control exactly.
+2. T1: add the coherent three-value transport core (`appearanceTransportSwapMargin`,
+   `bidirectionalMatchedIdentityMinimum`, `transportCoverageMinimum`).
+3. Only if T1 passes every gate, run leave-one-feature-out pruning and then a separate
+   reliability arm adding separation, same-side retention, and scene continuity.
+4. Keep candidate expansion as an independent experiment; feature-only boundary work
+   cannot recover the four full-union no-candidate markers.
+
+Do not evaluate T1 for selection on these same 50 events. Freeze it before inspecting
+a newly collected recording-held development/validation scope. The existing planning
+target remains roughly ten new recordings and 40 switches; an internal/candidate head
+also needs at least 20 exhaustively reviewed internal positives across eight
+recordings. Port only an untouched-validation winner.
 
 ## Relationship to the completed loop
 

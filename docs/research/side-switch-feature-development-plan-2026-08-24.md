@@ -307,24 +307,25 @@ gate decision, and commit boundary.
 | E4 Q1 direction | `519d77a` | Reject | -2.66 pp F1; +5 FP at unchanged recall. |
 | E5 C1 scene | `1b4bd1a` | Reject | AP improved, but -2.81 pp event F1 and +8 FP. |
 | E6 P1 persistence | `58d09b3` | Reject | Aggregate gain depends on one recording; four recordings lose TP. |
+| M1 foreground motion | `3fd5241` | Reject | AP +4.11 pp, but no TP gain, +7 FP, precision -5.93 pp, and F1 -3.27 pp. |
 
-Validation after E6: all 121 focused `test_side_switch*.py` tests pass, the worktree is
-clean at the recorded commit boundary, and the final E6 artifact independently asserts
-the failed recording-robustness gate and diagnostic-only merge contract.
+Validation after M1: all 127 focused `test_side_switch*.py` tests pass. The M1
+extraction preserved all 704 rows and existing features exactly, completed 3,744 flow
+pairs without frame errors in 35m23.919s at 261.230 MiB peak RSS, and its immutable
+nested result asserts the failed precision/F1/strict gates.
 
 E3 and E7 are skipped because no cheap/full-union family passed every standalone gate.
 E8/P2 is skipped because P1 did not satisfy its transfer entry condition. E9 untouched
 validation and browser/Android porting are skipped because there is no new winner.
 
-The next feature loop should not be another algebraic or palette-persistence search on
-these 50 opened events. Before implementing M1, write a separate experiment contract
-that freezes gap-frame cadence, foreground/tracking method, feature versus candidate
-role, frame/latency budget, target error slice, and source-held-out gate. In parallel,
-the data direction is to obtain at least 20 exhaustively reviewed internal-positive
-candidates across at least eight recordings and a new untouched validation set. Better
-team isolation should be tested before a more flexible classifier, because player
-appearance remains the most important family but currently supplies more positive
-logit support to false proposals than true proposals.
+The next feature loop should not be another algebraic, palette-persistence, or dense
+gap-flow search on these 50 opened events. M1 has now shown that generic motion can
+improve row ranking while making the operating point materially less precise. The next
+representation is player-isolated endpoint identity transport, implemented in one
+shared extraction batch but tested as staged model bundles on newly collected data.
+In parallel, obtain at least 20 exhaustively reviewed internal-positive candidates
+across at least eight recordings and a new untouched validation set. See the M1 record
+for the exact T0/T1/reliability sequence.
 
 ## Evidence that determines the direction
 
@@ -941,10 +942,11 @@ This requires frames during the candidate gap, which the current visual path doe
 sample. It should therefore be a distinct extraction/candidate experiment with an
 explicit frame and latency budget. Do not hide its cost inside P1.
 
-The first exact M1 contract was subsequently frozen in
+The first exact M1 contract and its rejected result are recorded in
 [Side-switch M1 foreground-motion experiment](./side-switch-m1-foreground-motion-plan-2026-08-24.md).
 It is boundary-only and feature-only, uses six local flow pairs across each frozen gap,
-and does not reopen P1/P2 or change candidate generation.
+and does not reopen P1/P2 or change candidate generation. It improved boundary-row AP
+by 4.11 points but added seven FP with no TP gain, reducing event F1 by 3.27 points.
 
 ## Build batches versus model experiments
 
