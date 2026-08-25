@@ -23,11 +23,15 @@ from analysis.side_switch_feature_development import (
     M1_PROFILE,
     P1_PROFILE,
     Q1_PROFILE,
+    T2_CONDITIONAL_ONLY_PROFILE,
+    T2_PROFILE,
+    T2_SWAP_ONLY_PROFILE,
     concise_metrics,
     evaluate_profile,
     evaluate_predictions,
     metric_delta,
 )
+from analysis.side_switch_t2_transport import T2_CORE_FEATURE_NAMES
 
 
 ROOT = Path("/mnt/freenas/volleycut/labeling-v1-2026-08-09")
@@ -40,6 +44,9 @@ DEFAULT_IMPORTANCE = REPORTS / "side-switch-feature-importance-2026-08-24.json"
 DEFAULT_GAP_FEATURES = REPORTS / "side-switch-gap-shape-features-v1.json"
 DEFAULT_VISUAL_FEATURES = REPORTS / "side-switch-visual-summary-v2-features-v1.json"
 DEFAULT_M1_FEATURES = REPORTS / "side-switch-m1-foreground-motion-features-v1.json"
+DEFAULT_T2_FEATURES = (
+    REPORTS / "side-switch-t2-conditional-identity-transport-features-v1.json"
+)
 DEFAULT_OUTPUTS = {
     "E0": REPORTS / "side-switch-feature-development-e0-baseline-v1.json",
     "E1": REPORTS / "side-switch-feature-development-e1-interactions-v1.json",
@@ -48,6 +55,7 @@ DEFAULT_OUTPUTS = {
     "E5": REPORTS / "side-switch-feature-development-e5-camera-c1-v1.json",
     "E6": REPORTS / "side-switch-feature-development-e6-persistence-p1-v1.json",
     "M1": REPORTS / "side-switch-feature-development-m1-foreground-motion-v1.json",
+    "T2": REPORTS / "side-switch-feature-development-t2-conditional-transport-opened-v1.json",
 }
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
@@ -58,6 +66,7 @@ EXPECTED_SHA256 = {
     "gapFeatures": "0f89dbbf7d7cda896100e3f0730a17ecbaba5dfd1cd0525993199a5246c5a777",
     "visualFeatures": "6ce23b43018d04045ba783510ad86ef3c6d8767fdc435c7684481fca89ba4871",
     "m1Features": "b3ac34aaccec6395526a69341832e048e7ef763543790c2e87873236d569cb3b",
+    "t2Features": "fc7e36306f4570e8c93b788f8471cd11d3fe865a1e8dc4699c673e8334aa281c",
 }
 
 
@@ -588,6 +597,163 @@ def _evaluate_m1_gate(
     }
 
 
+def _evaluate_t2_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    delta = metric_delta(baseline, candidate)
+    baseline_scores = _held_rows(baseline)
+    candidate_selected = _selected_ids(candidate)
+    covered_miss_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if int(row["label"]) == 1 and not bool(row["selected"])
+    }
+    feature_values = {
+        str(row["eventId"]): {
+            name: float(row["features"][name]) for name in T2_CORE_FEATURE_NAMES
+        }
+        for row in rows
+    }
+    medians = {
+        name: float(np.median([value[name] for value in feature_values.values()]))
+        for name in T2_CORE_FEATURE_NAMES
+    }
+    weak_transport_false_ids = {
+        str(row["eventId"])
+        for row in baseline_scores
+        if (
+            int(row["label"]) == 0
+            and bool(row["selected"])
+            and any(
+                feature_values[str(row["eventId"])][name] <= medians[name]
+                for name in T2_CORE_FEATURE_NAMES
+            )
+        )
+    }
+    recovered_covered = len(covered_miss_ids & candidate_selected)
+    retained_weak_transport_false = len(
+        weak_transport_false_ids & candidate_selected
+    )
+    recording_deltas = _recording_deltas(baseline, candidate)
+    total_true_positive_gain = int(delta["truePositives"])
+    maximum_recording_gain = max(
+        (int(value["truePositives"]) for value in recording_deltas.values()),
+        default=0,
+    )
+    regressing_recordings = sorted(
+        recording_id
+        for recording_id, value in recording_deltas.items()
+        if int(value["truePositives"]) < 0
+    )
+    gain_depends_on_one_recording = (
+        total_true_positive_gain > 0
+        and total_true_positive_gain - maximum_recording_gain <= 0
+        and len(regressing_recordings) >= 3
+    )
+    checks = {
+        **_standalone_checks(delta),
+        "coveredBoundaryMissesRecovered": recovered_covered > 0,
+        "weakTransportFalseBoundarySliceReduced": retained_weak_transport_false
+        < len(weak_transport_false_ids),
+        "recordingRobustness": not gain_depends_on_one_recording,
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "interpretation": "exploratory-opened-development-only",
+        "checks": checks,
+        "delta": delta,
+        "targetSlices": {
+            "coveredBoundaryMisses": {
+                "definition": (
+                    "positive boundary candidates not selected by the matched "
+                    "boundary-only outer-held control"
+                ),
+                "frozenCandidateIds": sorted(covered_miss_ids),
+                "baselineSelected": 0,
+                "candidateSelected": recovered_covered,
+                "change": recovered_covered,
+            },
+            "weakTransportFalseBoundaries": {
+                "definition": (
+                    "matched-control selected false boundaries where either T2 "
+                    "core value is at or below its all-624-row median"
+                ),
+                "featureMedians": medians,
+                "frozenCandidateIds": sorted(weak_transport_false_ids),
+                "baselineSelected": len(weak_transport_false_ids),
+                "candidateSelected": retained_weak_transport_false,
+                "change": retained_weak_transport_false
+                - len(weak_transport_false_ids),
+            },
+        },
+        "recordingRobustness": {
+            "gainDependsOnOneRecordingWhileAtLeastThreeRegress": gain_depends_on_one_recording,
+            "totalTruePositiveGain": total_true_positive_gain,
+            "maximumSingleRecordingTruePositiveGain": maximum_recording_gain,
+            "truePositiveGainWithoutBestRecording": total_true_positive_gain
+            - maximum_recording_gain,
+            "regressingRecordingIds": regressing_recordings,
+        },
+        "byRecordingDelta": recording_deltas,
+        "conflictRecording193307688": recording_deltas.get(
+            "raw-no-backup-PXL_20260816_193307688"
+        ),
+    }
+
+
+def _t2_coefficient_importance(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    classifier = candidate["fullDevelopment"]["classifier"]
+    names = [str(name) for name in classifier["featureNames"]]
+    weights = [float(value) for value in classifier["weights"]]
+    ranks = {
+        name: rank
+        for rank, name in enumerate(
+            sorted(names, key=lambda name: (-abs(weights[names.index(name)]), name)),
+            1,
+        )
+    }
+    fold_weights = {name: [] for name in T2_CORE_FEATURE_NAMES}
+    for fold in candidate["outerFolds"]:
+        fit = fold["fitStandardizedWeights"]
+        fit_names = [str(name) for name in fit["featureNames"]]
+        for name in T2_CORE_FEATURE_NAMES:
+            fold_weights[name].append(float(fit["weights"][fit_names.index(name)]))
+    features = []
+    for name in T2_CORE_FEATURE_NAMES:
+        weight = weights[names.index(name)]
+        values = fold_weights[name]
+        expected_sign = 1 if weight > 0 else -1 if weight < 0 else 0
+        same_sign = sum(
+            (1 if value > 0 else -1 if value < 0 else 0) == expected_sign
+            for value in values
+        )
+        features.append(
+            {
+                "feature": name,
+                "fullDevelopmentStandardizedCoefficient": weight,
+                "absoluteCoefficientRankAmong36": ranks[name],
+                "outerFitCoefficients": values,
+                "outerFitPositiveCount": sum(value > 0 for value in values),
+                "outerFitNegativeCount": sum(value < 0 for value in values),
+                "outerFitSameSignAsFullCount": same_sign,
+                "outerFitSameSignAsFullFraction": same_sign / len(values),
+                "outerFitMean": float(np.mean(values)),
+                "outerFitStandardDeviation": float(np.std(values)),
+                "outerFitMinimum": min(values),
+                "outerFitMaximum": max(values),
+            }
+        )
+    return {
+        "coefficientContract": (
+            "weights act on fold-standardized inputs; magnitudes are comparable "
+            "within a fit but do not establish causal importance"
+        ),
+        "features": features,
+    }
+
+
 def _e6_composition_diagnostic(
     rows: list[Mapping[str, Any]],
     markers: Mapping[str, list[Mapping[str, Any]]],
@@ -652,6 +818,38 @@ def _m1_composition_diagnostic(
     }
 
 
+def _t2_composition_diagnostic(
+    rows: list[Mapping[str, Any]],
+    markers: Mapping[str, list[Mapping[str, Any]]],
+    full_baseline: Mapping[str, Any],
+    transport: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected_ids = {
+        str(row["eventId"])
+        for row in _held_rows(transport)
+        if bool(row["selected"])
+    }
+    selected_ids.update(
+        str(row["eventId"])
+        for row in _held_rows(full_baseline)
+        if bool(row["selected"]) and str(row["kind"]) == "internal-dead-state-peak"
+    )
+    predictions = np.asarray(
+        [str(row["eventId"]) in selected_ids for row in rows], dtype=bool
+    )
+    return {
+        "mergeContract": {
+            "boundaryBranch": "T2 outer-held selection with boundary-fit threshold",
+            "internalBranch": "exact full-union E0 outer-held internal selections",
+            "probabilityCalibration": "none across branches; merge selected IDs only",
+            "crossKindSuppression": "none in diagnostic; one-to-one event matching penalizes duplicates",
+            "selectionUse": "diagnostic only; T2 decision uses boundary-only comparison",
+        },
+        "primary": evaluate_predictions(rows, predictions, markers, 4.0, inventory=True),
+        "strict": evaluate_predictions(rows, predictions, markers, 0.0, inventory=True),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     paths = {
         "features": args.features.expanduser().resolve(),
@@ -667,6 +865,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         paths["visualFeatures"] = args.visual_features.expanduser().resolve()
     if args.experiment == "M1":
         paths["m1Features"] = args.m1_features.expanduser().resolve()
+    if args.experiment == "T2":
+        paths["t2Features"] = args.t2_features.expanduser().resolve()
     output = (
         args.output.expanduser().resolve()
         if args.output is not None
@@ -735,6 +935,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ):
             raise ValueError("M1 motion artifact did not pass extraction gates")
         experiment_rows = m1_payload["rows"]
+    elif args.experiment == "T2":
+        t2_payload = _load(paths["t2Features"])
+        if [str(row["eventId"]) for row in t2_payload["rows"]] != [
+            str(row["eventId"]) for row in feature_payload["rows"]
+        ]:
+            raise ValueError("T2 artifact does not match the frozen row universe")
+        parity = t2_payload["parity"]
+        if (
+            str(t2_payload["engineeringDecision"]) != "pass"
+            or int(parity["rows"]) != 704
+            or int(parity["eligibleBoundaryRows"]) != 624
+            or int(parity["ineligibleInternalRows"]) != 80
+            or str(parity["priorFeatureValues"]) != "exact"
+            or str(parity["candidateIdAndOrder"]) != "exact"
+            or tuple(t2_payload["contract"]["futureCoreFeatureNames"])
+            != T2_CORE_FEATURE_NAMES
+            or not all(bool(value) for value in t2_payload["engineering"]["checks"].values())
+        ):
+            raise ValueError("T2 artifact did not pass frozen engineering gates")
+        experiment_rows = t2_payload["rows"]
     audit = _load(paths["audit"])
     current_model = _load(paths["model"])
     current_evaluation = _load(paths["evaluation"])
@@ -754,6 +974,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     profiles: dict[str, Any] = {BASELINE_PROFILE.identifier: baseline}
     comparison: dict[str, Any] | None = None
     composition_diagnostic: dict[str, Any] | None = None
+    feature_importance: dict[str, Any] | None = None
     if args.experiment == "E1":
         interaction = evaluate_profile(
             feature_payload["rows"], markers, INTERACTION_PROFILE
@@ -810,6 +1031,41 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         composition_diagnostic = _m1_composition_diagnostic(
             experiment_rows, markers, baseline, motion
         )
+    elif args.experiment == "T2":
+        boundary_rows = [
+            row
+            for row in experiment_rows
+            if str(row["kind"]) == "adjacent-rally-boundary"
+        ]
+        boundary_baseline = evaluate_profile(
+            boundary_rows, markers, BOUNDARY_BASELINE_PROFILE
+        )
+        transport = evaluate_profile(boundary_rows, markers, T2_PROFILE)
+        swap_only = evaluate_profile(
+            boundary_rows, markers, T2_SWAP_ONLY_PROFILE
+        )
+        conditional_only = evaluate_profile(
+            boundary_rows, markers, T2_CONDITIONAL_ONLY_PROFILE
+        )
+        profiles[BOUNDARY_BASELINE_PROFILE.identifier] = boundary_baseline
+        profiles[T2_PROFILE.identifier] = transport
+        profiles[T2_SWAP_ONLY_PROFILE.identifier] = swap_only
+        profiles[T2_CONDITIONAL_ONLY_PROFILE.identifier] = conditional_only
+        comparison = _evaluate_t2_gate(
+            boundary_baseline, transport, boundary_rows
+        )
+        feature_importance = _t2_coefficient_importance(transport)
+        feature_importance["descriptiveSingleValueAblations"] = {
+            T2_SWAP_ONLY_PROFILE.identifier: metric_delta(
+                boundary_baseline, swap_only
+            ),
+            T2_CONDITIONAL_ONLY_PROFILE.identifier: metric_delta(
+                boundary_baseline, conditional_only
+            ),
+        }
+        composition_diagnostic = _t2_composition_diagnostic(
+            experiment_rows, markers, baseline, transport
+        )
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
     created_at = datetime.now(UTC).isoformat()
@@ -828,6 +1084,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "E5": "camera-and-scene-confounders",
                 "E6": "boundary-multi-rally-persistence",
                 "M1": "boundary-foreground-side-exchange-motion",
+                "T2": "boundary-conditional-identity-transport-opened-development",
             }[args.experiment],
             "decision": "baseline-only" if comparison is None else comparison["decision"],
         },
@@ -846,12 +1103,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "extractionPerformance": (
             _load(paths["m1Features"])["performance"]
             if args.experiment == "M1"
+            else _load(paths["t2Features"])["performance"]
+            if args.experiment == "T2"
             else None
         ),
         "profiles": profiles,
         "parity": parity,
         "comparison": comparison,
         "compositionDiagnostic": composition_diagnostic,
+        "featureImportance": feature_importance,
         "sources": {
             **{
                 name: {"path": str(paths[name]), "sha256": hashes[name]}
@@ -870,6 +1130,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "development plan before this run."
                 )
             ),
+            *(
+                [
+                    "T2 was trained only because the user explicitly authorized reuse of the opened labels.",
+                    "A T2 gain cannot authorize promotion or runtime porting without new recording-held gold.",
+                    "The two single-value profiles are descriptive ablations, not model-selection contenders.",
+                ]
+                if args.experiment == "T2"
+                else []
+            ),
         ],
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -887,6 +1156,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--gap-features", type=Path, default=DEFAULT_GAP_FEATURES)
     parser.add_argument("--visual-features", type=Path, default=DEFAULT_VISUAL_FEATURES)
     parser.add_argument("--m1-features", type=Path, default=DEFAULT_M1_FEATURES)
+    parser.add_argument("--t2-features", type=Path, default=DEFAULT_T2_FEATURES)
     parser.add_argument("--experiment", choices=tuple(DEFAULT_OUTPUTS), default="E0")
     parser.add_argument("--output", type=Path)
     parser.add_argument(

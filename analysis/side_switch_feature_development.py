@@ -165,6 +165,26 @@ T2_PROFILE = FeatureProfile(
 )
 
 
+T2_SWAP_ONLY_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-transport-swap-margin-t2-ablation",
+    feature_names=(*BASE_FEATURE_NAMES, T2_CORE_FEATURE_NAMES[0]),
+    hypothesis=(
+        "descriptive T2 ablation measuring endpoint cross-side transport direction "
+        "without conditional identity similarity"
+    ),
+)
+
+
+T2_CONDITIONAL_ONLY_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-conditional-identity-t2-ablation",
+    feature_names=(*BASE_FEATURE_NAMES, T2_CORE_FEATURE_NAMES[1]),
+    hypothesis=(
+        "descriptive T2 ablation measuring conditional cross-side identity "
+        "similarity without the transport swap margin"
+    ),
+)
+
+
 def swap_interaction_features(features: Mapping[str, float]) -> dict[str, float]:
     """Materialize the preregistered I1 swap-specific interaction bundle."""
 
@@ -605,6 +625,10 @@ def evaluate_profile(
                 "heldRecordingId": held_id,
                 "threshold": threshold,
                 "fitHardNegativesByRecording": hard_negatives,
+                "fitStandardizedWeights": {
+                    "featureNames": list(profile.feature_names),
+                    "weights": [float(value) for value in model.weights],
+                },
                 "heldCandidateScores": [
                     {
                         "eventId": str(row["eventId"]),
