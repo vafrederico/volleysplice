@@ -941,6 +941,11 @@ This requires frames during the candidate gap, which the current visual path doe
 sample. It should therefore be a distinct extraction/candidate experiment with an
 explicit frame and latency budget. Do not hide its cost inside P1.
 
+The first exact M1 contract was subsequently frozen in
+[Side-switch M1 foreground-motion experiment](./side-switch-m1-foreground-motion-plan-2026-08-24.md).
+It is boundary-only and feature-only, uses six local flow pairs across each frozen gap,
+and does not reopen P1/P2 or change candidate generation.
+
 ## Build batches versus model experiments
 
 The following distinction is the direct answer to whether features should be added in
