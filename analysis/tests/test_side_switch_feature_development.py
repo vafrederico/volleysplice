@@ -22,6 +22,7 @@ from analysis.side_switch_feature_development import (
     T5_PROFILE,
     T14_PROFILE,
     T16_PROFILE,
+    T18_PROFILE,
     apply_profile,
     gap_shape_features,
     metric_delta,
@@ -236,6 +237,14 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
             T16_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *T16_CORE_FEATURE_NAMES)
         )
         self.assertEqual(len(T16_PROFILE.feature_names), 36)
+
+    def test_t18_profile_appends_only_representative_margin(self):
+        from analysis.side_switch_t18_representativeness import T18_CORE_FEATURE_NAMES
+
+        self.assertEqual(
+            T18_PROFILE.feature_names, (*BASE_FEATURE_NAMES, *T18_CORE_FEATURE_NAMES)
+        )
+        self.assertEqual(len(T18_PROFILE.feature_names), 35)
 
     def test_gap_shape_features_match_consensus_trace(self):
         times = np.arange(0.0, 3.25, 0.25)

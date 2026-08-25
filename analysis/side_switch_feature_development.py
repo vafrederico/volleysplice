@@ -23,6 +23,7 @@ from analysis.side_switch_t4_selective_far import T4_CORE_FEATURE_NAMES
 from analysis.side_switch_t5_court_tracking import T5_CORE_FEATURE_NAMES
 from analysis.side_switch_t14_dominant_tracklet_medoid import T14_CORE_FEATURE_NAMES
 from analysis.side_switch_t16_source_resolved import T16_CORE_FEATURE_NAMES
+from analysis.side_switch_t18_representativeness import T18_CORE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
@@ -226,6 +227,16 @@ T16_PROFILE = FeatureProfile(
     hypothesis=(
         "separate signed near-source and far-source medoid assignment advantages "
         "preserve transferable direction hidden by averaging or consensus"
+    ),
+)
+
+
+T18_PROFILE = FeatureProfile(
+    identifier="boundary-union34-plus-representative-medoid-t18",
+    feature_names=(*BASE_FEATURE_NAMES, *T18_CORE_FEATURE_NAMES),
+    hypothesis=(
+        "worst-side medoid-to-pooled representativeness suppresses role-ambiguous "
+        "signed transport while retaining coherent dominant-team direction"
     ),
 )
 
