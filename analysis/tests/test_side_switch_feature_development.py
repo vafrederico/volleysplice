@@ -10,6 +10,7 @@ from analysis.side_switch_feature_development import (
     GAP_SHAPE_FEATURE_NAMES,
     INTERACTION_FEATURE_NAMES,
     INTERACTION_PROFILE,
+    Q1_PROFILE,
     apply_profile,
     gap_shape_features,
     metric_delta,
@@ -130,6 +131,18 @@ class SideSwitchFeatureDevelopmentTest(unittest.TestCase):
             (*BASE_FEATURE_NAMES, *INTERACTION_FEATURE_NAMES),
         )
         self.assertTrue(all(name in row["features"] for name in INTERACTION_FEATURE_NAMES))
+
+    def test_q1_profile_replaces_collapsed_values(self):
+        from analysis.side_switch_visual_summary_v2 import (
+            Q1_FEATURE_NAMES,
+            Q1_REMOVED_FEATURE_NAMES,
+        )
+
+        self.assertEqual(len(Q1_PROFILE.feature_names), 37)
+        self.assertTrue(set(Q1_FEATURE_NAMES).issubset(Q1_PROFILE.feature_names))
+        self.assertTrue(
+            set(Q1_REMOVED_FEATURE_NAMES).isdisjoint(Q1_PROFILE.feature_names)
+        )
 
     def test_gap_shape_features_match_consensus_trace(self):
         times = np.arange(0.0, 3.25, 0.25)

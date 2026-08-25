@@ -20,6 +20,10 @@ from analysis.side_switch_production_state import STATE_GATE_FEATURE_NAMES
 from analysis.side_switch_v3 import V3Event, average_precision
 from analysis.side_switch_v5 import VISUAL_FEATURE_NAMES
 from analysis.side_switch_v6 import V6Model, matrix_for
+from analysis.side_switch_visual_summary_v2 import (
+    Q1_FEATURE_NAMES,
+    Q1_REMOVED_FEATURE_NAMES,
+)
 
 
 BASE_FEATURE_NAMES = (
@@ -88,6 +92,25 @@ BASELINE_PROFILE = FeatureProfile(
     identifier="union34-v1",
     feature_names=BASE_FEATURE_NAMES,
     hypothesis="exact promoted 34-input control",
+)
+
+
+Q1_PROFILE = FeatureProfile(
+    identifier="directional-quality-q1",
+    feature_names=(
+        *(
+            name
+            for name in VISUAL_FEATURE_NAMES
+            if name not in Q1_REMOVED_FEATURE_NAMES
+        ),
+        *Q1_FEATURE_NAMES,
+        *STATE_GATE_FEATURE_NAMES,
+        *DERIVED_FEATURE_NAMES,
+    ),
+    hypothesis=(
+        "raw before/after observation quality distinguishes post-transition collapse "
+        "from stable two-sided visibility better than minima and absolute changes"
+    ),
 )
 
 
@@ -554,6 +577,7 @@ def evaluate_profile(
     )
     strict = evaluate_predictions(rows, predictions, markers, 0.0, inventory=True)
     row_ap = average_precision(labels_array, scores)
+    row_brier = float(np.mean((scores - labels_array) ** 2))
     by_kind: dict[str, Any] = {}
     for kind in sorted({str(row["kind"]) for row in rows}):
         indexes = np.asarray(
@@ -571,6 +595,9 @@ def evaluate_profile(
             "candidates": len(indexes),
             "positiveCandidateLabels": int(np.sum(labels_array[indexes])),
             "rowAveragePrecision": average_precision(labels_array[indexes], scores[indexes]),
+            "rowBrierScore": float(
+                np.mean((scores[indexes] - labels_array[indexes]) ** 2)
+            ),
             "primary": _metrics_without_recordings(
                 evaluate_predictions(rows, kind_predictions, markers, PADDING_SECONDS)
             ),
@@ -595,6 +622,7 @@ def evaluate_profile(
             / sum(len(value) for value in markers.values()),
         },
         "rowAveragePrecision": row_ap,
+        "rowBrierScore": row_brier,
         "strict": strict,
         "primary": primary,
         "byCandidateKind": by_kind,
@@ -636,6 +664,7 @@ def metric_delta(
 def concise_metrics(result: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "rowAveragePrecision": result["rowAveragePrecision"],
+        "rowBrierScore": result.get("rowBrierScore"),
         "strict": _metrics_without_recordings(result["strict"]),
         "primary": _metrics_without_recordings(result["primary"]),
     }

@@ -177,6 +177,38 @@ SHA-256: `6ce23b43018d04045ba783510ad86ef3c6d8767fdc435c7684481fca89ba4871`
 Next independent comparisons: E4 Q1, E5 C1, and E6 boundary-only P1. They must use
 the cached rows without another video decode.
 
+### E4 — directional observation-quality replacement — rejected 2026-08-24
+
+Replaced the 11 symmetric/minimum quality fields with the 14 frozen before/after Q1
+values, producing a 37-input profile. The comparison reused the validated visual cache
+and changed no candidate, label, training objective, threshold protocol, or decoder.
+E0 parity remained exact inside the E4 artifact.
+
+| Metric | E0 control | E4 Q1 | E4 minus E0 |
+| --- | ---: | ---: | ---: |
+| Row AP | 44.4992% | 43.6554% | -0.8438 pp |
+| Row Brier score | 0.054145 | 0.053354 | -0.000790 |
+| ±4 proposals / TP / FP / FN | 52 / 29 / 23 / 21 | 57 / 29 / 28 / 21 | +5 / 0 / +5 / 0 |
+| ±4 precision | 55.7692% | 50.8772% | -4.8920 pp |
+| ±4 recall | 58.0000% | 58.0000% | 0.0000 pp |
+| ±4 F1 | 56.8627% | 54.2056% | -2.6571 pp |
+| Strict F1 | 45.0980% | 44.8598% | -0.2382 pp |
+| Frozen post-observation-collapse FP slice | 16 selected | 14 selected | -2 FP |
+
+Decision: **reject Q1 and do not prune individual directional values or enter Q1 into
+the compact-winner sequence**. Direction helped the named error slice and the Brier
+score slightly, but the replacement added five false positives elsewhere with no
+recall gain. It fails the primary-F1 and precision gates. Preserve the raw directional
+values in the cache as diagnostics; do not ship this 37-input representation.
+
+Artifact:
+`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-feature-development-e4-directional-q1-v1.json`
+
+SHA-256: `62ec47b13fb385114a5283b769042bd3d9c85e511ec87ca3a242c2bfeb2e5c80`
+
+Next independent comparison: E5, the four-value C1 camera/scene-confounder bundle on
+top of the original 34-input control.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted
@@ -365,6 +397,10 @@ The shared extraction run freezes the following details before E4–E6 are train
   two observations on a side, unavailable within-side continuity is encoded as neutral
   `0.0`, and `minimumPersistentContextFraction` exposes the missing context. No P1
   value is imputed onto internal-flank candidates.
+- The Q1 target slice is frozen as baseline outer-held false proposals for which the
+  after window has lower proposal coverage or lower proposal count than the before
+  window. In addition to the common accuracy gates, Q1 must select fewer of these
+  post-observation-collapse false proposals.
 
 All four families are extracted together from shared frames, but Q1, C1, and P1 remain
 independent model comparisons. The cache must reconstruct all existing 22 visual

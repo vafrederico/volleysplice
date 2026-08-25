@@ -18,6 +18,7 @@ from analysis.side_switch_feature_development import (
     DECODER,
     GAP_SHAPE_PROFILE,
     INTERACTION_PROFILE,
+    Q1_PROFILE,
     concise_metrics,
     evaluate_profile,
     metric_delta,
@@ -32,10 +33,12 @@ DEFAULT_MODEL = ROOT / "models/side-switch-hard-negative-mining-v1/model.json"
 DEFAULT_EVALUATION = REPORTS / "side-switch-hard-negative-mining-v1-evaluation.json"
 DEFAULT_IMPORTANCE = REPORTS / "side-switch-feature-importance-2026-08-24.json"
 DEFAULT_GAP_FEATURES = REPORTS / "side-switch-gap-shape-features-v1.json"
+DEFAULT_VISUAL_FEATURES = REPORTS / "side-switch-visual-summary-v2-features-v1.json"
 DEFAULT_OUTPUTS = {
     "E0": REPORTS / "side-switch-feature-development-e0-baseline-v1.json",
     "E1": REPORTS / "side-switch-feature-development-e1-interactions-v1.json",
     "E2": REPORTS / "side-switch-feature-development-e2-gap-shape-v1.json",
+    "E4": REPORTS / "side-switch-feature-development-e4-directional-q1-v1.json",
 }
 EXPECTED_SHA256 = {
     "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
@@ -44,6 +47,7 @@ EXPECTED_SHA256 = {
     "evaluation": "e67088b36d177d68c24587efcb186eab4201b5294532be1fdf978ef13aaacc4b",
     "importance": "b2c501c61e9f7b3aeb2bbb04cf73f3f9793e1831053a7762c08993924daea14d",
     "gapFeatures": "0f89dbbf7d7cda896100e3f0730a17ecbaba5dfd1cd0525993199a5246c5a777",
+    "visualFeatures": "6ce23b43018d04045ba783510ad86ef3c6d8767fdc435c7684481fca89ba4871",
 }
 
 
@@ -173,6 +177,15 @@ def _recording_deltas(
     return result
 
 
+def _standalone_checks(delta: Mapping[str, Any]) -> dict[str, bool]:
+    return {
+        "primaryF1GainAtLeast2pp": delta["primaryF1"] >= 0.02 - 1e-12,
+        "precisionDeclineNoMoreThan2pp": delta["primaryPrecision"] >= -0.02 - 1e-12,
+        "recallDeclineNoMoreThan2pp": delta["primaryRecall"] >= -0.02 - 1e-12,
+        "strictF1DeclineNoMoreThan1pp": delta["strictF1"] >= -0.01 - 1e-12,
+    }
+
+
 def _evaluate_e1_gate(
     baseline: Mapping[str, Any],
     candidate: Mapping[str, Any],
@@ -186,6 +199,30 @@ def _evaluate_e1_gate(
             str(item["feature"]) == "playerGlobalAppearanceChange"
             for item in row["topPositiveContributors"]
         )
+    }
+    baseline_selected = _selected_ids(baseline)
+    candidate_selected = _selected_ids(candidate)
+    baseline_slice = len(high_player_change_ids & baseline_selected)
+    candidate_slice = len(high_player_change_ids & candidate_selected)
+    checks = {
+        **_standalone_checks(delta),
+        "highPlayerChangeFalsePositiveSliceReduced": candidate_slice < baseline_slice,
+    }
+    return {
+        "decision": "pass" if all(checks.values()) else "fail",
+        "checks": checks,
+        "delta": delta,
+        "targetSlice": {
+            "definition": (
+                "baseline false proposals where playerGlobalAppearanceChange was "
+                "among the five strongest positive logit contributors"
+            ),
+            "frozenCandidateIds": sorted(high_player_change_ids),
+            "baselineSelected": baseline_slice,
+            "candidateSelected": candidate_slice,
+            "change": candidate_slice - baseline_slice,
+        },
+        "byRecordingDelta": _recording_deltas(baseline, candidate),
     }
 
 
@@ -213,10 +250,7 @@ def _evaluate_e2_gate(
     baseline_slice = len(gap_supported_ids & baseline_selected)
     candidate_slice = len(gap_supported_ids & candidate_selected)
     checks = {
-        "primaryF1GainAtLeast2pp": delta["primaryF1"] >= 0.02 - 1e-12,
-        "precisionDeclineNoMoreThan2pp": delta["primaryPrecision"] >= -0.02 - 1e-12,
-        "recallDeclineNoMoreThan2pp": delta["primaryRecall"] >= -0.02 - 1e-12,
-        "strictF1DeclineNoMoreThan1pp": delta["strictF1"] >= -0.01 - 1e-12,
+        **_standalone_checks(delta),
         "gapSupportedFalsePositiveSliceReduced": candidate_slice < baseline_slice,
     }
     return {
@@ -235,16 +269,38 @@ def _evaluate_e2_gate(
         },
         "byRecordingDelta": _recording_deltas(baseline, candidate),
     }
-    baseline_selected = _selected_ids(baseline)
+
+
+def _evaluate_e4_gate(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    delta = metric_delta(baseline, candidate)
+    baseline_false_selected = {
+        str(row["eventId"])
+        for fold in baseline["outerFolds"]
+        for row in fold["heldCandidateScores"]
+        if bool(row["selected"]) and int(row["label"]) == 0
+    }
+    post_observation_collapse = {
+        str(row["eventId"])
+        for row in rows
+        if (
+            float(row["features"]["afterProposalCoverage"])
+            < float(row["features"]["beforeProposalCoverage"])
+            or float(row["features"]["afterProposalCount"])
+            < float(row["features"]["beforeProposalCount"])
+        )
+    }
+    frozen_ids = baseline_false_selected & post_observation_collapse
     candidate_selected = _selected_ids(candidate)
-    baseline_slice = len(high_player_change_ids & baseline_selected)
-    candidate_slice = len(high_player_change_ids & candidate_selected)
     checks = {
-        "primaryF1GainAtLeast2pp": delta["primaryF1"] >= 0.02 - 1e-12,
-        "precisionDeclineNoMoreThan2pp": delta["primaryPrecision"] >= -0.02 - 1e-12,
-        "recallDeclineNoMoreThan2pp": delta["primaryRecall"] >= -0.02 - 1e-12,
-        "strictF1DeclineNoMoreThan1pp": delta["strictF1"] >= -0.01 - 1e-12,
-        "highPlayerChangeFalsePositiveSliceReduced": candidate_slice < baseline_slice,
+        **_standalone_checks(delta),
+        "postObservationCollapseFalsePositiveSliceReduced": len(
+            frozen_ids & candidate_selected
+        )
+        < len(frozen_ids),
     }
     return {
         "decision": "pass" if all(checks.values()) else "fail",
@@ -252,13 +308,13 @@ def _evaluate_e2_gate(
         "delta": delta,
         "targetSlice": {
             "definition": (
-                "baseline false proposals where playerGlobalAppearanceChange was "
-                "among the five strongest positive logit contributors"
+                "baseline false proposals where after-window proposal coverage or "
+                "proposal count is lower than the before window"
             ),
-            "frozenCandidateIds": sorted(high_player_change_ids),
-            "baselineSelected": baseline_slice,
-            "candidateSelected": candidate_slice,
-            "change": candidate_slice - baseline_slice,
+            "frozenCandidateIds": sorted(frozen_ids),
+            "baselineSelected": len(frozen_ids),
+            "candidateSelected": len(frozen_ids & candidate_selected),
+            "change": len(frozen_ids & candidate_selected) - len(frozen_ids),
         },
         "byRecordingDelta": _recording_deltas(baseline, candidate),
     }
@@ -275,6 +331,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         paths["importance"] = args.importance.expanduser().resolve()
     if args.experiment == "E2":
         paths["gapFeatures"] = args.gap_features.expanduser().resolve()
+    if args.experiment == "E4":
+        paths["visualFeatures"] = args.visual_features.expanduser().resolve()
     output = (
         args.output.expanduser().resolve()
         if args.output is not None
@@ -299,6 +357,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ] != [str(row["eventId"]) for row in feature_payload["rows"]]:
             raise ValueError("E2 gap feature artifact does not match the frozen row universe")
         experiment_rows = gap_payload["rows"]
+    elif args.experiment == "E4":
+        visual_payload = _load(paths["visualFeatures"])
+        if visual_payload["scope"] != feature_payload["scope"] or [
+            str(row["eventId"]) for row in visual_payload["rows"]
+        ] != [str(row["eventId"]) for row in feature_payload["rows"]]:
+            raise ValueError(
+                "E4 visual-summary artifact does not match the frozen row universe"
+            )
+        if visual_payload["parity"]["status"] != "exact-within-tolerance" or float(
+            visual_payload["parity"]["maximumAbsoluteDifference"]
+        ) > 1e-8:
+            raise ValueError("E4 visual-summary artifact did not pass current parity")
+        experiment_rows = visual_payload["rows"]
     audit = _load(paths["audit"])
     current_model = _load(paths["model"])
     current_evaluation = _load(paths["evaluation"])
@@ -331,6 +402,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         comparison = _evaluate_e2_gate(
             baseline, gap_shape, _load(paths["importance"])
         )
+    elif args.experiment == "E4":
+        directional = evaluate_profile(experiment_rows, markers, Q1_PROFILE)
+        profiles[Q1_PROFILE.identifier] = directional
+        comparison = _evaluate_e4_gate(baseline, directional, experiment_rows)
     script_path = Path(__file__).resolve()
     module_path = (script_path.parent.parent / "analysis/side_switch_feature_development.py").resolve()
     created_at = datetime.now(UTC).isoformat()
@@ -341,15 +416,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "status": "opened-development-only",
         "experiment": {
             "id": args.experiment,
-            "name": (
-                "freeze-and-reproduce-control"
-                if args.experiment == "E0"
-                else (
-                    "swap-specific-interactions"
-                    if args.experiment == "E1"
-                    else "production-gap-consensus-and-shape"
-                )
-            ),
+            "name": {
+                "E0": "freeze-and-reproduce-control",
+                "E1": "swap-specific-interactions",
+                "E2": "production-gap-consensus-and-shape",
+                "E4": "directional-observation-quality-replacement",
+            }[args.experiment],
             "decision": "baseline-only" if comparison is None else comparison["decision"],
         },
         "scope": {
@@ -400,6 +472,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--evaluation", type=Path, default=DEFAULT_EVALUATION)
     parser.add_argument("--importance", type=Path, default=DEFAULT_IMPORTANCE)
     parser.add_argument("--gap-features", type=Path, default=DEFAULT_GAP_FEATURES)
+    parser.add_argument("--visual-features", type=Path, default=DEFAULT_VISUAL_FEATURES)
     parser.add_argument("--experiment", choices=tuple(DEFAULT_OUTPUTS), default="E0")
     parser.add_argument("--output", type=Path)
     parser.add_argument(
