@@ -394,6 +394,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var relinkMessage by remember { mutableStateOf<String?>(null) }
     var relinkFailed by remember { mutableStateOf(false) }
     var sourceCheckNonce by remember { mutableLongStateOf(0L) }
+    var showSettings by remember { mutableStateOf(false) }
     var exportQueueCount by remember { mutableIntStateOf(ExportService.pendingCount()) }
     var exportStatuses by remember {
         mutableStateOf(
@@ -826,6 +827,10 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         )
     }
 
+    if (showSettings) {
+        AppSettingsDialog(onDismiss = { showSettings = false })
+    }
+
     val queueCount = projects.count {
         it.status == ProjectStatus.QUEUED || it.status == ProjectStatus.ANALYZING ||
             it.servingSideStatus == ServingSideAnalysisStatus.QUEUED ||
@@ -871,6 +876,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 )
                 guidedTourRestartSignal++
             },
+            onOpenSettings = { showSettings = true },
         )
     }
 
@@ -1016,6 +1022,7 @@ private fun ProjectHeaderBar(
     onNew: () -> Unit,
     onDelete: () -> Unit,
     onRestartTour: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -1095,6 +1102,11 @@ private fun ProjectHeaderBar(
                                 onClick = { expanded = false; onSelect(project) },
                             )
                         }
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Settings") },
+                            onClick = { expanded = false; onOpenSettings() },
+                        )
                     }
                 }
                 TextButton(onClick = onRestartTour) { Text("? Tour") }
@@ -1118,6 +1130,37 @@ private fun ProjectHeaderBar(
             }
         }
     }
+}
+
+@Composable
+private fun AppSettingsDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var storeError by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Settings") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Enjoying VolleyCut? A Google Play rating helps other volleyball players find it.")
+                OutlinedButton(
+                    onClick = {
+                        storeError = !AppRating.openPlayStore(context)
+                        if (!storeError) onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("settings-rate-app"),
+                ) { Text("Rate VolleyCut on Google Play") }
+                if (storeError) {
+                    Text("Google Play could not be opened on this device.", color = Danger, fontSize = 12.sp)
+                }
+                Text(
+                    "Rating opens Google Play. VolleyCut does not send your videos or rating activity anywhere.",
+                    color = Muted,
+                    fontSize = 12.sp,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
@@ -1851,6 +1894,7 @@ private fun EditorScreen(
     var pendingExportIntervals by remember { mutableStateOf<List<FinalCutInterval>?>(null) }
     var feedbackExporting by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
+    var showRatingPrompt by remember { mutableStateOf(AppRating.hasPendingPrompt(context)) }
     var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
     var suppressionPreparing by remember { mutableStateOf(false) }
     var selectedScoreMarkerId by remember { mutableStateOf<String?>(null) }
@@ -2135,7 +2179,7 @@ private fun EditorScreen(
 
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
+            override fun onReceive(receiverContext: Context?, intent: Intent?) {
                 if (intent?.action != ExportService.ACTION_PROGRESS) return
                 if (intent.getStringExtra(ExportService.EXTRA_PROJECT_ID) != project.id) return
                 exportState = ExportUiState(
@@ -2144,6 +2188,9 @@ private fun EditorScreen(
                     progress = intent.getIntExtra(ExportService.EXTRA_PROGRESS, 0),
                     detail = intent.getStringExtra(ExportService.EXTRA_DETAIL).orEmpty(),
                 )
+                if (exportState.status == "complete" && AppRating.hasPendingPrompt(context)) {
+                    showRatingPrompt = true
+                }
             }
         }
         ContextCompat.registerReceiver(
@@ -2153,6 +2200,34 @@ private fun EditorScreen(
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
+
+    if (showRatingPrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                AppRating.deferPrompt(context)
+                showRatingPrompt = false
+            },
+            title = { Text("Enjoying VolleyCut?") },
+            text = {
+                Text("Your highlight video is ready. If VolleyCut helped, would you rate it on Google Play?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        AppRating.openPlayStore(context)
+                        showRatingPrompt = false
+                    },
+                    modifier = Modifier.testTag("export-rate-app"),
+                ) { Text("Rate VolleyCut") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    AppRating.deferPrompt(context)
+                    showRatingPrompt = false
+                }) { Text("Not now") }
+            },
+        )
     }
 
     LaunchedEffect(draft) {

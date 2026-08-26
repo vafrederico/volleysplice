@@ -1,6 +1,6 @@
 # VolleyCut Google Play listing
 
-Prepared: 2026-08-19
+Prepared: 2026-08-26
 
 ## Main listing
 
@@ -8,37 +8,57 @@ Prepared: 2026-08-19
 
 VolleyCut
 
-**Short description (80/80 characters)**
+**Short description (78/80 characters)**
 
-Find volleyball rallies on-device and trim them into shareable highlight videos.
+Offline volleyball video editor that finds rallies and builds highlight reels.
 
 **Full description**
 
-Turn a long volleyball recording into a focused highlight video without uploading the footage.
+Turn a full volleyball match into a polished highlight reelâ€”without uploading your footage or needing an internet connection.
 
-VolleyCut analyzes a video you choose on your Android device, suggests the sections that contain rallies, and gives you precise controls to review and refine every cut before export.
+VolleyCut is an offline sports video editor and volleyball highlight maker built for players, coaches, parents, and clubs. Choose a recording, mark the part of the video that contains the game, and let on-device video and audio analysis automatically find likely rallies. Review every suggestion, fine-tune the clips, and export one shareable MP4 highlight video.
 
-Key features:
+MAKE VOLLEYBALL HIGHLIGHTS FASTER
 
-- On-device rally detection using video and audio cues
-- Persistent projects that can be resumed later
-- Review flags for lower-confidence and model-disagreement ranges
-- Adjustable padding before and after each rally
-- Automatic joining of short gaps for smoother highlights
-- Manual missed-rally cuts and ignored source sections
-- Final-cut preview with precise playback and boundary controls
-- MP4 highlight export and optional edit-list export
-- Reusable local feature cache for faster repeat analysis
+- Automatically find likely volleyball rallies in long match recordings
+- Turn game footage into a compact highlight reel or coaching video
+- Keep the action you want and remove dead time between points
+- Create and save multiple video-editing projects on your phone
 
-Private by design:
+EDIT EVERY CLIP YOUR WAY
+
+- Add adjustable time before and after detected rallies so serves, celebrations, and context are not cut off
+- Join short gaps between nearby plays for smoother volleyball highlights
+- Trim start and end boundaries with precise playback controls
+- Split a rally, add a missed rally manually, or remove an unwanted clip
+- Mark ignored source sections so breaks and unusable footage stay out of the final video
+- Review lower-confidence cuts and model disagreements before exporting
+- Preview the final cut and jump between retained clips
+
+OPTIONAL SCORE TOOLS
+
+- Track points from inferred serve and team-side markers
+- Correct score events and team switches during review
+- Preview an optional score overlay and include it in the exported highlight video
+
+EXPORT AND CONTINUE ANYWHERE
+
+- Export edited volleyball clips as a standard MP4 video
+- Save an exact JSON edit list for another workflow
+- Resume saved projects without analyzing the same recording again
+- Reuse locally cached video and audio features for faster repeat edits
+- Share the finished volleyball highlight reel using your usual Android apps
+
+PRIVATE, OFFLINE VIDEO EDITING
 
 - Your selected recordings are processed on your device
-- VolleyCut has no internet permission
+- Automatic rally detection works without internet access
+- VolleyCut has no internet permission; opening the Play Store to rate the app is handled by Android
 - No account, ads, analytics, or tracking
 - Your original recording remains in the location you selected
 - You decide where exported files are saved
 
-Rally suggestions are assistive and may not be perfect. Review the proposed ranges before exporting your final video.
+VolleyCut's automatic rally detection is an editing aid and may not find every play perfectly. You stay in control: review the suggested clips, make manual cuts, adjust padding, and preview the result before exporting your volleyball highlights.
 
 VolleyCut is designed for 64-bit Android phones running Android 14 or later.
 
