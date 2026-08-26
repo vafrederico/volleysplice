@@ -749,12 +749,6 @@ export function ReviewEditor({
     void mutateIgnoredRanges((document) => {
       const overlaps = (row: { start: number; end: number }) =>
         row.start < end && row.end > start;
-      if (document.rallies.some(overlaps)) {
-        throw new Error("Ignored ranges cannot overlap a human-labeled rally.");
-      }
-      if (document.hardNegatives.some(overlaps)) {
-        throw new Error("Ignored ranges cannot overlap a hard-negative label.");
-      }
       if (document.ignoredIntervals.some(overlaps)) {
         throw new Error("This range overlaps an existing ignored range.");
       }

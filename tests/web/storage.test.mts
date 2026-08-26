@@ -6,6 +6,7 @@ import {
   getDataRoot,
   getIntakeAnalysesRoot,
   getIntakeWorkspace,
+  getIntakeWorkspaces,
   getModelFeedbackRoot,
 } from "../../lib/storage.ts";
 
@@ -45,6 +46,23 @@ test("storage supports a supplemental intake workspace", () => {
   assert.equal(getIntakeAnalysesRoot(), "/mnt/example/intake/analyses");
   if (previous === undefined) delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
   else process.env.VOLLEYCUT_INTAKE_WORKSPACE = previous;
+});
+
+test("storage includes every prepared intake workspace by default", () => {
+  const previousWorkspace = process.env.VOLLEYCUT_INTAKE_WORKSPACE;
+  const previousWorkspaces = process.env.VOLLEYCUT_INTAKE_WORKSPACES;
+  delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
+  delete process.env.VOLLEYCUT_INTAKE_WORKSPACES;
+  assert.deepEqual(getIntakeWorkspaces(), [
+    "/mnt/freenas/volleycut/intake-2026-08-13",
+    "/mnt/freenas/volleycut/intake-2026-08-25-shoreline-kb",
+  ]);
+  if (previousWorkspace === undefined)
+    delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
+  else process.env.VOLLEYCUT_INTAKE_WORKSPACE = previousWorkspace;
+  if (previousWorkspaces === undefined)
+    delete process.env.VOLLEYCUT_INTAKE_WORKSPACES;
+  else process.env.VOLLEYCUT_INTAKE_WORKSPACES = previousWorkspaces;
 });
 
 test("model-feedback imports default under data and support a durable override", () => {

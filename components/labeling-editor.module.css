@@ -523,6 +523,80 @@
 .markers .start { background: var(--label-teal); color: #fff; }
 .markers .end { background: var(--label-orange); color: #fff; }
 .markers .deleteSelected { border-color: #9b3822; color: #9b3822; }
+.markers .mergeSelected { border-color: var(--label-teal); color: var(--label-teal); }
+
+.serveDecisionPanel {
+  display: grid;
+  grid-template-columns: minmax(78px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  box-sizing: border-box;
+  width: min(330px, 100%);
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #b9b8b0;
+  background: #f8f7f2;
+}
+
+.serveDecisionPanel > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.serveDecisionPanel > span b,
+.serveDecisionPanel > span small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.serveDecisionPanel > span b { color: #77796f; font-weight: 500; }
+.serveDecisionPanel > span small { color: var(--label-ink); }
+
+.serveDecisionPanel > div {
+  display: flex;
+  gap: 3px;
+}
+
+.serveDecisionPanel button {
+  min-width: 42px;
+  padding: 5px 6px;
+  border: 1px solid #b9b8b0;
+  background: #fff;
+  color: #55574f;
+  cursor: pointer;
+  font: 700 9px "Atkinson Hyperlegible Mono", monospace;
+}
+
+.serveDecisionPanel button:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+
+.serveDecisionPanel .removeServeDecision {
+  border-color: #c53f2a;
+  color: #9b2f20;
+}
+
+.serveDecisionPanel button[data-side="near"][data-selected="true"] {
+  border-color: var(--label-teal);
+  background: var(--label-teal);
+  color: #fff;
+}
+
+.serveDecisionPanel button[data-side="far"][data-selected="true"] {
+  border-color: #275fc2;
+  background: #275fc2;
+  color: #fff;
+}
+
+.serveDecisionPanel button[data-side="review"][data-selected="true"] {
+  border-color: #c08d00;
+  background: #f2c94c;
+  color: var(--label-ink);
+}
 
 .markerChoice {
   display: grid;
@@ -884,6 +958,18 @@
 }
 
 .selectedRow > strong { color: var(--label-teal); }
+
+.mergeSelectedRow {
+  padding-inline: 9px;
+  background: #e3f6f4;
+  box-shadow: inset 5px 0 0 var(--label-teal);
+}
+
+.mergeSelectedRow > strong::after {
+  content: " MERGE";
+  color: var(--label-teal);
+  font: 9px "Atkinson Hyperlegible Mono", monospace;
+}
 
 .invalidRow {
   padding-inline: 9px;

@@ -4,7 +4,10 @@ import type { TrainingCorpus } from "./analysis-types.ts";
 
 const DEFAULT_NO_BEACH_WORKSPACE =
   "/mnt/freenas/volleycut/labeling-v1-2026-08-09-no-beach-2026-08-12";
-const DEFAULT_INTAKE_WORKSPACE = "/mnt/freenas/volleycut/intake-2026-08-13";
+const DEFAULT_INTAKE_WORKSPACES = [
+  "/mnt/freenas/volleycut/intake-2026-08-13",
+  "/mnt/freenas/volleycut/intake-2026-08-25-shoreline-kb",
+] as const;
 
 export function getDataRoot(): string {
   const configured = process.env.VOLLEYCUT_DATA_ROOT?.trim();
@@ -36,7 +39,7 @@ export function getIntakeWorkspaces(): string[] {
       .map((value) => value.trim())
       .filter(Boolean) ?? []),
   ];
-  const roots = configured.length > 0 ? configured : [DEFAULT_INTAKE_WORKSPACE];
+  const roots = configured.length > 0 ? configured : DEFAULT_INTAKE_WORKSPACES;
   return [...new Set(roots.map((root) => path.resolve(root)))];
 }
 

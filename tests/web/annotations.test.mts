@@ -48,6 +48,16 @@ test("legacy label documents remain valid without optional experiment fields", (
   assert.equal(parsed.rallies[0].terminalCue, undefined);
 });
 
+test("ignored spans can overlay rally and hard-negative labels", () => {
+  const value = fixture();
+  value.ignoredIntervals = [{ start: 15, end: 35, reason: "ambiguous" }];
+  value.hardNegatives = [
+    { start: 30, end: 40, category: "foreground-crossing" },
+  ];
+  const parsed = parseLabelDocument(value);
+  assert.deepEqual(parsed.ignoredIntervals, value.ignoredIntervals);
+});
+
 test("parser accepts editable model serve and side-switch markers", () => {
   const value = fixture();
   Object.assign(value, {

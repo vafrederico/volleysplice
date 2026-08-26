@@ -313,12 +313,8 @@ function validateDraftContent(
       "side switches must be finite, in range, strictly ordered points with optional notes",
     );
   }
-  if (
-    intervalsOverlap(document.rallies, document.ignoredIntervals) ||
-    intervalsOverlap(document.rallies, document.hardNegatives) ||
-    intervalsOverlap(document.ignoredIntervals, document.hardNegatives)
-  ) {
-    throw new LabelingDraftValidationError("rallies, ignored spans, and hard negatives cannot overlap");
+  if (intervalsOverlap(document.rallies, document.hardNegatives)) {
+    throw new LabelingDraftValidationError("rallies and hard negatives cannot overlap");
   }
   if (
     document.rallies.some(

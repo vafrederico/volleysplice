@@ -59,8 +59,15 @@ type RallyTimelineProps = {
   markers?: TimelineMarker[];
   selectedTrackId?: string;
   selectedIntervalId?: string;
+  selectedIntervalIds?: readonly string[];
   ariaLabel?: string;
-  onSeek?: (time: number, trackId: string, intervalId?: string) => void;
+  onSeek?: (
+    time: number,
+    trackId: string,
+    intervalId?: string,
+    interaction?: { shiftKey: boolean },
+  ) => void;
+  onMarkerSeek?: (time: number, trackId: string, markerId: string) => void;
   onTrackSelect?: (trackId: string) => void;
 };
 
@@ -71,8 +78,10 @@ export function RallyTimeline({
   markers = [],
   selectedTrackId,
   selectedIntervalId,
+  selectedIntervalIds = [],
   ariaLabel = "Rally timeline",
   onSeek,
+  onMarkerSeek,
   onTrackSelect,
 }: RallyTimelineProps) {
   const ticks = timelineTicks(duration);
@@ -122,7 +131,8 @@ export function RallyTimeline({
                 data-selected={
                   track.id === selectedTrackId &&
                   interval.selectionId !== null &&
-                  (interval.selectionId ?? interval.id) === selectedIntervalId
+                  ((interval.selectionId ?? interval.id) === selectedIntervalId ||
+                    selectedIntervalIds.includes(interval.selectionId ?? interval.id))
                     ? "true"
                     : undefined
                 }
@@ -131,13 +141,16 @@ export function RallyTimeline({
                   left: `${timelinePercent(interval.start, duration)}%`,
                   width: `${timelinePercent(interval.end - interval.start, duration)}%`,
                 }}
-                onClick={() => onSeek?.(
-                  interval.start,
-                  track.id,
-                  interval.selectionId === null
-                    ? undefined
-                    : interval.selectionId ?? interval.id,
-                )}
+                onClick={(event) =>
+                  onSeek?.(
+                    interval.start,
+                    track.id,
+                    interval.selectionId === null
+                      ? undefined
+                      : interval.selectionId ?? interval.id,
+                    { shiftKey: event.shiftKey },
+                  )
+                }
                 title={interval.title ?? `${interval.id}: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
                 aria-label={`Seek to ${interval.id} at ${formatTime(interval.start)}`}
               />
@@ -150,7 +163,11 @@ export function RallyTimeline({
                 className={styles.marker}
                 data-tone={marker.tone}
                 style={{ left: `${timelinePercent(marker.time, duration)}%` }}
-                onClick={() => onSeek?.(marker.time, track.id)}
+                onClick={() =>
+                  onMarkerSeek
+                    ? onMarkerSeek(marker.time, track.id, marker.id)
+                    : onSeek?.(marker.time, track.id)
+                }
                 title={marker.title}
                 aria-label={marker.title}
               />

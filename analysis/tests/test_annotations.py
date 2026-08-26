@@ -320,9 +320,20 @@ class AnnotationDocumentTests(unittest.TestCase):
         with self.assertRaisesRegex(ManifestError, "endConfidence must be between"):
             load_label_document(self.labels, require_video=False)
 
-    def test_rejects_overlap_between_rally_and_ignored_time(self) -> None:
+    def test_ignored_time_can_overlay_rallies_and_hard_negatives(self) -> None:
         payload = self.complete_payload()
-        payload["ignoredIntervals"] = [{"start": 11.5, "end": 13.0, "reason": "ambiguous"}]
+        payload["ignoredIntervals"] = [
+            {"start": 11.5, "end": 36.0, "reason": "ambiguous"}
+        ]
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        document = load_label_document(self.labels, require_video=False)
+        self.assertEqual(document.ignored_intervals[0].start, 11.5)
+
+    def test_rejects_overlap_between_rally_and_hard_negative(self) -> None:
+        payload = self.complete_payload()
+        payload["hardNegatives"] = [
+            {"start": 11.5, "end": 13.0, "category": "foreground-crossing"}
+        ]
         self.labels.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaisesRegex(ManifestError, "must not overlap rallies"):
             load_label_document(self.labels, require_video=False)

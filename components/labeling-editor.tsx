@@ -39,6 +39,12 @@ import {
   productionModelAgreementLabel,
 } from "@/lib/production-ensemble";
 import {
+  findClosestNextRallyIndex,
+  findServeMarkerIndexForRally,
+  findServeMarkerRallyIndex,
+  mergeSelectedRallies,
+} from "@/lib/rally-label-editing";
+import {
   buildLiveTimeComparisonSegments,
   calculateF1,
   calculateLiveTimeMetrics,
@@ -297,6 +303,9 @@ export function LabelingEditor() {
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [rallyStart, setRallyStart] = useState<number | null>(null);
+  const [mergeRallyIndexes, setMergeRallyIndexes] = useState<number[]>([]);
+  const [focusedServeMarkerIndex, setFocusedServeMarkerIndex] =
+    useState<number | null>(null);
   const [ignoredStart, setIgnoredStart] = useState<number | null>(null);
   const [negativeStart, setNegativeStart] = useState<number | null>(null);
   const [negativeCategory, setNegativeCategory] = useState("foreground-crossing");
@@ -422,11 +431,6 @@ export function LabelingEditor() {
     };
   }, []);
 
-  const allRows = useMemo(() => {
-    if (!labels) return [];
-    return [...labels.rallies, ...labels.ignoredIntervals, ...labels.hardNegatives];
-  }, [labels]);
-
   const selectedRallyIndex = useMemo(
     () =>
       labels?.rallies.findIndex(
@@ -460,12 +464,35 @@ export function LabelingEditor() {
         : previousRallyIndex;
   const sidebarRally =
     labels && sidebarRallyIndex >= 0 ? labels.rallies[sidebarRallyIndex] : null;
-  const sidebarServeMarker = useMemo(() => {
-    if (!labels || !sidebarRally) return null;
-    return labels.serveMarkers.find(
-      (marker) => Math.abs(marker.time - sidebarRally.start) <= 2,
-    ) ?? null;
-  }, [labels, sidebarRally]);
+  const sidebarServeMarkerIndex = labels && sidebarRally
+    ? findServeMarkerIndexForRally(
+        labels.rallies,
+        labels.serveMarkers,
+        sidebarRallyIndex,
+      )
+    : -1;
+  const sidebarServeMarker =
+    labels && sidebarServeMarkerIndex >= 0
+      ? labels.serveMarkers[sidebarServeMarkerIndex]
+      : null;
+  const focusedServeMarker =
+    labels && focusedServeMarkerIndex !== null
+      ? labels.serveMarkers[focusedServeMarkerIndex] ?? null
+      : null;
+  const serveControlRallyIndex = focusedServeMarker && labels
+    ? findServeMarkerRallyIndex(labels.rallies, focusedServeMarker.time)
+    : sidebarRallyIndex;
+  const serveControlRally =
+    labels && serveControlRallyIndex >= 0
+      ? labels.rallies[serveControlRallyIndex]
+      : null;
+  const serveControlMarkerIndex = focusedServeMarker && focusedServeMarkerIndex !== null
+    ? focusedServeMarkerIndex
+    : sidebarServeMarkerIndex;
+  const serveControlMarker =
+    labels && serveControlMarkerIndex >= 0
+      ? labels.serveMarkers[serveControlMarkerIndex]
+      : null;
   const activeTrackletRallyIndex =
     labels && trackletRallyIndex !== null && labels.rallies[trackletRallyIndex]
       ? trackletRallyIndex
@@ -626,11 +653,7 @@ export function LabelingEditor() {
       issues.push("Separate touching rallies with a positive dead-time gap");
     }
     labels.rallies.forEach((row) => {
-      if (overlaps(row.start, row.end, labels.ignoredIntervals)) issues.push("A rally overlaps ignored time");
       if (overlaps(row.start, row.end, labels.hardNegatives)) issues.push("A rally overlaps a hard negative");
-    });
-    labels.ignoredIntervals.forEach((row) => {
-      if (overlaps(row.start, row.end, labels.hardNegatives)) issues.push("Ignored time overlaps a hard negative");
     });
     labels.sideSwitches.forEach((marker, index) => {
       if (
@@ -749,6 +772,8 @@ export function LabelingEditor() {
     try {
       const document = parseLabelDocument(JSON.parse(await file.text()));
       setLabels(document);
+      setMergeRallyIndexes([]);
+      setFocusedServeMarkerIndex(null);
       setProductionReference(null);
       setExperimentReferences([]);
       setSolReferenceRallies([]);
@@ -839,6 +864,8 @@ export function LabelingEditor() {
         }
       }
       setLabels(document);
+      setMergeRallyIndexes([]);
+      setFocusedServeMarkerIndex(null);
       setProductionReference(nextProductionReference);
       setExperimentReferences(nextExperimentReferences);
       setSolReferenceRallies(referenceRallies);
@@ -995,14 +1022,16 @@ export function LabelingEditor() {
   function seek(seconds: number) {
     const video = videoRef.current;
     if (!video) return;
+    setFocusedServeMarkerIndex(null);
     video.currentTime = Math.min(video.duration || Infinity, Math.max(0, video.currentTime + seconds));
     setCurrentTime(video.currentTime);
     persistPlaybackPosition(video, true);
   }
 
-  function seekTo(seconds: number) {
+  function seekTo(seconds: number, serveMarkerIndex: number | null = null) {
     const video = videoRef.current;
     if (!video) return;
+    setFocusedServeMarkerIndex(serveMarkerIndex);
     video.currentTime = Math.max(0, Math.min(video.duration || Infinity, seconds));
     setCurrentTime(video.currentTime);
     persistPlaybackPosition(video, true);
@@ -1209,14 +1238,109 @@ export function LabelingEditor() {
       (row) => row.start < time && time < row.end,
     );
     if (existingIndex >= 0) {
-      updateRally(existingIndex, { start: time });
-      setMessage(
-        `Moved rally ${existingIndex + 1} start to ${formatPreciseTime(time)}.`,
-      );
+      if (updateRally(existingIndex, { start: time })) {
+        setMessage(
+          `Moved rally ${existingIndex + 1} start to ${formatPreciseTime(time)}.`,
+        );
+      }
       return;
     }
     setRallyStart(time);
     setMessage("Rally start marked. Seek to the first instant live play has ended, then press E.");
+  }
+
+  function moveClosestNextRallyStart() {
+    if (!labels || !videoRef.current) return;
+    const time = roundTime(videoRef.current.currentTime);
+    const rallyIndex = findClosestNextRallyIndex(labels.rallies, time, timestampEpsilon);
+    if (rallyIndex < 0) {
+      setError("There is no later rally start to move.");
+      return;
+    }
+    const rally = labels.rallies[rallyIndex];
+    const otherRallies = labels.rallies.filter((_, index) => index !== rallyIndex);
+    if (
+      overlaps(time, rally.end, otherRallies) ||
+      overlaps(time, rally.end, labels.hardNegatives)
+    ) {
+      setError(
+        "Moving that start here would overlap another rally or a hard negative.",
+      );
+      return;
+    }
+    const serveMarkerIndex = findServeMarkerIndexForRally(
+      labels.rallies,
+      labels.serveMarkers,
+      rallyIndex,
+    );
+    if (
+      serveMarkerIndex >= 0 &&
+      labels.serveMarkers.some(
+        (marker, markerIndex) =>
+          markerIndex !== serveMarkerIndex &&
+          Math.abs(marker.time - time) <= timestampEpsilon,
+      )
+    ) {
+      setError("Another serve marker is already present at the target timestamp.");
+      return;
+    }
+    if (
+      updateRally(
+        rallyIndex,
+        { start: time },
+        serveMarkerIndex >= 0 ? { index: serveMarkerIndex, time } : undefined,
+      )
+    ) {
+      setMergeRallyIndexes([]);
+      setFocusedServeMarkerIndex(null);
+      setMessage(
+        `Moved rally ${rallyIndex + 1} start from ${formatPreciseTime(rally.start)} to ${formatPreciseTime(time)}${serveMarkerIndex >= 0 ? " and moved its serve marker with it" : ""}.`,
+      );
+    }
+  }
+
+  function toggleMergeRally(index: number) {
+    if (!labels?.rallies[index]) return;
+    setMergeRallyIndexes((current) =>
+      current.includes(index)
+        ? current.filter((selectedIndex) => selectedIndex !== index)
+        : [...current, index].sort((left, right) => left - right),
+    );
+    setError(null);
+    setMessage("Updated the rally merge selection. Shift-click a rally to toggle it.");
+  }
+
+  function mergeRallySelection() {
+    if (!labels) return;
+    const result = mergeSelectedRallies({
+      rallies: labels.rallies,
+      serveMarkers: labels.serveMarkers,
+      hardNegatives: labels.hardNegatives,
+      selectedIndexes: mergeRallyIndexes,
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setLabels(
+      markChanged({
+        ...labels,
+        rallies: result.rallies,
+        serveMarkers: result.serveMarkers,
+      }),
+    );
+    setMergeRallyIndexes([]);
+    setFocusedServeMarkerIndex(null);
+    setError(null);
+    seekTo(
+      Math.min(
+        result.mergedRally.end - timestampEpsilon,
+        result.mergedRally.start + 0.01,
+      ),
+    );
+    setMessage(
+      `Merged ${mergeRallyIndexes.length} rallies into rally ${result.mergedIndex + 1}${result.removedServeMarkerCount > 0 ? ` and removed ${result.removedServeMarkerCount} later serve ${result.removedServeMarkerCount === 1 ? "marker" : "markers"}` : ""}. The earliest serve marker was kept${result.movedServeMarkerToStart ? " and moved to the merged rally start" : ""}.`,
+    );
   }
 
   function moveRallyEnd(index: number, end: number): boolean {
@@ -1233,16 +1357,14 @@ export function LabelingEditor() {
     const otherRallies = labels.rallies.filter((_, rowIndex) => rowIndex !== index);
     if (
       overlaps(rally.start, end, otherRallies) ||
-      overlaps(rally.start, end, labels.ignoredIntervals) ||
       overlaps(rally.start, end, labels.hardNegatives)
     ) {
       setError(
-        "That end would overlap the next rally, an ignored span, or a hard negative.",
+        "That end would overlap the next rally or a hard negative.",
       );
       return false;
     }
-    setError(null);
-    updateRally(index, { end });
+    if (!updateRally(index, { end })) return false;
     setMessage(`Moved rally ${index + 1} end to ${formatPreciseTime(end)}.`);
     return true;
   }
@@ -1257,11 +1379,10 @@ export function LabelingEditor() {
     const otherRallies = labels.rallies.filter((_, rowIndex) => rowIndex !== index);
     if (
       overlaps(start, existing.end, otherRallies) ||
-      overlaps(start, existing.end, labels.ignoredIntervals) ||
       overlaps(start, existing.end, labels.hardNegatives)
     ) {
       setError(
-        "The split rally would overlap another rally, an ignored span, or a hard negative.",
+        "The split rally would overlap another rally or a hard negative.",
       );
       return false;
     }
@@ -1288,6 +1409,7 @@ export function LabelingEditor() {
     );
     setError(null);
     setLabels(markChanged({ ...labels, rallies }));
+    setMergeRallyIndexes([]);
     setRallyStart(null);
     setMessage(
       `Split rally ${index + 1} at ${formatPreciseTime(split)}: the first part now starts at ${formatPreciseTime(start)}, and the remainder ends at ${formatPreciseTime(existing.end)}.`,
@@ -1380,6 +1502,47 @@ export function LabelingEditor() {
     );
   }
 
+  function setCurrentRallyServeSide(side: ServeMarker["side"]) {
+    if (!labels || (!serveControlRally && !serveControlMarker)) {
+      setError("Seek into or immediately after a rally before setting its serving side.");
+      return;
+    }
+    if (serveControlMarkerIndex >= 0) {
+      updateServeMarker(serveControlMarkerIndex, { side });
+    } else if (serveControlRally) {
+      const serveMarkers = [
+        ...labels.serveMarkers,
+        { time: serveControlRally.start, side, origin: "manual" as const },
+      ].sort((left, right) => left.time - right.time);
+      setLabels(markChanged({ ...labels, serveMarkers }));
+    }
+    setError(null);
+    setMessage(
+      `Set ${serveControlRallyIndex >= 0 ? `rally ${serveControlRallyIndex + 1}` : `serve marker ${serveControlMarkerIndex + 1}`} serving side to ${side === "review" ? "needs review" : side}.`,
+    );
+  }
+
+  function removeCurrentRallyServeMarker() {
+    if (!labels || serveControlMarkerIndex < 0) {
+      setError("The current rally does not have a serve marker to remove.");
+      return;
+    }
+    const marker = labels.serveMarkers[serveControlMarkerIndex];
+    setLabels(
+      markChanged({
+        ...labels,
+        serveMarkers: labels.serveMarkers.filter(
+          (_, markerIndex) => markerIndex !== serveControlMarkerIndex,
+        ),
+      }),
+    );
+    setFocusedServeMarkerIndex(null);
+    setError(null);
+    setMessage(
+      `Removed the serve marker at ${formatPreciseTime(marker.time)}.`,
+    );
+  }
+
   function addInterval(start: number, end: number, kind: IntervalKind): boolean {
     if (!labels) return false;
     setError(null);
@@ -1387,8 +1550,15 @@ export function LabelingEditor() {
       setError("Interval end must be after its start.");
       return false;
     }
-    if (overlaps(start, end, allRows)) {
-      setError("That interval overlaps an existing rally, ignored span, or hard negative.");
+    const conflictingRows = kind === "ignored"
+      ? labels.ignoredIntervals
+      : [...labels.rallies, ...labels.hardNegatives];
+    if (overlaps(start, end, conflictingRows)) {
+      setError(
+        kind === "ignored"
+          ? "That interval overlaps an existing ignored span."
+          : "That interval overlaps an existing rally or hard negative.",
+      );
       return false;
     }
     const sortRows = <T extends { start: number }>(rows: T[]) =>
@@ -1396,6 +1566,7 @@ export function LabelingEditor() {
     if (kind === "rally") {
       const rally: RallyLabel = { start, end, tags: [] };
       setLabels(markChanged({ ...labels, rallies: sortRows([...labels.rallies, rally]) }));
+      setMergeRallyIndexes([]);
       setMessage(`Added rally ${formatPreciseTime(start)}–${formatPreciseTime(end)}.`);
     } else if (kind === "ignored") {
       const ignored: IgnoredInterval = { start, end, reason: "partial-rally" };
@@ -1428,6 +1599,9 @@ export function LabelingEditor() {
       if (key === " ") {
         event.preventDefault();
         togglePlayback();
+      } else if (key === "s" && event.shiftKey) {
+        event.preventDefault();
+        moveClosestNextRallyStart();
       } else if (key === "s") beginRally();
       else if (key === "e") finishRally();
       else if (key === "[") toggleIgnored();
@@ -1454,10 +1628,14 @@ export function LabelingEditor() {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  function updateRally(index: number, patch: Partial<RallyLabel>) {
-    if (!labels) return;
+  function updateRally(
+    index: number,
+    patch: Partial<RallyLabel>,
+    linkedServeMarker?: { index: number; time: number },
+  ): boolean {
+    if (!labels) return false;
     const existing = labels.rallies[index];
-    if (!existing) return;
+    if (!existing) return false;
     const candidate = { ...existing, ...patch };
     if (patch.start !== undefined || patch.end !== undefined) {
       const invalidTracklet = (candidate.playerTracklets ?? []).find((tracklet) => {
@@ -1474,13 +1652,24 @@ export function LabelingEditor() {
         setError(
           `Move or delete ${invalidTracklet.trackId}'s ${invalidTracklet.window} observations before changing this boundary.`,
         );
-        return;
+        return false;
       }
     }
     const rallies = labels.rallies.map((row, rowIndex) =>
       rowIndex === index ? candidate : row,
     );
-    setLabels(markChanged({ ...labels, rallies }));
+    const serveMarkers = linkedServeMarker
+      ? labels.serveMarkers
+          .map((marker, markerIndex) =>
+            markerIndex === linkedServeMarker.index
+              ? { ...marker, time: linkedServeMarker.time }
+              : marker,
+          )
+          .sort((left, right) => left.time - right.time)
+      : labels.serveMarkers;
+    setError(null);
+    setLabels(markChanged({ ...labels, rallies, serveMarkers }));
+    return true;
   }
 
   function updateRallyClassification(index: number, classification: string) {
@@ -1538,6 +1727,7 @@ export function LabelingEditor() {
         ),
       }),
     );
+    setFocusedServeMarkerIndex(null);
     setMessage(`Deleted serving-side marker ${index + 1}.`);
   }
 
@@ -1561,6 +1751,7 @@ export function LabelingEditor() {
         rallies: labels.rallies.filter((_, index) => index !== selectedRallyIndex),
       }),
     );
+    setMergeRallyIndexes([]);
     setError(null);
     setMessage(
       `Deleted rally ${selectedRallyIndex + 1} (${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}).`,
@@ -1571,6 +1762,7 @@ export function LabelingEditor() {
     if (!labels) return;
     if (kind === "rally") {
       setLabels(markChanged({ ...labels, rallies: labels.rallies.filter((_, row) => row !== index) }));
+      setMergeRallyIndexes([]);
     } else if (kind === "ignored") {
       setLabels(
         markChanged({
@@ -1833,6 +2025,13 @@ export function LabelingEditor() {
               {playheadInsideRally ? "Move rally start" : "Mark serve contact"} <kbd>S</kbd>
             </button>
             <button
+              onClick={moveClosestNextRallyStart}
+              disabled={!labels || !videoUrl}
+              title="Move the first rally start after the playhead to the current timestamp"
+            >
+              Move next start <kbd>Shift+S</kbd>
+            </button>
+            <button
               className={styles.end}
               onClick={finishRally}
               disabled={
@@ -1855,6 +2054,14 @@ export function LabelingEditor() {
               disabled={selectedRallyIndex < 0}
             >
               Delete selected <kbd>Del</kbd>
+            </button>
+            <button
+              className={styles.mergeSelected}
+              onClick={mergeRallySelection}
+              disabled={mergeRallyIndexes.length < 2}
+              title="Shift-click consecutive rally bars or rows, then merge them"
+            >
+              Merge selected ({mergeRallyIndexes.length})
             </button>
             <button onClick={toggleIgnored} disabled={!labels || !videoUrl}>
               {ignoredStart === null ? "Start ignored span" : "Finish ignored span"} <kbd>[ ]</kbd>
@@ -1881,6 +2088,50 @@ export function LabelingEditor() {
               Cancel <kbd>Esc</kbd>
             </button>
           </div>
+
+          {(serveControlRally || serveControlMarker) && (
+            <div className={styles.serveDecisionPanel}>
+              <span>
+                <b>
+                  {serveControlRally
+                    ? `R${String(serveControlRallyIndex + 1).padStart(3, "0")} server`
+                    : `SV${String(serveControlMarkerIndex + 1).padStart(3, "0")} marker`}
+                </b>
+                <small>
+                  {serveControlMarker
+                    ? serveControlMarker.side === "review"
+                      ? "Needs review"
+                      : `${serveControlMarker.side} side`
+                    : "No marker"}
+                </small>
+              </span>
+              <div
+                role="group"
+                aria-label={`${serveControlRally ? `R${String(serveControlRallyIndex + 1).padStart(3, "0")} server` : `SV${String(serveControlMarkerIndex + 1).padStart(3, "0")} marker`} decision`}
+              >
+                {(["near", "far", "review"] as const).map((side) => (
+                  <button
+                    type="button"
+                    key={side}
+                    data-side={side}
+                    data-selected={serveControlMarker?.side === side ? "true" : undefined}
+                    aria-pressed={serveControlMarker?.side === side}
+                    onClick={() => setCurrentRallyServeSide(side)}
+                  >
+                    {side === "review" ? "Review" : side[0].toUpperCase() + side.slice(1)}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={styles.removeServeDecision}
+                  disabled={!serveControlMarker}
+                  onClick={removeCurrentRallyServeMarker}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          )}
 
           {labels && (
             <>
@@ -2045,7 +2296,34 @@ export function LabelingEditor() {
               selectedIntervalId={
                 selectedRallyIndex >= 0 ? `rally-${selectedRallyIndex}` : undefined
               }
-              onSeek={(time) => seekTo(time)}
+              selectedIntervalIds={mergeRallyIndexes.map((index) => `rally-${index}`)}
+              onSeek={(time, trackId, intervalId, interaction) => {
+                if (
+                  interaction?.shiftKey &&
+                  trackId === "editable-rallies" &&
+                  intervalId?.startsWith("rally-")
+                ) {
+                  const rallyIndex = Number(intervalId.slice("rally-".length));
+                  if (Number.isInteger(rallyIndex)) toggleMergeRally(rallyIndex);
+                  return;
+                }
+                setMergeRallyIndexes([]);
+                seekTo(time);
+              }}
+              onMarkerSeek={(time, _trackId, markerId) => {
+                setMergeRallyIndexes([]);
+                if (markerId.startsWith("serve-marker-")) {
+                  const markerIndex = Number(markerId.slice("serve-marker-".length));
+                  if (Number.isInteger(markerIndex) && labels.serveMarkers[markerIndex]) {
+                    seekTo(time, markerIndex);
+                    setMessage(
+                      `Selected serve marker ${markerIndex + 1} at ${formatPreciseTime(time)}.`,
+                    );
+                    return;
+                  }
+                }
+                seekTo(time);
+              }}
               ariaLabel="Editable rally labels with read-only model and Sol references"
             />
             </>
@@ -2305,15 +2583,25 @@ export function LabelingEditor() {
         <section className={styles.tables}>
           <div className={styles.tableHeading}>
             <div><p className={styles.eyebrow}>REQUIRED</p><h2>Rally intervals</h2></div>
-            <span>{labels.rallies.length} rallies · click a time to seek</span>
+            <span>{labels.rallies.length} rallies · Shift-click consecutive rows to select a merge</span>
           </div>
           <div className={styles.rows}>
             {labels.rallies.map((row, index) => (
               <div
-                className={`${styles.row} ${selectedRallyIndex === index ? styles.selectedRow : ""} ${touchingRallyIndexes.has(index) ? styles.invalidRow : ""}`}
+                className={`${styles.row} ${selectedRallyIndex === index ? styles.selectedRow : ""} ${mergeRallyIndexes.includes(index) ? styles.mergeSelectedRow : ""} ${touchingRallyIndexes.has(index) ? styles.invalidRow : ""}`}
                 key={`rally-row-${index}`}
                 aria-current={selectedRallyIndex === index ? "true" : undefined}
                 aria-invalid={touchingRallyIndexes.has(index) ? "true" : undefined}
+                data-merge-selected={mergeRallyIndexes.includes(index) ? "true" : undefined}
+                onClickCapture={(event) => {
+                  if (!event.shiftKey) {
+                    setMergeRallyIndexes([]);
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleMergeRally(index);
+                }}
                 title={
                   touchingRallyIndexes.has(index)
                     ? "This rally touches an adjacent rally. Add a positive dead-time gap."

@@ -272,8 +272,6 @@ def load_manifest(path: str | Path, *, require_videos: bool = True) -> DatasetMa
             prefix,
             "ignoredIntervals",
         )
-        if _intervals_overlap(rallies, ignored_intervals):
-            raise ManifestError(f"{prefix}.ignoredIntervals must not overlap labeled rallies")
         roi = _read_roi(row.get("roi"), prefix)
         capture = row.get("capture", {})
         consent = row.get("consent", {})

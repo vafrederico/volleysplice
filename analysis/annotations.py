@@ -743,12 +743,8 @@ def load_label_document(
                     "completed rallies must have positive dead time between them "
                     f"(rallies {index} and {index + 1} touch at {current.start:.3f}s)"
                 )
-    if _intervals_overlap(rallies, ignored):
-        raise ManifestError("ignoredIntervals must not overlap rallies")
     if _intervals_overlap(rallies, hard_negatives):
         raise ManifestError("hardNegatives must not overlap rallies")
-    if _intervals_overlap(ignored, hard_negatives):
-        raise ManifestError("hardNegatives must not overlap ignoredIntervals")
     for index, row in enumerate(payload.get("hardNegatives", [])):
         category = row.get("category") if isinstance(row, dict) else None
         if category not in HARD_NEGATIVE_CATEGORIES:
