@@ -359,11 +359,12 @@ test("model feedback preserves initial inference and classifies corrections", ()
   );
   assert.deepEqual(bundle.corrections.scoreTracking.excludedRallyIds, [
     "R001",
+    "R002",
     "M002",
   ]);
   assert.equal(
     bundle.corrections.scoreTracking.derivedFinalScore.ignoredPointCount,
-    1,
+    0,
   );
   const imported = parseModelFeedback(bundle);
   assert.equal(imported.initialInference.servingSide?.features.columns, 237);
@@ -375,7 +376,7 @@ test("model feedback preserves initial inference and classifies corrections", ()
     {
       suggestionId: "suppression-logical-12500-13500",
       logicalId: "suppression-logical",
-      state: "dormant",
+      state: "suppressed",
       scope: "whole-rally",
     },
   ]);

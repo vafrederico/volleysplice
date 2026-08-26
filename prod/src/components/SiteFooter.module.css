@@ -5,8 +5,8 @@
   justify-content: space-between;
   gap: 30px;
   border-top: 1px solid #c5c3ba;
-  color: #77796f;
-  font: 500 10px/1.55 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  color: #68756f;
+  font: 500 12px/1.55 Manrope, Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 .copy {

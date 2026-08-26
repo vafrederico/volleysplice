@@ -340,7 +340,8 @@ function draftFromFeedback(
     beforePaddingSeconds: feedback.corrections.beforePaddingSeconds,
     afterPaddingSeconds: feedback.corrections.afterPaddingSeconds,
     joinGapSeconds: feedback.corrections.joinGapSeconds,
-    selectedSuppressionPolicy: suppression?.selectedPolicy ?? "none",
+    selectedSuppressionPolicy:
+      suppression?.selectedPolicy ?? base.selectedSuppressionPolicy,
     suppressionDecisionOverrides: suppression?.decisionOverrides ?? {},
     suppressionScopeOverrides: suppression?.suppressionScopeOverrides ?? {},
     userTouchedCutIds: suppression?.userTouchedCutIds ?? [],

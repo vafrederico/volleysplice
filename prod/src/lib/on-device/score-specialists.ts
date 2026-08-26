@@ -51,10 +51,10 @@ export async function inferScoreSpecialists(
     total: 1,
     detail:
       request.servingSide && request.sideSwitch
-        ? "Loading serving-side and team-switch models"
+        ? "Getting serve and side-switch markers ready"
         : request.servingSide
-          ? "Loading serving-side model"
-          : "Loading team-side switch model",
+          ? "Getting serve markers ready"
+          : "Getting side-switch markers ready",
   });
   const [servingPlan, switchPlan] = await Promise.all([
     request.servingSide
@@ -84,15 +84,15 @@ export async function inferScoreSpecialists(
           completed,
           total,
           detail: request.sideSwitch
-            ? `Shared serving + side-switch decode · ${completed}/${total} frames`
-            : `Sampling serving-side frames · ${completed}/${total}`,
+            ? `Checking serves and side switches · ${completed}/${total}`
+            : `Checking serve court sides · ${completed}/${total}`,
         });
       } else {
         request.sideSwitch?.onProgress?.({
           stage: "frames",
           completed,
           total,
-          detail: `Sampling team-side switch frames · ${completed}/${total}`,
+          detail: `Looking for team side switches · ${completed}/${total}`,
         });
       }
     },
@@ -109,7 +109,7 @@ export async function inferScoreSpecialists(
           stage: "features",
           completed,
           total,
-          detail: `Measuring serving side · ${completed}/${total} rallies`,
+          detail: `Checking serve court sides · ${completed}/${total} rallies`,
         }),
     );
     output.servingSide = artifacts.output;
@@ -117,7 +117,7 @@ export async function inferScoreSpecialists(
       stage: "complete",
       completed: artifacts.output.candidates.length,
       total: artifacts.output.candidates.length,
-      detail: `Serving-side verdicts ready · ${artifacts.output.candidates.length} rallies`,
+      detail: `Serve markers ready · ${artifacts.output.candidates.length} rallies checked`,
     });
   }
   if (request.sideSwitch) {
@@ -131,7 +131,7 @@ export async function inferScoreSpecialists(
           stage: "features",
           completed,
           total,
-          detail: `Comparing team sides · ${completed}/${total} candidates`,
+          detail: `Checking possible side switches · ${completed}/${total}`,
         }),
     );
     output.sideSwitch = artifacts.output;
@@ -139,7 +139,7 @@ export async function inferScoreSpecialists(
       stage: "complete",
       completed: artifacts.output.candidates.length,
       total: artifacts.output.candidates.length,
-      detail: `Team-side switch markers ready · ${artifacts.output.candidates.length} predicted`,
+      detail: `Side switches ready · ${artifacts.output.candidates.length} found`,
     });
   }
   return output;

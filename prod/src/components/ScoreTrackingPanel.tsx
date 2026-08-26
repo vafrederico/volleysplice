@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import type { InferenceProgressStep } from "@/lib/inference-progress";
 import {
   addServeMarker,
@@ -62,7 +61,7 @@ export function ScoreTrackingPanel({
   selectedServeMarkerId,
   inferenceStatus,
   inferenceMessage,
-  inferenceSteps,
+  inferenceSteps: _inferenceSteps,
   canRunInference,
   onChange,
   onSelectServeMarker,
@@ -126,20 +125,20 @@ export function ScoreTrackingPanel({
     : -1;
   const reviewSummary =
     reviewMarkers.length === 0
-      ? "No active serve verdicts need review"
+      ? "No serve markers need review"
       : reviewMarkers.length === 1
-        ? "1 active serve verdict needs review"
-        : `${reviewMarkers.length} active serve verdicts need review`;
+        ? "1 serve marker needs review"
+        : `${reviewMarkers.length} serve markers need review`;
   const displayedInferenceMessage = inferenceMessage
-    ? /\d+ serve verdicts? need review/i.test(inferenceMessage)
+    ? /\d+ serve (?:verdicts?|markers?) need review/i.test(inferenceMessage)
       ? inferenceMessage.replace(
-          /\d+ serve verdicts? need review/i,
+          /\d+ serve (?:verdicts?|markers?) need review/i,
           reviewSummary.toLowerCase(),
         )
       : inferenceStatus === "done"
         ? `${inferenceMessage.replace(/[.\s]+$/, "")} · ${reviewSummary.toLowerCase()}.`
         : inferenceMessage
-    : "The first serve sets the initial server. Each later serve identifies the previous rally winner; the last rally needs a later or manually added serve to be counted.";
+    : "Check any marker marked for review, then add missing serves or team side switches below.";
   const servingName =
     score.servingTeamId === "team-1"
       ? tracking.team1Name
@@ -166,17 +165,33 @@ export function ScoreTrackingPanel({
     >
       <header className={styles.scorePanelHeader}>
         <div>
-          <span>SCORE TRACKING · BETA</span>
-          <strong>Serving-side point history</strong>
+          <span>OPTIONAL SCOREBOARD</span>
+          <strong>Score and serve markers</strong>
         </div>
         <small>
-          {serves.length} serves · {switches.length} switches
+          {serves.length} serve markers · {switches.length} side switches
           {reviewMarkers.length > 0
             ? ` · ${reviewMarkers.length} need review`
             : ""}
           {ignoredServeCount > 0 ? ` · ${ignoredServeCount} ignored` : ""}
         </small>
       </header>
+
+      <section className={styles.scoreGuide} aria-label="How score tracking works">
+        <div>
+          <span>HOW THE SCORE IS BUILT</span>
+          <strong>Serve markers connect each rally to a team.</strong>
+        </div>
+        <p>
+          The first serve sets the starting server. Every serve after that awards
+          the previous rally to the team now serving.
+        </p>
+        <p>
+          Add a side-switch marker whenever teams change court sides so Near and Far
+          still point to the correct team. Add any missed serves—including one after
+          the final rally if its point has not been counted.
+        </p>
+      </section>
 
       <div className={styles.scoreboard} aria-live="polite">
         <label>
@@ -214,8 +229,8 @@ export function ScoreTrackingPanel({
         {(finalScore.reviewPointCount > 0 ||
           finalScore.ignoredPointCount > 0) && (
           <small>
-            {finalScore.reviewPointCount} unresolved ·{" "}
-            {finalScore.ignoredPointCount} replayed/ignored
+            {finalScore.reviewPointCount} need review ·{" "}
+            {finalScore.ignoredPointCount} ignored or replayed
           </small>
         )}
       </div>
@@ -224,9 +239,9 @@ export function ScoreTrackingPanel({
         <div>
           <strong>
             {inferenceStatus === "running"
-              ? "Analyzing serving sides…"
+              ? "Finding serve markers…"
               : inferenceStatus === "error"
-                ? "Serving-side analysis needs attention"
+                ? "Score markers need attention"
                 : serves.length > 0
                   ? "Serve markers ready"
                   : "No serve markers yet"}
@@ -249,7 +264,7 @@ export function ScoreTrackingPanel({
                   if (next) onSelectServeMarker(next.id, next.timestamp);
                 }}
               >
-                Review next · {reviewMarkers.length}
+                Check next · {reviewMarkers.length}
               </button>
             )}
             {(canRunInference || inferenceStatus === "running") && (
@@ -265,9 +280,9 @@ export function ScoreTrackingPanel({
         )}
       </div>
 
-      {inferenceSteps.length > 0 && (
+      {inferenceStatus === "running" && (
         <div className={styles.scoreInferenceProgress}>
-          <InferenceProgressPanel steps={inferenceSteps} compact />
+          Finding the score markers in your video…
         </div>
       )}
 
@@ -279,15 +294,14 @@ export function ScoreTrackingPanel({
               ? `${preciseTime(selected.timestamp)} · ${sideLabel(selected.side)}`
               : "Select a ball marker on the timeline"}
           </strong>
-          {selected?.modelSide && (
+          {selected?.modelSide && selected.side !== selected.modelSide && (
             <small>
-              Model: {sideLabel(selected.modelSide)}
-              {selected.side !== selected.modelSide ? " · corrected" : ""}
+              Changed from {sideLabel(selected.modelSide)}
             </small>
           )}
         </div>
         <fieldset disabled={!selected}>
-          <legend>Serving side verdict</legend>
+          <legend>Which side is serving?</legend>
           <div className={styles.sideVerdictButtons}>
             {(["near", "far"] as const).map((side) => (
               <button
@@ -305,6 +319,10 @@ export function ScoreTrackingPanel({
             ))}
           </div>
         </fieldset>
+        <small className={styles.sideChoiceHelp}>
+          Near means closest to the camera; Far means across the court. For every
+          serve after the first, this choice decides which team won the previous rally.
+        </small>
         <label
           className={styles.replayToggle}
           data-disabled={selectedIndex <= 0 || undefined}
@@ -332,6 +350,10 @@ export function ScoreTrackingPanel({
       </section>
 
       <section className={styles.markerAddTools}>
+        <p className={styles.markerHelp}>
+          <strong>Missing a serve?</strong> Move the video to that serve, choose the
+          server’s court side, then add the marker.
+        </p>
         <div>
           <label>
             <span>Missing serve at {preciseTime(playbackTime)}</span>
@@ -362,6 +384,10 @@ export function ScoreTrackingPanel({
             + Add serve
           </button>
         </div>
+        <p className={styles.markerHelp}>
+          <strong>Teams switched ends?</strong> Move to the switch and add it here.
+          Without this marker, later points can be assigned to the wrong team.
+        </p>
         <button
           type="button"
           className={styles.addSwitchButton}
@@ -473,13 +499,13 @@ export function ScoreTrackingPanel({
                       ? "First serve"
                       : sideLabel(marker.side)}{" "}
                   ·{" "}
-                  {marker.origin}
+                  {marker.origin === "model" ? "Found automatically" : "Added by you"}
                 </small>
               </button>
               <button
                 type="button"
                 className={styles.removeMarker}
-                aria-label={`Remove ${marker.origin === "model" ? "predicted" : "added"} serve at ${preciseTime(marker.timestamp)}`}
+                aria-label={`Remove ${marker.origin === "model" ? "automatically found" : "added"} serve at ${preciseTime(marker.timestamp)}`}
                 onClick={() => onChange(removeServeMarker(tracking, marker.id))}
               >
                 Remove
@@ -506,16 +532,13 @@ export function ScoreTrackingPanel({
                 <span aria-hidden="true">⇄</span>
                 <strong>{preciseTime(marker.timestamp)}</strong>
                 <small>
-                  Team side switch · {marker.origin}
-                  {marker.modelConfidence === undefined
-                    ? ""
-                    : ` · ${Math.round(marker.modelConfidence * 100)}%`}
+                  Team side switch · {marker.origin === "model" ? "found automatically" : "added by you"}
                 </small>
               </button>
               <button
                 type="button"
                 className={styles.removeMarker}
-                aria-label={`Remove ${marker.origin === "model" ? "predicted" : "added"} side switch at ${preciseTime(marker.timestamp)}`}
+                aria-label={`Remove ${marker.origin === "model" ? "automatically found" : "added"} side switch at ${preciseTime(marker.timestamp)}`}
                 onClick={() =>
                   onChange(removeSideSwitchMarker(tracking, marker.id))
                 }

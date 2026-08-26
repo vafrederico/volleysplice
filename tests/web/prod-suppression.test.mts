@@ -79,6 +79,7 @@ function materializerDraft() {
     ],
     ignoredIntervals: [],
   });
+  draft.selectedSuppressionPolicy = "none";
   draft.beforePaddingSeconds = 1;
   draft.afterPaddingSeconds = 1;
   draft.joinGapSeconds = 0.5;
@@ -86,6 +87,19 @@ function materializerDraft() {
   draft.cuts[0].keepEnd = 16;
   return draft;
 }
+
+test("new projects default to Strong automatic cleanup", () => {
+  const draft = createCutDraft({
+    analysisId: "strong-cleanup-default",
+    recordingId: "recording",
+    duration: 30,
+    rallies: [
+      { id: "R001", start: 5, end: 15, confidence: 0.9, included: true },
+    ],
+    ignoredIntervals: [],
+  });
+  assert.equal(draft.selectedSuppressionPolicy, "aggressive");
+});
 
 const splitSuggestion: SuppressionSuggestion = {
   id: "suggestion-8-12",

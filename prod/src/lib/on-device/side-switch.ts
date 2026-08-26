@@ -1107,7 +1107,7 @@ export async function inferSideSwitches(
     stage: "loading",
     completed: 0,
     total: 1,
-    detail: "Loading team-side switch model",
+    detail: "Getting side-switch markers ready",
   });
   const plan = await sideSwitchFramePlan(analysis, media.info.duration);
   if (plan.candidateCount === 0) {
@@ -1122,7 +1122,7 @@ export async function inferSideSwitches(
         stage: "frames",
         completed,
         total,
-        detail: `Decoding team-side frames · ${completed}/${total}`,
+        detail: `Looking for team side switches · ${completed}/${total}`,
       }),
   );
   const evaluated = await evaluateSideSwitchFrames(
@@ -1135,14 +1135,14 @@ export async function inferSideSwitches(
         stage: "features",
         completed,
         total,
-        detail: `Comparing team sides · ${completed}/${total} candidates`,
+        detail: `Checking possible side switches · ${completed}/${total}`,
       }),
   );
   onProgress?.({
     stage: "complete",
     completed: evaluated.output.candidates.length,
     total: evaluated.output.candidates.length,
-    detail: `Team-side switch markers ready · ${evaluated.output.candidates.length} predicted`,
+    detail: `Side switches ready · ${evaluated.output.candidates.length} found`,
   });
   return evaluated.output;
 }

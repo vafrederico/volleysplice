@@ -20,7 +20,7 @@ function projectStatus(project: VolleyCutProject): string {
     case "queued":
       return "Queued";
     case "waiting":
-      return "Needs source";
+      return "Needs original video";
     case "error":
       return "Stopped";
   }
@@ -38,7 +38,7 @@ export function ProjectHeader({
       <span className={styles.brand}>
         {/* biome-ignore lint/performance/noImgElement: This standalone Vite app ships a local pre-sized logo without an image optimizer. */}
         <img src={runtimeAssetUrl("volleycut-logo.png")} alt="VolleyCut" />
-        <span>LOCAL CUT</span>
+        <span>VIDEO EDITOR</span>
       </span>
       <div className={styles.projectControls}>
         {queueLabel && (
@@ -48,7 +48,7 @@ export function ProjectHeader({
           </span>
         )}
         <label className={styles.projectSelect}>
-          <span>Project</span>
+          <span>Your videos</span>
           <select
             aria-label="Selected project"
             value={selectedProjectId ?? "__new__"}
@@ -60,10 +60,10 @@ export function ProjectHeader({
               )
             }
           >
-            <option value="__new__">＋ Start a new project…</option>
+            <option value="__new__">＋ Start a new video…</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
-                {project.source.name} · {projectStatus(project)} · {project.id}
+                {project.source.name} · {projectStatus(project)}
               </option>
             ))}
           </select>

@@ -225,7 +225,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     playbackRate: 1,
     confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
     reviewedCutIds: [],
-    selectedSuppressionPolicy: "none",
+    selectedSuppressionPolicy: "aggressive",
     suppressionDecisionOverrides: {},
     suppressionScopeOverrides: {},
     userTouchedCutIds: [],
