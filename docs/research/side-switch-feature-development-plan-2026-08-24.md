@@ -747,6 +747,24 @@ It remains 1.39 points below T14 and leaves all seven disagreement-slice false
 boundaries selected. The compact implementation is complete, but the declared screen
 fails; do not promote, prioritize held validation, or tune it on the opened set.
 
+### Provisional recording-held gold R1 — no transfer gain 2026-08-25
+
+Two newly labeled recording IDs were frozen after T20. Following the user's scope,
+the evaluation included only T1–T20 representations that passed their engineering
+gate: T2, T4, T14, T16, T18, T19, and T20. Every eligible profile already had a
+full-development classifier, so no new training occurred and all failed-engineering
+profiles were excluded.
+
+All seven markers have a frozen candidate within the ±4 interval contract. Deployed
+union34, boundary T0, T19, and T20 each produce 1 TP / 0 FP / 6 FN (25.00% F1).
+T2, T4, T14, T16, and T18 produce 1 TP / 1 FP / 6 FN (22.22% F1). No profile emits a
+proposal on the four-marker Shoreline recording. The sole TP is the one retained
+model-origin marker; all six human-added markers are missed.
+
+Decision: no promotion, pruning, or threshold tuning. See
+[Side-switch provisional recording-held gold result](./side-switch-provisional-recording-held-gold-result-2026-08-25.md)
+for immutable hashes, per-recording interpretation, and reproduction commands.
+
 ## Evidence that determines the direction
 
 The exact recording-held-out reconstruction of the promoted

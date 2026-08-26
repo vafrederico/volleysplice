@@ -31,9 +31,10 @@ new gold revision and must not overwrite this result.
 3. Apply the immutable full-development classifiers and thresholds trained on the 11
    opened raw-phone recordings. The two gold recordings remain evaluation-only and
    have `consent.train=false`.
-4. Report the deployed full-union 34-input winner, then the matched boundary-only T0,
-   T4, T14, T19, and T20 comparisons. These candidates were all specified and fitted
-   before the new labels existed.
+4. Report the deployed full-union 34-input winner, then the matched boundary-only T0
+   and every T1–T20 profile that passed its label-free engineering gate: T2, T4, T14,
+   T16, T18, T19, and T20. Exclude T1, T3, T5–T13, T15, and T17. The included
+   profiles were all specified and fitted before the new labels existed.
 5. Use the existing ranked-candidate decoder unchanged. Report strict and ±4-second
    pooled event precision, recall, F1, TP/FP/FN, proposals, candidate coverage, and
    per-recording results.
@@ -49,3 +50,14 @@ new gold revision and must not overwrite this result.
   source-group-held set whose annotation was not seeded by the evaluated model.
 - If draft completion changes either label hash, rerun all candidates against the new
   revision and retain both artifacts.
+
+## Fit audit
+
+All seven eligible experiment artifacts already contain a frozen
+`fullDevelopment.classifier`, including feature order, preprocessing, weights, bias,
+and threshold. Therefore no eligible model required a new fit. Reusing those immutable
+fits preserves the evaluation-only role of the two recordings; training a duplicate
+after opening their labels would add risk without changing the intended model.
+
+The completed result is recorded in
+[Side-switch provisional recording-held gold result](./side-switch-provisional-recording-held-gold-result-2026-08-25.md).
