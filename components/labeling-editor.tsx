@@ -14,6 +14,7 @@ import {
   playerTeamValues,
   playerTrackletWindowValues,
   roundTime,
+  servingSideValues,
   terminalCueValues,
   type CourtGeometry,
   type HardNegative,
@@ -24,6 +25,7 @@ import {
   type PlayerTracklet,
   type PlayerTrackletObservation,
   type RallyLabel,
+  type ServeMarker,
   type SideSwitch,
 } from "@/lib/annotations";
 import {
@@ -125,6 +127,7 @@ type PreparedTaskSummary = {
   savedAt: string | null;
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
+  modelSeeded: boolean;
 };
 
 type BatchSummary = Record<
@@ -297,6 +300,7 @@ export function LabelingEditor() {
   const [ignoredStart, setIgnoredStart] = useState<number | null>(null);
   const [negativeStart, setNegativeStart] = useState<number | null>(null);
   const [negativeCategory, setNegativeCategory] = useState("foreground-crossing");
+  const [newServeSide, setNewServeSide] = useState<ServeMarker["side"]>("review");
   const [courtAnchor, setCourtAnchor] = useState<CourtAnchorId | null>(null);
   const [trackletRallyIndex, setTrackletRallyIndex] = useState<number | null>(null);
   const [trackletWindow, setTrackletWindow] =
@@ -456,6 +460,12 @@ export function LabelingEditor() {
         : previousRallyIndex;
   const sidebarRally =
     labels && sidebarRallyIndex >= 0 ? labels.rallies[sidebarRallyIndex] : null;
+  const sidebarServeMarker = useMemo(() => {
+    if (!labels || !sidebarRally) return null;
+    return labels.serveMarkers.find(
+      (marker) => Math.abs(marker.time - sidebarRally.start) <= 2,
+    ) ?? null;
+  }, [labels, sidebarRally]);
   const activeTrackletRallyIndex =
     labels && trackletRallyIndex !== null && labels.rallies[trackletRallyIndex]
       ? trackletRallyIndex
@@ -632,6 +642,20 @@ export function LabelingEditor() {
         issues.push("Side-switch points must be in range and strictly ordered");
       }
     });
+    labels.serveMarkers.forEach((marker, index) => {
+      if (
+        !Number.isFinite(marker.time) ||
+        marker.time < 0 ||
+        marker.time > labels.recording.durationSeconds ||
+        (index > 0 && marker.time <= labels.serveMarkers[index - 1].time) ||
+        !servingSideValues.includes(marker.side)
+      ) {
+        issues.push("Serving-side points must be in range, strictly ordered, and labeled");
+      }
+    });
+    if (labels.serveMarkers.some((marker) => marker.side === "review")) {
+      issues.push("Resolve every needs-review serving-side marker to near or far");
+    }
     const geometry = labels.recording.courtGeometry;
     if (geometry) {
       const missingCorners = ["nearLeft", "nearRight", "farLeft", "farRight"].filter(
@@ -840,6 +864,9 @@ export function LabelingEditor() {
             ? `Loaded ${document.rallies.length} editable predictions from the production ensemble for ${document.recording.id}. Yellow ranges are model disagreements; Sol is shown below as a read-only reference.`
           : documentSource === "prelabel"
             ? `Loaded ${document.rallies.length} unvalidated GPT-5.6 Sol rally candidates for ${document.recording.id}. Review every boundary before completing.`
+          : document.prelabel?.analysisMethod ===
+              "frozen-production-rally-and-score-specialists-v1"
+            ? `Loaded ${document.rallies.length} editable frozen-model rallies, ${document.serveMarkers.length} serving-side markers, and ${document.sideSwitches.length} side switches for ${document.recording.id}. Review every prediction before completing.`
           : `Loaded ${document.recording.id} and its matching NAS proxy. No local file selection needed.`,
       );
     } catch (loadError) {
@@ -1331,6 +1358,28 @@ export function LabelingEditor() {
     setMessage(`Marked a side switch at ${formatPreciseTime(time)}.`);
   }
 
+  function addServeMarker() {
+    if (!labels || !videoRef.current) return;
+    const time = roundTime(videoRef.current.currentTime);
+    if (labels.serveMarkers.some((marker) => marker.time === time)) {
+      setError("A serving-side marker is already present at this timestamp.");
+      return;
+    }
+    if (time > labels.recording.durationSeconds) {
+      setError("A serving-side marker cannot be placed beyond the task duration.");
+      return;
+    }
+    const serveMarkers = [
+      ...labels.serveMarkers,
+      { time, side: newServeSide, origin: "manual" as const },
+    ].sort((left, right) => left.time - right.time);
+    setError(null);
+    setLabels(markChanged({ ...labels, serveMarkers }));
+    setMessage(
+      `Marked a ${newServeSide === "review" ? "needs-review" : newServeSide} serve at ${formatPreciseTime(time)}.`,
+    );
+  }
+
   function addInterval(start: number, end: number, kind: IntervalKind): boolean {
     if (!labels) return false;
     setError(null);
@@ -1384,6 +1433,7 @@ export function LabelingEditor() {
       else if (key === "[") toggleIgnored();
       else if (key === "]" && ignoredStart !== null) toggleIgnored();
       else if (key === "h") toggleNegative();
+      else if (key === "v") addServeMarker();
       else if (key === "x") addSideSwitch();
       else if (key === "escape") cancelMarker();
       else if ((key === "delete" || key === "backspace") && selectedRallyIndex >= 0) {
@@ -1466,6 +1516,29 @@ export function LabelingEditor() {
       markerIndex === index ? { ...marker, ...patch } : marker,
     );
     setLabels(markChanged({ ...labels, sideSwitches }));
+  }
+
+  function updateServeMarker(index: number, patch: Partial<ServeMarker>) {
+    if (!labels) return;
+    const serveMarkers = labels.serveMarkers
+      .map((marker, markerIndex) =>
+        markerIndex === index ? { ...marker, ...patch } : marker,
+      )
+      .sort((left, right) => left.time - right.time);
+    setLabels(markChanged({ ...labels, serveMarkers }));
+  }
+
+  function removeServeMarker(index: number) {
+    if (!labels) return;
+    setLabels(
+      markChanged({
+        ...labels,
+        serveMarkers: labels.serveMarkers.filter(
+          (_, markerIndex) => markerIndex !== index,
+        ),
+      }),
+    );
+    setMessage(`Deleted serving-side marker ${index + 1}.`);
   }
 
   function removeSideSwitch(index: number) {
@@ -1570,7 +1643,7 @@ export function LabelingEditor() {
             </option>
             {tasksForSelectedBatch.map((task) => (
               <option key={task.id} value={task.id}>
-                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.documentSource === "production-model" ? `${task.rallyCount} production-model rallies to review` : task.documentSource === "prelabel" ? `${task.rallyCount} Sol rallies to review` : "not started"}
+                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.modelSeeded ? `${task.rallyCount} model-seeded rallies to review` : "not started"}
               </option>
             ))}
           </select>
@@ -1786,6 +1859,21 @@ export function LabelingEditor() {
             <button onClick={toggleIgnored} disabled={!labels || !videoUrl}>
               {ignoredStart === null ? "Start ignored span" : "Finish ignored span"} <kbd>[ ]</kbd>
             </button>
+            <label className={styles.markerChoice}>
+              Serving side
+              <select
+                aria-label="New serving-side marker label"
+                value={newServeSide}
+                onChange={(event) => setNewServeSide(event.target.value as ServeMarker["side"])}
+              >
+                <option value="review">Needs review</option>
+                <option value="near">Near side</option>
+                <option value="far">Far side</option>
+              </select>
+            </label>
+            <button onClick={addServeMarker} disabled={!labels || !videoUrl}>
+              Mark serve side <kbd>V</kbd>
+            </button>
             <button onClick={addSideSwitch} disabled={!labels || !videoUrl}>
               Mark side switch <kbd>X</kbd>
             </button>
@@ -1939,11 +2027,20 @@ export function LabelingEditor() {
                     } satisfies TimelineTrack]
                   : []),
               ]}
-              markers={labels.sideSwitches.map((marker, index) => ({
-                id: `side-switch-${index}`,
-                time: marker.time,
-                title: `Side switch ${index + 1}${marker.notes ? ` · ${marker.notes}` : ""}`,
-              }))}
+              markers={[
+                ...labels.serveMarkers.map((marker, index) => ({
+                  id: `serve-marker-${index}`,
+                  time: marker.time,
+                  tone: `serve-${marker.side}` as const,
+                  title: `${marker.side === "review" ? "Serving side needs review" : `${marker.side} side serves`}${marker.origin === "model" ? " · model" : " · manual"}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% near-side probability` : ""}${marker.notes ? ` · ${marker.notes}` : ""}`,
+                })),
+                ...labels.sideSwitches.map((marker, index) => ({
+                  id: `side-switch-${index}`,
+                  time: marker.time,
+                  tone: "side-switch" as const,
+                  title: `Side switch ${index + 1}${marker.origin === "model" ? " · model" : " · manual"}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% confidence` : ""}${marker.notes ? ` · ${marker.notes}` : ""}`,
+                })),
+              ]}
               selectedTrackId="editable-rallies"
               selectedIntervalId={
                 selectedRallyIndex >= 0 ? `rally-${selectedRallyIndex}` : undefined
@@ -1971,7 +2068,12 @@ export function LabelingEditor() {
                     R{String(sidebarRallyIndex + 1).padStart(3, "0")}
                     {sidebarRally.tags.includes("ai-prelabel") ? " AI" : ""}
                   </strong>
-                  <span>{(sidebarRally.end - sidebarRally.start).toFixed(3)}s</span>
+                  <span>
+                    {sidebarServeMarker
+                      ? `${sidebarServeMarker.side === "review" ? "serve side: review" : `${sidebarServeMarker.side} serves`} · `
+                      : ""}
+                    {(sidebarRally.end - sidebarRally.start).toFixed(3)}s
+                  </span>
                 </div>
                 <div className={styles.currentRallyTimes}>
                   <button onClick={() => seekTo(sidebarRally.start)}>
@@ -2250,16 +2352,73 @@ export function LabelingEditor() {
 
           <div className={styles.pointSection}>
             <div className={styles.tableHeading}>
-              <div><p className={styles.eyebrow}>OPTIONAL · WHEN PRESENT</p><h2>Side switches</h2></div>
+              <div><p className={styles.eyebrow}>MODEL-SEEDED · FULLY EDITABLE</p><h2>Serving side</h2></div>
+              <span>{labels.serveMarkers.length} serve markers · press V to add at the playhead</span>
+            </div>
+            <p className={styles.help}>
+              Near and far are camera-relative court sides. Correct the model label, move the timestamp, add a missing serve, or delete a false marker; every change is saved in the label document.
+            </p>
+            <div className={styles.pointRows}>
+              {labels.serveMarkers.map((marker, index) => (
+                <div className={`${styles.pointRow} ${styles.servePointRow}`} key={`serve-marker-row-${index}`}>
+                  <strong title={marker.modelId ?? undefined}>
+                    SV{String(index + 1).padStart(3, "0")}{marker.origin === "model" ? " AI" : ""}
+                  </strong>
+                  <button onClick={() => seekTo(marker.time)}>{formatPreciseTime(marker.time)}</button>
+                  <input
+                    aria-label={`Serve marker ${index + 1} seconds`}
+                    type="number"
+                    step="0.001"
+                    value={marker.time}
+                    onChange={(event) => updateServeMarker(index, { time: Number(event.target.value) })}
+                  />
+                  <select
+                    aria-label={`Serve marker ${index + 1} serving side`}
+                    value={marker.side}
+                    onChange={(event) => updateServeMarker(index, {
+                      side: event.target.value as ServeMarker["side"],
+                    })}
+                  >
+                    <option value="near">Near side</option>
+                    <option value="far">Far side</option>
+                    <option value="review">Needs review</option>
+                  </select>
+                  <span className={styles.modelEvidence}>
+                    {marker.origin === "model"
+                      ? `Model ${marker.modelSide ?? marker.side}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% near` : ""}`
+                      : "Manual marker"}
+                  </span>
+                  <input
+                    aria-label={`Serve marker ${index + 1} notes`}
+                    placeholder="Optional correction note"
+                    value={marker.notes ?? ""}
+                    onChange={(event) => updateServeMarker(index, {
+                      notes: event.target.value || undefined,
+                    })}
+                  />
+                  <button className={styles.delete} onClick={() => removeServeMarker(index)}>Delete</button>
+                </div>
+              ))}
+              {labels.serveMarkers.length === 0 && (
+                <p className={styles.empty}>No serving-side markers yet. Choose a side and press V at serve contact.</p>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.pointSection}>
+            <div className={styles.tableHeading}>
+              <div><p className={styles.eyebrow}>MODEL-SEEDED · WHEN PRESENT</p><h2>Side switches</h2></div>
               <span>{labels.sideSwitches.length} point markers · press X at the switch</span>
             </div>
             <p className={styles.help}>
-              Mark the moment teams switch court sides when the recording format includes it. Add a note if the exact transition is obscured.
+              Model switches are starting suggestions. Move an incorrect timestamp, add a missing switch, or delete a false marker. Add a note if the exact transition is obscured.
             </p>
             <div className={styles.pointRows}>
               {labels.sideSwitches.map((marker, index) => (
                 <div className={styles.pointRow} key={`side-switch-row-${index}`}>
-                  <strong>SW{String(index + 1).padStart(2, "0")}</strong>
+                  <strong title={marker.modelId ?? undefined}>
+                    SW{String(index + 1).padStart(2, "0")}{marker.origin === "model" ? " AI" : ""}
+                  </strong>
                   <button onClick={() => seekTo(marker.time)}>{formatPreciseTime(marker.time)}</button>
                   <input
                     aria-label={`Side switch ${index + 1} seconds`}
@@ -2276,6 +2435,11 @@ export function LabelingEditor() {
                       notes: event.target.value || undefined,
                     })}
                   />
+                  <span className={styles.modelEvidence}>
+                    {marker.origin === "model"
+                      ? `Model${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}%` : ""}`
+                      : "Manual marker"}
+                  </span>
                   <button className={styles.delete} onClick={() => removeSideSwitch(index)}>Delete</button>
                 </div>
               ))}

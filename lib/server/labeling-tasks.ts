@@ -26,7 +26,7 @@ import { ENVIRONMENT_EXPERIMENT_MODELS } from "@/lib/experiment-models";
 import {
   getAnalysesRoot,
   getIntakeAnalysesRoot,
-  getIntakeWorkspace,
+  getIntakeWorkspaces,
 } from "@/lib/storage";
 
 const DEFAULT_MEDIA_ROOT = "/mnt/freenas/volleycut";
@@ -273,6 +273,33 @@ function validateDraftContent(
     throw new LabelingDraftValidationError("an interval exceeds the video duration");
   }
   if (
+    document.serveMarkers.some(
+      (marker, index) =>
+        !Number.isFinite(marker.time) ||
+        marker.time < 0 ||
+        marker.time > document.recording.durationSeconds ||
+        (index > 0 && marker.time <= document.serveMarkers[index - 1].time) ||
+        !["near", "far", "review"].includes(marker.side) ||
+        (marker.notes !== undefined && typeof marker.notes !== "string") ||
+        (marker.modelConfidence !== undefined &&
+          (!Number.isFinite(marker.modelConfidence) ||
+            marker.modelConfidence < 0 ||
+            marker.modelConfidence > 1)),
+    )
+  ) {
+    throw new LabelingDraftValidationError(
+      "serve markers must be finite, in range, strictly ordered points with valid serving sides",
+    );
+  }
+  if (
+    expectedStatus === "complete" &&
+    document.serveMarkers.some((marker) => marker.side === "review")
+  ) {
+    throw new LabelingDraftValidationError(
+      "completed labels must resolve every serving-side marker to near or far",
+    );
+  }
+  if (
     document.sideSwitches.some(
       (marker, index) =>
         !Number.isFinite(marker.time) ||
@@ -454,24 +481,36 @@ async function readFullEntries(workspace: FullWorkspace): Promise<LabelingTaskEn
 }
 
 async function readAllEntries(): Promise<LabelingTaskEntry[]> {
-  const intakeWorkspace = getIntakeWorkspace();
-  const intakePlanPath = path.join(intakeWorkspace, "manifests", "intake-plan.json");
-  const [pilot, full, intakePlanExists] = await Promise.all([
+  const intakeWorkspaces = getIntakeWorkspaces();
+  const [pilot, full, intakePlans] = await Promise.all([
     readPilotEntries(),
     readFullEntries({
       root: labelingWorkspace,
       planPath: fullPlanPath,
       prelabelsDirectory: path.join(labelingWorkspace, "prelabels", "sol-xhigh"),
     }),
-    isFile(intakePlanPath),
+    Promise.all(intakeWorkspaces.map(async (root) => {
+      const standard = path.join(root, "manifests", "intake-plan.json");
+      const inferenceOnly = path.join(root, "manifests", "inference-only.json");
+      return {
+        root,
+        planPath: await isFile(standard)
+          ? standard
+          : await isFile(inferenceOnly)
+            ? inferenceOnly
+            : null,
+      };
+    })),
   ]);
-  const intake = intakePlanExists
-    ? await readFullEntries({
-        root: intakeWorkspace,
-        planPath: intakePlanPath,
-        prelabelsDirectory: path.join(intakeWorkspace, "blind-sol", "prelabels"),
-      })
-    : [];
+  const intake = (await Promise.all(intakePlans.map(async ({ root, planPath }) =>
+    planPath
+      ? readFullEntries({
+          root,
+          planPath,
+          prelabelsDirectory: path.join(root, "blind-sol", "prelabels"),
+        })
+      : []
+  ))).flat();
   const entries = [...full, ...intake, ...pilot];
   const ids = new Set<string>();
   for (const entry of entries) {
@@ -641,8 +680,11 @@ async function loadProductionLabelSeed(
 ): Promise<ProductionLabelSeed | null> {
   if (task.batch !== "full") return null;
   try {
+    const taskAnalysesRoot = task.workspaceRoot === labelingWorkspace
+      ? getIntakeAnalysesRoot()
+      : path.join(task.workspaceRoot, "analyses");
     const productionAnalysisPath = path.join(
-      getIntakeAnalysesRoot(),
+      taskAnalysesRoot,
       `${PRODUCTION_MODEL_ID}--${task.id}`,
       "analysis.json",
     );
@@ -698,7 +740,9 @@ export async function getExperimentModelReferenceLabels(
     ENVIRONMENT_EXPERIMENT_MODELS.map(async (model): Promise<ExperimentModelReferenceLabels | null> => {
       try {
         const analysisPath = path.join(
-          getIntakeAnalysesRoot(),
+          task.workspaceRoot === labelingWorkspace
+            ? getIntakeAnalysesRoot()
+            : path.join(task.workspaceRoot, "analyses"),
           `${model.id}--${task.id}`,
           "analysis.json",
         );

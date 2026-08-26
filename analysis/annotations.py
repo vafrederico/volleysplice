@@ -64,12 +64,29 @@ PLAYER_TRACKLET_WINDOWS = {"serve", "rally-end"}
 PLAYER_TEAMS = {"team-a", "team-b", "unknown"}
 PLAYER_COURT_SIDES = {"near", "far", "outside", "unknown"}
 PLAYER_STATES = {"ready", "playing", "jumping", "stand-down", "walking"}
+SERVING_SIDES = {"near", "far", "review"}
+
+
+@dataclass(frozen=True)
+class ServeMarker:
+    time: float
+    side: str
+    notes: str | None
+    origin: str | None
+    model_side: str | None
+    model_confidence: float | None
+    model_id: str | None
+    rally_id: str | None
 
 
 @dataclass(frozen=True)
 class SideSwitch:
     time: float
     notes: str | None
+    origin: str | None
+    model_confidence: float | None
+    model_id: str | None
+    model_event_id: str | None
 
 
 @dataclass(frozen=True)
@@ -115,6 +132,7 @@ class LabelDocument:
     rallies: tuple[Interval, ...]
     ignored_intervals: tuple[Interval, ...]
     hard_negatives: tuple[Interval, ...]
+    serve_markers: tuple[ServeMarker, ...]
     side_switches: tuple[SideSwitch, ...]
     court_geometry: dict[str, Any] | None
     rally_transitions: tuple[RallyTransitionAnnotation, ...]
@@ -155,6 +173,78 @@ def _validate_bounds(
             )
 
 
+def _optional_model_metadata(
+    row: dict[str, Any], where: str
+) -> tuple[str | None, float | None, str | None]:
+    origin = row.get("origin")
+    if origin is not None and origin not in {"model", "manual"}:
+        raise ManifestError(f"{where}.origin must be 'model' or 'manual'")
+    confidence = row.get("modelConfidence")
+    if confidence is not None and (
+        not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not math.isfinite(float(confidence))
+        or not 0 <= float(confidence) <= 1
+    ):
+        raise ManifestError(f"{where}.modelConfidence must be in [0, 1]")
+    model_id = row.get("modelId")
+    if model_id is not None and not isinstance(model_id, str):
+        raise ManifestError(f"{where}.modelId must be a string")
+    return origin, float(confidence) if confidence is not None else None, model_id
+
+
+def _read_serve_markers(value: Any, duration: float) -> tuple[ServeMarker, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ManifestError("serveMarkers must be an array")
+    markers: list[ServeMarker] = []
+    previous_time = -1.0
+    for index, row in enumerate(value):
+        where = f"serveMarkers[{index}]"
+        if not isinstance(row, dict):
+            raise ManifestError(f"{where} must be an object")
+        raw_time = row.get("time")
+        if (
+            not isinstance(raw_time, (int, float))
+            or isinstance(raw_time, bool)
+            or not math.isfinite(float(raw_time))
+        ):
+            raise ManifestError(f"{where}.time must be finite")
+        marker_time = float(raw_time)
+        if marker_time < 0 or marker_time > duration or marker_time <= previous_time:
+            raise ManifestError(
+                "serveMarkers must be strictly ordered points within the recording duration"
+            )
+        side = row.get("side")
+        if side not in SERVING_SIDES:
+            raise ManifestError(f"{where}.side must be one of {sorted(SERVING_SIDES)}")
+        model_side = row.get("modelSide")
+        if model_side is not None and model_side not in SERVING_SIDES:
+            raise ManifestError(f"{where}.modelSide must be one of {sorted(SERVING_SIDES)}")
+        notes = row.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            raise ManifestError(f"{where}.notes must be a string when present")
+        rally_id = row.get("rallyId")
+        if rally_id is not None and not isinstance(rally_id, str):
+            raise ManifestError(f"{where}.rallyId must be a string")
+        origin, confidence, model_id = _optional_model_metadata(row, where)
+        markers.append(
+            ServeMarker(
+                time=marker_time,
+                side=str(side),
+                notes=notes,
+                origin=origin,
+                model_side=str(model_side) if model_side is not None else None,
+                model_confidence=confidence,
+                model_id=model_id,
+                rally_id=rally_id,
+            )
+        )
+        previous_time = marker_time
+    return tuple(markers)
+
+
 def _read_side_switches(value: Any, duration: float) -> tuple[SideSwitch, ...]:
     if value is None:
         return ()
@@ -180,7 +270,24 @@ def _read_side_switches(value: Any, duration: float) -> tuple[SideSwitch, ...]:
         notes = row.get("notes")
         if notes is not None and not isinstance(notes, str):
             raise ManifestError(f"sideSwitches[{index}].notes must be a string when present")
-        markers.append(SideSwitch(time=marker_time, notes=notes))
+        origin, confidence, model_id = _optional_model_metadata(
+            row, f"sideSwitches[{index}]"
+        )
+        model_event_id = row.get("modelEventId")
+        if model_event_id is not None and not isinstance(model_event_id, str):
+            raise ManifestError(
+                f"sideSwitches[{index}].modelEventId must be a string"
+            )
+        markers.append(
+            SideSwitch(
+                time=marker_time,
+                notes=notes,
+                origin=origin,
+                model_confidence=confidence,
+                model_id=model_id,
+                model_event_id=model_event_id,
+            )
+        )
         previous_time = marker_time
     return tuple(markers)
 
@@ -613,7 +720,12 @@ def load_label_document(
     player_tracklets = _read_player_tracklets(payload.get("rallies"), rallies, duration)
     ignored = _read_intervals(payload.get("ignoredIntervals", []), "labels", "ignoredIntervals")
     hard_negatives = _read_intervals(payload.get("hardNegatives", []), "labels", "hardNegatives")
+    serve_markers = _read_serve_markers(payload.get("serveMarkers", []), duration)
     side_switches = _read_side_switches(payload.get("sideSwitches", []), duration)
+    if require_complete and any(marker.side == "review" for marker in serve_markers):
+        raise ManifestError(
+            "completed labels must resolve every serving-side marker to near or far"
+        )
     court_geometry = _read_court_geometry(
         recording.get("courtGeometry"),
         require_complete=require_complete,
@@ -667,6 +779,7 @@ def load_label_document(
         rallies=rallies,
         ignored_intervals=ignored,
         hard_negatives=hard_negatives,
+        serve_markers=serve_markers,
         side_switches=side_switches,
         court_geometry=court_geometry,
         rally_transitions=rally_transitions,
@@ -744,6 +857,7 @@ def create_label_draft(
         "rallies": [],
         "ignoredIntervals": [],
         "hardNegatives": [],
+        "serveMarkers": [],
         "sideSwitches": [],
     }
     atomic_write_text(output, json.dumps(payload, indent=2, allow_nan=False) + "\n")
@@ -800,6 +914,7 @@ def build_manifest_from_labels(
                 "rallies": document.payload["rallies"],
                 "ignoredIntervals": document.payload.get("ignoredIntervals", []),
                 "hardNegatives": document.payload.get("hardNegatives", []),
+                "serveMarkers": document.payload.get("serveMarkers", []),
                 "sideSwitches": document.payload.get("sideSwitches", []),
                 "annotation": document.payload["annotation"],
             }

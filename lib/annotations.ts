@@ -27,6 +27,8 @@ export const playerStateValues = [
   "walking",
 ] as const;
 
+export const servingSideValues = ["near", "far", "review"] as const;
+
 export const hardNegativeCategories = [
   "adjacent-court",
   "camera-motion",
@@ -107,6 +109,21 @@ export type HardNegative = {
 export type SideSwitch = {
   time: number;
   notes?: string;
+  origin?: "model" | "manual";
+  modelConfidence?: number;
+  modelId?: string;
+  modelEventId?: string;
+};
+
+export type ServeMarker = {
+  time: number;
+  side: (typeof servingSideValues)[number];
+  notes?: string;
+  origin?: "model" | "manual";
+  modelSide?: (typeof servingSideValues)[number];
+  modelConfidence?: number;
+  modelId?: string;
+  rallyId?: string;
 };
 
 export type LabelDocument = {
@@ -154,6 +171,7 @@ export type LabelDocument = {
   rallies: RallyLabel[];
   ignoredIntervals: IgnoredInterval[];
   hardNegatives: HardNegative[];
+  serveMarkers: ServeMarker[];
   sideSwitches: SideSwitch[];
 };
 
@@ -185,6 +203,46 @@ function assertIntervals(value: unknown, name: string): asserts value is Array<R
   });
 }
 
+function validModelMetadata(row: Record<string, unknown>): boolean {
+  return (
+    (row.origin === undefined || row.origin === "model" || row.origin === "manual") &&
+    (row.modelConfidence === undefined ||
+      (isFiniteNumber(row.modelConfidence) &&
+        row.modelConfidence >= 0 &&
+        row.modelConfidence <= 1)) &&
+    (row.modelId === undefined || typeof row.modelId === "string")
+  );
+}
+
+function readServeMarkers(value: unknown, duration: number): ServeMarker[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error("serveMarkers must be an array");
+  const sides = new Set<string>(servingSideValues);
+  let previousTime = -1;
+  value.forEach((row, index) => {
+    if (
+      !isObject(row) ||
+      !isFiniteNumber(row.time) ||
+      row.time < 0 ||
+      row.time > duration ||
+      row.time <= previousTime ||
+      typeof row.side !== "string" ||
+      !sides.has(row.side) ||
+      (row.modelSide !== undefined &&
+        (typeof row.modelSide !== "string" || !sides.has(row.modelSide))) ||
+      (row.notes !== undefined && typeof row.notes !== "string") ||
+      (row.rallyId !== undefined && typeof row.rallyId !== "string") ||
+      !validModelMetadata(row)
+    ) {
+      throw new Error(
+        `serveMarkers[${index}] must have an ordered in-range time, a valid side, and valid optional model metadata`,
+      );
+    }
+    previousTime = row.time;
+  });
+  return value as ServeMarker[];
+}
+
 function readSideSwitches(value: unknown, duration: number): SideSwitch[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new Error("sideSwitches must be an array");
@@ -196,7 +254,9 @@ function readSideSwitches(value: unknown, duration: number): SideSwitch[] {
       row.time < 0 ||
       row.time > duration ||
       row.time <= previousTime ||
-      (row.notes !== undefined && typeof row.notes !== "string")
+      (row.notes !== undefined && typeof row.notes !== "string") ||
+      (row.modelEventId !== undefined && typeof row.modelEventId !== "string") ||
+      !validModelMetadata(row)
     ) {
       throw new Error(
         `sideSwitches[${index}] must have an ordered, non-negative finite time and optional notes`,
@@ -552,6 +612,7 @@ export function parseLabelDocument(value: unknown): LabelDocument {
   validateRallyMetadata(value.rallies, duration);
   validateIntervalMetadata(value.ignoredIntervals, "ignored");
   validateIntervalMetadata(value.hardNegatives, "negative");
+  const serveMarkers = readServeMarkers(value.serveMarkers, duration);
   const sideSwitches = readSideSwitches(value.sideSwitches, duration);
   const courtGeometry = readCourtGeometry(recording.courtGeometry);
   if (value.annotation.status === "complete") validateCompleteCourtGeometry(courtGeometry);
@@ -561,6 +622,7 @@ export function parseLabelDocument(value: unknown): LabelDocument {
       ...(recording as unknown as LabelDocument["recording"]),
       ...(courtGeometry === undefined ? {} : { courtGeometry }),
     },
+    serveMarkers,
     sideSwitches,
   };
 }

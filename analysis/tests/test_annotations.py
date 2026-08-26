@@ -73,6 +73,18 @@ class AnnotationDocumentTests(unittest.TestCase):
             {"time": 18.0, "notes": "teams cross after the point"},
             {"time": 48.0},
         ]
+        payload["serveMarkers"] = [
+            {
+                "time": 5.0,
+                "side": "near",
+                "origin": "model",
+                "modelSide": "near",
+                "modelConfidence": 0.91,
+                "modelId": "serving-side-test",
+                "rallyId": "R001",
+            },
+            {"time": 22.0, "side": "far", "origin": "manual"},
+        ]
         self.labels.write_text(json.dumps(payload), encoding="utf-8")
         return payload
 
@@ -92,6 +104,8 @@ class AnnotationDocumentTests(unittest.TestCase):
         self.assertEqual(len(document.rallies), 2)
         self.assertEqual(len(document.ignored_intervals), 1)
         self.assertEqual(len(document.hard_negatives), 1)
+        self.assertEqual([marker.side for marker in document.serve_markers], ["near", "far"])
+        self.assertEqual(document.serve_markers[0].model_confidence, 0.91)
         self.assertEqual([marker.time for marker in document.side_switches], [18.0, 48.0])
         self.assertIn("target points are unknown", document.warnings)
 
@@ -124,6 +138,29 @@ class AnnotationDocumentTests(unittest.TestCase):
         payload["sideSwitches"] = [{"time": 18.0}, {"time": 18.0}]
         self.labels.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaisesRegex(ManifestError, "strictly ordered"):
+            load_label_document(self.labels, require_video=False)
+
+    def test_serve_markers_are_optional_but_validated_when_present(self) -> None:
+        legacy_payload = json.loads(self.labels.read_text(encoding="utf-8"))
+        legacy_payload.pop("serveMarkers")
+        self.labels.write_text(json.dumps(legacy_payload), encoding="utf-8")
+        draft = load_label_document(
+            self.labels,
+            require_complete=False,
+            require_video=False,
+        )
+        self.assertEqual(draft.serve_markers, ())
+
+        payload = self.complete_payload()
+        payload["serveMarkers"][0]["side"] = "left"
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "side must be one of"):
+            load_label_document(self.labels, require_video=False)
+
+        payload = self.complete_payload()
+        payload["serveMarkers"][0]["side"] = "review"
+        self.labels.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "resolve every serving-side"):
             load_label_document(self.labels, require_video=False)
 
     def test_extended_geometry_transition_and_negative_labels_are_preserved(self) -> None:
@@ -304,6 +341,7 @@ class AnnotationDocumentTests(unittest.TestCase):
         self.assertEqual(len(manifest.recordings[0].rallies), 2)
         self.assertEqual(len(manifest.recordings[0].ignored_intervals), 1)
         self.assertEqual(payload["recordings"][0]["sideSwitches"][0]["time"], 18.0)
+        self.assertEqual(payload["recordings"][0]["serveMarkers"][0]["side"], "near")
 
     def test_reviewed_draft_freezes_without_mutating_source(self) -> None:
         payload = self.complete_payload()

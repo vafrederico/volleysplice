@@ -24,8 +24,20 @@ export function getAnalysesRoot(
 }
 
 export function getIntakeWorkspace(): string {
-  const configured = process.env.VOLLEYCUT_INTAKE_WORKSPACE?.trim();
-  return configured ? path.resolve(configured) : DEFAULT_INTAKE_WORKSPACE;
+  return getIntakeWorkspaces()[0];
+}
+
+export function getIntakeWorkspaces(): string[] {
+  const configured = [
+    ...(process.env.VOLLEYCUT_INTAKE_WORKSPACE?.trim()
+      ? [process.env.VOLLEYCUT_INTAKE_WORKSPACE.trim()]
+      : []),
+    ...(process.env.VOLLEYCUT_INTAKE_WORKSPACES?.split(path.delimiter)
+      .map((value) => value.trim())
+      .filter(Boolean) ?? []),
+  ];
+  const roots = configured.length > 0 ? configured : [DEFAULT_INTAKE_WORKSPACE];
+  return [...new Set(roots.map((root) => path.resolve(root)))];
 }
 
 export function getIntakeAnalysesRoot(): string {

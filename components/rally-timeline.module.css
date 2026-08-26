@@ -209,6 +209,30 @@ button.trackLabel {
   cursor: pointer;
 }
 
+.marker[data-tone="side-switch"] {
+  width: 4px;
+  margin-left: -2px;
+  background: #ff5c35;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.marker[data-tone="serve-near"],
+.marker[data-tone="serve-far"],
+.marker[data-tone="serve-review"] {
+  top: 3px;
+  bottom: auto;
+  width: 9px;
+  height: 9px;
+  margin-left: -4px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #161813;
+}
+
+.marker[data-tone="serve-near"] { background: #2b676d; }
+.marker[data-tone="serve-far"] { background: #275fc2; }
+.marker[data-tone="serve-review"] { background: #f2c94c; }
+
 .playhead {
   position: absolute;
   z-index: 5;

@@ -7,6 +7,17 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+function isModelSeeded(
+  saved: Awaited<ReturnType<typeof getSavedLabelingDocument>>,
+): boolean {
+  return (
+    ["production-model", "prelabel"].includes(saved.source) ||
+    saved.document.rallies.some((rally) => rally.tags.includes("ai-prelabel")) ||
+    saved.document.serveMarkers.some((marker) => marker.origin === "model") ||
+    saved.document.sideSwitches.some((marker) => marker.origin === "model")
+  );
+}
+
 export async function GET() {
   try {
     const catalog = await getPreparedLabelingCatalog();
@@ -27,9 +38,7 @@ export async function GET() {
             }).length,
             prelabeled: batchTasks.filter((task) => {
               const index = catalog.tasks.indexOf(task);
-              return ["production-model", "prelabel"].includes(
-                savedDocuments[index].source,
-              );
+              return isModelSeeded(savedDocuments[index]);
             }).length,
           },
         ];
@@ -51,6 +60,7 @@ export async function GET() {
           savedAt: savedDocuments[index].savedAt,
           annotationStatus: savedDocuments[index].document.annotation.status,
           rallyCount: savedDocuments[index].document.rallies.length,
+          modelSeeded: isModelSeeded(savedDocuments[index]),
         })),
       },
       { headers: { "Cache-Control": "no-store" } },

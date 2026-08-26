@@ -49,6 +49,7 @@ export type TimelineMarker = {
   id: string;
   time: number;
   title: string;
+  tone?: "side-switch" | "serve-near" | "serve-far" | "serve-review";
 };
 
 type RallyTimelineProps = {
@@ -147,6 +148,7 @@ export function RallyTimeline({
                 type="button"
                 key={marker.id}
                 className={styles.marker}
+                data-tone={marker.tone}
                 style={{ left: `${timelinePercent(marker.time, duration)}%` }}
                 onClick={() => onSeek?.(marker.time, track.id)}
                 title={marker.title}

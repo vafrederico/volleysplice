@@ -524,6 +524,27 @@
 .markers .end { background: var(--label-orange); color: #fff; }
 .markers .deleteSelected { border-color: #9b3822; color: #9b3822; }
 
+.markerChoice {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 1px solid #b9b8af;
+  color: #60635a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.markerChoice select {
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid #b9b8af;
+  background: #fff;
+  color: var(--label-ink);
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
+}
+
 .page kbd {
   margin-left: 5px;
   padding: 2px 4px;
@@ -913,11 +934,21 @@
 
 .pointRow {
   display: grid;
-  grid-template-columns: 70px 100px minmax(110px, 0.45fr) minmax(180px, 1fr) 70px;
+  grid-template-columns: 78px 100px minmax(110px, 0.45fr) minmax(180px, 1fr) minmax(100px, 0.55fr) 70px;
   gap: 9px;
   align-items: center;
   padding: 9px 0;
   border-bottom: 1px solid #cccac0;
+}
+
+.servePointRow {
+  grid-template-columns: 86px 100px minmax(105px, 0.4fr) minmax(105px, 0.45fr) minmax(130px, 0.65fr) minmax(160px, 1fr) 70px;
+}
+
+.modelEvidence {
+  color: #62665a;
+  font: 10px "Atkinson Hyperlegible Mono", monospace;
+  line-height: 1.35;
 }
 
 .smallRow {
@@ -987,7 +1018,8 @@
   .metadata > dl { grid-column: 1 / -1; }
   .row { grid-template-columns: 60px 1fr 20px 1fr 1fr 1fr; }
   .row select { grid-column: 2 / 6; }
-  .pointRow { grid-template-columns: 60px 100px minmax(90px, 0.45fr) minmax(160px, 1fr) 70px; }
+  .pointRow { grid-template-columns: 70px 90px minmax(90px, 0.4fr) minmax(130px, 1fr) minmax(90px, 0.5fr) 65px; }
+  .servePointRow { grid-template-columns: 75px 90px minmax(90px, 0.4fr) minmax(100px, 0.5fr) minmax(110px, 0.6fr) minmax(140px, 1fr) 65px; }
   .courtAnchors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .trackletControls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

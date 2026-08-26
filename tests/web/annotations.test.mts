@@ -42,9 +42,54 @@ function fixture() {
 
 test("legacy label documents remain valid without optional experiment fields", () => {
   const parsed = parseLabelDocument(fixture());
+  assert.deepEqual(parsed.serveMarkers, []);
   assert.deepEqual(parsed.sideSwitches, []);
   assert.equal(parsed.recording.courtGeometry, undefined);
   assert.equal(parsed.rallies[0].terminalCue, undefined);
+});
+
+test("parser accepts editable model serve and side-switch markers", () => {
+  const value = fixture();
+  Object.assign(value, {
+    serveMarkers: [
+      {
+        time: 10,
+        side: "near",
+        origin: "model",
+        modelSide: "near",
+        modelConfidence: 0.91,
+        modelId: "serving-side-fixture",
+        rallyId: "R001",
+      },
+      { time: 30, side: "review", origin: "manual" },
+    ],
+    sideSwitches: [
+      {
+        time: 25,
+        origin: "model",
+        modelConfidence: 0.82,
+        modelId: "side-switch-fixture",
+        modelEventId: "switch:1",
+      },
+    ],
+  });
+
+  const parsed = parseLabelDocument(value);
+  assert.equal(parsed.serveMarkers[0].modelSide, "near");
+  assert.equal(parsed.serveMarkers[1].side, "review");
+  assert.equal(parsed.sideSwitches[0].modelEventId, "switch:1");
+});
+
+test("parser rejects invalid serve marker labels and confidence", () => {
+  const badSide = fixture();
+  Object.assign(badSide, { serveMarkers: [{ time: 10, side: "left" }] });
+  assert.throws(() => parseLabelDocument(badSide), /serveMarkers\[0\]/);
+
+  const badConfidence = fixture();
+  Object.assign(badConfidence, {
+    serveMarkers: [{ time: 10, side: "near", modelConfidence: 2 }],
+  });
+  assert.throws(() => parseLabelDocument(badConfidence), /serveMarkers\[0\]/);
 });
 
 test("parser accepts normalized court anchors and bounded transition cues", () => {
