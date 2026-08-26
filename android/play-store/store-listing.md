@@ -88,24 +88,22 @@ The same privacy policy and terms cover both the Android app and browser-based w
 
 ## Screenshot order and alt text
 
-1. `screenshots/phone-upload-final/01-build-final-edit.png`
-   - Alt text: "VolleyCut tour explaining how suppression, padding, gap joining, and final-cut playback build a saved edit."
-2. `screenshots/phone-upload-final/02-padding-context.png`
-   - Alt text: "VolleyCut tour highlighting adjustable context before and after inferred volleyball rallies."
-3. `screenshots/phone-upload-final/03-game-window-overview.png`
-   - Alt text: "VolleyCut game-window timeline showing inferred rallies, joined gaps, and ranges that need review."
-4. `screenshots/phone-upload-final/04-focused-range.png`
-   - Alt text: "VolleyCut focused-range editor with model agreement, confidence, timeline handles, and precise output controls."
-5. `screenshots/phone-upload-final/05-trim-and-split.png`
-   - Alt text: "VolleyCut tour showing how to trim or split an inferred rally with frame-accurate controls."
-6. `screenshots/phone-upload-final/06-marking-tools.png`
-   - Alt text: "VolleyCut tools for adding a missed rally or excluding unusable source footage."
-7. `screenshots/phone-upload-final/07-all-cuts.png`
-   - Alt text: "VolleyCut all-cuts list showing inferred ranges, review confidence, and keep controls."
-8. `screenshots/phone-upload-final/08-export-result.png`
-   - Alt text: "VolleyCut export panel for the edited MP4, exact edit list, and model feedback without video bytes."
+1. `screenshots/phone-upload-featured/01-choose-your-match.png`
+   - Alt text: "Choose a volleyball match locally in VolleyCut with the new-project video picker, optional score tracking, and reusable on-device features."
+2. `screenshots/phone-upload-featured/02-auto-rally-detection.png`
+   - Alt text: "Find rallies automatically with VolleyCut's on-device video and audio analysis, shown above the two-rail game-window timeline and review controls."
+3. `screenshots/phone-upload-featured/03-precise-rally-editing.png`
+   - Alt text: "Fine-tune every cut in VolleyCut with a focused rally timeline, draggable boundaries, confidence details, trim, split, and padding controls."
+4. `screenshots/phone-upload-featured/04-offline-mp4-export.png`
+   - Alt text: "Export a private offline volleyball highlight reel from VolleyCut using the MP4 export, edit-list, and model-feedback options."
 
-These screenshots were captured from the signed `v0.10.3` release build with a saved inference whose original source file had already been deleted. They show no video frame, thumbnail, or personal media. The filename shown in the inference was confirmed non-sensitive by the owner.
+The featured screenshots use real app UI captures, including captures from the
+signed `v0.10.3` release build, with concise marketing headers added for Play Store
+readability. The saved
+inference's original source file had already been deleted, so the screenshots show
+no video frame, thumbnail, or personal media. The filename shown in the inference
+was confirmed non-sensitive by the owner. The eight original 1280×2560 captures
+remain in `screenshots/phone-upload-final/` as source and audit material.
 
 ## Feature graphic alt text
 

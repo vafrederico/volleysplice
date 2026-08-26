@@ -64,7 +64,7 @@ Pixel 10 Pro validation completed on 2026-08-19 using the current debug build (`
 
 ### 4. Refresh release assets
 
-If the UI changes after the captured screenshots, recheck the eight Play screenshots. Build/sign the new version before replacing the existing signed APK in `android/releases/` or the production download copy.
+If the UI changes after the captured screenshots, recheck the four featured Play screenshots and their eight source captures. Build/sign the new version before replacing the existing signed APK in `android/releases/` or the production download copy.
 
 ## Known non-blocking trade-offs
 
