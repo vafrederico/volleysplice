@@ -58,6 +58,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -1069,6 +1071,16 @@ private fun ProjectHeaderBar(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("open-settings"),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = "Settings",
+                        tint = Ink,
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
@@ -1102,11 +1114,6 @@ private fun ProjectHeaderBar(
                                 onClick = { expanded = false; onSelect(project) },
                             )
                         }
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("Settings") },
-                            onClick = { expanded = false; onOpenSettings() },
-                        )
                     }
                 }
                 TextButton(onClick = onRestartTour) { Text("? Tour") }
