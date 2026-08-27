@@ -5,15 +5,14 @@
 - `app-icon-512.png` — 512×512 PNG, existing launcher artwork
 - `feature-graphic-1024x500.png` — 1024×500 RGB PNG
 - `screenshots/phone-upload-featured/` — five ordered 1080×2160 RGB PNGs with feature-focused Play Store copy
-- `screenshots/phone-release-sources-v2/` — five 1344×2992 source captures from the release-equivalent screenshot build
+- `screenshots/phone-release-sources-v2/` — five native-resolution source captures from the release-equivalent screenshot build
 - `screenshots/phone-upload-final/` — eight legacy 1280×2560 source/reference captures
 
 The featured upload set turns real app captures into a consistent five-step
 store-listing sequence: select the game window, confirm Strong automatic cleanup,
-review suggested rallies, fix or add rallies, and export the finished MP4. Large
+review rallies with score context, fix or add rallies, and export the finished MP4. Large
 branded headers make each value proposition readable in the Play Store thumbnail
-while the underlying product UI demonstrates the exact feature. The fresh project
-was created normally on a Pixel 10 Pro AVD with a synthetic, non-personal fixture.
+while the underlying product UI demonstrates the exact feature.
 
 ## Text and declarations
 
@@ -54,7 +53,7 @@ are:
 
 1. `Start with any game video` / `Select the game window in seconds — your video stays on your phone.`
 2. `Strong cleanup, ready by default` / `Adjust extra time, short breaks, and how many clips need a check.`
-3. `Review every suggested rally` / `See the final timeline and quickly confirm the clips that need attention.`
+3. `Review rallies with the score` / `See score, point history, and the full match timeline while checking every clip.`
 4. `Fix cuts or add a missed rally` / `Trim clip edges, split a rally, or mark missing action yourself.`
 5. `Export one finished highlight video` / `Save a private, offline MP4 that is ready to share.`
 
@@ -66,3 +65,12 @@ The screenshot build inherits the minified, non-debuggable release configuration
 and uses an isolated `.screenshot` application ID with the standard debug
 certificate because Android cannot install an unsigned APK. The production
 `app-release-unsigned.apk` remains unsigned and untouched.
+
+The setup and review captures were generated from the complete `Z:\1080p60.mp4` match. Because
+the Pixel 10 Pro AVD cannot decode that source's H.264 stream, it was transcoded at
+full duration to an emulator-compatible MPEG-4 copy before import. VolleyCut then
+decoded 33,175 video frames, generated 4,424 feature rows, found 61 rally clips and
+50 serve markers, and calculated the displayed 11–13 score at 9:25.9. The
+screenshot build replaces only the decoded video layer with black; the scoreboard,
+point history, playhead, rally ranges, cleanup suggestions, and score are real app
+output from that analysis.

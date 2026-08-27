@@ -40,9 +40,9 @@ SCREENS = [
         "source": "03-review-timeline.png",
         "output": "03-review-suggested-rallies.png",
         "step": "3 · REVIEW",
-        "headline": ("Review every", "suggested rally"),
-        "support": "See the final timeline and quickly confirm the clips that need attention.",
-        "crop_y": 500,
+        "headline": ("Review rallies", "with the score"),
+        "support": "See score, point history, and the full match timeline while checking every clip.",
+        "crop_y": 250,
     },
     {
         "source": "04-edit-and-add-rally.png",

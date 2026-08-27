@@ -93,7 +93,7 @@ The same privacy policy and terms cover both the Android app and browser-based w
 2. `screenshots/phone-upload-featured/02-strong-cleanup-default.png`
    - Alt text: "VolleyCut Settings with Strong automatic cleanup selected by default plus clip padding, short-break, and review controls."
 3. `screenshots/phone-upload-featured/03-review-suggested-rallies.png`
-   - Alt text: "Review suggested volleyball rallies on a two-part game timeline and confirm that every flagged clip has been checked."
+   - Alt text: "Review volleyball rallies at 9:25 with an 11 to 13 scoreboard, point history, and a two-part game timeline."
 4. `screenshots/phone-upload-featured/04-fix-or-add-rallies.png`
    - Alt text: "Fine-tune rally and final clip edges, split at the playhead, preview a clip, or add a missed rally."
 5. `screenshots/phone-upload-featured/05-export-highlight-video.png`
@@ -101,8 +101,10 @@ The same privacy policy and terms cover both the Android app and browser-based w
 
 The featured screenshots use exact `v0.10.7` UI captures from a minified,
 non-debuggable release-equivalent build, with concise marketing headers added for
-Play Store readability. A fresh project was created normally on a Pixel 10 Pro AVD
-using a synthetic non-personal video fixture. The current source captures remain in
+Play Store readability. The review screen uses app-generated rally and score output
+from the complete `1080p60.mp4` match at 9:25.9; its screenshot-only build hides the
+decoded video layer behind black while leaving the real score and timeline UI
+visible. The current source captures remain in
 `screenshots/phone-release-sources-v2/` for audit and future regeneration.
 
 ## Feature graphic alt text

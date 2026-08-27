@@ -18,6 +18,8 @@ android {
         versionCode = 21
         versionName = "0.10.7"
 
+        buildConfigField("boolean", "BLACK_VIDEO_PREVIEW", "false")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // The benchmark target is a Pixel 10 Pro. Keeping only arm64 avoids a
@@ -48,6 +50,7 @@ android {
             applicationIdSuffix = ".screenshot"
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "BLACK_VIDEO_PREVIEW", "true")
         }
     }
 

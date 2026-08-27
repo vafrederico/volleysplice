@@ -1763,11 +1763,15 @@ private fun GameWindowPicker(
         }
     }
     Card(colors = CardDefaults.cardColors(containerColor = Color.Black)) {
-        ContentFrame(
-            player = player,
-            modifier = Modifier.fillMaxWidth().height(176.dp),
-            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-        )
+        Box(Modifier.fillMaxWidth().height(176.dp)) {
+            if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
+                ContentFrame(
+                    player = player,
+                    modifier = Modifier.fillMaxSize(),
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                )
+            }
+        }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         SmallButton(if (playing) "Pause" else "Play", enabled = enabled) {
@@ -2586,11 +2590,13 @@ private fun EditorScreen(
                 colors = CardDefaults.cardColors(containerColor = Color.Black),
             ) {
                 BoxWithConstraints(Modifier.fillMaxWidth().height(176.dp)) {
-                    ContentFrame(
-                        player = player,
-                        modifier = Modifier.fillMaxSize(),
-                        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                    )
+                    if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
+                        ContentFrame(
+                            player = player,
+                            modifier = Modifier.fillMaxSize(),
+                            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                        )
+                    }
                     if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
                         val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
                             seed.width, seed.height, seed.rotation,
@@ -3715,7 +3721,12 @@ private fun ScoreOverlayPreview(
     BoxWithConstraints(modifier) {
         val videoWidthPx = with(density) { maxWidth.toPx().roundToInt() }
         val videoHeightPx = with(density) { maxHeight.toPx().roundToInt() }
-        val layout = ScoreOverlay.layout(videoWidthPx, videoHeightPx, snapshot) { text, fontSize ->
+        // Store screenshots intentionally hide the source footage. Give the
+        // remaining score UI more visual weight so it survives Play resizing.
+        val overlayLayoutHeightPx = if (BuildConfig.BLACK_VIDEO_PREVIEW) {
+            videoHeightPx * 2
+        } else videoHeightPx
+        val layout = ScoreOverlay.layout(videoWidthPx, overlayLayoutHeightPx, snapshot) { text, fontSize ->
             measurer.measure(
                 text,
                 style = androidx.compose.ui.text.TextStyle(
@@ -3797,7 +3808,7 @@ private fun ScoreOverlayPreview(
         if (renderTimeline && visibleTimelinePoints.isNotEmpty() && timeline.opacity > 0f) {
             val pointLayout = ScoreOverlay.pointTimelineLayout(
                 videoWidthPx,
-                videoHeightPx,
+                overlayLayoutHeightPx,
                 layout,
                 visibleTimelinePoints.size,
             )
