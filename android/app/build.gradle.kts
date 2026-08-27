@@ -15,8 +15,8 @@ android {
         // Android 14 is the minimum supported platform for the release build.
         minSdk = 34
         targetSdk = providers.gradleProperty("volleycut.targetSdk").orElse("37").get().toInt()
-        versionCode = 21
-        versionName = "0.10.7"
+        versionCode = 22
+        versionName = "0.10.8"
 
         buildConfigField("boolean", "BLACK_VIDEO_PREVIEW", "false")
 
