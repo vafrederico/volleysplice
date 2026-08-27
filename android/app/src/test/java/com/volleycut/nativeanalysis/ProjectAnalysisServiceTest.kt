@@ -137,6 +137,16 @@ class ProjectAnalysisServiceTest {
         now = 2_000_000_000L
         val audio = tracker.update("audio", 0.5, "Generating audio features")
         assertEquals(listOf("video", "audio", "rally", "serving-side", "side-switch"), audio.map { it.id })
+        assertEquals(
+            listOf(
+                "Scanning video",
+                "Listening for play",
+                "Finding rallies",
+                "Finding serve markers",
+                "Finding team switches",
+            ),
+            audio.map { it.label },
+        )
         assertEquals(InferenceStepStatus.COMPLETE, audio[0].status)
         assertEquals(2_000.0, audio[0].elapsedMilliseconds, 0.001)
         assertEquals(InferenceStepStatus.RUNNING, audio[1].status)

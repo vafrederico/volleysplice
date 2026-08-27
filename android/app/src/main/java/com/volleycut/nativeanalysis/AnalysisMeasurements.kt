@@ -163,12 +163,12 @@ internal class InferenceProgressTracker(
 
     private val steps = buildList {
         if (includeCore) {
-            add(Step("video", "Video features"))
-            add(Step("audio", "Audio features"))
-            add(Step("rally", "Rally inference"))
+            add(Step("video", "Scanning video"))
+            add(Step("audio", "Listening for play"))
+            add(Step("rally", "Finding rallies"))
         }
-        if (includeServingSide) add(Step("serving-side", "Serving side"))
-        if (includeSideSwitch) add(Step("side-switch", "Side switches"))
+        if (includeServingSide) add(Step("serving-side", "Finding serve markers"))
+        if (includeSideSwitch) add(Step("side-switch", "Finding team switches"))
     }
 
     fun update(stage: String, fraction: Double, detail: String): List<InferenceStepMeasurement> {

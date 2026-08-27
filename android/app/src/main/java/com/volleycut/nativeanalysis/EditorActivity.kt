@@ -1293,7 +1293,9 @@ private fun ProjectInferenceCard(
             color = Muted,
         )
         if (project.status == ProjectStatus.ANALYZING || state.progress > 0f) {
-            LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+            if (state.stepMeasurements.isEmpty()) {
+                LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+            }
         }
         val detail = state.detail.ifBlank { project.error.orEmpty() }
         if (project.status == ProjectStatus.ERROR && detail.isNotBlank()) {
@@ -1301,7 +1303,7 @@ private fun ProjectInferenceCard(
         } else if (project.status == ProjectStatus.ANALYZING) {
             Text("Keep VolleyCut open while it prepares the review.", fontSize = 12.sp, color = Muted)
         }
-        if (BuildConfig.DEBUG) state.performance?.takeIf {
+        state.performance?.takeIf {
             state.stepMeasurements.isEmpty() && state.stage == "video"
         }?.let { stats ->
             Text(
@@ -1321,7 +1323,7 @@ private fun ProjectInferenceCard(
                 color = Muted,
             )
         }
-        if (BuildConfig.DEBUG && state.stepMeasurements.isNotEmpty()) {
+        if (state.stepMeasurements.isNotEmpty()) {
             InferenceProgressMeasurementsPanel(
                 steps = state.stepMeasurements,
                 performance = state.performance,
@@ -1364,13 +1366,26 @@ private fun InferenceProgressMeasurementsPanel(
             steps.forEachIndexed { index, step ->
                 val percent = (step.fraction * 100).roundToInt()
                 val elapsedSeconds = step.elapsedMilliseconds / 1_000.0
+                val videoPerformance = performance?.takeIf {
+                    step.id == "video" && it.framesPerSecond() > 0.0
+                }
                 val etaSeconds = if (
                     step.status == InferenceStepStatus.RUNNING &&
                     step.fraction >= .03 && elapsedSeconds >= .5
-                ) elapsedSeconds * (1.0 - step.fraction) / step.fraction else null
+                ) {
+                    videoPerformance?.etaSeconds()?.takeIf { it.isFinite() && it >= 0.0 }
+                        ?: (elapsedSeconds * (1.0 - step.fraction) / step.fraction)
+                } else null
                 val measuredRate = when {
-                    step.id == "video" && performance != null && performance.realtimeRatio() > 0.0 ->
-                        String.format(Locale.US, "%.2fx realtime", performance.realtimeRatio())
+                    videoPerformance != null && videoPerformance.realtimeRatio() > 0.0 ->
+                        String.format(
+                            Locale.US,
+                            "%.1f frames/s · %.2fx realtime",
+                            videoPerformance.framesPerSecond(),
+                            videoPerformance.realtimeRatio(),
+                        )
+                    videoPerformance != null ->
+                        String.format(Locale.US, "%.1f frames/s", videoPerformance.framesPerSecond())
                     step.status == InferenceStepStatus.RUNNING && elapsedSeconds >= .5 && step.fraction > 0.0 ->
                         String.format(Locale.US, "%.1f%%/s", step.fraction * 100.0 / elapsedSeconds)
                     step.status == InferenceStepStatus.COMPLETE -> "Completed"
@@ -2488,9 +2503,10 @@ private fun EditorScreen(
                 }
                 if (draft.scoreTracking.enabled) {
                     Row(
-                        modifier = Modifier
-                            .padding(start = 18.dp)
-                            .guidedTourTarget("editor-score-overlay", guidedTourTargets),
+                        modifier = Modifier.guidedTourTarget(
+                            "editor-score-overlay",
+                            guidedTourTargets,
+                        ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
@@ -2511,7 +2527,7 @@ private fun EditorScreen(
                     }
                     if (draft.renderScoreOverlay) {
                         Row(
-                            modifier = Modifier.padding(start = 36.dp),
+                            modifier = Modifier.padding(start = 18.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
@@ -3404,7 +3420,7 @@ internal fun ScoreTrackingPanel(
                                 )
                             }
                         }
-                        if (BuildConfig.DEBUG && servingSideStepMeasurements.isNotEmpty()) {
+                        if (servingSideStepMeasurements.isNotEmpty()) {
                             InferenceProgressMeasurementsPanel(
                                 steps = servingSideStepMeasurements,
                                 compact = true,
