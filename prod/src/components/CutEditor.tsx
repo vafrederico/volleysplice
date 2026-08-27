@@ -26,7 +26,6 @@ import {
   playbackFocusCut,
   PLAYBACK_RATES,
   SUPPRESSION_SCOPE_IDS,
-  SUPPRESSION_SCOPE_LABELS,
   suppressionSuggestionScope,
   totalFinalCutSeconds,
   suppressionSuggestionState,
@@ -59,7 +58,6 @@ import {
 } from "@/lib/on-device/export-delivery";
 import type { ExportProgress, VideoExportMode } from "@/lib/on-device/export";
 import { openLocalMedia } from "@/lib/on-device/media";
-import { modelDisplayName } from "@/lib/on-device/ensemble";
 import { requestPlayingSeek } from "@/lib/on-device/player";
 import { prepareScoreOverlay } from "@/lib/score-overlay";
 import {
@@ -74,8 +72,6 @@ import {
 import {
   nextSuppressionAfterTime,
   nextSuppressionSuggestion,
-  SUPPRESSION_POLICY_DIAGNOSTIC_NAMES,
-  SUPPRESSION_POLICY_LABELS,
   type SuppressionPolicyId,
   type SuppressionSuggestion,
 } from "@/lib/on-device/suppression-policy";
@@ -104,7 +100,6 @@ type CutEditorProps = {
 };
 
 type ExportState = "idle" | "exporting" | "done" | "error";
-
 type BoundarySide = "start" | "end";
 type BoundaryEdge = "output" | "core";
 
@@ -179,10 +174,6 @@ function detailWindow(
   return { start, end };
 }
 
-function downloadFilename(value: string): string {
-  const safe = value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return `${safe || "volleycut"}.edit-list.json`;
-}
 
 function isModelDisagreement(cut: EditableCut): boolean {
   return cut.agreement === "all-labels-v2-only" ||
@@ -190,11 +181,19 @@ function isModelDisagreement(cut: EditableCut): boolean {
 }
 
 function modelAgreementLabel(cut: EditableCut): string {
-  if (cut.agreement === "both-models") return "Both models agree";
-  if (cut.agreement === "all-labels-v2-only") return "Disagreement · all-labels v2 only";
-  if (cut.agreement === "previous-production-only")
-    return "Disagreement · previous production only";
-  return "Model prediction";
+  if (cut.agreement === "both-models") return "Found automatically";
+  if (cut.agreement === "all-labels-v2-only" || cut.agreement === "previous-production-only")
+    return "Needs a quick check";
+  return "Suggested clip";
+}
+
+function cleanupLabel(policy: SuppressionPolicyId): string {
+  switch (policy) {
+    case "none": return "Off";
+    case "conservative": return "Light";
+    case "balanced": return "Standard";
+    case "aggressive": return "Strong";
+  }
 }
 
 export function CutEditor({
@@ -243,7 +242,7 @@ export function CutEditor({
   const initialDraft = useMemo(() => createCutDraft(seed), [seed]);
   const [draft, setDraft] = useState<CutDraft>(initialDraft);
   const [storageReady, setStorageReady] = useState(false);
-  const [storageMessage, setStorageMessage] = useState("Loading on-device draft…");
+  const [storageMessage, setStorageMessage] = useState("Opening your saved edits…");
   const [selectedId, setSelectedId] = useState(initialDraft.cuts[0]?.id ?? "");
   const [selectedSuppressionId, setSelectedSuppressionId] = useState("");
   const [selectedServeMarkerId, setSelectedServeMarkerId] = useState("");
@@ -351,10 +350,10 @@ export function CutEditor({
       );
       setStorageMessage(
         restored
-          ? "Restored cached edits on this device"
+          ? "Your saved edits are ready"
           : imported
-            ? "Imported model-feedback edits"
-            : "New on-device draft",
+            ? "Your saved project is ready"
+            : "Changes save automatically",
       );
       setStorageReady(true);
     }, 0);
@@ -401,7 +400,7 @@ export function CutEditor({
         (candidate) => candidate.verdict === "review",
       ).length;
       setScoreInferenceMessage(
-        `Score model cache loaded · ${review} serve verdicts need review · ${initialAnalysis.sideSwitch?.candidates.length ?? 0} team-side switches predicted.`,
+        `${review} serve ${review === 1 ? "marker needs" : "markers need"} review · ${initialAnalysis.sideSwitch?.candidates.length ?? 0} side switches found.`,
       );
       return;
     }
@@ -416,8 +415,8 @@ export function CutEditor({
     setScoreInferenceStatus("idle");
     setScoreInferenceMessage(
       sourceFile
-        ? "This older analysis lacks the production traces required for automatic score markers. Add markers manually or run a new analysis."
-        : "Reconnect the source once to generate and save serve and team-side switch markers for this project.",
+        ? "This older project cannot find score markers automatically. You can still add them yourself."
+        : "Choose the original video once so VolleyCut can find and save the score markers.",
     );
   }, [draft.scoreTracking.enabled, draft.scoreTracking.serveMarkers, initialAnalysis.productionComponents, initialAnalysis.productionServeOutputs, initialAnalysis.productionStateOutputs, initialAnalysis.servingSide, initialAnalysis.sideSwitch, scoreInferenceStatus, sideSwitchEnabled, sourceFile, storageReady]);
 
@@ -499,9 +498,6 @@ export function CutEditor({
   const selectedSuppressionScope = selectedSuppression
     ? suppressionSuggestionScope(selectedSuppression, draft)
     : DEFAULT_SUPPRESSION_SCOPE;
-  const appliedSuppressionCount = suppressionSuggestions.filter(
-    (suggestion) => suppressionSuggestionState(suggestion, draft) === "suppressed",
-  ).length;
   const keptCount = effectiveKeptIds.size;
   const removedCount = draft.cuts.filter((cut) => !cut.included).length;
   const fullyIgnoredCount = draft.cuts.filter(
@@ -541,13 +537,10 @@ export function CutEditor({
       effectiveKeptIds.has(cut.id) &&
       (isModelDisagreement(cut) || cut.confidence < draft.confidenceReviewThreshold),
   );
-  const disagreementCount = lowConfidenceCuts.filter(isModelDisagreement).length;
   const reviewedCutIds = useMemo(() => new Set(draft.reviewedCutIds), [draft.reviewedCutIds]);
   const unreviewedLowConfidenceCuts = lowConfidenceCuts.filter(
     (cut) => !reviewedCutIds.has(cut.id),
   );
-  const reviewedLowConfidenceCount = lowConfidenceCuts.length -
-    unreviewedLowConfidenceCuts.length;
   const selectedReviewCandidate = selected
     ? lowConfidenceCuts.find((cut) => cut.id === selected.id) ?? null
     : null;
@@ -570,7 +563,13 @@ export function CutEditor({
     : exportMode === "opfs"
       ? opfsSupported
       : directDiskSupported || opfsSupported;
-  const localExportSupported = Boolean(sourceFile) && encodingSupported && exportStorageReady;
+  const browserExportSupported = encodingSupported && exportStorageReady;
+  const localExportSupported = Boolean(sourceFile) && browserExportSupported;
+  const exportUnavailableMessage = !sourceFile
+    ? "Choose the original video above before creating your final video."
+    : !browserExportSupported
+      ? "This browser cannot save the finished video. Try the latest version of Chrome or Edge."
+      : null;
 
   function updateDraft(mutate: (current: CutDraft) => CutDraft) {
     if (exportState !== "exporting") {
@@ -666,7 +665,7 @@ export function CutEditor({
     if (!sourceFile || scoreInferenceStatus === "running") return;
     scoreInferenceStartedRef.current = true;
     setScoreInferenceStatus("running");
-    setScoreInferenceMessage("Loading the frozen score-tracking models…");
+    setScoreInferenceMessage("Getting ready to find score markers…");
     const missingSteps: InferenceProgressStepId[] = [
       ...(!initialAnalysis.servingSide && initialAnalysis.productionServeOutputs
         ? ["serving-side" as const]
@@ -747,7 +746,7 @@ export function CutEditor({
             finishInferenceStep(
               current,
               "serving-side",
-              `Serving-side verdicts ready · ${inferred.servingSide!.candidates.length} rallies`,
+              `Serve markers ready · ${inferred.servingSide!.candidates.length} rallies checked`,
               performance.now(),
             ),
           );
@@ -760,14 +759,14 @@ export function CutEditor({
             finishInferenceStep(
               current,
               "side-switch",
-              `Team-side switch markers ready · ${inferred.sideSwitch!.candidates.length} predicted`,
+              `Side switches ready · ${inferred.sideSwitch!.candidates.length} found`,
               performance.now(),
             ),
           );
         }
       }
       if (!servingSide && !sideSwitch) {
-        throw new Error("This project has no reusable score-model inputs.");
+        throw new Error("This saved project cannot rebuild its score markers.");
       }
       setScoreInferenceStatus("done");
       const visible = servingSide?.candidates.filter(
@@ -775,7 +774,7 @@ export function CutEditor({
       ) ?? [];
       const review = visible.filter((candidate) => candidate.verdict === "review").length;
       setScoreInferenceMessage(
-        `Score model cache saved · ${review} serve verdicts need review · ${sideSwitch?.candidates.length ?? 0} team-side switches predicted.`,
+        `${review} serve ${review === 1 ? "marker needs" : "markers need"} review · ${sideSwitch?.candidates.length ?? 0} side switches found.`,
       );
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -792,7 +791,7 @@ export function CutEditor({
       }
       setScoreInferenceStatus("error");
       setScoreInferenceMessage(
-        `Score marker analysis could not finish: ${message}. Existing markers remain editable.`,
+        `VolleyCut could not finish finding score markers: ${message}. You can still check or add them yourself.`,
       );
     } finally {
       media?.input.dispose();
@@ -803,13 +802,19 @@ export function CutEditor({
     updateDraft((current) => ({
       ...current,
       scoreTracking: { ...current.scoreTracking, enabled },
+      renderScoreOverlay: enabled ? current.renderScoreOverlay : false,
+      renderScoreTimeline: enabled ? current.renderScoreTimeline : false,
     }));
     if (enabled) scoreInferenceStartedRef.current = false;
   }
 
   function toggleScoreOverlay(renderScoreOverlay: boolean) {
+    if (renderScoreOverlay) scoreInferenceStartedRef.current = false;
     updateDraft((current) => ({
       ...current,
+      scoreTracking: renderScoreOverlay
+        ? { ...current.scoreTracking, enabled: true }
+        : current.scoreTracking,
       renderScoreOverlay,
       renderScoreTimeline: renderScoreOverlay
         ? current.renderScoreTimeline
@@ -833,7 +838,7 @@ export function CutEditor({
   function selectSideSwitchMarker(markerId: string, timestamp: number) {
     setSelectedServeMarkerId(markerId);
     seekTo(timestamp, false);
-    setEditorMessage(`Selected team-side switch at ${preciseTime(timestamp)}.`);
+    setEditorMessage(`Selected side switch at ${preciseTime(timestamp)}.`);
   }
 
   function updateCut(id: string, mutate: (cut: EditableCut) => EditableCut) {
@@ -851,12 +856,6 @@ export function CutEditor({
   function setPlaybackRate(playbackRate: CutDraft["playbackRate"]) {
     updateDraft((current) => ({ ...current, playbackRate }));
     if (videoRef.current) videoRef.current.playbackRate = playbackRate;
-  }
-
-  function setConfidenceReviewThreshold(percent: number) {
-    if (!Number.isFinite(percent)) return;
-    const threshold = Math.max(0, Math.min(100, percent)) / 100;
-    updateDraft((current) => ({ ...current, confidenceReviewThreshold: threshold }));
   }
 
   function seekTo(
@@ -925,7 +924,7 @@ export function CutEditor({
     setSelectedSuppressionId(suggestion.id);
     seekTo(Math.max(analysisStart, suggestion.start - 2), false);
     setEditorMessage(
-      `${preciseTime(suggestion.start)}–${preciseTime(suggestion.end)} · review without changing its current decision.`,
+      `${preciseTime(suggestion.start)}–${preciseTime(suggestion.end)} · review this section. Nothing changes until you choose what to do.`,
     );
   }
 
@@ -934,8 +933,8 @@ export function CutEditor({
     if (policy === "none") setSelectedSuppressionId("");
     setEditorMessage(
       policy === "none"
-        ? "Suppression suggestions are dormant; saved review choices are preserved."
-        : `${SUPPRESSION_POLICY_LABELS[policy]} suppression selected. Untouched suggestions default to Suppress.`,
+        ? "Automatic cleanup is off. Your previous choices are still saved."
+        : `${cleanupLabel(policy)} cleanup selected. Suggested non-play moments will be left out unless you keep them.`,
     );
   }
 
@@ -976,8 +975,8 @@ export function CutEditor({
     }));
     setEditorMessage(
       scope === "whole-rally"
-        ? "This suppression vetoes the whole inferred rally, including its padding."
-        : "This suppression vetoes only the highlighted region; the rest of the rally stays.",
+        ? "The whole rally will be left out, including the extra time around it."
+        : "Only the highlighted part will be left out; the rest of the rally stays.",
     );
   }
 
@@ -1162,7 +1161,7 @@ export function CutEditor({
       );
     });
     setEditorMessage(
-      `Applied ${paddingSeconds.toFixed(1)} seconds ${side} every model-predicted cut.`,
+      `Added ${paddingSeconds.toFixed(1)} seconds ${side} every suggested clip.`,
     );
   }
 
@@ -1301,8 +1300,8 @@ export function CutEditor({
     setCutReviewed(selectedReviewCandidate.id, reviewed);
     setEditorMessage(
       reviewed
-        ? `${selectedReviewCandidate.id} marked reviewed.`
-        : `${selectedReviewCandidate.id} returned to the review queue.`,
+        ? "Clip checked."
+        : "Clip added back to the review list.",
     );
   }
 
@@ -1321,8 +1320,8 @@ export function CutEditor({
     if (remaining.length === 0) {
       setEditorMessage(
         markCurrentReviewed && selectedReviewCandidate
-          ? `${selectedReviewCandidate.id} marked reviewed. Review queue complete.`
-          : "Review queue complete.",
+          ? "Clip checked. Your review list is complete."
+          : "Your review list is complete.",
       );
       return;
     }
@@ -1344,12 +1343,10 @@ export function CutEditor({
     if (!next) return;
     selectCut(next);
     const reviewedPrefix = markCurrentReviewed && selectedReviewCandidate
-      ? `${selectedReviewCandidate.id} marked reviewed. `
+      ? "Clip checked. "
       : "";
     setEditorMessage(
-      reviewedPrefix + (isModelDisagreement(next)
-        ? `${next.id} was detected by only one model. Validate it and remove it if it is not a rally.`
-        : `${next.id} has ${Math.round(next.confidence * 100)}% model confidence. Review it and remove it if needed.`),
+      reviewedPrefix + "Check that this clip contains a rally, then keep it or leave it out.",
     );
   }
 
@@ -1474,64 +1471,10 @@ export function CutEditor({
     scoreInferenceStartedRef.current = false;
     setScoreInferenceStatus("idle");
     setScoreInferenceMessage(null);
-    setEditorMessage("Reset to the inferred model ranges.");
+    setEditorMessage("Your review has been reset to VolleyCut's original suggestions.");
   }
 
-  function downloadEditList() {
-    const payload = {
-      schemaVersion: 2,
-      source: {
-        analysisId: initialAnalysis.id,
-        recordingId: initialAnalysis.recordingId,
-        filename: initialAnalysis.sourceFilename,
-        durationSeconds: initialAnalysis.duration,
-        gameStartSeconds: analysisStart,
-        gameEndSeconds: analysisEnd,
-      },
-      generatedAt: new Date().toISOString(),
-      cuts: draft.cuts,
-      reviewedCutIds: draft.reviewedCutIds,
-      ignoredIntervals: draft.ignoredIntervals,
-      scoreTracking: draft.scoreTracking,
-      renderScoreOverlay: draft.renderScoreOverlay,
-      renderScoreTimeline: draft.renderScoreTimeline,
-      suppression: {
-        selectedPolicy: draft.selectedSuppressionPolicy,
-        artifact: initialAnalysis.suppression
-          ? {
-              modelId: initialAnalysis.suppression.modelId,
-              artifactSha256: initialAnalysis.suppression.artifactSha256,
-              weightsSha256: initialAnalysis.suppression.weightsSha256,
-              decoderVersion: initialAnalysis.suppression.decoderVersion,
-              policyContractVersion: initialAnalysis.suppression.policyContractVersion,
-            }
-          : null,
-        suggestions: initialAnalysis.suppression?.suggestions ?? [],
-        decisionOverrides: draft.suppressionDecisionOverrides,
-        defaultSuppressionScope: DEFAULT_SUPPRESSION_SCOPE,
-        suppressionScopeOverrides: draft.suppressionScopeOverrides,
-        userTouchedCutIds: draft.userTouchedCutIds,
-        decisions: (initialAnalysis.suppression?.suggestions ?? []).map((suggestion) => ({
-          suggestionId: suggestion.id,
-          logicalId: suggestion.logicalId,
-          state: suppressionSuggestionState(suggestion, draft),
-          scope: suppressionSuggestionScope(suggestion, draft),
-        })),
-      },
-      finalIntervals,
-      finalIntervalProvenance: materialized.provenance,
-    };
-    const url = URL.createObjectURL(
-      new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = downloadFilename(initialAnalysis.sourceFilename);
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function shareModelFeedback() {
+  async function saveProjectFile() {
     try {
       const bundle = createModelFeedbackBundle(
         initialAnalysis,
@@ -1545,13 +1488,9 @@ export function CutEditor({
         try {
           await navigator.share({
             files: [file],
-            title: `VolleyCut model feedback · ${initialAnalysis.sourceFilename}`,
+            title: `VolleyCut project · ${initialAnalysis.sourceFilename}`,
           });
-          setEditorMessage(
-            initialAnalysis.features
-              ? "Shared model feedback with features, serving-side inference, score tracking, and corrections."
-              : "Shared inference and corrections; this older analysis has no retained feature matrix.",
-          );
+          setEditorMessage("Shared your VolleyCut project file.");
           return;
         } catch (cause) {
           if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -1564,14 +1503,10 @@ export function CutEditor({
       link.download = filename;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      setEditorMessage(
-        initialAnalysis.features
-          ? "Downloaded model feedback with features, serving-side inference, score tracking, and corrections."
-          : "Downloaded inference and corrections; this older analysis has no retained feature matrix.",
-      );
+      setEditorMessage("Saved your VolleyCut project file.");
     } catch (cause) {
       setEditorMessage(
-        `Could not create model feedback: ${cause instanceof Error ? cause.message : String(cause)}`,
+        `Could not save the project: ${cause instanceof Error ? cause.message : String(cause)}`,
       );
     }
   }
@@ -1731,7 +1666,7 @@ export function CutEditor({
             data-origin={cut.origin}
             style={position(segment.start, segment.end)}
             onClick={() => selectCut(cut)}
-            aria-label={`${!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"} ${cut.id}, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}, ${Math.round(cut.confidence * 100)}% review confidence${reviewedCutIds.has(cut.id) ? ", reviewed" : ""}`}
+            aria-label={`${!cut.included ? "Left out" : effectiveKeptIds.has(cut.id) ? "Included" : "Left out"} clip, ${preciseTime(cut.keepStart)} to ${preciseTime(cut.keepEnd)}, ${modelAgreementLabel(cut)}${reviewedCutIds.has(cut.id) ? ", checked" : ""}`}
           >
             {before.end > before.start && <span
               className={styles.overviewPadding}
@@ -1842,30 +1777,39 @@ export function CutEditor({
   }
 
   return (
-    <main className={styles.page}>
+    <main
+      className={styles.page}
+      data-design="classic"
+    >
       {header}
+
+      <nav className={styles.workflow} aria-label="Editing progress">
+        <span data-done="true"><b>1</b> Video</span>
+        <i aria-hidden="true" />
+        <span data-current="true"><b>2</b> Review</span>
+        <i aria-hidden="true" />
+        <span><b>3</b> Export</span>
+      </nav>
 
       <section
         className={styles.sourcePicker}
         data-tour="editor-source"
-        aria-label="Local inference source"
+        aria-label="Current video"
       >
         <div className={styles.sourceMeta}>
-          <span>LOCAL VIDEO</span>
+          <span>NOW REVIEWING</span>
           <strong>{initialAnalysis.sourceFilename}</strong>
         </div>
         <div className={styles.sourceMeta}>
-          <span>INFERENCE</span>
-          <strong title={initialAnalysis.modelId}>
-            {modelDisplayName(initialAnalysis.modelId)} · {initialAnalysis.rallies.length} ranges
-          </strong>
+          <span>RALLIES FOUND</span>
+          <strong>{initialAnalysis.rallies.length} suggested clips</strong>
         </div>
         <span className={styles.storageState} data-ready={storageReady || undefined}>
           <i /> {storageMessage}
         </span>
         {!sourceFile && (
           <label className={styles.attachSource}>
-            Reconnect source for playback &amp; export
+            Choose original video to continue
             <input
               type="file"
               accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
@@ -1888,9 +1832,10 @@ export function CutEditor({
           onChange={(event) => toggleScoreTracking(event.currentTarget.checked)}
         />
         <span>
-          <strong>Score tracking <em>BETA</em></strong>
+          <strong>Add a scoreboard <em>Optional</em></strong>
           <small>
-            Use serving-side markers to track points. This choice is saved with the project on this device.
+            VolleyCut builds the score from serve markers. You’ll check which
+            court side is serving and add any missing serves or team side switches.
           </small>
         </span>
       </label>
@@ -1902,131 +1847,19 @@ export function CutEditor({
           aria-label="Final edit settings"
         >
           <div className={styles.summaryStats}>
-            <span>FINAL EDIT LIST</span>
+            <span>YOUR FINAL VIDEO</span>
             <strong>{formatTime(keptSeconds)}</strong>
             <div>
-              <p>{keptCount} kept · {removedCount} removed</p>
-              {fullyIgnoredCount > 0 && <p>{fullyIgnoredCount} enabled rallies fully ignored</p>}
-              <p>{draft.ignoredIntervals.length} ignored source sections</p>
-              <p>Duration includes padding and joined short gaps; ignored time is excluded</p>
+              <p>{keptCount} clips included</p>
+              <p>{removedCount + fullyIgnoredCount} clips left out</p>
+              <p>{unreviewedLowConfidenceCuts.length === 0 ? "Everything has been checked" : `${unreviewedLowConfidenceCuts.length} suggested clips to check`}</p>
             </div>
           </div>
-          <div className={styles.suppressionControls} data-tour="editor-suppression">
-            <div>
-              <span>FALSE-POSITIVE SUPPRESSION</span>
-              <strong>
-                {SUPPRESSION_POLICY_LABELS[draft.selectedSuppressionPolicy]}
-              </strong>
+          <div className={styles.finalVideoOptions}>
+            <div className={styles.finalVideoOptionsHeading}>
+              <span>FINAL VIDEO OPTIONS</span>
             </div>
-            {initialAnalysis.suppression ? (
-              <>
-                <label
-                  className={styles.suppressionSelect}
-                  htmlFor="suppression-policy"
-                >
-                  <span>Suppression level</span>
-                  <select
-                    id="suppression-policy"
-                    value={draft.selectedSuppressionPolicy}
-                    onChange={(event) => setSuppressionPolicy(
-                      event.currentTarget.value as SuppressionPolicyId,
-                    )}
-                    title={draft.selectedSuppressionPolicy === "none"
-                      ? "Preserve the existing production output"
-                      : SUPPRESSION_POLICY_DIAGNOSTIC_NAMES[draft.selectedSuppressionPolicy]}
-                  >
-                  {(initialAnalysis.suppression.identicalPolicyResults
-                    ? ["none", "conservative"] as const
-                    : ["none", "conservative", "balanced", "aggressive"] as const
-                  ).map((policy) => (
-                    <option key={policy} value={policy}>
-                      {initialAnalysis.suppression?.identicalPolicyResults && policy === "conservative"
-                        ? "Suppression suggestions"
-                        : SUPPRESSION_POLICY_LABELS[policy]}
-                    </option>
-                  ))}
-                  </select>
-                </label>
-                {draft.selectedSuppressionPolicy === "none" ? (
-                  <small>Choose a suppression level to automatically remove its suggested false positives.</small>
-                ) : suppressionSuggestions.length === 0 ? (
-                  <small>No suppression suggestions for this game.</small>
-                ) : (
-                  <small>
-                    Untouched suggestions are automatically suppressed. Choose Keep while reviewing to restore one.
-                  </small>
-                )}
-              </>
-            ) : (
-              <>
-                <small>
-                  This saved analysis has no retained suppression layer. No suppression remains fully usable.
-                </small>
-                {sourceFile && (
-                  <button type="button" onClick={onRequestSuppression}>
-                    Add suppression from cached features
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          <div className={styles.paddingControls}>
-            <div className={styles.paddingPair} data-tour="editor-padding">
-              <div className={styles.paddingControl}>
-                <label htmlFor="cut-padding-before">
-                  <span>Before</span>
-                  <output>{draft.beforePaddingSeconds.toFixed(1)}s</output>
-                </label>
-                <input
-                  id="cut-padding-before"
-                  aria-label="Padding before each inferred cut"
-                  type="range"
-                  min="0"
-                  max="10"
-                  step="0.5"
-                  value={draft.beforePaddingSeconds}
-                  onChange={(event) => setGlobalPadding("before", Number(event.currentTarget.value))}
-                />
-                <div><span>0s</span><span>10s</span></div>
-              </div>
-              <div className={styles.paddingControl}>
-                <label htmlFor="cut-padding-after">
-                  <span>After</span>
-                  <output>{draft.afterPaddingSeconds.toFixed(1)}s</output>
-                </label>
-                <input
-                  id="cut-padding-after"
-                  aria-label="Padding after each inferred cut"
-                  type="range"
-                  min="0"
-                  max="10"
-                  step="0.5"
-                  value={draft.afterPaddingSeconds}
-                  onChange={(event) => setGlobalPadding("after", Number(event.currentTarget.value))}
-                />
-                <div><span>0s</span><span>10s</span></div>
-              </div>
-            </div>
-            <div className={styles.paddingControl} data-tour="editor-join-gaps">
-              <label htmlFor="cut-join-gap">
-                <span>Join gaps under</span>
-                <output>{draft.joinGapSeconds.toFixed(1)}s</output>
-              </label>
-              <input
-                id="cut-join-gap"
-                aria-label="Join final export gaps shorter than"
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={draft.joinGapSeconds}
-                onChange={(event) => setJoinGapSeconds(Number(event.currentTarget.value))}
-              />
-              <div><span>Off</span><span>10s</span></div>
-            </div>
-            <small>Padding applies to inferred cuts. Light gray gaps are retained when they are shorter than the join setting.</small>
-          </div>
-          <div className={styles.previewToggles}>
+            <div className={styles.previewToggles}>
             <label
               className={styles.cutPreviewToggle}
               data-tour="editor-play-final-cut"
@@ -2037,68 +1870,67 @@ export function CutEditor({
                 onChange={(event) => toggleCutPreview(event.currentTarget.checked)}
               />
               <span>
-                <strong>Play final cut only</strong>
-                <small>Skip removed rallies, ignored sections, and unselected gaps at or above the join setting.</small>
+                <strong>Play only the final video</strong>
+                <small>The player skips every part that will not be saved.</small>
               </span>
             </label>
-            {draft.scoreTracking.enabled && (
-              <>
-                <label
-                  className={`${styles.cutPreviewToggle} ${styles.scoreOverlayToggle}`}
-                  data-enabled={draft.renderScoreOverlay || undefined}
-                  data-tour="editor-score-overlay"
-                >
-                  <input
-                    type="checkbox"
-                    checked={draft.renderScoreOverlay}
-                    onChange={(event) => toggleScoreOverlay(event.currentTarget.checked)}
-                  />
-                  <span>
-                    <strong>Render score on final video</strong>
-                    <small>
-                      Preview the score box on the player and include it in the exported MP4.
-                    </small>
-                  </span>
-                </label>
-                {draft.renderScoreOverlay && (
-                  <label
-                    className={`${styles.cutPreviewToggle} ${styles.scoreTimelineToggle}`}
-                    data-enabled={draft.renderScoreTimeline || undefined}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={draft.renderScoreTimeline}
-                      onChange={(event) =>
-                        toggleScoreTimeline(event.currentTarget.checked)
-                      }
-                    />
-                    <span>
-                      <strong>Render point timeline</strong>
-                      <small>
-                        Show the two team rails beside the score when a new point starts.
-                      </small>
-                    </span>
-                  </label>
-                )}
-              </>
-            )}
-          </div>
-          {chromeOnIos && (
-            <div className={`${styles.cutPreviewToggle} ${styles.streamExportStatus}`}>
+            <label
+              className={`${styles.cutPreviewToggle} ${styles.scoreOverlayToggle}`}
+              data-enabled={draft.scoreTracking.enabled && draft.renderScoreOverlay || undefined}
+              data-tour="editor-score-overlay"
+            >
+              <input
+                type="checkbox"
+                checked={draft.scoreTracking.enabled && draft.renderScoreOverlay}
+                onChange={(event) => toggleScoreOverlay(event.currentTarget.checked)}
+              />
               <span>
-                <strong>
-                  {exportMode === "stream-download"
-                    ? "Direct download enabled"
-                    : "Private-storage fallback enabled"}
-                </strong>
+                <strong>Add scores to the final video</strong>
                 <small>
-                  {streamFallbackReason
-                    ? `The Service Worker download failed or was unavailable (${streamFallbackReason}). This export will use OPFS, then offer Share or save.`
-                    : "Chrome on iOS streams directly to Downloads by default. If that fails, VolleyCut automatically retries once using OPFS."}
+                  {draft.scoreTracking.enabled
+                    ? "Uses your checked serve and side-switch markers in the saved video."
+                    : "Turns on score tracking so you can check the markers before saving."}
                 </small>
               </span>
+            </label>
+            {draft.scoreTracking.enabled && draft.renderScoreOverlay && (
+              <label
+                className={`${styles.cutPreviewToggle} ${styles.scoreTimelineToggle}`}
+                data-enabled={draft.renderScoreTimeline || undefined}
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.renderScoreTimeline}
+                  onChange={(event) =>
+                    toggleScoreTimeline(event.currentTarget.checked)
+                  }
+                />
+                <span>
+                  <strong>Show the point history</strong>
+                  <small>
+                    Show the two team rails beside the score when a new point starts.
+                  </small>
+                </span>
+              </label>
+            )}
             </div>
-          )}
+            {chromeOnIos && (
+              <div className={`${styles.cutPreviewToggle} ${styles.streamExportStatus}`}>
+                <span>
+                  <strong>
+                    {exportMode === "stream-download"
+                      ? "Direct download enabled"
+                      : "Private-storage fallback enabled"}
+                  </strong>
+                  <small>
+                    {streamFallbackReason
+                      ? `The direct download was unavailable (${streamFallbackReason}). VolleyCut will use private on-device storage instead.`
+                      : "VolleyCut will save directly to Downloads when possible and automatically try another private on-device method if needed."}
+                  </small>
+                </span>
+              </div>
+            )}
+          </div>
           <div className={styles.summaryActions}>
             <button
               type="button"
@@ -2107,65 +1939,159 @@ export function CutEditor({
               disabled={
                 exportState === "exporting" || finalIntervals.length === 0 || !localExportSupported
               }
-              title={
-                localExportSupported
-                  ? undefined
-                  : "MP4 export requires video/audio WebCodecs encoders and writable local storage."
-              }
+              title={exportUnavailableMessage ?? undefined}
               onClick={() => void (preparedExport ? deliverExport() : exportVideo())}
             >
               {exportState === "exporting"
-                ? "Encoding MP4…"
+                ? "Creating your video…"
                 : preparedExport
-                  ? "Share or save MP4"
+                  ? "Share or save video"
                   : exportMode === "stream-download"
-                    ? "Stream MP4 to Downloads"
+                    ? "Save final video"
                   : directDiskSupported
-                    ? "Save MP4 video"
-                    : "Create MP4 video"}
+                    ? "Save final video"
+                    : "Create final video"}
             </button>
-            <button type="button" className={styles.quietButton} onClick={downloadEditList}>
-              Download JSON edit list
-            </button>
-            <button
-              type="button"
-              className={styles.quietButton}
-              onClick={() => void shareModelFeedback()}
-            >
-              Share / download model feedback
-            </button>
-            <button type="button" className={styles.quietButton} onClick={resetDraft}>
-              Reset inferred edits
-            </button>
+            <details className={styles.projectTools}>
+              <summary>Project options</summary>
+              <p className={styles.projectSaveHelp}>
+                Save your edits and score markers as a project file. The video is
+                not included; open the project later and choose the original video again.
+              </p>
+              <button
+                type="button"
+                className={styles.quietButton}
+                onClick={() => void saveProjectFile()}
+              >
+                Save project
+              </button>
+              <button type="button" className={styles.quietButton} onClick={resetDraft}>
+                Start this review over
+              </button>
+            </details>
+            <details className={styles.advancedSettings}>
+              <summary>
+                <span>Fine-tune cleanup and timing</span>
+                <small>Optional</small>
+              </summary>
+              <div className={styles.advancedSettingsBody}>
+                <div className={styles.suppressionControls} data-tour="editor-suppression">
+                  <div>
+                    <span>AUTOMATIC CLEANUP</span>
+                    <strong>{cleanupLabel(draft.selectedSuppressionPolicy)}</strong>
+                  </div>
+                  {initialAnalysis.suppression ? (
+                    <>
+                      <label
+                        className={styles.suppressionSelect}
+                        htmlFor="suppression-policy"
+                      >
+                        <span>Cleanup strength</span>
+                        <select
+                          id="suppression-policy"
+                          value={draft.selectedSuppressionPolicy}
+                          onChange={(event) => setSuppressionPolicy(
+                            event.currentTarget.value as SuppressionPolicyId,
+                          )}
+                        >
+                          {(["none", "conservative", "balanced", "aggressive"] as const).map((policy) => (
+                            <option key={policy} value={policy}>
+                              {cleanupLabel(policy)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {draft.selectedSuppressionPolicy === "none" ? (
+                        <small>Choose a level to remove moments that probably are not live play.</small>
+                      ) : suppressionSuggestions.length === 0 ? (
+                        <small>No extra cleanup is suggested for this game.</small>
+                      ) : (
+                        <small>
+                          VolleyCut will leave out {suppressionSuggestions.length} likely non-play moments. You can keep any of them while reviewing.
+                        </small>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <small>
+                        Automatic cleanup is not available for this older project.
+                      </small>
+                      {sourceFile && (
+                        <button type="button" onClick={onRequestSuppression}>
+                          Add automatic cleanup
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className={styles.paddingControls}>
+                  <div className={styles.paddingPair} data-tour="editor-padding">
+                    <div className={styles.paddingControl}>
+                      <label htmlFor="cut-padding-before">
+                        <span>Before</span>
+                        <output>{draft.beforePaddingSeconds.toFixed(1)}s</output>
+                      </label>
+                      <input
+                        id="cut-padding-before"
+                        aria-label="Extra time before each clip"
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={draft.beforePaddingSeconds}
+                        onChange={(event) => setGlobalPadding("before", Number(event.currentTarget.value))}
+                      />
+                      <div><span>0s</span><span>10s</span></div>
+                    </div>
+                    <div className={styles.paddingControl}>
+                      <label htmlFor="cut-padding-after">
+                        <span>After</span>
+                        <output>{draft.afterPaddingSeconds.toFixed(1)}s</output>
+                      </label>
+                      <input
+                        id="cut-padding-after"
+                        aria-label="Extra time after each clip"
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={draft.afterPaddingSeconds}
+                        onChange={(event) => setGlobalPadding("after", Number(event.currentTarget.value))}
+                      />
+                      <div><span>0s</span><span>10s</span></div>
+                    </div>
+                  </div>
+                  <div className={styles.paddingControl} data-tour="editor-join-gaps">
+                    <label htmlFor="cut-join-gap">
+                      <span>Join gaps under</span>
+                      <output>{draft.joinGapSeconds.toFixed(1)}s</output>
+                    </label>
+                    <input
+                      id="cut-join-gap"
+                      aria-label="Keep short breaks under this length"
+                      type="range"
+                      min="0"
+                      max="10"
+                      step="0.5"
+                      value={draft.joinGapSeconds}
+                      onChange={(event) => setJoinGapSeconds(Number(event.currentTarget.value))}
+                    />
+                    <div><span>Off</span><span>10s</span></div>
+                  </div>
+                  <small>
+                    Add breathing room around each rally, or keep very short breaks between nearby rallies.
+                  </small>
+                </div>
+              </div>
+            </details>
           </div>
           <div className={styles.exportDetails} aria-live="polite">
             <p>
-              Exports the final edit at the original dimensions using a very-high-quality AVC/AAC encode.
-              Video data stays on this device. {chromeOnIos
-                ? "Chrome on iOS streams directly by default and retries with private browser storage only if the stream fails."
-                : "Desktop and Android use the standard native file or private browser storage path."}
+              Saves a high-quality video at its original size. Your video stays on this device.
             </p>
-            <p>
-              Model feedback JSON contains source-aligned rally and serving-side features, probability
-              traces, untouched inference ranges and serving-side verdicts, score-marker corrections,
-              removals, switches, derived point history, and final ranges—never video bytes. Disabled
-              model ranges are labeled false positives; included manual ranges are labeled false negatives.
-            </p>
-            {!initialAnalysis.features && (
-              <strong>
-                This saved analysis predates feature capture. Its feedback file will still contain
-                inference and corrections, but not the feature matrix.
-              </strong>
-            )}
-            {!initialAnalysis.servingSide && (
-              <strong>
-                This saved analysis predates serving-side retention. Its feedback file will still contain
-                score-marker corrections, but not the original serving-side features or verdict evidence.
-              </strong>
-            )}
-            {!localExportSupported && (
-              <strong>
-                MP4 export requires video/audio WebCodecs encoders and writable local storage.
+            {exportUnavailableMessage && (
+              <strong className={sourceFile ? styles.exportError : styles.exportNotice}>
+                {exportUnavailableMessage}
               </strong>
             )}
             {exportProgress && exportState === "exporting" && (
@@ -2191,21 +2117,20 @@ export function CutEditor({
                 </dl>
                 <small>
                   {exportRate && exportRate > 0
-                    ? `${exportRate.toFixed(2)}× real-time encoding`
-                    : "Measuring encoding speed and ETA…"}
+                    ? `${exportRate.toFixed(2)}× video speed`
+                    : "Estimating the time remaining…"}
                   {exportWakeLock === "active" ? " · screen awake" : ""}
                 </small>
               </div>
             )}
             {preparedExport && (
               <strong>
-                Encoding is complete in private device storage. Tap Share or save MP4 to open the
-                iOS share sheet or download the file.
+                Your video is ready. Tap Share or save video to choose where it goes.
               </strong>
             )}
             {exportState === "done" && !preparedExport && (
               <strong>
-                {exportMode === "stream-download" ? "MP4 stream completed" : "MP4 export completed"}
+                Your video has been saved
                 {exportProgress ? ` in ${preciseTime(exportProgress.elapsedSeconds)}` : ""}.
               </strong>
             )}
@@ -2407,40 +2332,23 @@ export function CutEditor({
           <section className={styles.overviewSection} data-tour="editor-overview">
             <div className={styles.sectionHeading}>
               <div>
-                <span>GAME WINDOW</span>
-                <strong>Tap or slide to seek · select a range to refine</strong>
+                <span>GAME TIMELINE</span>
+                <strong>Select a clip to check or adjust it</strong>
               </div>
               <small>
-                {preciseTime(analysisStart)}–{preciseTime(analysisEnd)} · {draft.cuts.length} ranges · light gray = joined gap
+                {draft.cuts.length} clips · tap anywhere to move through the video
               </small>
             </div>
             <div className={styles.confidenceReview}>
-              <label htmlFor="confidence-review-threshold">
-                <span>Review disagreements and confidence below</span>
-                <span className={styles.confidenceInput}>
-                  <input
-                    id="confidence-review-threshold"
-                    aria-label="Highlight model ranges below confidence percent"
-                    type="number"
-                    inputMode="numeric"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={Math.round(draft.confidenceReviewThreshold * 100)}
-                    onChange={(event) => setConfidenceReviewThreshold(
-                      event.currentTarget.valueAsNumber,
-                    )}
-                  />
-                  <span>%</span>
-                </span>
-              </label>
               <div className={styles.reviewStatus}>
                 <p>
-                  {disagreementCount} disagreements · {reviewedLowConfidenceCount}/{lowConfidenceCuts.length} reviewed · {unreviewedLowConfidenceCuts.length} remaining
+                  {unreviewedLowConfidenceCuts.length === 0
+                    ? "All suggested clips have been checked"
+                    : `${unreviewedLowConfidenceCuts.length} suggested ${unreviewedLowConfidenceCuts.length === 1 ? "clip" : "clips"} to check`}
                 </p>
                 {draft.selectedSuppressionPolicy !== "none" && suppressionSuggestions.length > 0 && (
                   <p data-suppression="true">
-                    {suppressionSuggestions.length} suppression suggestions · {appliedSuppressionCount} applied · {Math.max(0, noSuppressionSeconds - keptSeconds).toFixed(1)}s removed
+                    Automatic cleanup left out {Math.max(0, noSuppressionSeconds - keptSeconds).toFixed(1)} seconds
                   </p>
                 )}
               </div>
@@ -2453,8 +2361,8 @@ export function CutEditor({
                   {unreviewedLowConfidenceCuts.length === 0
                     ? "Review complete"
                     : selectedReviewCandidate && !selectedIsReviewed
-                      ? "Mark reviewed & next"
-                      : "Review next"}
+                      ? "Looks good · next"
+                      : "Check next clip"}
                 </button>
                 {draft.selectedSuppressionPolicy !== "none" && suppressionSuggestions.length > 0 && (
                   <button
@@ -2462,17 +2370,17 @@ export function CutEditor({
                     className={styles.nextSuppression}
                     onClick={reviewNextSuppression}
                   >
-                    Next suppression
+                    Check next cleanup
                   </button>
                 )}
               </div>
             </div>
             <div className={styles.timelineLegend} aria-label="Timeline legend">
-              <span><i data-kind="ordinary" /> Kept rally</span>
-              <span><i data-kind="suppressed" /> Suppressed</span>
-              <span><i data-kind="suggestion-kept" /> Suggestion kept</span>
-              <span><i data-kind="ignored" /> Ignored source</span>
-              <span><i data-kind="joined" /> Joined gap</span>
+              <span><i data-kind="ordinary" /> Included</span>
+              <span><i data-kind="suppressed" /> Left out</span>
+              <span><i data-kind="suggestion-kept" /> Kept after review</span>
+              <span><i data-kind="ignored" /> Not part of game</span>
+              <span><i data-kind="joined" /> Short break kept</span>
               {draft.scoreTracking.enabled && (
                 <>
                   <span><i data-kind="serve-marker">🏐</i> Serve</span>
@@ -2504,13 +2412,13 @@ export function CutEditor({
       >
         <div className={styles.focusHeader}>
           <div>
-            <span>FOCUSED RANGE</span>
+            <span>SELECTED CLIP</span>
             <strong>
               {selectedSuppression
-                ? `Suppression suggestion · ${preciseTime(selectedSuppression.start)}–${preciseTime(selectedSuppression.end)} · ${Math.round(selectedSuppression.score * 100)}% score`
+                ? `Cleanup suggestion · ${preciseTime(selectedSuppression.start)}–${preciseTime(selectedSuppression.end)}`
                 : selected
-                  ? `${selected.id} · ${selected.origin === "manual" ? "Manual" : `${modelAgreementLabel(selected)} · ${Math.round(selected.confidence * 100)}% review confidence${selectedIsReviewed ? " · reviewed" : ""}`}`
-                  : "No range selected"}
+                  ? `Clip ${selectedIndex + 1} · ${selected.origin === "manual" ? "Added by you" : modelAgreementLabel(selected)}${selectedIsReviewed ? " · checked" : ""}`
+                  : "No clip selected"}
             </strong>
           </div>
           <div className={styles.focusHeaderControls}>
@@ -2520,7 +2428,7 @@ export function CutEditor({
                 checked={focusLocked}
                 onChange={(event) => setFocusLocked(event.currentTarget.checked)}
               />
-              <span>Lock focus</span>
+              <span>Keep selected</span>
             </label>
             {selectedSuppression ? (
               <div className={styles.rangeNavigation}>
@@ -2599,7 +2507,7 @@ export function CutEditor({
                   width: `${timelinePercent(selected.coreEnd - selected.coreStart, focus.end - focus.start)}%`,
                 }}
               >
-                <small>{selected.origin === "manual" ? "MANUAL RALLY" : "RALLY"}</small>
+                <small>{selected.origin === "manual" ? "ADDED RALLY" : "RALLY"}</small>
               </span>
               {selectedSuppression && (
                 <span
@@ -2609,7 +2517,7 @@ export function CutEditor({
                     left: `${timelinePercent(selectedSuppression.start - focus.start, focus.end - focus.start)}%`,
                     width: `${timelinePercent(selectedSuppression.end - selectedSuppression.start, focus.end - focus.start)}%`,
                   }}
-                  aria-label={`Selected suppression suggestion, ${preciseTime(selectedSuppression.start)} to ${preciseTime(selectedSuppression.end)}`}
+                  aria-label={`Selected cleanup suggestion, ${preciseTime(selectedSuppression.start)} to ${preciseTime(selectedSuppression.end)}`}
                 >
                   <small>
                     {suppressionSuggestionState(selectedSuppression, draft) === "suppressed"
@@ -2702,7 +2610,7 @@ export function CutEditor({
                   </output>
                 </div>
                 <p>
-                  Drag the orange handles to shorten or extend this rally. Its current padding follows the new edges.
+                  Drag the orange handles to change where this rally starts and ends.
                 </p>
                 <div className={styles.rallyEdgeActions}>
                   <button
@@ -2722,7 +2630,7 @@ export function CutEditor({
                     }
                     onClick={splitSelectedAtPlayhead}
                   >
-                    Split at playhead
+                    Split here
                   </button>
                   <button
                     type="button"
@@ -2735,7 +2643,7 @@ export function CutEditor({
               </div>
 
               {selected.origin === "cached-label" && <div className={styles.outputEdgeEditor}>
-                <p>OUTPUT EDGES <span>Rally + padding</span></p>
+                <p>EXTRA TIME AROUND THIS RALLY</p>
                 <div className={styles.boundaryControls}>
                   <fieldset>
                     <legend>Output start</legend>
@@ -2767,18 +2675,18 @@ export function CutEditor({
                   <p className={styles.suppressionStateText}>
                     {suppressionSuggestionState(selectedSuppression, draft) === "suppressed"
                       ? selectedSuppressionScope === "whole-rally"
-                        ? "Whole rally suppressed, including its padding."
-                        : "Veto region suppressed; the rest of the rally stays."
+                        ? "The whole rally will be left out."
+                        : "The highlighted part will be left out; the rest stays."
                       : suppressionSuggestionState(selectedSuppression, draft) === "edited-kept"
-                        ? "Kept because an overlapping inferred rally was already edited. Choose Suppress to override that protection."
-                        : "You explicitly kept this suggestion in the export."}
+                        ? "This stays because you already edited an overlapping rally."
+                        : "You chose to keep this part in the final video."}
                   </p>
                   <fieldset className={styles.suppressionScopeControl}>
-                    <legend>Suppress scope</legend>
+                    <legend>What should be left out?</legend>
                     <div
                       className={styles.suppressionScopeOptions}
                       role="group"
-                      aria-label="Suppression veto scope"
+                      aria-label="What should be left out"
                     >
                       {SUPPRESSION_SCOPE_IDS.map((scope) => (
                         <button
@@ -2787,18 +2695,18 @@ export function CutEditor({
                           data-active={selectedSuppressionScope === scope || undefined}
                           aria-pressed={selectedSuppressionScope === scope}
                           title={scope === "whole-rally"
-                            ? "Veto the entire inferred rally, including padding"
-                            : "Veto only the highlighted suppression region"}
+                            ? "Leave out the entire rally"
+                            : "Leave out only the highlighted part"}
                           onClick={() => setSuppressionScope(selectedSuppression, scope)}
                         >
-                          {SUPPRESSION_SCOPE_LABELS[scope]}
+                          {scope === "whole-rally" ? "Whole rally" : "Only red section"}
                         </button>
                       ))}
                     </div>
                     <small>
                       {selectedSuppressionScope === "whole-rally"
-                        ? "Removes the entire inferred rally, including its padding."
-                        : "Removes only the highlighted veto region; the rest of the rally stays."}
+                        ? "Leaves out the entire rally and the extra time around it."
+                        : "Leaves out only the highlighted part; the rest of the rally stays."}
                     </small>
                   </fieldset>
                   <button
@@ -2807,7 +2715,7 @@ export function CutEditor({
                     data-active={suppressionSuggestionState(selectedSuppression, draft) === "suppressed" || undefined}
                     onClick={() => setSuppressionDecision(selectedSuppression, "suppress")}
                   >
-                    Suppress
+                    Leave out
                   </button>
                   <button
                     type="button"
@@ -2825,10 +2733,10 @@ export function CutEditor({
                     data-included={selected.included || undefined}
                     onClick={toggleSelected}
                   >
-                    {selected.included ? "✓ Keep this range" : "+ Restore this range"}
+                    {selected.included ? "✓ Include this clip" : "+ Put this clip back"}
                   </button>
-                  <button type="button" onClick={previewSelected}>Preview cut</button>
-                  <button type="button" onClick={resetSelectedPadding}>Reset padding</button>
+                  <button type="button" onClick={previewSelected}>Preview clip</button>
+                  <button type="button" onClick={resetSelectedPadding}>Reset extra time</button>
                   {selectedReviewCandidate && (
                     <button
                   type="button"
@@ -2836,7 +2744,7 @@ export function CutEditor({
                   data-reviewed={selectedIsReviewed || undefined}
                   onClick={toggleSelectedReviewed}
                 >
-                  {selectedIsReviewed ? "✓ Reviewed" : "Mark reviewed"}
+                  {selectedIsReviewed ? "✓ Checked" : "Looks good"}
                     </button>
                   )}
                   {selected.origin === "manual" && (
@@ -2845,7 +2753,7 @@ export function CutEditor({
                   className={styles.dangerButton}
                   onClick={() => deleteManualCut(selected.id)}
                 >
-                  Delete manual cut
+                  Delete added clip
                     </button>
                   )}
                 </>
@@ -2853,16 +2761,16 @@ export function CutEditor({
             </div>
           </>
         ) : (
-          <p className={styles.emptyMessage}>Add a missed cut at the current playhead to begin.</p>
+          <p className={styles.emptyMessage}>Choose a clip from the timeline, or add a missed rally below.</p>
         )}
       </section>
 
       <section className={styles.markingTools} data-tour="editor-marking">
         <div className={styles.markingCard}>
           <div>
-            <span>ADD A MISSED CUT</span>
+            <span>ADD A MISSED RALLY</span>
             <strong>{manualStart === null ? "Find the first frame" : `Started ${preciseTime(manualStart)}`}</strong>
-            <p>Seek the video, mark the start, then seek and mark the end.</p>
+            <p>Move to the start of the rally and mark it, then do the same for the end.</p>
           </div>
           <button type="button" onClick={markManualBoundary}>
             {manualStart === null ? `Mark start · ${preciseTime(playbackTime)}` : `Mark end · ${preciseTime(playbackTime)}`}
@@ -2883,9 +2791,9 @@ export function CutEditor({
 
         <div className={styles.markingCard}>
           <div>
-            <span>IGNORE SOURCE SECTION</span>
-            <strong>{ignoreStart === null ? "Exclude unusable footage" : `Started ${preciseTime(ignoreStart)}`}</strong>
-            <p>Ignored time is removed from the final edit without becoming a negative label.</p>
+            <span>LEAVE OUT A SECTION</span>
+            <strong>{ignoreStart === null ? "Remove unusable footage" : `Started ${preciseTime(ignoreStart)}`}</strong>
+            <p>Use this for camera gaps, breaks, or anything that is not part of the game.</p>
           </div>
           <select
             aria-label="Ignored section reason"
@@ -2898,7 +2806,7 @@ export function CutEditor({
             <option value="non-game-content">Non-game content</option>
             <option value="camera-gap">Camera gap</option>
             <option value="partial-rally">Partial rally</option>
-            <option value="boundary-ambiguous">Boundary ambiguous</option>
+            <option value="boundary-ambiguous">Unclear start or end</option>
           </select>
           <button type="button" onClick={markIgnoredBoundary}>
             {ignoreStart === null ? `Mark start · ${preciseTime(playbackTime)}` : `Mark end · ${preciseTime(playbackTime)}`}
@@ -2924,8 +2832,8 @@ export function CutEditor({
         <section className={styles.addedCutList}>
           <div className={styles.sectionHeading}>
             <div>
-              <span>ADDED MISSED CUTS</span>
-              <strong>Manual ranges saved on this device</strong>
+              <span>RALLIES YOU ADDED</span>
+              <strong>Saved automatically on this device</strong>
             </div>
           </div>
           <div>
@@ -2947,7 +2855,7 @@ export function CutEditor({
       {draft.ignoredIntervals.length > 0 && (
         <section className={styles.ignoredList}>
           <div className={styles.sectionHeading}>
-            <div><span>IGNORED SOURCE</span><strong>Excluded from the derived edit list</strong></div>
+            <div><span>SECTIONS LEFT OUT</span><strong>These will not appear in the final video</strong></div>
           </div>
           <div>
             {[...draft.ignoredIntervals]
@@ -2969,8 +2877,8 @@ export function CutEditor({
 
       <section className={styles.cutList} data-tour="editor-cuts">
         <div className={styles.sectionHeading}>
-          <div><span>ALL CUTS</span><strong>Model predictions and manual additions</strong></div>
-          <small>{keptCount} kept · {fullyIgnoredCount} fully ignored</small>
+          <div><span>ALL CLIPS</span><strong>Every rally in your final video</strong></div>
+          <small>{keptCount} included · {removedCount + fullyIgnoredCount} left out</small>
         </div>
         <div className={styles.cutCards}>
           {sortedCuts.map((cut, index) => (
@@ -2994,9 +2902,9 @@ export function CutEditor({
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{cut.id}</strong>
                 <small>{preciseTime(cut.keepStart)}–{preciseTime(cut.keepEnd)}</small>
-                <em>{cut.origin === "manual" ? "MANUAL" : suppressionSuggestions.some(
+                <em>{cut.origin === "manual" ? "ADDED" : suppressionSuggestions.some(
                   (suggestion) => suggestion.start < cut.coreEnd && suggestion.end > cut.coreStart,
-                ) ? "SUPPRESS" : reviewedCutIds.has(cut.id) ? "REVIEWED" : isModelDisagreement(cut) ? "CHECK" : `${Math.round(cut.confidence * 100)}%`}</em>
+                ) ? "CLEANUP" : reviewedCutIds.has(cut.id) ? "CHECKED" : isModelDisagreement(cut) ? "CHECK" : "READY"}</em>
               </button>
               <button
                 type="button"
@@ -3006,18 +2914,18 @@ export function CutEditor({
                   included: !current.included,
                 }))}
               >
-                {!cut.included ? "Removed" : effectiveKeptIds.has(cut.id) ? "Keep" : "Ignored"}
+                {!cut.included ? "Left out" : effectiveKeptIds.has(cut.id) ? "Included" : "Left out"}
               </button>
             </article>
           ))}
         </div>
       </section>
 
-      <SiteFooter />
       <GuidedTour
         stage="editor"
         scoreTrackingEnabled={draft.scoreTracking.enabled}
       />
+      <SiteFooter />
     </main>
   );
 }

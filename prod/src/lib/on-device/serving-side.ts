@@ -792,7 +792,7 @@ export async function inferServingSides(
       candidates: [],
     };
   }
-  onProgress?.({ stage: "loading", completed: 0, total: candidates.length, detail: "Loading serving-side model" });
+  onProgress?.({ stage: "loading", completed: 0, total: candidates.length, detail: "Getting serve markers ready" });
   const plan = servingSideFramePlan(analysis, media.info.duration, null);
   const sampled = await sampleSpecialistFramesSequentially(
     media,
@@ -802,7 +802,7 @@ export async function inferServingSides(
       stage: "frames",
       completed,
       total,
-      detail: `Decoding serving-side frames · ${completed}/${total}`,
+      detail: `Checking serve court sides · ${completed}/${total}`,
     }),
   );
   const evaluated = await evaluateServingSideFrames(
@@ -814,14 +814,14 @@ export async function inferServingSides(
       stage: "features",
       completed,
       total,
-      detail: `Measuring serving side · ${completed}/${total} rallies`,
+      detail: `Checking serve court sides · ${completed}/${total} rallies`,
     }),
   );
   onProgress?.({
     stage: "complete",
     completed: candidates.length,
     total: candidates.length,
-    detail: `Serving-side verdicts ready · ${candidates.length} rallies`,
+    detail: `Serve markers ready · ${candidates.length} rallies checked`,
   });
   return evaluated.output;
 }

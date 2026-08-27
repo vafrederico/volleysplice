@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AndroidAppBanner } from "@/components/AndroidAppBanner";
 import { CutEditor } from "@/components/CutEditor";
 import { GuidedTour } from "@/components/GuidedTour";
-import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
@@ -133,6 +132,18 @@ function sortProjects(projects: VolleyCutProject[]): VolleyCutProject[] {
   );
 }
 
+const LANDING_COPY: {
+  kicker: string;
+  title: React.ReactNode;
+  description: string;
+  steps: string[];
+} = {
+  kicker: "VOLLEYBALL VIDEO EDITING, MADE SIMPLE",
+  title: <>Keep the rallies.<br /><em>Skip the waiting.</em></>,
+  description: "Choose a game video and VolleyCut will find the action for you. Check the suggested clips, add anything that was missed, then save one clean video.",
+  steps: ["Choose your video", "Review the full timeline", "Correct anything missing", "Save the final video"],
+};
+
 export function App() {
   const [projects, setProjects] = useState<VolleyCutProject[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
@@ -228,7 +239,6 @@ export function App() {
     if (!project?.analysis || project.status !== "ready") return;
     commitProject({
       ...project,
-      servingSideEnabled: true,
       analysis: { ...project.analysis, servingSide },
       updatedAt: new Date().toISOString(),
     });
@@ -244,7 +254,6 @@ export function App() {
     if (!project?.analysis || project.status !== "ready") return;
     commitProject({
       ...project,
-      servingSideEnabled: true,
       sideSwitchEnabled: true,
       analysis: { ...project.analysis, sideSwitch },
       updatedAt: new Date().toISOString(),
@@ -363,7 +372,7 @@ export function App() {
       .catch((cause) => {
         if (active) {
           setError(
-            `Production inference details could not be refreshed from cached features: ${cause instanceof Error ? cause.message : String(cause)}`,
+            `VolleyCut could not refresh this saved project: ${cause instanceof Error ? cause.message : String(cause)}`,
           );
         }
       })
@@ -408,8 +417,8 @@ export function App() {
     if (!webCodecsReady) {
       setError(
         secureContext
-          ? "This browser does not expose the WebCodecs APIs needed for local analysis. Use a current Chrome or Edge release."
-          : "Local analysis requires HTTPS. Deploy this static app over HTTPS, or use localhost during development.",
+          ? "This browser cannot open the video. Please use the latest version of Chrome or Edge."
+          : "VolleyCut needs a secure connection before it can open your video.",
       );
       setWorkState("error");
       return;
@@ -425,7 +434,7 @@ export function App() {
       stage: "opening",
       completed: 0,
       total: 1,
-      detail: "Reading container metadata locally",
+      detail: "Getting your video ready",
     });
     setWorkState("opening");
     replacePreviewUrl(URL.createObjectURL(selected));
@@ -461,7 +470,7 @@ export function App() {
       setSelectedProjectId(project.id);
     } catch (cause) {
       setError(
-        `Could not import model feedback: ${cause instanceof Error ? cause.message : String(cause)}`,
+        `Could not open that saved project: ${cause instanceof Error ? cause.message : String(cause)}`,
       );
     } finally {
       setFeedbackImporting(false);
@@ -521,7 +530,7 @@ export function App() {
       MIN_ANALYSIS_WINDOW_SECONDS
     ) {
       setError(
-        `Mark at least ${MIN_ANALYSIS_WINDOW_SECONDS} second of game footage before queueing inference.`,
+        `Choose at least ${MIN_ANALYSIS_WINDOW_SECONDS} seconds of game footage.`,
       );
       return;
     }
@@ -545,7 +554,7 @@ export function App() {
       info,
       analysisWindow: normalizedWindow,
       roi,
-      servingSideEnabled: true,
+      servingSideEnabled: false,
       sideSwitchEnabled,
       status: "queued",
       analysis: null,
@@ -600,7 +609,7 @@ export function App() {
       stage: "opening",
       completed: 0,
       total: 1,
-      detail: "Opening the local source for queued inference",
+      detail: "Getting your video ready",
     });
     const releaseWakeLock = await holdScreenWakeLock(setWakeLockState);
     let opened: OpenedMedia | null = null;
@@ -722,7 +731,7 @@ export function App() {
               finishInferenceStep(
                 current,
                 "serving-side",
-                `Serving-side verdicts ready · ${specialistOutput.servingSide!.candidates.length} rallies`,
+                `Serve markers ready · ${specialistOutput.servingSide!.candidates.length} rallies checked`,
                 performance.now(),
               ),
             );
@@ -732,7 +741,7 @@ export function App() {
               finishInferenceStep(
                 current,
                 "side-switch",
-                `Team-side switch markers ready · ${specialistOutput.sideSwitch!.candidates.length} predicted`,
+                `Side switches ready · ${specialistOutput.sideSwitch!.candidates.length} found`,
                 performance.now(),
               ),
             );
@@ -755,7 +764,7 @@ export function App() {
           }
           if (mountedRef.current) {
             setError(
-              `Score tracking features could not be cached: ${cause instanceof Error ? cause.message : String(cause)}`,
+              `The score markers could not be saved: ${cause instanceof Error ? cause.message : String(cause)}`,
             );
           }
         }
@@ -849,7 +858,7 @@ export function App() {
     if (!selectedProject) return;
     if (
       !window.confirm(
-        `Delete ${selectedProject.source.name} (${selectedProject.id}) and its cached inference?`,
+        `Delete ${selectedProject.source.name} and all of its saved edits from this device?`,
       )
     )
       return;
@@ -1001,71 +1010,56 @@ export function App() {
   }
 
   const selectedIsActive = selectedProject?.id === activeJobId;
-  const displayedProgress = selectedIsActive ? null : candidateProgress;
-  const percent = progressPercent(displayedProgress);
+  const displayedProgress = selectedIsActive ? activeProgress : candidateProgress;
+  const percent = selectedIsActive ? activePercent : progressPercent(displayedProgress);
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-design="classic">
       {projectHeader}
 
       {!selectedProject && (
         <>
-          <section className={styles.hero}>
-            <p>PRIVATE PROJECT WORKSPACE</p>
-            <h1>
-              Load. Detect. <em>Refine.</em>
-            </h1>
+          <div className={styles.sourceStart} data-layout="classic">
+            <section className={styles.hero}>
+            <p>{LANDING_COPY.kicker}</p>
+            <h1>{LANDING_COPY.title}</h1>
             <p className={styles.lede}>
-              Queue volleyball videos for local inference, switch between
-              projects, and refine completed cuts while the next match generates
-              features in the background. Selected videos are never uploaded.
+              {LANDING_COPY.description}
             </p>
             <div
               className={styles.pipeline}
-              role="group"
-              aria-label="Local processing pipeline"
+              role="list"
+              aria-label="How VolleyCut works"
+              data-count={LANDING_COPY.steps.length}
             >
-              <span>
-                <b>01</b> Local video
-              </span>
-              <i>→</i>
-              <span>
-                <b>02</b> Cached features
-              </span>
-              <i>→</i>
-              <span>
-                <b>03</b> Local inference
-              </span>
-              <i>→</i>
-              <span>
-                <b>04</b> Project editor
-              </span>
+              {LANDING_COPY.steps.map((step, index) => (
+                <span key={step} role="listitem"><b>{index + 1}</b><i>{step}</i></span>
+              ))}
             </div>
-          </section>
+            <p className={styles.privacyNote}>Your video stays on this device.</p>
+            </section>
 
-          {safariUnsupported && (
-            <p className={styles.notice} role="status">
-              <strong>Safari is not supported.</strong> Feature extraction is
-              unreliable in Safari on macOS and iOS. Open VolleyCut in the
-              latest Google Chrome instead.
-            </p>
-          )}
-          {!safariUnsupported && !secureContext && (
-            <p className={styles.notice}>
-              This page is not in a secure context. The interface is available,
-              but local media analysis needs HTTPS or localhost.
-            </p>
-          )}
-          {error && <p className={styles.error}>{error}</p>}
+            {safariUnsupported && (
+              <p className={styles.notice} role="status">
+                <strong>Safari is not supported.</strong> VolleyCut cannot open
+                videos here yet. Please use Google Chrome to continue.
+              </p>
+            )}
+            {!safariUnsupported && !secureContext && (
+              <p className={styles.notice}>
+                VolleyCut needs a secure connection before it can open your video.
+              </p>
+            )}
+            {error && <p className={styles.error}>{error}</p>}
 
-          <section className={styles.importCard} data-tour="source-picker">
+            <section className={styles.importCard} data-tour="source-picker">
             <div>
-              <p>STEP 01 · NEW PROJECT SOURCE</p>
-              <h2>{file?.name ?? "Choose a volleyball video"}</h2>
+              <p>STEP 1 OF 3</p>
+              <h2>{file?.name ?? "Choose your game video"}</h2>
               <p>
                 {file
-                  ? `${compactBytes(file.size)} · a project is created only when you queue inference`
-                  : "MP4, WebM, MOV, MKV, and other browser-decodable containers are supported."}
+                  ? `${compactBytes(file.size)} · ready to set up`
+                  : "Pick a video from this device. Nothing will be uploaded."}
               </p>
             </div>
             <div className={styles.importActions}>
@@ -1073,7 +1067,7 @@ export function App() {
                 className={styles.fileButton}
                 data-disabled={busy || safariUnsupported || undefined}
               >
-                {file ? "Choose another" : "Choose video"}
+                {file ? "Choose a different video" : "Choose video"}
                 <input
                   type="file"
                   accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
@@ -1083,25 +1077,29 @@ export function App() {
                   }
                 />
               </label>
-              <label
-                className={`${styles.fileButton} ${styles.feedbackButton}`}
-                data-disabled={busy || undefined}
-              >
-                {feedbackImporting ? "Importing…" : "Import model feedback"}
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  disabled={busy}
-                  onChange={(event) => {
-                    const input = event.currentTarget;
-                    const feedbackFile = input.files?.[0] ?? null;
-                    input.value = "";
-                    void importFeedback(feedbackFile);
-                  }}
-                />
-              </label>
+              <details className={styles.resumeDetails}>
+                <summary>Open a saved project</summary>
+                <label
+                  className={`${styles.fileButton} ${styles.feedbackButton}`}
+                  data-disabled={busy || undefined}
+                >
+                  {feedbackImporting ? "Opening…" : "Choose project file"}
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    disabled={busy}
+                    onChange={(event) => {
+                      const input = event.currentTarget;
+                      const feedbackFile = input.files?.[0] ?? null;
+                      input.value = "";
+                      void importFeedback(feedbackFile);
+                    }}
+                  />
+                </label>
+              </details>
             </div>
-          </section>
+            </section>
+          </div>
 
           {info && previewUrl && (
             <section className={styles.workspace} data-tour="source-workspace">
@@ -1141,41 +1139,17 @@ export function App() {
                       height: `${roi.height * 100}%`,
                     }}
                   >
-                    <span>FEATURE CROP</span>
+                    <span>AREA TO WATCH</span>
                   </div>
                 </div>
               </div>
 
               <aside className={styles.inspector}>
-                <p>STEP 02 · PROJECT FEATURES</p>
-                <h2>Confirm the camera crop</h2>
-                <dl>
-                  <div>
-                    <dt>Duration</dt>
-                    <dd>{formatDuration(info.duration)}</dd>
-                  </div>
-                  <div>
-                    <dt>Frame</dt>
-                    <dd>
-                      {info.width} × {info.height}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Video</dt>
-                    <dd>{info.videoCodecString ?? info.videoCodec}</dd>
-                  </div>
-                  <div>
-                    <dt>Audio</dt>
-                    <dd>
-                      {info.hasAudio
-                        ? (info.audioCodec ?? "Available")
-                        : "No track"}
-                    </dd>
-                  </div>
-                </dl>
+                <p>VIDEO SETUP</p>
+                <h2>Where is the game?</h2>
                 <p className={styles.cropHelp}>
-                  Keep the court and players inside the box. Exclude static
-                  borders, stands, or neighboring courts when practical.
+                  If the whole video is game footage, you can continue right
+                  away. Otherwise, mark where the game starts and ends.
                 </p>
                 <section
                   className={styles.gameWindow}
@@ -1184,7 +1158,7 @@ export function App() {
                 >
                   <div className={styles.gameWindowHeading}>
                     <div>
-                      <span>ANALYSIS WINDOW</span>
+                      <span>PART TO USE</span>
                       <strong id="game-window-heading">
                         Mark game start &amp; end
                       </strong>
@@ -1199,8 +1173,7 @@ export function App() {
                     </button>
                   </div>
                   <p>
-                    Seek the video, then mark each boundary. Only this range
-                    generates features or appears on the editor overview.
+                    Move the video to the right moment, then use the buttons below.
                   </p>
                   <div className={styles.gameBoundaryGrid}>
                     <label>
@@ -1227,7 +1200,7 @@ export function App() {
                         type="button"
                         onClick={() => markGameBoundary("start")}
                       >
-                        Set to playhead
+                        Use current time
                       </button>
                     </label>
                     <label>
@@ -1251,26 +1224,30 @@ export function App() {
                         type="button"
                         onClick={() => markGameBoundary("end")}
                       >
-                        Set to playhead
+                        Use current time
                       </button>
                     </label>
                   </div>
                   <strong className={styles.gameWindowSummary}>
-                    {formatDuration(analysisWindow.end - analysisWindow.start)}{" "}
-                    analyzed
+                    {formatDuration(analysisWindow.end - analysisWindow.start)} selected
                     {analysisWindow.end - analysisWindow.start <
                     info.duration - 0.05
-                      ? ` · ${formatDuration(info.duration - (analysisWindow.end - analysisWindow.start))} skipped`
-                      : " · full source"}
+                      ? ` · ${formatDuration(info.duration - (analysisWindow.end - analysisWindow.start))} left out`
+                      : " · full video"}
                   </strong>
                 </section>
-                <div data-tour="source-camera">
+                <details className={styles.optionalSetup} data-tour="source-camera">
+                  <summary>Adjust the area to watch <span>Optional</span></summary>
+                  <p>
+                    Use this only when another court, the crowd, or a large border
+                    is visible. Keep your court and players inside the yellow box.
+                  </p>
                   <div className={styles.presetButtons}>
                     <button
                       type="button"
                       onClick={() => setRoi(FULL_FRAME_ROI)}
                     >
-                      Full frame
+                      Reset to full video
                     </button>
                   </div>
                   <div className={styles.roiGrid}>
@@ -1300,7 +1277,7 @@ export function App() {
                       </label>
                     ))}
                   </div>
-                </div>
+                </details>
                 <label
                   className={styles.sideSwitchToggle}
                   data-enabled={sideSwitchEnabled || undefined}
@@ -1314,10 +1291,11 @@ export function App() {
                     disabled={busy}
                   />
                   <span>
-                    <strong>Generate team side-switch markers</strong>
+                    <strong>Teams change court sides during this video</strong>
                     <small>
-                      Enable this only for formats where teams change court
-                      sides during the recording.
+                      This is needed for accurate scorekeeping when teams switch
+                      ends. VolleyCut will look for the switches; you can add any
+                      it misses while reviewing the score.
                     </small>
                   </span>
                 </label>
@@ -1333,36 +1311,34 @@ export function App() {
                       MIN_ANALYSIS_WINDOW_SECONDS
                   }
                 >
-                  Create project &amp; queue inference
+                  Find the rallies
                 </button>
                 <small className={styles.runtimeNote}>
-                  Both production models run on the same cached features.
-                  Overlaps are merged; one-model detections are flagged for
-                  validation. Results stay in IndexedDB.
+                  This may take a while for a long video. Keep this page open and
+                  come back when it is ready.
                 </small>
               </aside>
             </section>
           )}
 
-          <GuidedTour
-            stage="source"
-            sourceReady={Boolean(info && previewUrl)}
-          />
         </>
       )}
 
       {selectedProject && (
         <section className={styles.projectPanel}>
-          <p>PROJECT · {selectedProject.status.toUpperCase()}</p>
+          <p>
+            {selectedProject.status === "ready"
+              ? "READY TO REVIEW"
+              : "WORKING ON YOUR VIDEO"}
+          </p>
           <h1>{selectedProject.source.name}</h1>
-          <code>{selectedProject.id}</code>
           <p>
             {selectedProject.status === "analyzing"
-              ? "This project is generating audiovisual features locally. You can select a ready project and edit it while this continues."
+              ? "VolleyCut is finding the rallies. You can review another finished video while this continues."
               : selectedProject.status === "queued"
-                ? `Queued for local inference${queueIds.indexOf(selectedProject.id) > 0 ? ` · position ${queueIds.indexOf(selectedProject.id) + 1}` : ""}.`
+                ? `Waiting to start${queueIds.indexOf(selectedProject.id) > 0 ? ` · ${queueIds.indexOf(selectedProject.id)} video ahead` : ""}.`
                 : (selectedProject.error ??
-                  "Reconnect the exact local source file to continue this project.")}
+                  "Choose the original video again so you can continue.")}
           </p>
           {(selectedProject.status === "waiting" ||
             selectedProject.status === "error") &&
@@ -1372,11 +1348,11 @@ export function App() {
                 type="button"
                 onClick={() => queueAttachedProject(selectedProject)}
               >
-                Queue inference again
+                Try again
               </button>
             ) : (
               <label className={styles.fileButton}>
-                Reconnect source &amp; queue
+                Choose original video
                 <input
                   type="file"
                   accept="video/*,.mkv,.webm,.mov,.mp4,.m4v"
@@ -1394,34 +1370,36 @@ export function App() {
             type="button"
             onClick={() => selectProject(null)}
           >
-            Start another project
+            Start a new video
           </button>
         </section>
-      )}
-
-      {selectedIsActive && activeInferenceSteps.length > 0 && (
-        <InferenceProgressPanel
-          steps={activeInferenceSteps}
-          wakeLockActive={wakeLockState === "active"}
-        />
       )}
 
       {displayedProgress && (
         <section className={styles.progressCard} aria-live="polite">
           <div>
-            <p>LOCAL PROCESSING · {displayedProgress.stage.toUpperCase()}</p>
-            <strong>{displayedProgress.detail}</strong>
+            <p>
+              {selectedIsActive ? "FINDING THE RALLIES" : "OPENING YOUR VIDEO"}
+            </p>
+            <strong>
+              {selectedIsActive
+                ? "You can leave this tab open and come back."
+                : displayedProgress.detail}
+            </strong>
           </div>
           <output>{Math.round(percent)}%</output>
           <div className={styles.progressTrack}>
             <i style={{ width: `${percent}%` }} />
           </div>
           <p>
-            Reading the selected file locally. No video leaves this browser.
+            Your video stays on this device while VolleyCut works.
           </p>
         </section>
       )}
 
+      {!selectedProject && (
+        <GuidedTour stage="source" sourceReady={Boolean(info && previewUrl)} />
+      )}
       <SiteFooter />
     </main>
   );

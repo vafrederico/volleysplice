@@ -1,15 +1,16 @@
 .header {
-  --project-ink: #11130f;
-  --project-paper: #f3f0e7;
-  --project-acid: #dfff35;
+  --project-ink: #14231f;
+  --project-paper: #f6f7f2;
+  --project-acid: #c9f26b;
   min-height: 72px;
   padding: 10px clamp(16px, 5vw, 72px);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  border-bottom: 1px solid #c5c3ba;
-  background: rgba(243, 240, 231, 0.97);
+  border-bottom: 1px solid #dce2da;
+  background: rgba(246, 247, 242, 0.94);
+  backdrop-filter: blur(12px);
 }
 
 .brand {
@@ -63,8 +64,8 @@
   min-width: 0;
   min-height: 42px;
   padding: 0 34px 0 11px;
-  border: 1px solid #8f9188;
-  border-radius: 0;
+  border: 1px solid #c4cec5;
+  border-radius: 10px;
   color: var(--project-ink);
   background: #fff;
   font:
@@ -103,7 +104,8 @@
 .deleteButton {
   min-height: 42px;
   padding: 0 12px;
-  border: 1px solid #b85d49;
+  border: 1px solid #dbb1a7;
+  border-radius: 10px;
   color: #8d2e1b;
   background: #fff;
   cursor: pointer;
@@ -149,4 +151,23 @@
   .projectSelect {
     width: 100%;
   }
+}
+
+[data-design="classic"] .header {
+  --project-ink: #17382e;
+  --project-paper: #f8f7ee;
+  --project-acid: #d9ee9e;
+  border-color: #d2ddd2;
+  background: rgba(248, 247, 238, .96);
+}
+
+[data-design="classic"] .brand > span {
+  color: var(--project-acid);
+  background: #234c3f;
+}
+
+[data-design="classic"] .projectSelect select,
+[data-design="classic"] .deleteButton {
+  border-color: #c2d1c5;
+  border-radius: 8px;
 }
