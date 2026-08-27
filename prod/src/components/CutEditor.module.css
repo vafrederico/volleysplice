@@ -1540,6 +1540,14 @@
   box-shadow: 5px 5px 0 #000;
 }
 
+.summaryActions .youtubeChaptersButton {
+  grid-column: 1 / -1;
+  min-height: 48px;
+  border-color: #686b62;
+  background: #fff;
+  color: var(--cut-ink);
+}
+
 .summaryCard button {
   background: var(--cut-acid);
 }
@@ -2594,6 +2602,72 @@
   font-family: Manrope, Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
+.scoreReviewWarning {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  width: min(1180px, calc(100% - 32px));
+  align-items: center;
+  gap: 10px;
+  margin: -8px auto 18px;
+  padding: 10px 12px;
+  border: 1px solid #d7ae51;
+  border-radius: 10px;
+  background: #fff7da;
+  color: #5d4310;
+  box-shadow: 0 5px 16px rgba(93, 67, 16, .08);
+}
+
+.scoreReviewWarning > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #d7ae51;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.scoreReviewWarning > div {
+  display: grid;
+  gap: 2px;
+}
+
+.scoreReviewWarning strong,
+.scoreReviewWarning small,
+.scoreReviewWarning button {
+  font-family: Manrope, Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.scoreReviewWarning strong {
+  font-size: 12px;
+}
+
+.scoreReviewWarning small {
+  color: #76591d;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.scoreReviewWarning button {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #9b741e;
+  border-radius: 8px;
+  background: #fff;
+  color: #5d4310;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scoreReviewWarning button:hover {
+  background: #ffefae;
+}
+
 .editorShell {
   max-width: 1280px;
   align-items: start;
@@ -2802,6 +2876,27 @@
   opacity: 1;
 }
 
+.summaryActions .youtubeChaptersButton {
+  grid-column: auto;
+  min-height: 50px;
+  border: 1px solid #aac0b0;
+  border-radius: 12px;
+  background: #f4f8e9;
+  color: #2f6855;
+  font-size: 13px;
+}
+
+.summaryActions .youtubeChaptersButton:hover:not(:disabled) {
+  border-color: #82a08e;
+  background: #edf5d8;
+}
+
+.summaryActions .youtubeChaptersButton:disabled {
+  border-color: #dfe7dc;
+  background: #f3f5f1;
+  color: #7d8a84;
+}
+
 .projectTools {
   color: #68766f;
   font-size: 11px;
@@ -2947,6 +3042,15 @@
   .scoreTrackingToggle {
     width: calc(100% - 32px);
   }
+
+  .scoreReviewWarning {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .scoreReviewWarning button {
+    grid-column: 2;
+    width: 100%;
+  }
 }
 
 /* Current production workspace with softer contrast and the original stacked layout. */
@@ -3035,6 +3139,12 @@
 
 .page[data-design="classic"] .summaryActions .exportButton:hover:not(:disabled) {
   background: #285947;
+}
+
+.page[data-design="classic"] .summaryActions .youtubeChaptersButton {
+  border-color: #9cb5a3;
+  background: #f4f8e9;
+  color: #2f6855;
 }
 
 .page[data-design="classic"] .scoreboard,

@@ -11,6 +11,7 @@ import { GuidedTour } from "@/components/GuidedTour";
 import { ScoreOverlay } from "@/components/ScoreOverlay";
 import { ScoreTrackingPanel } from "@/components/ScoreTrackingPanel";
 import { SiteFooter } from "@/components/SiteFooter";
+import { YouTubeChaptersModal } from "@/components/YouTubeChaptersModal";
 import {
   activeSuppressionSuggestions,
   applyPaddingToCachedCuts,
@@ -265,6 +266,7 @@ export function CutEditor({
   const [streamDownloadReady, setStreamDownloadReady] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWakeLock, setExportWakeLock] = useState<WakeLockState>("idle");
+  const [youtubeChaptersOpen, setYoutubeChaptersOpen] = useState(false);
   const manualStart = draft.pendingManualStart;
   const ignoreStart = draft.pendingIgnoreStart;
   const ignoreReason = draft.ignoreReason;
@@ -299,6 +301,15 @@ export function CutEditor({
   const activeScoreRallyRanges = useMemo(
     () => draft.cuts.filter((cut) => effectiveKeptIds.has(cut.id)),
     [draft.cuts, effectiveKeptIds],
+  );
+  const serveMarkersNeedingReview = useMemo(
+    () => activeScoreTracking.serveMarkers
+      .filter((marker) => marker.side === "review")
+      .sort(
+        (left, right) =>
+          left.timestamp - right.timestamp || left.id.localeCompare(right.id),
+      ),
+    [activeScoreTracking.serveMarkers],
   );
   const scoreBoundaryTime = useMemo(
     () => scoreBoundaryTimestamp(
@@ -839,6 +850,16 @@ export function CutEditor({
     setSelectedServeMarkerId(markerId);
     seekTo(timestamp, false);
     setEditorMessage(`Selected side switch at ${preciseTime(timestamp)}.`);
+  }
+
+  function reviewUnresolvedServeMarkers() {
+    const marker = serveMarkersNeedingReview[0];
+    if (!marker) return;
+    selectServeMarker(marker.id, marker.timestamp);
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-tour='editor-score-panel']")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function updateCut(id: string, mutate: (cut: EditableCut) => EditableCut) {
@@ -1840,6 +1861,26 @@ export function CutEditor({
         </span>
       </label>
 
+      {draft.scoreTracking.enabled && serveMarkersNeedingReview.length > 0 && (
+        <aside className={styles.scoreReviewWarning} aria-live="polite">
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>
+              {serveMarkersNeedingReview.length} serve {serveMarkersNeedingReview.length === 1
+                ? "marker needs"
+                : "markers need"} review
+            </strong>
+            <small>
+              Choose which court side was serving so scores and YouTube chapters
+              use the correct team.
+            </small>
+          </div>
+          <button type="button" onClick={reviewUnresolvedServeMarkers}>
+            Review markers
+          </button>
+        </aside>
+      )}
+
       <section className={styles.editorShell}>
         <aside
           className={styles.summaryCard}
@@ -1951,6 +1992,15 @@ export function CutEditor({
                   : directDiskSupported
                     ? "Save final video"
                     : "Create final video"}
+            </button>
+            <button
+              type="button"
+              className={styles.youtubeChaptersButton}
+              disabled={finalIntervals.length === 0}
+              aria-haspopup="dialog"
+              onClick={() => setYoutubeChaptersOpen(true)}
+            >
+              YouTube chapters
             </button>
             <details className={styles.projectTools}>
               <summary>Project options</summary>
@@ -2137,6 +2187,24 @@ export function CutEditor({
             {exportError && <strong className={styles.exportError}>{exportError}</strong>}
           </div>
         </aside>
+
+        {youtubeChaptersOpen && (
+          <YouTubeChaptersModal
+            sourceFilename={initialAnalysis.sourceFilename}
+            intervals={finalIntervals}
+            cuts={activeScoreRallyRanges}
+            scoreTracking={
+              draft.scoreTracking.enabled
+                ? activeScoreTracking
+                : null
+            }
+            hasSideSwitches={
+              draft.scoreTracking.enabled &&
+              (sideSwitchEnabled || activeScoreTracking.sideSwitchMarkers.length > 0)
+            }
+            onClose={() => setYoutubeChaptersOpen(false)}
+          />
+        )}
 
         <div className={styles.playerColumn}>
           <div className={styles.playerWorkspace}>
