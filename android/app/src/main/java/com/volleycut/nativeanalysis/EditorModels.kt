@@ -5,7 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
-internal const val EDITOR_DRAFT_VERSION = 7
+internal const val EDITOR_DRAFT_VERSION = 8
 internal const val DEFAULT_BEFORE_PADDING_MS = 2_000L
 internal const val DEFAULT_AFTER_PADDING_MS = 2_000L
 internal const val DEFAULT_JOIN_GAP_MS = 3_000L
@@ -33,8 +33,8 @@ internal enum class SuppressionInitialBehavior(val wireName: String, val label: 
 }
 
 internal enum class SuppressionScope(val wireName: String, val label: String) {
-    WHOLE_RALLY("whole-rally", "Whole rally"),
-    VETO_REGION("veto-region", "Veto region");
+    WHOLE_RALLY("whole-rally", "Whole clip"),
+    VETO_REGION("veto-region", "Only this part");
 
     companion object {
         fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
@@ -63,7 +63,7 @@ internal data class EditorSeed(
     val sideSwitch: SideSwitchOutput? = null,
     val sideSwitchError: String? = null,
     val sideSwitchEnabled: Boolean = false,
-    val scoreTrackingInitiallyEnabled: Boolean = true,
+    val scoreTrackingInitiallyEnabled: Boolean = false,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
 ) {
     val sourceRevision: String by lazy {
@@ -123,10 +123,11 @@ internal data class EditorDraft(
     val finalPreviewEnabled: Boolean = false,
     val playbackRate: Float = 1f,
     val confidenceReviewThreshold: Float = .7f,
+    val reviewedCutIds: Set<String> = emptySet(),
     val cuts: List<EditableCut>,
     val ignoredIntervals: List<IgnoredSourceInterval> = emptyList(),
     val selectedSuppressionPolicy: SuppressionPolicyEngine.Policy =
-        SuppressionPolicyEngine.Policy.NONE,
+        SuppressionPolicyEngine.Policy.AGGRESSIVE,
     val suppressionInitialBehavior: SuppressionInitialBehavior =
         SuppressionInitialBehavior.DISABLE_INITIALLY,
     val suppressionDecisionOverrides: Map<String, SuppressionDecision> = emptyMap(),

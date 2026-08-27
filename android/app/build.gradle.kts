@@ -15,8 +15,10 @@ android {
         // Android 14 is the minimum supported platform for the release build.
         minSdk = 34
         targetSdk = providers.gradleProperty("volleycut.targetSdk").orElse("37").get().toInt()
-        versionCode = 20
-        versionName = "0.10.6"
+        versionCode = 21
+        versionName = "0.10.7"
+
+        buildConfigField("boolean", "BLACK_VIDEO_PREVIEW", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -39,6 +41,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+        create("screenshot") {
+            // Android will not install the unsigned release APK on an emulator.
+            // This release-equivalent build stays non-debuggable/minified while
+            // using the standard debug certificate only for repeatable captures.
+            initWith(getByName("release"))
+            applicationIdSuffix = ".screenshot"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "BLACK_VIDEO_PREVIEW", "true")
         }
     }
 

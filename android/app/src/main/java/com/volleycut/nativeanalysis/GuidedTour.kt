@@ -64,155 +64,90 @@ internal enum class GuidedTourStep(
     SETUP_SOURCE(
         GuidedTourStage.SETUP,
         "setup-source",
-        "Select a volleyball video",
-        "Choose one recording from this device. VolleyCut keeps the file local, reads its metadata, and prepares the controls you need before inference.",
+        "Choose your video",
+        "Pick a game video from this device. Your video stays here and is not uploaded.",
         "Choose video first",
     ),
     SETUP_WINDOW(
         GuidedTourStage.SETUP,
         "setup-window",
-        "Choose the game start and end",
-        "Play or seek the preview, then copy the playhead into the start and end boundaries. Only this window is analyzed and shown in the editor.",
-        "Next: create project",
+        "Choose the part with the game",
+        "If the whole video is game footage, leave it set to the full video. Otherwise, move to the game’s start and end and mark them.",
+        "Next",
     ),
     SETUP_CREATE(
         GuidedTourStage.SETUP,
         "setup-create",
-        "Create the project and queue inference",
-        "When the game window looks right, tap Create & queue. Analysis continues on this device, and the editor opens as soon as the project is ready.",
-        "Create project first",
+        "Let VolleyCut find the rallies",
+        "Tap Find rallies. Keep VolleyCut open while it prepares the suggested clips; the editor opens when they are ready.",
+        "Find rallies first",
     ),
-    EDITOR_HEADER(
+    EDITOR_SETTINGS(
         GuidedTourStage.EDITOR,
-        "editor-header",
-        "Navigate projects from the header",
-        "Use the project menu to switch recordings or start another one. The header also shows analysis and export queue activity and keeps delete controls with the selected project.",
-        "Next: output settings",
-    ),
-    EDITOR_OUTPUT(
-        GuidedTourStage.EDITOR,
-        "editor-output",
-        "Build the final edit",
-        "This panel controls which footage remains in the result. It combines suppression, padding, gap joining, and final-cut playback into one saved edit.",
-        "Next: score tracking",
-    ),
-    EDITOR_SCORE_TOGGLE(
-        GuidedTourStage.EDITOR,
-        "editor-score-toggle",
-        "Score tracking is in beta",
-        "Turn score tracking on or off per project. When it is off, score controls and timeline markers are hidden; retained serving-side inference is not deleted.",
-        "Next: score panel",
-    ),
-    EDITOR_SCORE_PANEL(
-        GuidedTourStage.EDITOR,
-        "editor-score-panel",
-        "Correct serves and points",
-        "A serve marker identifies the team that serves next, which awards the previous rally. Correct Near or Far predictions, mark replays, add missing serves, and record side switches here.",
-        "Next: video overlay",
-    ),
-    EDITOR_SCORE_OVERLAY(
-        GuidedTourStage.EDITOR,
-        "editor-score-overlay",
-        "Render the score in the final video",
-        "This optional setting previews the score box immediately and burns the same source-timestamped score into the next MP4 export.",
-        "Next: suppression",
-    ),
-    EDITOR_SUPPRESSION(
-        GuidedTourStage.EDITOR,
-        "editor-suppression",
-        "Review suppression suggestions",
-        "Suppression levels identify likely false positives. Suggestions can begin highlighted or disabled, and you can keep or suppress each one while reviewing the timeline.",
-        "Next: padding",
-    ),
-    EDITOR_PADDING(
-        GuidedTourStage.EDITOR,
-        "editor-padding",
-        "Add context around rallies",
-        "Before and After padding extend inferred rallies without changing their core boundaries. The padded edges are used by preview and export.",
-        "Next: gap joining",
-    ),
-    EDITOR_JOIN_GAPS(
-        GuidedTourStage.EDITOR,
-        "editor-join-gaps",
-        "Join nearby cuts",
-        "Light-gray gaps shorter than this threshold stay in the output so nearby rallies export as one continuous range. Set it to zero to keep every gap as a cut.",
-        "Next: final-cut preview",
-    ),
-    EDITOR_FINAL_PREVIEW(
-        GuidedTourStage.EDITOR,
-        "editor-final-preview",
-        "Preview only the final cut",
-        "Turn this on to skip removed rallies, ignored footage, and gaps that are not being joined while the source plays.",
-        "Next: video player",
+        "editor-settings",
+        "Fine-tune only when you need to",
+        "The Settings gear contains optional automatic cleanup, extra time around clips, short-break joining, and review sensitivity. The defaults are ready for most games.",
+        "Next",
     ),
     EDITOR_VIDEO(
         GuidedTourStage.EDITOR,
         "editor-video",
-        "Watch the source video",
-        "The original recording stays on this device. Playback is constrained to the game window so you can compare each model range with the footage.",
-        "Next: transport controls",
-    ),
-    EDITOR_TRANSPORT(
-        GuidedTourStage.EDITOR,
-        "editor-transport",
-        "Move precisely through the video",
-        "Play or pause, nudge by one second or one tenth of a second, and change playback speed without changing any saved boundary.",
-        "Next: game window",
+        "Watch the video",
+        "Play, pause, or move to any moment. Turn on Play only the final video above to skip every part that will not be saved.",
+        "Next",
     ),
     EDITOR_OVERVIEW(
         GuidedTourStage.EDITOR,
         "editor-overview",
-        "Read the game-window overview",
-        "The two rails show the first and second halves of the game. Tap a range to focus it, and use the review controls to find disagreements and low-confidence cuts.",
-        "Next: focused range",
+        "Review the suggested clips",
+        "Each block is a clip planned for the final video. Start with Check next clip, then review anything else only if it looks wrong.",
+        "Next",
     ),
     EDITOR_FOCUS(
         GuidedTourStage.EDITOR,
         "editor-focus",
-        "Refine the focused range",
-        "This enlarged timeline follows the selected rally. Move between cuts, keep or remove them, preview one range, and adjust its exact output edges.",
-        "Next: trim and split",
-    ),
-    EDITOR_TRIM(
-        GuidedTourStage.EDITOR,
-        "editor-trim",
-        "Change or split a rally",
-        "Drag the rally handles or set either edge at the playhead for frame-accurate corrections. Split at the playhead when one prediction contains two rallies.",
-        "Next: marking tools",
+        "Fix one clip",
+        "Include or leave out the selected clip, preview it, and adjust where it starts or ends. Tap Looks good when a flagged clip is correct.",
+        "Next",
     ),
     EDITOR_MARKING(
         GuidedTourStage.EDITOR,
         "editor-marking",
-        "Add misses or ignore unusable footage",
-        "Mark a missed rally from start to end, or mark camera gaps and non-game footage as ignored. Ignored time is excluded rather than treated as a negative label.",
-        "Next: all cuts",
+        "Add anything VolleyCut missed",
+        "For a missed rally, mark its start and end. Leave out a section for camera gaps, breaks, or other footage that should not appear in the final video.",
+        "Next",
     ),
-    EDITOR_CUTS(
+    EDITOR_SCORE_TOGGLE(
         GuidedTourStage.EDITOR,
-        "editor-cuts",
-        "Use the all-cuts list",
-        "Every inferred or manual range appears here. Tap a row to focus it, then toggle whether it contributes to the final edit.",
-        "Next: export",
+        "editor-score-toggle",
+        "Add a scoreboard if you want one",
+        "Score tracking is optional. Turn it on to check serve markers, add anything missing, and include a scoreboard in the saved video.",
+        "Next: check the score",
+    ),
+    EDITOR_SCORE_PANEL(
+        GuidedTourStage.EDITOR,
+        "editor-score-panel",
+        "Check the score markers",
+        "Correct which side serves, add missed serves, and add a side switch whenever the teams change court sides.",
+        "Next: save video",
     ),
     EDITOR_EXPORT(
         GuidedTourStage.EDITOR,
         "editor-export",
-        "Export the result",
-        "Queue the edited MP4, save the exact edit list, or export model feedback containing features and corrections without including video bytes.",
-        "Finish tour",
+        "Save the finished video",
+        "Tap Save final video when the review looks right. Choose the original video first if VolleyCut asks you to reconnect it.",
+        "Finish tutorial",
     ),
 }
 
 private val guidedTourSteps = GuidedTourStep.entries
 private val scoreGuidedTourSteps = setOf(
-    GuidedTourStep.EDITOR_SCORE_TOGGLE,
     GuidedTourStep.EDITOR_SCORE_PANEL,
-    GuidedTourStep.EDITOR_SCORE_OVERLAY,
 )
 private val TourInk = Color(0xFF20201E)
 private val TourOrange = Color(0xFFEF5B35)
 private val TourMuted = Color(0xFF77736C)
-private const val TOUR_PREFERENCES = "volleycut-guided-tour-v1"
+private const val TOUR_PREFERENCES = "volleycut-guided-tour-v2"
 private const val TOUR_STATE_KEY = "state"
 private const val TOUR_DONE = "done"
 private const val TOUR_DISMISSED = "dismissed"
@@ -232,13 +167,13 @@ internal object GuidedTourStore {
         write(
             context,
             if (stage == GuidedTourStage.SETUP) GuidedTourStep.SETUP_SOURCE.name
-            else GuidedTourStep.EDITOR_HEADER.name,
+            else GuidedTourStep.EDITOR_SETTINGS.name,
         )
     }
 
     fun moveToEditor(context: Context) {
         if (read(context) != TOUR_DISMISSED && read(context) != TOUR_DONE) {
-            write(context, GuidedTourStep.EDITOR_HEADER.name)
+            write(context, GuidedTourStep.EDITOR_SETTINGS.name)
         }
     }
 
@@ -290,21 +225,21 @@ internal fun GuidedTour(
         val initial = when {
             stored == null -> if (stage == GuidedTourStage.SETUP) {
                 GuidedTourStep.SETUP_SOURCE.name
-            } else GuidedTourStep.EDITOR_HEADER.name
+            } else GuidedTourStep.EDITOR_SETTINGS.name
             stage == GuidedTourStage.EDITOR && GuidedTourStep.entries.any {
                 it.name == stored && it.stage == GuidedTourStage.SETUP
-            } -> GuidedTourStep.EDITOR_HEADER.name
+            } -> GuidedTourStep.EDITOR_SETTINGS.name
             else -> stored
         }
         if (initial != stored) GuidedTourStore.write(context, initial)
         mutableStateOf(initial)
     }
     val storedStep = GuidedTourStep.entries.firstOrNull { it.name == state && it.stage == stage }
-    val activeTourSteps = if (scoreTrackingEnabled) guidedTourSteps else guidedTourSteps.filterNot {
+    val activeTourSteps = (if (scoreTrackingEnabled) guidedTourSteps else guidedTourSteps.filterNot {
         it in scoreGuidedTourSteps
-    }
+    }).filter { it.stage == stage }
     val step = if (!scoreTrackingEnabled && storedStep in scoreGuidedTourSteps) {
-        GuidedTourStep.EDITOR_SUPPRESSION.also { saveTarget ->
+        GuidedTourStep.EDITOR_EXPORT.also { saveTarget ->
             LaunchedEffect(state) {
                 GuidedTourStore.write(context, saveTarget.name)
                 state = saveTarget.name
@@ -323,7 +258,7 @@ internal fun GuidedTour(
     fun restart() {
         GuidedTourStore.restart(context, stage)
         state = if (stage == GuidedTourStage.SETUP) GuidedTourStep.SETUP_SOURCE.name
-        else GuidedTourStep.EDITOR_HEADER.name
+        else GuidedTourStep.EDITOR_SETTINGS.name
     }
 
     fun advance() {
@@ -375,7 +310,7 @@ internal fun GuidedTour(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "WELCOME TOUR · ${activeTourSteps.indexOf(current) + 1} OF ${activeTourSteps.size}",
+                        "TUTORIAL · ${activeTourSteps.indexOf(current) + 1} OF ${activeTourSteps.size}",
                         modifier = Modifier.weight(1f),
                         color = TourOrange,
                         fontFamily = FontFamily.Monospace,
@@ -422,7 +357,7 @@ internal fun GuidedTour(
                     ) {
                         Text(
                             if (current == GuidedTourStep.SETUP_SOURCE && sourceReady) {
-                                "Next: game window"
+                                "Next"
                             } else current.action,
                         )
                     }

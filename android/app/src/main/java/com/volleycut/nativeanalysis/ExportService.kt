@@ -294,6 +294,7 @@ class ExportService : Service() {
         temporaryFile = null
         if (status != "complete") deleteIncompleteDestination()
         currentJob = null
+        if (status == "complete") AppRating.recordSuccessfulExport(this, finishedJob.id)
         broadcast(finishedJob, status, if (status == "complete") 100 else 0, detail, metrics.toString())
         val manager = getSystemService(NotificationManager::class.java)
         if (status == "complete") manager.notify(NOTIFICATION_ID, notification(100, detail, false))

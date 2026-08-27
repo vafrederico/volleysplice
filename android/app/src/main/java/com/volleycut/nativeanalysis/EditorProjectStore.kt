@@ -106,7 +106,7 @@ internal object EditorProjectStore {
             sideSwitchEnabled = if (json.has("sideSwitchEnabled")) {
                 json.getBoolean("sideSwitchEnabled")
             } else json.optJSONObject("sideSwitch") != null,
-            scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", true),
+            scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", false),
         ).takeIf { seed ->
             seed.durationMs > 0 && seed.sourceUri.isNotBlank() &&
                 seed.gameStartMs >= 0 && seed.gameEndMs <= seed.durationMs &&

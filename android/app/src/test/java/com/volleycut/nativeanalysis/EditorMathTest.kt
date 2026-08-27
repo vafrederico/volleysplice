@@ -8,6 +8,23 @@ import org.junit.Test
 
 class EditorMathTest {
     @Test
+    fun newDraftUsesSimpleAutomaticDefaults() {
+        val draft = EditorMath.newDraft(EditorSeed(
+            sourceUri = "content://fixture/video",
+            displayName = "fixture.mp4",
+            durationMs = 10_000,
+            width = 1_920,
+            height = 1_080,
+            rotation = 0,
+            ranges = emptyList(),
+        ))
+
+        assertEquals(SuppressionPolicyEngine.Policy.AGGRESSIVE, draft.selectedSuppressionPolicy)
+        assertFalse(draft.scoreTracking.enabled)
+        assertTrue(draft.reviewedCutIds.isEmpty())
+    }
+
+    @Test
     fun scoreTrackingStartsDisabledWhenServingSideWasSkipped() {
         val draft = EditorMath.newDraft(EditorSeed(
             sourceUri = "content://fixture/video",
