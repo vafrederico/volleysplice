@@ -4,15 +4,16 @@
 
 - `app-icon-512.png` — 512×512 PNG, existing launcher artwork
 - `feature-graphic-1024x500.png` — 1024×500 RGB PNG
-- `screenshots/phone-upload-featured/` — four ordered 887×1774 RGB PNGs with feature-focused Play Store copy
-- `screenshots/phone-upload-final/` — eight 1280×2560 RGB source/reference captures from the signed release build
+- `screenshots/phone-upload-featured/` — five ordered 1080×2160 RGB PNGs with feature-focused Play Store copy
+- `screenshots/phone-release-sources-v2/` — five 1344×2992 source captures from the release-equivalent screenshot build
+- `screenshots/phone-upload-final/` — eight legacy 1280×2560 source/reference captures
 
-The featured upload set turns real app captures into a consistent store-listing
-sequence: local video selection, automatic rally detection, precise rally editing,
-and offline MP4 export. Large branded headers make each value proposition readable in
-the Play Store thumbnail while the underlying product UI demonstrates the feature.
-The original source file is unavailable, so no personal video frame or thumbnail
-can appear. The filename was confirmed non-sensitive by the owner.
+The featured upload set turns real app captures into a consistent five-step
+store-listing sequence: select the game window, confirm Strong automatic cleanup,
+review suggested rallies, fix or add rallies, and export the finished MP4. Large
+branded headers make each value proposition readable in the Play Store thumbnail
+while the underlying product UI demonstrates the exact feature. The fresh project
+was created normally on a Pixel 10 Pro AVD with a synthetic, non-personal fixture.
 
 ## Text and declarations
 
@@ -44,18 +45,24 @@ The generated source is `feature-graphic-source.png`; the upload file was mechan
 
 ## Featured screenshot provenance
 
-The four files in `screenshots/phone-upload-featured/` were generated with the
-built-in image generation tool from real app captures, including the signed-build
-captures in `screenshots/phone-upload-final/`. The shared direction was a deep-navy and
-electric-blue volleyball-court backdrop, the official VolleyCut logo, bold
-white-and-orange feature copy, and a large recognizable view of the source app UI.
-The exact headline/supporting-copy pairs are:
+The five files in `screenshots/phone-upload-featured/` use exact release-equivalent
+app captures from `screenshots/phone-release-sources-v2/`. The shared backdrop was
+generated with the built-in image generation tool; the official logo, exact copy,
+and unmodified app captures were then composed deterministically by
+`scripts/compose_featured_screenshots.py`. The exact headline/supporting-copy pairs
+are:
 
-1. `Choose your match` / `Your video stays on your device`
-2. `Find rallies automatically` / `On-device video + audio analysis`
-3. `Fine-tune every cut` / `Trim, split, pad, or add missed rallies`
-4. `Export your highlight reel` / `Private, offline MP4 creation`
+1. `Start with any game video` / `Select the game window in seconds — your video stays on your phone.`
+2. `Strong cleanup, ready by default` / `Adjust extra time, short breaks, and how many clips need a check.`
+3. `Review every suggested rally` / `See the final timeline and quickly confirm the clips that need attention.`
+4. `Fix cuts or add a missed rally` / `Trim clip edges, split a rally, or mark missing action yourself.`
+5. `Export one finished highlight video` / `Save a private, offline MP4 that is ready to share.`
 
-The source UI, labels, values, and feature claims were explicitly constrained to
-remain faithful to the supplied captures. The originals remain checked in for
-audit and future regeneration.
+The generated background prompt was:
+
+> Create a polished, restrained portrait background for VolleyCut using a deep-navy indoor volleyball court, subtle electric-blue court lines, faint net geometry, and a small coral-orange accent glow. Preserve generous clean negative space for store copy and a darker lower region for a real app screenshot. Background only: no phone mockup, app interface, logo, text, icons, badges, people, or watermark.
+
+The screenshot build inherits the minified, non-debuggable release configuration
+and uses an isolated `.screenshot` application ID with the standard debug
+certificate because Android cannot install an unsigned APK. The production
+`app-release-unsigned.apk` remains unsigned and untouched.

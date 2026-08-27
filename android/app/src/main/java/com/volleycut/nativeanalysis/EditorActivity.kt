@@ -969,7 +969,6 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 seed = currentSeed,
                 store = store,
                 initialDraft = restored ?: EditorMath.newDraft(currentSeed),
-                restored = restored != null,
                 analysisRunning = queueCount > 0,
                 servingSideProgress = inference.takeIf {
                     it.projectId == selectedProject.id && it.servingSideJob
@@ -1928,7 +1927,6 @@ private fun EditorScreen(
     seed: EditorSeed,
     store: EditorDraftStore,
     initialDraft: EditorDraft,
-    restored: Boolean,
     analysisRunning: Boolean,
     servingSideProgress: Float?,
     servingSideProgressDetail: String?,
@@ -1951,9 +1949,7 @@ private fun EditorScreen(
     var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
     var isPlaying by remember { mutableStateOf(false) }
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
-    var message by remember {
-        mutableStateOf(if (restored) "Restored saved edits on this device" else "New on-device draft")
-    }
+    var message by remember { mutableStateOf("") }
     var exportState by remember(project.id) {
         mutableStateOf(ExportService.statusForProject(project.id)?.toUiState() ?: ExportUiState())
     }
@@ -2878,9 +2874,12 @@ private fun EditorScreen(
                 modifier = Modifier.guidedTourTarget("editor-focus", guidedTourTargets),
             ) {
                 if (selected == null) {
-                    Text("Add a missed cut at the current playhead to begin.", color = Muted)
+                    Text("Add a missed rally at the current playhead to begin.", color = Muted)
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         SmallButton("Previous", enabled = selectedIndex > 0) {
                             sortedCuts.getOrNull(selectedIndex - 1)?.let { selectedId = it.id; seekTo(it.keepStartMs) }
                         }
@@ -2888,6 +2887,11 @@ private fun EditorScreen(
                         SmallButton("Next", enabled = selectedIndex < sortedCuts.lastIndex) {
                             sortedCuts.getOrNull(selectedIndex + 1)?.let { selectedId = it.id; seekTo(it.keepStartMs) }
                         }
+                        Spacer(Modifier.weight(1f))
+                        Checkbox(checked = focusLocked, onCheckedChange = { focusLocked = it })
+                        Text("Keep selected", fontSize = 13.sp)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SmallButton(if (selected.included) "Leave out" else "Include") {
                             updateCut(selected.id) { it.copy(included = !it.included) }
                         }
@@ -2900,9 +2904,6 @@ private fun EditorScreen(
                                 ) }
                             }
                         }
-                        Spacer(Modifier.weight(1f))
-                        Checkbox(checked = focusLocked, onCheckedChange = { focusLocked = it })
-                        Text("Keep selected", fontSize = 13.sp)
                     }
                     TimelineLabels(detailWindow.startMs, (detailWindow.startMs + detailWindow.endMs) / 2, detailWindow.endMs)
                     FocusTimeline(
@@ -2934,23 +2935,26 @@ private fun EditorScreen(
                         color = Muted,
                     )
                     Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
+                        Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         OutlinedButton(
                             enabled = playbackPositionMs <= selected.coreEndMs - MIN_MARK_MS,
                             onClick = { setCoreBoundary("start", playbackPositionMs) },
+                            modifier = Modifier.weight(1f),
                         ) { Text("Set rally start here") }
-                        Button(
-                            enabled = playbackPositionMs >= selected.coreStartMs + MIN_MARK_MS &&
-                                playbackPositionMs <= selected.coreEndMs - MIN_MARK_MS,
-                            onClick = ::splitSelectedAtPlayhead,
-                        ) { Text("Split at playhead") }
                         OutlinedButton(
                             enabled = playbackPositionMs >= selected.coreStartMs + MIN_MARK_MS,
                             onClick = { setCoreBoundary("end", playbackPositionMs) },
+                            modifier = Modifier.weight(1f),
                         ) { Text("Set rally end here") }
                     }
+                    Button(
+                        enabled = playbackPositionMs >= selected.coreStartMs + MIN_MARK_MS &&
+                            playbackPositionMs <= selected.coreEndMs - MIN_MARK_MS,
+                        onClick = ::splitSelectedAtPlayhead,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Split at playhead") }
                     RallyRangeSlider(
                         cut = selected,
                         window = detailWindow,

@@ -88,22 +88,22 @@ The same privacy policy and terms cover both the Android app and browser-based w
 
 ## Screenshot order and alt text
 
-1. `screenshots/phone-upload-featured/01-choose-your-match.png`
-   - Alt text: "Choose a volleyball match locally in VolleyCut with the new-project video picker, optional score tracking, and reusable on-device features."
-2. `screenshots/phone-upload-featured/02-auto-rally-detection.png`
-   - Alt text: "Find rallies automatically with VolleyCut's on-device video and audio analysis, shown above the two-rail game-window timeline and review controls."
-3. `screenshots/phone-upload-featured/03-precise-rally-editing.png`
-   - Alt text: "Fine-tune every cut in VolleyCut with a focused rally timeline, draggable boundaries, confidence details, trim, split, and padding controls."
-4. `screenshots/phone-upload-featured/04-offline-mp4-export.png`
-   - Alt text: "Export a private offline volleyball highlight reel from VolleyCut using the MP4 export, edit-list, and model-feedback options."
+1. `screenshots/phone-upload-featured/01-start-with-any-game-video.png`
+   - Alt text: "Choose a local game video and select the game window in VolleyCut; the video stays on the phone."
+2. `screenshots/phone-upload-featured/02-strong-cleanup-default.png`
+   - Alt text: "VolleyCut Settings with Strong automatic cleanup selected by default plus clip padding, short-break, and review controls."
+3. `screenshots/phone-upload-featured/03-review-suggested-rallies.png`
+   - Alt text: "Review suggested volleyball rallies on a two-part game timeline and confirm that every flagged clip has been checked."
+4. `screenshots/phone-upload-featured/04-fix-or-add-rallies.png`
+   - Alt text: "Fine-tune rally and final clip edges, split at the playhead, preview a clip, or add a missed rally."
+5. `screenshots/phone-upload-featured/05-export-highlight-video.png`
+   - Alt text: "Export one finished offline volleyball highlight video after reviewing the included clips."
 
-The featured screenshots use real app UI captures, including captures from the
-signed `v0.10.3` release build, with concise marketing headers added for Play Store
-readability. The saved
-inference's original source file had already been deleted, so the screenshots show
-no video frame, thumbnail, or personal media. The filename shown in the inference
-was confirmed non-sensitive by the owner. The eight original 1280×2560 captures
-remain in `screenshots/phone-upload-final/` as source and audit material.
+The featured screenshots use exact `v0.10.7` UI captures from a minified,
+non-debuggable release-equivalent build, with concise marketing headers added for
+Play Store readability. A fresh project was created normally on a Pixel 10 Pro AVD
+using a synthetic non-personal video fixture. The current source captures remain in
+`screenshots/phone-release-sources-v2/` for audit and future regeneration.
 
 ## Feature graphic alt text
 

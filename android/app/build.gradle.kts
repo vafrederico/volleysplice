@@ -40,6 +40,15 @@ android {
                 "proguard-rules.pro",
             )
         }
+        create("screenshot") {
+            // Android will not install the unsigned release APK on an emulator.
+            // This release-equivalent build stays non-debuggable/minified while
+            // using the standard debug certificate only for repeatable captures.
+            initWith(getByName("release"))
+            applicationIdSuffix = ".screenshot"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {
