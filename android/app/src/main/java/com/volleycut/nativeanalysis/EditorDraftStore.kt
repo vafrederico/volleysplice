@@ -52,6 +52,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         put("finalPreviewEnabled", draft.finalPreviewEnabled)
         put("playbackRate", draft.playbackRate.toDouble())
         put("confidenceReviewThreshold", draft.confidenceReviewThreshold.toDouble())
+        put("reviewedCutIds", JSONArray(draft.reviewedCutIds.sorted()))
         put("selectedSuppressionPolicy", draft.selectedSuppressionPolicy.wireName)
         put("suppressionInitialBehavior", draft.suppressionInitialBehavior.wireName)
         put("suppressionDecisionOverrides", JSONObject().apply {
@@ -139,6 +140,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             }
         }
         val touchedJson = json.optJSONArray("userTouchedCutIds") ?: JSONArray()
+        val reviewedJson = json.optJSONArray("reviewedCutIds") ?: JSONArray()
         val restoredScore = if (persistedVersion >= 6) {
             json.optJSONObject("scoreTracking")?.let { ScoreTrackingJson.decode(it, seed.durationMs) }
         } else null
@@ -162,6 +164,9 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             finalPreviewEnabled = json.optBoolean("finalPreviewEnabled"),
             playbackRate = json.optDouble("playbackRate", 1.0).toFloat(),
             confidenceReviewThreshold = json.optDouble("confidenceReviewThreshold", .7).toFloat(),
+            reviewedCutIds = buildSet {
+                for (index in 0 until reviewedJson.length()) add(reviewedJson.getString(index))
+            },
             cuts = cuts,
             ignoredIntervals = ignored,
             selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.fromWireName(
@@ -201,6 +206,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             draft.suppressionContractVersion == FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION &&
             ScoreTrackingJson.validate(draft.scoreTracking, seed.durationMs) &&
             draft.userTouchedCutIds.all { id -> draft.cuts.any { it.id == id } } &&
+            draft.reviewedCutIds.all { id -> draft.cuts.any { it.id == id } } &&
             draft.cuts.all { cut ->
                 cut.keepStartMs in seed.gameStartMs..cut.coreStartMs &&
                     cut.coreStartMs < cut.coreEndMs &&

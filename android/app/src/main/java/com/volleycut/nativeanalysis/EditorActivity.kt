@@ -258,10 +258,10 @@ private fun EditableCut.isModelDisagreement(): Boolean =
     ProductionEnsemble.isDisagreement(agreement)
 
 private fun EditableCut.modelAgreementLabel(): String = when (agreement) {
-    ProductionEnsemble.BOTH_MODELS -> "Both models agree"
-    ProductionEnsemble.ALL_LABELS_V2_ONLY -> "Check · all-labels v2 only"
-    ProductionEnsemble.PREVIOUS_PRODUCTION_ONLY -> "Check · previous model only"
-    else -> "Model prediction"
+    ProductionEnsemble.BOTH_MODELS -> "Found automatically"
+    ProductionEnsemble.ALL_LABELS_V2_ONLY,
+    ProductionEnsemble.PREVIOUS_PRODUCTION_ONLY -> "Needs a quick check"
+    else -> "Suggested clip"
 }
 
 @Composable
@@ -299,14 +299,20 @@ private fun projectStatusLabel(
     export: ExportJobStatus?,
 ): String {
     val encoding = when (export?.status) {
-        "queued" -> "encoding queued"
-        "running" -> "encoding ${export.progress.coerceIn(0, 100)}%"
-        "complete" -> "encoding finished"
-        "failed" -> "encoding failed"
-        "cancelled" -> "encoding cancelled"
+        "queued" -> "video waiting to save"
+        "running" -> "saving ${export.progress.coerceIn(0, 100)}%"
+        "complete" -> "video saved"
+        "failed" -> "save failed"
+        "cancelled" -> "save cancelled"
         else -> null
     }
-    return listOfNotNull(project.status.wireName, encoding).joinToString(" · ")
+    val projectState = when (project.status) {
+        ProjectStatus.QUEUED -> "waiting"
+        ProjectStatus.ANALYZING -> "finding rallies"
+        ProjectStatus.ERROR -> "needs attention"
+        ProjectStatus.READY -> "ready to review"
+    }
+    return listOfNotNull(projectState, encoding).joinToString(" · ")
 }
 
 private data class SourceSelection(
@@ -330,13 +336,9 @@ private data class InferenceUiState(
 )
 
 private data class EditorProjectSummary(
-    val width: Int,
-    val height: Int,
-    val sourceDurationMs: Long,
     val outputDurationMs: Long,
     val kept: Int,
-    val removed: Int,
-    val ignored: Int,
+    val needsReview: Int,
 )
 
 private fun setScoreTrackingPreference(
@@ -380,10 +382,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var selectedSource by remember { mutableStateOf<SourceSelection?>(null) }
     var preparingSource by remember { mutableStateOf(false) }
     var inference by remember { mutableStateOf(InferenceUiState()) }
-    var useCache by remember { mutableStateOf(true) }
-    var analyzeServingSide by remember { mutableStateOf(true) }
+    val useCache = true
+    var analyzeServingSide by remember { mutableStateOf(false) }
     var generateSideSwitchMarkers by remember { mutableStateOf(false) }
-    var cacheBytes by remember { mutableLongStateOf(NativeFeatureCache.totalBytes(context)) }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
@@ -417,14 +418,12 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         if (preserveNewProject) {
             selectedProjectId = null
             NativeProjectStore.setSelectedId(context, null)
-            cacheBytes = NativeFeatureCache.totalBytes(context)
             return
         }
         selectedProjectId = preferredId?.takeIf { id -> projects.any { it.id == id } }
             ?: projects.firstOrNull()?.id
         NativeProjectStore.setSelectedId(context, selectedProjectId)
         if (selectedProjectId != null) creatingNew = false
-        cacheBytes = NativeFeatureCache.totalBytes(context)
     }
 
     val sourcePicker = rememberLauncherForActivityResult(
@@ -441,7 +440,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             gameStartMs = 0
             gameEndMs = 0
             preparingSource = true
-            inference = InferenceUiState(stage = "opening", detail = "Reading recording metadata")
+            inference = InferenceUiState(stage = "opening", detail = "Getting your video ready")
             scope.launch {
                 try {
                     val prepared = withContext(Dispatchers.IO) {
@@ -463,7 +462,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     selectedSource = prepared
                     gameStartMs = 0
                     gameEndMs = secondsToMs(checkNotNull(prepared.media).durationSeconds())
-                    inference = InferenceUiState(detail = "Mark the game start and end, then queue inference")
+                    inference = InferenceUiState(detail = "Choose the part with the game, then find the rallies")
                 } catch (error: Exception) {
                     inference = InferenceUiState(
                         stage = "failed",
@@ -480,13 +479,13 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     ) { uri ->
         if (uri != null) {
             preparingSource = true
-            inference = InferenceUiState(stage = "importing", detail = "Validating model feedback")
+            inference = InferenceUiState(stage = "importing", detail = "Opening your saved project")
             scope.launch {
                 val imported = runCatching {
                     withContext(Dispatchers.IO) {
                         val text = context.contentResolver.openInputStream(uri)
                             ?.bufferedReader()?.use { it.readText() }
-                            ?: error("Could not open model feedback")
+                            ?: error("Could not open that saved project")
                         ModelFeedbackImporter.import(context, text)
                     }
                 }
@@ -501,7 +500,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 }.onFailure { error ->
                     inference = InferenceUiState(
                         stage = "failed",
-                        error = error.message ?: "Could not import model feedback",
+                        error = error.message ?: "Could not open that saved project",
                     )
                 }
             }
@@ -540,7 +539,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     projects = NativeProjectStore.list(context)
                     selectedProjectId = updated.id
                     sourceAvailable = true
-                    relinkMessage = "Re-linked ${updated.source.name}; saved edits and inference were preserved."
+                    relinkMessage = "${updated.source.name} is connected again. Your saved edits were preserved."
                     relinkFailed = false
                 }.onFailure { error ->
                     sourceAvailable = false
@@ -628,8 +627,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                             "serving-side-queued"
                         } else "complete",
                         detail = if (opened.servingSideStatus == ServingSideAnalysisStatus.QUEUED) {
-                            "Opened cached rally inference; waiting to prepare score tracking"
-                        } else "Opened cached inference; no analysis was run",
+                            "Rallies are ready; preparing the optional scoreboard"
+                        } else "Your suggested clips are ready",
                     )
                     reloadProjects(opened.id)
                     if (opened.servingSideStatus == ServingSideAnalysisStatus.QUEUED) {
@@ -645,7 +644,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         projectId = existing.id,
                         running = true,
                         stage = existing.status.wireName,
-                        detail = "This recording is already in the inference queue",
+                        detail = "This video is already waiting to be prepared",
                     )
                     reloadProjects(existing.id)
                 } else {
@@ -663,7 +662,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         projectId = queued.id,
                         running = true,
                         stage = "queued",
-                        detail = "Waiting for game-window video + audio inference",
+                        detail = "Waiting to find the rallies",
                     )
                     reloadProjects(queued.id)
                     if (Build.VERSION.SDK_INT >= 33 &&
@@ -787,7 +786,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete ${deleting.source.name}?") },
             text = {
-                Text("This removes its inference, saved editor changes, and generated feature cache from this device.")
+                Text("This removes the video’s suggested clips and all saved edits from this device.")
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -840,7 +839,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     }
     val guidedTourTargets = remember { GuidedTourTargets() }
     var guidedTourRestartSignal by remember { mutableIntStateOf(0) }
-    val projectControls: @Composable (EditorProjectSummary?) -> Unit = { editorSummary ->
+    val projectControls: @Composable (EditorProjectSummary?, (() -> Unit)?) -> Unit =
+        { editorSummary, onOpenEditorSettings ->
         ProjectHeaderBar(
             projects = projects,
             selected = selectedProject,
@@ -864,8 +864,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 selectedSource = null
                 gameStartMs = 0
                 gameEndMs = 0
-                inference = InferenceUiState(detail = "Choose a recording for the new project")
-                analyzeServingSide = true
+                inference = InferenceUiState(detail = "Choose a game video")
+                analyzeServingSide = false
                 generateSideSwitchMarkers = false
                 relinkMessage = null
                 relinkFailed = false
@@ -878,13 +878,14 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 )
                 guidedTourRestartSignal++
             },
-            onOpenSettings = { showSettings = true },
+            guidedTourTargets = guidedTourTargets,
+            onOpenSettings = onOpenEditorSettings ?: { showSettings = true },
         )
     }
 
     if (creatingNew || selectedProject == null) {
         ProjectShell(
-            projectControls = { projectControls(null) },
+            projectControls = { projectControls(null, null) },
             guidedTourStage = GuidedTourStage.SETUP,
             guidedTourTargets = guidedTourTargets,
             sourceReady = selectedSource?.media != null,
@@ -894,10 +895,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 selected = selectedSource,
                 preparing = preparingSource,
                 state = inference,
-                useCache = useCache,
                 analyzeServingSide = analyzeServingSide,
                 generateSideSwitchMarkers = generateSideSwitchMarkers,
-                cacheBytes = cacheBytes,
                 queueCount = queueCount,
                 gameStartMs = gameStartMs,
                 gameEndMs = gameEndMs,
@@ -919,24 +918,13 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     gameStartMs = 0
                     gameEndMs = selectedSource?.media?.durationSeconds()?.let(::secondsToMs) ?: 0
                 },
-                onUseCache = { useCache = it },
                 onAnalyzeServingSide = { analyzeServingSide = it },
                 onGenerateSideSwitchMarkers = { generateSideSwitchMarkers = it },
-                onClearCache = {
-                    NativeFeatureCache.clearAll(context)
-                    cacheBytes = 0
-                    inference = InferenceUiState(detail = "Feature cache cleared")
-                },
-                onBenchmark = if (BuildConfig.DEBUG) {
-                    { context.startActivity(Intent(context, MainActivity::class.java)) }
-                } else {
-                    null
-                },
                 guidedTourTargets = guidedTourTargets,
             )
         }
     } else if (selectedProject.status != ProjectStatus.READY) {
-        ProjectShell(projectControls = { projectControls(null) }) {
+        ProjectShell(projectControls = { projectControls(null, null) }) {
             ProjectInferenceCard(
                 project = selectedProject,
                 state = inference.takeIf { it.projectId == selectedProject.id } ?: InferenceUiState(),
@@ -958,7 +946,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         projectId = queued.id,
                         running = true,
                         stage = "queued",
-                        detail = "Waiting for game-window video + audio inference",
+                        detail = "Waiting to find the rallies",
                     )
                     reloadProjects(queued.id)
                     ProjectAnalysisService.enqueue(context, queued.id)
@@ -1024,6 +1012,7 @@ private fun ProjectHeaderBar(
     onNew: () -> Unit,
     onDelete: () -> Unit,
     onRestartTour: () -> Unit,
+    guidedTourTargets: GuidedTourTargets? = null,
     onOpenSettings: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1062,10 +1051,10 @@ private fun ProjectHeaderBar(
                 Spacer(Modifier.weight(1f))
                 Text(
                     when {
-                        queueCount == 0 && exportQueueCount == 0 -> "Queue idle"
-                        queueCount == 0 -> "$exportQueueCount encoding"
-                        exportQueueCount == 0 -> "$queueCount analyzing"
-                        else -> "$queueCount analyzing · $exportQueueCount encoding"
+                        queueCount == 0 && exportQueueCount == 0 -> "Ready"
+                        queueCount == 0 -> "$exportQueueCount saving"
+                        exportQueueCount == 0 -> "$queueCount preparing"
+                        else -> "$queueCount preparing · $exportQueueCount saving"
                     },
                     color = if (queueCount == 0 && exportQueueCount == 0) Muted else Green,
                     fontSize = 12.sp,
@@ -1073,7 +1062,9 @@ private fun ProjectHeaderBar(
                 )
                 IconButton(
                     onClick = onOpenSettings,
-                    modifier = Modifier.testTag("open-settings"),
+                    modifier = Modifier
+                        .testTag("open-settings")
+                        .guidedTourTarget("editor-settings", guidedTourTargets),
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_settings),
@@ -1123,14 +1114,14 @@ private fun ProjectHeaderBar(
             }
             editorSummary?.let { summary ->
                 Text(
-                    "${summary.width}×${summary.height} · ${compactTime(summary.sourceDurationMs)} source · " +
-                        "${compactTime(summary.outputDurationMs)} output",
+                    "${compactTime(summary.outputDurationMs)} final video · ${summary.kept} clips included",
                     modifier = Modifier.padding(top = 4.dp),
-                    fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "${summary.kept} kept · ${summary.removed} removed · ${summary.ignored} fully ignored",
+                    if (summary.needsReview == 0) "Everything is ready to review and save"
+                    else "${summary.needsReview} suggested ${if (summary.needsReview == 1) "clip" else "clips"} to check",
                     color = Muted,
                     fontSize = 12.sp,
                 )
@@ -1170,6 +1161,118 @@ private fun AppSettingsDialog(onDismiss: () -> Unit) {
     )
 }
 
+private val cleanupPolicies = listOf(
+    SuppressionPolicyEngine.Policy.NONE,
+    SuppressionPolicyEngine.Policy.CONSERVATIVE,
+    SuppressionPolicyEngine.Policy.BALANCED,
+    SuppressionPolicyEngine.Policy.AGGRESSIVE,
+)
+
+private fun cleanupLabel(policy: SuppressionPolicyEngine.Policy): String = when (policy) {
+    SuppressionPolicyEngine.Policy.NONE -> "Off"
+    SuppressionPolicyEngine.Policy.CONSERVATIVE -> "Light"
+    SuppressionPolicyEngine.Policy.BALANCED -> "Recommended"
+    SuppressionPolicyEngine.Policy.AGGRESSIVE -> "Strong"
+}
+
+@Composable
+private fun EditorSettingsDialog(
+    cleanupAvailable: Boolean,
+    cleanupPreparing: Boolean,
+    cleanupPolicy: SuppressionPolicyEngine.Policy,
+    beforePaddingMs: Long,
+    afterPaddingMs: Long,
+    joinGapMs: Long,
+    reviewThreshold: Float,
+    onCleanupPolicy: (SuppressionPolicyEngine.Policy) -> Unit,
+    onPrepareCleanup: () -> Unit,
+    onBeforePadding: (Long) -> Unit,
+    onAfterPadding: (Long) -> Unit,
+    onJoinGap: (Long) -> Unit,
+    onReviewThreshold: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var storeError by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Settings") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text("FINE-TUNE THE FINAL VIDEO", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Automatic cleanup", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (cleanupAvailable) cleanupLabel(cleanupPolicy) else "Not added",
+                            color = if (cleanupAvailable) Green else Muted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Text(
+                        "Leaves out likely non-play moments. You can restore anything while reviewing.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                    )
+                    if (cleanupAvailable) {
+                        Slider(
+                            value = cleanupPolicies.indexOf(cleanupPolicy).coerceAtLeast(0).toFloat(),
+                            onValueChange = { value ->
+                                onCleanupPolicy(cleanupPolicies[value.roundToInt().coerceIn(cleanupPolicies.indices)])
+                            },
+                            valueRange = 0f..cleanupPolicies.lastIndex.toFloat(),
+                            steps = cleanupPolicies.size - 2,
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Off", color = Muted, fontSize = 10.sp)
+                            Text("Strong", color = Muted, fontSize = 10.sp)
+                        }
+                    } else {
+                        OutlinedButton(
+                            enabled = !cleanupPreparing,
+                            onClick = onPrepareCleanup,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (cleanupPreparing) "Adding cleanup…" else "Add automatic cleanup") }
+                    }
+                }
+                PaddingControl("Extra time before each clip", beforePaddingMs, onBeforePadding)
+                PaddingControl("Extra time after each clip", afterPaddingMs, onAfterPadding)
+                PaddingControl("Keep short breaks under", joinGapMs, onJoinGap)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Clips to check", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("Move toward More to have VolleyCut flag more suggested clips for review.", color = Muted, fontSize = 12.sp)
+                    Slider(
+                        value = reviewThreshold,
+                        onValueChange = onReviewThreshold,
+                        valueRange = 0f..1f,
+                        steps = 19,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Fewer", color = Muted, fontSize = 10.sp)
+                        Text("More", color = Muted, fontSize = 10.sp)
+                    }
+                }
+                HorizontalDivider(color = Rail)
+                Text("Enjoying VolleyCut? A Google Play rating helps other volleyball players find it.")
+                OutlinedButton(
+                    onClick = {
+                        storeError = !AppRating.openPlayStore(context)
+                        if (!storeError) onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("settings-rate-app"),
+                ) { Text("Rate VolleyCut on Google Play") }
+                if (storeError) {
+                    Text("Google Play could not be opened on this device.", color = Danger, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
 @Composable
 private fun ProjectInferenceCard(
     project: NativeProject,
@@ -1180,31 +1283,26 @@ private fun ProjectInferenceCard(
     onRelink: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    SectionCard("PROJECT INFERENCE", project.source.name) {
+    SectionCard("GETTING YOUR CLIPS READY", project.source.name) {
         Text(
             when (project.status) {
-                ProjectStatus.QUEUED -> "Queued behind any active project"
-                ProjectStatus.ANALYZING -> "Generating shared features and running both production models"
-                ProjectStatus.ERROR -> "Inference stopped with an error"
-                ProjectStatus.READY -> "Inference ready"
+                ProjectStatus.QUEUED -> "Waiting to start"
+                ProjectStatus.ANALYZING -> "VolleyCut is finding the rallies on this device"
+                ProjectStatus.ERROR -> "VolleyCut could not finish preparing this video"
+                ProjectStatus.READY -> "Your suggested clips are ready"
             },
             color = Muted,
         )
         if (project.status == ProjectStatus.ANALYZING || state.progress > 0f) {
-            if (state.stepMeasurements.isEmpty()) {
-                LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
-            }
+            LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
         }
         val detail = state.detail.ifBlank { project.error.orEmpty() }
-        if (state.stepMeasurements.isEmpty() &&
-            (state.stage.isNotBlank() || detail.isNotBlank())
-        ) Text(
-            "${state.stage.ifBlank { project.status.wireName }.uppercase(Locale.US)} · $detail",
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-            color = if (project.status == ProjectStatus.ERROR) Danger else Ink,
-        )
-        state.performance?.takeIf {
+        if (project.status == ProjectStatus.ERROR && detail.isNotBlank()) {
+            Text(detail, fontSize = 12.sp, color = Danger)
+        } else if (project.status == ProjectStatus.ANALYZING) {
+            Text("Keep VolleyCut open while it prepares the review.", fontSize = 12.sp, color = Muted)
+        }
+        if (BuildConfig.DEBUG) state.performance?.takeIf {
             state.stepMeasurements.isEmpty() && state.stage == "video"
         }?.let { stats ->
             Text(
@@ -1224,27 +1322,22 @@ private fun ProjectInferenceCard(
                 color = Muted,
             )
         }
-        if (state.stepMeasurements.isNotEmpty()) {
+        if (BuildConfig.DEBUG && state.stepMeasurements.isNotEmpty()) {
             InferenceProgressMeasurementsPanel(
                 steps = state.stepMeasurements,
                 performance = state.performance,
             )
         }
-        Text(
-            "Project ${project.id} · ${compactTime((project.media.durationSeconds() * 1_000).toLong())}",
-            color = Muted,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
-        )
+        Text("Your video stays on this device.", color = Muted, fontSize = 11.sp)
         if (sourceAvailable == false) {
             Text(
                 relinkMessage
-                    ?: "The saved video location is unavailable. Re-link the original recording before retrying inference.",
+                    ?: "Choose the original video again so VolleyCut can continue.",
                 color = Danger,
                 fontSize = 12.sp,
             )
             Button(enabled = !relinkingSource, onClick = onRelink) {
-                Text(if (relinkingSource) "Validating…" else "Re-link video")
+                Text(if (relinkingSource) "Checking…" else "Choose original video")
             }
         }
         if (project.status == ProjectStatus.ERROR) {
@@ -1506,10 +1599,8 @@ private fun NewProjectCard(
     selected: SourceSelection?,
     preparing: Boolean,
     state: InferenceUiState,
-    useCache: Boolean,
     analyzeServingSide: Boolean,
     generateSideSwitchMarkers: Boolean,
-    cacheBytes: Long,
     queueCount: Int,
     gameStartMs: Long,
     gameEndMs: Long,
@@ -1519,20 +1610,17 @@ private fun NewProjectCard(
     onGameStart: (Long) -> Unit,
     onGameEnd: (Long) -> Unit,
     onFullVideo: () -> Unit,
-    onUseCache: (Boolean) -> Unit,
     onAnalyzeServingSide: (Boolean) -> Unit,
     onGenerateSideSwitchMarkers: (Boolean) -> Unit,
-    onClearCache: () -> Unit,
-    onBenchmark: (() -> Unit)?,
     guidedTourTargets: GuidedTourTargets? = null,
 ) {
     SectionCard(
-        "NEW PROJECT",
-        selected?.displayName ?: "Select a recording to create a persistent project",
+        "STEP 1 OF 3",
+        selected?.displayName ?: "Choose your game video",
     ) {
         Text(
-            if (queueCount == 0) "Inference starts immediately."
-            else "This waits behind $queueCount ${if (queueCount == 1) "project" else "projects"}; you can edit any ready project meanwhile.",
+            if (queueCount == 0) "Your video stays on this device."
+            else "This video will start after the ${if (queueCount == 1) "current video" else "$queueCount videos"} finishes.",
             color = Muted,
             fontSize = 12.sp,
         )
@@ -1554,7 +1642,7 @@ private fun NewProjectCard(
                     .weight(1f)
                     .guidedTourTarget("setup-create", guidedTourTargets),
             ) {
-                Text(if (preparing) "Creating…" else "Create & queue")
+                Text(if (preparing) "Opening…" else "Find rallies")
             }
         }
         TextButton(
@@ -1562,7 +1650,7 @@ private fun NewProjectCard(
             onClick = onImportFeedback,
             modifier = Modifier.align(Alignment.Start),
         ) {
-            Text("Import model feedback instead", color = Muted)
+            Text("Open a saved project", color = Muted)
         }
         if (selected?.media != null) {
             Column(
@@ -1582,14 +1670,14 @@ private fun NewProjectCard(
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Prepare score tracking", fontWeight = FontWeight.SemiBold)
+                Text("Prepare a scoreboard", fontWeight = FontWeight.SemiBold)
                 Text(
                     if (analyzeServingSide) {
                         if (generateSideSwitchMarkers) {
-                            "Generate serve-side and team-switch predictions during project creation"
-                        } else "Generate serve-side predictions during project creation"
+                            "Find serves and team side switches while preparing the video"
+                        } else "Find serve markers while preparing the video"
                     } else {
-                        "Create faster; enabling score tracking later will run this analysis"
+                        "Optional · you can turn this on later"
                     },
                     fontSize = 12.sp,
                     color = Muted,
@@ -1621,48 +1709,19 @@ private fun NewProjectCard(
                     onCheckedChange = onGenerateSideSwitchMarkers,
                 )
                 Column(Modifier.padding(top = 4.dp)) {
-                    Text("Generate team side-switch markers", fontWeight = FontWeight.SemiBold)
+                    Text("Teams change court sides", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Enable this only for formats where teams change court sides during the recording.",
+                        "Add side-switch markers so the optional score stays with the right team.",
                         fontSize = 12.sp,
                         color = Muted,
                     )
                 }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Reuse generated features", fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (useCache) "Current ensemble inference opens without running anything"
-                    else "Regenerate this source's features for an experiment",
-                    fontSize = 12.sp,
-                    color = Muted,
-                )
-            }
-            Switch(enabled = !preparing, checked = useCache, onCheckedChange = onUseCache)
-        }
-        Text(
-            "Both models share the feature cache. Overlaps merge; one-model ranges are flagged for validation.",
-            fontSize = 11.sp,
-            color = Muted,
-        )
         if (preparing || state.stage.isNotBlank()) {
-            val stageText = state.stage.ifBlank { "analysis" }.uppercase(Locale.US)
-            Text("$stageText · ${state.detail}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text(state.detail, fontSize = 12.sp, color = Muted)
         }
         state.error?.let { Text(it, color = Danger, fontSize = 13.sp) }
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TextButton(enabled = !preparing && queueCount == 0 && cacheBytes > 0, onClick = onClearCache) {
-                Text("Clear ${formatBytes(cacheBytes)} feature cache")
-            }
-            if (onBenchmark != null) {
-                TextButton(enabled = !preparing, onClick = onBenchmark) { Text("Benchmark tools") }
-            }
-        }
     }
 }
 
@@ -1739,10 +1798,10 @@ private fun GameWindowPicker(
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("ANALYSIS WINDOW", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Mark game start & end", fontWeight = FontWeight.Bold)
+            Text("STEP 2 OF 3", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("Choose the part with the game", fontWeight = FontWeight.Bold)
             Text(
-                "Only this range generates features and appears on the editor overview.",
+                "Leave the full video selected, or mark where the game starts and ends.",
                 color = Muted,
                 fontSize = 12.sp,
             )
@@ -1754,15 +1813,15 @@ private fun GameWindowPicker(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(enabled = enabled, onClick = { onGameStart(playheadMs) }) {
-            Text("Set start · ${preciseTime(gameStartMs)}")
+            Text("Game starts · ${preciseTime(gameStartMs)}")
         }
         OutlinedButton(enabled = enabled, onClick = { onGameEnd(playheadMs) }) {
-            Text("Set end · ${preciseTime(gameEndMs)}")
+            Text("Game ends · ${preciseTime(gameEndMs)}")
         }
     }
     val analyzedMs = (gameEndMs - gameStartMs).coerceAtLeast(0)
     Text(
-        "${compactTime(analyzedMs)} analyzed · ${compactTime(durationMs - analyzedMs)} skipped",
+        "${compactTime(analyzedMs)} selected · ${compactTime(durationMs - analyzedMs)} left out",
         color = Green,
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
@@ -1880,7 +1939,7 @@ private fun EditorScreen(
     relinkFailed: Boolean,
     onProjectUpdated: (NativeProject) -> Unit,
     onRelink: () -> Unit,
-    sourceControls: @Composable (EditorProjectSummary) -> Unit,
+    sourceControls: @Composable (EditorProjectSummary, () -> Unit) -> Unit,
     guidedTourTargets: GuidedTourTargets,
     guidedTourRestartSignal: Int,
 ) {
@@ -1904,6 +1963,7 @@ private fun EditorScreen(
     var showRatingPrompt by remember { mutableStateOf(AppRating.hasPendingPrompt(context)) }
     var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
     var suppressionPreparing by remember { mutableStateOf(false) }
+    var showEditorSettings by remember { mutableStateOf(false) }
     var selectedScoreMarkerId by remember { mutableStateOf<String?>(null) }
     var manualServingSide by remember { mutableStateOf(ServingSide.NEAR) }
 
@@ -1948,28 +2008,10 @@ private fun EditorScreen(
     val activeSuggestions = EditorMath.activeSuggestions(draft, seed.suppression)
     val selectedSuggestion = activeSuggestions.firstOrNull { it.fragmentId() == selectedSuggestionId }
     val selectedSuggestionIndex = selectedSuggestion?.let(activeSuggestions::indexOf) ?: -1
-    val appliedSuggestionCount = activeSuggestions.count {
-        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
-    }
-    val baselineTotalMs = EditorMath.totalFinalMs(EditorMath.finalIntervals(
-        draft.copy(selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.NONE),
-        seed.suppression,
-    ))
-    val suppressionPoliciesEqual = seed.suppression?.let { analysis ->
-        listOf(
-            SuppressionPolicyEngine.Policy.CONSERVATIVE,
-            SuppressionPolicyEngine.Policy.BALANCED,
-            SuppressionPolicyEngine.Policy.AGGRESSIVE,
-        ).map { policy ->
-            SuppressionPolicyEngine.active(analysis, policy)
-                .map { "${it.startMs()}:${it.endMs()}:${it.logicalId()}" }
-        }.distinct().size == 1
-    } == true
     val lowConfidence = sortedCuts.filter {
         it.origin == CutOrigin.INFERRED && it.included && it.id in effectiveIds &&
             (it.isModelDisagreement() || it.confidence < draft.confidenceReviewThreshold)
     }
-    val disagreementCount = lowConfidence.count(EditableCut::isModelDisagreement)
     val joinedGaps = finalIntervals.flatMap { it.joinedGaps }
     val totalFinalMs = EditorMath.totalFinalMs(finalIntervals)
     val exportPending = exportState.status == "queued" || exportState.status == "running"
@@ -2071,7 +2113,9 @@ private fun EditorScreen(
                 playbackPositionMs,
                 seed.gameStartMs,
                 seed.gameEndMs,
-            )?.also { split = it }?.draft ?: current
+            )?.also { split = it }?.draft?.copy(
+                reviewedCutIds = current.reviewedCutIds - cut.id,
+            ) ?: current
         }
         val created = split?.newCut
         if (created == null) {
@@ -2155,9 +2199,9 @@ private fun EditorScreen(
             }
             feedbackExporting = false
             result.onSuccess {
-                message = "Saved model feedback with features, inference, and corrections"
+                message = "Saved the detailed project file"
             }.onFailure {
-                message = it.message ?: "Could not save model feedback"
+                message = it.message ?: "Could not save the detailed project file"
             }
         }
     }
@@ -2208,6 +2252,7 @@ private fun EditorScreen(
         )
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
+    val pendingReview = lowConfidence.filterNot { it.id in draft.reviewedCutIds }
 
     if (showRatingPrompt) {
         AlertDialog(
@@ -2299,7 +2344,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset this edit?") },
-            text = { Text("All boundary, keep/remove, suppression, score, marker, manual-cut, and ignored-section changes will be discarded.") },
+            text = { Text("All clip boundaries, included or excluded choices, score markers, added clips, and omitted sections will be discarded.") },
             confirmButton = {
                 TextButton(onClick = {
                     store.clear()
@@ -2307,10 +2352,61 @@ private fun EditorScreen(
                     selectedId = draft.cuts.firstOrNull()?.id.orEmpty()
                     selectedSuggestionId = null
                     confirmReset = false
-                    message = "Restored inference ranges"
+                    message = "Started the edit over from the suggested clips"
                 }) { Text("Reset") }
             },
             dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showEditorSettings) {
+        EditorSettingsDialog(
+            cleanupAvailable = seed.suppression != null,
+            cleanupPreparing = suppressionPreparing,
+            cleanupPolicy = draft.selectedSuppressionPolicy,
+            beforePaddingMs = draft.beforePaddingMs,
+            afterPaddingMs = draft.afterPaddingMs,
+            joinGapMs = draft.joinGapMs,
+            reviewThreshold = draft.confidenceReviewThreshold,
+            onCleanupPolicy = { policy ->
+                updateDraft {
+                    it.copy(
+                        selectedSuppressionPolicy = policy,
+                        suppressionInitialBehavior = if (policy == SuppressionPolicyEngine.Policy.NONE) {
+                            it.suppressionInitialBehavior
+                        } else SuppressionInitialBehavior.DISABLE_INITIALLY,
+                    )
+                }
+                if (policy == SuppressionPolicyEngine.Policy.NONE) selectedSuggestionId = null
+            },
+            onPrepareCleanup = {
+                suppressionPreparing = true
+                scope.launch {
+                    val result = runCatching {
+                        withContext(Dispatchers.IO) { SuppressionAugmenter.augment(context, project) }
+                    }
+                    suppressionPreparing = false
+                    result.onSuccess {
+                        onProjectUpdated(it)
+                        message = "Automatic cleanup is ready"
+                    }.onFailure {
+                        message = it.message ?: "Could not add automatic cleanup"
+                    }
+                }
+            },
+            onBeforePadding = { before ->
+                updateDraft { EditorMath.applyPadding(
+                    it, before, it.afterPaddingMs, seed.durationMs, seed.gameStartMs, seed.gameEndMs,
+                ) }
+            },
+            onAfterPadding = { after ->
+                updateDraft { EditorMath.applyPadding(
+                    it, it.beforePaddingMs, after, seed.durationMs, seed.gameStartMs, seed.gameEndMs,
+                ) }
+            },
+            onJoinGap = { joinGap -> updateDraft { it.copy(joinGapMs = joinGap.coerceIn(0, MAX_JOIN_GAP_MS)) } },
+            onReviewThreshold = { threshold -> updateDraft { it.copy(confidenceReviewThreshold = threshold) } },
+            onDismiss = { showEditorSettings = false },
         )
     }
 
@@ -2327,14 +2423,11 @@ private fun EditorScreen(
                 Box(Modifier.guidedTourTarget("editor-header", guidedTourTargets)) {
                     sourceControls(
                         EditorProjectSummary(
-                            width = seed.width,
-                            height = seed.height,
-                            sourceDurationMs = seed.durationMs,
                             outputDurationMs = totalFinalMs,
                             kept = effectiveIds.size,
-                            removed = removedCount,
-                            ignored = ignoredCutCount,
+                            needsReview = pendingReview.size,
                         ),
+                        { showEditorSettings = true },
                     )
                 }
 
@@ -2363,141 +2456,24 @@ private fun EditorScreen(
                 }
             }
 
-            SectionCard(
-                "OUTPUT",
-                "Padding and retained short gaps",
-                modifier = Modifier.guidedTourTarget("editor-output", guidedTourTargets),
-            ) {
-                Column(
-                    Modifier.guidedTourTarget("editor-suppression", guidedTourTargets),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (seed.suppression == null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Suppression suggestions", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "Prepare from the saved feature cache; video and audio are not decoded again.",
-                                fontSize = 12.sp,
-                                color = Muted,
-                            )
-                        }
-                        OutlinedButton(
-                            enabled = !suppressionPreparing,
-                            onClick = {
-                                suppressionPreparing = true
-                                scope.launch {
-                                    val result = runCatching {
-                                        withContext(Dispatchers.IO) {
-                                            SuppressionAugmenter.augment(context, project)
-                                        }
-                                    }
-                                    suppressionPreparing = false
-                                    result.onSuccess {
-                                        onProjectUpdated(it)
-                                        message = "Suppression suggestions are ready"
-                                    }.onFailure {
-                                        message = it.message ?: "Could not prepare suppression suggestions"
-                                    }
-                                }
-                            },
-                        ) { Text(if (suppressionPreparing) "Preparing…" else "Prepare") }
-                    }
-                } else {
-                    Text("Suppression", fontWeight = FontWeight.SemiBold)
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        SuppressionPolicyEngine.Policy.values().forEach { policy ->
-                            FilterChip(
-                                selected = draft.selectedSuppressionPolicy == policy,
-                                onClick = {
-                                    updateDraft { it.copy(selectedSuppressionPolicy = policy) }
-                                    if (policy == SuppressionPolicyEngine.Policy.NONE) {
-                                        selectedSuggestionId = null
-                                    }
-                                },
-                                label = { Text(policy.label, fontSize = 11.sp) },
-                            )
-                        }
-                    }
-                    if (suppressionPoliciesEqual) {
-                        Text(
-                            "All three levels produce the same ${seed.suppression.suggestions().size} suggestions for this game.",
-                            fontSize = 11.sp,
-                            color = Muted,
-                        )
-                    }
-                    Text("New suggestions", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        SuppressionInitialBehavior.entries.forEach { behavior ->
-                            FilterChip(
-                                selected = draft.suppressionInitialBehavior == behavior,
-                                onClick = {
-                                    updateDraft { it.copy(suppressionInitialBehavior = behavior) }
-                                },
-                                label = { Text(behavior.label, fontSize = 11.sp) },
-                            )
-                        }
-                    }
-                    Text(
-                        if (draft.suppressionInitialBehavior == SuppressionInitialBehavior.HIGHLIGHT_ONLY) {
-                            "Untouched suggestions stay in the output until you choose Suppress."
-                        } else {
-                            "Untouched suggestions start disabled; edited ranges stay protected."
-                        },
-                        fontSize = 11.sp,
-                        color = Muted,
-                    )
-                    if (draft.selectedSuppressionPolicy != SuppressionPolicyEngine.Policy.NONE) {
-                        Text(
-                            "${draft.selectedSuppressionPolicy.label} · ${activeSuggestions.size} suggestions · $appliedSuggestionCount applied · ${compactTime(baselineTotalMs - totalFinalMs)} less",
-                            fontSize = 12.sp,
-                            color = Muted,
-                        )
-                        if (activeSuggestions.isEmpty()) {
-                            Text("No suppression suggestions for this game", color = Muted, fontSize = 12.sp)
-                        }
-                    }
-                }
-                }
-                Column(Modifier.guidedTourTarget("editor-padding", guidedTourTargets)) {
-                    PaddingControl("Before", draft.beforePaddingMs) { before ->
-                        updateDraft { EditorMath.applyPadding(
-                            it, before, it.afterPaddingMs, seed.durationMs,
-                            seed.gameStartMs, seed.gameEndMs,
-                        ) }
-                    }
-                    PaddingControl("After", draft.afterPaddingMs) { after ->
-                        updateDraft { EditorMath.applyPadding(
-                            it, it.beforePaddingMs, after, seed.durationMs,
-                            seed.gameStartMs, seed.gameEndMs,
-                        ) }
-                    }
-                }
-                Box(Modifier.guidedTourTarget("editor-join-gaps", guidedTourTargets)) {
-                    PaddingControl("Join gaps under", draft.joinGapMs) { joinGap ->
-                        updateDraft { it.copy(joinGapMs = joinGap.coerceIn(0, MAX_JOIN_GAP_MS)) }
-                        message = if (joinGap == 0L) "Short-gap joining disabled"
-                        else "Keeping export gaps shorter than ${String.format(Locale.US, "%.1f", joinGap / 1_000.0)} seconds"
-                    }
-                }
+            SectionCard("YOUR FINAL VIDEO", "${compactTime(totalFinalMs)} · ${effectiveIds.size} clips included") {
                 Text(
-                    "Padding applies to inferred ranges. Gray gaps shorter than this setting remain in preview and export.",
-                    fontSize = 11.sp,
+                    if (pendingReview.isEmpty()) "Everything that needs attention has been checked."
+                    else "${pendingReview.size} suggested ${if (pendingReview.size == 1) "clip needs" else "clips need"} a quick check.",
+                    color = if (pendingReview.isEmpty()) Green else Ink,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Use the Settings gear to fine-tune automatic cleanup, extra time around clips, short breaks, and how many clips are flagged.",
                     color = Muted,
+                    fontSize = 12.sp,
                 )
                 Row(
-                    modifier = Modifier.guidedTourTarget("editor-final-preview", guidedTourTargets),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Play final cut only", fontWeight = FontWeight.SemiBold)
-                        Text("Skip removed, ignored, and gaps at or above the join setting", fontSize = 12.sp, color = Muted)
+                        Text("Play only the final video", fontWeight = FontWeight.SemiBold)
+                        Text("Skip every part that will not be saved", fontSize = 12.sp, color = Muted)
                     }
                     Switch(
                         checked = draft.finalPreviewEnabled,
@@ -2518,8 +2494,8 @@ private fun EditorScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("Render score on final video", fontWeight = FontWeight.SemiBold)
-                            Text("Preview now and include in the next MP4 export", fontSize = 12.sp, color = Muted)
+                            Text("Add scores to the final video", fontWeight = FontWeight.SemiBold)
+                            Text("Preview the scoreboard and include it when you save", fontSize = 12.sp, color = Muted)
                         }
                         Switch(
                             checked = draft.renderScoreOverlay,
@@ -2539,7 +2515,7 @@ private fun EditorScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("Render point timeline", fontWeight = FontWeight.SemiBold)
+                                Text("Show the point history", fontWeight = FontWeight.SemiBold)
                                 Text(
                                     "Show the two team rails beside the score when a new point starts",
                                     fontSize = 12.sp,
@@ -2586,7 +2562,7 @@ private fun EditorScreen(
                             if (sourceAvailable == false) {
                                 message = "Re-link the source video to prepare score tracking"
                             } else {
-                                message = "Queued score-tracking feature generation"
+                                message = "Preparing score markers"
                                 scope.launch {
                                     val queued = withContext(Dispatchers.IO) {
                                         NativeProjectStore.updateServingSideStatus(
@@ -2661,33 +2637,55 @@ private fun EditorScreen(
             )
 
             SectionCard(
-                "GAME WINDOW",
-                "Tap a range · gray = joined gap",
+                "GAME TIMELINE",
+                "Select a clip to check or adjust it",
                 compact = true,
                 modifier = Modifier.guidedTourTarget("editor-overview", guidedTourTargets),
             ) {
-                ConfidenceControl(draft.confidenceReviewThreshold, lowConfidence.size, disagreementCount,
-                    suppressionCount = activeSuggestions.size,
-                    compact = true, onChange = { threshold ->
-                    updateDraft { it.copy(confidenceReviewThreshold = threshold) }
-                }, onReviewNext = {
-                    if (lowConfidence.isNotEmpty()) {
-                        val current = lowConfidence.indexOfFirst { it.id == selected?.id }
-                        val next = if (current >= 0) lowConfidence[(current + 1) % lowConfidence.size]
-                        else lowConfidence.firstOrNull { it.keepStartMs >= playbackPositionMs } ?: lowConfidence.first()
-                        selectedId = next.id
-                        seekTo(next.keepStartMs)
-                        message = if (next.isModelDisagreement()) {
-                            "${next.id} was detected by only one model; validate or disable it"
-                        } else "${next.id} has ${(next.confidence * 100).roundToInt()}% confidence"
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (pendingReview.isEmpty()) "All suggested clips have been checked"
+                        else "${pendingReview.size} suggested ${if (pendingReview.size == 1) "clip" else "clips"} to check",
+                        Modifier.weight(1f),
+                        color = if (pendingReview.isEmpty()) Green else Ink,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    SmallButton(
+                        if (pendingReview.isEmpty()) "Review complete"
+                        else if (selected?.id in pendingReview.map { it.id }) "Looks good · next"
+                        else "Check next clip",
+                        enabled = pendingReview.isNotEmpty(),
+                    ) {
+                        val current = pendingReview.firstOrNull { it.id == selected?.id }
+                        if (current != null) {
+                            updateDraft { it.copy(reviewedCutIds = it.reviewedCutIds + current.id) }
+                        }
+                        val remaining = pendingReview.filterNot { it.id == current?.id }
+                        val next = remaining.firstOrNull { it.keepStartMs >= playbackPositionMs }
+                            ?: remaining.firstOrNull()
+                        if (next == null) {
+                            message = "Review complete"
+                        } else {
+                            selectedSuggestionId = null
+                            selectedId = next.id
+                            seekTo(next.keepStartMs)
+                            message = "Check this suggested clip and leave it out if it is not a rally"
+                        }
                     }
-                }, onSuppressionNext = {
-                    EditorMath.nextSuppressionSuggestion(
-                        activeSuggestions,
-                        playbackPositionMs,
-                        selectedSuggestionId,
-                    )?.let(::selectSuggestion)
-                })
+                }
+                if (activeSuggestions.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Automatic cleanup has ${activeSuggestions.size} moments to check", Modifier.weight(1f), fontSize = 11.sp, color = Muted)
+                        SmallButton("Check cleanup") {
+                            EditorMath.nextSuppressionSuggestion(
+                                activeSuggestions,
+                                playbackPositionMs,
+                                selectedSuggestionId,
+                            )?.let(::selectSuggestion)
+                        }
+                    }
+                }
                 WholeTimeline(
                     windowStartMs = seed.gameStartMs,
                     windowEndMs = (seed.gameStartMs + seed.gameEndMs) / 2,
@@ -2783,8 +2781,8 @@ private fun EditorScreen(
                     } == true
                 }
                 SectionCard(
-                    "SUPPRESSION SUGGESTION",
-                    "${selectedSuggestionIndex + 1} / ${activeSuggestions.size} · ${(selectedSuggestion.score() * 100).roundToInt()}% model score",
+                    "AUTOMATIC CLEANUP",
+                    "${selectedSuggestionIndex + 1} / ${activeSuggestions.size}",
                     compact = true,
                 ) {
                     Text(
@@ -2794,17 +2792,17 @@ private fun EditorScreen(
                     )
                     Text(
                         when {
-                            protectedByEdit -> "Edited rally—kept"
+                            protectedByEdit -> "You edited this clip, so it stays included"
                             effectiveDecision == SuppressionDecision.SUPPRESS ->
                                 if (effectiveScope == SuppressionScope.WHOLE_RALLY) {
-                                    "Whole rally suppressed"
-                                } else "Veto region suppressed"
-                            else -> "Suggestion kept"
+                                    "This clip is left out"
+                                } else "This part is left out"
+                            else -> "This moment stays included"
                         },
                         color = if (effectiveDecision == SuppressionDecision.SUPPRESS) SuppressionRed else Muted,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    Text("Suppress scope", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("What should be left out?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -2829,9 +2827,9 @@ private fun EditorScreen(
                     }
                     Text(
                         if (effectiveScope == SuppressionScope.WHOLE_RALLY) {
-                            "Removes the entire inferred rally, including its padding."
+                            "Leaves out this entire clip, including its extra time."
                         } else {
-                            "Removes only the red veto region; the rest of the rally stays."
+                            "Leaves out only the marked part; the rest of the clip stays."
                         },
                         color = Muted,
                         fontSize = 11.sp,
@@ -2853,7 +2851,7 @@ private fun EditorScreen(
                                 suppressionDecisionOverrides = current.suppressionDecisionOverrides +
                                     (selectedSuggestion.logicalId() to SuppressionDecision.SUPPRESS),
                             ) }
-                        }) { Text("Suppress") }
+                        }) { Text("Leave out") }
                         OutlinedButton(onClick = {
                             updateDraft { current -> current.copy(
                                 suppressionDecisionOverrides = current.suppressionDecisionOverrides +
@@ -2865,13 +2863,15 @@ private fun EditorScreen(
             }
 
             SectionCard(
-                "FOCUSED RANGE",
+                "SELECTED CLIP",
                 selected?.let {
                     val hasSuggestion = activeSuggestions.any { suggestion ->
                         it.coreStartMs < suggestion.endMs() && suggestion.startMs() < it.coreEndMs
                     }
-                    "${it.id} · ${if (it.origin == CutOrigin.MANUAL) "Manual" else "${it.modelAgreementLabel()} · ${(it.confidence * 100).roundToInt()}% review confidence"}" +
-                        if (hasSuggestion) " · suppression suggestion" else ""
+                    "Clip ${selectedIndex + 1} · ${if (it.origin == CutOrigin.MANUAL) "Added by you" else it.modelAgreementLabel()}" +
+                        if (it.id in draft.reviewedCutIds) " · checked"
+                        else if (hasSuggestion) " · cleanup suggested"
+                        else ""
                 }
                     ?: "No range selected",
                 compact = true,
@@ -2888,12 +2888,21 @@ private fun EditorScreen(
                         SmallButton("Next", enabled = selectedIndex < sortedCuts.lastIndex) {
                             sortedCuts.getOrNull(selectedIndex + 1)?.let { selectedId = it.id; seekTo(it.keepStartMs) }
                         }
-                        SmallButton(if (selected.included) "Disable rally" else "Enable rally") {
+                        SmallButton(if (selected.included) "Leave out" else "Include") {
                             updateCut(selected.id) { it.copy(included = !it.included) }
+                        }
+                        if (selected in lowConfidence) {
+                            SmallButton(if (selected.id in draft.reviewedCutIds) "Checked" else "Looks good") {
+                                updateDraft { current -> current.copy(
+                                    reviewedCutIds = if (selected.id in current.reviewedCutIds) {
+                                        current.reviewedCutIds - selected.id
+                                    } else current.reviewedCutIds + selected.id,
+                                ) }
+                            }
                         }
                         Spacer(Modifier.weight(1f))
                         Checkbox(checked = focusLocked, onCheckedChange = { focusLocked = it })
-                        Text("Lock", fontSize = 13.sp)
+                        Text("Keep selected", fontSize = 13.sp)
                     }
                     TimelineLabels(detailWindow.startMs, (detailWindow.startMs + detailWindow.endMs) / 2, detailWindow.endMs)
                     FocusTimeline(
@@ -2917,7 +2926,7 @@ private fun EditorScreen(
                     )
                     Text(
                         if (selected.origin == CutOrigin.INFERRED) {
-                            "Set the green rally edges first. Padding stays outside them."
+                            "Set the rally edges first. Extra time stays outside them."
                         } else {
                             "Set this manual rally's exact start and end."
                         },
@@ -2958,11 +2967,11 @@ private fun EditorScreen(
                         modifier = Modifier.guidedTourTarget("editor-trim", guidedTourTargets),
                     )
                     if (selected.origin == CutOrigin.INFERRED) {
-                        Text("OUTPUT EDGES (RALLY + PADDING)", fontSize = 11.sp, color = Muted)
-                        BoundaryControls("Output start", selected.keepStartMs) { delta ->
+                        Text("FINAL CLIP EDGES", fontSize = 11.sp, color = Muted)
+                        BoundaryControls("Clip starts", selected.keepStartMs) { delta ->
                             setKeepBoundary("start", selected.keepStartMs + delta)
                         }
-                        BoundaryControls("Output end", selected.keepEndMs) { delta ->
+                        BoundaryControls("Clip ends", selected.keepEndMs) { delta ->
                             setKeepBoundary("end", selected.keepEndMs + delta)
                         }
                     }
@@ -2972,7 +2981,7 @@ private fun EditorScreen(
                             seekTo(selected.keepStartMs)
                             previewEndMs = selected.keepEndMs
                             player.play()
-                        }) { Text("Preview range") }
+                        }) { Text("Preview clip") }
                         if (selected.origin == CutOrigin.INFERRED) {
                             OutlinedButton(onClick = {
                                 updateCut(selected.id) { cut -> cut.copy(
@@ -2981,12 +2990,15 @@ private fun EditorScreen(
                                     keepEndMs = (cut.coreEndMs + draft.afterPaddingMs)
                                         .coerceAtMost(seed.gameEndMs),
                                 ) }
-                            }) { Text("Reset padding") }
+                            }) { Text("Reset extra time") }
                         }
                         if (selected.origin == CutOrigin.MANUAL) {
                             OutlinedButton(onClick = {
                                 val remaining = sortedCuts.filterNot { it.id == selected.id }
-                                updateDraft { it.copy(cuts = it.cuts.filterNot { cut -> cut.id == selected.id }) }
+                                updateDraft { it.copy(
+                                    cuts = it.cuts.filterNot { cut -> cut.id == selected.id },
+                                    reviewedCutIds = it.reviewedCutIds - selected.id,
+                                ) }
                                 selectedId = remaining.getOrNull((selectedIndex - 1).coerceAtLeast(0))?.id.orEmpty()
                             }) { Text("Delete", color = Danger) }
                         }
@@ -3029,8 +3041,8 @@ private fun EditorScreen(
             }
 
             SectionCard(
-                "ALL CUTS",
-                "${effectiveIds.size} kept · $ignoredCutCount fully ignored",
+                "ALL CLIPS",
+                "${effectiveIds.size} included · ${removedCount + ignoredCutCount} left out",
                 modifier = Modifier.guidedTourTarget("editor-cuts", guidedTourTargets),
             ) {
                 Column(
@@ -3045,9 +3057,9 @@ private fun EditorScreen(
                 ) {
                     sortedCuts.forEachIndexed { index, cut ->
                         val state = when {
-                            !cut.included -> "Removed"
-                            cut.id !in effectiveIds -> "Ignored"
-                            else -> "Keep"
+                            !cut.included -> "Left out"
+                            cut.id !in effectiveIds -> "Left out"
+                            else -> "Included"
                         }
                         Row(
                             modifier = Modifier
@@ -3064,16 +3076,17 @@ private fun EditorScreen(
                                 Text("${preciseTime(cut.keepStartMs)}–${preciseTime(cut.keepEndMs)}", fontSize = 12.sp, color = Muted)
                             }
                             Text(
-                                if (cut.origin == CutOrigin.MANUAL) "MANUAL"
-                                else if (cut.isModelDisagreement()) "CHECK"
-                                else "${(cut.confidence * 100).roundToInt()}%",
+                                if (cut.origin == CutOrigin.MANUAL) "ADDED"
+                                else if (cut.id in draft.reviewedCutIds) "CHECKED"
+                                else if (cut in lowConfidence) "CHECK"
+                                else "READY",
                                 fontSize = 12.sp,
                                 color = if (cut.isModelDisagreement() ||
                                     cut.confidence < draft.confidenceReviewThreshold
-                                ) Warning else Muted,
+                                ) Warning else if (cut.id in draft.reviewedCutIds) Green else Muted,
                             )
                             TextButton(onClick = { updateCut(cut.id) { it.copy(included = !it.included) } }) {
-                                Text(state, color = if (state == "Keep") Green else Danger)
+                                Text(state, color = if (state == "Included") Green else Danger)
                             }
                         }
                         if (index < sortedCuts.lastIndex) HorizontalDivider(color = Rail)
@@ -3082,12 +3095,12 @@ private fun EditorScreen(
             }
 
             SectionCard(
-                "EXPORT",
-                "MP4 video",
+                "STEP 3 OF 3",
+                "Save the finished video",
                 modifier = Modifier.guidedTourTarget("editor-export", guidedTourTargets),
             ) {
                 Text(
-                    "${finalIntervals.size} merged ranges · ${compactTime(totalFinalMs)} output",
+                    "${compactTime(totalFinalMs)} final video · ${effectiveIds.size} clips included",
                     fontWeight = FontWeight.SemiBold,
                 )
                 if (exportState.status == "running") {
@@ -3101,21 +3114,14 @@ private fun EditorScreen(
                 } else if (exportState.detail.isNotBlank()) {
                     Text(exportState.detail, color = if (exportState.status == "failed") Danger else Green)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = finalIntervals.isNotEmpty() && !exportPending,
-                        onClick = {
-                            pendingExportIntervals = finalIntervals
-                            exportLauncher.launch(exportFilename(seed.displayName))
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) { Text(if (exportPending) "Export queued" else "Queue MP4 export") }
-                    OutlinedButton(
-                        enabled = finalIntervals.isNotEmpty(),
-                        onClick = { editListLauncher.launch(editListFilename(seed.displayName)) },
-                        modifier = Modifier.weight(1f),
-                    ) { Text("Save edit list") }
-                }
+                Button(
+                    enabled = finalIntervals.isNotEmpty() && !exportPending,
+                    onClick = {
+                        pendingExportIntervals = finalIntervals
+                        exportLauncher.launch(exportFilename(seed.displayName))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (exportPending) "Creating your video…" else "Save final video") }
                 if (exportPending) {
                     OutlinedButton(
                         onClick = {
@@ -3128,26 +3134,31 @@ private fun EditorScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (exportState.status == "queued") "Remove from queue" else "Cancel export", color = Danger) }
                 }
-                TextButton(
-                    enabled = !feedbackExporting,
-                    onClick = {
-                        feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
-                    },
-                    modifier = Modifier.align(Alignment.Start),
-                ) {
-                    Text(if (feedbackExporting) "Exporting feedback…" else "Export model feedback", color = Muted)
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    TextButton(
+                        enabled = finalIntervals.isNotEmpty(),
+                        onClick = { editListLauncher.launch(editListFilename(seed.displayName)) },
+                    ) { Text("Save edit decisions", color = Muted) }
+                    TextButton(
+                        enabled = !feedbackExporting,
+                        onClick = {
+                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                        },
+                    ) {
+                        Text(if (feedbackExporting) "Saving project…" else "Save project for later", color = Muted)
+                    }
                 }
                 Text(
-                    "Model feedback includes source-aligned audiovisual features, probability traces, initial ranges, and your corrections. It never includes video bytes.",
+                    "The finished video and optional project files stay on this device.",
                     color = Muted,
                     fontSize = 11.sp,
                 )
             }
 
-            AnalysisMeasurementsCard(project.analysisMeasurements)
+            if (BuildConfig.DEBUG) AnalysisMeasurementsCard(project.analysisMeasurements)
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { confirmReset = true }) { Text("Reset editor") }
+                OutlinedButton(onClick = { confirmReset = true }) { Text("Start this edit over") }
                 if (BuildConfig.DEBUG) {
                     TextButton(onClick = { context.startActivity(Intent(context, MainActivity::class.java)) }) {
                         Text("Benchmark tools")
@@ -3211,13 +3222,13 @@ internal fun ScoreTrackingPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        "SCORE TRACKING · BETA",
+                        "OPTIONAL SCOREBOARD · BETA",
                         color = Orange,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = .8.sp,
                     )
-                    Text("Serve and team-side history", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Add scores to the video", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
                 Switch(
                     checked = enabled,
@@ -3227,7 +3238,7 @@ internal fun ScoreTrackingPanel(
             }
             if (!enabled) {
                 Text(
-                    "Use inferred serve and team-switch markers to track points. This choice is saved with the project.",
+                    "Turn this on to check serve markers and add a scoreboard to the final video.",
                     color = Muted,
                     fontSize = 12.sp,
                 )
@@ -3332,11 +3343,11 @@ internal fun ScoreTrackingPanel(
                             Text(
                                 when (servingSideStatus) {
                                     ServingSideAnalysisStatus.QUEUED -> "SCORE TRACKING QUEUED"
-                                    ServingSideAnalysisStatus.ANALYZING -> "GENERATING SCORE-TRACKING FEATURES"
+                                    ServingSideAnalysisStatus.ANALYZING -> "FINDING SCORE MARKERS"
                                     ServingSideAnalysisStatus.READY -> if (sideSwitchEnabled) {
                                         "SERVE + SWITCH MARKERS READY"
                                     } else "SERVE MARKERS READY"
-                                    ServingSideAnalysisStatus.ERROR -> "SCORE-TRACKING ANALYSIS NEEDS ATTENTION"
+                                    ServingSideAnalysisStatus.ERROR -> "SCORE MARKERS NEED ATTENTION"
                                     ServingSideAnalysisStatus.DISABLED,
                                     ServingSideAnalysisStatus.NOT_RUN -> "SCORE MARKERS NOT PREPARED"
                                 },
@@ -3349,16 +3360,16 @@ internal fun ScoreTrackingPanel(
                                     servingSideBusy && !servingSideProgressDetail.isNullOrBlank() ->
                                         servingSideProgressDetail
                                     servingSideBusy -> "This can take a while. You can keep editing while it runs."
-                                    servingSideFailed -> servingSideError ?: "Score-tracking analysis failed. Disable and re-enable score tracking to retry."
+                                    servingSideFailed -> servingSideError ?: "Score markers could not be prepared. Turn score tracking off and on to try again."
                                     reviewCount > 0 ->
-                                        "$reviewCount model ${if (reviewCount == 1) "verdict needs" else "verdicts need"} review."
+                                        "$reviewCount serve ${if (reviewCount == 1) "marker needs" else "markers need"} a quick check."
                                     servingSideStatus == ServingSideAnalysisStatus.READY ->
                                         if (sideSwitchEnabled) {
-                                            "Serve-side and team-switch predictions are ready to edit."
-                                        } else "Serve-side predictions are ready; automatic team switches are off."
+                                            "Serve and team side-switch markers are ready to check."
+                                        } else "Serve markers are ready to check. Team side switches are off."
                                     else -> if (sideSwitchEnabled) {
-                                        "Enable score tracking to generate serve-side and team-switch predictions."
-                                    } else "Enable score tracking to generate serve-side predictions."
+                                        "Turn on score tracking to find serves and team side switches."
+                                    } else "Turn on score tracking to find serve markers."
                                 },
                                 color = Muted,
                                 fontFamily = FontFamily.Monospace,
@@ -3383,7 +3394,7 @@ internal fun ScoreTrackingPanel(
                                 )
                             }
                         }
-                        if (servingSideStepMeasurements.isNotEmpty()) {
+                        if (BuildConfig.DEBUG && servingSideStepMeasurements.isNotEmpty()) {
                             InferenceProgressMeasurementsPanel(
                                 steps = servingSideStepMeasurements,
                                 compact = true,
@@ -3425,12 +3436,8 @@ internal fun ScoreTrackingPanel(
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            selected.modelSide?.let { modelSide ->
-                                Text(
-                                    "Model: ${modelSide.wireName}" + if (selected.side != modelSide) " · corrected" else "",
-                                    color = Muted,
-                                    fontSize = 11.sp,
-                                )
+                            if (selected.modelSide != null && selected.side != selected.modelSide) {
+                                Text("Corrected by you", color = Muted, fontSize = 11.sp)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf(ServingSide.NEAR to "Near", ServingSide.FAR to "Far").forEach { (side, label) ->
@@ -3936,49 +3943,6 @@ private fun PaddingControl(label: String, valueMs: Long, onChange: (Long) -> Uni
 }
 
 @Composable
-private fun ConfidenceControl(
-    value: Float,
-    count: Int,
-    disagreementCount: Int,
-    suppressionCount: Int,
-    compact: Boolean = false,
-    onChange: (Float) -> Unit,
-    onReviewNext: () -> Unit,
-    onSuppressionNext: () -> Unit,
-) {
-    if (compact) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("$disagreementCount checks · <${(value * 100).roundToInt()}%", fontSize = 11.sp)
-            Slider(
-                value = value,
-                onValueChange = onChange,
-                modifier = Modifier.weight(1f).height(32.dp),
-                valueRange = 0f..1f,
-                steps = 99,
-            )
-            SmallButton("Review $count", enabled = count > 0, onClick = onReviewNext)
-            SmallButton(
-                "Next suppression",
-                enabled = suppressionCount > 0,
-                onClick = onSuppressionNext,
-            )
-        }
-    } else {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Review disagreements and confidence below ${(value * 100).roundToInt()}%", Modifier.weight(1f), fontSize = 13.sp)
-                Text("$disagreementCount disagreements · $count ranges", color = Muted, fontSize = 12.sp)
-                TextButton(enabled = count > 0, onClick = onReviewNext) { Text("Review next") }
-                TextButton(enabled = suppressionCount > 0, onClick = onSuppressionNext) {
-                    Text("Next suppression")
-                }
-            }
-            Slider(value = value, onValueChange = onChange, valueRange = 0f..1f, steps = 99)
-        }
-    }
-}
-
-@Composable
 internal fun WholeTimeline(
     windowStartMs: Long,
     windowEndMs: Long,
@@ -4030,10 +3994,10 @@ internal fun WholeTimeline(
                 .background(Rail)
                 .semantics {
                     contentDescription = if (suggestions.isEmpty()) "Game timeline"
-                    else "Game timeline with ${suggestions.size} suppression suggestions: " +
+                    else "Game timeline with ${suggestions.size} cleanup suggestions: " +
                         suggestions.joinToString { suggestion ->
                             "${preciseTime(suggestion.startMs())} to ${preciseTime(suggestion.endMs())}, " +
-                                if (suggestion.fragmentId() in appliedSuggestionIds) "Suppressed" else "Suggestion kept"
+                                if (suggestion.fragmentId() in appliedSuggestionIds) "left out" else "included"
                         }
                 }
                 .pointerInput(windowStartMs, windowEndMs, cuts, suggestions, serveMarkers, sideSwitchMarkers) {
@@ -4291,8 +4255,8 @@ private fun FocusTimeline(
                 .background(Rail)
                 .semantics {
                     contentDescription = "Focused timeline. " + suggestions.joinToString {
-                        "Suppression ${preciseTime(it.startMs())} to ${preciseTime(it.endMs())}, " +
-                            if (it.fragmentId() in appliedSuggestionIds) "Suppressed" else "Suggestion kept"
+                        "Cleanup suggestion ${preciseTime(it.startMs())} to ${preciseTime(it.endMs())}, " +
+                            if (it.fragmentId() in appliedSuggestionIds) "left out" else "included"
                     }
                 }
                 .pointerInput(window, suggestions) {
@@ -4445,7 +4409,7 @@ private fun RallyRangeSlider(
             },
         )
         Text(
-            "Drag either handle to shorten or extend this rally before padding.",
+            "Drag either handle to adjust where this rally starts and ends.",
             fontSize = 11.sp,
             color = Muted,
         )
@@ -4462,7 +4426,7 @@ private fun MarkingTools(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionCard("ADD A MISSED CUT", draft.pendingManualStartMs?.let { "Started ${preciseTime(it)}" } ?: "Find the first frame") {
+        SectionCard("ADD A MISSED RALLY", draft.pendingManualStartMs?.let { "Started ${preciseTime(it)}" } ?: "Find the first frame") {
         Text("Seek, mark the start, then seek and mark the end.", fontSize = 12.sp, color = Muted)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
@@ -4491,13 +4455,18 @@ private fun MarkingTools(
             }
         }
     }
-        SectionCard("IGNORE SOURCE SECTION", draft.pendingIgnoreStartMs?.let { "Started ${preciseTime(it)}" } ?: "Exclude unusable footage") {
+        SectionCard("LEAVE OUT A SECTION", draft.pendingIgnoreStartMs?.let { "Started ${preciseTime(it)}" } ?: "Skip breaks or unusable footage") {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            listOf("non-game-content", "camera-gap", "partial-rally", "boundary-ambiguous").forEach { reason ->
+            listOf(
+                "non-game-content" to "Break / non-game",
+                "camera-gap" to "Camera gap",
+                "partial-rally" to "Partial rally",
+                "boundary-ambiguous" to "Other",
+            ).forEach { (reason, label) ->
                 FilterChip(
                     selected = draft.ignoreReason == reason,
                     onClick = { onDraft { it.copy(ignoreReason = reason) } },
-                    label = { Text(reason.replace('-', ' '), fontSize = 11.sp) },
+                    label = { Text(label, fontSize = 11.sp) },
                 )
             }
         }

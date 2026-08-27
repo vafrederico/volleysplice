@@ -16,7 +16,7 @@ class GuidedTourTest {
             nextGuidedTourStep(GuidedTourStep.SETUP_WINDOW),
         )
         assertEquals(
-            GuidedTourStep.EDITOR_HEADER,
+            GuidedTourStep.EDITOR_SETTINGS,
             nextGuidedTourStep(GuidedTourStep.SETUP_CREATE),
         )
     }
@@ -25,7 +25,7 @@ class GuidedTourTest {
     fun editorFinishesAfterExport() {
         assertEquals(
             GuidedTourStep.EDITOR_EXPORT,
-            nextGuidedTourStep(GuidedTourStep.EDITOR_CUTS),
+            nextGuidedTourStep(GuidedTourStep.EDITOR_SCORE_PANEL),
         )
         assertNull(nextGuidedTourStep(GuidedTourStep.EDITOR_EXPORT))
     }
@@ -33,12 +33,12 @@ class GuidedTourTest {
     @Test
     fun disabledScoreTrackingSkipsAllScoreTourSteps() {
         assertEquals(
-            GuidedTourStep.EDITOR_SUPPRESSION,
-            nextGuidedTourStep(GuidedTourStep.EDITOR_OUTPUT, scoreTrackingEnabled = false),
+            GuidedTourStep.EDITOR_SCORE_TOGGLE,
+            nextGuidedTourStep(GuidedTourStep.EDITOR_MARKING, scoreTrackingEnabled = false),
         )
         assertEquals(
-            GuidedTourStep.EDITOR_SCORE_TOGGLE,
-            nextGuidedTourStep(GuidedTourStep.EDITOR_OUTPUT, scoreTrackingEnabled = true),
+            GuidedTourStep.EDITOR_EXPORT,
+            nextGuidedTourStep(GuidedTourStep.EDITOR_SCORE_TOGGLE, scoreTrackingEnabled = false),
         )
     }
 }
