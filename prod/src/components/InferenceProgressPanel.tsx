@@ -32,9 +32,12 @@ function formatRate(step: InferenceProgressStep, nowMs: number): string {
   if (step.status === "skipped") return "Not needed";
   if (step.rate !== null && Number.isFinite(step.rate) && step.rate > 0) {
     if (step.rateUnit === "realtime")
-      return `${step.rate.toFixed(2)}× realtime`;
+      return `${step.rate.toFixed(2)}× video speed`;
     const digits = step.rate >= 10 ? 1 : 2;
-    return `${step.rate.toFixed(digits)} ${step.rateUnit}`;
+    const rate = step.rate.toFixed(digits);
+    if (step.rateUnit === "frames/s") return `${rate} frames/sec`;
+    if (step.rateUnit === "rallies/s") return `${rate} rallies/sec`;
+    return `${rate} checks/sec`;
   }
   const elapsed = inferenceStepElapsedSeconds(step, nowMs);
   if (step.status === "running" && elapsed >= 0.5 && step.fraction > 0) {
@@ -55,10 +58,34 @@ function formatEta(step: InferenceProgressStep, nowMs: number): string {
 
 function statusLabel(step: InferenceProgressStep): string {
   if (step.status === "complete") return "Done";
-  if (step.status === "skipped") return "Skipped";
-  if (step.status === "error") return "Error";
-  if (step.status === "running") return "Running";
-  return "Queued";
+  if (step.status === "skipped") return "Not needed";
+  if (step.status === "error") return "Needs attention";
+  if (step.status === "running") return "Working";
+  return "Up next";
+}
+
+const RUNNING_DESCRIPTIONS: Record<InferenceProgressStep["id"], string> = {
+  video: "Reading the video and checking what is happening on screen.",
+  audio: "Listening for sounds that help identify each rally.",
+  rally: "Finding the start and end of each rally.",
+  "serving-side": "Checking which court side serves each rally.",
+  "side-switch": "Looking for times when the teams change court sides.",
+};
+
+const COMPLETE_DESCRIPTIONS: Record<InferenceProgressStep["id"], string> = {
+  video: "The video check is complete.",
+  audio: "The sound check is complete.",
+  rally: "The rallies are ready.",
+  "serving-side": "The serve markers are ready.",
+  "side-switch": "The court-side switches are ready.",
+};
+
+function stepDescription(step: InferenceProgressStep): string {
+  if (step.status === "pending") return "Starts after the previous step.";
+  if (step.status === "skipped") return "This step is not needed for this video.";
+  if (step.status === "error") return `This step could not finish. ${step.detail}`;
+  if (step.status === "complete") return COMPLETE_DESCRIPTIONS[step.id];
+  return RUNNING_DESCRIPTIONS[step.id];
 }
 
 export function InferenceProgressPanel({
@@ -107,14 +134,14 @@ export function InferenceProgressPanel({
       <header className={styles.header}>
         <div>
           <p>
-            LOCAL INFERENCE · {completeCount}/{steps.length} DONE
+            VIDEO ANALYSIS · {completeCount} OF {steps.length} STEPS DONE
           </p>
           <strong>
             {activeStep
-              ? `Step ${activeStepIndex + 1} of ${steps.length} · ${activeStep.detail}`
+              ? `Step ${activeStepIndex + 1} of ${steps.length} · ${activeStep.label}`
               : completeCount === steps.length
-                ? "All inference steps complete"
-                : "Preparing the next inference step"}
+                ? "Your video is ready"
+                : "Getting the analysis ready"}
           </strong>
         </div>
         <output>{overallPercent}%</output>
@@ -154,23 +181,23 @@ export function InferenceProgressPanel({
                   {formatRate(step, nowMs)}
                 </span>
                 <span>
-                  <b>ETA</b>
+                  <b>Time left</b>
                   {formatEta(step, nowMs)}
                 </span>
                 <span>
-                  <b>Elapsed</b>
+                  <b>Time spent</b>
                   {formatDuration(inferenceStepElapsedSeconds(step, nowMs))}
                 </span>
               </div>
-              <small>{step.detail}</small>
+              <small>{stepDescription(step)}</small>
             </article>
           );
         })}
       </div>
 
       <footer>
-        <span>Total elapsed · {formatDuration(totalElapsed)}</span>
-        {wakeLockActive && <span>Screen wake lock active</span>}
+        <span>Time so far · {formatDuration(totalElapsed)}</span>
+        {wakeLockActive && <span>Keeping this screen awake</span>}
       </footer>
     </section>
   );

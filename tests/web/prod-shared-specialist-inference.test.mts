@@ -99,3 +99,16 @@ test("the Classic experience is the only production workflow", async () => {
   assert.doesNotMatch(app, /DesignSwitcher|designVariant/);
   assert.doesNotMatch(editor, /designVariant/);
 });
+
+test("the analysis screen shows progress for every step", async () => {
+  const [app, progressPanel] = await Promise.all([
+    source("App.tsx"),
+    source("components/InferenceProgressPanel.tsx"),
+  ]);
+
+  assert.match(app, /<InferenceProgressPanel/);
+  assert.match(progressPanel, /VIDEO ANALYSIS/);
+  assert.match(progressPanel, /Time left/);
+  assert.match(progressPanel, /Time spent/);
+  assert.doesNotMatch(progressPanel, /LOCAL INFERENCE/);
+});

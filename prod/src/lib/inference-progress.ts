@@ -37,11 +37,11 @@ export type InferenceProgressStep = {
 };
 
 const STEP_LABELS: Record<InferenceProgressStepId, string> = {
-  video: "Video features",
-  audio: "Audio features",
-  rally: "Rally inference",
-  "serving-side": "Serving side",
-  "side-switch": "Side switches",
+  video: "Checking the video",
+  audio: "Checking the sound",
+  rally: "Finding rallies",
+  "serving-side": "Finding serve markers",
+  "side-switch": "Finding court-side switches",
 };
 
 export const CORE_INFERENCE_STEP_IDS = ["video", "audio", "rally"] as const;

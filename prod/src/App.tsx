@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AndroidAppBanner } from "@/components/AndroidAppBanner";
 import { CutEditor } from "@/components/CutEditor";
 import { GuidedTour } from "@/components/GuidedTour";
+import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
@@ -1375,7 +1376,15 @@ export function App() {
         </section>
       )}
 
-      {displayedProgress && (
+      {selectedIsActive && activeInferenceSteps.length > 0 && (
+        <InferenceProgressPanel
+          steps={activeInferenceSteps}
+          wakeLockActive={wakeLockState === "active"}
+        />
+      )}
+
+      {displayedProgress &&
+        (!selectedIsActive || activeInferenceSteps.length === 0) && (
         <section className={styles.progressCard} aria-live="polite">
           <div>
             <p>
