@@ -17,7 +17,7 @@ test("core and score inference use explicit countable steps", () => {
   const core = createInferenceProgressSteps(CORE_INFERENCE_STEP_IDS);
   assert.deepEqual(
     core.map((step) => step.label),
-    ["Video features", "Audio features", "Rally inference"],
+    ["Checking the video", "Checking the sound", "Finding rallies"],
   );
   assert.equal(completedInferenceStepCount(core), 0);
 
@@ -28,7 +28,7 @@ test("core and score inference use explicit countable steps", () => {
   assert.equal(withScore.length, 5);
   assert.deepEqual(
     withScore.slice(3).map((step) => step.label),
-    ["Serving side", "Side switches"],
+    ["Finding serve markers", "Finding court-side switches"],
   );
 });
 
