@@ -1,0 +1,239 @@
+.dialog {
+  width: min(720px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #bfcfc3;
+  border-radius: 18px;
+  background: #fff;
+  color: #17382e;
+  box-shadow: 0 24px 80px rgba(11, 33, 26, 0.3);
+}
+
+.dialog::backdrop {
+  background: rgba(14, 32, 27, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.modal {
+  display: grid;
+  gap: 18px;
+  max-height: calc(100dvh - 28px);
+  padding: 22px;
+  overflow-y: auto;
+  font-family: Manrope, Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.modal header,
+.preview > div,
+.modal footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.modal header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.modal header span {
+  color: #b65f46;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.modal h2,
+.modal h3,
+.modal p {
+  margin: 0;
+}
+
+.modal h2 {
+  font-size: clamp(21px, 5vw, 28px);
+  letter-spacing: -0.025em;
+}
+
+.closeButton,
+.cancelButton,
+.exportButton {
+  min-height: 44px;
+  padding: 0 15px;
+  border: 1px solid #c9d5cb;
+  border-radius: 9px;
+  background: #fff;
+  color: #17382e;
+  font:
+    750 12px Manrope,
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    sans-serif;
+  cursor: pointer;
+}
+
+.intro {
+  color: #5d7068;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.options,
+.destination {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 13px;
+  border: 1px solid #d7e0d8;
+  border-radius: 12px;
+  background: #f8faf4;
+}
+
+.options legend,
+.destination legend {
+  padding: 0 7px;
+  color: #45675b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.options label,
+.destination label {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 58px;
+  padding: 8px;
+  border: 1px solid #d3ddd4;
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.options input,
+.destination input {
+  width: 20px;
+  height: 20px;
+  margin: auto;
+  accent-color: #377d69;
+}
+
+.options label > span,
+.destination label > span {
+  display: grid;
+  gap: 3px;
+}
+
+.options strong,
+.destination strong {
+  font-size: 12px;
+}
+
+.options small,
+.destination small,
+.preview small {
+  color: #687970;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.preview {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #cbd9cd;
+  border-radius: 12px;
+  background: #f2f7e4;
+}
+
+.preview h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.preview > div > span {
+  color: #5b7066;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.preview pre {
+  max-height: 210px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #17382e;
+  color: #f5f8e9;
+  font:
+    12px / 1.65 "Atkinson Hyperlegible Mono",
+    ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+}
+
+.destination label[data-selected="true"] {
+  border-color: #82a08e;
+  background: #edf5d8;
+}
+
+.modal footer {
+  justify-content: flex-end;
+}
+
+.exportButton {
+  min-width: 180px;
+  border-color: #2f6855;
+  background: #2f6855;
+  color: #fff;
+}
+
+.exportButton:hover:not(:disabled) {
+  background: #285947;
+}
+
+.exportButton:disabled {
+  border-color: #dfe7dc;
+  background: #dfe7dc;
+  color: #65766f;
+  cursor: not-allowed;
+}
+
+.status {
+  padding: 10px 12px;
+  border-left: 4px solid #377d69;
+  background: #edf5d8;
+  color: #294c40;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+  .modal {
+    gap: 14px;
+    padding: 17px;
+  }
+
+  .options,
+  .destination {
+    grid-template-columns: 1fr;
+  }
+
+  .modal footer {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+  }
+
+  .exportButton {
+    min-width: 0;
+  }
+}
