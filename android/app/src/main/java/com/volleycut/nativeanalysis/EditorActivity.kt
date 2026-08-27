@@ -2,6 +2,8 @@ package com.volleycut.nativeanalysis
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -1981,6 +1983,9 @@ private fun EditorScreen(
     var showEditorSettings by remember { mutableStateOf(false) }
     var selectedScoreMarkerId by remember { mutableStateOf<String?>(null) }
     var manualServingSide by remember { mutableStateOf(ServingSide.NEAR) }
+    var showYouTubeChapters by remember { mutableStateOf(false) }
+    var youtubeChaptersStatus by remember { mutableStateOf<String?>(null) }
+    var pendingYouTubeChaptersText by remember { mutableStateOf<String?>(null) }
 
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -2189,15 +2194,21 @@ private fun EditorScreen(
             exportState = ExportUiState(jobId, "queued", 0, "Added to export queue")
         }
     }
-    val editListLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json"),
+    val youtubeChaptersLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
-        if (uri != null) runCatching {
+        val text = pendingYouTubeChaptersText
+        pendingYouTubeChaptersText = null
+        if (uri != null && text != null) runCatching {
             context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
-                it.write(editListJson(seed, draft, finalIntervals).toString(2))
+                it.write(text)
+                it.newLine()
             }
-        }.onSuccess { message = "Saved edit-list JSON" }
-            .onFailure { message = it.message ?: "Could not save edit list" }
+        }.onSuccess {
+            youtubeChaptersStatus = "Saved the YouTube chapters text file."
+        }.onFailure {
+            youtubeChaptersStatus = it.message ?: "Could not save the chapters."
+        }
     }
     val feedbackSaveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -3148,6 +3159,14 @@ private fun EditorScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (exportPending) "Creating your video…" else "Save final video") }
+                OutlinedButton(
+                    enabled = finalIntervals.isNotEmpty(),
+                    onClick = {
+                        youtubeChaptersStatus = null
+                        showYouTubeChapters = true
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("youtube-chapters-button"),
+                ) { Text("YouTube chapters") }
                 if (exportPending) {
                     OutlinedButton(
                         onClick = {
@@ -3161,10 +3180,6 @@ private fun EditorScreen(
                     ) { Text(if (exportState.status == "queued") "Remove from queue" else "Cancel export", color = Danger) }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    TextButton(
-                        enabled = finalIntervals.isNotEmpty(),
-                        onClick = { editListLauncher.launch(editListFilename(seed.displayName)) },
-                    ) { Text("Save edit decisions", color = Muted) }
                     TextButton(
                         enabled = !feedbackExporting,
                         onClick = {
@@ -3201,6 +3216,34 @@ private fun EditorScreen(
             scoreTrackingEnabled = draft.scoreTracking.enabled,
             restartSignal = guidedTourRestartSignal,
         )
+        if (showYouTubeChapters) {
+            YouTubeChaptersDialog(
+                sourceFilename = seed.displayName,
+                intervals = finalIntervals,
+                cuts = draft.cuts.filter {
+                    it.included && (it.origin == CutOrigin.MANUAL || it.id in effectiveIds)
+                },
+                scoreTracking = preparedScoreOverlay.tracking.takeIf { draft.scoreTracking.enabled },
+                hasSideSwitches = draft.scoreTracking.enabled &&
+                    (project.sideSwitchEnabled || preparedScoreOverlay.tracking.sideSwitchMarkers.isNotEmpty()),
+                status = youtubeChaptersStatus,
+                onClearStatus = { youtubeChaptersStatus = null },
+                onCopy = { text ->
+                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                    clipboard.setPrimaryClip(ClipData.newPlainText("YouTube chapters", text))
+                    youtubeChaptersStatus = "Copied. Paste these chapters into your YouTube description."
+                },
+                onSaveTextFile = { text, filename ->
+                    pendingYouTubeChaptersText = text
+                    youtubeChaptersStatus = null
+                    youtubeChaptersLauncher.launch(filename)
+                },
+                onDismiss = {
+                    showYouTubeChapters = false
+                    youtubeChaptersStatus = null
+                },
+            )
+        }
     }
 }
 
@@ -4661,8 +4704,6 @@ private fun exportFilename(sourceName: String): String {
     val base = sourceName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-')
     return "${base.ifBlank { "volleycut" }}-cut.mp4"
 }
-
-private fun editListFilename(sourceName: String): String = exportFilename(sourceName).removeSuffix(".mp4") + ".edit-list.json"
 
 private fun createModelFeedback(
     context: Context,
