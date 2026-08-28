@@ -11,6 +11,7 @@ import {
 import {
   listProjects,
   projectAnalysisId,
+  putProjectReviewDraft,
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
   type VolleyCutProject,
@@ -223,14 +224,29 @@ function restoredDraft(project: VolleyCutProject, seed: CutDraftSeed): CutDraft 
       ? draft
       : { ...draft, scoreTracking };
   };
+  const persistedDrafts: CutDraft[] = [];
   try {
     for (const key of cutDraftStorageKeys(seed.analysisId)) {
       const raw = window.localStorage.getItem(key);
       const parsed = raw ? parseCutDraft(raw, seed) : null;
-      if (parsed) return withGeneratedScoreMarkers(parsed);
+      if (parsed) persistedDrafts.push(parsed);
     }
   } catch {
     // Imported or inferred state below remains usable when storage is restricted.
+  }
+  if (project.reviewDraft) {
+    const indexedDbDraft = parseCutDraft(
+      JSON.stringify(project.reviewDraft),
+      seed,
+    );
+    if (indexedDbDraft) persistedDrafts.push(indexedDbDraft);
+  }
+  const latestPersistedDraft = persistedDrafts.sort(
+    (left, right) =>
+      (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0),
+  )[0];
+  if (latestPersistedDraft) {
+    return withGeneratedScoreMarkers(latestPersistedDraft);
   }
   if (project.importedFeedback?.initialDraft) {
     const imported = parseCutDraft(
@@ -355,14 +371,21 @@ export function useDesignReview(
           };
         };
         const saveDraft = (next: CutDraft) => {
+          const persistedDraft = {
+            ...next,
+            updatedAt: new Date().toISOString(),
+          };
           try {
             window.localStorage.setItem(
               cutDraftStorageKey(seed.analysisId),
-              JSON.stringify({ ...next, updatedAt: new Date().toISOString() }),
+              JSON.stringify(persistedDraft),
             );
           } catch {
             // The current editor remains usable in memory when browser storage is restricted.
           }
+          void putProjectReviewDraft(project.id, persistedDraft).catch(() => {
+            // localStorage remains the synchronous fallback when IndexedDB is unavailable.
+          });
         };
         setReview({
           state: "ready",

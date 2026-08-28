@@ -66,6 +66,8 @@ export type VolleyCutProject = {
     warnings: string[];
     initialDraft: CutDraft;
   };
+  /** Latest editor state, mirrored from localStorage for durable project restore. */
+  reviewDraft?: CutDraft;
   createdAt: string;
   updatedAt: string;
 };
@@ -529,6 +531,8 @@ function validProject(value: unknown): value is VolleyCutProject {
         project.id,
         analysisId,
       )) &&
+    (project.reviewDraft === undefined ||
+      (project.reviewDraft !== null && typeof project.reviewDraft === "object")) &&
     typeof project.createdAt === "string" &&
     typeof project.updatedAt === "string" &&
     (project.status !== "ready" || project.analysis !== null)
@@ -631,6 +635,28 @@ export async function putProject(project: VolleyCutProject): Promise<void> {
     const transaction = database.transaction(PROJECT_STORE, "readwrite");
     const complete = transactionComplete(transaction);
     transaction.objectStore(PROJECT_STORE).put(project);
+    await complete;
+  } finally {
+    database.close();
+  }
+}
+
+export async function putProjectReviewDraft(
+  projectIdToUpdate: string,
+  reviewDraft: CutDraft,
+): Promise<void> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    const store = transaction.objectStore(PROJECT_STORE);
+    const stored = await requestResult(
+      store.get(projectIdToUpdate) as IDBRequest<unknown>,
+    );
+    if (!validProject(stored)) {
+      throw new Error("The project record is unavailable or invalid.");
+    }
+    store.put({ ...stored, reviewDraft });
     await complete;
   } finally {
     database.close();

@@ -206,6 +206,24 @@ function clipRequiresConfidenceReview(clip: Clip, threshold: number): boolean {
   );
 }
 
+function rangeHasReviewableFootage(
+  start: number,
+  end: number,
+  ignoredIntervals: readonly { start: number; end: number }[],
+): boolean {
+  if (end <= start) return false;
+  let cursor = start;
+  for (const interval of [...ignoredIntervals].sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  )) {
+    if (interval.end <= cursor) continue;
+    if (interval.start > cursor) return true;
+    cursor = Math.max(cursor, interval.end);
+    if (cursor >= end) return false;
+  }
+  return cursor < end;
+}
+
 type CleanupStrength = "off" | "light" | "standard" | "strong";
 
 function cleanupStrengthForPolicy(
@@ -509,7 +527,6 @@ function usePrototype(
   }, [exportKind, includeScore, workingDraft]);
 
   const included = clips.filter((clip) => clip.included);
-  const suppressionPending = Object.values(suppressionDecisions).filter((decision) => decision === "pending").length;
   const finalMaterialization = useMemo(
     () => materializeFinalCutIntervals(workingDraft, review.suppression),
     [review.suppression, workingDraft],
@@ -525,20 +542,59 @@ function usePrototype(
         clip.included &&
         !clip.reviewed &&
         effectiveKeptIds.has(clip.id) &&
+        rangeHasReviewableFootage(
+          clip.start,
+          clip.end,
+          workingDraft.ignoredIntervals,
+        ) &&
         clipRequiresConfidenceReview(clip, workingDraft.confidenceReviewThreshold),
       )
       .map((clip) => clip.id)),
-    [clips, effectiveKeptIds, workingDraft.confidenceReviewThreshold],
+    [clips, effectiveKeptIds, workingDraft.confidenceReviewThreshold, workingDraft.ignoredIntervals],
   );
   const remaining = reviewClipIds.size;
+  const suppressionReviewIds = useMemo(() => {
+    const suggestionsByCut = new Map<string, typeof review.cleanupSuggestions>();
+    for (const suggestion of review.cleanupSuggestions) {
+      if (!suggestion.cutId) continue;
+      suggestionsByCut.set(suggestion.cutId, [
+        ...(suggestionsByCut.get(suggestion.cutId) ?? []),
+        suggestion,
+      ]);
+    }
+    return new Set(
+      Object.entries(suppressionDecisions)
+        .filter(([, decision]) => decision === "pending")
+        .filter(([id]) => {
+          const suggestions = suggestionsByCut.get(id) ?? [];
+          if (suggestions.length > 0) {
+            return suggestions.some((suggestion) =>
+              rangeHasReviewableFootage(
+                suggestion.start,
+                suggestion.end,
+                workingDraft.ignoredIntervals,
+              ),
+            );
+          }
+          const clip = clips.find((candidate) => candidate.id === id);
+          return clip
+            ? rangeHasReviewableFootage(
+                clip.start,
+                clip.end,
+                workingDraft.ignoredIntervals,
+              )
+            : false;
+        })
+        .map(([id]) => id),
+    );
+  }, [clips, review.cleanupSuggestions, suppressionDecisions, workingDraft.ignoredIntervals]);
+  const suppressionPending = suppressionReviewIds.size;
   const clipReviewTaskIds = useMemo(
     () => new Set([
       ...reviewClipIds,
-      ...Object.entries(suppressionDecisions)
-        .filter(([, decision]) => decision === "pending")
-        .map(([id]) => id),
+      ...suppressionReviewIds,
     ]),
-    [reviewClipIds, suppressionDecisions],
+    [reviewClipIds, suppressionReviewIds],
   );
   const excludedRallyIds = useMemo(
     () => new Set(workingDraft.cuts
@@ -614,19 +670,25 @@ function usePrototype(
   const selected = clips.find((clip) =>
     clip.id === (followPlayhead ? currentPlayingCut?.id : selectedId),
   ) ?? (followPlayhead ? undefined : clips[0]);
-  const serveReview = activeScoreMarkers.filter((marker) => marker.side === "review").length;
+  const serveReviewMarkers = activeScoreMarkers.filter(
+    (marker) => marker.side === "review",
+  );
+  const serveReview = serveReviewMarkers.length;
   const selectedScoreMarker = followPlayhead
     ? currentSideSwitchMarker ? null : currentServeMarker
     : scoreMarkers.find((marker) => marker.id === selectedScoreMarkerId) ?? null;
   const selectedSideSwitch = followPlayhead
     ? currentSideSwitchMarker
     : sideSwitchMarkers.find((marker) => marker.id === selectedSideSwitchId) ?? null;
-  const nextServeReview = (selectedScoreMarker?.side === "review" ? selectedScoreMarker : null) ?? [...activeScoreMarkers]
+  const selectedServeReview = selectedScoreMarker
+    ? serveReviewMarkers.find((marker) => marker.id === selectedScoreMarker.id) ?? null
+    : null;
+  const nextServeReview = selectedServeReview ?? [...serveReviewMarkers]
     .sort((left, right) => left.timestamp - right.timestamp)
-    .find((marker) => marker.side === "review" && marker.timestamp >= playhead) ??
-    [...activeScoreMarkers]
+    .find((marker) => marker.timestamp >= playhead) ??
+    [...serveReviewMarkers]
       .sort((left, right) => left.timestamp - right.timestamp)
-      .find((marker) => marker.side === "review") ?? null;
+      .at(0) ?? null;
   const derivedScore = useMemo(
     () => deriveScoreAt(activeScoreTracking, playhead),
     [activeScoreTracking, playhead],
@@ -884,9 +946,7 @@ function usePrototype(
   }
 
   function reviewNextSuppression() {
-    const pendingIds = Object.entries(suppressionDecisions)
-      .filter(([, decision]) => decision === "pending")
-      .map(([id]) => id);
+    const pendingIds = [...suppressionReviewIds];
     if (pendingIds.length === 0) {
       setReviewMessage("Every automatic cleanup suggestion has been reviewed.");
       return;
@@ -1140,7 +1200,7 @@ function usePrototype(
     selectedId: followPlayhead ? currentPlayingCut?.id ?? "" : selectedId,
     manualStart,
     excludedStart, excludedReason, setExcludedReason, excludedRanges,
-    suppressionDecisions, suppressionPending,
+    suppressionDecisions, suppressionPending, suppressionReviewIds,
     playhead, setPlayhead, trackPlayhead: setPlayheadValue, videoElementRef,
     seekRequest: seekRequest.revision, seekTarget: seekRequest.target,
     playing, setPlaying, finalPreview, setFinalPreview,
@@ -1648,14 +1708,14 @@ function Timeline({ state, labeled = true }: { state: Prototype; labeled?: boole
               type="button"
               data-selected={clip.id === state.selectedId || undefined}
               data-included={clip.included || undefined}
-              data-review={!clip.reviewed && clip.included || undefined}
+              data-review={state.reviewClipIds.has(clip.id) || undefined}
               data-manual={clip.origin === "manual" || undefined}
-              data-suppression={state.suppressionDecisions[clip.id] === "pending" || undefined}
+              data-suppression={state.suppressionReviewIds.has(clip.id) || undefined}
               onClick={() => state.selectClip(clip.id)}
               aria-label={`${clip.id}, ${clip.label}, ${clip.included ? "included" : "left out"}`}
             >
               <span>{clip.id}</span>
-              <small>{clip.reviewed ? "Checked" : clip.included ? "Check" : "Out"}</small>
+              <small>{clip.reviewed ? "Checked" : state.clipReviewTaskIds.has(clip.id) ? "Check" : clip.included ? "Included" : "Out"}</small>
             </button>
           </div>
         ))}
@@ -2087,22 +2147,22 @@ function RallyDeskClipRegister({ state }: { state: Prototype }) {
       <div className="rd-register-list" ref={listRef}>
         {state.clips.map((clip) => {
           const effective = state.effectiveKeptIds.has(clip.id);
-          const suppression = state.suppressionDecisions[clip.id];
-          const needsReview = state.reviewClipIds.has(clip.id) || suppression === "pending";
+          const needsSuppressionReview = state.suppressionReviewIds.has(clip.id);
+          const needsReview = state.reviewClipIds.has(clip.id) || needsSuppressionReview;
           return (
             <button
               key={clip.id}
               type="button"
               data-playing={state.currentPlayingClipId === clip.id || undefined}
               data-out={!effective || undefined}
-              data-review={state.reviewClipIds.has(clip.id) || suppression === "pending" || undefined}
+              data-review={needsReview || undefined}
               onClick={() => state.selectClip(clip.id)}
             >
               <span className="rd-register-id">{clip.id}</span>
               <span className="rd-register-range">{formatPreciseTime(clip.start)}–{formatPreciseTime(clip.end)}</span>
               <strong>{effective ? needsReview ? "Included · check" : "Included" : clip.included ? "Removed by cleanup" : "Left out"}</strong>
               <small>{rallyAgreementLabel(clip)}{clip.origin === "model" ? ` · ${Math.round(clip.confidence * 100)}%` : ""} · {(clip.end - clip.start).toFixed(1)}s</small>
-              {suppression === "pending" && <em>Cleanup decision</em>}
+              {needsSuppressionReview && <em>Cleanup decision</em>}
             </button>
           );
         })}
