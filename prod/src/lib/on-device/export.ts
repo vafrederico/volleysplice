@@ -25,6 +25,7 @@ import { holdScreenWakeLock, type WakeLockState } from "./wake-lock";
 import {
   supportsOpfsExport,
   type PreparedVideoExport,
+  type VideoExportTarget,
 } from "./export-delivery";
 import { startServiceWorkerStreamDownload } from "./stream-download";
 import {
@@ -47,14 +48,10 @@ export type ExportProgress = {
   detail: string;
 };
 
-type SaveFileHandle = {
-  createWritable(): Promise<WritableStream<unknown>>;
-};
-
 type SavePicker = (options: {
   suggestedName: string;
   types: Array<{ description: string; accept: Record<string, string[]> }>;
-}) => Promise<SaveFileHandle>;
+}) => Promise<VideoExportTarget>;
 
 type ExportDestination = {
   kind: "direct" | "opfs" | "stream";
@@ -68,6 +65,7 @@ export type VideoExportMode = "compatible" | "opfs" | "stream-download";
 
 export type VideoExportOptions = {
   scoreOverlay?: ScoreOverlayOptions;
+  target?: VideoExportTarget;
 };
 
 type ExportCanvas = HTMLCanvasElement | OffscreenCanvas;
@@ -104,7 +102,16 @@ function picker(): SavePicker | null {
 async function chooseExportDestination(
   fileName: string,
   mode: VideoExportMode,
+  target?: VideoExportTarget,
 ): Promise<ExportDestination> {
+  if (target) {
+    return {
+      kind: "direct",
+      createWritable: () => target.createWritable(),
+      finish: async () => null,
+      discard: async () => undefined,
+    };
+  }
   if (mode === "stream-download") {
     const download = startServiceWorkerStreamDownload(fileName);
     return {
@@ -170,7 +177,11 @@ export async function exportRawQualityReel(
   options: VideoExportOptions = {},
 ): Promise<PreparedVideoExport | null> {
   const outputName = `${safeBaseName(file.name)}-volleycut.mp4`;
-  const destination = await chooseExportDestination(outputName, mode);
+  const destination = await chooseExportDestination(
+    outputName,
+    mode,
+    options.target,
+  );
   let media: Awaited<ReturnType<typeof openLocalMedia>>;
   try {
     media = await openLocalMedia(file);
@@ -317,6 +328,7 @@ export async function exportRawQualityReel(
               const timing = clipSampleToInterval(sample.timestamp, sample.duration, interval);
               if (!timing) continue;
               const outputTimestamp = outputOffset + timing.timestamp;
+              const sourceTimestamp = interval.start + timing.timestamp;
               if (overlaySurface && preparedScoreOverlay) {
                 overlaySurface.context.clearRect(
                   0,
@@ -335,8 +347,11 @@ export async function exportRawQualityReel(
                   overlaySurface.context,
                   media.info.width,
                   media.info.height,
-                  scoreOverlaySnapshot(preparedScoreOverlay, sample.timestamp),
-                  scorePointTimelineSnapshot(preparedScoreOverlay, sample.timestamp),
+                  scoreOverlaySnapshot(preparedScoreOverlay, sourceTimestamp),
+                  scorePointTimelineSnapshot(
+                    preparedScoreOverlay,
+                    sourceTimestamp,
+                  ),
                   preparedScoreOverlay.renderPointTimeline,
                 );
                 const overlaidSample = new VideoSample(overlaySurface.canvas, {

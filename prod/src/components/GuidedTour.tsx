@@ -436,3 +436,241 @@ export function GuidedTour({
     </>
   );
 }
+
+const RALLY_DESK_TOUR_STORAGE_KEY = "volleycut:rally-desk-tour:v1";
+
+const RALLY_DESK_STEPS = [
+  {
+    id: "project-selector",
+    target: "rd-project-selector",
+    title: "Choose the project you are reviewing",
+    body: "Switch between saved VolleyCut projects here. Start a new project opens the production setup so you can choose and analyze another local video.",
+    action: "Next",
+  },
+  {
+    id: "review-summary",
+    target: "rd-review-summary",
+    title: "Start with what needs attention",
+    body: "These queues contain only uncertain serves, uncertain clips, and footage removed by automatic cleanup. The counts shrink as you make decisions.",
+    action: "Next",
+  },
+  {
+    id: "video",
+    target: "rd-video",
+    title: "Watch and move through the match",
+    body: "Select the video to play or pause. Use the playhead and speed control for precise review. Play final cut skips every rally and section currently removed.",
+    action: "Next",
+  },
+  {
+    id: "timeline",
+    target: "rd-timeline",
+    title: "Use the whole-game timeline",
+    body: "Select a rally, serve, or side switch to jump directly to it. You can also drag anywhere on the timeline to seek through source time.",
+    action: "Next",
+  },
+  {
+    id: "current-rally",
+    target: "rd-current-rally",
+    title: "Decide the current rally",
+    body: "Keep or remove the rally, adjust its core edges, or split it at the playhead. A pale-red removal means automatic cleanup currently leaves it out but you have not confirmed it.",
+    action: "Next",
+  },
+  {
+    id: "events",
+    target: "rd-events",
+    title: "Check serves and side switches",
+    body: "Serve markers derive the score. Correct Near or Far when a volleyball has a review badge, and add a side switch whenever teams change courts.",
+    action: "Next",
+  },
+  {
+    id: "range-tools",
+    target: "rd-range-tools",
+    title: "Add a rally VolleyCut missed",
+    body: "Move to the first frame and set the rally start. Move to its final frame and set the end. The manual rally then appears in the clip register like every detected rally.",
+    action: "Next",
+  },
+  {
+    id: "excluded-footage",
+    target: "rd-excluded-footage",
+    title: "Remove non-game footage",
+    body: "Mark the start and end of camera gaps, warmups, breaks, or other footage that should never appear. Excluded sections are removed from final-cut playback and every export.",
+    action: "Next",
+  },
+  {
+    id: "register",
+    target: "rd-register",
+    title: "Use the clip register as the ledger",
+    body: "The register shows every detected or manually added rally and its effective final-cut state. Select any row to seek to that rally’s padded start.",
+    action: "Next",
+  },
+  {
+    id: "export",
+    target: "rd-export",
+    title: "Export when the review is ready",
+    body: "Export opens the output choices for the final video, YouTube chapters, and a saved VolleyCut project using the decisions shown here.",
+    action: "Finish tutorial",
+  },
+] as const;
+
+type RallyDeskTourStep = (typeof RALLY_DESK_STEPS)[number]["id"];
+type RallyDeskTourState = RallyDeskTourStep | "done" | "dismissed";
+
+let memoryRallyDeskTourState: RallyDeskTourState | null = null;
+
+function isRallyDeskTourStep(value: string | null): value is RallyDeskTourStep {
+  return RALLY_DESK_STEPS.some((step) => step.id === value);
+}
+
+function readRallyDeskTourState(): RallyDeskTourState | null {
+  try {
+    const value = window.localStorage.getItem(RALLY_DESK_TOUR_STORAGE_KEY);
+    return value === "done" || value === "dismissed" || isRallyDeskTourStep(value)
+      ? value
+      : null;
+  } catch {
+    return memoryRallyDeskTourState;
+  }
+}
+
+function writeRallyDeskTourState(state: RallyDeskTourState): void {
+  memoryRallyDeskTourState = state;
+  try {
+    window.localStorage.setItem(RALLY_DESK_TOUR_STORAGE_KEY, state);
+  } catch {
+    // The in-memory state keeps the Rally Desk tutorial usable without storage.
+  }
+}
+
+export function RallyDeskGuidedTour() {
+  const [tourState, setTourState] = useState<RallyDeskTourState | null>(null);
+  const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const activeIndex = isRallyDeskTourStep(tourState)
+    ? RALLY_DESK_STEPS.findIndex((step) => step.id === tourState)
+    : -1;
+  const activeStep = activeIndex >= 0 ? RALLY_DESK_STEPS[activeIndex] : null;
+
+  useEffect(() => {
+    setTourState(readRallyDeskTourState() ?? RALLY_DESK_STEPS[0].id);
+  }, []);
+
+  useEffect(() => {
+    if (!activeStep) {
+      setTargetRect(null);
+      return;
+    }
+    let frame = 0;
+    let target: Element | null = null;
+    let revealed = false;
+    const findVisibleTarget = () => [...document.querySelectorAll(`[data-tour="${activeStep.target}"]`)]
+      .find((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }) ?? null;
+    const update = () => {
+      target = findVisibleTarget();
+      const rect = target?.getBoundingClientRect() ?? null;
+      setTargetRect(rect);
+      if (
+        !revealed &&
+        target &&
+        rect &&
+        (rect.top < 90 || rect.bottom > window.innerHeight - 90)
+      ) {
+        revealed = true;
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    };
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+    const observer = new ResizeObserver(scheduleUpdate);
+    if (target) observer.observe(target);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+      observer.disconnect();
+    };
+  }, [activeStep]);
+
+  const visible = activeStep !== null;
+  useEffect(() => {
+    if (!visible) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      writeRallyDeskTourState("dismissed");
+      setTourState("dismissed");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [visible]);
+
+  function dismiss() {
+    writeRallyDeskTourState("dismissed");
+    setTourState("dismissed");
+  }
+
+  function restart() {
+    const first = RALLY_DESK_STEPS[0].id;
+    writeRallyDeskTourState(first);
+    setTourState(first);
+  }
+
+  function advance() {
+    if (!activeStep) return;
+    const next: RallyDeskTourState = activeIndex >= RALLY_DESK_STEPS.length - 1
+      ? "done"
+      : RALLY_DESK_STEPS[activeIndex + 1].id;
+    writeRallyDeskTourState(next);
+    setTourState(next);
+  }
+
+  const spotlightStyle = targetRect
+    ? {
+        top: `${Math.max(8, targetRect.top - 7)}px`,
+        left: `${Math.max(8, targetRect.left - 7)}px`,
+        width: `${targetRect.width + 14}px`,
+        height: `${targetRect.height + 14}px`,
+      }
+    : undefined;
+
+  if (tourState === null) return null;
+  if (!activeStep) {
+    return (
+      <button
+        className={styles.launcher}
+        type="button"
+        onClick={restart}
+        aria-label="Restart Rally Desk tutorial"
+      >
+        <span aria-hidden="true">?</span>
+        Restart tutorial
+      </button>
+    );
+  }
+
+  return (
+    <>
+      {spotlightStyle && <div className={styles.spotlight} style={spotlightStyle} aria-hidden="true" />}
+      <section className={styles.dialog} role="dialog" aria-modal="false" aria-labelledby="rally-desk-tour-title" aria-describedby="rally-desk-tour-body">
+        <button className={styles.close} type="button" onClick={dismiss} aria-label="Close tutorial">×</button>
+        <span className={styles.kicker}>TUTORIAL · {activeIndex + 1} OF {RALLY_DESK_STEPS.length}</span>
+        <h2 id="rally-desk-tour-title">{activeStep.title}</h2>
+        <p id="rally-desk-tour-body">{activeStep.body}</p>
+        <div className={styles.progress} aria-hidden="true">
+          {RALLY_DESK_STEPS.map((step, index) => <i key={step.id} data-active={activeIndex === index || undefined} />)}
+        </div>
+        <div className={styles.actions}>
+          <button className={styles.skip} type="button" onClick={dismiss}>Close tutorial</button>
+          <button className={styles.next} type="button" onClick={advance}>{activeStep.action}</button>
+        </div>
+        <small className={styles.escapeHint}>Press Esc anytime to close</small>
+      </section>
+    </>
+  );
+}

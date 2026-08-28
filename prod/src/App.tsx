@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AndroidAppBanner } from "@/components/AndroidAppBanner";
-import { CutEditor } from "@/components/CutEditor";
 import { GuidedTour } from "@/components/GuidedTour";
 import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
@@ -33,6 +32,10 @@ import {
   VIDEO_DECODER_HARDWARE_ACCELERATION,
 } from "@/lib/on-device/pipeline";
 import { augmentStoredAnalysisWithSuppression } from "@/lib/on-device/production-inference";
+import {
+  requestVideoExportTarget,
+  type VideoExportTarget,
+} from "@/lib/on-device/export-delivery";
 import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
 import type {
   AnalysisProgress,
@@ -47,6 +50,13 @@ import {
   type WakeLockState,
 } from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
+import { RallyDesk } from "@/designs/taste";
+import {
+  type DesignExportJob,
+  type DesignVideoExportRequest,
+  type DesignWorkActivity,
+  useDesignReview,
+} from "@/designs/useDesignReview";
 import {
   deleteProject,
   listProjects,
@@ -65,6 +75,74 @@ import styles from "./App.module.css";
 type WorkState = "empty" | "opening" | "ready" | "error";
 
 const FULL_FRAME_ROI: NormalizedRoi = { x: 0, y: 0, width: 1, height: 1 };
+
+type AppExportJob = DesignExportJob;
+
+type QueuedVideoExport = DesignVideoExportRequest & {
+  projectId: string;
+  projectName: string;
+  sourceFile: File;
+  duration: number;
+  target: VideoExportTarget | null;
+};
+
+function ReadyProjectEditor({
+  projectId: readyProjectId,
+  projects,
+  workActivity,
+  exportJobs,
+  sourceFile,
+  videoUrl,
+  productAnalysis,
+  onSelectProject,
+  onAttachSource,
+  onQueueVideoExport,
+  onDeleteProject,
+}: {
+  projectId: string;
+  projects: VolleyCutProject[];
+  workActivity: DesignWorkActivity[];
+  exportJobs: DesignExportJob[];
+  sourceFile: File | null;
+  videoUrl: string | null;
+  productAnalysis: ProductAnalysis;
+  onSelectProject: (projectId: string | null) => void;
+  onAttachSource: (file: File) => void | Promise<void>;
+  onQueueVideoExport: (request: DesignVideoExportRequest) => void;
+  onDeleteProject: () => void;
+}) {
+  const review = useDesignReview({
+    projectId: readyProjectId,
+    projects,
+    workActivity,
+    exportJobs,
+    sourceFile,
+    videoUrl,
+    productAnalysis,
+    onSelectProject,
+    onAttachSource,
+    onQueueVideoExport,
+  });
+
+  if (review.state === "ready") {
+    return (
+      <RallyDesk
+        review={review}
+        onDeleteProject={onDeleteProject}
+      />
+    );
+  }
+
+  return (
+    <main className={styles.page} aria-busy={review.state === "loading"}>
+      <section className={styles.notice}>
+        {review.state === "loading"
+          ? "Opening your saved review…"
+          : review.message}
+      </section>
+    </main>
+  );
+}
 
 function compactBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -139,10 +217,10 @@ const LANDING_COPY: {
   description: string;
   steps: string[];
 } = {
-  kicker: "VOLLEYBALL VIDEO EDITING, MADE SIMPLE",
-  title: <>Keep the rallies.<br /><em>Skip the waiting.</em></>,
-  description: "Choose a game video and VolleyCut will find the action for you. Check the suggested clips, add anything that was missed, then save one clean video.",
-  steps: ["Choose your video", "Review the full timeline", "Correct anything missing", "Save the final video"],
+  kicker: "NEW PROJECT · SETUP",
+  title: <>Choose the game.<br /><em>VolleyCut finds the rallies.</em></>,
+  description: "Choose a game video from this device, confirm the part of the recording to analyze, then let VolleyCut prepare the review timeline.",
+  steps: ["Choose video", "Set game window", "Analyze locally", "Review rallies"],
 };
 
 export function App() {
@@ -160,7 +238,7 @@ export function App() {
     InferenceProgressStep[]
   >([]);
   const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
-  const [filesRevision, setFilesRevision] = useState(0);
+  const [, setFilesRevision] = useState(0);
 
   const [workState, setWorkState] = useState<WorkState>("empty");
   const [file, setFile] = useState<File | null>(null);
@@ -175,11 +253,16 @@ export function App() {
   const [candidateProgress, setCandidateProgress] =
     useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [feedbackImporting, setFeedbackImporting] = useState(false);
+  const [exportJobs, setExportJobs] = useState<AppExportJob[]>([]);
 
   const projectsRef = useRef<VolleyCutProject[]>([]);
   const filesRef = useRef(new Map<string, File>());
+  const videoUrlsRef = useRef(new Map<string, string>());
+  const exportJobsRef = useRef(new Map<string, AppExportJob>());
+  const exportQueueRef = useRef<QueuedVideoExport[]>([]);
+  const exportWorkerRunningRef = useRef(false);
+  const exportTargetRequestsRef = useRef(new Set<string>());
   const activeJobRef = useRef<string | null>(null);
   const activeMediaRef = useRef<{
     projectId: string;
@@ -205,6 +288,9 @@ export function App() {
   const selectedSourceFile = selectedProjectId
     ? (filesRef.current.get(selectedProjectId) ?? null)
     : null;
+  const selectedVideoUrl = selectedProjectId
+    ? (videoUrlsRef.current.get(selectedProjectId) ?? null)
+    : null;
 
   function replaceProjects(next: VolleyCutProject[]) {
     const sorted = sortProjects(next);
@@ -229,6 +315,210 @@ export function App() {
       }
     });
   }
+
+  function linkSourceFile(projectIdToLink: string, sourceFile: File) {
+    const previousUrl = videoUrlsRef.current.get(projectIdToLink);
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+    filesRef.current.set(projectIdToLink, sourceFile);
+    videoUrlsRef.current.set(
+      projectIdToLink,
+      URL.createObjectURL(sourceFile),
+    );
+    setFilesRevision((current) => current + 1);
+  }
+
+  const updateExportJob = useCallback((job: AppExportJob) => {
+    if (
+      deletedProjectIdsRef.current.has(job.projectId) ||
+      !projectsRef.current.some((project) => project.id === job.projectId)
+    ) {
+      return;
+    }
+    exportJobsRef.current.set(job.projectId, job);
+    setExportJobs([...exportJobsRef.current.values()]);
+  }, []);
+
+  const drainVideoExportQueue = useCallback(async () => {
+    if (exportWorkerRunningRef.current) return;
+    exportWorkerRunningRef.current = true;
+    try {
+      while (exportQueueRef.current.length > 0) {
+        const request = exportQueueRef.current.shift();
+        if (
+          !request ||
+          deletedProjectIdsRef.current.has(request.projectId) ||
+          !projectsRef.current.some(
+            (project) => project.id === request.projectId,
+          )
+        ) {
+          continue;
+        }
+        const startedJob: AppExportJob = {
+          projectId: request.projectId,
+          projectName: request.projectName,
+          status: "exporting",
+          progress: 1,
+          speed: null,
+          etaSeconds: null,
+          detail: "Preparing the final video from the original local source…",
+        };
+        updateExportJob(startedJob);
+        try {
+          const { exportRawQualityReel } = await import(
+            "@/lib/on-device/export"
+          );
+          await exportRawQualityReel(
+            request.sourceFile,
+            request.intervals,
+            (progress) => {
+              const percent =
+                progress.totalSeconds > 0
+                  ? Math.round(
+                      (progress.completedSeconds / progress.totalSeconds) *
+                        100,
+                    )
+                  : 0;
+              const speed =
+                progress.elapsedSeconds > 0 && progress.completedSeconds > 0
+                  ? progress.completedSeconds / progress.elapsedSeconds
+                  : null;
+              const remainingSeconds = Math.max(
+                0,
+                progress.totalSeconds - progress.completedSeconds,
+              );
+              updateExportJob({
+                ...startedJob,
+                progress: Math.max(1, Math.min(99, percent)),
+                speed,
+                etaSeconds:
+                  speed && speed > 0 && remainingSeconds > 0
+                    ? remainingSeconds / speed
+                    : null,
+                detail: progress.detail,
+              });
+            },
+            request.duration,
+            () => undefined,
+            request.target ? "compatible" : "stream-download",
+            {
+              scoreOverlay: request.scoreOverlay,
+              target: request.target ?? undefined,
+            },
+          );
+          updateExportJob({
+            ...startedJob,
+            status: "saved",
+            progress: 100,
+            speed:
+              exportJobsRef.current.get(request.projectId)?.speed ?? null,
+            etaSeconds: 0,
+            detail: "Your final MP4 was saved.",
+          });
+        } catch (cause) {
+          updateExportJob({
+            ...startedJob,
+            status: "error",
+            progress: 0,
+            detail:
+              cause instanceof DOMException && cause.name === "AbortError"
+                ? "Video export was canceled."
+                : `Could not create the video: ${cause instanceof Error ? cause.message : String(cause)}`,
+          });
+        }
+      }
+    } finally {
+      exportWorkerRunningRef.current = false;
+    }
+  }, [updateExportJob]);
+
+  const queueProjectVideoExport = useCallback(
+    (projectIdToExport: string, request: DesignVideoExportRequest) => {
+      const current = exportJobsRef.current.get(projectIdToExport);
+      if (
+        current?.status === "queued" ||
+        current?.status === "exporting" ||
+        exportTargetRequestsRef.current.has(projectIdToExport)
+      ) {
+        return;
+      }
+      const project = projectsRef.current.find(
+        (candidate) => candidate.id === projectIdToExport,
+      );
+      const sourceFile = filesRef.current.get(projectIdToExport);
+      if (!project || !sourceFile) return;
+      const enqueueWithTarget = (target: VideoExportTarget | null) => {
+        exportTargetRequestsRef.current.delete(projectIdToExport);
+        const latest = exportJobsRef.current.get(projectIdToExport);
+        if (
+          deletedProjectIdsRef.current.has(projectIdToExport) ||
+          latest?.status === "queued" ||
+          latest?.status === "exporting"
+        ) {
+          return;
+        }
+        const waitsForAnotherExport =
+          exportWorkerRunningRef.current || exportQueueRef.current.length > 0;
+        exportQueueRef.current.push({
+          ...request,
+          projectId: project.id,
+          projectName: project.source.name,
+          sourceFile,
+          duration: project.info.duration,
+          target,
+        });
+        updateExportJob({
+          projectId: project.id,
+          projectName: project.source.name,
+          status: "queued",
+          progress: 0,
+          speed: null,
+          etaSeconds: null,
+          detail: waitsForAnotherExport
+            ? "Waiting for the current video export to finish…"
+            : "MP4 export queued…",
+        });
+        void drainVideoExportQueue();
+      };
+
+      exportTargetRequestsRef.current.add(projectIdToExport);
+      try {
+        const targetRequest = requestVideoExportTarget(sourceFile.name);
+        if (!targetRequest) {
+          enqueueWithTarget(null);
+          return;
+        }
+        void targetRequest
+          .then((target) => enqueueWithTarget(target))
+          .catch((cause) => {
+            exportTargetRequestsRef.current.delete(projectIdToExport);
+            if (cause instanceof DOMException && cause.name === "AbortError") {
+              return;
+            }
+            updateExportJob({
+              projectId: project.id,
+              projectName: project.source.name,
+              status: "error",
+              progress: 0,
+              speed: null,
+              etaSeconds: null,
+              detail: `Could not choose the MP4 destination: ${cause instanceof Error ? cause.message : String(cause)}`,
+            });
+          });
+      } catch (cause) {
+        exportTargetRequestsRef.current.delete(projectIdToExport);
+        updateExportJob({
+          projectId: project.id,
+          projectName: project.source.name,
+          status: "error",
+          progress: 0,
+          speed: null,
+          etaSeconds: null,
+          detail: `Could not choose the MP4 destination: ${cause instanceof Error ? cause.message : String(cause)}`,
+        });
+      }
+    },
+    [drainVideoExportQueue, updateExportJob],
+  );
 
   function persistServingSideAnalysis(
     projectIdToUpdate: string,
@@ -293,6 +583,17 @@ export function App() {
       .then((storedProjects) => {
         if (!active) return;
         replaceProjects(storedProjects);
+        const searchParams = new URLSearchParams(window.location.search);
+        const startNewProject = searchParams.get("new") === "1";
+        if (startNewProject) {
+          searchParams.delete("new");
+          const nextSearch = searchParams.toString();
+          window.history.replaceState(
+            window.history.state,
+            "",
+            `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`,
+          );
+        }
         let lastSelected: string | null = null;
         try {
           lastSelected = window.localStorage.getItem(
@@ -301,10 +602,11 @@ export function App() {
         } catch {
           // Project selection still works when localStorage is restricted.
         }
-        const initial =
-          storedProjects.find((project) => project.id === lastSelected) ??
-          storedProjects[0] ??
-          null;
+        const initial = startNewProject
+          ? null
+          : storedProjects.find((project) => project.id === lastSelected) ??
+            storedProjects[0] ??
+            null;
         setSelectedProjectId(initial?.id ?? null);
       })
       .catch(() => {
@@ -385,24 +687,14 @@ export function App() {
     };
   }, [selectedProjectId, projects]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: filesRevision intentionally invalidates the URL created from the file map ref.
-  useEffect(() => {
-    const source = selectedProjectId
-      ? filesRef.current.get(selectedProjectId)
-      : null;
-    const url = source ? URL.createObjectURL(source) : null;
-    setSelectedVideoUrl(url);
-    return () => {
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [filesRevision, selectedProjectId]);
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       activeMediaRef.current?.media.input.dispose();
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      for (const url of videoUrlsRef.current.values()) URL.revokeObjectURL(url);
+      videoUrlsRef.current.clear();
     };
   }, []);
 
@@ -538,8 +830,7 @@ export function App() {
     const source = projectSource(file);
     const id = projectId(source, info, normalizedWindow);
     const existing = projectsRef.current.find((project) => project.id === id);
-    filesRef.current.set(id, file);
-    setFilesRevision((current) => current + 1);
+    linkSourceFile(id, file);
 
     if (existing?.status === "ready" && existing.analysis) {
       setSelectedProjectId(id);
@@ -555,7 +846,7 @@ export function App() {
       info,
       analysisWindow: normalizedWindow,
       roi,
-      servingSideEnabled: false,
+      servingSideEnabled: true,
       sideSwitchEnabled,
       status: "queued",
       analysis: null,
@@ -842,8 +1133,7 @@ export function App() {
       );
       return;
     }
-    filesRef.current.set(project.id, selected);
-    setFilesRevision((current) => current + 1);
+    linkSourceFile(project.id, selected);
     setError(null);
     if (
       project.status !== "ready" ||
@@ -869,7 +1159,16 @@ export function App() {
       activeMediaRef.current.media.input.dispose();
     }
     setQueueIds((current) => current.filter((id) => id !== selectedProject.id));
+    exportQueueRef.current = exportQueueRef.current.filter(
+      (job) => job.projectId !== selectedProject.id,
+    );
+    exportTargetRequestsRef.current.delete(selectedProject.id);
+    exportJobsRef.current.delete(selectedProject.id);
+    setExportJobs([...exportJobsRef.current.values()]);
     filesRef.current.delete(selectedProject.id);
+    const linkedVideoUrl = videoUrlsRef.current.get(selectedProject.id);
+    if (linkedVideoUrl) URL.revokeObjectURL(linkedVideoUrl);
+    videoUrlsRef.current.delete(selectedProject.id);
     setFilesRevision((current) => current + 1);
     replaceProjects(
       projectsRef.current.filter(
@@ -898,16 +1197,72 @@ export function App() {
     activeInferenceSteps.length > 0
       ? overallInferenceProgress(activeInferenceSteps) * 100
       : progressPercent(activeProgress);
-  const queueLabel = activeJobId
+  const analysisQueueLabel = activeJobId
     ? `${projects.find((project) => project.id === activeJobId)?.source.name ?? "Project"} · ${Math.round(activePercent)}%${queueIds.length > 1 ? ` · ${queueIds.length - 1} queued` : ""}`
     : queueIds.length > 0
       ? `${queueIds.length} queued`
       : null;
+  const activeVideoExport = exportJobs.find(
+    (job) => job.status === "exporting",
+  );
+  const queuedVideoExportCount = exportJobs.filter(
+    (job) => job.status === "queued",
+  ).length;
+  const exportQueueLabel = activeVideoExport
+    ? `${activeVideoExport.projectName} · export ${activeVideoExport.progress}%${queuedVideoExportCount > 0 ? ` · ${queuedVideoExportCount} queued` : ""}`
+    : queuedVideoExportCount > 0
+      ? `${queuedVideoExportCount} export ${queuedVideoExportCount === 1 ? "queued" : "jobs queued"}`
+      : null;
+  const queueLabel = [analysisQueueLabel, exportQueueLabel]
+    .filter(Boolean)
+    .join(" · ") || null;
+  const activeStep = activeInferenceSteps.find(
+    (step) => step.status === "running",
+  );
+  const analysisActivity: DesignWorkActivity[] = projects
+    .filter(
+      (project): project is VolleyCutProject & {
+        status: "analyzing" | "queued";
+      } => project.status === "analyzing" || project.status === "queued",
+    )
+    .map((project) => {
+      const isActive = project.id === activeJobId;
+      const queueIndex = queueIds.indexOf(project.id);
+      return {
+        projectId: project.id,
+        name: project.source.name,
+        kind: "analysis",
+        status: project.status,
+        progress: isActive ? Math.round(activePercent) : null,
+        detail: isActive
+          ? (activeProgress?.detail ?? activeStep?.detail ?? "Analyzing locally")
+          : queueIndex <= 0
+            ? "Next to analyze"
+            : `${queueIndex} ${queueIndex === 1 ? "video" : "videos"} ahead`,
+      };
+    });
+  const designExportJobs: DesignExportJob[] = exportJobs;
+  const exportActivity: DesignWorkActivity[] = designExportJobs
+    .filter(
+      (job) =>
+        job.status === "queued" ||
+        job.status === "exporting",
+    )
+    .map((job) => ({
+      projectId: job.projectId,
+      name: job.projectName,
+      kind: "export",
+      status: job.status as "queued" | "exporting",
+      progress: job.progress,
+      detail: job.detail,
+    }));
+  const workActivity = [...analysisActivity, ...exportActivity];
   const projectHeader = (
     <>
       <AndroidAppBanner />
       <ProjectHeader
         projects={projects}
+        exportJobs={designExportJobs}
         selectedProjectId={selectedProjectId}
         queueLabel={queueLabel}
         onSelectProject={selectProject}
@@ -985,27 +1340,21 @@ export function App() {
 
   if (selectedProject && productAnalysis) {
     return (
-      <CutEditor
+      <ReadyProjectEditor
         key={productAnalysis.id}
-        header={projectHeader}
-        initialAnalysis={productAnalysis}
-        initialScoreTrackingEnabled={
-          selectedProject.servingSideEnabled !== false
-        }
-        sideSwitchEnabled={selectedProject.sideSwitchEnabled !== false}
-        importedInitialDraft={selectedProject.importedFeedback?.initialDraft}
+        projectId={selectedProject.id}
+        projects={projects}
+        workActivity={workActivity}
+        exportJobs={designExportJobs}
+        productAnalysis={productAnalysis}
         sourceFile={selectedSourceFile}
-        sourceError={error}
-        onAttachSource={(selected) =>
-          void attachSource(selectedProject, selected)
+        videoUrl={selectedVideoUrl}
+        onSelectProject={selectProject}
+        onAttachSource={(selected) => attachSource(selectedProject, selected)}
+        onQueueVideoExport={(request) =>
+          queueProjectVideoExport(selectedProject.id, request)
         }
-        onRequestSuppression={() => queueAttachedProject(selectedProject)}
-        onServingSideAnalysis={(servingSide) =>
-          persistServingSideAnalysis(selectedProject.id, servingSide)
-        }
-        onSideSwitchAnalysis={(sideSwitch) =>
-          persistSideSwitchAnalysis(selectedProject.id, sideSwitch)
-        }
+        onDeleteProject={() => void removeSelectedProject()}
       />
     );
   }

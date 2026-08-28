@@ -1,11 +1,12 @@
 .footer {
-  margin-top: 70px;
-  padding: 30px 5vw 44px;
+  margin-top: 42px;
+  padding: 24px clamp(18px, 4vw, 48px) 34px;
   display: flex;
   justify-content: space-between;
   gap: 30px;
-  border-top: 1px solid #c5c3ba;
-  color: #68756f;
+  border-top: 1px solid #c8d0cb;
+  color: #5b6863;
+  background: rgba(248, 250, 246, .94);
   font: 500 12px/1.55 Manrope, Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -21,17 +22,17 @@
 }
 
 .links a {
-  color: #11130f;
+  color: #17201d;
   font-weight: 700;
   text-underline-offset: 3px;
 }
 
 .links a:hover {
-  color: #ff5c35;
+  color: #477f1e;
 }
 
 .links a:focus-visible {
-  outline: 3px solid #ff5c35;
+  outline: 3px solid #8ccf45;
   outline-offset: 3px;
 }
 

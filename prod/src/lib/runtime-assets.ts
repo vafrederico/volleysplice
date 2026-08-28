@@ -9,6 +9,7 @@ export type RuntimeAsset =
   | "suppression-39eddf581639.json"
   | "opencv.js"
   | "opencv-worker.js"
+  | "volleycut-icon-transparent.png"
   | "volleycut-logo.png";
 
 export function runtimeAssetUrl(asset: RuntimeAsset): string {
