@@ -36,6 +36,7 @@ import {
 } from "@/lib/model-feedback";
 import { prepareScoreOverlay, scorePointTimelineSnapshot } from "@/lib/score-overlay";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
+import { scrollElementIntoContainer } from "@/lib/scroll-container";
 import type { ReadyDesignReview } from "../useDesignReview";
 
 import "./taste-designs.css";
@@ -2133,9 +2134,10 @@ function RallyDeskClipRegister({ state }: { state: Prototype }) {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>("[data-playing]")
-      ?.scrollIntoView({ block: "nearest" });
+    if (!state.currentPlayingClipId) return;
+    const list = listRef.current;
+    const currentClip = list?.querySelector<HTMLElement>("[data-playing]");
+    if (list && currentClip) scrollElementIntoContainer(list, currentClip);
   }, [state.currentPlayingClipId]);
 
   return (
@@ -2186,9 +2188,10 @@ function RallyDeskEventRail({ state }: { state: Prototype }) {
   );
 
   useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>("[data-playing]")
-      ?.scrollIntoView({ block: "nearest" });
+    if (!state.currentServeMarkerId) return;
+    const list = listRef.current;
+    const currentMarker = list?.querySelector<HTMLElement>("[data-playing]");
+    if (list && currentMarker) scrollElementIntoContainer(list, currentMarker);
   }, [state.currentServeMarkerId]);
 
   return (
@@ -2288,14 +2291,101 @@ function RallyDeskPointTimeline({ state }: { state: Prototype }) {
   );
 }
 
+type RallyDeskTimelineTarget =
+  | { kind: "clip"; id: string }
+  | { kind: "serve"; id: string }
+  | { kind: "switch"; id: string };
+
+type RallyDeskTimelineDrag = {
+  pointerId: number;
+  left: number;
+  width: number;
+  start: number;
+  end: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  tapTarget: RallyDeskTimelineTarget | null;
+};
+
 function RallyDeskTimeline({ state }: { state: Prototype }) {
   const midpoint = state.gameStart + (state.gameEnd - state.gameStart) / 2;
+  const dragRef = useRef<RallyDeskTimelineDrag | null>(null);
+  const suppressClickUntilRef = useRef(0);
 
-  function seekFromPointer(event: ReactPointerEvent<HTMLDivElement>, start: number, end: number) {
-    if ((event.target as HTMLElement).closest("button")) return;
+  function seekFromPointer(clientX: number, drag: RallyDeskTimelineDrag) {
+    const ratio = Math.max(0, Math.min(1, (clientX - drag.left) / Math.max(1, drag.width)));
+    state.setPlayhead(drag.start + ratio * (drag.end - drag.start));
+  }
+
+  function beginSeek(event: ReactPointerEvent<HTMLDivElement>, start: number, end: number) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
-    state.setPlayhead(start + ratio * (end - start));
+    const target = event.target instanceof Element ? event.target : null;
+    const action = target?.closest<HTMLButtonElement>(
+      "[data-timeline-cut-id], [data-timeline-event]",
+    );
+    const id = action?.dataset.timelineCutId ?? action?.dataset.timelineEventId;
+    const kind = action?.dataset.timelineCutId
+      ? "clip"
+      : action?.dataset.timelineEvent === "serve"
+        ? "serve"
+        : action?.dataset.timelineEvent === "switch"
+          ? "switch"
+          : null;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      left: rect.left,
+      width: rect.width,
+      start,
+      end,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      tapTarget: id && kind ? { kind, id } : null,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Seeking still works while the pointer remains over the rail.
+    }
+  }
+
+  function moveSeek(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved) {
+      const horizontalDistance = Math.abs(event.clientX - drag.startX);
+      const verticalDistance = Math.abs(event.clientY - drag.startY);
+      if (horizontalDistance < 4 || verticalDistance > horizontalDistance) return;
+      drag.moved = true;
+    }
+    event.preventDefault();
+    seekFromPointer(event.clientX, drag);
+  }
+
+  function endSeek(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.moved) {
+      seekFromPointer(event.clientX, drag);
+      suppressClickUntilRef.current = Date.now() + 800;
+    } else if (drag.tapTarget) {
+      suppressClickUntilRef.current = Date.now() + 800;
+      if (drag.tapTarget.kind === "clip") state.selectClip(drag.tapTarget.id);
+      else if (drag.tapTarget.kind === "serve") state.selectScoreMarker(drag.tapTarget.id);
+      else state.selectSideSwitch(drag.tapTarget.id);
+    } else {
+      seekFromPointer(event.clientX, drag);
+    }
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function cancelSeek(event: ReactPointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
   }
 
   function renderRow(start: number, end: number, rowIndex: number) {
@@ -2310,9 +2400,17 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
           className="rd-timeline-rail"
           role="group"
           aria-label={`${rowIndex === 0 ? "First" : "Second"} half of game timeline`}
-          onPointerDown={(event) => { seekFromPointer(event, start, end); try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Seeking still works when capture is unavailable. */ } }}
-          onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seekFromPointer(event, start, end); }}
-          onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+          onPointerDown={(event) => beginSeek(event, start, end)}
+          onPointerMove={moveSeek}
+          onPointerUp={endSeek}
+          onPointerCancel={cancelSeek}
+          onLostPointerCapture={cancelSeek}
+          onClickCapture={(event) => {
+            if (Date.now() > suppressClickUntilRef.current) return;
+            event.preventDefault();
+            event.stopPropagation();
+            suppressClickUntilRef.current = 0;
+          }}
         >
           {state.workingDraft.ignoredIntervals.map((interval) => {
             const clipped = segment(interval.start, interval.end);
@@ -2328,19 +2426,15 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
                 key={cut.id}
                 type="button"
                 className="rd-timeline-cut"
+                data-timeline-cut-id={cut.id}
                 data-playing={cut.id === state.currentPlayingClipId || undefined}
                 data-kept={state.effectiveKeptIds.has(cut.id) || undefined}
                 data-review={!state.workingDraft.reviewedCutIds.includes(cut.id) && cut.included || undefined}
                 data-origin={cut.origin}
                 style={position(clipped.start, clipped.end)}
-                onPointerDown={(event) => {
-                  if (event.pointerType === "mouse" && event.button !== 0) return;
-                  event.stopPropagation();
-                  state.selectClip(cut.id);
-                }}
                 onClick={(event) => {
                   event.stopPropagation();
-                  if (event.detail === 0) state.selectClip(cut.id);
+                  state.selectClip(cut.id);
                 }}
                 title={`${cut.id} · ${formatPreciseTime(cut.keepStart)}–${formatPreciseTime(cut.keepEnd)}`}
               >
@@ -2362,17 +2456,14 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
               key={marker.id}
               type="button"
               className="rd-timeline-serve"
+              data-timeline-event="serve"
+              data-timeline-event-id={marker.id}
               data-side={marker.side}
               data-playing={marker.id === state.currentServeMarkerId || undefined}
               style={{ left: `${timelinePercent(marker.timestamp - start, duration)}%` }}
-              onPointerDown={(event) => {
-                if (event.pointerType === "mouse" && event.button !== 0) return;
-                event.stopPropagation();
-                state.selectScoreMarker(marker.id);
-              }}
               onClick={(event) => {
                 event.stopPropagation();
-                if (event.detail === 0) state.selectScoreMarker(marker.id);
+                state.selectScoreMarker(marker.id);
               }}
               aria-label={`Serve at ${formatPreciseTime(marker.timestamp)}, ${marker.side}`}
             ><span className="rd-serve-icon" aria-hidden="true">🏐</span></button>
@@ -2382,16 +2473,13 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
               key={marker.id}
               type="button"
               className="rd-timeline-switch"
+              data-timeline-event="switch"
+              data-timeline-event-id={marker.id}
               data-playing={marker.id === state.selectedSideSwitchId || undefined}
               style={{ left: `${timelinePercent(marker.timestamp - start, duration)}%` }}
-              onPointerDown={(event) => {
-                if (event.pointerType === "mouse" && event.button !== 0) return;
-                event.stopPropagation();
-                state.selectSideSwitch(marker.id);
-              }}
               onClick={(event) => {
                 event.stopPropagation();
-                if (event.detail === 0) state.selectSideSwitch(marker.id);
+                state.selectSideSwitch(marker.id);
               }}
               aria-label={`Side switch at ${formatPreciseTime(marker.timestamp)}`}
             >⇄</button>

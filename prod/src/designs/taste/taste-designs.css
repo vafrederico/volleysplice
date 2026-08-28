@@ -1075,7 +1075,12 @@
   .rd-mobile-events,
   .rd-mobile-register { display: block; }
   .rd-mobile-events { margin-bottom: 14px; }
-  .rd-mobile-events > .rd-events { height: min(440px, 68dvh); border: 1px solid var(--td-line); border-radius: var(--td-radius); background: var(--td-panel); }
+  .rd-mobile-events > .rd-events { height: auto; border: 1px solid var(--td-line); border-radius: var(--td-radius); background: var(--td-panel); }
+  .rd-mobile-events > .rd-events > .rd-event-list {
+    height: clamp(112px, 18dvh, 160px);
+    min-height: 112px;
+    flex: none;
+  }
   .rd-mobile-register { padding: 0 18px 36px; }
   .rd-mobile-register > .rd-register { height: min(480px, 72dvh); border: 1px solid var(--td-line); border-radius: var(--td-radius); background: var(--td-panel); }
   .rd-main,

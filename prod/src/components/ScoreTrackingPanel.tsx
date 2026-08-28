@@ -18,6 +18,7 @@ import {
   setPreviousPointIgnored,
   setServeMarkerSide,
 } from "@/lib/score-tracking";
+import { scrollElementIntoContainer } from "@/lib/scroll-container";
 
 import styles from "./CutEditor.module.css";
 
@@ -70,6 +71,7 @@ export function ScoreTrackingPanel({
 }: ScoreTrackingPanelProps) {
   const [manualSide, setManualSide] = useState<ServingSide>("near");
   const markerRowsRef = useRef(new Map<string, HTMLElement>());
+  const markerListRef = useRef<HTMLDivElement>(null);
   const activeTracking = useMemo(
     () =>
       scoreTrackingOutsideExcludedRallies(
@@ -149,10 +151,11 @@ export function ScoreTrackingPanel({
   useEffect(() => {
     if (!selectedServeMarkerId) return;
     const frame = requestAnimationFrame(() => {
-      markerRowsRef.current.get(selectedServeMarkerId)?.scrollIntoView({
-        block: "nearest",
-        behavior: "smooth",
-      });
+      const markerList = markerListRef.current;
+      const markerRow = markerRowsRef.current.get(selectedServeMarkerId);
+      if (markerList && markerRow) {
+        scrollElementIntoContainer(markerList, markerRow);
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, [selectedServeMarkerId, serves, switches]);
@@ -474,7 +477,7 @@ export function ScoreTrackingPanel({
             Markers can be removed
           </small>
         </div>
-        <div>
+        <div ref={markerListRef}>
           {serves.map((marker, index) => (
             <article
               key={marker.id}
