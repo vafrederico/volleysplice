@@ -62,14 +62,16 @@ import { openLocalMedia } from "@/lib/on-device/media";
 import { requestPlayingSeek } from "@/lib/on-device/player";
 import { prepareScoreOverlay } from "@/lib/score-overlay";
 import {
-  addServeMarker,
-  addSideSwitchMarker,
   isScoreTimestampIgnored,
   scoreBoundaryTimestamp,
   scoreTrackingOutsideExcludedRallies,
   scoreTrackingOutsideIgnoredIntervals,
   type ScoreTracking,
 } from "@/lib/score-tracking";
+import {
+  scoreTrackingWithServingSideOutput,
+  scoreTrackingWithSideSwitchOutput,
+} from "@/lib/score-tracking-inference";
 import {
   nextSuppressionAfterTime,
   nextSuppressionSuggestion,
@@ -600,76 +602,23 @@ export function CutEditor({
   }
 
   function applyServingSideOutput(output: OnDeviceServingSideOutput) {
-    updateDraft((current) => {
-      const existingByRally = new Map(
-        current.scoreTracking.serveMarkers
-          .filter((marker) => marker.rallyId)
-          .map((marker) => [marker.rallyId!, marker]),
-      );
-      let scoreTracking: ScoreTracking = {
-        ...current.scoreTracking,
-        serveMarkers: current.scoreTracking.serveMarkers.filter(
-          (marker) => marker.origin === "manual",
-        ),
-      };
-      for (const candidate of output.candidates) {
-        const existing = existingByRally.get(candidate.id);
-        const wasCorrected = Boolean(
-          existing?.modelSide && existing.side !== existing.modelSide,
-        );
-        if (candidate.verdict === "not-serve" && !wasCorrected) continue;
-        const modelSide = candidate.verdict === "review" || candidate.verdict === "not-serve"
-          ? "review"
-          : candidate.side;
-        scoreTracking = addServeMarker(
-          scoreTracking,
-          candidate.anchor,
-          wasCorrected ? existing!.side : modelSide,
-          {
-            id: `serve-${candidate.id}`,
-            origin: "model",
-            modelSide,
-            rallyId: candidate.id,
-          },
-        );
-        if (existing?.ignorePreviousPoint) {
-          scoreTracking = {
-            ...scoreTracking,
-            serveMarkers: scoreTracking.serveMarkers.map((marker) =>
-              marker.rallyId === candidate.id
-                ? { ...marker, ignorePreviousPoint: true }
-                : marker,
-            ),
-          };
-        }
-      }
-      return { ...current, scoreTracking };
-    });
+    updateDraft((current) => ({
+      ...current,
+      scoreTracking: scoreTrackingWithServingSideOutput(
+        current.scoreTracking,
+        output,
+      ),
+    }));
   }
 
   function applySideSwitchOutput(output: OnDeviceSideSwitchOutput) {
-    updateDraft((current) => {
-      let scoreTracking: ScoreTracking = {
-        ...current.scoreTracking,
-        sideSwitchMarkers: current.scoreTracking.sideSwitchMarkers.filter(
-          (marker) => marker.origin === "manual",
-        ),
-      };
-      for (const candidate of output.candidates) {
-        scoreTracking = addSideSwitchMarker(
-          scoreTracking,
-          candidate.timestamp,
-          {
-            id: `switch-${candidate.id}`,
-            origin: "model",
-            modelConfidence: candidate.probability,
-            modelEventId: candidate.id,
-            rallyIds: candidate.sourceRangeIds,
-          },
-        );
-      }
-      return { ...current, scoreTracking };
-    });
+    updateDraft((current) => ({
+      ...current,
+      scoreTracking: scoreTrackingWithSideSwitchOutput(
+        current.scoreTracking,
+        output,
+      ),
+    }));
   }
 
   async function runScoreInference() {

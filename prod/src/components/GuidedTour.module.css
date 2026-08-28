@@ -32,7 +32,7 @@
 
 .launcher {
   position: fixed;
-  left: clamp(16px, 4vw, 64px);
+  right: clamp(16px, 4vw, 64px);
   bottom: 22px;
   z-index: 1001;
   display: inline-flex;
@@ -197,7 +197,7 @@
   }
 
   .launcher {
-    left: 16px;
+    right: 16px;
     bottom: 16px;
   }
 }

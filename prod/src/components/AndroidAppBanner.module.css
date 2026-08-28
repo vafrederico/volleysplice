@@ -4,9 +4,9 @@
   justify-content: space-between;
   gap: 20px;
   padding: 12px clamp(16px, 5vw, 72px);
-  border-bottom: 1px solid #11130f;
-  color: #11130f;
-  background: #dfff35;
+  border-bottom: 1px solid #c8d0cb;
+  color: #17201d;
+  background: #dff1ca;
 }
 
 .message {
@@ -16,7 +16,7 @@
 }
 
 .eyebrow {
-  color: #405326;
+  color: #477f1e;
   font:
     700 9px ui-monospace,
     "SFMono-Regular",
@@ -32,7 +32,7 @@
 
 .message p {
   margin: 0;
-  color: #405326;
+  color: #5b6863;
   font:
     500 10px / 1.45 ui-monospace,
     "SFMono-Regular",
@@ -47,9 +47,10 @@
   align-items: center;
   gap: 10px;
   padding: 0 13px;
-  border: 1px solid #11130f;
-  color: #dfff35;
-  background: #11130f;
+  border: 1px solid #659f2b;
+  border-radius: 6px;
+  color: #172313;
+  background: #8ccf45;
   font:
     700 11px ui-monospace,
     "SFMono-Regular",
@@ -59,11 +60,11 @@
 }
 
 .download:hover {
-  background: #2c3026;
+  background: #9ddd59;
 }
 
 .download small {
-  color: #b9d52b;
+  color: #355e16;
   font-size: 9px;
   font-weight: 500;
 }

@@ -220,7 +220,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     pendingIgnoreStart: null,
     ignoreReason: "non-game-content",
     cutPreviewEnabled: false,
-    renderScoreOverlay: false,
+    renderScoreOverlay: true,
     renderScoreTimeline: false,
     playbackRate: 1,
     confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,

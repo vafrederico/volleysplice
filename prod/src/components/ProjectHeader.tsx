@@ -1,22 +1,39 @@
 import type { VolleyCutProject } from "@/lib/project-store";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
+import type { DesignExportJob } from "@/designs/useDesignReview";
 
 import styles from "./ProjectHeader.module.css";
 
 type ProjectHeaderProps = {
   projects: VolleyCutProject[];
+  exportJobs: DesignExportJob[];
   selectedProjectId: string | null;
   queueLabel: string | null;
   onSelectProject: (projectId: string | null) => void;
   onDeleteProject: () => void;
 };
 
-function projectStatus(project: VolleyCutProject): string {
+function projectStatus(
+  project: VolleyCutProject,
+  exportJob: DesignExportJob | undefined,
+): string {
+  if (project.status === "ready" && exportJob) {
+    switch (exportJob.status) {
+      case "queued":
+        return "Export queued";
+      case "exporting":
+        return `Exporting ${exportJob.progress}%`;
+      case "saved":
+        return "Export saved";
+      case "error":
+        return "Export stopped";
+    }
+  }
   switch (project.status) {
     case "ready":
       return "Ready";
     case "analyzing":
-      return "Processing";
+      return "Analyzing";
     case "queued":
       return "Queued";
     case "waiting":
@@ -28,17 +45,27 @@ function projectStatus(project: VolleyCutProject): string {
 
 export function ProjectHeader({
   projects,
+  exportJobs,
   selectedProjectId,
   queueLabel,
   onSelectProject,
   onDeleteProject,
 }: ProjectHeaderProps) {
+  const exportJobsByProject = new Map(
+    exportJobs.map((job) => [job.projectId, job] as const),
+  );
   return (
     <header className={styles.header} data-tour="editor-header">
       <span className={styles.brand}>
         {/* biome-ignore lint/performance/noImgElement: This standalone Vite app ships a local pre-sized logo without an image optimizer. */}
-        <img src={runtimeAssetUrl("volleycut-logo.png")} alt="VolleyCut" />
-        <span>VIDEO EDITOR</span>
+        <img
+          src={runtimeAssetUrl("volleycut-icon-transparent.png")}
+          alt=""
+        />
+        <strong className={styles.wordmark}>
+          volley<span>cut</span>
+        </strong>
+        <span className={styles.productLabel}>VIDEO EDITOR</span>
       </span>
       <div className={styles.projectControls}>
         {queueLabel && (
@@ -48,7 +75,7 @@ export function ProjectHeader({
           </span>
         )}
         <label className={styles.projectSelect}>
-          <span>Your videos</span>
+          <span>Current project</span>
           <select
             aria-label="Selected project"
             value={selectedProjectId ?? "__new__"}
@@ -63,7 +90,10 @@ export function ProjectHeader({
             <option value="__new__">＋ Start a new video…</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
-                {project.source.name} · {projectStatus(project)}
+                {project.source.name} · {projectStatus(
+                  project,
+                  exportJobsByProject.get(project.id),
+                )}
               </option>
             ))}
           </select>
