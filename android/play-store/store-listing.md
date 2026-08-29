@@ -88,20 +88,27 @@ The same privacy policy and terms cover both the Android app and browser-based w
 
 ## Screenshot order and alt text
 
-1. `screenshots/phone-upload-featured/01-start-with-any-game-video.png`
-   - Alt text: "Choose a local game video and select the game window in VolleyCut; the video stays on the phone."
-2. `screenshots/phone-upload-featured/02-strong-cleanup-default.png`
-   - Alt text: "VolleyCut Settings with Strong automatic cleanup selected by default plus clip padding, short-break, and review controls."
-3. `screenshots/phone-upload-featured/03-review-suggested-rallies.png`
-   - Alt text: "Review volleyball rallies at 9:25 with an 11 to 13 scoreboard, point history, and a two-part game timeline."
-4. `screenshots/phone-upload-featured/04-fix-or-add-rallies.png`
-   - Alt text: "Fine-tune rally and final clip edges, split at the playhead, preview a clip, or add a missed rally."
-5. `screenshots/phone-upload-featured/05-export-highlight-video.png`
-   - Alt text: "Export one finished offline volleyball highlight video after reviewing the included clips."
+1. `screenshots/phone-upload-featured/01-choose-game-window.png`
+   - Alt text: "Select the game window for a local volleyball video and start on-device rally analysis."
+2. `screenshots/phone-upload-featured/02-fine-tune-when-needed.png`
+   - Alt text: "VolleyCut Settings with Strong automatic cleanup, clip padding, short-break joining, and review controls."
+3. `screenshots/phone-upload-featured/03-save-finished-video.png`
+   - Alt text: "Final-video card showing included duration, items needing attention, score options, video export, and YouTube chapters."
+4. `screenshots/phone-upload-featured/04-check-score-markers.png`
+   - Alt text: "Score marker editor at 9:25.9 with an 11–13 score, point history, serving team, and Near and Far controls."
+5. `screenshots/phone-upload-featured/05-start-with-attention.png`
+   - Alt text: "Video review at 9:25.9 with an 11–13 scoreboard, review cleanup, clip, and serve queues, and the game timeline."
+6. `screenshots/phone-upload-featured/06-review-suggested-clips.png`
+   - Alt text: "Whole-game rally timeline with serve markers and selected rally controls."
+7. `screenshots/phone-upload-featured/07-fix-one-clip.png`
+   - Alt text: "Selected rally editor with keep and remove, padding and rally-length handles, trim buttons, and split control."
+8. `screenshots/phone-upload-featured/08-add-missed-rally.png`
+   - Alt text: "Tools for adding a missed rally or excluding unusable footage alongside the rally register."
 
-The featured screenshots use exact `v0.10.7` UI captures from a minified,
+The featured screenshots use exact `v0.10.9` UI captures from a minified,
 non-debuggable release-equivalent build, with concise marketing headers added for
-Play Store readability. The review screen uses app-generated rally and score output
+Play Store readability. Their order and explanations mirror the in-app tutorial.
+The review screens use app-generated rally and score output
 from the complete `1080p60.mp4` match at 9:25.9; its screenshot-only build hides the
 decoded video layer behind black while leaving the real score and timeline UI
 visible. The current source captures remain in

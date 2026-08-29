@@ -4,15 +4,16 @@
 
 - `app-icon-512.png` — 512×512 PNG, existing launcher artwork
 - `feature-graphic-1024x500.png` — 1024×500 RGB PNG
-- `screenshots/phone-upload-featured/` — five ordered 1080×2160 RGB PNGs with feature-focused Play Store copy
-- `screenshots/phone-release-sources-v2/` — five native-resolution source captures from the release-equivalent screenshot build
+- `screenshots/phone-upload-featured/` — eight ordered 1080×2160 RGB PNGs with tutorial-led Play Store copy
+- `screenshots/phone-release-sources-v2/` — eight native-resolution source captures from the release-equivalent screenshot build
 - `screenshots/phone-upload-final/` — eight legacy 1280×2560 source/reference captures
 
-The featured upload set turns real app captures into a consistent five-step
-store-listing sequence: select the game window, confirm Strong automatic cleanup,
-review rallies with score context, fix or add rallies, and export the finished MP4. Large
-branded headers make each value proposition readable in the Play Store thumbnail
-while the underlying product UI demonstrates the exact feature.
+The featured upload set turns real app captures into the same ordered story as the
+in-app tutorial: choose the game window, fine-tune optional settings, understand the
+final-video card, check score markers, start with review queues, inspect the whole-game
+timeline, fix one clip, and add anything VolleyCut missed. Large branded headers make
+each section readable in the Play Store thumbnail while the underlying product UI
+demonstrates the exact feature.
 
 ## Text and declarations
 
@@ -44,18 +45,21 @@ The generated source is `feature-graphic-source.png`; the upload file was mechan
 
 ## Featured screenshot provenance
 
-The five files in `screenshots/phone-upload-featured/` use exact release-equivalent
+The eight files in `screenshots/phone-upload-featured/` use exact release-equivalent
 app captures from `screenshots/phone-release-sources-v2/`. The shared backdrop was
 generated with the built-in image generation tool; the official logo, exact copy,
 and unmodified app captures were then composed deterministically by
 `scripts/compose_featured_screenshots.py`. The exact headline/supporting-copy pairs
-are:
+follow the tutorial sections and are:
 
-1. `Start with any game video` / `Select the game window in seconds — your video stays on your phone.`
-2. `Strong cleanup, ready by default` / `Adjust extra time, short breaks, and how many clips need a check.`
-3. `Review rallies with the score` / `See score, point history, and the full match timeline while checking every clip.`
-4. `Fix cuts or add a missed rally` / `Trim clip edges, split a rally, or mark missing action yourself.`
-5. `Export one finished highlight video` / `Save a private, offline MP4 that is ready to share.`
+1. `Choose the part with the game` / `Use the full video, or mark exactly where the game starts and ends.`
+2. `Fine-tune only when you need to` / `Automatic cleanup, clip padding, short breaks, and review sensitivity live in Settings.`
+3. `Save the finished video` / `Save the final video when the review looks right—or create YouTube chapters.`
+4. `Check the score markers` / `Correct which side serves, add missed serves, and record team side switches.`
+5. `Start with what needs attention` / `Review automatic cleanup, clips, and serves; ignored footage stays out of the queues.`
+6. `Review the suggested clips` / `Each timeline block is a clip planned for the final video—select one to check it.`
+7. `Fix one clip` / `Keep or remove a rally, then adjust padding, rally length, or split at the playhead.`
+8. `Add anything VolleyCut missed` / `Mark a missed rally, or leave out camera gaps, breaks, and other unusable footage.`
 
 The generated background prompt was:
 
