@@ -64,7 +64,7 @@ specified in
 [`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
 The current checked-in release is
-[`VolleyCut v0.10.8`](android/releases/VolleyCut-v0.10.8-arm64-release-signed.apk). See
+[`VolleyCut v0.10.9`](android/releases/VolleyCut-v0.10.9-arm64-release-signed.apk). See
 [`android/README.md`](android/README.md) for the SDK requirements, debug build/install
 workflow, editor behavior, benchmarks, cache behavior, and native-versus-browser parity
 caveats.
