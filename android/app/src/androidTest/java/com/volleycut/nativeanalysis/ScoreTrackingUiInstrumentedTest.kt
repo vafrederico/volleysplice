@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -50,8 +51,8 @@ class ScoreTrackingUiInstrumentedTest {
                         visibleTracking = tracking,
                         visibleScore = ScoreReducer.deriveAt(tracking),
                         selectedMarkerId = null,
-                        manualServingSide = ServingSide.NEAR,
                         currentTimestampMs = 0,
+                        scoreEffectiveTimestampMs = 0,
                         servingSideStatus = servingSideStatus,
                         servingSideError = null,
                         servingSideProgress = servingSideProgress,
@@ -59,7 +60,6 @@ class ScoreTrackingUiInstrumentedTest {
                         onEnabledChange = { enabled = it },
                         onTracking = {},
                         onSelect = { _, _ -> },
-                        onManualServingSide = {},
                     )
                 }
             }
@@ -96,8 +96,10 @@ class ScoreTrackingUiInstrumentedTest {
                             ignored = emptyList(),
                             suggestions = emptyList(),
                             appliedSuggestionIds = emptySet(),
+                            userRemovedSuggestionIds = emptySet(),
+                            userRemovedCleanupCutIds = emptySet(),
                             selectedSuggestionId = null,
-                            selectedId = null,
+                            selectedCutIds = emptySet(),
                             effectiveIds = emptySet(),
                             confidenceThreshold = .5f,
                             playheadMs = 0,
@@ -138,7 +140,7 @@ class ScoreTrackingUiInstrumentedTest {
     }
 
     @Test
-    fun reviewPredictionsAreHighlightedAndCanBeSelectedFromStatus() {
+    fun reviewPredictionsAreHighlightedAndCanBeSelectedFromMarkerList() {
         var selectedId by mutableStateOf<String?>(null)
         val tracking = ScoreTracking(
             serveMarkers = listOf(
@@ -158,8 +160,8 @@ class ScoreTrackingUiInstrumentedTest {
                         visibleTracking = tracking,
                         visibleScore = ScoreReducer.deriveAt(tracking),
                         selectedMarkerId = selectedId,
-                        manualServingSide = ServingSide.NEAR,
                         currentTimestampMs = 0,
+                        scoreEffectiveTimestampMs = 0,
                         servingSideStatus = ServingSideAnalysisStatus.NOT_RUN,
                         servingSideError = null,
                         servingSideProgress = 1f,
@@ -167,7 +169,6 @@ class ScoreTrackingUiInstrumentedTest {
                         onEnabledChange = {},
                         onTracking = {},
                         onSelect = { id, _ -> selectedId = id },
-                        onManualServingSide = {},
                     )
                 }
             }
@@ -176,9 +177,11 @@ class ScoreTrackingUiInstrumentedTest {
 
         compose.onAllNodesWithText("Review").assertCountEquals(0)
         compose.onAllNodesWithContentDescription("Score marker needs review").assertCountEquals(2)
-        compose.onNodeWithText("Review next · 2").performClick()
+        compose.onNodeWithText("🏐 0:01.0").performClick()
         compose.runOnIdle { assertEquals("S001", selectedId) }
-        compose.onNodeWithText("Review next · 2").performClick()
+        compose.onNodeWithText("🏐 0:03.0").performClick()
         compose.runOnIdle { assertEquals("S003", selectedId) }
+        compose.onNodeWithContentDescription("Seek to point at 0:02.0").performClick()
+        compose.runOnIdle { assertEquals("S002", selectedId) }
     }
 }

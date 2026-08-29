@@ -13,7 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,30 +72,32 @@ internal object YouTubeChapters {
                 outputStartMs += (interval.endMs - interval.startMs).coerceAtLeast(0)
             }
         }
-        val visibleCuts = cuts.mapNotNull { cut ->
-            val interval = outputIntervals.firstOrNull { cut.id in it.interval.cutIds }
+        val markers = scoreTracking?.serveMarkers
+            ?.sortedWith(compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id })
+            .orEmpty()
+        val visibleRallies = EditorMath.editableRallyGroups(cuts, intervals, markers).mapNotNull { rally ->
+            val interval = outputIntervals.firstOrNull { output ->
+                rally.cutIds.any { it in output.interval.cutIds }
+            }
                 ?: return@mapNotNull null
-            val sourceTimestampMs = cut.keepStartMs.coerceIn(interval.interval.startMs, interval.interval.endMs)
-            VisibleCut(
-                cut,
+            val sourceTimestampMs = rally.keepStartMs.coerceIn(interval.interval.startMs, interval.interval.endMs)
+            VisibleRally(
+                rally,
                 interval.outputStartMs + sourceTimestampMs - interval.interval.startMs,
                 sourceTimestampMs,
             )
         }.sortedWith(
-            compareBy<VisibleCut> { it.outputMs }
-                .thenBy { it.cut.coreStartMs }
-                .thenBy { it.cut.id },
+            compareBy<VisibleRally> { it.outputMs }
+                .thenBy { it.rally.coreStartMs }
+                .thenBy { it.rally.id },
         )
-        val markers = scoreTracking?.serveMarkers
-            ?.sortedWith(compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id })
-            .orEmpty()
         val serveNumbers = markers.mapIndexed { index, marker -> marker.id to index + 1 }.toMap()
         val redoMarkerIds = markers.mapIndexedNotNull { index, marker ->
             marker.id.takeIf { markers.getOrNull(index + 1)?.ignorePreviousPoint == true }
         }.toSet()
         val claimedMarkerIds = mutableSetOf<String>()
-        val rallyChapters = visibleCuts.mapIndexed { index, visible ->
-            val marker = markerForCut(visible.cut, markers, claimedMarkerIds)
+        val rallyChapters = visibleRallies.mapIndexed { index, visible ->
+            val marker = markerForRally(visible.rally, markers, claimedMarkerIds)
             if (marker != null) claimedMarkerIds += marker.id
             YouTubeChapter(
                 YouTubeChapter.Kind.RALLY,
@@ -166,7 +168,11 @@ internal object YouTubeChapters {
 
     private data class OutputInterval(val interval: FinalCutInterval, val outputStartMs: Long)
     private data class OutputPoint(val outputMs: Long, val sourceTimestampMs: Long)
-    private data class VisibleCut(val cut: EditableCut, val outputMs: Long, val sourceTimestampMs: Long)
+    private data class VisibleRally(
+        val rally: EditableRallyGroup,
+        val outputMs: Long,
+        val sourceTimestampMs: Long,
+    )
 
     private fun outputPointAtOrAfter(sourceTimestampMs: Long, intervals: List<OutputInterval>): OutputPoint? {
         val containing = intervals.firstOrNull {
@@ -180,17 +186,25 @@ internal object YouTubeChapters {
         return OutputPoint(next.outputStartMs, next.interval.startMs)
     }
 
-    private fun markerForCut(
-        cut: EditableCut,
+    private fun markerForRally(
+        rally: EditableRallyGroup,
         markers: List<ServeMarker>,
         claimedMarkerIds: Set<String>,
     ): ServeMarker? {
         val available = markers.filter { it.id !in claimedMarkerIds }
-        available.firstOrNull { it.rallyId == cut.id }?.let { return it }
-        val insideCore = available.filter { it.timestampMs >= cut.coreStartMs && it.timestampMs < cut.coreEndMs }
-        val insideKept = available.filter { it.timestampMs >= cut.keepStartMs && it.timestampMs < cut.keepEndMs }
+        available.filter { it.rallyId in rally.cutIds }.minWithOrNull(
+            compareBy<ServeMarker> { abs(it.timestampMs - rally.coreStartMs) }
+                .thenBy { it.timestampMs }
+                .thenBy { it.id },
+        )?.let { return it }
+        val insideCore = available.filter {
+            it.timestampMs >= rally.coreStartMs && it.timestampMs < rally.coreEndMs
+        }
+        val insideKept = available.filter {
+            it.timestampMs >= rally.keepStartMs && it.timestampMs < rally.keepEndMs
+        }
         return (insideCore.ifEmpty { insideKept }).minWithOrNull(
-            compareBy<ServeMarker> { abs(it.timestampMs - cut.coreStartMs) }
+            compareBy<ServeMarker> { abs(it.timestampMs - rally.coreStartMs) }
                 .thenBy { it.timestampMs }
                 .thenBy { it.id },
         )
@@ -221,8 +235,6 @@ internal object YouTubeChapters {
     }.ifEmpty { listOf("Rally $rallyNumber") }.joinToString(" - ")
 }
 
-private enum class ChapterDestination { CLIPBOARD, TEXT_FILE }
-
 @Composable
 internal fun YouTubeChaptersDialog(
     sourceFilename: String,
@@ -240,7 +252,6 @@ internal fun YouTubeChaptersDialog(
     var options by remember(hasScoreTracking, hasSideSwitches) {
         mutableStateOf(YouTubeChapters.defaultOptions(hasScoreTracking, hasSideSwitches))
     }
-    var destination by remember { mutableStateOf(ChapterDestination.CLIPBOARD) }
     val chapters = YouTubeChapters.build(intervals, cuts, scoreTracking, options)
     val chapterText = YouTubeChapters.text(chapters)
 
@@ -316,15 +327,6 @@ internal fun YouTubeChaptersDialog(
                             )
                         }
                     }
-                    Text("Export to", fontWeight = FontWeight.Bold)
-                    DestinationRow("Clipboard", "Ready to paste into YouTube.", destination == ChapterDestination.CLIPBOARD) {
-                        destination = ChapterDestination.CLIPBOARD
-                        onClearStatus()
-                    }
-                    DestinationRow("Text file", "Saves a reusable .txt file.", destination == ChapterDestination.TEXT_FILE) {
-                        destination = ChapterDestination.TEXT_FILE
-                        onClearStatus()
-                    }
                 }
                 status?.let {
                     Text(it, modifier = Modifier.padding(top = 10.dp), color = Color(0xFF26734D), fontSize = 12.sp)
@@ -334,14 +336,18 @@ internal fun YouTubeChaptersDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 ) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Button(
+                    OutlinedButton(
                         enabled = chapterText.isNotBlank(),
                         onClick = {
-                            if (destination == ChapterDestination.CLIPBOARD) onCopy(chapterText)
-                            else onSaveTextFile(chapterText, YouTubeChapters.filename(sourceFilename))
+                            onSaveTextFile(chapterText, YouTubeChapters.filename(sourceFilename))
                         },
-                        modifier = Modifier.testTag("youtube-chapters-export"),
-                    ) { Text(if (destination == ChapterDestination.CLIPBOARD) "Copy chapters" else "Save text file") }
+                        modifier = Modifier.testTag("youtube-chapters-save-file"),
+                    ) { Text("Save text file") }
+                    Button(
+                        enabled = chapterText.isNotBlank(),
+                        onClick = { onCopy(chapterText) },
+                        modifier = Modifier.testTag("youtube-chapters-copy"),
+                    ) { Text("Copy chapters") }
                 }
             }
         }
@@ -352,17 +358,6 @@ internal fun YouTubeChaptersDialog(
 private fun ChapterCheckbox(title: String, detail: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = checked, onCheckedChange = onChecked)
-        Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(detail, color = Color(0xFF66615A), fontSize = 11.sp)
-        }
-    }
-}
-
-@Composable
-private fun DestinationRow(title: String, detail: String, selected: Boolean, onSelect: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected = selected, onClick = onSelect)
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(detail, color = Color(0xFF66615A), fontSize = 11.sp)

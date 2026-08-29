@@ -39,6 +39,38 @@ class YouTubeChaptersTest {
     }
 
     @Test
+    fun joinedCutsWithoutASeparatingServeProduceOneRallyChapter() {
+        val intervals = listOf(FinalCutInterval(
+            8_000,
+            24_000,
+            listOf("R001", "R002"),
+            listOf(JoinedGap(15_000, 17_000)),
+        ))
+        val cuts = listOf(cut("R001", 8_000, 15_000), cut("R002", 17_000, 24_000))
+
+        assertEquals(
+            "0:00 Rally 1",
+            YouTubeChapters.text(YouTubeChapters.build(
+                intervals,
+                cuts,
+                null,
+                YouTubeChapters.defaultOptions(false, false),
+            )),
+        )
+        assertEquals(
+            "0:00 Rally 1\n0:09 Rally 2",
+            YouTubeChapters.text(YouTubeChapters.build(
+                intervals,
+                cuts,
+                ScoreTracking(serveMarkers = listOf(
+                    serve("S002", 17_000, ServingSide.FAR, "R002"),
+                )),
+                YouTubeChapterOptions(true, false, false, false, false),
+            )),
+        )
+    }
+
+    @Test
     fun attachesRemovedSideSwitchToNextVisibleClipAndMergesSameSecond() {
         val chapters = YouTubeChapters.build(
             listOf(FinalCutInterval(10_000, 15_000, listOf("R001"))),

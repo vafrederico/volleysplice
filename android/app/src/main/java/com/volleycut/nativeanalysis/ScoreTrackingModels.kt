@@ -223,6 +223,7 @@ internal object ScoreReducer {
         )
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun scoreBoundaryTimestamp(
         playbackTimestampMs: Long,
         rallyRanges: List<ScoreRallyRange>,
@@ -231,62 +232,22 @@ internal object ScoreReducer {
     ): Long {
         val timestamp = playbackTimestampMs.coerceAtLeast(0)
         val serves = tracking.serveMarkers.sortedWith(serveOrder)
-        fun nextServeTimestamp() = serves.firstOrNull { it.timestampMs >= timestamp }
-            ?.timestampMs ?: timestamp
-        fun paddingBoundaryTimestamp(startMs: Long, endMs: Long): Long {
-            val paddingServes = serves.filter {
-                it.timestampMs >= startMs && it.timestampMs < endMs
-            }
-            if (paddingServes.isEmpty()) return nextServeTimestamp()
-            return if (paddingServes.any { it.timestampMs <= timestamp }) {
-                timestamp
-            } else paddingServes.first().timestampMs
-        }
-        val mergedRange = mergedRanges.firstOrNull {
-            timestamp >= it.startMs && timestamp < it.endMs
-        }
-        if (mergedRange != null) {
-            val mergedRallies = rallyRanges.filter {
-                it.keepStartMs < mergedRange.endMs && mergedRange.startMs < it.keepEndMs
-            }.sortedWith(compareBy<ScoreRallyRange> { it.coreStartMs }.thenBy { it.coreEndMs })
-            if (mergedRallies.isEmpty()) return timestamp
-            if (timestamp < mergedRallies.first().coreStartMs) {
-                val previousMergedEnd = mergedRanges.fold(0L) { latest, range ->
-                    if (range.endMs <= mergedRange.startMs) maxOf(latest, range.endMs) else latest
-                }
-                return paddingBoundaryTimestamp(
-                    previousMergedEnd,
-                    mergedRallies.first().coreStartMs,
-                )
-            }
-            for (index in 1 until mergedRallies.size) {
-                val previous = mergedRallies[index - 1]
-                val next = mergedRallies[index]
-                if (timestamp < previous.coreEndMs) return timestamp
-                if (timestamp < next.coreStartMs) {
-                    val bridgeServes = serves.filter {
-                        it.timestampMs >= previous.coreEndMs && it.timestampMs < next.coreStartMs
-                    }
-                    if (bridgeServes.isEmpty()) return timestamp
-                    return if (bridgeServes.any { it.timestampMs <= timestamp }) {
-                        timestamp
-                    } else bridgeServes.first().timestampMs
-                }
-            }
-            return timestamp
-        }
-        val insideRally = rallyRanges.any { timestamp >= it.keepStartMs && timestamp < it.keepEndMs }
-        val leadingPaddingRange = rallyRanges.firstOrNull {
+        val leadingPaddingRange = rallyRanges
+            .filter {
             timestamp >= it.keepStartMs && timestamp < it.coreStartMs
+            }
+            .minByOrNull { it.coreStartMs }
+            ?: return timestamp
+        val servesInsidePadding = serves.filter {
+            it.timestampMs >= leadingPaddingRange.keepStartMs &&
+                it.timestampMs < leadingPaddingRange.coreStartMs
         }
-        if (insideRally && leadingPaddingRange == null) return timestamp
-        if (leadingPaddingRange != null) {
-            return paddingBoundaryTimestamp(
-                leadingPaddingRange.keepStartMs,
-                leadingPaddingRange.coreStartMs,
-            )
-        }
-        return nextServeTimestamp()
+        if (servesInsidePadding.any { it.timestampMs <= timestamp }) return timestamp
+        return servesInsidePadding.firstOrNull()?.timestampMs
+            ?: serves.firstOrNull {
+                it.timestampMs >= timestamp && it.timestampMs < leadingPaddingRange.coreEndMs
+            }?.timestampMs
+            ?: timestamp
     }
 
     fun nextMarkerId(prefix: String, tracking: ScoreTracking): String {

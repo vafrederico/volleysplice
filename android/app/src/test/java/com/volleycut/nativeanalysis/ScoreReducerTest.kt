@@ -72,13 +72,13 @@ class ScoreReducerTest {
     }
 
     @Test
-    fun deadTimeAndLeadingPaddingUseNextServeBoundaryButCoreDoesNot() {
+    fun deadTimeKeepsPreviousServeAndLeadingPaddingUsesNextServeBoundary() {
         val tracking = tracking(
             serve("S1", 1_000, ServingSide.NEAR),
             serve("S2", 5_000, ServingSide.FAR),
         )
         val ranges = listOf(ScoreRallyRange(5_000, 8_000, 4_000, 9_000))
-        assertEquals(5_000, ScoreReducer.scoreBoundaryTimestamp(3_000, ranges, tracking))
+        assertEquals(3_000, ScoreReducer.scoreBoundaryTimestamp(3_000, ranges, tracking))
         assertEquals(5_000, ScoreReducer.scoreBoundaryTimestamp(4_500, ranges, tracking))
         assertEquals(6_000, ScoreReducer.scoreBoundaryTimestamp(6_000, ranges, tracking))
         assertEquals(8_500, ScoreReducer.scoreBoundaryTimestamp(8_500, ranges, tracking))
@@ -98,12 +98,12 @@ class ScoreReducerTest {
 
         assertEquals(13_000, ScoreReducer.scoreBoundaryTimestamp(13_000, ranges, tracking, merged))
         assertEquals(15_000, ScoreReducer.scoreBoundaryTimestamp(15_000, ranges, tracking, merged))
-        assertEquals(19_000, ScoreReducer.scoreBoundaryTimestamp(19_000, ranges, tracking, merged))
+        assertEquals(20_000, ScoreReducer.scoreBoundaryTimestamp(19_000, ranges, tracking, merged))
         assertEquals(20_000, ScoreReducer.scoreBoundaryTimestamp(20_000, ranges, tracking, merged))
     }
 
     @Test
-    fun serveInsideMergedPaddingActivatesTheUpcomingRallyState() {
+    fun upcomingServeActivatesOnlyAfterEnteringItsLeadingPadding() {
         val tracking = tracking(
             serve("S1", 5_000, ServingSide.NEAR),
             serve("S2", 18_000, ServingSide.FAR),
@@ -115,9 +115,18 @@ class ScoreReducerTest {
         )
 
         assertEquals(
-            18_000,
+            15_000,
             ScoreReducer.scoreBoundaryTimestamp(
                 15_000,
+                ranges,
+                tracking,
+                listOf(ScoreMergedRange(3_000, 27_000)),
+            ),
+        )
+        assertEquals(
+            18_000,
+            ScoreReducer.scoreBoundaryTimestamp(
+                16_000,
                 ranges,
                 tracking,
                 listOf(ScoreMergedRange(3_000, 27_000)),

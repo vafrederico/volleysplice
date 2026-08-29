@@ -135,8 +135,8 @@ internal data class EditorDraft(
     val userTouchedCutIds: Set<String> = emptySet(),
     val suppressionContractVersion: String = FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION,
     val scoreTracking: ScoreTracking = ScoreTracking(),
-    val renderScoreOverlay: Boolean = false,
-    val renderScoreTimeline: Boolean = false,
+    val renderScoreOverlay: Boolean = true,
+    val renderScoreTimeline: Boolean = true,
 )
 
 internal data class JoinedGap(val startMs: Long, val endMs: Long)
@@ -147,6 +147,32 @@ internal data class FinalCutInterval(
     val cutIds: List<String>,
     val joinedGaps: List<JoinedGap> = emptyList(),
 )
+
+internal data class EditableRallyGroup(val cuts: List<EditableCut>) {
+    init {
+        require(cuts.isNotEmpty())
+    }
+
+    val id: String get() = cuts.first().id
+    val cutIds: Set<String> get() = cuts.mapTo(linkedSetOf()) { it.id }
+    val keepStartMs: Long get() = cuts.minOf { it.keepStartMs }
+    val keepEndMs: Long get() = cuts.maxOf { it.keepEndMs }
+    val coreStartMs: Long get() = cuts.minOf { it.coreStartMs }
+    val coreEndMs: Long get() = cuts.maxOf { it.coreEndMs }
+
+    fun asEditableCut(): EditableCut {
+        val representative = cuts.first()
+        return representative.copy(
+            coreStartMs = coreStartMs,
+            coreEndMs = coreEndMs,
+            keepStartMs = keepStartMs,
+            keepEndMs = keepEndMs,
+            confidence = cuts.minOf { it.confidence },
+            included = cuts.all { it.included },
+            origin = if (cuts.all { it.origin == CutOrigin.MANUAL }) CutOrigin.MANUAL else CutOrigin.INFERRED,
+        )
+    }
+}
 
 internal data class DetailWindow(val startMs: Long, val endMs: Long)
 
@@ -321,6 +347,39 @@ internal object EditorMath {
         draft: EditorDraft,
         suppression: AnalysisTypes.SuppressionAnalysis? = null,
     ): List<FinalCutInterval> = materialize(draft, suppression).intervals
+
+    fun editableRallyGroups(
+        cuts: List<EditableCut>,
+        intervals: List<FinalCutInterval>,
+        serveMarkers: List<ServeMarker>,
+    ): List<EditableRallyGroup> {
+        val intervalIndexesByCutId = buildMap<String, Set<Int>> {
+            cuts.forEach { cut ->
+                put(cut.id, intervals.mapIndexedNotNull { index, interval ->
+                    index.takeIf { cut.id in interval.cutIds }
+                }.toSet())
+            }
+        }
+        val groups = mutableListOf<EditableRallyGroup>()
+        cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs }).forEach { cut ->
+            val previous = groups.lastOrNull()
+            val previousTail = previous?.cuts?.lastOrNull()
+            val sharesOutputInterval = previous != null &&
+                previous.cutIds.flatMap { intervalIndexesByCutId[it].orEmpty() }.toSet()
+                    .intersect(intervalIndexesByCutId[cut.id].orEmpty()).isNotEmpty()
+            val separatedByServe = previousTail != null && serveMarkers.any { marker ->
+                marker.rallyId == cut.id ||
+                    (marker.rallyId == null &&
+                        marker.timestampMs >= cut.keepStartMs && marker.timestampMs < cut.coreEndMs)
+            }
+            if (previous == null || !sharesOutputInterval || separatedByServe) {
+                groups += EditableRallyGroup(listOf(cut))
+            } else {
+                groups[groups.lastIndex] = EditableRallyGroup(previous.cuts + cut)
+            }
+        }
+        return groups
+    }
 
     fun materialize(
         draft: EditorDraft,
@@ -553,6 +612,32 @@ internal object EditorMath {
             if (positionMs < interval.startMs) return interval.startMs
         }
         return null
+    }
+
+    fun isTimestampIgnored(
+        timestampMs: Long,
+        ignoredIntervals: List<IgnoredSourceInterval>,
+    ): Boolean = ignoredIntervals.any { interval ->
+        timestampMs >= interval.startMs && timestampMs < interval.endMs
+    }
+
+    fun firstReviewableTime(
+        startMs: Long,
+        endMs: Long,
+        ignoredIntervals: List<IgnoredSourceInterval>,
+    ): Long? {
+        if (endMs <= startMs) return startMs.takeUnless {
+            isTimestampIgnored(it, ignoredIntervals)
+        }
+        var candidate = startMs
+        for (interval in mergeIgnored(ignoredIntervals)) {
+            if (interval.endMs <= candidate) continue
+            if (interval.startMs >= endMs) break
+            if (candidate < interval.startMs) return candidate
+            candidate = max(candidate, interval.endMs)
+            if (candidate >= endMs) return null
+        }
+        return candidate.takeIf { it < endMs }
     }
 
     fun nextSuppressionSuggestion(

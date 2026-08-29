@@ -21,6 +21,8 @@ class EditorMathTest {
 
         assertEquals(SuppressionPolicyEngine.Policy.AGGRESSIVE, draft.selectedSuppressionPolicy)
         assertFalse(draft.scoreTracking.enabled)
+        assertTrue(draft.renderScoreOverlay)
+        assertTrue(draft.renderScoreTimeline)
         assertTrue(draft.reviewedCutIds.isEmpty())
     }
 
@@ -275,6 +277,61 @@ class EditorMathTest {
     }
 
     @Test
+    fun overlappingPaddingProducesOneContinuousIntervalWithoutASyntheticGap() {
+        val first = cut("R010", 146_125, 160_375).copy(
+            keepStartMs = 144_125,
+            keepEndMs = 162_375,
+        )
+        val second = cut("R011", 162_375, 174_375).copy(
+            keepStartMs = 160_375,
+            keepEndMs = 176_375,
+        )
+        val draft = EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            cuts = listOf(first, second),
+        )
+
+        assertEquals(
+            listOf(FinalCutInterval(144_125, 176_375, listOf("R010", "R011"))),
+            EditorMath.finalIntervals(draft),
+        )
+    }
+
+    @Test
+    fun joinedAndOverlappingCutsShareOneEditableRallyUntilAServeSeparatesThem() {
+        val first = cut("R010", 10_000, 20_000).copy(keepStartMs = 8_000, keepEndMs = 22_000)
+        val overlapping = cut("R011", 22_000, 30_000).copy(keepStartMs = 20_000, keepEndMs = 32_000)
+        val joined = cut("R012", 34_000, 40_000).copy(keepStartMs = 34_000, keepEndMs = 42_000)
+        val intervals = listOf(FinalCutInterval(
+            8_000,
+            42_000,
+            listOf("R010", "R011", "R012"),
+            listOf(JoinedGap(32_000, 34_000)),
+        ))
+
+        assertEquals(
+            listOf(setOf("R010", "R011", "R012")),
+            EditorMath.editableRallyGroups(listOf(first, overlapping, joined), intervals, emptyList())
+                .map { it.cutIds },
+        )
+        assertEquals(
+            listOf(setOf("R010"), setOf("R011", "R012")),
+            EditorMath.editableRallyGroups(
+                listOf(first, overlapping, joined),
+                intervals,
+                listOf(ServeMarker(
+                    "S011",
+                    22_000,
+                    ServingSide.NEAR,
+                    ServeMarkerOrigin.MODEL,
+                    rallyId = "R011",
+                )),
+            ).map { it.cutIds },
+        )
+    }
+
+    @Test
     fun ignoredTimeSplitsJoinedOutputAndClipsItsGapMarkers() {
         val draft = EditorDraft(
             sourceRevision = "fixture",
@@ -383,6 +440,27 @@ class EditorMathTest {
         assertEquals(first.fragmentId(), EditorMath.nextSuppressionSuggestion(
             suggestions, 25_000, second.fragmentId(),
         )?.fragmentId())
+    }
+
+    @Test
+    fun reviewableTimeSkipsIgnoredFootageAndRejectsFullyIgnoredRanges() {
+        val ignored = listOf(
+            IgnoredSourceInterval("I001", 1_000, 3_000, "gap"),
+            IgnoredSourceInterval("I002", 5_000, 6_000, "gap"),
+        )
+
+        assertEquals(3_000L, EditorMath.firstReviewableTime(1_500, 4_000, ignored))
+        assertEquals(null, EditorMath.firstReviewableTime(1_500, 2_500, ignored))
+        assertEquals(4_000L, EditorMath.firstReviewableTime(4_000, 7_000, ignored))
+    }
+
+    @Test
+    fun ignoredTimestampUsesHalfOpenIntervalBoundaries() {
+        val ignored = listOf(IgnoredSourceInterval("I001", 1_000, 3_000, "gap"))
+
+        assertEquals(true, EditorMath.isTimestampIgnored(1_000, ignored))
+        assertEquals(true, EditorMath.isTimestampIgnored(2_999, ignored))
+        assertEquals(false, EditorMath.isTimestampIgnored(3_000, ignored))
     }
 
     @Test
