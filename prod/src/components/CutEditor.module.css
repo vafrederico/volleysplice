@@ -554,7 +554,7 @@
   content: "";
 }
 
-.pointTimelineUnit i {
+.pointTimelineUnit button {
   z-index: 1;
   display: grid;
   min-width: 15px;
@@ -566,13 +566,20 @@
   box-shadow: 0 0 0 1px var(--cut-acid);
   color: var(--cut-ink);
   font: 800 7px/1 "Atkinson Hyperlegible Mono", monospace;
-  font-style: normal;
+  cursor: pointer;
   place-items: center;
 }
 
-.pointTimelineRow[data-team="team-2"] .pointTimelineUnit i {
+.pointTimelineRow[data-team="team-2"] .pointTimelineUnit button {
   background: var(--cut-orange);
   box-shadow: 0 0 0 1px var(--cut-orange);
+}
+
+.pointTimelineUnit button:hover,
+.pointTimelineUnit button:focus-visible,
+.pointTimelineUnit button[data-selected="true"] {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
 }
 
 .pointTimelineRallyRow {

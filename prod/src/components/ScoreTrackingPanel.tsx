@@ -103,6 +103,7 @@ export function ScoreTrackingPanel({
           ? [
               {
                 id: point.serveMarkerId,
+                timestamp: point.timestamp,
                 rallyNumber: rallyIndex + 1,
                 winnerTeamId: point.winnerTeamId,
                 teamPointNumber:
@@ -450,7 +451,16 @@ export function ScoreTrackingPanel({
                     title={`Rally ${point.rallyNumber}${point.winnerTeamId === teamId ? ` · ${teamName} point ${point.teamPointNumber}` : ""}`}
                   >
                     {point.winnerTeamId === teamId && (
-                      <i>{point.teamPointNumber}</i>
+                      <button
+                        type="button"
+                        aria-label={`Seek video to when ${teamName} reached ${point.teamPointNumber}, at ${preciseTime(point.timestamp)}`}
+                        data-selected={point.id === selectedServeMarkerId || undefined}
+                        onClick={() =>
+                          onSelectServeMarker(point.id, point.timestamp)
+                        }
+                      >
+                        {point.teamPointNumber}
+                      </button>
                     )}
                   </span>
                 ))}
