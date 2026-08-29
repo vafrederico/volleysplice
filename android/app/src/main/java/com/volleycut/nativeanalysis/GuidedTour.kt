@@ -89,11 +89,39 @@ internal enum class GuidedTourStep(
         "The Settings gear contains optional automatic cleanup, extra time around clips, short-break joining, and review sensitivity. The defaults are ready for most games.",
         "Next",
     ),
+    EDITOR_EXPORT(
+        GuidedTourStage.EDITOR,
+        "editor-export",
+        "Save the finished video",
+        "Tap Save final video when the review looks right. Choose the original video first if VolleyCut asks you to reconnect it.",
+        "Next",
+    ),
+    EDITOR_SCORE_TOGGLE(
+        GuidedTourStage.EDITOR,
+        "editor-score-toggle",
+        "Add a scoreboard if you want one",
+        "Score tracking is optional. Turn it on to check serve markers, add anything missing, and include a scoreboard in the saved video.",
+        "Next: check the score",
+    ),
+    EDITOR_SCORE_PANEL(
+        GuidedTourStage.EDITOR,
+        "editor-score-panel",
+        "Check the score markers",
+        "Correct which side serves, add missed serves, and add a side switch whenever the teams change court sides.",
+        "Next",
+    ),
     EDITOR_VIDEO(
         GuidedTourStage.EDITOR,
         "editor-video",
         "Watch the video",
         "Play, pause, or move to any moment. Turn on Play only the final video above to skip every part that will not be saved.",
+        "Next",
+    ),
+    EDITOR_REVIEW_QUEUES(
+        GuidedTourStage.EDITOR,
+        "editor-review-queues",
+        "Start with what needs attention",
+        "These queues contain automatic cleanups, clips, and serves that still need review. Ignored footage is skipped, and the counts shrink as you make decisions.",
         "Next",
     ),
     EDITOR_OVERVIEW(
@@ -115,27 +143,6 @@ internal enum class GuidedTourStep(
         "editor-marking",
         "Add anything VolleyCut missed",
         "For a missed rally, mark its start and end. Leave out a section for camera gaps, breaks, or other footage that should not appear in the final video.",
-        "Next",
-    ),
-    EDITOR_SCORE_TOGGLE(
-        GuidedTourStage.EDITOR,
-        "editor-score-toggle",
-        "Add a scoreboard if you want one",
-        "Score tracking is optional. Turn it on to check serve markers, add anything missing, and include a scoreboard in the saved video.",
-        "Next: check the score",
-    ),
-    EDITOR_SCORE_PANEL(
-        GuidedTourStage.EDITOR,
-        "editor-score-panel",
-        "Check the score markers",
-        "Correct which side serves, add missed serves, and add a side switch whenever the teams change court sides.",
-        "Next: save video",
-    ),
-    EDITOR_EXPORT(
-        GuidedTourStage.EDITOR,
-        "editor-export",
-        "Save the finished video",
-        "Tap Save final video when the review looks right. Choose the original video first if VolleyCut asks you to reconnect it.",
         "Finish tutorial",
     ),
 }
@@ -239,10 +246,10 @@ internal fun GuidedTour(
         it in scoreGuidedTourSteps
     }).filter { it.stage == stage }
     val step = if (!scoreTrackingEnabled && storedStep in scoreGuidedTourSteps) {
-        GuidedTourStep.EDITOR_EXPORT.also { saveTarget ->
+        GuidedTourStep.EDITOR_VIDEO.also { nextTarget ->
             LaunchedEffect(state) {
-                GuidedTourStore.write(context, saveTarget.name)
-                state = saveTarget.name
+                GuidedTourStore.write(context, nextTarget.name)
+                state = nextTarget.name
             }
         }
     } else storedStep
@@ -357,6 +364,11 @@ internal fun GuidedTour(
                     ) {
                         Text(
                             if (current == GuidedTourStep.SETUP_SOURCE && sourceReady) {
+                                "Next"
+                            } else if (
+                                current == GuidedTourStep.EDITOR_SCORE_TOGGLE &&
+                                !scoreTrackingEnabled
+                            ) {
                                 "Next"
                             } else current.action,
                         )

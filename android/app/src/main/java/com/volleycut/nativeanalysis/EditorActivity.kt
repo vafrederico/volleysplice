@@ -3119,6 +3119,7 @@ private fun EditorScreen(
                 onReviewCleanup = ::reviewNextCleanup,
                 onReviewClips = ::reviewNextClip,
                 onReviewServes = ::reviewNextServe,
+                modifier = Modifier.guidedTourTarget("editor-review-queues", guidedTourTargets),
             )
 
             SectionCard(
@@ -4362,9 +4363,10 @@ private fun ReviewQueueControls(
     onReviewCleanup: () -> Unit,
     onReviewClips: () -> Unit,
     onReviewServes: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier.fillMaxWidth(),
+        modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         ReviewQueueButton("Review cleanup", cleanupCount, onReviewCleanup, Modifier.weight(1f))
