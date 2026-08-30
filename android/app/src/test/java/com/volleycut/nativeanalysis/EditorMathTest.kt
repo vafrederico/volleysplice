@@ -43,6 +43,24 @@ class EditorMathTest {
     }
 
     @Test
+    fun newProjectEnablesScoreAndPointTimelineRenderingWithScoreMarkers() {
+        val draft = EditorMath.newDraft(EditorSeed(
+            sourceUri = "content://fixture/video",
+            displayName = "fixture.mp4",
+            durationMs = 10_000,
+            width = 1_920,
+            height = 1_080,
+            rotation = 0,
+            ranges = emptyList(),
+            scoreTrackingInitiallyEnabled = true,
+        ))
+
+        assertTrue(draft.scoreTracking.enabled)
+        assertTrue(draft.renderScoreOverlay)
+        assertTrue(draft.renderScoreTimeline)
+    }
+
+    @Test
     fun finalIntervalsMergeTouchingCutsAndSubtractIgnoredTime() {
         val draft = EditorDraft(
             sourceRevision = "fixture",
@@ -328,6 +346,37 @@ class EditorMathTest {
                     rallyId = "R011",
                 )),
             ).map { it.cutIds },
+        )
+    }
+
+    @Test
+    fun pendingConfidenceReviewIsAnEditableBoundaryUntilKept() {
+        val first = cut("R010", 10_000, 20_000).copy(keepStartMs = 8_000, keepEndMs = 22_000)
+        val needsReview = cut("R011", 22_000, 30_000).copy(
+            keepStartMs = 20_000,
+            keepEndMs = 32_000,
+            confidence = .4f,
+        )
+        val last = cut("R012", 32_000, 40_000).copy(keepStartMs = 30_000, keepEndMs = 42_000)
+        val cuts = listOf(first, needsReview, last)
+        val intervals = EditorMath.finalIntervals(EditorDraft(
+            sourceRevision = "fixture",
+            updatedAtMs = 0,
+            cuts = cuts,
+        ))
+
+        assertEquals(
+            listOf(setOf("R010"), setOf("R011"), setOf("R012")),
+            EditorMath.editableRallyGroups(
+                cuts,
+                intervals,
+                emptyList(),
+                hardBoundaryCutIds = setOf("R011"),
+            ).map { it.cutIds },
+        )
+        assertEquals(
+            listOf(setOf("R010", "R011", "R012")),
+            EditorMath.editableRallyGroups(cuts, intervals, emptyList()).map { it.cutIds },
         )
     }
 

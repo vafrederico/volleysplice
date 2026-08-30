@@ -7,6 +7,7 @@
 - `screenshots/phone-upload-featured/` — eight ordered 1080×2160 RGB PNGs with tutorial-led Play Store copy
 - `screenshots/phone-release-sources-v2/` — eight native-resolution source captures from the release-equivalent screenshot build
 - `screenshots/phone-upload-final/` — eight legacy 1280×2560 source/reference captures
+- `screenshots/tablet-release-sources-v1/` — eight ordered, Play-ready 2560×1600 landscape PNGs showing the desktop-mode tablet layout
 
 The featured upload set turns real app captures into the same ordered story as the
 in-app tutorial: choose the game window, fine-tune optional settings, understand the
@@ -14,6 +15,11 @@ final-video card, check score markers, start with review queues, inspect the who
 timeline, fix one clip, and add anything VolleyCut missed. Large branded headers make
 each section readable in the Play Store thumbnail while the underlying product UI
 demonstrates the exact feature.
+
+The tablet set was captured directly from the Pixel 9 Pro XL's 2560×1600 overlay
+display using the release-equivalent `screenshot` build. It demonstrates the
+large-screen three-column review workspace, resizable player, two-row game timeline,
+score and rally controls, Settings, Export, saved projects, and new-project setup.
 
 ## Text and declarations
 

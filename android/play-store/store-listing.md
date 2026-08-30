@@ -114,6 +114,30 @@ decoded video layer behind black while leaving the real score and timeline UI
 visible. The current source captures remain in
 `screenshots/phone-release-sources-v2/` for audit and future regeneration.
 
+## Tablet screenshot order and alt text
+
+1. `screenshots/tablet-release-sources-v1/01-new-project-setup.png`
+   - Alt text: "Landscape tablet setup screen for choosing a local volleyball video and starting on-device rally analysis."
+2. `screenshots/tablet-release-sources-v1/02-desktop-review-workspace.png`
+   - Alt text: "VolleyCut's three-column tablet workspace with score markers, a resizable video player, rally controls, and a two-row game timeline."
+3. `screenshots/tablet-release-sources-v1/03-editor-settings.png`
+   - Alt text: "Tablet Settings dialog with automatic cleanup, clip padding, short-break joining, and review sensitivity controls."
+4. `screenshots/tablet-release-sources-v1/04-export-options.png`
+   - Alt text: "Tablet Export tab with options to save an MP4, generate YouTube chapters, and save the editable project."
+5. `screenshots/tablet-release-sources-v1/05-project-library.png`
+   - Alt text: "Saved-project switcher showing several local volleyball projects and which videos have already been exported."
+6. `screenshots/tablet-release-sources-v1/06-score-and-rally-review.png`
+   - Alt text: "Tablet rally editor at 14:50.8 with an 18–14 scoreboard, point history, selected serve, trim handles, and keep or remove controls."
+7. `screenshots/tablet-release-sources-v1/07-review-attention-queue.png`
+   - Alt text: "Large-screen review workspace with a low-confidence rally selected and the remaining review queue highlighted in the header."
+8. `screenshots/tablet-release-sources-v1/08-game-timeline-tour.png`
+   - Alt text: "Guided review of the two-row game timeline with rally, padding, review, serve, side-switch, excluded-footage, and joined-gap legend."
+
+These are exact `v0.10.11` captures from a minified, non-debuggable
+release-equivalent build on a 2560×1600 Pixel overlay display. The screenshot-only
+build hides the decoded video layer while retaining real project, score, rally,
+timeline, saved-export, and review-state data.
+
 ## Feature graphic alt text
 
 "VolleyCut logo over a blue volleyball court and video-editing timeline."

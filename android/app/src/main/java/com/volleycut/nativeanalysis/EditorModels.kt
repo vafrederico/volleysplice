@@ -228,6 +228,8 @@ internal object EditorMath {
             seed.sideSwitch,
             seed.sideSwitchEnabled,
         ),
+        renderScoreOverlay = true,
+        renderScoreTimeline = true,
     )
 
     fun applyPadding(
@@ -352,6 +354,7 @@ internal object EditorMath {
         cuts: List<EditableCut>,
         intervals: List<FinalCutInterval>,
         serveMarkers: List<ServeMarker>,
+        hardBoundaryCutIds: Set<String> = emptySet(),
     ): List<EditableRallyGroup> {
         val intervalIndexesByCutId = buildMap<String, Set<Int>> {
             cuts.forEach { cut ->
@@ -372,7 +375,9 @@ internal object EditorMath {
                     (marker.rallyId == null &&
                         marker.timestampMs >= cut.keepStartMs && marker.timestampMs < cut.coreEndMs)
             }
-            if (previous == null || !sharesOutputInterval || separatedByServe) {
+            val separatedByHardBoundary = cut.id in hardBoundaryCutIds ||
+                previous?.cutIds?.any { it in hardBoundaryCutIds } == true
+            if (previous == null || !sharesOutputInterval || separatedByServe || separatedByHardBoundary) {
                 groups += EditableRallyGroup(listOf(cut))
             } else {
                 groups[groups.lastIndex] = EditableRallyGroup(previous.cuts + cut)

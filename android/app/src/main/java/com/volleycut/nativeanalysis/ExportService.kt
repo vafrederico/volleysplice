@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
@@ -255,7 +256,8 @@ class ExportService : Service() {
         if (outputWriteMode == "direct_document") {
             val target = destination
                 ?: return finishExport("failed", "Destination missing", result, null)
-            finishExport("complete", "Saved ${target.lastPathSegment ?: sourceName}", result, null)
+            val displayName = destinationDisplayName(target)
+            finishExport("complete", "Saved $displayName", result, null, displayName)
             return
         }
         publishTemporaryOutput(result)
@@ -272,7 +274,8 @@ class ExportService : Service() {
                 file.inputStream().use { input -> input.copyTo(output, 4 * 1_024 * 1_024) }
             }
         }.onSuccess {
-            finishExport("complete", "Saved ${target.lastPathSegment ?: sourceName}", result, null)
+            val displayName = destinationDisplayName(target)
+            finishExport("complete", "Saved $displayName", result, null, displayName)
         }.onFailure { error ->
             Log.e(TAG, "Could not publish export", error)
             finishExport("failed", error.message ?: "Could not save export", result, error)
@@ -284,6 +287,7 @@ class ExportService : Service() {
         detail: String,
         result: ExportResult?,
         error: Throwable?,
+        savedDisplayName: String? = null,
     ) {
         val finishedJob = currentJob ?: return
         handler.removeCallbacks(progressPoll)
@@ -294,7 +298,14 @@ class ExportService : Service() {
         temporaryFile = null
         if (status != "complete") deleteIncompleteDestination()
         currentJob = null
-        if (status == "complete") AppRating.recordSuccessfulExport(this, finishedJob.id)
+        if (status == "complete") {
+            NativeProjectStore.recordSuccessfulExport(
+                this,
+                finishedJob.projectId,
+                savedDisplayName ?: "video",
+            )
+            AppRating.recordSuccessfulExport(this, finishedJob.id)
+        }
         broadcast(finishedJob, status, if (status == "complete") 100 else 0, detail, metrics.toString())
         val manager = getSystemService(NotificationManager::class.java)
         if (status == "complete") manager.notify(NOTIFICATION_ID, notification(100, detail, false))
@@ -306,6 +317,23 @@ class ExportService : Service() {
             foreground = false
             stopSelf()
         } else startNextExport()
+    }
+
+    private fun destinationDisplayName(target: Uri): String {
+        val queriedName = runCatching {
+            contentResolver.query(
+                target,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) null else cursor.getString(0)
+            }
+        }.getOrNull()?.takeIf(String::isNotBlank)
+        return queriedName ?: sourceName.substringBeforeLast('.', sourceName)
+            .ifBlank { "VolleyCut" }
+            .let { "$it-final.mp4" }
     }
 
     private fun resultJson(

@@ -325,6 +325,27 @@ class NativeProjectStoreTest {
         assertEquals(source, restored.featureCacheSource)
     }
 
+    @Test
+    fun successfulVideoExportMetadataRoundTripsAndLegacyProjectsRemainUnsaved() {
+        val exported = readyProject().copy(
+            lastExportedVideoName = "Championship-final.mp4",
+            lastExportedAtMs = 1_725_000_000_000,
+        )
+
+        val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(exported)))
+        assertEquals("Championship-final.mp4", restored.lastExportedVideoName)
+        assertEquals(1_725_000_000_000, restored.lastExportedAtMs)
+
+        val legacy = NativeProjectStore.encode(readyProject()).apply {
+            put("version", 7)
+            remove("lastExportedVideoName")
+            remove("lastExportedAtMs")
+        }
+        val restoredLegacy = requireNotNull(NativeProjectStore.decode(legacy))
+        assertEquals(null, restoredLegacy.lastExportedVideoName)
+        assertEquals(null, restoredLegacy.lastExportedAtMs)
+    }
+
     private fun readyProject() = NativeProject(
         id = NativeProjectStore.projectId(source, 12.5),
         source = source,

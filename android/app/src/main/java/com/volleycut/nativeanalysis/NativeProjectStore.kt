@@ -72,6 +72,8 @@ internal data class NativeProject(
     val cacheMode: String = NativeFeatureCache.Mode.USE.wireName(),
     val analysisMeasurements: List<AnalysisRunMeasurements> = emptyList(),
     val error: String? = null,
+    val lastExportedVideoName: String? = null,
+    val lastExportedAtMs: Long? = null,
     val createdAtMs: Long,
     val updatedAtMs: Long,
 ) {
@@ -102,7 +104,7 @@ internal data class NativeProject(
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 7
+    private const val VERSION = 8
     private const val TAG = "VolleyCutProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -157,6 +159,21 @@ internal object NativeProjectStore {
             status = status,
             error = error,
             updatedAtMs = System.currentTimeMillis(),
+        ).also { save(context, it) }
+    }
+
+    @Synchronized
+    fun recordSuccessfulExport(
+        context: Context,
+        id: String,
+        displayName: String,
+        exportedAtMs: Long = System.currentTimeMillis(),
+    ): NativeProject? {
+        val current = get(context, id) ?: return null
+        return current.copy(
+            lastExportedVideoName = displayName.takeIf(String::isNotBlank) ?: "video",
+            lastExportedAtMs = exportedAtMs,
+            updatedAtMs = exportedAtMs,
         ).also { save(context, it) }
     }
 
@@ -621,6 +638,8 @@ internal object NativeProjectStore {
         put("cacheMode", project.cacheMode)
         put("analysisMeasurements", AnalysisMeasurementsJson.encode(project.analysisMeasurements))
         put("error", project.error ?: JSONObject.NULL)
+        put("lastExportedVideoName", project.lastExportedVideoName ?: JSONObject.NULL)
+        put("lastExportedAtMs", project.lastExportedAtMs ?: JSONObject.NULL)
         put("createdAtMs", project.createdAtMs)
         put("updatedAtMs", project.updatedAtMs)
         put("ranges", JSONArray().apply {
@@ -734,6 +753,10 @@ internal object NativeProjectStore {
                 json.optJSONArray("analysisMeasurements"),
             ),
             error = if (json.isNull("error")) null else json.optString("error"),
+            lastExportedVideoName = if (json.isNull("lastExportedVideoName")) null
+                else json.optString("lastExportedVideoName").takeIf(String::isNotBlank),
+            lastExportedAtMs = if (json.isNull("lastExportedAtMs")) null
+                else json.optLong("lastExportedAtMs"),
             createdAtMs = json.getLong("createdAtMs"),
             updatedAtMs = json.getLong("updatedAtMs"),
         )

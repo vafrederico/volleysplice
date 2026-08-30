@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -82,6 +83,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -264,6 +266,69 @@ private val Danger = Color(0xFFB3261E)
 private val SuppressionRed = Color(0xFFD1242F)
 private val Warning = Color(0xFFE8A317)
 
+internal enum class EditorLayoutMode { COMPACT, DESKTOP }
+private enum class DesktopEditorTab { REVIEW, EXPORT }
+
+private const val DESKTOP_PLAYER_DEFAULT_HEIGHT_DP = 320f
+internal const val DESKTOP_PLAYER_MIN_HEIGHT_DP = 180f
+internal const val DESKTOP_PLAYER_MAX_HEIGHT_DP = 1200f
+private const val COMPACT_PLAYER_DEFAULT_HEIGHT_DP = 176f
+internal const val COMPACT_PLAYER_MIN_HEIGHT_DP = 140f
+internal const val COMPACT_PLAYER_MAX_HEIGHT_DP = 720f
+private const val SETUP_PLAYER_COMPACT_DEFAULT_HEIGHT_DP = 176f
+private const val SETUP_PLAYER_DESKTOP_DEFAULT_HEIGHT_DP = 320f
+internal const val SETUP_PLAYER_MIN_HEIGHT_DP = 140f
+internal const val SETUP_PLAYER_COMPACT_MAX_HEIGHT_DP = 720f
+internal const val SETUP_PLAYER_DESKTOP_MAX_HEIGHT_DP = 1200f
+private const val EDITOR_LAYOUT_PREFERENCES = "desktop_editor_layout"
+private const val DESKTOP_LEFT_PANE_DEFAULT_WIDTH_DP = 292f
+private const val DESKTOP_RIGHT_PANE_DEFAULT_WIDTH_DP = 292f
+internal const val DESKTOP_LEFT_PANE_MIN_WIDTH_DP = 180f
+internal const val DESKTOP_LEFT_PANE_MAX_WIDTH_DP = 520f
+internal const val DESKTOP_RIGHT_PANE_MIN_WIDTH_DP = 220f
+internal const val DESKTOP_RIGHT_PANE_MAX_WIDTH_DP = 560f
+private const val DESKTOP_CENTER_PANE_MIN_WIDTH_DP = 220f
+private const val DESKTOP_PANE_HORIZONTAL_CHROME_DP = 64f
+
+internal fun resizedDesktopPlayerHeight(
+    currentHeightDp: Float,
+    dragDeltaPx: Float,
+    density: Float,
+): Float = resizedPlayerHeight(
+    currentHeightDp = currentHeightDp,
+    dragDeltaPx = dragDeltaPx,
+    density = density,
+    minHeightDp = DESKTOP_PLAYER_MIN_HEIGHT_DP,
+    maxHeightDp = DESKTOP_PLAYER_MAX_HEIGHT_DP,
+)
+
+internal fun resizedPlayerHeight(
+    currentHeightDp: Float,
+    dragDeltaPx: Float,
+    density: Float,
+    minHeightDp: Float,
+    maxHeightDp: Float,
+): Float = (currentHeightDp + dragDeltaPx / density.coerceAtLeast(0.1f))
+    .coerceIn(minHeightDp, maxHeightDp.coerceAtLeast(minHeightDp))
+
+internal fun resizedDesktopSidebarWidth(
+    currentWidthDp: Float,
+    dragDeltaPx: Float,
+    density: Float,
+    minWidthDp: Float,
+    maxWidthDp: Float,
+): Float = (currentWidthDp + dragDeltaPx / density.coerceAtLeast(0.1f))
+    .coerceIn(minWidthDp, maxWidthDp.coerceAtLeast(minWidthDp))
+
+internal fun editorLayoutMode(widthDp: Int, heightDp: Int): EditorLayoutMode =
+    if (widthDp >= 840 && heightDp >= 360) EditorLayoutMode.DESKTOP else EditorLayoutMode.COMPACT
+
+internal fun timelineNeedsReview(
+    lowConfidence: Boolean,
+    cutId: String,
+    reviewedCutIds: Set<String>,
+): Boolean = lowConfidence && cutId !in reviewedCutIds
+
 private fun EditableCut.isModelDisagreement(): Boolean =
     ProductionEnsemble.isDisagreement(agreement)
 
@@ -283,7 +348,7 @@ private fun VolleyCutTheme(content: @Composable () -> Unit) {
             secondary = Orange,
             background = Paper,
             onBackground = Ink,
-            surface = Color.White,
+            surface = Paper,
             onSurface = Ink,
             error = Danger,
         ),
@@ -305,6 +370,14 @@ private fun ExportJobStatus.toUiState() = ExportUiState(
     detail = detail,
 )
 
+private fun NativeProject.persistedExportUiState() = if (lastExportedAtMs != null) {
+    ExportUiState(
+        status = "complete",
+        progress = 100,
+        detail = lastExportedVideoName?.let { "Saved $it" } ?: "Video saved",
+    )
+} else ExportUiState()
+
 private fun projectStatusLabel(
     project: NativeProject,
     export: ExportJobStatus?,
@@ -315,7 +388,7 @@ private fun projectStatusLabel(
         "complete" -> "video saved"
         "failed" -> "save failed"
         "cancelled" -> "save cancelled"
-        else -> null
+        else -> "video saved".takeIf { project.lastExportedAtMs != null }
     }
     val projectState = when (project.status) {
         ProjectStatus.QUEUED -> "waiting"
@@ -350,6 +423,14 @@ private data class EditorProjectSummary(
     val outputDurationMs: Long,
     val kept: Int,
     val needsReview: Int,
+    val cleanupReviewCount: Int,
+    val clipReviewCount: Int,
+    val serveReviewCount: Int,
+    val onReviewCleanup: () -> Unit,
+    val onReviewClips: () -> Unit,
+    val onReviewServes: () -> Unit,
+    val desktopTab: DesktopEditorTab,
+    val onDesktopTab: (DesktopEditorTab) -> Unit,
 )
 
 private fun setScoreTrackingPreference(
@@ -505,32 +586,65 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         }
     }
     val feedbackImportPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
             preparingSource = true
-            inference = InferenceUiState(stage = "importing", detail = "Opening your saved project")
+            inference = InferenceUiState(
+                stage = "importing",
+                detail = "Opening ${if (uris.size == 1) "your saved project" else "${uris.size} saved projects"}",
+            )
             scope.launch {
-                val imported = runCatching {
-                    withContext(Dispatchers.IO) {
-                        val text = context.contentResolver.openInputStream(uri)
-                            ?.bufferedReader()?.use { it.readText() }
-                            ?: error("Could not open that saved project")
-                        ModelFeedbackImporter.import(context, text)
+                val results = uris.mapIndexed { index, uri ->
+                    inference = InferenceUiState(
+                        stage = "importing",
+                        detail = "Importing ${index + 1} of ${uris.size} · ${sourceDisplayName(context, uri)}",
+                    )
+                    uri to withContext(Dispatchers.IO) {
+                        runCatching {
+                            val text = context.contentResolver.openInputStream(uri)
+                                ?.bufferedReader()?.use { it.readText() }
+                                ?: error("Could not open that saved project")
+                            ModelFeedbackImporter.import(context, text)
+                        }
                     }
                 }
                 preparingSource = false
-                imported.onSuccess { project ->
-                    reloadProjects(project.id, preserveNewProject = false)
+                val importedProjects = results.mapNotNull { it.second.getOrNull() }
+                val failures = results.mapNotNull { (uri, result) ->
+                    result.exceptionOrNull()?.let { error ->
+                        "${sourceDisplayName(context, uri)}: ${error.message ?: "could not import"}"
+                    }
+                }
+                if (importedProjects.isNotEmpty()) {
+                    val selectedImport = importedProjects.last()
+                    reloadProjects(selectedImport.id, preserveNewProject = false)
                     creatingNew = false
+                    val importedLabel = if (importedProjects.size == 1) {
+                        "1 project imported"
+                    } else {
+                        "${importedProjects.size} projects imported"
+                    }
+                    relinkMessage = buildString {
+                        append(importedLabel)
+                        if (failures.isNotEmpty()) {
+                            append(" · ${failures.size} failed: ")
+                            append(failures.take(2).joinToString("; "))
+                            if (failures.size > 2) append("; +${failures.size - 2} more")
+                        }
+                        append(" · re-link the original video for playback")
+                    }
+                    relinkFailed = failures.isNotEmpty()
                     inference = InferenceUiState(
-                        projectId = project.id,
-                        detail = "Feedback imported · re-link the original video for playback",
+                        projectId = selectedImport.id,
+                        detail = relinkMessage.orEmpty(),
                     )
-                }.onFailure { error ->
+                } else {
                     inference = InferenceUiState(
                         stage = "failed",
-                        error = error.message ?: "Could not open that saved project",
+                        error = failures.joinToString(separator = "\n").ifBlank {
+                            "Could not open the selected saved projects"
+                        },
                     )
                 }
             }
@@ -1070,10 +1184,140 @@ private fun ProjectHeaderBar(
         } ?: "unknown"
     }
     Surface(
-        color = Color.White,
+        color = Paper,
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.border(1.dp, Rail, RoundedCornerShape(10.dp)),
     ) {
+        BoxWithConstraints {
+            if (maxWidth >= 840.dp && editorSummary != null) {
+                val condensed = maxWidth < 1100.dp
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (condensed) 6.dp else 10.dp),
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.volleycut_logo),
+                        contentDescription = "VolleyCut",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.width(if (condensed) 72.dp else 104.dp).height(34.dp),
+                    )
+                    Box(Modifier.width(if (condensed) 160.dp else 250.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "CURRENT REVIEW",
+                                color = Green,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = .9.sp,
+                            )
+                            OutlinedButton(
+                                onClick = { expanded = true },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
+                                shape = RoundedCornerShape(6.dp),
+                            ) {
+                                Text(
+                                    if (creatingNew || selected == null) "＋ Start a new video…" else selected.source.name,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("＋ Start a new video…") },
+                                onClick = { expanded = false; onNew() },
+                            )
+                            projects.forEach { project ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(project.source.name, maxLines = 1)
+                                            Text(
+                                                projectStatusLabel(project, exportStatuses[project.id]),
+                                                color = Muted,
+                                                fontSize = 10.sp,
+                                            )
+                                        }
+                                    },
+                                    onClick = { expanded = false; onSelect(project) },
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        Modifier.width(if (condensed) 112.dp else 200.dp),
+                    ) {
+                        HeaderWorkflowTab(
+                            label = "Review",
+                            selected = editorSummary.desktopTab == DesktopEditorTab.REVIEW,
+                            onClick = { editorSummary.onDesktopTab(DesktopEditorTab.REVIEW) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        HeaderWorkflowTab(
+                            label = "Export",
+                            selected = editorSummary.desktopTab == DesktopEditorTab.EXPORT,
+                            onClick = { editorSummary.onDesktopTab(DesktopEditorTab.EXPORT) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .guidedTourTarget("editor-export", guidedTourTargets),
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    HeaderReviewQueue(
+                        label = "Review cleanup",
+                        count = editorSummary.cleanupReviewCount,
+                        onClick = editorSummary.onReviewCleanup,
+                        condensed = condensed,
+                        modifier = Modifier.guidedTourTarget("editor-review-queues", guidedTourTargets),
+                    )
+                    HeaderReviewQueue(
+                        label = "Review clips",
+                        count = editorSummary.clipReviewCount,
+                        onClick = editorSummary.onReviewClips,
+                        condensed = condensed,
+                    )
+                    HeaderReviewQueue(
+                        label = "Review serves",
+                        count = editorSummary.serveReviewCount,
+                        onClick = editorSummary.onReviewServes,
+                        condensed = condensed,
+                    )
+                    if (!condensed) HeaderStat(editorSummary.kept.toString(), "clips included")
+                    HeaderStat(compactTime(editorSummary.outputDurationMs), "planned video")
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier
+                            .testTag("open-settings")
+                            .guidedTourTarget("editor-settings", guidedTourTargets),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_settings),
+                            contentDescription = "Settings",
+                            tint = Ink,
+                        )
+                    }
+                    Box {
+                        TextButton(onClick = { projectMenuExpanded = true }) { Text("More") }
+                        DropdownMenu(
+                            expanded = projectMenuExpanded,
+                            onDismissRequest = { projectMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Restart guided tour") },
+                                onClick = { projectMenuExpanded = false; onRestartTour() },
+                            )
+                            if (selected != null && !creatingNew) {
+                                DropdownMenuItem(
+                                    text = { Text("Delete current project", color = Danger) },
+                                    onClick = { projectMenuExpanded = false; onDelete() },
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1187,6 +1431,88 @@ private fun ProjectHeaderBar(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+        }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeaderStat(value: String, label: String) {
+    Column(
+        modifier = Modifier
+            .width(78.dp)
+            .border(1.dp, Rail, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(value, color = Ink, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Muted, fontSize = 7.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun HeaderWorkflowTab(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(onClick = onClick)
+            .padding(top = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            label,
+            color = if (selected) Ink else Muted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(if (selected) Green else Rail),
+        )
+    }
+}
+
+@Composable
+private fun HeaderReviewQueue(
+    label: String,
+    count: Int,
+    onClick: () -> Unit,
+    condensed: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        enabled = count > 0,
+        modifier = modifier
+            .width(if (condensed) 68.dp else 92.dp)
+            .heightIn(min = 48.dp),
+        shape = RoundedCornerShape(6.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Acid,
+            contentColor = Ink,
+            disabledContainerColor = SoftPanel,
+            disabledContentColor = Muted,
+        ),
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(count.toString(), fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(
+                label.replace(" ", "\n"),
+                fontSize = if (condensed) 7.sp else 8.sp,
+                lineHeight = if (condensed) 8.sp else 9.sp,
+                maxLines = 2,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -1705,7 +2031,7 @@ private fun measurementCounterSummary(counters: Map<String, Long>): String? {
 @Composable
 private fun NewProjectIntro() {
     Surface(
-        color = Color.White,
+        color = Paper,
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(10.dp)),
     ) {
@@ -1798,7 +2124,7 @@ private fun WorkflowStep(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         Surface(
-            color = if (done || current) Acid else Color.White,
+            color = if (done || current) Acid else Paper,
             shape = RoundedCornerShape(50),
             modifier = Modifier.border(
                 1.dp,
@@ -1822,7 +2148,7 @@ private fun WorkflowStep(
 @Composable
 private fun CurrentSourceCard(filename: String, rallyCount: Int) {
     Surface(
-        color = Color.White,
+        color = Paper,
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(10.dp)),
     ) {
@@ -1894,7 +2220,7 @@ private fun NewProjectCard(
                 onClick = onImportFeedback,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             ) {
-                Text("Open a saved project", color = Muted)
+                Text("Open saved projects", color = Muted)
             }
         } else {
             OutlinedButton(
@@ -1925,7 +2251,7 @@ private fun NewProjectCard(
                     .clickable(enabled = !preparing) {
                         onGenerateSideSwitchMarkers(!generateSideSwitchMarkers)
                     },
-                color = if (generateSideSwitchMarkers) SoftPanel else Color.White,
+                color = if (generateSideSwitchMarkers) SoftPanel else Paper,
                 shape = RoundedCornerShape(6.dp),
             ) {
                 Row(
@@ -1982,9 +2308,29 @@ private fun GameWindowPicker(
     onFullVideo: () -> Unit,
 ) {
     val context = LocalContext.current
+    val layoutPreferences = remember(context) {
+        context.getSharedPreferences(EDITOR_LAYOUT_PREFERENCES, Context.MODE_PRIVATE)
+    }
     val durationMs = secondsToMs(checkNotNull(selected.media).durationSeconds())
     var playheadMs by remember(selected.uri) { mutableLongStateOf(0L) }
     var playing by remember(selected.uri) { mutableStateOf(false) }
+    var compactPlayerHeightDp by remember {
+        mutableFloatStateOf(
+            layoutPreferences.getFloat(
+                "setup_player_compact_height_dp",
+                SETUP_PLAYER_COMPACT_DEFAULT_HEIGHT_DP,
+            ).coerceIn(SETUP_PLAYER_MIN_HEIGHT_DP, SETUP_PLAYER_COMPACT_MAX_HEIGHT_DP),
+        )
+    }
+    var desktopPlayerHeightDp by remember {
+        mutableFloatStateOf(
+            layoutPreferences.getFloat(
+                "setup_player_desktop_height_dp",
+                SETUP_PLAYER_DESKTOP_DEFAULT_HEIGHT_DP,
+            ).coerceIn(SETUP_PLAYER_MIN_HEIGHT_DP, SETUP_PLAYER_DESKTOP_MAX_HEIGHT_DP),
+        )
+    }
+    val displayDensity = LocalDensity.current.density
     val player = remember(selected.uri) {
         ExoPlayer.Builder(context).build().apply {
             setSeekParameters(SeekParameters.EXACT)
@@ -2008,14 +2354,56 @@ private fun GameWindowPicker(
             delay(50)
         }
     }
-    Card(colors = CardDefaults.cardColors(containerColor = Color.Black)) {
-        Box(Modifier.fillMaxWidth().height(176.dp)) {
-            if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
-                ContentFrame(
-                    player = player,
-                    modifier = Modifier.fillMaxSize(),
-                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+    LaunchedEffect(compactPlayerHeightDp, desktopPlayerHeightDp) {
+        delay(250)
+        layoutPreferences.edit()
+            .putFloat("setup_player_compact_height_dp", compactPlayerHeightDp)
+            .putFloat("setup_player_desktop_height_dp", desktopPlayerHeightDp)
+            .apply()
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val desktop = maxWidth >= 840.dp
+        val playerHeightDp = if (desktop) desktopPlayerHeightDp else compactPlayerHeightDp
+        val maxPlayerHeightDp = if (desktop) {
+            SETUP_PLAYER_DESKTOP_MAX_HEIGHT_DP
+        } else {
+            SETUP_PLAYER_COMPACT_MAX_HEIGHT_DP
+        }
+        Column {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.Black)) {
+                Box(Modifier.fillMaxWidth().height(playerHeightDp.dp)) {
+                    if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
+                        ContentFrame(
+                            player = player,
+                            modifier = Modifier.fillMaxSize(),
+                            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .clickable(enabled = enabled) {
+                                if (player.isPlaying) player.pause() else player.play()
+                            }
+                            .semantics {
+                                contentDescription = if (playing) "Pause video" else "Play video"
+                            },
+                    )
+                }
+            }
+            VideoResizeHandle(description = "Resize setup video player height") { dragDeltaPx ->
+                val resized = resizedPlayerHeight(
+                    currentHeightDp = playerHeightDp,
+                    dragDeltaPx = dragDeltaPx,
+                    density = displayDensity,
+                    minHeightDp = SETUP_PLAYER_MIN_HEIGHT_DP,
+                    maxHeightDp = maxPlayerHeightDp,
                 )
+                if (desktop) {
+                    desktopPlayerHeightDp = resized
+                } else {
+                    compactPlayerHeightDp = resized
+                }
             }
         }
     }
@@ -2202,7 +2590,10 @@ private fun EditorScreen(
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
     var message by remember { mutableStateOf("") }
     var exportState by remember(project.id) {
-        mutableStateOf(ExportService.statusForProject(project.id)?.toUiState() ?: ExportUiState())
+        mutableStateOf(
+            ExportService.statusForProject(project.id)?.toUiState()
+                ?: project.persistedExportUiState(),
+        )
     }
     var pendingExportIntervals by remember { mutableStateOf<List<FinalCutInterval>?>(null) }
     var feedbackExporting by remember { mutableStateOf(false) }
@@ -2216,6 +2607,64 @@ private fun EditorScreen(
     var showYouTubeChapters by remember { mutableStateOf(false) }
     var youtubeChaptersStatus by remember { mutableStateOf<String?>(null) }
     var pendingYouTubeChaptersText by remember { mutableStateOf<String?>(null) }
+    var desktopTab by remember(project.id) { mutableStateOf(DesktopEditorTab.REVIEW) }
+    val desktopLayoutPreferences = remember(context) {
+        context.getSharedPreferences(EDITOR_LAYOUT_PREFERENCES, Context.MODE_PRIVATE)
+    }
+    var compactPlayerHeightDp by remember {
+        mutableFloatStateOf(
+            desktopLayoutPreferences.getFloat(
+                "editor_player_compact_height_dp",
+                desktopLayoutPreferences.getFloat(
+                    "compact_player_height_dp",
+                    COMPACT_PLAYER_DEFAULT_HEIGHT_DP,
+                ),
+            ).coerceIn(COMPACT_PLAYER_MIN_HEIGHT_DP, COMPACT_PLAYER_MAX_HEIGHT_DP),
+        )
+    }
+    var desktopPlayerHeightDp by remember {
+        mutableFloatStateOf(
+            desktopLayoutPreferences.getFloat(
+                "editor_player_desktop_height_dp",
+                desktopLayoutPreferences.getFloat(
+                    "player_height_dp",
+                    DESKTOP_PLAYER_DEFAULT_HEIGHT_DP,
+                ),
+            ).coerceIn(DESKTOP_PLAYER_MIN_HEIGHT_DP, DESKTOP_PLAYER_MAX_HEIGHT_DP),
+        )
+    }
+    var desktopLeftPaneWidthDp by remember {
+        mutableFloatStateOf(
+            desktopLayoutPreferences.getFloat(
+                "left_pane_width_dp",
+                DESKTOP_LEFT_PANE_DEFAULT_WIDTH_DP,
+            ).coerceIn(DESKTOP_LEFT_PANE_MIN_WIDTH_DP, DESKTOP_LEFT_PANE_MAX_WIDTH_DP),
+        )
+    }
+    var desktopRightPaneWidthDp by remember {
+        mutableFloatStateOf(
+            desktopLayoutPreferences.getFloat(
+                "right_pane_width_dp",
+                DESKTOP_RIGHT_PANE_DEFAULT_WIDTH_DP,
+            ).coerceIn(DESKTOP_RIGHT_PANE_MIN_WIDTH_DP, DESKTOP_RIGHT_PANE_MAX_WIDTH_DP),
+        )
+    }
+    val displayDensity = LocalDensity.current.density
+
+    LaunchedEffect(
+        compactPlayerHeightDp,
+        desktopPlayerHeightDp,
+        desktopLeftPaneWidthDp,
+        desktopRightPaneWidthDp,
+    ) {
+        delay(250)
+        desktopLayoutPreferences.edit()
+            .putFloat("editor_player_compact_height_dp", compactPlayerHeightDp)
+            .putFloat("editor_player_desktop_height_dp", desktopPlayerHeightDp)
+            .putFloat("left_pane_width_dp", desktopLeftPaneWidthDp)
+            .putFloat("right_pane_width_dp", desktopRightPaneWidthDp)
+            .apply()
+    }
 
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -2228,10 +2677,19 @@ private fun EditorScreen(
     val sortedCuts = draft.cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
     val finalMaterialization = EditorMath.materialize(draft, seed.suppression)
     val finalIntervals = finalMaterialization.intervals
+    val pendingConfidenceReviewCutIds = sortedCuts.asSequence()
+        .filter { cut ->
+            cut.origin == CutOrigin.INFERRED && cut.included &&
+                cut.id !in draft.reviewedCutIds &&
+                (cut.isModelDisagreement() || cut.confidence < draft.confidenceReviewThreshold)
+        }
+        .map { it.id }
+        .toSet()
     val editableRallies = EditorMath.editableRallyGroups(
         sortedCuts,
         finalIntervals,
         draft.scoreTracking.serveMarkers.takeIf { draft.scoreTracking.enabled }.orEmpty(),
+        pendingConfidenceReviewCutIds,
     )
     val selectedRally = editableRallies.firstOrNull { selectedId in it.cutIds }
         ?: editableRallies.firstOrNull()
@@ -2272,6 +2730,9 @@ private fun EditorScreen(
         it.endMs > seed.gameStartMs && it.startMs < seed.gameEndMs
     }
     val activeSuggestions = EditorMath.activeSuggestions(draft, seed.suppression)
+    val appliedSuggestionIds = activeSuggestions.filter {
+        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
+    }.map { it.fragmentId() }.toSet()
     val userRemovedSuggestionIds = activeSuggestions.filter { suggestion ->
         draft.suppressionDecisionOverrides[suggestion.logicalId()] == SuppressionDecision.SUPPRESS
     }.mapTo(mutableSetOf()) { it.fragmentId() }
@@ -2378,6 +2839,20 @@ private fun EditorScreen(
         val target = positionMs.coerceIn(seed.gameStartMs, seed.gameEndMs)
         playbackPositionMs = target
         player.seekTo(target)
+    }
+
+    fun togglePlayback() {
+        previewEndMs = null
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            if (player.currentPosition >= seed.gameEndMs) seekTo(seed.gameStartMs)
+            if (draft.finalPreviewEnabled) {
+                EditorMath.nextFinalTime(finalIntervals, player.currentPosition)
+                    ?.let { if (it != player.currentPosition) seekTo(it) }
+            }
+            player.play()
+        }
     }
 
     fun selectSuggestion(suggestion: AnalysisTypes.SuppressionSuggestion) {
@@ -2823,23 +3298,663 @@ private fun EditorScreen(
         )
     }
 
+    val editorSummary = EditorProjectSummary(
+        outputDurationMs = totalFinalMs,
+        kept = effectiveRallies.size,
+        needsReview = reviewAttentionCount,
+        cleanupReviewCount = pendingCleanupReview.size,
+        clipReviewCount = pendingReview.size,
+        serveReviewCount = reviewableServeReviews.size,
+        onReviewCleanup = ::reviewNextCleanup,
+        onReviewClips = ::reviewNextClip,
+        onReviewServes = ::reviewNextServe,
+        desktopTab = desktopTab,
+        onDesktopTab = { desktopTab = it },
+    )
+
     Box(Modifier.fillMaxSize()) {
         Scaffold(containerColor = Paper) { scaffoldPadding ->
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
+            ) {
+                if (editorLayoutMode(maxWidth.value.roundToInt(), maxHeight.value.roundToInt()) ==
+                    EditorLayoutMode.DESKTOP
+                ) {
+                    if (desktopTab == DesktopEditorTab.EXPORT) {
+                        LargeScreenExportLayout(
+                            header = {
+                                Box(Modifier.guidedTourTarget("editor-header", guidedTourTargets)) {
+                                    sourceControls(editorSummary) { showEditorSettings = true }
+                                }
+                            },
+                            mp4Option = {
+                                SectionCard(
+                                    "MP4 VIDEO",
+                                    "${compactTime(totalFinalMs)} · ${effectiveRallies.size} clips included",
+                                    modifier = Modifier.guidedTourTarget("editor-export", guidedTourTargets),
+                                ) {
+                                    Text(
+                                        "Create the finished cut at the original video size. The recording stays on this device.",
+                                        color = Muted,
+                                        fontSize = 12.sp,
+                                    )
+                                    if (draft.scoreTracking.enabled) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text("Add score to video", fontWeight = FontWeight.SemiBold)
+                                                Text("Include the checked scoreboard", color = Muted, fontSize = 10.sp)
+                                            }
+                                            Switch(
+                                                checked = draft.renderScoreOverlay,
+                                                onCheckedChange = { enabled ->
+                                                    updateDraft {
+                                                        it.copy(
+                                                            renderScoreOverlay = enabled,
+                                                            renderScoreTimeline = if (enabled) it.renderScoreTimeline else false,
+                                                        )
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    }
+                                    if (exportState.status == "running") {
+                                        LinearProgressIndicator(
+                                            progress = { exportState.progress / 100f },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                    if (exportState.detail.isNotBlank()) {
+                                        Text(
+                                            exportState.detail,
+                                            color = if (exportState.status == "failed") Danger else Green,
+                                            fontSize = 11.sp,
+                                        )
+                                    }
+                                    Button(
+                                        enabled = finalIntervals.isNotEmpty() && !exportPending,
+                                        onClick = {
+                                            pendingExportIntervals = finalIntervals
+                                            exportLauncher.launch(exportFilename(seed.displayName))
+                                        },
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                                    ) {
+                                        Text(if (exportPending) "Creating MP4…" else "Save MP4", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            },
+                            chaptersOption = {
+                                SectionCard("YOUTUBE CHAPTERS", null) {
+                                    Text(
+                                        "Generate timestamped rally chapters to paste into the YouTube description, or save them as a text file.",
+                                        color = Muted,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(
+                                        "${effectiveRallies.size} rally chapters ready",
+                                        color = Green,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Button(
+                                        enabled = finalIntervals.isNotEmpty(),
+                                        onClick = {
+                                            youtubeChaptersStatus = null
+                                            showYouTubeChapters = true
+                                        },
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("youtube-chapters-button"),
+                                    ) { Text("Get YouTube chapters", fontWeight = FontWeight.Bold) }
+                                }
+                            },
+                            projectOption = {
+                                SectionCard("PROJECT FILE", null) {
+                                    Text(
+                                        "Save the edit, rally decisions, and score markers. The original video is not included.",
+                                        color = Muted,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(
+                                        "Open this file later to continue editing.",
+                                        color = Green,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Button(
+                                        enabled = !feedbackExporting,
+                                        onClick = {
+                                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                                        },
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                                    ) {
+                                        Text(if (feedbackExporting) "Saving project…" else "Save project", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            },
+                        )
+                    } else {
+                    LargeScreenEditorLayout(
+                        leftPaneWidthDp = desktopLeftPaneWidthDp,
+                        rightPaneWidthDp = desktopRightPaneWidthDp,
+                        onLeftPaneWidthChange = { desktopLeftPaneWidthDp = it },
+                        onRightPaneWidthChange = { desktopRightPaneWidthDp = it },
+                        header = {
+                            Box(Modifier.guidedTourTarget("editor-header", guidedTourTargets)) {
+                                sourceControls(
+                                    editorSummary,
+                                    { showEditorSettings = true },
+                                )
+                            }
+                        },
+                        leftPane = {
+                            ScoreTrackingPanel(
+                                enabled = draft.scoreTracking.enabled,
+                                tracking = draft.scoreTracking,
+                                visibleTracking = preparedScoreOverlay.tracking,
+                                visibleScore = visibleScore,
+                                selectedMarkerId = selectedScoreMarkerId,
+                                currentTimestampMs = playbackPositionMs,
+                                scoreEffectiveTimestampMs = scoreEffectiveTimestampMs,
+                                servingSideStatus = project.servingSideStatus,
+                                servingSideError = project.servingSideError,
+                                servingSideProgress = servingSideProgress,
+                                servingSideProgressDetail = servingSideProgressDetail,
+                                servingSideStepMeasurements = servingSideStepMeasurements,
+                                sideSwitchEnabled = project.sideSwitchEnabled,
+                                desktop = true,
+                                modifier = Modifier.guidedTourTarget("editor-score-panel", guidedTourTargets),
+                                toggleModifier = Modifier.guidedTourTarget("editor-score-toggle", guidedTourTargets),
+                                onEnabledChange = { enabled ->
+                                    updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(enabled = enabled)) }
+                                    val missingOutput = project.servingSide == null ||
+                                        (project.sideSwitchEnabled && project.sideSwitch == null)
+                                    if (enabled && missingOutput &&
+                                        project.servingSideStatus != ServingSideAnalysisStatus.QUEUED &&
+                                        project.servingSideStatus != ServingSideAnalysisStatus.ANALYZING
+                                    ) {
+                                        if (sourceAvailable == false) {
+                                            message = "Re-link the source video to prepare score tracking"
+                                        } else {
+                                            message = "Preparing score markers"
+                                            scope.launch {
+                                                val queued = withContext(Dispatchers.IO) {
+                                                    NativeProjectStore.updateServingSideStatus(
+                                                        context,
+                                                        project.id,
+                                                        ServingSideAnalysisStatus.QUEUED,
+                                                    )
+                                                }
+                                                queued?.let(onProjectUpdated)
+                                                ProjectAnalysisService.enqueueServingSide(context, project.id)
+                                            }
+                                        }
+                                    }
+                                },
+                                onTracking = { tracking -> updateDraft { it.copy(scoreTracking = tracking) } },
+                                onSelect = { markerId, timestampMs ->
+                                    selectedScoreMarkerId = markerId
+                                    seekTo(timestampMs)
+                                },
+                            )
+                            DesktopRallyLedger(
+                                rallies = editableRallies,
+                                selectedId = selectedRally?.id,
+                                effectiveIds = effectiveIds,
+                                reviewedIds = draft.reviewedCutIds,
+                                lowConfidenceIds = lowConfidence.mapTo(mutableSetOf()) { it.id },
+                                onSelect = { rally ->
+                                    selectedSuggestionId = null
+                                    selectedId = rally.id
+                                    seekTo(rally.keepStartMs)
+                                },
+                                onToggleIncluded = { rally, included ->
+                                    updateRallyCuts(rally.cutIds) { it.copy(included = included) }
+                                },
+                                modifier = Modifier.guidedTourTarget("editor-cuts", guidedTourTargets),
+                            )
+                        },
+                        centerPane = {
+                            if (sourceAvailable == false || relinkMessage != null) {
+                                SectionCard(
+                                    if (sourceAvailable == false) "SOURCE UNAVAILABLE" else "SOURCE RE-LINKED",
+                                    if (sourceAvailable == false) seed.displayName else "Playback and exports restored",
+                                    compact = true,
+                                ) {
+                                    Text(
+                                        relinkMessage ?: "Choose the original recording again to restore playback and MP4 export.",
+                                        color = if (relinkFailed) Danger else Muted,
+                                        fontSize = 11.sp,
+                                    )
+                                    if (sourceAvailable == false) {
+                                        Button(
+                                            enabled = !relinkingSource,
+                                            onClick = { store.save(draft); onRelink() },
+                                        ) { Text(if (relinkingSource) "Validating…" else "Re-link video") }
+                                    }
+                                }
+                            }
+                            Column {
+                                Card(
+                                    modifier = Modifier.guidedTourTarget("editor-video", guidedTourTargets),
+                                    colors = CardDefaults.cardColors(containerColor = Color.Black),
+                                ) {
+                                    BoxWithConstraints(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(desktopPlayerHeightDp.dp),
+                                    ) {
+                                        if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
+                                            ContentFrame(
+                                                player = player,
+                                                modifier = Modifier.fillMaxSize(),
+                                                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                                            )
+                                        }
+                                        if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
+                                            val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
+                                                seed.width,
+                                                seed.height,
+                                                seed.rotation,
+                                            )
+                                            val videoAspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
+                                            val containerAspect = maxWidth.value / maxHeight.value.coerceAtLeast(.001f)
+                                            val videoModifier = if (containerAspect > videoAspect) {
+                                                Modifier.height(maxHeight).width(maxHeight * videoAspect)
+                                            } else {
+                                                Modifier.width(maxWidth).height(maxWidth / videoAspect)
+                                            }
+                                            ScoreOverlayPreview(
+                                                snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
+                                                timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
+                                                renderTimeline = draft.renderScoreTimeline,
+                                                modifier = videoModifier.align(Alignment.Center),
+                                            )
+                                        }
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .clickable(onClick = ::togglePlayback)
+                                                .semantics {
+                                                    contentDescription = if (isPlaying) "Pause video" else "Play video"
+                                                },
+                                        )
+                                    }
+                                }
+                                VideoResizeHandle { dragDeltaPx ->
+                                    desktopPlayerHeightDp = resizedDesktopPlayerHeight(
+                                        currentHeightDp = desktopPlayerHeightDp,
+                                        dragDeltaPx = dragDeltaPx,
+                                        density = displayDensity,
+                                    )
+                                }
+                            }
+                            PlayerControls(
+                                playing = isPlaying,
+                                positionMs = playbackPositionMs,
+                                durationMs = seed.gameEndMs,
+                                playbackRate = draft.playbackRate,
+                                desktop = true,
+                                onToggle = ::togglePlayback,
+                                onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
+                                modifier = Modifier.guidedTourTarget("editor-transport", guidedTourTargets),
+                            )
+                            SectionCard(
+                                "GAME TIMELINE",
+                                "Source time, cuts, and match events",
+                                compact = true,
+                                modifier = Modifier.guidedTourTarget("editor-overview", guidedTourTargets),
+                            ) {
+                                WholeTimeline(
+                                    windowStartMs = seed.gameStartMs,
+                                    windowEndMs = (seed.gameStartMs + seed.gameEndMs) / 2,
+                                    cuts = sortedCuts,
+                                    joinedGaps = joinedGaps,
+                                    ignored = visibleIgnoredIntervals,
+                                    suggestions = activeSuggestions,
+                                    appliedSuggestionIds = appliedSuggestionIds,
+                                    userRemovedSuggestionIds = userRemovedSuggestionIds,
+                                    userRemovedCleanupCutIds = userRemovedCleanupCutIds,
+                                    selectedSuggestionId = selectedSuggestionId,
+                                    selectedCutIds = selectedRally?.cutIds.orEmpty(),
+                                    effectiveIds = effectiveIds,
+                                    confidenceThreshold = draft.confidenceReviewThreshold,
+                                    reviewedCutIds = draft.reviewedCutIds,
+                                    playheadMs = playbackPositionMs,
+                                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
+                                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
+                                    selectedScoreMarkerId = selectedScoreMarkerId,
+                                    onMarkerSelect = { markerId, timestampMs ->
+                                        selectedScoreMarkerId = markerId
+                                        seekTo(timestampMs)
+                                    },
+                                    onSeek = { time, id, suggestionId ->
+                                        if (suggestionId != null) {
+                                            activeSuggestions.firstOrNull { it.fragmentId() == suggestionId }
+                                                ?.let(::selectSuggestion)
+                                        } else {
+                                            id?.let {
+                                                selectedSuggestionId = null
+                                                selectedId = editableRallies.firstOrNull { rally -> it in rally.cutIds }?.id ?: it
+                                            }
+                                            seekTo(time)
+                                        }
+                                    },
+                                )
+                                TimelineLabels(
+                                    seed.gameStartMs,
+                                    (seed.gameStartMs * 3 + seed.gameEndMs) / 4,
+                                    (seed.gameStartMs + seed.gameEndMs) / 2,
+                                )
+                                WholeTimeline(
+                                    windowStartMs = (seed.gameStartMs + seed.gameEndMs) / 2,
+                                    windowEndMs = seed.gameEndMs,
+                                    cuts = sortedCuts,
+                                    joinedGaps = joinedGaps,
+                                    ignored = visibleIgnoredIntervals,
+                                    suggestions = activeSuggestions,
+                                    appliedSuggestionIds = appliedSuggestionIds,
+                                    userRemovedSuggestionIds = userRemovedSuggestionIds,
+                                    userRemovedCleanupCutIds = userRemovedCleanupCutIds,
+                                    selectedSuggestionId = selectedSuggestionId,
+                                    selectedCutIds = selectedRally?.cutIds.orEmpty(),
+                                    effectiveIds = effectiveIds,
+                                    confidenceThreshold = draft.confidenceReviewThreshold,
+                                    reviewedCutIds = draft.reviewedCutIds,
+                                    playheadMs = playbackPositionMs,
+                                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
+                                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
+                                    selectedScoreMarkerId = selectedScoreMarkerId,
+                                    onMarkerSelect = { markerId, timestampMs ->
+                                        selectedScoreMarkerId = markerId
+                                        seekTo(timestampMs)
+                                    },
+                                    onSeek = { time, id, suggestionId ->
+                                        if (suggestionId != null) {
+                                            activeSuggestions.firstOrNull { it.fragmentId() == suggestionId }
+                                                ?.let(::selectSuggestion)
+                                        } else {
+                                            id?.let {
+                                                selectedSuggestionId = null
+                                                selectedId = editableRallies.firstOrNull { rally -> it in rally.cutIds }?.id ?: it
+                                            }
+                                            seekTo(time)
+                                        }
+                                    },
+                                )
+                                TimelineLabels(
+                                    (seed.gameStartMs + seed.gameEndMs) / 2,
+                                    (seed.gameStartMs + seed.gameEndMs * 3) / 4,
+                                    seed.gameEndMs,
+                                )
+                                TimelineLegend()
+                            }
+                            if (message.isNotBlank()) {
+                                Surface(color = Color(0xFFFFE2D8), shape = RoundedCornerShape(10.dp)) {
+                                    Text(message, Modifier.padding(10.dp), fontSize = 12.sp)
+                                }
+                            }
+                        },
+                        rightPane = {
+                            DesktopSidebarSection(
+                                title = if (selectedIndex >= 0) {
+                                    "R${(selectedIndex + 1).toString().padStart(3, '0')}"
+                                } else "SELECTED RALLY",
+                                modifier = Modifier.guidedTourTarget("editor-focus", guidedTourTargets),
+                                headerActions = {
+                                    selected?.let {
+                                        Text(
+                                            "${preciseTime(it.keepStartMs)}–${preciseTime(it.keepEndMs)}",
+                                            color = Muted,
+                                            fontSize = 9.sp,
+                                        )
+                                    }
+                                    SmallButton("‹", enabled = selectedIndex > 0) {
+                                        editableRallies.getOrNull(selectedIndex - 1)?.let {
+                                            selectedId = it.id
+                                            seekTo(it.keepStartMs)
+                                        }
+                                    }
+                                    SmallButton("›", enabled = selectedIndex in 0..<editableRallies.lastIndex) {
+                                        editableRallies.getOrNull(selectedIndex + 1)?.let {
+                                            selectedId = it.id
+                                            seekTo(it.keepStartMs)
+                                        }
+                                    }
+                                },
+                            ) {
+                                if (selected == null) {
+                                    Text("Add a missed rally at the current playhead to begin.", color = Muted, fontSize = 11.sp)
+                                } else {
+                                    val activeRally = requireNotNull(selectedRally)
+                                    val needsReview = activeRally.cuts.any { cut ->
+                                        cut.origin == CutOrigin.INFERRED &&
+                                            (cut.isModelDisagreement() || cut.confidence < draft.confidenceReviewThreshold)
+                                    }
+                                    if (selectedClipSuggestion == null && needsReview) {
+                                        ReviewNotice(
+                                            title = "CHECK THIS RALLY",
+                                            text = if (activeRally.cutIds.all { it in draft.reviewedCutIds }) {
+                                                "Checked · your keep/remove choice is saved."
+                                            } else {
+                                                "VolleyCut is less certain about this rally."
+                                            },
+                                            warning = true,
+                                        )
+                                    }
+                                    selectedClipSuggestion?.let { suggestion ->
+                                        val decision = EditorMath.suggestionEffectiveDecision(draft, suggestion)
+                                        KeepRemoveToggle(
+                                            keepSelected = decision == SuppressionDecision.KEEP,
+                                            removeSelected = decision == SuppressionDecision.SUPPRESS,
+                                            automaticRemove = decision == SuppressionDecision.SUPPRESS &&
+                                                draft.suppressionDecisionOverrides[suggestion.logicalId()] == null,
+                                            onKeep = {
+                                                updateDraft { current -> current.copy(
+                                                    suppressionDecisionOverrides = current.suppressionDecisionOverrides +
+                                                        (suggestion.logicalId() to SuppressionDecision.KEEP),
+                                                    reviewedCutIds = current.reviewedCutIds + activeRally.cutIds,
+                                                ) }
+                                            },
+                                            onRemove = {
+                                                updateDraft { current -> current.copy(
+                                                    suppressionDecisionOverrides = current.suppressionDecisionOverrides +
+                                                        (suggestion.logicalId() to SuppressionDecision.SUPPRESS),
+                                                    reviewedCutIds = current.reviewedCutIds + activeRally.cutIds,
+                                                ) }
+                                            },
+                                        )
+                                    } ?: KeepRemoveToggle(
+                                        keepSelected = selected.included,
+                                        removeSelected = !selected.included,
+                                        automaticRemove = false,
+                                        onKeep = {
+                                            updateRallyCuts(activeRally.cutIds) { it.copy(included = true) }
+                                            updateDraft { it.copy(reviewedCutIds = it.reviewedCutIds + activeRally.cutIds) }
+                                        },
+                                        onRemove = {
+                                            updateRallyCuts(activeRally.cutIds) { it.copy(included = false) }
+                                            updateDraft { it.copy(reviewedCutIds = it.reviewedCutIds + activeRally.cutIds) }
+                                        },
+                                    )
+                                    TimelineLabels(
+                                        detailWindow.startMs,
+                                        (detailWindow.startMs + detailWindow.endMs) / 2,
+                                        detailWindow.endMs,
+                                    )
+                                    Box(Modifier.guidedTourTarget("editor-trim", guidedTourTargets)) {
+                                        FocusTimeline(
+                                            cut = selected,
+                                            window = detailWindow,
+                                            playheadMs = playbackPositionMs,
+                                            effective = activeRally.cutIds.any { it in effectiveIds },
+                                            lowConfidence = needsReview &&
+                                                activeRally.cutIds.any { it !in draft.reviewedCutIds },
+                                            suggestions = activeSuggestions,
+                                            appliedSuggestionIds = appliedSuggestionIds,
+                                            userRemovedSuggestionIds = userRemovedSuggestionIds,
+                                            userRemoved = activeRally.cutIds.any { it in userRemovedCleanupCutIds },
+                                            handlesEnabled = selectedSuggestion == null,
+                                            onSeek = ::seekTo,
+                                            onSuggestionSelect = { id ->
+                                                activeSuggestions.firstOrNull { it.fragmentId() == id }?.let(::selectSuggestion)
+                                            },
+                                            onStartChange = { setKeepBoundary("start", it) },
+                                            onEndChange = { setKeepBoundary("end", it) },
+                                            onCoreStartChange = { setCoreBoundary("start", it) },
+                                            onCoreEndChange = { setCoreBoundary("end", it) },
+                                        )
+                                    }
+                                    if (selectedSuggestion == null) {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            OutlinedButton(
+                                                enabled = playbackPositionMs <= selected.coreEndMs - MIN_MARK_MS,
+                                                onClick = { setCoreBoundary("start", playbackPositionMs) },
+                                                modifier = Modifier.weight(1f),
+                                            ) { Text("Set start", fontSize = 10.sp) }
+                                            OutlinedButton(
+                                                enabled = playbackPositionMs >= selected.coreStartMs + MIN_MARK_MS,
+                                                onClick = { setCoreBoundary("end", playbackPositionMs) },
+                                                modifier = Modifier.weight(1f),
+                                            ) { Text("Set end", fontSize = 10.sp) }
+                                        }
+                                        Button(
+                                            enabled = activeRally.cuts.any { cut ->
+                                                playbackPositionMs >= cut.coreStartMs + MIN_MARK_MS &&
+                                                    playbackPositionMs <= cut.coreEndMs - MIN_MARK_MS
+                                            },
+                                            onClick = ::splitSelectedAtPlayhead,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) { Text("Split at playhead") }
+                                    }
+                                }
+                            }
+                            MarkingTools(
+                                draft = draft,
+                                playbackPositionMs = playbackPositionMs,
+                                flat = true,
+                                onDraft = ::updateDraft,
+                                onManualCompleted = { cut ->
+                                    selectedId = cut.id
+                                    message = "Added ${cut.id} from ${preciseTime(cut.keepStartMs)} to ${preciseTime(cut.keepEndMs)}"
+                                },
+                                onMessage = { message = it },
+                                modifier = Modifier.guidedTourTarget("editor-marking", guidedTourTargets),
+                            )
+                            if (visibleIgnoredIntervals.isNotEmpty()) {
+                                DesktopSidebarSection("LEFT-OUT FOOTAGE") {
+                                    visibleIgnoredIntervals.sortedBy { it.startMs }.forEach { interval ->
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            TextButton(onClick = { seekTo(interval.startMs) }) {
+                                                Text("${preciseTime(interval.startMs)}–${preciseTime(interval.endMs)}", fontSize = 10.sp)
+                                            }
+                                            Spacer(Modifier.weight(1f))
+                                            TextButton(onClick = {
+                                                updateDraft {
+                                                    it.copy(ignoredIntervals = it.ignoredIntervals.filterNot { item -> item.id == interval.id })
+                                                }
+                                            }) { Text("Remove", color = Danger, fontSize = 10.sp) }
+                                        }
+                                    }
+                                }
+                            }
+                            if (displayAnalysisMeasurements) AnalysisMeasurementsCard(project.analysisMeasurements)
+                            DesktopSidebarSection(title = "PLAYBACK") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "Play only final cut",
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Switch(
+                                        checked = draft.finalPreviewEnabled,
+                                        onCheckedChange = { enabled ->
+                                            previewEndMs = null
+                                            updateDraft { it.copy(finalPreviewEnabled = enabled) }
+                                            if (enabled) {
+                                                EditorMath.nextFinalTime(finalIntervals, player.currentPosition)
+                                                    ?.let(::seekTo)
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                            DesktopSidebarSection(
+                                title = "VIDEO OVERLAY",
+                                modifier = Modifier.guidedTourTarget(
+                                    "editor-score-overlay",
+                                    guidedTourTargets,
+                                ),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "Render scores",
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Switch(
+                                        checked = draft.renderScoreOverlay,
+                                        enabled = draft.scoreTracking.enabled,
+                                        onCheckedChange = { enabled ->
+                                            updateDraft {
+                                                it.copy(
+                                                    renderScoreOverlay = enabled,
+                                                    renderScoreTimeline = if (enabled) {
+                                                        it.renderScoreTimeline
+                                                    } else {
+                                                        false
+                                                    },
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "Render point timeline",
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Switch(
+                                        checked = draft.renderScoreTimeline,
+                                        enabled = draft.scoreTracking.enabled && draft.renderScoreOverlay,
+                                        onCheckedChange = { enabled ->
+                                            updateDraft {
+                                                it.copy(renderScoreTimeline = it.renderScoreOverlay && enabled)
+                                            }
+                                        },
+                                    )
+                                }
+                                if (!draft.scoreTracking.enabled) {
+                                    Text(
+                                        "Turn on Optional scoreboard to enable video overlays.",
+                                        color = Muted,
+                                        fontSize = 9.sp,
+                                    )
+                                }
+                            }
+                            LegalFooter()
+                        },
+                    )
+                    }
+                } else {
             Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(scaffoldPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box(Modifier.guidedTourTarget("editor-header", guidedTourTargets)) {
                     sourceControls(
-                        EditorProjectSummary(
-                            outputDurationMs = totalFinalMs,
-                            kept = effectiveRallies.size,
-                            needsReview = reviewAttentionCount,
-                        ),
+                        editorSummary,
                         { showEditorSettings = true },
                     )
                 }
@@ -3060,36 +4175,55 @@ private fun EditorScreen(
                     },
                 )
 
-            Card(
-                modifier = Modifier.guidedTourTarget("editor-video", guidedTourTargets),
-                colors = CardDefaults.cardColors(containerColor = Color.Black),
-            ) {
-                BoxWithConstraints(Modifier.fillMaxWidth().height(176.dp)) {
-                    if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
-                        ContentFrame(
-                            player = player,
-                            modifier = Modifier.fillMaxSize(),
-                            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                        )
-                    }
-                    if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
-                        val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
-                            seed.width, seed.height, seed.rotation,
-                        )
-                        val videoAspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
-                        val containerAspect = maxWidth.value / maxHeight.value.coerceAtLeast(.001f)
-                        val videoModifier = if (containerAspect > videoAspect) {
-                            Modifier.height(maxHeight).width(maxHeight * videoAspect)
-                        } else {
-                            Modifier.width(maxWidth).height(maxWidth / videoAspect)
+            Column {
+                Card(
+                    modifier = Modifier.guidedTourTarget("editor-video", guidedTourTargets),
+                    colors = CardDefaults.cardColors(containerColor = Color.Black),
+                ) {
+                    BoxWithConstraints(Modifier.fillMaxWidth().height(compactPlayerHeightDp.dp)) {
+                        if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
+                            ContentFrame(
+                                player = player,
+                                modifier = Modifier.fillMaxSize(),
+                                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                            )
                         }
-                        ScoreOverlayPreview(
-                            snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
-                            timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
-                            renderTimeline = draft.renderScoreTimeline,
-                            modifier = videoModifier.align(Alignment.Center),
+                        if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
+                            val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
+                                seed.width, seed.height, seed.rotation,
+                            )
+                            val videoAspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
+                            val containerAspect = maxWidth.value / maxHeight.value.coerceAtLeast(.001f)
+                            val videoModifier = if (containerAspect > videoAspect) {
+                                Modifier.height(maxHeight).width(maxHeight * videoAspect)
+                            } else {
+                                Modifier.width(maxWidth).height(maxWidth / videoAspect)
+                            }
+                            ScoreOverlayPreview(
+                                snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
+                                timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
+                                renderTimeline = draft.renderScoreTimeline,
+                                modifier = videoModifier.align(Alignment.Center),
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .clickable(onClick = ::togglePlayback)
+                                .semantics {
+                                    contentDescription = if (isPlaying) "Pause video" else "Play video"
+                                },
                         )
                     }
+                }
+                VideoResizeHandle(description = "Resize phone video player height") { dragDeltaPx ->
+                    compactPlayerHeightDp = resizedPlayerHeight(
+                        currentHeightDp = compactPlayerHeightDp,
+                        dragDeltaPx = dragDeltaPx,
+                        density = displayDensity,
+                        minHeightDp = COMPACT_PLAYER_MIN_HEIGHT_DP,
+                        maxHeightDp = COMPACT_PLAYER_MAX_HEIGHT_DP,
+                    )
                 }
             }
             PlayerControls(
@@ -3097,17 +4231,7 @@ private fun EditorScreen(
                 positionMs = playbackPositionMs,
                 durationMs = seed.gameEndMs,
                 playbackRate = draft.playbackRate,
-                onToggle = {
-                    previewEndMs = null
-                    if (player.isPlaying) player.pause() else {
-                        if (player.currentPosition >= seed.gameEndMs) seekTo(seed.gameStartMs)
-                        if (draft.finalPreviewEnabled) {
-                            EditorMath.nextFinalTime(finalIntervals, player.currentPosition)
-                                ?.let { if (it != player.currentPosition) seekTo(it) }
-                        }
-                        player.play()
-                    }
-                },
+                onToggle = ::togglePlayback,
                 onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
                 modifier = Modifier.guidedTourTarget("editor-transport", guidedTourTargets),
             )
@@ -3144,6 +4268,7 @@ private fun EditorScreen(
                     selectedCutIds = selectedRally?.cutIds.orEmpty(),
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
+                    reviewedCutIds = draft.reviewedCutIds,
                     playheadMs = playbackPositionMs,
                     serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
                     sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
@@ -3187,6 +4312,7 @@ private fun EditorScreen(
                     selectedCutIds = selectedRally?.cutIds.orEmpty(),
                     effectiveIds = effectiveIds,
                     confidenceThreshold = draft.confidenceReviewThreshold,
+                    reviewedCutIds = draft.reviewedCutIds,
                     playheadMs = playbackPositionMs,
                     serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
                     sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
@@ -3214,6 +4340,7 @@ private fun EditorScreen(
                     (seed.gameStartMs + seed.gameEndMs * 3) / 4,
                     seed.gameEndMs,
                 )
+                TimelineLegend()
             }
 
             SectionCard(
@@ -3325,7 +4452,8 @@ private fun EditorScreen(
                             window = detailWindow,
                             playheadMs = playbackPositionMs,
                             effective = selectedRally.cutIds.any { it in effectiveIds },
-                            lowConfidence = selectedNeedsConfidenceReview,
+                            lowConfidence = selectedNeedsConfidenceReview &&
+                                selectedRally.cutIds.any { it !in draft.reviewedCutIds },
                             suggestions = activeSuggestions,
                             appliedSuggestionIds = activeSuggestions.filter {
                                 EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
@@ -3519,6 +4647,8 @@ private fun EditorScreen(
             LegalFooter()
             Spacer(Modifier.height(20.dp))
             }
+                }
+            }
         }
         GuidedTour(
             GuidedTourStage.EDITOR,
@@ -3558,6 +4688,346 @@ private fun EditorScreen(
 }
 
 @Composable
+private fun LargeScreenEditorLayout(
+    leftPaneWidthDp: Float,
+    rightPaneWidthDp: Float,
+    onLeftPaneWidthChange: (Float) -> Unit,
+    onRightPaneWidthChange: (Float) -> Unit,
+    header: @Composable () -> Unit,
+    leftPane: @Composable ColumnScope.() -> Unit,
+    centerPane: @Composable ColumnScope.() -> Unit,
+    rightPane: @Composable ColumnScope.() -> Unit,
+) {
+    val density = LocalDensity.current.density
+    Column(
+        modifier = Modifier.fillMaxSize().background(Paper),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) { header() }
+        HorizontalDivider(color = Rail)
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+            val sidePaneBudgetDp = (
+                maxWidth.value - DESKTOP_CENTER_PANE_MIN_WIDTH_DP - DESKTOP_PANE_HORIZONTAL_CHROME_DP
+            ).coerceAtLeast(DESKTOP_LEFT_PANE_MIN_WIDTH_DP + DESKTOP_RIGHT_PANE_MIN_WIDTH_DP)
+            val resolvedLeftWidthDp = leftPaneWidthDp.coerceIn(
+                DESKTOP_LEFT_PANE_MIN_WIDTH_DP,
+                minOf(
+                    DESKTOP_LEFT_PANE_MAX_WIDTH_DP,
+                    sidePaneBudgetDp - DESKTOP_RIGHT_PANE_MIN_WIDTH_DP,
+                ),
+            )
+            val resolvedRightWidthDp = rightPaneWidthDp.coerceIn(
+                DESKTOP_RIGHT_PANE_MIN_WIDTH_DP,
+                minOf(
+                    DESKTOP_RIGHT_PANE_MAX_WIDTH_DP,
+                    sidePaneBudgetDp - resolvedLeftWidthDp,
+                ),
+            )
+            val leftMaxWidthDp = minOf(
+                DESKTOP_LEFT_PANE_MAX_WIDTH_DP,
+                sidePaneBudgetDp - resolvedRightWidthDp,
+            )
+            val rightMaxWidthDp = minOf(
+                DESKTOP_RIGHT_PANE_MAX_WIDTH_DP,
+                sidePaneBudgetDp - resolvedLeftWidthDp,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(resolvedLeftWidthDp.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 10.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DesktopPaneHeading("MATCH EVENTS")
+                    leftPane()
+                }
+                DesktopSidebarResizeHandle("Resize match events sidebar") { dragDeltaPx ->
+                    onLeftPaneWidthChange(
+                        resizedDesktopSidebarWidth(
+                            currentWidthDp = resolvedLeftWidthDp,
+                            dragDeltaPx = dragDeltaPx,
+                            density = density,
+                            minWidthDp = DESKTOP_LEFT_PANE_MIN_WIDTH_DP,
+                            maxWidthDp = leftMaxWidthDp,
+                        ),
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DesktopPaneHeading("REVIEW")
+                    centerPane()
+                }
+                DesktopSidebarResizeHandle("Resize current rally sidebar") { dragDeltaPx ->
+                    onRightPaneWidthChange(
+                        resizedDesktopSidebarWidth(
+                            currentWidthDp = resolvedRightWidthDp,
+                            dragDeltaPx = -dragDeltaPx,
+                            density = density,
+                            minWidthDp = DESKTOP_RIGHT_PANE_MIN_WIDTH_DP,
+                            maxWidthDp = rightMaxWidthDp,
+                        ),
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .width(resolvedRightWidthDp.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(end = 10.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DesktopPaneHeading("CURRENT RALLY")
+                    rightPane()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopSidebarResizeHandle(
+    description: String,
+    onDrag: (Float) -> Unit,
+) {
+    val dragState = rememberDraggableState(onDelta = onDrag)
+    Box(
+        modifier = Modifier
+            .width(16.dp)
+            .fillMaxHeight()
+            .draggable(
+                state = dragState,
+                orientation = Orientation.Horizontal,
+            )
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.width(1.dp).fillMaxHeight().background(Rail))
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            repeat(3) {
+                Box(
+                    Modifier
+                        .width(6.dp)
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(Muted.copy(alpha = 0.7f)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoResizeHandle(
+    description: String = "Resize video player height",
+    onDrag: (Float) -> Unit,
+) {
+    val dragState = rememberDraggableState(onDelta = onDrag)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .draggable(
+                state = dragState,
+                orientation = Orientation.Vertical,
+            )
+            .semantics { contentDescription = description },
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 5.dp)
+                .width(54.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Muted.copy(alpha = 0.55f)),
+        )
+        Canvas(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 4.dp)
+                .size(14.dp),
+        ) {
+            val strokeWidth = 1.5.dp.toPx()
+            drawLine(
+                color = Muted,
+                start = Offset(size.width * 0.52f, size.height),
+                end = Offset(size.width, size.height * 0.52f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = Muted,
+                start = Offset(size.width * 0.18f, size.height),
+                end = Offset(size.width, size.height * 0.18f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LargeScreenExportLayout(
+    header: @Composable () -> Unit,
+    mp4Option: @Composable ColumnScope.() -> Unit,
+    chaptersOption: @Composable ColumnScope.() -> Unit,
+    projectOption: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(Paper),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) { header() }
+        HorizontalDivider(color = Rail)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            DesktopPaneHeading("EXPORT")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) { mp4Option() }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) { chaptersOption() }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) { projectOption() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopPaneHeading(label: String) {
+    Text(
+        text = label,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp),
+        color = Green,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Black,
+        letterSpacing = 1.sp,
+    )
+}
+
+@Composable
+private fun DesktopSidebarSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    headerActions: @Composable RowScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        HorizontalDivider(color = Rail)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    modifier = Modifier.weight(1f),
+                    color = Orange,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = .7.sp,
+                )
+                headerActions()
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun DesktopRallyLedger(
+    rallies: List<EditableRallyGroup>,
+    selectedId: String?,
+    effectiveIds: Set<String>,
+    reviewedIds: Set<String>,
+    lowConfidenceIds: Set<String>,
+    onSelect: (EditableRallyGroup) -> Unit,
+    onToggleIncluded: (EditableRallyGroup, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    DesktopSidebarSection(
+        title = "CLIP REGISTER",
+        modifier = modifier,
+        headerActions = {
+            Text(
+                "${rallies.count { rally -> rally.cutIds.any { it in effectiveIds } }} / ${rallies.size} included",
+                color = Muted,
+                fontSize = 9.sp,
+            )
+        },
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 180.dp, max = 440.dp)
+                .semantics { contentDescription = "Clip register" },
+        ) {
+            itemsIndexed(rallies, key = { _, rally -> rally.id }) { index, rally ->
+                val included = rally.cutIds.any { it in effectiveIds }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (rally.id == selectedId) Acid.copy(alpha = .5f) else Color.Transparent)
+                        .clickable { onSelect(rally) }
+                        .padding(horizontal = 7.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "R${(index + 1).toString().padStart(3, '0')}",
+                        color = if (rally.id == selectedId) Ink else Muted,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Column(Modifier.weight(1f).padding(horizontal = 7.dp)) {
+                        Text(
+                            "${preciseTime(rally.keepStartMs)}–${preciseTime(rally.keepEndMs)}",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                        )
+                        Text(
+                            when {
+                                !included -> "Left out"
+                                rally.cutIds.all { it in reviewedIds } -> "Checked"
+                                rally.id in lowConfidenceIds -> "Needs review"
+                                else -> "Ready"
+                            },
+                            color = if (rally.id in lowConfidenceIds && rally.cutIds.any { it !in reviewedIds }) Warning else Muted,
+                            fontSize = 9.sp,
+                        )
+                    }
+                    TextButton(onClick = { onToggleIncluded(rally, !included) }) {
+                        Text(if (included) "On" else "Off", color = if (included) Green else Danger, fontSize = 10.sp)
+                    }
+                }
+                if (index < rallies.lastIndex) HorizontalDivider(color = Rail)
+            }
+        }
+    }
+}
+
+@Composable
 internal fun ScoreTrackingPanel(
     enabled: Boolean,
     tracking: ScoreTracking,
@@ -3572,6 +5042,7 @@ internal fun ScoreTrackingPanel(
     servingSideProgressDetail: String?,
     servingSideStepMeasurements: List<InferenceStepMeasurement> = emptyList(),
     sideSwitchEnabled: Boolean = true,
+    desktop: Boolean = false,
     onEnabledChange: (Boolean) -> Unit,
     onTracking: (ScoreTracking) -> Unit,
     onSelect: (String, Long) -> Unit,
@@ -3588,19 +5059,7 @@ internal fun ScoreTrackingPanel(
     val selectedIndex = selected?.let {
         sortedServes.indexOfFirst { marker -> marker.id == it.id }
     } ?: -1
-    Card(
-        modifier = modifier
-            .border(1.dp, Rail, RoundedCornerShape(10.dp))
-            .testTag("score-tracking-panel")
-            .semantics { contentDescription = "Score tracking controls" },
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(11.dp),
-        ) {
+    val panelContent: @Composable ColumnScope.() -> Unit = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "OPTIONAL SCOREBOARD · BETA",
@@ -3626,22 +5085,49 @@ internal fun ScoreTrackingPanel(
                     reviewMarkerIds = reviewMarkerIds,
                     onSelect = onSelect,
                     onTracking = onTracking,
+                    flat = desktop,
                 )
                 ScorePointTimeline(
                     visibleScore = visibleScore,
                     tracking = tracking,
                     onPointClick = { point -> onSelect(point.serveMarkerId, point.timestampMs) },
+                    flat = desktop,
                 )
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(8.dp)),
-                    color = Paper,
-                    shape = RoundedCornerShape(8.dp),
-                ) {
+                SidebarContentContainer(flat = desktop) {
                     Column(
-                        Modifier.fillMaxWidth().padding(10.dp),
+                        Modifier.fillMaxWidth().padding(vertical = if (desktop) 2.dp else 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        if (desktop) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                DesktopTeamScoreEditor(
+                                    name = tracking.team1Name,
+                                    label = "Team 1",
+                                    score = visibleScore.team1Score,
+                                    scoreColor = Green,
+                                    serving = visibleScore.servingTeamId == ScoreTeamId.TEAM_1,
+                                    onNameChange = { name ->
+                                        onTracking(tracking.copy(team1Name = name.ifEmpty { "Team 1" }))
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                DesktopTeamScoreEditor(
+                                    name = tracking.team2Name,
+                                    label = "Team 2",
+                                    score = visibleScore.team2Score,
+                                    scoreColor = Orange,
+                                    serving = visibleScore.servingTeamId == ScoreTeamId.TEAM_2,
+                                    onNameChange = { name ->
+                                        onTracking(tracking.copy(team2Name = name.ifEmpty { "Team 2" }))
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
                                 value = tracking.team1Name,
@@ -3685,6 +5171,7 @@ internal fun ScoreTrackingPanel(
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                             )
+                        }
                         }
                     }
                 }
@@ -3778,12 +5265,11 @@ internal fun ScoreTrackingPanel(
                 }
                 }
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(4.dp)),
-                    color = Color.White,
-                    shape = RoundedCornerShape(4.dp),
-                ) {
-                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SidebarContentContainer(flat = desktop, containerColor = Paper) {
+                    Column(
+                        Modifier.padding(vertical = if (desktop) 2.dp else 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text("SELECTED SERVE", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         if (selected == null) {
                             Text("Select a ball marker on the timeline", color = Muted, fontSize = 12.sp)
@@ -3873,6 +5359,81 @@ internal fun ScoreTrackingPanel(
                     fontSize = 10.sp,
                 )
             }
+    }
+    if (desktop) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .testTag("score-tracking-panel")
+                .semantics { contentDescription = "Score tracking controls" },
+        ) {
+            HorizontalDivider(color = Rail)
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                panelContent()
+            }
+        }
+    } else {
+        Card(
+            modifier = modifier
+                .border(1.dp, Rail, RoundedCornerShape(10.dp))
+                .testTag("score-tracking-panel")
+                .semantics { contentDescription = "Score tracking controls" },
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(containerColor = Paper),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(11.dp),
+            ) {
+                panelContent()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopTeamScoreEditor(
+    name: String,
+    label: String,
+    score: Int,
+    scoreColor: Color,
+    serving: Boolean,
+    onNameChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = onNameChange,
+            label = { Text(label, maxLines = 1, fontSize = 10.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(62.dp)
+                .border(1.dp, Rail, RoundedCornerShape(7.dp)),
+            color = Paper,
+            shape = RoundedCornerShape(7.dp),
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                Text(
+                    score.toString(),
+                    modifier = Modifier.align(Alignment.Center),
+                    color = scoreColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 29.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (serving) {
+                    Text("🏐", Modifier.align(Alignment.TopEnd).padding(5.dp), fontSize = 11.sp)
+                }
+            }
         }
     }
 }
@@ -3885,6 +5446,7 @@ private fun ScoreMarkerList(
     reviewMarkerIds: Set<String>,
     onSelect: (String, Long) -> Unit,
     onTracking: (ScoreTracking) -> Unit,
+    flat: Boolean = false,
 ) {
     val sortedServes = visibleTracking.serveMarkers.sortedWith(
         compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id },
@@ -3914,16 +5476,24 @@ private fun ScoreMarkerList(
         Spacer(Modifier.weight(1f))
         Text("${markerRows.size} · tap to select", color = Muted, fontSize = 10.sp)
     }
-    LazyColumn(
+    val listModifier = if (flat) {
+        Modifier
+            .fillMaxWidth()
+            .heightIn(max = 220.dp)
+            .semantics { contentDescription = "Score marker list" }
+    } else {
         Modifier
             .fillMaxWidth()
             .heightIn(max = 220.dp)
             .border(1.dp, Rail, RoundedCornerShape(4.dp))
             .background(Paper, RoundedCornerShape(4.dp))
             .padding(4.dp)
-            .semantics { contentDescription = "Score marker list" },
+            .semantics { contentDescription = "Score marker list" }
+    }
+    LazyColumn(
+        listModifier,
         state = markerListState,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(if (flat) 0.dp else 4.dp),
     ) {
         if (markerRows.isEmpty()) {
             item {
@@ -3933,7 +5503,20 @@ private fun ScoreMarkerList(
         items(markerRows, key = { it.first }) { (id, timestamp, label) ->
             val selectedRow = id == timelineMarkerId
             val needsReview = id in reviewMarkerIds
-            Row(
+            val rowModifier = if (flat) {
+                Modifier
+                    .fillMaxWidth()
+                    .background(
+                        when {
+                            selectedRow -> Acid.copy(alpha = .35f)
+                            needsReview -> Color(0xFFFFF7E6)
+                            else -> Color.Transparent
+                        },
+                    )
+                    .semantics {
+                        contentDescription = if (needsReview) "Score marker needs review" else "Score marker"
+                    }
+            } else {
                 Modifier
                     .fillMaxWidth()
                     .border(
@@ -3946,12 +5529,16 @@ private fun ScoreMarkerList(
                         RoundedCornerShape(3.dp),
                     )
                     .background(
-                        if (needsReview) Color(0xFFFFF7E6) else Color.White,
+                        if (needsReview) Color(0xFFFFF7E6) else Paper,
                         RoundedCornerShape(3.dp),
                     )
                     .semantics {
                         contentDescription = if (needsReview) "Score marker needs review" else "Score marker"
-                    },
+                    }
+            }
+            Column {
+            Row(
+                rowModifier,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(
@@ -3977,6 +5564,29 @@ private fun ScoreMarkerList(
                     },
                 ) { Text("Remove", color = Danger, fontSize = 11.sp) }
             }
+            if (flat) HorizontalDivider(color = Rail)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SidebarContentContainer(
+    flat: Boolean,
+    containerColor: Color = Paper,
+    content: @Composable () -> Unit,
+) {
+    if (flat) {
+        Box(Modifier.fillMaxWidth()) { content() }
+    } else {
+        Surface(
+            modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(4.dp)),
+            color = containerColor,
+            shape = RoundedCornerShape(4.dp),
+        ) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
+                content()
+            }
         }
     }
 }
@@ -3986,17 +5596,17 @@ private fun ScorePointTimeline(
     visibleScore: DerivedScore,
     tracking: ScoreTracking,
     onPointClick: (DerivedScorePoint) -> Unit,
+    flat: Boolean = false,
 ) {
     val awardedPoints = visibleScore.points.mapIndexedNotNull { index, point ->
         point.takeIf { it.status == ScorePointStatus.COUNTED && it.winnerTeamId != null }
             ?.let { index + 1 to it }
     }
-    Surface(
-        modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(4.dp)),
-        color = Paper,
-        shape = RoundedCornerShape(4.dp),
-    ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    SidebarContentContainer(flat = flat) {
+        Column(
+            Modifier.padding(vertical = if (flat) 2.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("POINT TIMELINE", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
@@ -4264,7 +5874,7 @@ private fun SectionCard(
     Card(
         modifier = modifier.border(1.dp, Rail, RoundedCornerShape(10.dp)),
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = Paper),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
@@ -4311,26 +5921,37 @@ private fun PlayerControls(
     positionMs: Long,
     durationMs: Long,
     playbackRate: Float,
+    desktop: Boolean = false,
     onToggle: () -> Unit,
     onRate: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var rateExpanded by remember { mutableStateOf(false) }
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(preciseTime(positionMs), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-            Text(" / ${preciseTime(durationMs)}", fontFamily = FontFamily.Monospace, color = Muted)
-        }
+    if (desktop) {
         Row(
-            Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth().heightIn(min = 36.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.weight(1f)) {
+            Text(
+                preciseTime(positionMs),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                " / ${preciseTime(durationMs)}",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                color = Muted,
+            )
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.width(104.dp)) {
                 OutlinedButton(
                     onClick = { rateExpanded = true },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text("Speed · ${playbackRate.toInt()}x") }
+                    modifier = Modifier.fillMaxWidth().height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                ) { Text("Speed · ${playbackRate.toInt()}x", fontSize = 10.sp, maxLines = 1) }
                 DropdownMenu(
                     expanded = rateExpanded,
                     onDismissRequest = { rateExpanded = false },
@@ -4348,8 +5969,48 @@ private fun PlayerControls(
             }
             Button(
                 onClick = onToggle,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-            ) { Text(if (playing) "Pause" else "Play", fontWeight = FontWeight.Bold) }
+                modifier = Modifier.width(84.dp).height(34.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+            ) {
+                Text(if (playing) "Pause" else "Play", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    } else {
+        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(preciseTime(positionMs), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                Text(" / ${preciseTime(durationMs)}", fontFamily = FontFamily.Monospace, color = Muted)
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { rateExpanded = true },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Speed · ${playbackRate.toInt()}x") }
+                    DropdownMenu(
+                        expanded = rateExpanded,
+                        onDismissRequest = { rateExpanded = false },
+                    ) {
+                        listOf(1f, 2f, 4f, 8f).forEach { rate ->
+                            DropdownMenuItem(
+                                text = { Text("${rate.toInt()}x") },
+                                onClick = {
+                                    rateExpanded = false
+                                    onRate(rate)
+                                },
+                            )
+                        }
+                    }
+                }
+                Button(
+                    onClick = onToggle,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) { Text(if (playing) "Pause" else "Play", fontWeight = FontWeight.Bold) }
+            }
         }
     }
 }
@@ -4422,6 +6083,89 @@ private fun PaddingControl(label: String, valueMs: Long, onChange: (Long) -> Uni
 }
 
 @Composable
+private fun TimelineLegend() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 4.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TimelineLegendItem("Rally core") {
+            TimelineLegendBlock(Green)
+        }
+        TimelineLegendItem("Padding") {
+            TimelineLegendBlock(TimelineKeptPaddingColor)
+        }
+        TimelineLegendItem("Needs review") {
+            TimelineLegendBlock(Orange)
+        }
+        TimelineLegendItem("Serve") {
+            Text("🏐", fontSize = 13.sp, maxLines = 1)
+        }
+        TimelineLegendItem("Side switch") {
+            Text("⇄", color = Ink, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+        }
+        TimelineLegendItem("Excluded") {
+            Canvas(Modifier.width(20.dp).height(10.dp)) {
+                var x = -size.height
+                while (x < size.width) {
+                    drawLine(
+                        color = SuppressionRed,
+                        start = Offset(x, size.height),
+                        end = Offset(x + size.height, 0f),
+                        strokeWidth = 2.dp.toPx(),
+                    )
+                    x += 6.dp.toPx()
+                }
+            }
+        }
+        TimelineLegendItem("Joined gap") {
+            Canvas(Modifier.width(20.dp).height(10.dp)) {
+                val barWidth = 2.dp.toPx()
+                val gap = 3.dp.toPx()
+                var x = 1.dp.toPx()
+                while (x < size.width) {
+                    drawRoundRect(
+                        color = TimelineJoinedGapColor,
+                        topLeft = Offset(x, 0f),
+                        size = Size(barWidth, size.height),
+                        cornerRadius = CornerRadius(barWidth / 2f),
+                    )
+                    x += barWidth + gap
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineLegendItem(
+    label: String,
+    marker: @Composable () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        marker()
+        Text(label, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+@Composable
+private fun TimelineLegendBlock(color: Color) {
+    Box(
+        Modifier
+            .width(20.dp)
+            .height(9.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(color),
+    )
+}
+
+@Composable
 internal fun WholeTimeline(
     windowStartMs: Long,
     windowEndMs: Long,
@@ -4436,6 +6180,7 @@ internal fun WholeTimeline(
     selectedCutIds: Set<String>,
     effectiveIds: Set<String>,
     confidenceThreshold: Float,
+    reviewedCutIds: Set<String>,
     playheadMs: Long,
     serveMarkers: List<ServeMarker>,
     sideSwitchMarkers: List<SideSwitchMarker>,
@@ -4543,10 +6288,11 @@ internal fun WholeTimeline(
                 val width = max(2f, xAt(clippedEnd) - x)
                 val low = cut.origin == CutOrigin.INFERRED &&
                     (cut.isModelDisagreement() || cut.confidence < confidenceThreshold)
+                val needsReview = timelineNeedsReview(low, cut.id, reviewedCutIds)
                 val color = when {
                     !cut.included || cut.id in userRemovedCleanupCutIds -> Muted.copy(alpha = .55f)
                     cut.id !in effectiveIds -> Danger.copy(alpha = .65f)
-                    low -> Warning
+                    needsReview -> Warning
                     else -> TimelineKeptPaddingColor
                 }
                 drawRoundRect(color, Offset(x, cutTop), Size(width, cutHeight), CornerRadius(6f))
@@ -4558,7 +6304,7 @@ internal fun WholeTimeline(
                     drawRoundRect(
                         when {
                             !cut.included || cut.id in userRemovedCleanupCutIds -> Muted
-                            low -> Orange
+                            needsReview -> Orange
                             else -> Green
                         },
                         Offset(coreX, cutTop),
@@ -4987,12 +6733,13 @@ private fun TimelineLabels(start: Long, middle: Long, end: Long) {
 private fun MarkingTools(
     draft: EditorDraft,
     playbackPositionMs: Long,
+    flat: Boolean = false,
     onDraft: ((EditorDraft) -> EditorDraft) -> Unit,
     onManualCompleted: (EditableCut) -> Unit,
     onMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SectionCard("FIX MISSED OR EXTRA FOOTAGE", null, modifier = modifier) {
+    val toolsContent: @Composable ColumnScope.() -> Unit = {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -5062,6 +6809,20 @@ private fun MarkingTools(
                 }
             }
         }
+    }
+    if (flat) {
+        DesktopSidebarSection(
+            title = "FIX MISSED OR EXTRA FOOTAGE",
+            modifier = modifier,
+            content = toolsContent,
+        )
+    } else {
+        SectionCard(
+            label = "FIX MISSED OR EXTRA FOOTAGE",
+            subtitle = null,
+            modifier = modifier,
+            content = toolsContent,
+        )
     }
 }
 
