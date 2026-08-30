@@ -1,5 +1,9 @@
 # VolleyCut native Android analysis and editor
 
+Android UI work follows [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md), which extends the
+shared product guidance in [`../DESIGN_LANGUAGE.md`](../DESIGN_LANGUAGE.md) for the
+responsive phone, tablet, and desktop-mode layouts.
+
 This folder contains the native Android analysis path plus a first-party cut editor and exporter. The analysis workflow is:
 
 ```text
