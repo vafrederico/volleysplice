@@ -79,6 +79,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -90,6 +91,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -116,9 +118,13 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -147,8 +153,32 @@ class EditorActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val seed = seedFromIntent(intent) ?: EditorProjectStore.load(this)
         setContent {
-            VolleyCutTheme {
-                EditorApp(activity = this, initialSeed = seed)
+            var uiScale by remember { mutableFloatStateOf(uiScalePreference(this)) }
+            val systemDensity = LocalDensity.current
+            val scaledDensity = remember(systemDensity.density, systemDensity.fontScale, uiScale) {
+                Density(
+                    density = systemDensity.density * uiScale,
+                    fontScale = systemDensity.fontScale,
+                )
+            }
+            CompositionLocalProvider(
+                LocalDensity provides scaledDensity,
+                LocalUiScaleSetting provides UiScaleSetting(uiScale) { requestedScale ->
+                    val normalizedScale = normalizeUiScale(requestedScale)
+                    uiScale = normalizedScale
+                    setUiScalePreference(this, normalizedScale)
+                },
+            ) {
+                VolleyCutTheme {
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val desktop = editorLayoutMode(
+                            maxWidth.value.roundToInt(),
+                            maxHeight.value.roundToInt(),
+                        ) == EditorLayoutMode.DESKTOP
+                        DesktopStatusBar(activity = this@EditorActivity, hidden = desktop)
+                        EditorApp(activity = this@EditorActivity, initialSeed = seed)
+                    }
+                }
             }
         }
     }
@@ -227,6 +257,23 @@ class EditorActivity : ComponentActivity() {
                 putExtra(EXTRA_GAME_START_MS, seed.gameStartMs)
                 putExtra(EXTRA_GAME_END_MS, seed.gameEndMs)
             }
+    }
+}
+
+@Composable
+private fun DesktopStatusBar(activity: ComponentActivity, hidden: Boolean) {
+    DisposableEffect(activity, hidden) {
+        val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+        if (hidden) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.statusBars())
+        }
+        onDispose {
+            if (hidden) controller.show(WindowInsetsCompat.Type.statusBars())
+        }
     }
 }
 
@@ -449,6 +496,36 @@ private fun setScoreTrackingPreference(
 
 private const val DISPLAY_SETTINGS_PREFERENCES = "volleycut-display-settings"
 private const val SHOW_ANALYSIS_MEASUREMENTS = "show-analysis-measurements"
+private const val UI_SCALE = "ui-scale"
+internal const val UI_SCALE_MIN = 0.75f
+internal const val UI_SCALE_MAX = 1.25f
+internal const val UI_SCALE_DEFAULT = 1f
+private const val UI_SCALE_STEP = 0.05f
+
+private data class UiScaleSetting(
+    val scale: Float,
+    val onScaleChange: (Float) -> Unit,
+)
+
+private val LocalUiScaleSetting = staticCompositionLocalOf {
+    UiScaleSetting(UI_SCALE_DEFAULT) {}
+}
+
+internal fun normalizeUiScale(scale: Float): Float =
+    ((scale.coerceIn(UI_SCALE_MIN, UI_SCALE_MAX) / UI_SCALE_STEP).roundToInt() * UI_SCALE_STEP)
+        .coerceIn(UI_SCALE_MIN, UI_SCALE_MAX)
+
+private fun uiScalePreference(context: Context): Float = normalizeUiScale(
+    context.getSharedPreferences(DISPLAY_SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
+        .getFloat(UI_SCALE, UI_SCALE_DEFAULT),
+)
+
+private fun setUiScalePreference(context: Context, scale: Float) {
+    context.getSharedPreferences(DISPLAY_SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
+        .edit()
+        .putFloat(UI_SCALE, normalizeUiScale(scale))
+        .apply()
+}
 
 private fun showAnalysisMeasurements(context: Context): Boolean =
     context.getSharedPreferences(DISPLAY_SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
@@ -1192,35 +1269,36 @@ private fun ProjectHeaderBar(
             if (maxWidth >= 840.dp && editorSummary != null) {
                 val condensed = maxWidth < 1100.dp
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(if (condensed) 6.dp else 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (condensed) 5.dp else 8.dp),
                 ) {
                     Image(
                         painter = painterResource(R.drawable.volleycut_logo),
                         contentDescription = "VolleyCut",
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.width(if (condensed) 72.dp else 104.dp).height(34.dp),
+                        modifier = Modifier.width(if (condensed) 64.dp else 92.dp).height(26.dp),
                     )
                     Box(Modifier.width(if (condensed) 160.dp else 250.dp)) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                             Text(
                                 "CURRENT REVIEW",
                                 color = Green,
-                                fontSize = 8.sp,
+                                fontSize = 7.sp,
                                 fontWeight = FontWeight.Black,
-                                letterSpacing = .9.sp,
+                                letterSpacing = .7.sp,
                             )
                             OutlinedButton(
                                 onClick = { expanded = true },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
-                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.fillMaxWidth().height(32.dp),
+                                shape = RoundedCornerShape(5.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             ) {
                                 Text(
                                     if (creatingNew || selected == null) "＋ Start a new video…" else selected.source.name,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                 )
                             }
                         }
@@ -1289,6 +1367,7 @@ private fun ProjectHeaderBar(
                     IconButton(
                         onClick = onOpenSettings,
                         modifier = Modifier
+                            .size(40.dp)
                             .testTag("open-settings")
                             .guidedTourTarget("editor-settings", guidedTourTargets),
                     ) {
@@ -1299,7 +1378,11 @@ private fun ProjectHeaderBar(
                         )
                     }
                     Box {
-                        TextButton(onClick = { projectMenuExpanded = true }) { Text("More") }
+                        TextButton(
+                            onClick = { projectMenuExpanded = true },
+                            modifier = Modifier.height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 0.dp),
+                        ) { Text("More", fontSize = 11.sp) }
                         DropdownMenu(
                             expanded = projectMenuExpanded,
                             onDismissRequest = { projectMenuExpanded = false },
@@ -1441,13 +1524,15 @@ private fun ProjectHeaderBar(
 private fun HeaderStat(value: String, label: String) {
     Column(
         modifier = Modifier
-            .width(78.dp)
-            .border(1.dp, Rail, RoundedCornerShape(6.dp))
-            .padding(horizontal = 6.dp, vertical = 5.dp),
+            .width(70.dp)
+            .height(40.dp)
+            .border(1.dp, Rail, RoundedCornerShape(5.dp))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Text(value, color = Ink, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Text(label, color = Muted, fontSize = 7.sp, maxLines = 1)
+        Text(value, color = Ink, fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Muted, fontSize = 8.sp, lineHeight = 9.sp, maxLines = 1)
     }
 }
 
@@ -1460,11 +1545,12 @@ private fun HeaderWorkflowTab(
 ) {
     Column(
         modifier = modifier
+            .height(32.dp)
             .clip(RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
-            .padding(top = 8.dp),
+            .padding(top = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             label,
@@ -1494,18 +1580,18 @@ private fun HeaderReviewQueue(
         enabled = count > 0,
         modifier = modifier
             .width(if (condensed) 68.dp else 92.dp)
-            .heightIn(min = 48.dp),
-        shape = RoundedCornerShape(6.dp),
+            .height(40.dp),
+        shape = RoundedCornerShape(5.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Acid,
             contentColor = Ink,
             disabledContainerColor = SoftPanel,
             disabledContentColor = Muted,
         ),
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 3.dp, vertical = 1.dp),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(count.toString(), fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(count.toString(), fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Text(
                 label.replace(" ", "\n"),
                 fontSize = if (condensed) 7.sp else 8.sp,
@@ -1530,6 +1616,9 @@ private fun AppSettingsDialog(
         title = { Text("Settings") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("DISPLAY", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                UiScaleControl()
+                HorizontalDivider(color = Rail)
                 Text("Enjoying VolleyCut? A Google Play rating helps other volleyball players find it.")
                 OutlinedButton(
                     onClick = {
@@ -1599,6 +1688,9 @@ private fun EditorSettingsDialog(
                 Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                Text("DISPLAY", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                UiScaleControl()
+                HorizontalDivider(color = Rail)
                 Text("FINE-TUNE THE FINAL VIDEO", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1673,6 +1765,46 @@ private fun EditorSettingsDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
+}
+
+@Composable
+private fun UiScaleControl() {
+    val setting = LocalUiScaleSetting.current
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("UI size", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            Text(
+                "${(setting.scale * 100).roundToInt()}%",
+                color = Green,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Text(
+            "Scales the interface on top of Android's screen sizing. Use a smaller size to fit more in landscape.",
+            color = Muted,
+            fontSize = 10.sp,
+        )
+        Slider(
+            value = setting.scale,
+            onValueChange = setting.onScaleChange,
+            valueRange = UI_SCALE_MIN..UI_SCALE_MAX,
+            steps = 9,
+            modifier = Modifier.testTag("settings-ui-scale"),
+        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Smaller", color = Muted, fontSize = 10.sp)
+            Spacer(Modifier.weight(1f))
+            TextButton(
+                onClick = { setting.onScaleChange(UI_SCALE_DEFAULT) },
+                enabled = setting.scale != UI_SCALE_DEFAULT,
+                modifier = Modifier.testTag("settings-ui-scale-default"),
+            ) { Text("Default") }
+            Spacer(Modifier.weight(1f))
+            Text("Larger", color = Muted, fontSize = 10.sp)
+        }
+    }
 }
 
 @Composable
@@ -3576,30 +3708,54 @@ private fun EditorScreen(
                                         )
                                     }
                                 }
-                                VideoResizeHandle { dragDeltaPx ->
-                                    desktopPlayerHeightDp = resizedDesktopPlayerHeight(
-                                        currentHeightDp = desktopPlayerHeightDp,
-                                        dragDeltaPx = dragDeltaPx,
-                                        density = displayDensity,
+                                Box(Modifier.fillMaxWidth().height(36.dp)) {
+                                    PlayerControls(
+                                        playing = isPlaying,
+                                        positionMs = playbackPositionMs,
+                                        durationMs = seed.gameEndMs,
+                                        playbackRate = draft.playbackRate,
+                                        desktop = true,
+                                        onToggle = ::togglePlayback,
+                                        onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
+                                        modifier = Modifier.guidedTourTarget("editor-transport", guidedTourTargets),
                                     )
+                                    VideoResizeHandle(
+                                        modifier = Modifier.align(Alignment.Center).width(96.dp).fillMaxHeight(),
+                                    ) { dragDeltaPx ->
+                                        desktopPlayerHeightDp = resizedDesktopPlayerHeight(
+                                            currentHeightDp = desktopPlayerHeightDp,
+                                            dragDeltaPx = dragDeltaPx,
+                                            density = displayDensity,
+                                        )
+                                    }
                                 }
                             }
-                            PlayerControls(
-                                playing = isPlaying,
-                                positionMs = playbackPositionMs,
-                                durationMs = seed.gameEndMs,
-                                playbackRate = draft.playbackRate,
-                                desktop = true,
-                                onToggle = ::togglePlayback,
-                                onRate = { rate -> updateDraft { it.copy(playbackRate = rate) } },
-                                modifier = Modifier.guidedTourTarget("editor-transport", guidedTourTargets),
-                            )
-                            SectionCard(
-                                "GAME TIMELINE",
-                                "Source time, cuts, and match events",
-                                compact = true,
-                                modifier = Modifier.guidedTourTarget("editor-overview", guidedTourTargets),
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .guidedTourTarget("editor-overview", guidedTourTargets),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "GAME TIMELINE",
+                                        color = Orange,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = .7.sp,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        "Source time, cuts, and match events",
+                                        color = Muted,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        textAlign = TextAlign.End,
+                                    )
+                                }
                                 WholeTimeline(
                                     windowStartMs = seed.gameStartMs,
                                     windowEndMs = (seed.gameStartMs + seed.gameEndMs) / 2,
@@ -3635,6 +3791,7 @@ private fun EditorScreen(
                                             seekTo(time)
                                         }
                                     },
+                                    heightScale = 0.8f,
                                 )
                                 TimelineLabels(
                                     seed.gameStartMs,
@@ -3676,6 +3833,7 @@ private fun EditorScreen(
                                             seekTo(time)
                                         }
                                     },
+                                    heightScale = 0.8f,
                                 )
                                 TimelineLabels(
                                     (seed.gameStartMs + seed.gameEndMs) / 2,
@@ -4701,10 +4859,10 @@ private fun LargeScreenEditorLayout(
     val density = LocalDensity.current.density
     Column(
         modifier = Modifier.fillMaxSize().background(Paper),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) { header() }
-        HorizontalDivider(color = Rail)
+        Box(
+            Modifier.fillMaxWidth().padding(start = 10.dp, top = 4.dp, end = 10.dp, bottom = 2.dp),
+        ) { header() }
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
             val sidePaneBudgetDp = (
                 maxWidth.value - DESKTOP_CENTER_PANE_MIN_WIDTH_DP - DESKTOP_PANE_HORIZONTAL_CHROME_DP
@@ -4766,7 +4924,6 @@ private fun LargeScreenEditorLayout(
                         .padding(bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    DesktopPaneHeading("REVIEW")
                     centerPane()
                 }
                 DesktopSidebarResizeHandle("Resize current rally sidebar") { dragDeltaPx ->
@@ -4830,14 +4987,13 @@ private fun DesktopSidebarResizeHandle(
 
 @Composable
 private fun VideoResizeHandle(
+    modifier: Modifier = Modifier.fillMaxWidth().height(18.dp),
     description: String = "Resize video player height",
     onDrag: (Float) -> Unit,
 ) {
     val dragState = rememberDraggableState(onDelta = onDrag)
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(18.dp)
+        modifier = modifier
             .draggable(
                 state = dragState,
                 orientation = Orientation.Vertical,
@@ -4846,35 +5002,12 @@ private fun VideoResizeHandle(
     ) {
         Box(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 5.dp)
+                .align(Alignment.Center)
                 .width(54.dp)
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp))
                 .background(Muted.copy(alpha = 0.55f)),
         )
-        Canvas(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 4.dp)
-                .size(14.dp),
-        ) {
-            val strokeWidth = 1.5.dp.toPx()
-            drawLine(
-                color = Muted,
-                start = Offset(size.width * 0.52f, size.height),
-                end = Offset(size.width, size.height * 0.52f),
-                strokeWidth = strokeWidth,
-                cap = StrokeCap.Round,
-            )
-            drawLine(
-                color = Muted,
-                start = Offset(size.width * 0.18f, size.height),
-                end = Offset(size.width, size.height * 0.18f),
-                strokeWidth = strokeWidth,
-                cap = StrokeCap.Round,
-            )
-        }
     }
 }
 
@@ -4887,10 +5020,10 @@ private fun LargeScreenExportLayout(
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(Paper),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) { header() }
-        HorizontalDivider(color = Rail)
+        Box(
+            Modifier.fillMaxWidth().padding(start = 10.dp, top = 4.dp, end = 10.dp, bottom = 2.dp),
+        ) { header() }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -5062,7 +5195,7 @@ internal fun ScoreTrackingPanel(
     val panelContent: @Composable ColumnScope.() -> Unit = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "OPTIONAL SCOREBOARD · BETA",
+                    "SCOREBOARD · BETA",
                     Modifier.weight(1f),
                     color = Orange,
                     fontSize = 11.sp,
@@ -6187,7 +6320,9 @@ internal fun WholeTimeline(
     selectedScoreMarkerId: String?,
     onMarkerSelect: (String, Long) -> Unit,
     onSeek: (Long, String?, String?) -> Unit,
+    heightScale: Float = 1f,
 ) {
+    val resolvedHeightScale = heightScale.coerceIn(0.5f, 1f)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val markerTextMeasurer = rememberTextMeasurer()
@@ -6215,7 +6350,7 @@ internal fun WholeTimeline(
             Modifier
                 .testTag("whole-timeline")
                 .fillMaxWidth()
-                .height(68.dp)
+                .height(68.dp * resolvedHeightScale)
                 .clip(RoundedCornerShape(9.dp))
                 .background(TimelineTrackColor)
                 .semantics {
@@ -6234,7 +6369,7 @@ internal fun WholeTimeline(
                     detectTapGestures { offset ->
                         val time = timeAt(offset.x)
                         val markerHitRadius = with(density) { 14.dp.toPx() }
-                        val markerIconHeight = with(density) { 20.dp.toPx() }
+                        val markerIconHeight = with(density) { (20.dp * resolvedHeightScale).toPx() }
                         val marker = if (offset.y <= markerIconHeight) {
                             buildList<Pair<String, Long>> {
                                 serveMarkers.forEach { add(it.id to it.timestampMs) }
@@ -6261,10 +6396,10 @@ internal fun WholeTimeline(
                     )
                 },
         ) {
-            val cutTop = 16.dp.toPx()
-            val cutHeight = 36.dp.toPx()
-            val suppressionTop = 8.dp.toPx()
-            val suppressionHeight = 52.dp.toPx()
+            val cutTop = (16.dp * resolvedHeightScale).toPx()
+            val cutHeight = (36.dp * resolvedHeightScale).toPx()
+            val suppressionTop = (8.dp * resolvedHeightScale).toPx()
+            val suppressionHeight = (52.dp * resolvedHeightScale).toPx()
             ignored.forEach { interval ->
                 val clippedStart = max(interval.startMs, windowStartMs)
                 val clippedEnd = min(interval.endMs, windowEndMs)
@@ -6336,8 +6471,11 @@ internal fun WholeTimeline(
                     val x = xAt(clippedStart)
                     drawRoundRect(
                         Orange,
-                        Offset(x, cutTop - 3.dp.toPx()),
-                        Size(max(2f, xAt(clippedEnd) - x), cutHeight + 6.dp.toPx()),
+                        Offset(x, cutTop - (3.dp * resolvedHeightScale).toPx()),
+                        Size(
+                            max(2f, xAt(clippedEnd) - x),
+                            cutHeight + (6.dp * resolvedHeightScale).toPx(),
+                        ),
                         CornerRadius(7f),
                         style = Stroke(2.dp.toPx()),
                     )
@@ -6386,8 +6524,8 @@ internal fun WholeTimeline(
                 if (suggestion.fragmentId() == selectedSuggestionId) {
                     drawRect(
                         Color.White,
-                        Offset(x, suppressionTop + 2.dp.toPx()),
-                        Size(width, suppressionHeight - 4.dp.toPx()),
+                        Offset(x, suppressionTop + (2.dp * resolvedHeightScale).toPx()),
+                        Size(width, suppressionHeight - (4.dp * resolvedHeightScale).toPx()),
                         style = Stroke(1.5.dp.toPx()),
                     )
                 }
@@ -6396,8 +6534,8 @@ internal fun WholeTimeline(
                 val playheadX = xAt(playheadMs)
                 drawLine(Orange, Offset(playheadX, 0f), Offset(playheadX, size.height), 4f, StrokeCap.Round)
             }
-            val markerCenterY = 10.dp.toPx()
-            val markerRadius = 8.dp.toPx()
+            val markerCenterY = (10.dp * resolvedHeightScale).toPx()
+            val markerRadius = (8.dp * resolvedHeightScale).toPx()
             val markerStemWidth = 1.dp.toPx()
             val markerBorderWidth = 1.dp.toPx()
             serveMarkers.filter { it.timestampMs in windowStartMs..windowEndMs }.forEach { marker ->

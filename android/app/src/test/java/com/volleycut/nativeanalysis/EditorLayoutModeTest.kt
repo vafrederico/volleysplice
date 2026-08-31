@@ -5,6 +5,14 @@ import org.junit.Test
 
 class EditorLayoutModeTest {
     @Test
+    fun uiScaleUsesFivePercentStepsAndStaysWithinSupportedRange() {
+        assertEquals(0.75f, normalizeUiScale(0.5f))
+        assertEquals(0.8f, normalizeUiScale(0.81f))
+        assertEquals(1f, normalizeUiScale(0.99f))
+        assertEquals(1.25f, normalizeUiScale(1.5f))
+    }
+
+    @Test
     fun compactLayoutRemainsDefaultForPhones() {
         assertEquals(EditorLayoutMode.COMPACT, editorLayoutMode(widthDp = 412, heightDp = 915))
         assertEquals(EditorLayoutMode.COMPACT, editorLayoutMode(widthDp = 839, heightDp = 600))

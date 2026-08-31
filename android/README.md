@@ -82,9 +82,9 @@ To create and sign the release APK and Android App Bundle, build the unsigned ar
 ```bash
 cd android
 bash ./sign-release.sh app/build/outputs/apk/release/app-release-unsigned.apk \
-  --output app/build/outputs/apk/release/VolleyCut-v0.10.11-arm64-release-signed.apk
+  --output app/build/outputs/apk/release/VolleyCut-v0.10.12-arm64-release-signed.apk
 bash ./sign-release.sh app/build/outputs/bundle/release/app-release.aab \
-  --output app/build/outputs/bundle/release/VolleyCut-v0.10.11-arm64-release-signed.aab
+  --output app/build/outputs/bundle/release/VolleyCut-v0.10.12-arm64-release-signed.aab
 ```
 
 The helper selects APK or AAB signing from the input extension, uses `.android-keystores/volleycut-release.jks` under the Windows user profile (or `$HOME` on other platforms) and the `volleycut-release` alias, lets `apksigner` or `jarsigner` prompt directly for the password, and verifies the signed result. Use `--keystore` and `--alias` if Play App Signing has a separate upload key. Never put a keystore password on the command line or commit a keystore. The PowerShell-specific `sign-apk.ps1` and `sign-aab.ps1` helpers remain available when needed.
