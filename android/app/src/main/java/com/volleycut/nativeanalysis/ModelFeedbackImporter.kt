@@ -8,12 +8,38 @@ import java.nio.ByteOrder
 import java.time.Instant
 import java.util.Base64
 import java.util.UUID
+import kotlin.math.abs
+import kotlin.math.max
 
 internal object ModelFeedbackImporter {
-    internal data class Imported(val project: NativeProject, val draft: EditorDraft)
+    internal data class ImportedFeatureCache(
+        val timestamps: DoubleArray,
+        val baseFeatures: FloatArray,
+        val visualFeatures: FloatArray,
+        val audioFeatures: FloatArray,
+        val contextualFeatures: FloatArray,
+        val rallyProbabilities: FloatArray,
+        val serveProbabilities: FloatArray,
+        val deadStateProbabilities: FloatArray,
+    ) {
+        fun feedbackAnalysis() = ModelFeedbackAnalysis(
+            timestamps = timestamps,
+            baseFeatures = baseFeatures,
+            rallyProbabilities = rallyProbabilities,
+            serveProbabilities = serveProbabilities,
+            deadStateProbabilities = deadStateProbabilities,
+        )
+    }
+
+    internal data class Imported(
+        val project: NativeProject,
+        val draft: EditorDraft,
+        val featureCache: ImportedFeatureCache?,
+    )
 
     fun import(context: Context, text: String): NativeProject {
         val imported = parse(text)
+        imported.featureCache?.let { hydrateFeatureCache(context, imported.project, it) }
         NativeProjectStore.save(context, imported.project)
         val seed = checkNotNull(imported.project.editorSeed())
         EditorDraftStore(context, seed).save(imported.draft)
@@ -160,7 +186,193 @@ internal object ModelFeedbackImporter {
         val seed = checkNotNull(project.editorSeed())
         val corrections = bundle.getJSONObject("corrections")
         val draft = decodeDraft(corrections, seed, durationMs)
-        return Imported(project, draft)
+        val featureCache = decodeFeatureCache(bundle.optJSONObject("features"), inference, project)
+        return Imported(project, draft, featureCache)
+    }
+
+    private fun decodeFeatureCache(
+        features: JSONObject?,
+        inference: JSONObject,
+        project: NativeProject,
+    ): ImportedFeatureCache? {
+        if (features == null) return null
+        val rows = features.getInt("rows")
+        val columns = features.getInt("columns")
+        require(features.getInt("analysisFps") == FeatureSchema.ANALYSIS_FPS &&
+            rows > 0 && columns == FeatureSchema.BASE.size
+        ) { "Feedback features use an incompatible native feature schema" }
+        val names = features.getJSONArray("names")
+        require(names.length() == FeatureSchema.BASE.size &&
+            (0 until FeatureSchema.BASE.size).all { names.getString(it) == FeatureSchema.BASE[it] }
+        ) { "Feedback feature names do not match the native feature schema" }
+
+        val timestamps = decodeNumeric(
+            features.getJSONObject("timestamps"),
+            intArrayOf(rows),
+        )
+        val baseFeatures = decodeNumeric(
+            features.getJSONObject("values"),
+            intArrayOf(rows, columns),
+        ).toFiniteFloats("Feedback base features")
+        val inferenceTimestamps = decodeNumeric(
+            inference.getJSONObject("timestamps"),
+            intArrayOf(rows),
+        )
+        require(timestamps.contentEquals(inferenceTimestamps)) {
+            "Feedback feature and inference timestamps do not match"
+        }
+        val expectedTimes = AnalysisEngine.analysisTimes(
+            project.media.durationSeconds(),
+            project.analysisWindow.start(),
+            project.analysisWindow.end(),
+        )
+        require(rows <= expectedTimes.size && timestamps.indices.all { index ->
+            abs(timestamps[index] - expectedTimes[index]) <= 1e-9
+        }) { "Feedback timestamps do not match the native analysis timeline" }
+
+        val probabilities = inference.getJSONObject("probabilities")
+        val rallyProbabilities = decodeNumeric(
+            probabilities.getJSONObject("rally"),
+            intArrayOf(rows),
+        ).toProbabilityFloats("Feedback rally probabilities")
+        val serveProbabilities = decodeNumeric(
+            probabilities.getJSONObject("serve"),
+            intArrayOf(rows),
+        ).toProbabilityFloats("Feedback serve probabilities")
+        val deadStateProbabilities = decodeNumeric(
+            probabilities.getJSONObject("deadState"),
+            intArrayOf(rows),
+        ).toProbabilityFloats("Feedback dead-state probabilities")
+        inference.optJSONObject("suppression")?.let { suppression ->
+            require(decodeNumeric(
+                suppression.getJSONObject("timestamps"),
+                intArrayOf(rows),
+            ).contentEquals(timestamps)) {
+                "Feedback suppression timestamps do not match its features"
+            }
+        }
+
+        val frameColumns = FeatureSchema.FRAME.size
+        val temporalColumns = FeatureSchema.TEMPORAL.size
+        val audioColumns = FeatureSchema.AUDIO.size
+        val visual = FloatArray(rows * frameColumns)
+        val audio = FloatArray(rows * audioColumns)
+        repeat(rows) { row ->
+            val source = row * columns
+            baseFeatures.copyInto(
+                visual,
+                row * frameColumns,
+                source,
+                source + frameColumns,
+            )
+            baseFeatures.copyInto(
+                audio,
+                row * audioColumns,
+                source + frameColumns + temporalColumns,
+                source + columns,
+            )
+        }
+        val rebuiltTemporal = FeatureMath.temporalVisualFeatures(visual, rows)
+        require((0 until rows).all { row ->
+            (0 until temporalColumns).all { column ->
+                val imported = baseFeatures[row * columns + frameColumns + column]
+                val rebuilt = rebuiltTemporal[row * temporalColumns + column]
+                abs(imported - rebuilt) <= 1e-5f * max(1f, max(abs(imported), abs(rebuilt)))
+            }
+        }) { "Feedback temporal features cannot be reconstructed by the native feature contract" }
+        val contextual = FeatureMath.contextualize(timestamps, baseFeatures, FeatureSchema.BASE)
+        return ImportedFeatureCache(
+            timestamps = timestamps,
+            baseFeatures = baseFeatures,
+            visualFeatures = visual,
+            audioFeatures = audio,
+            contextualFeatures = contextual,
+            rallyProbabilities = rallyProbabilities,
+            serveProbabilities = serveProbabilities,
+            deadStateProbabilities = deadStateProbabilities,
+        )
+    }
+
+    private fun hydrateFeatureCache(
+        context: Context,
+        project: NativeProject,
+        imported: ImportedFeatureCache,
+    ) {
+        val source = project.source
+        fun clear() = NativeFeatureCache.clearEntryWithSourceMetadata(
+            context,
+            android.net.Uri.parse(source.uri),
+            source.name,
+            source.size,
+            source.lastModified,
+            project.media,
+            project.roi,
+            FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
+            project.analysisWindow,
+        )
+        try {
+            val cache = NativeFeatureCache.openWithSourceMetadata(
+                context,
+                android.net.Uri.parse(source.uri),
+                source.name,
+                source.size,
+                source.lastModified,
+                project.media,
+                project.roi,
+                FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
+                imported.timestamps.size,
+                project.analysisWindow,
+            )
+            val loaded = cache.loadVisual()
+            require(loaded.rows() == 0) { "Imported feature cache identity is not unique" }
+            val writer = cache.newVisualWriter(loaded)
+            val frameColumns = FeatureSchema.FRAME.size
+            val row = FloatArray(frameColumns)
+            imported.timestamps.indices.forEach { index ->
+                imported.visualFeatures.copyInto(
+                    row,
+                    0,
+                    index * frameColumns,
+                    (index + 1) * frameColumns,
+                )
+                writer.append(index, imported.timestamps[index], row)
+            }
+            writer.finish(AnalysisTypes.VideoFeatures(
+                imported.visualFeatures,
+                imported.timestamps,
+                project.analysisWindow.end(),
+                false,
+                "model-feedback-import",
+                false,
+                0,
+                0,
+                0,
+                0.0,
+                0.0,
+                0.0,
+                emptyMap(),
+            ))
+            cache.storeAudio(imported.audioFeatures, imported.timestamps.size)
+            cache.storeContext(imported.contextualFeatures, imported.timestamps.size)
+
+            val retainedVisual = cache.loadVisual()
+            val retainedAudio = cache.loadAudio(imported.timestamps.size)
+            val retainedContext = cache.loadContext(imported.timestamps.size)
+            val stats = cache.stats()
+            require(stats.complete() && stats.failure().isBlank() &&
+                retainedVisual.complete() &&
+                retainedVisual.times().contentEquals(imported.timestamps) &&
+                retainedVisual.values().contentEquals(imported.visualFeatures) &&
+                retainedAudio?.contentEquals(imported.audioFeatures) == true &&
+                retainedContext?.contentEquals(imported.contextualFeatures) == true
+            ) { "Imported features could not be retained in the native feature cache" }
+        } catch (error: Exception) {
+            clear()
+            throw IllegalArgumentException(
+                "Could not retain the imported native feature cache: ${error.message}",
+                error,
+            )
+        }
     }
 
     private fun decodeDraft(corrections: JSONObject, seed: EditorSeed, durationMs: Long): EditorDraft {
@@ -378,11 +590,29 @@ internal object ModelFeedbackImporter {
         )
     } }
 
-    private fun decodeNumeric(json: JSONObject): DoubleArray {
+    private fun decodeNumeric(json: JSONObject, expectedShape: IntArray? = null): DoubleArray {
         require(json.optString("encoding") == "base64" &&
             json.optString("byteOrder") == "little-endian"
         )
+        val shapeJson = json.getJSONArray("shape")
+        require(shapeJson.length() > 0)
+        val shape = IntArray(shapeJson.length()) { index ->
+            shapeJson.getInt(index).also { require(it >= 0) }
+        }
+        expectedShape?.let { require(shape.contentEquals(it)) }
+        val elements = shape.fold(1L) { product, size ->
+            require(size == 0 || product <= Long.MAX_VALUE / size)
+            product * size
+        }
+        val bytesPerElement = when (json.getString("dataType")) {
+            "float64" -> Double.SIZE_BYTES
+            "float32" -> Float.SIZE_BYTES
+            else -> error("Unsupported numeric array type")
+        }
         val bytes = Base64.getDecoder().decode(json.getString("data"))
+        require(elements <= Int.MAX_VALUE && elements * bytesPerElement ==
+            bytes.size.toLong()
+        ) { "Numeric array shape does not match its data" }
         return when (json.getString("dataType")) {
             "float64" -> ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asDoubleBuffer().let {
                 DoubleArray(it.remaining()).also(it::get)
@@ -391,11 +621,14 @@ internal object ModelFeedbackImporter {
                 FloatArray(it.remaining()).also(it::get).map(Float::toDouble).toDoubleArray()
             }
             else -> error("Unsupported numeric array type")
-        }.also { values ->
-            val shape = json.getJSONArray("shape")
-            var expected = 1L
-            repeat(shape.length()) { expected *= shape.getLong(it) }
-            require(expected == values.size.toLong() && values.all(Double::isFinite))
-        }
+        }.also { values -> require(values.size.toLong() == elements && values.all(Double::isFinite)) }
+    }
+
+    private fun DoubleArray.toFiniteFloats(label: String) = FloatArray(size) { index ->
+        this[index].toFloat().also { require(it.isFinite()) { "$label contain an out-of-range value" } }
+    }
+
+    private fun DoubleArray.toProbabilityFloats(label: String) = toFiniteFloats(label).also { values ->
+        require(values.all { it in 0f..1f }) { "$label must be between zero and one" }
     }
 }

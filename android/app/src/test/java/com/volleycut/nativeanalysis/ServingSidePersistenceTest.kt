@@ -148,6 +148,31 @@ class ServingSidePersistenceTest {
             imported.project.productionServeOutputs.previousProduction().probabilities(),
             0f,
         )
+        val importedFeatures = requireNotNull(imported.featureCache)
+        assertArrayEquals(analysis.timestamps, importedFeatures.timestamps, 0.0)
+        assertArrayEquals(analysis.baseFeatures, importedFeatures.baseFeatures, 0f)
+        assertEquals(analysis.timestamps.size * FeatureSchema.FRAME.size, importedFeatures.visualFeatures.size)
+        assertEquals(analysis.timestamps.size * FeatureSchema.AUDIO.size, importedFeatures.audioFeatures.size)
+        assertEquals(
+            analysis.timestamps.size * FeatureSchema.BASE.size * FeatureSchema.CONTEXT_OFFSETS_SECONDS.size,
+            importedFeatures.contextualFeatures.size,
+        )
+
+        val reexported = ModelFeedbackExporter.createBundle(
+            imported.project,
+            imported.draft,
+            EditorMath.finalIntervals(imported.draft, imported.project.suppression),
+            importedFeatures.feedbackAnalysis(),
+            imported.project.source.sampledFingerprint,
+            Instant.parse("2026-08-22T00:01:00Z"),
+        )
+        assertFalse(reexported.isNull("features"))
+        assertFalse(reexported.getJSONObject("initialInference").isNull("suppression"))
+        assertNotNull(reexported.getJSONObject("initialInference").getJSONObject("componentServeOutputs"))
+        assertEquals(
+            bundle.getJSONObject("features").getJSONObject("values").getString("data"),
+            reexported.getJSONObject("features").getJSONObject("values").getString("data"),
+        )
     }
 
     private fun assertBrowserAccepts(json: String) {
@@ -186,7 +211,7 @@ class ServingSidePersistenceTest {
 
     private fun projectFixture(): NativeProject {
         val range = SeedRange(1_000, 5_000, .9f, ProductionEnsemble.BOTH_MODELS)
-        val times = doubleArrayOf(1.0, 2.0)
+        val times = doubleArrayOf(0.0, 0.25)
         val all = AnalysisTypes.ProductionServeOutput(
             FeatureSchema.ALL_LABELS_V2_MODEL_ID,
             times,

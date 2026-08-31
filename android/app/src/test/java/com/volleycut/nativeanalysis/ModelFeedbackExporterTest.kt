@@ -2,6 +2,7 @@ package com.volleycut.nativeanalysis
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
@@ -52,6 +53,10 @@ class ModelFeedbackExporterTest {
             bundle.getJSONObject("corrections").getString("defaultSuppressionScope"),
         )
         assertTrue(bundle.getJSONArray("warnings").getString(0).contains("feature cache"))
+
+        val imported = ModelFeedbackImporter.parse(bundle.toString(), 1_786_752_001_000)
+        assertNull(imported.featureCache)
+        assertEquals(draft.cuts, imported.draft.cuts)
     }
 
     @Test

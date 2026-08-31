@@ -118,3 +118,11 @@ The restored project initially has no video because `videoBytesIncluded` is alwa
 editor's source reconnect action to select the original recording. VolleyCut verifies the source
 metadata or sampled fingerprint before enabling playback and video export; reconnecting does not
 replace the imported inference or corrections.
+
+On Android, a bundle with a complete `features` payload is also restored into the app-private
+native feature cache. The importer validates the shared base-feature names and timeline, splits the
+frame and audio columns, reconstructs the contextual matrix, and retains the cache under the
+imported project's source identity. A later Android re-export can therefore reproduce the feature
+and probability payload and retain suppression analysis without decoding the source video again.
+Bundles that explicitly contain `features: null` remain valid degraded imports and cannot recreate
+data that was already absent from the imported file.

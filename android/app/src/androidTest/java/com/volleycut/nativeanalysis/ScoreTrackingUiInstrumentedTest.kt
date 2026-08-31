@@ -102,6 +102,7 @@ class ScoreTrackingUiInstrumentedTest {
                             selectedCutIds = emptySet(),
                             effectiveIds = emptySet(),
                             confidenceThreshold = .5f,
+                            reviewedCutIds = emptySet(),
                             playheadMs = 0,
                             serveMarkers = listOf(ServeMarker(
                                 "S001", 5_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL,
