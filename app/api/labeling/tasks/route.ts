@@ -61,6 +61,14 @@ export async function GET() {
           annotationStatus: savedDocuments[index].document.annotation.status,
           rallyCount: savedDocuments[index].document.rallies.length,
           modelSeeded: isModelSeeded(savedDocuments[index]),
+          sourceType:
+            typeof task.document.recording.capture.sourceType === "string"
+              ? task.document.recording.capture.sourceType
+              : null,
+          targetStatus:
+            typeof task.document.recording.capture.targetStatus === "string"
+              ? task.document.recording.capture.targetStatus
+              : null,
         })),
       },
       { headers: { "Cache-Control": "no-store" } },

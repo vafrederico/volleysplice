@@ -141,7 +141,20 @@ type PreparedTaskSummary = {
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
   modelSeeded: boolean;
+  sourceType: string | null;
+  targetStatus: string | null;
 };
+
+function preparedTaskStateLabel(task: PreparedTaskSummary): string {
+  if (task.savedAt) return `${task.rallyCount} saved`;
+  if (task.targetStatus === "reviewed-export-coverage") {
+    return `${task.rallyCount} reviewed import`;
+  }
+  if (task.sourceType === "raw-no-backup-model-feedback") {
+    return `${task.rallyCount} model candidates`;
+  }
+  return task.modelSeeded ? "model ready" : "unlabeled";
+}
 
 type BatchSummary = Record<
   LabelingBatch,
@@ -2345,7 +2358,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
               </option>
               {tasksForSelectedBatch.map((task) => (
                 <option key={task.id} value={task.id}>
-                  {task.priority}. {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} saved` : task.modelSeeded ? "model ready" : "unlabeled"}
+                  {task.priority}. {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {preparedTaskStateLabel(task)}
                 </option>
               ))}
             </select>
@@ -2974,7 +2987,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
             </option>
             {tasksForSelectedBatch.map((task) => (
               <option key={task.id} value={task.id}>
-                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} rallies saved` : task.modelSeeded ? `${task.rallyCount} model-seeded rallies to review` : "not started"}
+                {task.priority}. {task.environment} · {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {preparedTaskStateLabel(task)}
               </option>
             ))}
           </select>

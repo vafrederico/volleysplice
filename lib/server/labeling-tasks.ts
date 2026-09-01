@@ -3,11 +3,13 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  annotationPolicyId,
   endObservabilityValues,
   hardNegativeCategories,
   parseLabelDocument,
   terminalCueValues,
   type LabelDocument,
+  type IgnoredInterval,
   type NormalizedPoint,
   type RallyLabel,
   type ServeMarker,
@@ -49,6 +51,28 @@ const labelingWorkspace = path.resolve(
 const manifestsDirectory = path.join(labelingWorkspace, "manifests");
 const pilotIndexPath = path.join(manifestsDirectory, "pilot-task-index.json");
 const fullPlanPath = path.join(manifestsDirectory, "full-corpus-plan.json");
+const fullNasCorpusV3Path = path.resolve(
+  /* turbopackIgnore: true */
+  process.env.VOLLEYCUT_FULL_NAS_CORPUS_PATH ??
+    path.join(labelingWorkspace, "reports", "full-nas-video-corpus-v3.json"),
+);
+const rawNoBackupRoot = path.resolve(
+  /* turbopackIgnore: true */
+  process.env.VOLLEYCUT_RAW_NO_BACKUP_ROOT ??
+    "/mnt/freenas/volleycut-raw-no-backup",
+);
+const fullVideoSideSwitchMarkersPath = path.join(
+  labelingWorkspace,
+  "reports",
+  "side-switch",
+  "full-video-side-switch-markers-full-nas-v1.json",
+);
+const sideSwitchProductionEvaluationPath = path.join(
+  labelingWorkspace,
+  "reports",
+  "side-switch",
+  "side-switch-hard-negative-mining-v1-evaluation.json",
+);
 const suppressionExperiment = "feedback-suppression-v3-corrected-2026-08-18";
 const suppressionVariant = "production-plus-suppression-zero-non-exempt-misses";
 const servingSideInferencePath = path.resolve(
@@ -93,6 +117,34 @@ type LabelingTaskEntry = {
   draftPath: string;
   prelabelPath: string;
   completedPath: string;
+  corpusRecord?: FullNasCorpusRecord;
+  corpusCreatedAt?: string;
+};
+
+type FullNasCorpusRecord = {
+  recordingId: string;
+  environment: LabelDocument["recording"]["environment"];
+  sourceGroup: string;
+  split: string;
+  sourceType: string;
+  targetStatus: string;
+  labelPath: string;
+  labelSha256?: string;
+  videoPath: string;
+  videoFilename: string;
+  videoSha256?: string;
+  durationSeconds: number;
+  roi: LabelDocument["recording"]["roi"];
+  ignoredIntervals: IgnoredInterval[];
+  rallies: Array<{
+    start: number;
+    end: number;
+    tags?: string[];
+    notes?: string | null;
+  }>;
+  serveMarkers: ServeMarker[];
+  sideSwitches: SideSwitch[];
+  candidateSource: Record<string, unknown>;
 };
 
 export type PreparedLabelingTask = {
@@ -108,6 +160,7 @@ export type PreparedLabelingTask = {
   taskPath: string;
   proxyPath: string;
   proxySize: number;
+  corpusRecord?: FullNasCorpusRecord;
 };
 
 export type PreparedLabelingCatalog = {
@@ -164,6 +217,17 @@ function resolveRestrictedPath(
   const resolved = path.resolve(base, value);
   if (!isWithin(allowedRoot, resolved)) {
     throw new Error(`${field} resolves outside its allowed media root`);
+  }
+  return resolved;
+}
+
+function resolveCorpusPath(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${field} must be a non-empty path`);
+  }
+  const resolved = path.resolve(value);
+  if (![mediaRoot, rawNoBackupRoot].some((root) => isWithin(root, resolved))) {
+    throw new Error(`${field} resolves outside the approved NAS media roots`);
   }
   return resolved;
 }
@@ -508,6 +572,131 @@ async function readFullEntries(workspace: FullWorkspace): Promise<LabelingTaskEn
   });
 }
 
+function readCorpusRecord(value: unknown, index: number): FullNasCorpusRecord {
+  const record = jsonObject(value);
+  const recordingId = record?.recordingId;
+  const environment = record?.environment;
+  const durationSeconds = finiteNumber(record?.durationSeconds);
+  if (
+    typeof recordingId !== "string" ||
+    !/^[A-Za-z0-9_-]+$/.test(recordingId) ||
+    !["indoor", "beach", "grass", "broadcast", "unknown"].includes(String(environment)) ||
+    durationSeconds === null ||
+    durationSeconds <= 0 ||
+    typeof record?.sourceGroup !== "string" ||
+    typeof record.sourceType !== "string" ||
+    typeof record.targetStatus !== "string" ||
+    typeof record.videoFilename !== "string" ||
+    path.basename(record.videoFilename) !== record.videoFilename ||
+    !Array.isArray(record.rallies) ||
+    !Array.isArray(record.ignoredIntervals) ||
+    (record.serveMarkers != null && !Array.isArray(record.serveMarkers)) ||
+    (record.sideSwitches != null && !Array.isArray(record.sideSwitches)) ||
+    !jsonObject(record.candidateSource)
+  ) {
+    throw new Error(`full-NAS corpus v3 recording ${index + 1} is invalid`);
+  }
+  return {
+    recordingId,
+    environment: environment as FullNasCorpusRecord["environment"],
+    sourceGroup: record.sourceGroup,
+    split: typeof record.split === "string" ? record.split : "challenge",
+    sourceType: record.sourceType,
+    targetStatus: record.targetStatus,
+    labelPath: resolveCorpusPath(record.labelPath, "full-NAS corpus labelPath"),
+    ...(typeof record.labelSha256 === "string"
+      ? { labelSha256: record.labelSha256 }
+      : {}),
+    videoPath: resolveCorpusPath(record.videoPath, "full-NAS corpus videoPath"),
+    videoFilename: record.videoFilename,
+    ...(typeof record.videoSha256 === "string"
+      ? { videoSha256: record.videoSha256 }
+      : {}),
+    durationSeconds,
+    roi: (record.roi ?? null) as FullNasCorpusRecord["roi"],
+    ignoredIntervals: record.ignoredIntervals as IgnoredInterval[],
+    rallies: record.rallies as FullNasCorpusRecord["rallies"],
+    serveMarkers: (record.serveMarkers ?? []) as ServeMarker[],
+    sideSwitches: (record.sideSwitches ?? []) as SideSwitch[],
+    candidateSource: record.candidateSource as Record<string, unknown>,
+  };
+}
+
+async function readFullNasCorpusEntries(
+  existingIds: Set<string>,
+): Promise<LabelingTaskEntry[]> {
+  if (!(await isFile(fullNasCorpusV3Path))) return [];
+  const root = jsonObject(
+    JSON.parse(await readFile(fullNasCorpusV3Path, "utf8")) as unknown,
+  );
+  if (
+    root?.kind !== "volleycut-full-nas-video-corpus-v1" ||
+    !Array.isArray(root.records)
+  ) {
+    throw new Error("full-NAS corpus v3 has an invalid schema");
+  }
+  const createdAt = typeof root.createdAt === "string"
+    ? root.createdAt
+    : new Date(0).toISOString();
+  const humanSideSwitches = new Map<string, SideSwitch[]>();
+  if (await isFile(fullVideoSideSwitchMarkersPath)) {
+    const markerRoot = jsonObject(
+      JSON.parse(await readFile(fullVideoSideSwitchMarkersPath, "utf8")) as unknown,
+    );
+    if (Array.isArray(markerRoot?.markers)) {
+      for (const value of markerRoot.markers) {
+        const marker = jsonObject(value);
+        const recordingId = marker?.recordingId;
+        const time = finiteNumber(marker?.time);
+        if (typeof recordingId !== "string" || time === null) continue;
+        const current = humanSideSwitches.get(recordingId) ?? [];
+        current.push({
+          time,
+          origin: "manual",
+          notes: "Imported from the frozen full-video side-switch review.",
+        });
+        humanSideSwitches.set(recordingId, current);
+      }
+    }
+  }
+  return root.records.flatMap((value, index): LabelingTaskEntry[] => {
+    const record = readCorpusRecord(value, index);
+    if (existingIds.has(record.recordingId)) return [];
+    if (record.sideSwitches.length === 0) {
+      record.sideSwitches = (humanSideSwitches.get(record.recordingId) ?? [])
+        .sort((left, right) => left.time - right.time);
+    }
+    return [{
+      id: record.recordingId,
+      batch: "full",
+      priority: existingIds.size + index + 1,
+      taskPath: record.labelPath,
+      proxyPath: record.videoPath,
+      workspaceRoot: labelingWorkspace,
+      draftPath: path.join(
+        labelingWorkspace,
+        "labels",
+        "full-v3",
+        `${record.recordingId}.labels.json`,
+      ),
+      prelabelPath: path.join(
+        labelingWorkspace,
+        "prelabels",
+        "full-v3",
+        `${record.recordingId}.labels.json`,
+      ),
+      completedPath: path.join(
+        labelingWorkspace,
+        "completed",
+        "full-v3",
+        `${record.recordingId}.labels.json`,
+      ),
+      corpusRecord: record,
+      corpusCreatedAt: createdAt,
+    }];
+  });
+}
+
 async function readAllEntries(): Promise<LabelingTaskEntry[]> {
   const intakeWorkspaces = getIntakeWorkspaces();
   const [pilot, full, intakePlans] = await Promise.all([
@@ -539,7 +728,11 @@ async function readAllEntries(): Promise<LabelingTaskEntry[]> {
         })
       : []
   ))).flat();
-  const entries = [...full, ...intake, ...pilot];
+  const preparedFull = [...full, ...intake];
+  const fullNasV3 = await readFullNasCorpusEntries(
+    new Set(preparedFull.map((entry) => entry.id)),
+  );
+  const entries = [...preparedFull, ...fullNasV3, ...pilot];
   const ids = new Set<string>();
   for (const entry of entries) {
     if (ids.has(entry.id)) throw new Error(`duplicate prepared task id: ${entry.id}`);
@@ -548,7 +741,123 @@ async function readAllEntries(): Promise<LabelingTaskEntry[]> {
   return entries;
 }
 
+function corpusTaskDocument(entry: LabelingTaskEntry): LabelDocument {
+  const record = entry.corpusRecord;
+  if (!record) throw new Error("corpus task entry has no record");
+  const reviewedExport = record.sourceType === "human-reviewed-model-feedback-export";
+  const document = {
+    schemaVersion: 1,
+    kind: "volleycut-rally-labels",
+    createdAt: entry.corpusCreatedAt ?? new Date(0).toISOString(),
+    recording: {
+      id: record.recordingId,
+      video: record.videoPath,
+      videoFilename: record.videoFilename,
+      contentSha256:
+        record.videoSha256 ??
+        record.labelSha256 ??
+        String(record.candidateSource.analysisId ?? record.recordingId),
+      durationSeconds: record.durationSeconds,
+      sourceGroup: record.sourceGroup,
+      split: (["train", "validation", "test", "challenge"] as const).find(
+        (split) => split === record.split,
+      ) ?? "challenge",
+      environment: record.environment,
+      game: {
+        playersPerTeam: null,
+        targetPoints: null,
+        format: reviewedExport ? "human-reviewed exported project" : null,
+      },
+      capture: {
+        sourceType: record.sourceType,
+        targetStatus: record.targetStatus,
+      },
+      roi: record.roi,
+    },
+    annotationPolicy: {
+      id: annotationPolicyId,
+      rallyStart: "serve-ball contact",
+      rallyEnd: "first instant live play has ended",
+      intervalConvention: "half-open [start,end) seconds on this source video",
+    },
+    annotation: {
+      status: reviewedExport ? "in-progress" : "not-started",
+      annotator: "",
+      continuousVideoReviewed: false,
+      reviewedAt: null,
+      notes: reviewedExport
+        ? "Imported human-reviewed export coverage. Rally ranges remain weak coverage until frame-exact review."
+        : "Imported from full-NAS corpus v3 with model candidates as the editable starting point.",
+    },
+    ...(reviewedExport
+      ? {}
+      : {
+          prelabel: {
+            analysisMethod: String(
+              record.candidateSource.modelId ?? "full-NAS-corpus-v3-candidate",
+            ),
+            candidateFile: record.labelPath,
+            analyzedAt: entry.corpusCreatedAt ?? new Date(0).toISOString(),
+            ambiguities: [],
+          },
+        }),
+    rallies: record.rallies.map((rally) => ({
+      start: rally.start,
+      end: rally.end,
+      tags: reviewedExport
+        ? [...(rally.tags ?? [])]
+        : [...new Set([...(rally.tags ?? []), "ai-prelabel"])],
+      ...(typeof rally.notes === "string" ? { notes: rally.notes } : {}),
+    })),
+    ignoredIntervals: record.ignoredIntervals,
+    hardNegatives: [],
+    serveMarkers: record.serveMarkers.map((marker) => ({
+      ...marker,
+      ...(reviewedExport
+        ? {
+            origin: "manual" as const,
+            notes: marker.notes ?? "Imported human-reviewed serving-side event.",
+          }
+        : {}),
+    })),
+    sideSwitches: record.sideSwitches.map((marker) => ({
+      ...marker,
+      ...(reviewedExport
+        ? {
+            origin: "manual" as const,
+            notes: marker.notes ?? "Imported human-reviewed side-switch event.",
+          }
+        : {}),
+    })),
+  } satisfies LabelDocument;
+  return parseLabelDocument(document);
+}
+
+async function loadCorpusEntry(entry: LabelingTaskEntry): Promise<PreparedLabelingTask> {
+  const document = corpusTaskDocument(entry);
+  const proxyMetadata = await stat(entry.proxyPath);
+  if (!proxyMetadata.isFile() || proxyMetadata.size === 0) {
+    throw new Error(`full-NAS corpus video is unavailable: ${entry.id}`);
+  }
+  return {
+    id: document.recording.id,
+    batch: entry.batch,
+    priority: entry.priority,
+    document,
+    workspaceRoot: entry.workspaceRoot,
+    draftPath: entry.draftPath,
+    prelabelPath: entry.prelabelPath,
+    completedPath: entry.completedPath,
+    originalFilename: document.recording.videoFilename,
+    taskPath: entry.taskPath,
+    proxyPath: entry.proxyPath,
+    proxySize: proxyMetadata.size,
+    corpusRecord: entry.corpusRecord,
+  };
+}
+
 async function loadEntry(entry: LabelingTaskEntry): Promise<PreparedLabelingTask> {
+  if (entry.corpusRecord) return loadCorpusEntry(entry);
   const provenancePath = resolveRestrictedPath(
     mediaRoot,
     `${entry.proxyPath}.provenance.json`,
@@ -607,6 +916,16 @@ async function loadEntry(entry: LabelingTaskEntry): Promise<PreparedLabelingTask
 async function loadAvailableEntry(
   entry: LabelingTaskEntry,
 ): Promise<PreparedLabelingTask | null> {
+  if (entry.corpusRecord) {
+    const [labelExists, proxyExists] = await Promise.all([
+      isFile(entry.taskPath),
+      isFile(entry.proxyPath),
+    ]);
+    if (!labelExists || !proxyExists) {
+      throw new Error(`full-NAS corpus task ${entry.id} has incomplete source artifacts`);
+    }
+    return loadCorpusEntry(entry);
+  }
   const provenancePath = `${entry.proxyPath}.provenance.json`;
   const [taskExists, proxyExists, provenanceExists] = await Promise.all([
     isFile(entry.taskPath),
@@ -783,10 +1102,12 @@ async function loadAnalysisReference(
 function inferenceRanges(
   value: unknown,
   task: PreparedLabelingTask,
+  recordingIds: string[] = [task.id],
 ): RallyLabel[] {
   const root = jsonObject(value);
   if (
-    root?.recordingId !== task.id ||
+    typeof root?.recordingId !== "string" ||
+    !recordingIds.includes(root.recordingId) ||
     root.sourceFilename !== task.document.recording.videoFilename ||
     Math.abs((finiteNumber(root.duration) ?? -1) - task.document.recording.durationSeconds) > 0.1 ||
     !Array.isArray(root.ranges)
@@ -802,12 +1123,26 @@ function inferenceRanges(
       end === null ||
       start < 0 ||
       end <= start ||
-      end > task.document.recording.durationSeconds
+      end > task.document.recording.durationSeconds + 0.1
     ) {
       throw new Error(`suppression inference range ${index + 1} is invalid`);
     }
-    return { start, end, tags: ["ai-reference", "suppression-v3"] };
+    return {
+      start,
+      end: Math.min(end, task.document.recording.durationSeconds),
+      tags: ["ai-reference", "suppression-v3"],
+    };
   });
+}
+
+function taskInferenceIds(task: PreparedLabelingTask): string[] {
+  const ids = [task.id];
+  const analysisId = task.corpusRecord?.candidateSource.analysisId;
+  if (typeof analysisId === "string") {
+    const projectId = analysisId.match(/^project-[A-Za-z0-9]+/)?.[0];
+    if (projectId && !ids.includes(projectId)) ids.push(projectId);
+  }
+  return ids;
 }
 
 function subtractRanges(
@@ -836,9 +1171,270 @@ function subtractRanges(
   });
 }
 
+function corpusInferenceRallies(
+  value: unknown,
+  duration: number,
+  baseTags: string[],
+): RallyLabel[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): RallyLabel[] => {
+    const range = jsonObject(item);
+    const start = finiteNumber(range?.start);
+    const end = finiteNumber(range?.end);
+    if (start === null || end === null || start < 0 || end <= start || end > duration) {
+      return [];
+    }
+    const confidence = finiteNumber(range?.confidence);
+    const agreement = range?.agreement;
+    return [{
+      start,
+      end,
+      tags: [
+        ...baseTags,
+        ...(agreement === "both-models" ||
+        agreement === "all-labels-v2-only" ||
+        agreement === "previous-production-only"
+          ? [`model-agreement:${agreement}`]
+          : []),
+        ...(confidence === null ? [] : [`model-confidence:${confidence}`]),
+      ],
+    }];
+  }).sort((left, right) => left.start - right.start);
+}
+
+function productionSideSwitchesFromEvaluation(
+  value: unknown,
+  recordingId: string,
+): SideSwitch[] {
+  const root = jsonObject(value);
+  const fixed = jsonObject(root?.fixedVariantOuterResults);
+  const winner = jsonObject(fixed?.["union34-top2-x2"]);
+  const primary = jsonObject(winner?.primary);
+  const byRecording = jsonObject(primary?.byRecording);
+  const recording = jsonObject(byRecording?.[recordingId]);
+  if (!Array.isArray(recording?.proposalInventory)) return [];
+  return recording.proposalInventory.flatMap((value): SideSwitch[] => {
+    const proposal = jsonObject(value);
+    const time = finiteNumber(proposal?.transitionTime);
+    if (proposal?.recordingId !== recordingId || time === null) return [];
+    return [{
+      time,
+      origin: "model",
+      modelId: "side-switch-hard-negative-mining-v1/union34-top2-x2",
+      ...(typeof proposal.eventId === "string"
+        ? { modelEventId: proposal.eventId }
+        : {}),
+    }];
+  }).sort((left, right) => left.time - right.time);
+}
+
+type CorpusModelReferenceBundle = {
+  production: ProductionReferenceLabels;
+  models: ExperimentModelReferenceLabels[];
+};
+
+async function loadCorpusModelReferences(
+  task: PreparedLabelingTask,
+): Promise<CorpusModelReferenceBundle | null> {
+  const record = task.corpusRecord;
+  if (!record) return null;
+  const modelEval = jsonObject(record.candidateSource.modelEvalInference);
+  if (modelEval) {
+    const metadataPath = resolveCorpusPath(
+      modelEval.metadataPath,
+      "full-NAS corpus model-eval metadataPath",
+    );
+    const evaluation = jsonObject(
+      JSON.parse(await readFile(metadataPath, "utf8")) as unknown,
+    );
+    if (
+      evaluation?.recordingId !== task.id ||
+      evaluation.labelsUsedAsInferenceInputs !== false ||
+      evaluation.llmLabelingUsed !== false
+    ) {
+      throw new Error(`model-eval inference does not match full-NAS task ${task.id}`);
+    }
+    const productionRallies = corpusInferenceRallies(
+      evaluation.predictedEnsembleRanges,
+      task.document.recording.durationSeconds,
+      ["ai-reference", "production-ensemble"],
+    );
+    const coreInput = jsonObject(evaluation.coreInput);
+    const coreMetadataPath = resolveCorpusPath(
+      coreInput?.metadataPath,
+      "full-NAS corpus core metadataPath",
+    );
+    const core = jsonObject(
+      JSON.parse(await readFile(coreMetadataPath, "utf8")) as unknown,
+    );
+    if (core?.recordingId !== task.id) {
+      throw new Error(`core inference does not match full-NAS task ${task.id}`);
+    }
+    const decodedRanges = jsonObject(core.decodedRanges);
+    const allLabelsV2 = corpusInferenceRallies(
+      decodedRanges?.["all-labels-v2"],
+      task.document.recording.durationSeconds,
+      ["ai-reference", "all-labels-v2"],
+    );
+    const previousProduction = corpusInferenceRallies(
+      decodedRanges?.["previous-production"],
+      task.document.recording.durationSeconds,
+      ["ai-reference", "previous-production"],
+    );
+    const suppression = jsonObject(evaluation.suppression);
+    const suppressionRanges = corpusInferenceRallies(
+      suppression?.decodedIntervals,
+      task.document.recording.durationSeconds,
+      ["suppression-veto"],
+    );
+    const suppressionAdjusted = subtractRanges(productionRallies, suppressionRanges)
+      .map((range) => ({ ...range, tags: ["ai-reference", "suppression-adjusted"] }));
+    const suppressedRanges = subtractRanges(productionRallies, suppressionAdjusted);
+    const servingSide = jsonObject(evaluation.servingSide);
+    const serveMarkers = Array.isArray(servingSide?.candidates)
+      ? servingSide.candidates.flatMap((value): ServeMarker[] => {
+          const candidate = jsonObject(value);
+          const time = finiteNumber(candidate?.anchor);
+          const nearProbability = finiteNumber(candidate?.nearProbability);
+          const predictedSide = candidate?.side;
+          const side = candidate?.verdict === "review"
+            ? "review"
+            : predictedSide === "near" || predictedSide === "far"
+              ? predictedSide
+              : null;
+          if (time === null || side === null) return [];
+          return [{
+            time,
+            side,
+            origin: "model",
+            modelSide: side,
+            ...(nearProbability === null
+              ? {}
+              : {
+                  modelConfidence: side === "far"
+                    ? 1 - nearProbability
+                    : nearProbability,
+                }),
+            ...(typeof servingSide.modelId === "string"
+              ? { modelId: servingSide.modelId }
+              : {}),
+            ...(typeof candidate?.id === "string" ? { rallyId: candidate.id } : {}),
+          }];
+        }).sort((left, right) => left.time - right.time)
+      : [];
+    const sideSwitch = jsonObject(evaluation.sideSwitch);
+    const sideSwitches = Array.isArray(sideSwitch?.candidates)
+      ? sideSwitch.candidates.flatMap((value): SideSwitch[] => {
+          const candidate = jsonObject(value);
+          const time = finiteNumber(candidate?.timestamp);
+          const modelConfidence = finiteNumber(candidate?.probability);
+          if (time === null) return [];
+          return [{
+            time,
+            origin: "model",
+            ...(modelConfidence === null ? {} : { modelConfidence }),
+            ...(typeof sideSwitch.modelId === "string"
+              ? { modelId: sideSwitch.modelId }
+              : {}),
+            ...(typeof candidate?.id === "string"
+              ? { modelEventId: candidate.id }
+              : {}),
+          }];
+        }).sort((left, right) => left.time - right.time)
+      : [];
+    const models: ExperimentModelReferenceLabels[] = [
+      {
+        modelId: PRODUCTION_MODEL_ID,
+        modelLabel: PRODUCTION_MODEL_LABEL,
+        description: PRODUCTION_MODEL_DESCRIPTION,
+        rallies: allLabelsV2,
+      },
+      {
+        modelId: PREVIOUS_PRODUCTION_MODEL_ID,
+        modelLabel: PREVIOUS_PRODUCTION_MODEL_LABEL,
+        description: "The production model immediately preceding all-labels v2.",
+        rallies: previousProduction,
+      },
+      {
+        modelId: `suppression-v3:${String(suppression?.modelId ?? "production")}`,
+        modelLabel: "Suppression-adjusted ensemble",
+        description: "Current production suppression replay over the v3 corpus source.",
+        rallies: suppressionAdjusted,
+        suppressedRanges,
+      },
+    ];
+    return {
+      production: {
+        modelId: PRODUCTION_ENSEMBLE_MODEL_ID,
+        modelLabel: "Production ensemble",
+        description:
+          "Fresh label-independent replay of all current production models for the full-NAS v3 corpus.",
+        rallies: productionRallies,
+        serveMarkers,
+        serveModelLabel: String(servingSide?.modelId ?? "Serving-side production model"),
+        sideSwitches,
+        sideSwitchModelLabel: String(sideSwitch?.modelId ?? "Side-switch production model"),
+      },
+      models,
+    };
+  }
+
+  if (record.sourceType !== "raw-no-backup-model-feedback") return null;
+  const feedback = jsonObject(
+    JSON.parse(await readFile(record.labelPath, "utf8")) as unknown,
+  );
+  const initialInference = jsonObject(feedback?.initialInference);
+  const productionRallies = corpusInferenceRallies(
+    initialInference?.ranges,
+    task.document.recording.durationSeconds,
+    ["ai-reference", "production-ensemble"],
+  );
+  if (productionRallies.length === 0) return null;
+  const allLabelsV2 = productionRallies.filter(
+    (rally) => !rally.tags.includes("model-agreement:previous-production-only"),
+  );
+  const previousProduction = productionRallies.filter(
+    (rally) => !rally.tags.includes("model-agreement:all-labels-v2-only"),
+  );
+  let sideSwitches: SideSwitch[] = [];
+  try {
+    sideSwitches = productionSideSwitchesFromEvaluation(
+      JSON.parse(await readFile(sideSwitchProductionEvaluationPath, "utf8")) as unknown,
+      task.id,
+    );
+  } catch (error) {
+    if (!isMissingFile(error)) throw error;
+  }
+  return {
+    production: {
+      modelId: PRODUCTION_ENSEMBLE_MODEL_ID,
+      modelLabel: "Production ensemble",
+      description: "Frozen production ensemble stored with the raw model-feedback bundle.",
+      rallies: productionRallies,
+      sideSwitches,
+      sideSwitchModelLabel: "Side-switch hard-negative-mining v1",
+    },
+    models: [
+      {
+        modelId: PRODUCTION_MODEL_ID,
+        modelLabel: `${PRODUCTION_MODEL_LABEL} support`,
+        description: "All-labels v2 support retained in the frozen merged ensemble output.",
+        rallies: allLabelsV2,
+      },
+      {
+        modelId: PREVIOUS_PRODUCTION_MODEL_ID,
+        modelLabel: `${PREVIOUS_PRODUCTION_MODEL_LABEL} support`,
+        description: "Previous-production support retained in the frozen merged ensemble output.",
+        rallies: previousProduction,
+      },
+    ],
+  };
+}
+
 async function loadSuppressionReference(
   task: PreparedLabelingTask,
 ): Promise<ExperimentModelReferenceLabels | null> {
+  const inferenceIds = taskInferenceIds(task);
   const workspaceCandidates = [
     task.workspaceRoot,
     ...getIntakeWorkspaces().filter((root) => root !== task.workspaceRoot),
@@ -850,24 +1446,37 @@ async function loadSuppressionReference(
       suppressionExperiment,
       "inference",
     );
-    try {
-      const [suppressedValue, productionValue] = await Promise.all([
-        readFile(path.join(inferenceRoot, suppressionVariant, `${task.id}.json`), "utf8"),
-        readFile(path.join(inferenceRoot, "current-production-ensemble", `${task.id}.json`), "utf8"),
-      ]);
-      const rallies = inferenceRanges(JSON.parse(suppressedValue) as unknown, task);
-      const productionRanges = inferenceRanges(JSON.parse(productionValue) as unknown, task);
-      return {
-        modelId: `suppression-v3:${suppressionVariant}`,
-        modelLabel: "Suppression-adjusted ensemble",
-        description:
-          "Corrected v3 suppression specialist applied to the held production ensemble with the zero-non-exempt-miss policy.",
-        rallies,
-        suppressedRanges: subtractRanges(productionRanges, rallies),
-      };
-    } catch (error) {
-      if (isMissingFile(error)) continue;
-      throw error;
+    for (const inferenceId of inferenceIds) {
+      try {
+        const [suppressedValue, productionValue] = await Promise.all([
+          readFile(path.join(inferenceRoot, suppressionVariant, `${inferenceId}.json`), "utf8"),
+          readFile(
+            path.join(inferenceRoot, "current-production-ensemble", `${inferenceId}.json`),
+            "utf8",
+          ),
+        ]);
+        const rallies = inferenceRanges(
+          JSON.parse(suppressedValue) as unknown,
+          task,
+          inferenceIds,
+        );
+        const productionRanges = inferenceRanges(
+          JSON.parse(productionValue) as unknown,
+          task,
+          inferenceIds,
+        );
+        return {
+          modelId: `suppression-v3:${suppressionVariant}`,
+          modelLabel: "Suppression-adjusted ensemble",
+          description:
+            "Corrected v3 suppression specialist applied to the held production ensemble with the zero-non-exempt-miss policy.",
+          rallies,
+          suppressedRanges: subtractRanges(productionRanges, rallies),
+        };
+      } catch (error) {
+        if (isMissingFile(error)) continue;
+        throw error;
+      }
     }
   }
   return null;
@@ -1020,34 +1629,51 @@ async function loadProductionServeMarkers(
 export async function getProductionReferenceLabels(
   task: PreparedLabelingTask,
 ): Promise<ProductionReferenceLabels | null> {
-  const [seed, serveReference] = await Promise.all([
+  const [corpusReferences, seed, serveReference] = await Promise.all([
+    loadCorpusModelReferences(task),
     loadProductionLabelSeed(task),
     loadProductionServeMarkers(task),
   ]);
-  return seed || serveReference
+  const corpusProduction = corpusReferences?.production;
+  return corpusProduction || seed || serveReference
     ? {
-        modelId: seed?.modelId ?? PRODUCTION_ENSEMBLE_MODEL_ID,
-        modelLabel: seed?.modelLabel ?? "Production ensemble · frozen score-marker run",
-        description: seed
+        modelId: corpusProduction?.modelId ?? seed?.modelId ?? PRODUCTION_ENSEMBLE_MODEL_ID,
+        modelLabel:
+          corpusProduction?.modelLabel ??
+          seed?.modelLabel ??
+          "Production ensemble · frozen score-marker run",
+        description: corpusProduction?.description ?? (seed
           ? seed.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
             ? PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION
             : PRODUCTION_MODEL_DESCRIPTION
-          : "Frozen production rally ensemble and score-marker specialists used to initialize this labeling task.",
-        rallies: seed?.document.rallies ?? task.document.rallies,
-        ...(serveReference
+          : "Frozen production rally ensemble and score-marker specialists used to initialize this labeling task."),
+        rallies:
+          corpusProduction?.rallies ?? seed?.document.rallies ?? task.document.rallies,
+        ...((corpusProduction?.serveMarkers?.length ?? 0) > 0 || serveReference
           ? {
-              serveMarkers: serveReference.markers,
-              ...(serveReference.humanMarkers
+              serveMarkers:
+                corpusProduction?.serveMarkers?.length
+                  ? corpusProduction.serveMarkers
+                  : serveReference?.markers ?? [],
+              ...(serveReference?.humanMarkers
                 ? { humanServeMarkers: serveReference.humanMarkers }
                 : {}),
-              serveModelLabel: serveReference.label,
-              ...(serveReference.sideSwitches?.length
-                ? {
-                    sideSwitches: serveReference.sideSwitches,
-                    sideSwitchModelLabel: serveReference.sideSwitchLabel,
-                  }
-                : {}),
+              serveModelLabel:
+                corpusProduction?.serveModelLabel ?? serveReference?.label,
             }
+          : {}),
+        ...((corpusProduction?.sideSwitches?.length ?? 0) > 0 ||
+        (serveReference?.sideSwitches?.length ?? 0) > 0
+          ? {
+              sideSwitches: corpusProduction?.sideSwitches?.length
+                ? corpusProduction.sideSwitches
+                : serveReference?.sideSwitches ?? [],
+              sideSwitchModelLabel:
+                corpusProduction?.sideSwitchModelLabel ?? serveReference?.sideSwitchLabel,
+            }
+          : {}),
+        ...(corpusProduction?.suppressedRanges
+          ? { suppressedRanges: corpusProduction.suppressedRanges }
           : {}),
       }
     : null;
@@ -1057,6 +1683,16 @@ export async function getModelBreakdownReferenceLabels(
   task: PreparedLabelingTask,
 ): Promise<ExperimentModelReferenceLabels[]> {
   if (task.batch !== "full") return [];
+  const corpusReferences = await loadCorpusModelReferences(task);
+  if (corpusReferences) {
+    if (corpusReferences.models.some((model) => model.modelId.startsWith("suppression-v3:"))) {
+      return corpusReferences.models;
+    }
+    const suppression = await loadSuppressionReference(task);
+    return suppression
+      ? [...corpusReferences.models, suppression]
+      : corpusReferences.models;
+  }
   const references = await Promise.all([
     loadAnalysisReference(
       task,
@@ -1083,6 +1719,7 @@ export async function getExperimentModelReferenceLabels(
   task: PreparedLabelingTask,
 ): Promise<ExperimentModelReferenceLabels[]> {
   if (task.batch !== "full") return [];
+  if (task.corpusRecord) return [];
   const references = await Promise.all(
     ENVIRONMENT_EXPERIMENT_MODELS.map(async (model): Promise<ExperimentModelReferenceLabels | null> => {
       try {
