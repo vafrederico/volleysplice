@@ -18,6 +18,7 @@ from .artifacts import atomic_write_text
 from .config import DecoderConfig, FeatureConfig, TrainingConfig
 from .decoder import DecodedInterval, decode_probabilities
 from .features import (
+    OPENCV_VIDEO_DECODER,
     FeatureSequence,
     cached_features,
     camera_warnings,
@@ -93,8 +94,10 @@ def prepare_recording(
     recording: Recording,
     feature_config: FeatureConfig,
     cache_dir: str | Path,
+    *,
+    video_decoder: str = OPENCV_VIDEO_DECODER,
 ) -> PreparedRecording:
-    metadata = probe_video(recording.video)
+    metadata = probe_video(recording.video, video_decoder=video_decoder)
     if feature_config.analysis_fps > metadata.fps + 1e-6:
         raise ManifestError(
             f"{recording.id}: analysis FPS {feature_config.analysis_fps:g} exceeds "
@@ -112,6 +115,7 @@ def prepare_recording(
         recording.roi,
         cache_dir,
         content_sha256=recording.content_sha256,
+        video_decoder=video_decoder,
     )
     values, names = contextualize(sequence, feature_config)
     return PreparedRecording(

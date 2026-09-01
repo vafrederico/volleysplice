@@ -18,14 +18,18 @@ from analysis.config import (
     feature_version_for_config,
 )
 from analysis.features import (
+    NVDEC_VIDEO_DECODER,
+    OPENCV_VIDEO_DECODER,
     FeatureSequence,
     VideoMetadata,
     _cache_key,
+    _sampled_frame_indexes,
     cached_features,
     contextualize,
     extract_features,
     feature_names,
     percentile_rank_values,
+    probe_video,
 )
 
 
@@ -36,6 +40,55 @@ except Exception:  # dependency test must also tolerate binary/ABI import failur
 
 
 class CacheIntegrityTests(unittest.TestCase):
+    def test_nvdec_metadata_probe_does_not_open_an_opencv_decoder(self) -> None:
+        probed = {
+            "width": 1920,
+            "height": 1080,
+            "fps": 60.0,
+            "frame_count": 600,
+            "duration": 10.1,
+            "has_audio": True,
+        }
+
+        with (
+            patch("analysis.features._ffprobe_info", return_value=probed),
+            patch(
+                "analysis.features._cv2",
+                side_effect=AssertionError("NVDEC metadata must not open OpenCV"),
+            ),
+        ):
+            metadata = probe_video("source.mp4", video_decoder=NVDEC_VIDEO_DECODER)
+
+        self.assertEqual(metadata.frame_count, 600)
+        self.assertEqual(metadata.duration, 10.0)
+
+    def test_nvdec_uses_distinct_versioned_cache_identity(self) -> None:
+        config = FeatureConfig()
+
+        opencv = _cache_key(
+            Path("/tmp/source.mp4"),
+            config,
+            None,
+            "a" * 64,
+            OPENCV_VIDEO_DECODER,
+        )
+        nvdec = _cache_key(
+            Path("/tmp/source.mp4"),
+            config,
+            None,
+            "a" * 64,
+            NVDEC_VIDEO_DECODER,
+        )
+
+        self.assertNotEqual(opencv, nvdec)
+
+    def test_nvdec_sampling_indexes_match_historical_nearest_frame_rule(self) -> None:
+        metadata = VideoMetadata(2.0, 1920, 1080, 60.0, 120, True)
+
+        indexes = _sampled_frame_indexes(metadata, 2.0)
+
+        self.assertEqual(indexes, [0, 30, 60, 90])
+
     def test_audio_feature_set_is_opt_in_and_round_trips(self) -> None:
         legacy = FeatureConfig()
         enhanced = FeatureConfig(
@@ -141,6 +194,42 @@ class CacheIntegrityTests(unittest.TestCase):
             self.assertEqual(len(list(cache_dir.glob("*.npz"))), 2)
             self.assertEqual(float(first.values[0, 0]), 1.0)
             self.assertEqual(float(second.values[0, 0]), 2.0)
+
+    def test_decoder_change_cannot_reuse_an_opencv_cache(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="volleycut-cache-decoder-") as directory:
+            root = Path(directory)
+            video = root / "source.bin"
+            cache_dir = root / "cache"
+            video.write_bytes(b"video")
+            config = FeatureConfig(use_optical_flow=False, context_offsets_seconds=(0.0,))
+            sequence = FeatureSequence(
+                times=np.asarray([0.0], dtype=np.float64),
+                values=np.ones((1, len(feature_names(config))), dtype=np.float32),
+                names=feature_names(config),
+                metadata=VideoMetadata(1.0, 1280, 720, 30.0, 30, False),
+            )
+
+            with patch("analysis.features.extract_features", return_value=sequence):
+                cached_features(
+                    "source",
+                    video,
+                    config,
+                    None,
+                    cache_dir,
+                    video_decoder=OPENCV_VIDEO_DECODER,
+                )
+            with patch("analysis.features.extract_features", return_value=sequence) as extractor:
+                cached_features(
+                    "source",
+                    video,
+                    config,
+                    None,
+                    cache_dir,
+                    video_decoder=NVDEC_VIDEO_DECODER,
+                )
+
+            extractor.assert_called_once()
+            self.assertEqual(len(list(cache_dir.glob("*.npz"))), 2)
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV is not available to the test interpreter")

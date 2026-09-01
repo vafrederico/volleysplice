@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from analysis.artifacts import atomic_write_text
+from analysis.exported_project_dataset import (
+    load_exported_project_dataset,
+    sha256_file as exported_sha256,
+)
 from analysis.nas_video_corpus import MANIFEST_KIND
 
 
@@ -25,6 +29,9 @@ DEFAULT_COMPLETED_ROOT = Path(
 )
 DEFAULT_INTAKE_ROOT = Path("/mnt/freenas/volleycut/intake-2026-08-13")
 DEFAULT_RAW_NO_BACKUP_ROOT = Path("/mnt/freenas/volleycut-raw-no-backup")
+DEFAULT_EXPORTED_PROJECT_ROOT = Path(
+    "/mnt/freenas/volleycut/exported-project-datasets"
+)
 
 
 def sha256(path: Path) -> str:
@@ -113,6 +120,22 @@ def label_record(
         {"time": finite(row["time"], f"{recording_id}.sideSwitches.time")}
         for row in payload.get("sideSwitches", [])
     ]
+    serve_markers = [
+        {
+            "time": finite(row["time"], f"{recording_id}.serveMarkers.time"),
+            "side": row.get("side"),
+            "origin": row.get("origin"),
+            **({"modelSide": row["modelSide"]} if "modelSide" in row else {}),
+            **(
+                {"modelConfidence": row["modelConfidence"]}
+                if "modelConfidence" in row
+                else {}
+            ),
+            **({"modelId": row["modelId"]} if "modelId" in row else {}),
+            **({"rallyId": row["rallyId"]} if "rallyId" in row else {}),
+        }
+        for row in payload.get("serveMarkers", [])
+    ]
     annotation = payload.get("annotation", {})
     return {
         "recordingId": recording_id,
@@ -133,6 +156,7 @@ def label_record(
             where=f"{recording_id}.ignoredIntervals",
         ),
         "rallies": rallies,
+        "serveMarkers": serve_markers,
         "sideSwitches": switches,
         "candidateSource": {
             "kind": "label-document",
@@ -244,12 +268,136 @@ def add_raw_no_backup(records: dict[str, dict[str, Any]], root: Path) -> int:
     return added
 
 
+def exported_project_record(
+    dataset_path: Path,
+    dataset: dict[str, Any],
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    reference_path = dataset_path.parent / str(row["referencePath"])
+    reference = json.loads(reference_path.read_text(encoding="utf-8"))
+    if exported_sha256(reference_path) != str(row["referenceSha256"]):
+        raise ValueError(f"exported-project reference changed: {reference_path}")
+    annotations = reference["annotations"]
+    rallies = [
+        {
+            "index": index,
+            "id": item["id"],
+            "start": float(item["start"]),
+            "end": float(item["end"]),
+            "notes": None,
+            "tags": ["human-retained-export-core", "weak-rally-coverage"],
+        }
+        for index, item in enumerate(annotations["associationCoreRanges"], start=1)
+    ]
+    serves = [
+        {
+            "id": item["id"],
+            "time": float(item["time"]),
+            "rawTime": float(item["rawTime"]),
+            "side": item.get("side"),
+            "origin": item.get("origin"),
+            "rawRallyId": item.get("rawRallyId"),
+            "alignedRangeId": item.get("alignedRangeId"),
+            "coverageRangeIds": item.get("coverageRangeIds", []),
+            "alignment": item.get("alignment"),
+            "wasTimeAdjusted": item.get("wasTimeAdjusted") is True,
+            "ignorePreviousPoint": item.get("ignorePreviousPoint") is True,
+            **({"modelSide": item["modelSide"]} if "modelSide" in item else {}),
+            **(
+                {"modelConfidence": item["modelConfidence"]}
+                if "modelConfidence" in item
+                else {}
+            ),
+        }
+        for item in annotations["serveEvents"]
+    ]
+    switches = [dict(item) for item in annotations["sideSwitches"]]
+    inference_index_path = dataset_path.parent / str(
+        dataset.get("regeneratedInferenceIndexPath", "")
+    )
+    regenerated: dict[str, Any] | None = None
+    if inference_index_path.is_file():
+        inference_index = json.loads(inference_index_path.read_text(encoding="utf-8"))
+        match = next(
+            (
+                item
+                for item in inference_index.get("recordings", [])
+                if item.get("recordingId") == reference["recordingId"]
+            ),
+            None,
+        )
+        if match is not None:
+            regenerated = {
+                "indexPath": str(inference_index_path.resolve()),
+                "indexSha256": sha256(inference_index_path),
+                **match,
+            }
+    return {
+        "recordingId": reference["recordingId"],
+        "environment": reference["environment"],
+        "sourceGroup": reference["sourceGroup"],
+        "split": reference["split"],
+        "sourceType": "human-reviewed-model-feedback-export",
+        "targetStatus": dataset.get("targetStatus", "reviewed-export-coverage"),
+        "labelPath": str(reference_path.resolve()),
+        "labelSha256": str(row["referenceSha256"]),
+        "videoPath": reference["videoPath"],
+        "videoFilename": reference["videoFilename"],
+        "videoSha256": reference["videoSha256"],
+        "durationSeconds": float(annotations["durationSeconds"]),
+        "roi": reference.get("roi"),
+        "ignoredIntervals": annotations["ignoredIntervals"],
+        "rallies": rallies,
+        "serveMarkers": serves,
+        "sideSwitches": switches,
+        "candidateSource": {
+            "kind": "human-reviewed-model-feedback-export",
+            "datasetPath": str(dataset_path.resolve()),
+            "datasetSha256": exported_sha256(dataset_path),
+            "feedbackPath": reference["feedbackPath"],
+            "feedbackSha256": reference["feedbackSha256"],
+            "annotationScope": reference["annotationScope"],
+            "normalization": annotations["normalization"],
+            "rawRetainedCoreRangeCount": len(annotations["retainedCoreRanges"]),
+            "normalizedCoverageRangeCount": len(rallies),
+            "serveEventCount": len(serves),
+            "sideSwitchCount": len(switches),
+            "regeneratedInference": regenerated,
+        },
+        "priority": 5,
+    }
+
+
+def add_exported_project_datasets(
+    records: dict[str, dict[str, Any]], root: Path
+) -> tuple[int, list[Path]]:
+    added = 0
+    paths: list[Path] = []
+    if not root.is_dir():
+        return added, paths
+    for dataset_path in sorted(root.glob("*/dataset.json")):
+        dataset = load_exported_project_dataset(dataset_path)
+        paths.append(dataset_path.resolve())
+        for row in dataset["records"]:
+            record = exported_project_record(dataset_path, dataset, row)
+            current = records.get(record["recordingId"])
+            if current is None or record["priority"] < current["priority"]:
+                records[record["recordingId"]] = record
+                added += 1
+    return added, paths
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--completed-root", type=Path, default=DEFAULT_COMPLETED_ROOT)
     parser.add_argument("--intake-root", type=Path, default=DEFAULT_INTAKE_ROOT)
     parser.add_argument("--raw-no-backup-root", type=Path, default=DEFAULT_RAW_NO_BACKUP_ROOT)
+    parser.add_argument(
+        "--exported-project-root",
+        type=Path,
+        default=DEFAULT_EXPORTED_PROJECT_ROOT,
+    )
     return parser
 
 
@@ -261,6 +409,7 @@ def main() -> int:
     completed_root = arguments.completed_root.expanduser().resolve()
     intake_root = arguments.intake_root.expanduser().resolve()
     raw_root = arguments.raw_no_backup_root.expanduser().resolve()
+    exported_root = arguments.exported_project_root.expanduser().resolve()
     records: dict[str, dict[str, Any]] = {}
     roots: list[dict[str, Any]] = []
 
@@ -290,6 +439,13 @@ def main() -> int:
     roots.append({"path": str(intake_root / "blind-sol" / "prelabels"), "kind": "intake-blind-prelabel"})
     added_raw = add_raw_no_backup(records, raw_root)
     roots.append({"path": str(raw_root), "kind": "raw-no-backup-model-feedback"})
+    added_exported, exported_paths = add_exported_project_datasets(
+        records, exported_root
+    )
+    roots.extend(
+        {"path": str(path), "kind": "human-reviewed-model-feedback-export"}
+        for path in exported_paths
+    )
 
     for record in records.values():
         video = Path(record["videoPath"])
@@ -309,6 +465,7 @@ def main() -> int:
             "Candidate-only rows are for manual validation and are excluded from gold metrics.",
             "Every consumer must treat ignoredIntervals as outside the training and evaluation universe.",
             "The raw source directory is named volleycut-raw-no-backup (singular) on this NAS.",
+            "Human-reviewed exported-project rows preserve rally coverage separately from serve events and are not frame-exact gold by default.",
         ],
         "roots": roots,
         "records": ordered,
@@ -330,6 +487,7 @@ def main() -> int:
                     "intakeLabels": added_intake,
                     "intakePrelabels": added_prelabels,
                     "rawNoBackup": added_raw,
+                    "exportedProjects": added_exported,
                 },
                 "sourceTypes": by_type,
                 "targetStatuses": by_status,

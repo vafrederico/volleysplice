@@ -22,6 +22,8 @@
     "infer:model-dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-model-dataset.py",
     "infer:dual-serve-fusion-dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-dual-serve-fusion-dataset.py",
     "infer:specialist-model-dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/infer-specialist-model-dataset.py",
+    "import:exported-project-dataset": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/import-exported-project-dataset.py",
+    "regenerate:exported-project-inference": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/regenerate-exported-project-inference.py",
     "evaluate:model-padding": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-model-padding.py",
     "evaluate:model-features": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-model-features.py",
     "evaluate:transition-features": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. .venv/bin/python scripts/evaluate-transition-features.py",

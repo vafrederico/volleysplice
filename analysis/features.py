@@ -20,6 +20,11 @@ from .config import (
 )
 
 
+OPENCV_VIDEO_DECODER = "opencv-ffmpeg-v1"
+NVDEC_VIDEO_DECODER = "ffmpeg-nvdec-sampled-v1"
+VIDEO_DECODERS = (OPENCV_VIDEO_DECODER, NVDEC_VIDEO_DECODER)
+
+
 class VideoError(RuntimeError):
     pass
 
@@ -71,7 +76,7 @@ def _ffprobe_info(path: Path) -> dict[str, Any]:
         "-v",
         "error",
         "-show_entries",
-        "stream=codec_type,width,height,avg_frame_rate:format=duration",
+        "stream=codec_type,width,height,avg_frame_rate,nb_frames,duration:format=duration",
         "-of",
         "json",
         str(path),
@@ -88,20 +93,56 @@ def _ffprobe_info(path: Path) -> dict[str, Any]:
             if float(denominator) != 0:
                 fps = float(numerator) / float(denominator)
         duration = float(payload.get("format", {}).get("duration", 0.0))
+        frame_count_value = video.get("nb_frames")
+        frame_count = (
+            int(frame_count_value)
+            if isinstance(frame_count_value, (int, str))
+            and str(frame_count_value).isdigit()
+            else None
+        )
         return {
             "has_audio": any(stream.get("codec_type") == "audio" for stream in streams),
             "duration": duration if math.isfinite(duration) and duration > 0 else None,
             "width": video.get("width"),
             "height": video.get("height"),
             "fps": fps if fps is not None and math.isfinite(fps) and fps > 0 else None,
+            "frame_count": frame_count if frame_count is not None and frame_count > 0 else None,
         }
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError, ValueError):
         return {}
 
 
-def probe_video(path: str | Path) -> VideoMetadata:
-    cv2 = _cv2()
+def probe_video(
+    path: str | Path,
+    *,
+    video_decoder: str = OPENCV_VIDEO_DECODER,
+) -> VideoMetadata:
+    if video_decoder not in VIDEO_DECODERS:
+        raise VideoError(f"unsupported video decoder: {video_decoder}")
     video_path = Path(path).expanduser().resolve()
+    fallback = _ffprobe_info(video_path)
+    if video_decoder == NVDEC_VIDEO_DECODER:
+        width = int(fallback.get("width") or 0)
+        height = int(fallback.get("height") or 0)
+        fps = float(fallback.get("fps") or 0.0)
+        frame_count = int(fallback.get("frame_count") or 0)
+        duration = (
+            frame_count / fps
+            if frame_count > 0 and fps > 0
+            else float(fallback.get("duration") or 0.0)
+        )
+        if width <= 0 or height <= 0 or fps <= 0 or frame_count <= 0 or duration <= 0:
+            raise VideoError(f"ffprobe metadata is incomplete for NVDEC source: {video_path}")
+        return VideoMetadata(
+            duration=duration,
+            width=width,
+            height=height,
+            fps=fps,
+            frame_count=frame_count,
+            has_audio=fallback.get("has_audio"),
+        )
+
+    cv2 = _cv2()
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
         raise VideoError(f"cannot open video: {video_path}")
@@ -115,8 +156,6 @@ def probe_video(path: str | Path) -> VideoMetadata:
         capture.release()
     if not decodable:
         raise VideoError(f"video contains no decodable frames: {video_path}")
-    fallback = _ffprobe_info(video_path)
-
     def positive(raw: float, key: str) -> float:
         if math.isfinite(raw) and raw > 0:
             return raw
@@ -627,6 +666,162 @@ def _decode_audio_samples(
     return samples, True
 
 
+def _sampled_frame_indexes(metadata: VideoMetadata, analysis_fps: float) -> list[int]:
+    """Reproduce the historical OpenCV nearest-frame sampling contract."""
+
+    indexes: list[int] = []
+    next_sample = 0.0
+    half_frame = 0.5 / metadata.fps
+    for frame_index in range(metadata.frame_count):
+        timestamp = frame_index / metadata.fps
+        if timestamp + half_frame < next_sample:
+            continue
+        indexes.append(frame_index)
+        next_sample += 1.0 / analysis_fps
+    return indexes
+
+
+def _read_exact(stream: Any, size: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = size
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
+def _nvdec_filter(metadata: VideoMetadata, analysis_fps: float) -> str:
+    source_fps = format(metadata.fps, ".17g")
+    target_fps = format(analysis_fps, ".17g")
+    selection = (
+        "gt(floor((n+0.5)*"
+        f"{target_fps}/{source_fps})*{source_fps}/{target_fps},n-0.5)"
+    )
+    # OpenCV's historical FFmpeg capture path converts decoded YUV with the
+    # default BT.601 matrix. Preserve that feature contract after NVDEC hands
+    # the CUDA surface back to system FFmpeg.
+    color = (
+        "scale=in_color_matrix=bt601:out_color_matrix=bt601:"
+        "in_range=full:out_range=full"
+    )
+    return f"select='{selection}',hwdownload,format=nv12,{color},format=bgr24"
+
+
+def nvdec_available(path: str | Path) -> tuple[bool, str]:
+    """Probe the system FFmpeg CUDA decoder using one real source frame."""
+
+    executable = shutil.which("ffmpeg")
+    if executable is None:
+        return False, "ffmpeg is unavailable"
+    video_path = Path(path).expanduser().resolve()
+    command = [
+        executable,
+        "-nostdin",
+        "-v",
+        "error",
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
+        "-i",
+        str(video_path),
+        "-map",
+        "0:v:0",
+        "-an",
+        "-sn",
+        "-dn",
+        "-frames:v",
+        "1",
+        "-vf",
+        "hwdownload,format=nv12",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "nv12",
+        "-y",
+        os.devnull,
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError) as error:
+        return False, str(error)
+    if result.returncode == 0:
+        return True, "FFmpeg CUDA/NVDEC probe succeeded"
+    detail = result.stderr.decode("utf-8", errors="replace").strip()
+    return False, detail or f"FFmpeg exited with status {result.returncode}"
+
+
+def _nvdec_frames(
+    video_path: Path,
+    metadata: VideoMetadata,
+    analysis_fps: float,
+) -> Any:
+    executable = shutil.which("ffmpeg")
+    if executable is None:
+        raise VideoError("FFmpeg is required for NVDEC video extraction")
+    indexes = _sampled_frame_indexes(metadata, analysis_fps)
+    frame_bytes = metadata.width * metadata.height * 3
+    command = [
+        executable,
+        "-nostdin",
+        "-v",
+        "error",
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
+        "-i",
+        str(video_path),
+        "-map",
+        "0:v:0",
+        "-an",
+        "-sn",
+        "-dn",
+        "-vf",
+        _nvdec_filter(metadata, analysis_fps),
+        "-fps_mode",
+        "passthrough",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "bgr24",
+        "pipe:1",
+    ]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.stdout is None or process.stderr is None:
+        process.kill()
+        raise VideoError("could not open FFmpeg NVDEC pipes")
+    try:
+        for frame_index in indexes:
+            raw = _read_exact(process.stdout, frame_bytes)
+            if len(raw) != frame_bytes:
+                detail = process.stderr.read().decode("utf-8", errors="replace").strip()
+                process.wait()
+                raise VideoError(
+                    "FFmpeg NVDEC ended before the expected sampled frame count"
+                    + (f": {detail}" if detail else "")
+                )
+            yield frame_index, np.frombuffer(raw, dtype=np.uint8).reshape(
+                metadata.height, metadata.width, 3
+            )
+        if process.stdout.read(1):
+            raise VideoError("FFmpeg NVDEC produced more sampled frames than expected")
+        detail = process.stderr.read().decode("utf-8", errors="replace").strip()
+        return_code = process.wait()
+        if return_code != 0:
+            raise VideoError(
+                f"FFmpeg NVDEC failed with status {return_code}"
+                + (f": {detail}" if detail else "")
+            )
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+
 def _rank_vector(values: np.ndarray) -> np.ndarray:
     return percentile_rank_values(values.reshape(-1, 1))[:, 0]
 
@@ -805,42 +1000,55 @@ def extract_features(
     path: str | Path,
     config: FeatureConfig,
     roi: tuple[float, float, float, float] | None = None,
+    *,
+    video_decoder: str = OPENCV_VIDEO_DECODER,
 ) -> FeatureSequence:
     config.validate()
+    if video_decoder not in VIDEO_DECODERS:
+        raise VideoError(f"unsupported video decoder: {video_decoder}")
     cv2 = _cv2()
     video_path = Path(path).expanduser().resolve()
-    metadata = probe_video(video_path)
+    metadata = probe_video(video_path, video_decoder=video_decoder)
     if config.analysis_fps > metadata.fps + 1e-6:
         raise VideoError(
             f"analysis_fps {config.analysis_fps:g} exceeds source FPS {metadata.fps:g}; "
             "normalize at a higher frame rate or lower analysis_fps"
         )
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
-        raise VideoError(f"cannot open video: {video_path}")
-
     times: list[float] = []
     rows: list[np.ndarray] = []
     previous_gray: np.ndarray | None = None
-    next_sample = 0.0
-    frame_index = 0
-    half_frame = 0.5 / metadata.fps
-    try:
-        while capture.grab():
-            timestamp = frame_index / metadata.fps
-            frame_index += 1
-            if timestamp + half_frame < next_sample:
-                continue
-            ok, frame = capture.retrieve()
-            if not ok or frame is None:
-                continue
-            cropped = _crop_roi(frame, roi)
-            values, previous_gray = _frame_features(cropped, previous_gray, config)
-            times.append(timestamp)
-            rows.append(values)
-            next_sample += 1.0 / config.analysis_fps
-    finally:
-        capture.release()
+
+    def append(frame_index: int, frame: np.ndarray) -> None:
+        nonlocal previous_gray
+        timestamp = frame_index / metadata.fps
+        cropped = _crop_roi(frame, roi)
+        values, previous_gray = _frame_features(cropped, previous_gray, config)
+        times.append(timestamp)
+        rows.append(values)
+
+    if video_decoder == NVDEC_VIDEO_DECODER:
+        for frame_index, frame in _nvdec_frames(video_path, metadata, config.analysis_fps):
+            append(frame_index, frame)
+    else:
+        capture = cv2.VideoCapture(str(video_path))
+        if not capture.isOpened():
+            raise VideoError(f"cannot open video: {video_path}")
+        next_sample = 0.0
+        frame_index = 0
+        half_frame = 0.5 / metadata.fps
+        try:
+            while capture.grab():
+                timestamp = frame_index / metadata.fps
+                frame_index += 1
+                if timestamp + half_frame < next_sample:
+                    continue
+                ok, frame = capture.retrieve()
+                if not ok or frame is None:
+                    continue
+                append(frame_index - 1, frame)
+                next_sample += 1.0 / config.analysis_fps
+        finally:
+            capture.release()
     if not rows:
         raise VideoError(f"video yielded no decodable frames: {video_path}")
     frame_names = _frame_feature_names(config)
@@ -950,6 +1158,7 @@ def _cache_key(
     config: FeatureConfig,
     roi: tuple[float, float, float, float] | None,
     content_sha256: str,
+    video_decoder: str = OPENCV_VIDEO_DECODER,
 ) -> str:
     payload = {
         "featureVersion": feature_version_for_config(config),
@@ -958,6 +1167,8 @@ def _cache_key(
         "config": config.to_dict(),
         "roi": roi,
     }
+    if video_decoder != OPENCV_VIDEO_DECODER:
+        payload["videoDecoder"] = video_decoder
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:20]
 
 
@@ -969,6 +1180,29 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def feature_cache_path(
+    recording_id: str,
+    video: str | Path,
+    config: FeatureConfig,
+    roi: tuple[float, float, float, float] | None,
+    cache_dir: str | Path,
+    *,
+    content_sha256: str,
+    video_decoder: str = OPENCV_VIDEO_DECODER,
+) -> Path:
+    """Return the immutable cache path used for one feature extraction."""
+
+    video_path = Path(video).expanduser().resolve()
+    destination = Path(cache_dir).expanduser().resolve()
+    safe_id = "".join(
+        character if character.isalnum() or character in "-_" else "_"
+        for character in recording_id
+    )
+    return destination / (
+        f"{safe_id}-{_cache_key(video_path, config, roi, content_sha256, video_decoder)}.npz"
+    )
+
+
 def cached_features(
     recording_id: str,
     video: str | Path,
@@ -977,16 +1211,32 @@ def cached_features(
     cache_dir: str | Path,
     *,
     content_sha256: str | None = None,
+    video_decoder: str = OPENCV_VIDEO_DECODER,
 ) -> FeatureSequence:
+    if video_decoder not in VIDEO_DECODERS:
+        raise VideoError(f"unsupported video decoder: {video_decoder}")
     video_path = Path(video).expanduser().resolve()
     destination = Path(cache_dir).expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
-    safe_id = "".join(character if character.isalnum() or character in "-_" else "_" for character in recording_id)
     digest = content_sha256 or _sha256_file(video_path)
-    cache_path = destination / f"{safe_id}-{_cache_key(video_path, config, roi, digest)}.npz"
+    cache_path = feature_cache_path(
+        recording_id,
+        video_path,
+        config,
+        roi,
+        destination,
+        content_sha256=digest,
+        video_decoder=video_decoder,
+    )
+    safe_id = "".join(character if character.isalnum() or character in "-_" else "_" for character in recording_id)
     if cache_path.is_file():
         try:
             with np.load(cache_path, allow_pickle=False) as cached:
+                cached_decoder = (
+                    str(cached["video_decoder"].item())
+                    if "video_decoder" in cached
+                    else OPENCV_VIDEO_DECODER
+                )
                 metadata = VideoMetadata(**json.loads(str(cached["metadata_json"].item())))
                 cached_sequence = FeatureSequence(
                     times=cached["times"].astype(np.float64, copy=False),
@@ -994,11 +1244,11 @@ def cached_features(
                     names=tuple(str(item) for item in cached["names"]),
                     metadata=metadata,
                 )
-            if _valid_cached_sequence(cached_sequence, config):
+            if cached_decoder == video_decoder and _valid_cached_sequence(cached_sequence, config):
                 return cached_sequence
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
             pass
-    sequence = extract_features(video_path, config, roi)
+    sequence = extract_features(video_path, config, roi, video_decoder=video_decoder)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{safe_id}-",
         suffix=".npz",
@@ -1013,6 +1263,7 @@ def cached_features(
             values=sequence.values,
             names=np.asarray(sequence.names),
             metadata_json=json.dumps(asdict(sequence.metadata), sort_keys=True, allow_nan=False),
+            video_decoder=np.asarray(video_decoder),
         )
         temporary_path.replace(cache_path)
     except Exception:
