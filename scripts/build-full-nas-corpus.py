@@ -316,6 +316,7 @@ def exported_project_record(
         dataset.get("regeneratedInferenceIndexPath", "")
     )
     regenerated: dict[str, Any] | None = None
+    model_eval: dict[str, Any] | None = None
     if inference_index_path.is_file():
         inference_index = json.loads(inference_index_path.read_text(encoding="utf-8"))
         match = next(
@@ -331,6 +332,65 @@ def exported_project_record(
                 "indexPath": str(inference_index_path.resolve()),
                 "indexSha256": sha256(inference_index_path),
                 **match,
+            }
+        model_eval_path = inference_index_path.parent / "model-eval/index.json"
+        if model_eval_path.is_file():
+            model_eval_index = json.loads(
+                model_eval_path.read_text(encoding="utf-8")
+            )
+            if (
+                model_eval_index.get("datasetSha256")
+                != exported_sha256(dataset_path)
+                or model_eval_index.get("labelsUsedAsInferenceInputs") is not False
+                or model_eval_index.get("llmLabelingUsed") is not False
+            ):
+                raise ValueError(
+                    f"exported-project model-eval provenance is invalid: {model_eval_path}"
+                )
+            model_eval_match = next(
+                (
+                    item
+                    for item in model_eval_index.get("recordings", [])
+                    if item.get("recordingId") == reference["recordingId"]
+                ),
+                None,
+            )
+            if model_eval_match is None:
+                raise ValueError(
+                    "exported-project model-eval index is missing "
+                    f"{reference['recordingId']}"
+                )
+            model_eval_metadata_path = Path(model_eval_match["metadataPath"])
+            model_eval_arrays_path = Path(model_eval_match["arraysPath"])
+            if (
+                exported_sha256(model_eval_metadata_path)
+                != model_eval_match["metadataSha256"]
+                or exported_sha256(model_eval_arrays_path)
+                != model_eval_match["arraysSha256"]
+            ):
+                raise ValueError(
+                    f"exported-project model-eval artifact changed: {reference['recordingId']}"
+                )
+            model_eval_metadata = json.loads(
+                model_eval_metadata_path.read_text(encoding="utf-8")
+            )
+            evaluation_target = model_eval_metadata.get("evaluationTarget", {})
+            if (
+                model_eval_metadata.get("labelsUsedAsInferenceInputs") is not False
+                or model_eval_metadata.get("llmLabelingUsed") is not False
+                or evaluation_target.get("referenceSha256") != row["referenceSha256"]
+                or evaluation_target.get("feedbackSha256") != row["feedbackSha256"]
+            ):
+                raise ValueError(
+                    "exported-project model-eval target provenance changed: "
+                    f"{reference['recordingId']}"
+                )
+            model_eval = {
+                "indexPath": str(model_eval_path.resolve()),
+                "indexSha256": sha256(model_eval_path),
+                "labelsUsedAsInferenceInputs": False,
+                "llmLabelingUsed": False,
+                **model_eval_match,
             }
     return {
         "recordingId": reference["recordingId"],
@@ -363,6 +423,7 @@ def exported_project_record(
             "serveEventCount": len(serves),
             "sideSwitchCount": len(switches),
             "regeneratedInference": regenerated,
+            "modelEvalInference": model_eval,
         },
         "priority": 5,
     }

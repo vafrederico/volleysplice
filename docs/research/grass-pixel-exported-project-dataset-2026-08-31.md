@@ -90,19 +90,42 @@ keyed feature cache are:
 - `regenerated-inference/index.json`
 - `features/audiovisual-audio-normalized-v3-nvdec-v1/`
 
-Both frozen production runtimes are replayed. Their SHA-256 values are:
+Both frozen core production runtimes are replayed, including each runtime's rally,
+serve, and dead-state heads. Their SHA-256 values are:
 
 - all-labels-v2: `d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f`
 - previous-production: `d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d`
+
+The current suppression, serving-side, and side-switch production artifacts were
+also replayed from those fresh core outputs and freshly decoded source frames:
+
+- suppression: `ef0ad4eb93fa61ce1d403f083d91f7578cf9ff0f31fac797fde9ab8b73f42794`
+- serving-side: `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`
+- side-switch: `ab4197545fb916a37ee6ac1d69e74ddfc0123c09039cdfa88c4ef378dd3e27fc`
+
+These label-independent evaluation predictions are stored under
+`regenerated-inference/model-eval/`. The run produced 434 ensemble rally ranges,
+332 suppression intervals, 434 serving-side candidates, 440 side-switch proposals,
+and 29 decoded side-switch predictions. It did not reuse the exported project's
+potentially label-corrected model output. Each recording uses one independent NVDEC
+process; its serving-side and side-switch timestamp plans share that recording's
+single sequential decode, but never depend on another recording's OpenCV state.
+
+The dataset, normalized references, and raw feedback exports are immutable comparison
+targets. They were hash-verified after inference and are not accepted as inputs by
+the replay code. Every generated index and per-recording artifact explicitly records
+`labelsUsedAsInferenceInputs: false` and `llmLabelingUsed: false`.
 
 The reusable full-NAS manifest was published at
 `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-nas-video-corpus-v3.json`.
 It contains 37 deduplicated recordings, including these seven reviewed-export rows
 with 275 usable coverage ranges, 263 serve markers, 33 side switches, explicit
-`llmLabelingUsed: false`, and links to their regenerated inference artifacts.
+`llmLabelingUsed: false`, and separate links to immutable labels and fresh all-model
+evaluation predictions.
 
 Final artifact SHA-256 values:
 
 - imported dataset: `df4bfd8e450e87e145bdf41e6e2a5e9cefe209152be9c82b954b693c8ad85269`
 - regenerated NVDEC index: `77d9da92c2e3277945dab7a6c2e1f88fb5b00369ae34c7b104fa94613eb10c1d`
-- full-NAS corpus v3: `167bd600f404db0d36d137901fc2f507a9861bbd2aa892d6536f5f5bb1a3074b`
+- all-model evaluation index: `3ee0a69797bb57f57852dcc6fa807f38b2627296dc35ecd81d0f72724501708b`
+- full-NAS corpus v3: `8db24125d5248b05b7f8312464d649ae6ec37c52f6c0f70682b0f8371af5dcc6`
