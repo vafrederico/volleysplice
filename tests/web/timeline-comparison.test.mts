@@ -26,6 +26,10 @@ test("timeline comparison separates human matches, additions, and misses", () =>
   );
 
   assert.deepEqual([...comparison.matchedPredictionIds], ["P1"]);
+  assert.deepEqual(
+    comparison.unmatchedPredictionRallies.map((item) => item.id),
+    ["P2"],
+  );
   assert.deepEqual(comparison.missedHumanRallies.map((item) => item.id), ["H2"]);
 });
 

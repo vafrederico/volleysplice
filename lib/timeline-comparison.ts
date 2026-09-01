@@ -2,6 +2,7 @@ import { buildEditList, type JoinedGap, type Rally } from "./edit-list.ts";
 
 export type RallyComparison = {
   matchedPredictionIds: Set<string>;
+  unmatchedPredictionRallies: Rally[];
   missedHumanRallies: Rally[];
 };
 
@@ -425,6 +426,9 @@ export function compareRalliesToHumanLabels(
       predictions
         .filter((_, index) => matchedPredictionIndexes.has(index))
         .map((prediction) => prediction.id),
+    ),
+    unmatchedPredictionRallies: predictions.filter(
+      (_, index) => !matchedPredictionIndexes.has(index),
     ),
     missedHumanRallies: humanRallies.filter(
       (_, index) => !matchedHumanIndexes.has(index),

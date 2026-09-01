@@ -140,6 +140,9 @@ button.trackLabel {
       transparent 10%
     ),
     #f8f7f2;
+  cursor: ew-resize;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 .trackActive .rail {
@@ -163,6 +166,27 @@ button.trackLabel {
   left: 0;
   height: 5px;
   background: #deddd5;
+}
+
+.modelOnlyRail {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 5px;
+  background: #e6dcef;
+}
+
+.modelOnlyInterval {
+  position: absolute;
+  top: 0;
+  height: 5px;
+  min-width: 2px;
+  padding: 0;
+  border: 0;
+  background: #7c3aed;
+  cursor: pointer;
 }
 
 .exportInterval {
@@ -315,19 +339,10 @@ button.trackLabel {
 }
 
 .marker[data-tone="model-side-switch"] {
-  top: clamp(5px, 0.25vw, 7px);
-  bottom: auto;
-  display: grid;
-  width: clamp(19px, 0.9vw, 24px);
-  height: clamp(19px, 0.9vw, 24px);
-  margin-left: clamp(-12px, -0.45vw, -9px);
-  place-items: center;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  background: #ff5c35;
-  box-shadow: 0 0 0 1px #161813, 0 2px 5px rgba(22, 24, 19, 0.24);
-  color: #fff;
-  font: 700 var(--timeline-font-micro) "Atkinson Hyperlegible Mono", monospace;
+  width: 4px;
+  margin-left: -2px;
+  background: #248a52;
+  box-shadow: 0 0 0 1px #fff;
 }
 
 .marker[data-tone="serve-near"],
@@ -363,7 +378,17 @@ button.trackLabel {
   outline-offset: 2px;
 }
 
+.marker[data-tone="model-side-switch"][data-disagrees="true"] {
+  background: #d81717;
+  outline: none;
+}
+
 .marker[data-selected="true"] {
+  outline: 3px solid #dfff35;
+  outline-offset: 2px;
+}
+
+.marker[data-tone="model-side-switch"][data-selected="true"] {
   outline: 3px solid #dfff35;
   outline-offset: 2px;
 }

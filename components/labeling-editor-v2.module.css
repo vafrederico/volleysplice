@@ -1079,6 +1079,9 @@
 .timelineLegend span[data-tone="model"] i {
   background: #275fc2;
 }
+.timelineLegend span[data-tone="model-only"] i {
+  background: #7c3aed;
+}
 .timelineLegend span[data-tone="disagreement"] i {
   background: #f2c94c;
 }
@@ -1096,11 +1099,18 @@
   background: #ff5c35;
 }
 
-.timelineLegend span[data-tone="model-switch"] i {
-  width: 12px;
+.timelineLegend span[data-tone="model-switch-agreement"] i,
+.timelineLegend span[data-tone="model-switch-disagreement"] i {
+  width: 3px;
   height: 12px;
-  border-radius: 50%;
-  background: #ff5c35;
+}
+
+.timelineLegend span[data-tone="model-switch-agreement"] i {
+  background: #248a52;
+}
+
+.timelineLegend span[data-tone="model-switch-disagreement"] i {
+  background: #d81717;
 }
 
 .timelineLegend span[data-tone="suppressed"] i {

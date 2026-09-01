@@ -48,6 +48,7 @@ import {
   buildLiveTimeComparisonSegments,
   calculateF1,
   calculateLiveTimeMetrics,
+  compareRalliesToHumanLabels,
   excludeIgnoredTime,
   markModelPaddingOrigins,
   padAndMergeRallies,
@@ -333,6 +334,15 @@ function overlaps(start: number, end: number, rows: Array<{ start: number; end: 
 
 function totalSeconds(rows: Array<{ start: number; end: number }>): number {
   return rows.reduce((total, row) => total + row.end - row.start, 0);
+}
+
+function sideSwitchGapIndex(rallies: RallyLabel[], time: number): number | null {
+  for (let index = 0; index < rallies.length - 1; index += 1) {
+    if (time >= rallies[index].end && time <= rallies[index + 1].start) {
+      return index;
+    }
+  }
+  return null;
 }
 
 function hardNegativeLabel(value: (typeof hardNegativeCategories)[number]): string {
@@ -682,6 +692,24 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
     labels && focusedServeMarkerIndex !== null
       ? labels.serveMarkers[focusedServeMarkerIndex] ?? null
       : null;
+  const latestServeMarkerIndex = useMemo(() => {
+    if (!labels) return -1;
+    let latest = -1;
+    labels.serveMarkers.forEach((marker, index) => {
+      if (marker.time <= currentTime + timestampEpsilon) latest = index;
+    });
+    return latest;
+  }, [currentTime, labels]);
+  const displayedServeMarkerIndex =
+    focusedServeMarker &&
+    focusedServeMarkerIndex !== null &&
+    Math.abs(focusedServeMarker.time - currentTime) < timestampEpsilon
+      ? focusedServeMarkerIndex
+      : latestServeMarkerIndex;
+  const displayedServeMarker =
+    labels && displayedServeMarkerIndex >= 0
+      ? labels.serveMarkers[displayedServeMarkerIndex]
+      : null;
   const focusedSideSwitch =
     labels && focusedSideSwitchIndex !== null
       ? labels.sideSwitches[focusedSideSwitchIndex] ?? null
@@ -764,6 +792,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
     ];
     return references.flatMap((reference) => {
       const modelCore = comparableRallies(reference.rallies, reference.modelId);
+      const rallyComparison = compareRalliesToHumanLabels(modelCore, humanCore);
       return comparisonPaddingCases.map((paddingSeconds) => {
         // Padding is merged before any duration or metric calculation, so
         // overlapping/touching model exports contribute to the union only once.
@@ -820,6 +849,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
             ignored,
           ),
           missingHumanSegments: segments.filter((segment) => segment.kind === "missed"),
+          modelOnlyRallies: rallyComparison.unmatchedPredictionRallies,
           segments,
           disagreementRallies: modelCore.filter(isProductionModelDisagreement),
         };
@@ -2154,6 +2184,12 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                 end: segment.end,
                 title: `${reference.modelLabel} · missed human live time`,
               })),
+              modelOnlyIntervals: comparison.modelOnlyRallies.map((rally, index) => ({
+                id: `${reference.modelId}-model-only-${index}`,
+                start: rally.start,
+                end: rally.end,
+                title: `${reference.modelLabel} · model-only rally with no matching human rally · ${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}`,
+              })),
               intervals: comparison.segments.map((segment) => {
                 const midpoint = segment.start + (segment.end - segment.start) / 2;
                 const disagreement = comparison.disagreementRallies.find(
@@ -2202,6 +2238,11 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
       } satisfies TimelineTrack;
     });
     if ((referenceLayer === "all" || referenceLayer === "sol") && solReferenceRallies.length > 0) {
+      const solCore = comparableRallies(solReferenceRallies, "sol");
+      const solComparison = compareRalliesToHumanLabels(
+        solCore,
+        comparableRallies(labels?.rallies ?? [], "editable"),
+      );
       referenceTracks.push({
         id: "sol-reference",
         label: "Sol reference",
@@ -2214,6 +2255,14 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
           tone: "sol",
           title: `Sol rally ${index + 1} · ${formatPreciseTime(row.start)}–${formatPreciseTime(row.end)}`,
         })),
+        modelOnlyIntervals: solComparison.unmatchedPredictionRallies.map(
+          (rally, index) => ({
+            id: `sol-model-only-${index}`,
+            start: rally.start,
+            end: rally.end,
+            title: `Sol reference · model-only rally with no matching human rally · ${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}`,
+          }),
+        ),
       });
     }
     const timelineTracks: TimelineTrack[] = labels
@@ -2297,18 +2346,21 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
     const productionSideSwitchMarkers = labels && productionReference?.sideSwitches
       ? productionReference.sideSwitches
           .map((marker, index) => {
-            const matchingHuman = labels.sideSwitches.find(
-              (candidate) => Math.abs(candidate.time - marker.time) <= 4,
-            );
+            const modelGapIndex = sideSwitchGapIndex(labels.rallies, marker.time);
+            const matchingHuman = modelGapIndex === null
+              ? undefined
+              : labels.sideSwitches.find(
+                  (candidate) =>
+                    sideSwitchGapIndex(labels.rallies, candidate.time) === modelGapIndex,
+                );
             const disagrees = matchingHuman === undefined;
             return {
               id: `production-side-switch-${index}`,
               trackId: "production-reference",
               time: marker.time,
               tone: "model-side-switch" as const,
-              label: "X",
               disagrees,
-              title: `${productionReference.sideSwitchModelLabel ?? "Side-switch model"} · ${formatPreciseTime(marker.time)}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% confidence` : ""}${matchingHuman ? ` · human switch at ${formatPreciseTime(matchingHuman.time)} (agrees)` : " · no human switch within 4s (DISAGREES)"}`,
+              title: `${productionReference.sideSwitchModelLabel ?? "Side-switch model"} · ${formatPreciseTime(marker.time)}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% confidence` : ""}${matchingHuman ? ` · human switch at ${formatPreciseTime(matchingHuman.time)} in the same rally gap (agrees)` : " · no human switch in the same rally gap (DISAGREES)"}`,
             };
           })
           .filter(
@@ -2432,11 +2484,11 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                 <button type="button" data-side="far" disabled={!labels || !videoUrl} onClick={() => addServeMarker("far")}>+ Far <kbd>F</kbd></button>
                 <button type="button" data-side="review" disabled={!labels || !videoUrl} onClick={() => addServeMarker("review")}>+ Review</button>
               </div>
-              {focusedServeMarker && focusedServeMarkerIndex !== null && (
+              {displayedServeMarker && displayedServeMarkerIndex >= 0 && (
                 <div className={v2.serveMarkerInspector}>
                   <div>
-                    <strong>Serve {focusedServeMarkerIndex + 1}</strong>
-                    <button type="button" onClick={() => seekTo(focusedServeMarker.time, focusedServeMarkerIndex)}>{formatPreciseTime(focusedServeMarker.time)}</button>
+                    <strong>Serve {displayedServeMarkerIndex + 1}</strong>
+                    <button type="button" onClick={() => seekTo(displayedServeMarker.time, displayedServeMarkerIndex)}>{formatPreciseTime(displayedServeMarker.time)}</button>
                   </div>
                   <div className={v2.serveChoices} role="group" aria-label="Selected serving side">
                     {(["near", "far", "review"] as const).map((side) => (
@@ -2444,16 +2496,16 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                         type="button"
                         key={side}
                         data-side={side}
-                        data-selected={focusedServeMarker.side === side || undefined}
-                        onClick={() => updateServeMarker(focusedServeMarkerIndex, { side })}
+                        data-selected={displayedServeMarker.side === side || undefined}
+                        onClick={() => updateServeMarker(displayedServeMarkerIndex, { side })}
                       >
                         {side === "review" ? "Review" : side}
                       </button>
                     ))}
                   </div>
                   <div className={v2.serveMarkerActions}>
-                    <button type="button" onClick={() => updateServeMarker(focusedServeMarkerIndex, { time: roundTime(currentTime) })}>Move to playhead</button>
-                    <button type="button" data-danger="true" onClick={() => removeServeMarker(focusedServeMarkerIndex)}>Delete</button>
+                    <button type="button" onClick={() => updateServeMarker(displayedServeMarkerIndex, { time: roundTime(currentTime) })}>Move to playhead</button>
+                    <button type="button" data-danger="true" onClick={() => removeServeMarker(displayedServeMarkerIndex)}>Delete</button>
                   </div>
                 </div>
               )}
@@ -2470,7 +2522,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                     <button
                       type="button"
                       key={`serve-${marker.time}`}
-                      data-selected={focusedServeMarkerIndex === index || undefined}
+                      data-selected={displayedServeMarkerIndex === index || undefined}
                       data-disagrees={disagrees || undefined}
                       onClick={() => {
                         setFocusedSideSwitchIndex(null);
@@ -2850,11 +2902,13 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
               <div className={v2.timelineLegend}>
                 <span data-tone="human"><i /> Human</span>
                 <span data-tone="model"><i /> Model</span>
+                <span data-tone="model-only"><i /> Model-only rally</span>
                 <span data-tone="disagreement"><i /> Model disagreement</span>
                 <span data-tone="near"><i /> Near serve</span>
                 <span data-tone="far"><i /> Far serve</span>
                 <span data-tone="switch"><i /> Human side switch</span>
-                <span data-tone="model-switch"><i /> Model side switch</span>
+                <span data-tone="model-switch-agreement"><i /> Model switch agreement</span>
+                <span data-tone="model-switch-disagreement"><i /> Model switch disagreement</span>
                 <span data-tone="suppressed"><i /> Suppressed / vetoed</span>
                 <span data-tone="miss"><i /> Missed human time</span>
               </div>
@@ -2878,7 +2932,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                       })),
                     ]}
                     selectedTrackId="human-labels"
-                    selectedMarkerId={focusedServeMarkerIndex !== null ? `serve-marker-${focusedServeMarkerIndex}` : undefined}
+                    selectedMarkerId={displayedServeMarkerIndex >= 0 ? `serve-marker-${displayedServeMarkerIndex}` : undefined}
                     selectedIntervalId={sidebarRallyIndex >= 0 ? `rally-${sidebarRallyIndex}` : undefined}
                     selectedIntervalIds={mergeRallyIndexes.map((index) => `rally-${index}`)}
                     onSeek={(time, trackId, intervalId, interaction) => {
@@ -3292,6 +3346,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                   <span data-tone="export">Final padded export</span>
                   <span data-tone="joined-gap">Joined short gap</span>
                   <span data-tone="missing">Missed human core</span>
+                  <span data-tone="model-only">Model-only rally</span>
                   <span data-tone="disagreement">Model disagreement</span>
                 </div>
                 <label htmlFor="label-join-gap">
@@ -3358,6 +3413,12 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                     start: segment.start,
                     end: segment.end,
                     title: `${comparison.reference.modelLabel} · missed unpadded human rally time · ${formatPreciseTime(segment.start)}–${formatPreciseTime(segment.end)}`,
+                  })),
+                  modelOnlyIntervals: comparison.modelOnlyRallies.map((rally, index) => ({
+                    id: `${comparison.reference.modelId}-${comparison.paddingSeconds}s-model-only-${index + 1}`,
+                    start: rally.start,
+                    end: rally.end,
+                    title: `${comparison.reference.modelLabel} · model-only rally with no matching human rally · ${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}`,
                   })),
                   intervals: comparison.segments.map((segment) => {
                     const midpoint = segment.start + (segment.end - segment.start) / 2;
