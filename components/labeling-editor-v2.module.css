@@ -1,0 +1,1251 @@
+.page {
+  --v2-font-micro: clamp(11px, 0.47vw, 13px);
+  --v2-font-xs: clamp(12px, 0.53vw, 14px);
+  --v2-font-sm: clamp(13px, 0.625vw, 16px);
+  --v2-font-md: clamp(15px, 0.72vw, 19px);
+  --v2-font-lg: clamp(22px, 1vw, 28px);
+  --v2-font-xl: clamp(30px, 1.35vw, 38px);
+  min-height: 100vh;
+  padding: 0 clamp(16px, 1.5vw, 40px) clamp(56px, 3.2vw, 82px);
+  background:
+    radial-gradient(
+      circle at 88% -8%,
+      rgba(38, 83, 168, 0.12),
+      transparent 28rem
+    ),
+    #f2f0e9;
+  color: #171914;
+  font-size: var(--v2-font-sm);
+}
+
+.commandBar {
+  display: grid;
+  min-height: clamp(58px, 2.8vw, 72px);
+  max-width: 2480px;
+  margin: 0 auto clamp(12px, 0.7vw, 18px);
+  grid-template-columns:
+    auto auto minmax(180px, 240px) minmax(420px, 1fr) auto minmax(190px, auto);
+  gap: clamp(8px, 0.55vw, 14px);
+  align-items: center;
+  padding: clamp(6px, 0.4vw, 10px) clamp(8px, 0.55vw, 14px);
+  border: 1px solid #c9c7bd;
+  background: rgba(250, 249, 245, 0.9);
+  box-shadow: 0 6px 22px rgba(24, 26, 20, 0.04);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(11px, 0.55vw, 15px);
+  color: #171914;
+  font:
+    700 var(--v2-font-sm) "Atkinson Hyperlegible Mono",
+    monospace;
+  letter-spacing: 0.11em;
+  text-decoration: none;
+}
+
+.brand img {
+  width: clamp(34px, 1.65vw, 44px);
+  height: clamp(34px, 1.65vw, 44px);
+  object-fit: contain;
+}
+
+.stepBadge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #171914;
+  font:
+    700 var(--v2-font-xs) "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stepBadge b {
+  display: grid;
+  width: clamp(22px, 1vw, 27px);
+  height: clamp(22px, 1vw, 27px);
+  place-items: center;
+  border-radius: 50%;
+  background: #2653a8;
+  color: #fff;
+  font-size: var(--v2-font-micro);
+}
+
+.sourceState i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a8a89f;
+}
+
+.sourceState i[data-ready="true"],
+.sourceState[data-saved="true"] i {
+  background: #258756;
+  box-shadow: 0 0 0 3px rgba(37, 135, 86, 0.12);
+}
+
+.workflow {
+  display: flex;
+  max-width: 720px;
+  margin: 24px auto 20px;
+  align-items: center;
+  color: #8a8b84;
+  font:
+    var(--v2-font-xs) "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.workflow span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.workflow span[data-current="true"] {
+  color: #171914;
+  font-weight: 700;
+}
+
+.workflow b {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: var(--v2-font-micro);
+}
+
+.workflow span[data-current="true"] b {
+  border-color: #2653a8;
+  background: #2653a8;
+  color: #fff;
+}
+
+.workflow > i {
+  width: 72px;
+  height: 1px;
+  margin: 0 12px;
+  background: #c9c7bd;
+}
+
+.sourcePicker {
+  display: grid;
+  max-width: 2480px;
+  margin: 0 auto 18px;
+  grid-template-columns: minmax(220px, 1fr) 180px minmax(300px, 1.8fr) auto minmax(
+      170px,
+      auto
+    );
+  gap: 16px;
+  align-items: end;
+  padding: 15px 18px;
+  border: 1px solid #c8c6bc;
+  background: rgba(250, 249, 245, 0.84);
+  box-shadow: 0 8px 26px rgba(24, 26, 20, 0.04);
+}
+
+.sourceHeading,
+.sourcePicker label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sourceHeading span,
+.sourcePicker label > span,
+.summaryStats > span,
+.boundaryContract > span,
+.sectionHeading span,
+.selectionEyebrow {
+  color: #777970;
+  font:
+    var(--v2-font-micro) "Atkinson Hyperlegible Mono",
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sourceHeading strong {
+  overflow: hidden;
+  font-size: var(--v2-font-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactField select,
+.timelineOptions select {
+  width: 100%;
+  min-height: clamp(38px, 1.8vw, 46px);
+  padding: 0 34px 0 11px;
+  border: 1px solid #b9b8af;
+  border-radius: 2px;
+  background: #fff;
+  color: #171914;
+  font:
+    var(--v2-font-sm) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.compactField {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: clamp(6px, 0.35vw, 9px);
+}
+
+.compactField > span {
+  color: #777970;
+  font: var(--v2-font-micro) "Atkinson Hyperlegible Mono", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.compactField select {
+  min-width: 0;
+}
+
+.sourceNavigation {
+  display: flex;
+  gap: 5px;
+}
+
+.sourceNavigation button {
+  width: clamp(38px, 1.8vw, 46px);
+  height: clamp(38px, 1.8vw, 46px);
+  border: 1px solid #b9b8af;
+  background: #fff;
+  color: #171914;
+  cursor: pointer;
+}
+
+.sourceNavigation button:disabled {
+  color: #aaa;
+  cursor: default;
+}
+
+.sourceState {
+  display: flex;
+  min-height: clamp(38px, 1.8vw, 46px);
+  align-items: center;
+  gap: 9px;
+  color: #65675f;
+  font:
+    var(--v2-font-xs) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.sourceState span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error,
+.editorMessage {
+  max-width: 2480px;
+  margin: 0 auto 14px;
+  padding: 11px 14px;
+  border-left: 3px solid #c13b2b;
+  background: #fff1ed;
+  color: #8f281b;
+  font-size: var(--v2-font-sm);
+}
+
+.editorMessage {
+  margin-top: 14px;
+  border-color: #2653a8;
+  background: #edf2fc;
+  color: #234887;
+}
+
+.editorShell {
+  display: grid;
+  max-width: 2480px;
+  margin: 0 auto;
+  grid-template-columns:
+    var(--v2-left-sidebar-width, clamp(290px, 12.25vw, 330px))
+    9px minmax(0, 1fr);
+  gap: clamp(6px, 0.3vw, 8px);
+  align-items: start;
+}
+
+.summaryCard,
+.timelineSection,
+.selectionCard {
+  border: 1px solid #c8c6bc;
+  background: #faf9f5;
+  box-shadow: 0 12px 34px rgba(24, 26, 20, 0.05);
+}
+
+.summaryCard {
+  position: sticky;
+  top: 18px;
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
+  padding: 0;
+}
+
+.summaryStats {
+  padding: 22px;
+  border-bottom: 1px solid #d4d2c9;
+}
+
+.summaryStats > strong {
+  display: block;
+  margin: 7px 0 13px;
+  font:
+    700 var(--v2-font-xl) / 1.1 "Atkinson Hyperlegible",
+    sans-serif;
+}
+
+.summaryStats div {
+  display: grid;
+  gap: 4px;
+  color: #66685f;
+  font-size: var(--v2-font-sm);
+}
+
+.summaryStats p,
+.boundaryContract p,
+.selectionCard p {
+  margin: 0;
+}
+
+.boundaryContract {
+  display: grid;
+  gap: 7px;
+  padding: 19px 22px;
+  border-bottom: 1px solid #d4d2c9;
+  font-size: var(--v2-font-sm);
+  line-height: 1.4;
+}
+
+.courtGeometry {
+  padding: 17px 22px;
+  border-bottom: 1px solid #d4d2c9;
+}
+
+.serveMarkerEditor {
+  padding: 17px 22px;
+  border-bottom: 1px solid #d4d2c9;
+}
+
+.serveMarkerEditor > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font: 700 var(--v2-font-xs) "Atkinson Hyperlegible Mono", monospace;
+  text-transform: uppercase;
+}
+
+.serveMarkerEditor > summary small {
+  color: #777970;
+  font-weight: 400;
+}
+
+.serveAddButtons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.serveAddButtons button,
+.serveMarkerInspector button,
+.serveMarkerList > button {
+  border: 1px solid #c6c5bd;
+  background: #fff;
+  color: #262822;
+  cursor: pointer;
+}
+
+.serveAddButtons button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px;
+  font-size: var(--v2-font-micro);
+}
+
+.serveAddButtons button:disabled {
+  background: #e8e7e1;
+  color: #96978f;
+  cursor: default;
+}
+
+.serveAddButtons kbd {
+  font: var(--v2-font-micro) "Atkinson Hyperlegible Mono", monospace;
+}
+
+.serveMarkerInspector {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid #b8b7ae;
+  background: #f2f4ec;
+}
+
+.serveMarkerInspector > div:first-child,
+.serveMarkerActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.serveMarkerInspector > div:first-child > button {
+  min-height: 26px;
+  padding: 0 6px;
+  font: var(--v2-font-micro) "Atkinson Hyperlegible Mono", monospace;
+}
+
+.serveMarkerActions button {
+  min-height: 30px;
+  flex: 1;
+  font-size: var(--v2-font-micro);
+}
+
+.serveMarkerActions button[data-danger="true"] {
+  border-color: #c34d3c;
+  color: #a53427;
+}
+
+.serveMarkerList {
+  display: grid;
+  max-height: clamp(230px, 12vw, 310px);
+  gap: 4px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.serveMarkerList > button {
+  display: grid;
+  min-height: clamp(42px, 2vw, 52px);
+  grid-template-columns: clamp(25px, 1.2vw, 31px) minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  padding: 4px 7px;
+  text-align: left;
+}
+
+.serveMarkerList > button[data-selected="true"] {
+  border-color: #2653a8;
+  box-shadow: inset 3px 0 #2653a8;
+}
+
+.serveMarkerList > button[data-disagrees="true"] {
+  border-right: 3px solid #d81717;
+}
+
+.serveMarkerList i {
+  display: grid;
+  width: clamp(23px, 1.1vw, 29px);
+  height: clamp(23px, 1.1vw, 29px);
+  place-items: center;
+  border-radius: 3px;
+  background: #2b676d;
+  color: #fff;
+  font: 700 var(--v2-font-micro) "Atkinson Hyperlegible Mono", monospace;
+  font-style: normal;
+}
+
+.serveMarkerList i[data-side="far"] {
+  background: #275fc2;
+}
+
+.serveMarkerList i[data-side="review"] {
+  background: #f2c94c;
+  color: #171914;
+}
+
+.serveMarkerList span {
+  display: grid;
+  min-width: 0;
+}
+
+.serveMarkerList small,
+.serveMarkerList em {
+  color: #74766e;
+  font: var(--v2-font-micro) "Atkinson Hyperlegible Mono", monospace;
+  font-style: normal;
+}
+
+.serveMarkerList > p {
+  margin: 10px 0 0;
+  color: #777970;
+  font-size: var(--v2-font-xs);
+}
+
+.courtGeometry summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font:
+    700 var(--v2-font-xs) "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.courtGeometry summary small {
+  color: #777970;
+  font-weight: 400;
+}
+
+.courtGeometry > p {
+  margin: 12px 0;
+  color: #6c6e66;
+  font-size: var(--v2-font-xs);
+  line-height: 1.4;
+}
+
+.courtAnchorGrid {
+  display: grid;
+  gap: 5px;
+}
+
+.courtAnchorGrid button {
+  display: grid;
+  min-height: 35px;
+  grid-template-columns: 9px 1fr auto;
+  gap: 7px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid #cecdc5;
+  background: #fff;
+  color: #2d2f29;
+  cursor: pointer;
+  text-align: left;
+}
+
+.courtAnchorGrid button > i {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #8f9089;
+  border-radius: 50%;
+}
+
+.courtAnchorGrid button[data-saved="true"] > i {
+  border-color: #258756;
+  background: #258756;
+}
+
+.courtAnchorGrid button[data-active="true"] {
+  border-color: #2653a8;
+  box-shadow: inset 3px 0 #2653a8;
+}
+
+.courtAnchorGrid button small {
+  color: #8a8b84;
+  font:
+    var(--v2-font-micro) "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.courtAnchorGrid button:disabled {
+  background: #e8e7e1;
+  color: #96978f;
+  cursor: default;
+}
+
+.finishCourtMode {
+  width: 100%;
+  min-height: 35px;
+  margin-top: 8px;
+  border: 1px solid #2653a8;
+  background: #2653a8;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.saveActions {
+  display: grid;
+  gap: 8px;
+  padding: 19px 22px;
+  border-bottom: 1px solid #d4d2c9;
+}
+
+.saveActions > button,
+.localFallback button {
+  min-height: clamp(42px, 2vw, 52px);
+  border: 1px solid #2653a8;
+  border-radius: 2px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.saveDraft {
+  background: #fff;
+  color: #2653a8;
+}
+
+.publish {
+  background: #2653a8;
+  color: #fff;
+}
+
+.saveActions button:disabled {
+  border-color: #c6c5bd;
+  background: #e6e5df;
+  color: #8c8d86;
+  cursor: default;
+}
+
+.publishIssues {
+  color: #8f281b;
+  font-size: var(--v2-font-xs);
+}
+
+.publishIssues summary,
+.shortcutPanel summary,
+.localFallback summary {
+  cursor: pointer;
+  font:
+    700 var(--v2-font-xs) "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.publishIssues ul {
+  margin: 9px 0 0;
+  padding-left: 18px;
+}
+
+.shortcutPanel,
+.localFallback {
+  padding: 17px 22px;
+  border-bottom: 1px solid #d4d2c9;
+}
+
+.shortcutPanel dl {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin: 14px 0 0;
+}
+
+.shortcutPanel dl > div {
+  display: grid;
+  grid-template-columns: clamp(86px, 4vw, 108px) 1fr;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.shortcutPanel dt,
+.shortcutPanel dd {
+  margin: 0;
+  color: #65675f;
+  font-size: var(--v2-font-xs);
+}
+
+.shortcutPanel kbd,
+.markingToolbar kbd {
+  display: inline-grid;
+  min-width: 21px;
+  min-height: 20px;
+  place-items: center;
+  padding: 0 4px;
+  border: 1px solid #b8b7ae;
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: #fff;
+  color: #34362f;
+  font:
+    var(--v2-font-micro) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.localFallback {
+  border-bottom: 0;
+}
+
+.localFallback label {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: #65675f;
+  font-size: var(--v2-font-xs);
+}
+
+.localFallback input {
+  max-width: 100%;
+  font-size: var(--v2-font-micro);
+}
+
+.localFallback button {
+  width: 100%;
+  margin-top: 12px;
+  background: #fff;
+  color: #2653a8;
+}
+
+.playerColumn {
+  min-width: 0;
+}
+
+.playerWorkspace {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) 9px
+    var(--v2-right-sidebar-width, clamp(230px, 10.75vw, 290px));
+  gap: clamp(5px, 0.2vw, 6px);
+  align-items: stretch;
+}
+
+.sidebarResizeHandle,
+.videoResizeHandle {
+  position: relative;
+  z-index: 5;
+  border: 0;
+  outline: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.sidebarResizeHandle {
+  width: 9px;
+  height: 100%;
+  min-height: 120px;
+  cursor: col-resize;
+}
+
+.sidebarResizeHandle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  background: #c8c6bc;
+  content: "";
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.sidebarResizeHandle:hover::after,
+.sidebarResizeHandle:focus-visible::after {
+  background: #2653a8;
+  box-shadow: 0 0 0 2px rgba(38, 83, 168, 0.16);
+}
+
+.videoColumn {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #292b26;
+  background: #11130f;
+  box-shadow: 0 14px 36px rgba(18, 20, 15, 0.16);
+}
+
+.videoStage {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  min-height: 320px;
+  place-items: center;
+  background: #090a08;
+}
+
+.videoStage video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  object-fit: contain;
+}
+
+.videoResizeHandle {
+  display: grid;
+  width: 100%;
+  height: 11px;
+  place-items: center;
+  border-top: 1px solid #343630;
+  border-bottom: 1px solid #343630;
+  background: #171914;
+  cursor: row-resize;
+}
+
+.videoResizeHandle::after {
+  width: 54px;
+  height: 3px;
+  border-radius: 2px;
+  background: #70736a;
+  content: "";
+  transition: background 120ms ease, width 120ms ease;
+}
+
+.videoResizeHandle:hover::after,
+.videoResizeHandle:focus-visible::after {
+  width: 72px;
+  background: #8dafef;
+}
+
+.courtDrawing {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.courtDrawing polyline,
+.courtDrawing line {
+  fill: rgba(38, 83, 168, 0.08);
+  stroke: #dfff35;
+  stroke-width: 0.35;
+  vector-effect: non-scaling-stroke;
+}
+
+.courtDrawing circle {
+  fill: #dfff35;
+  stroke: #171914;
+  stroke-width: 0.3;
+  vector-effect: non-scaling-stroke;
+}
+
+.courtDrawing circle[data-optional="true"] {
+  fill: #ff8d66;
+}
+
+.courtClickLayer {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 2px solid #dfff35;
+  background: rgba(223, 255, 53, 0.04);
+  cursor: crosshair;
+}
+
+.noVideo {
+  display: grid;
+  max-width: 390px;
+  gap: 8px;
+  padding: 40px;
+  color: #b6b7b0;
+  text-align: center;
+}
+
+.noVideo span {
+  color: #fff;
+  font-size: var(--v2-font-lg);
+  font-weight: 700;
+}
+
+.noVideo p {
+  margin: 0;
+  font-size: var(--v2-font-sm);
+  line-height: 1.45;
+}
+
+.playerControls {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  align-items: center;
+  border-top: 1px solid #343630;
+}
+
+.timecode {
+  padding-left: 16px;
+  color: #fff;
+  font:
+    var(--v2-font-sm) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.transport {
+  display: flex;
+  justify-content: center;
+}
+
+.transport button {
+  min-width: clamp(52px, 2.4vw, 64px);
+  min-height: clamp(44px, 2vw, 52px);
+  border: 0;
+  border-left: 1px solid #343630;
+  background: #1b1d18;
+  color: #d5d6cf;
+  cursor: pointer;
+  font:
+    var(--v2-font-xs) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.transport .playButton {
+  min-width: clamp(118px, 5.4vw, 145px);
+  background: #2653a8;
+  color: #fff;
+  font-weight: 700;
+}
+
+.selectionCard {
+  display: flex;
+  min-height: clamp(300px, 16vw, 420px);
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+}
+
+.selectionCard > strong {
+  font-size: var(--v2-font-lg);
+}
+
+.selectionCard > button,
+.rallyTimes button,
+.serveChoices button {
+  min-height: clamp(36px, 1.75vw, 46px);
+  border: 1px solid #b9b8af;
+  background: #fff;
+  color: #282a24;
+  cursor: pointer;
+  font-size: var(--v2-font-xs);
+}
+
+.selectionTime {
+  font-family: "Atkinson Hyperlegible Mono", monospace;
+}
+
+.serveChoices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.serveChoices button {
+  text-transform: capitalize;
+}
+
+.serveChoices button[data-selected="true"] {
+  border-color: #171914;
+  background: #171914;
+  color: #fff;
+}
+
+.rallyTimes {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 5px;
+  align-items: center;
+}
+
+.rallyTimes button {
+  font:
+    var(--v2-font-micro) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.selectionCard .danger {
+  margin-top: auto;
+  border-color: #c34d3c;
+  color: #a53427;
+}
+
+.noSelection {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  gap: 7px;
+  color: #777970;
+  text-align: center;
+}
+
+.timelineSection {
+  margin-top: clamp(14px, 0.7vw, 19px);
+  padding: 0 clamp(20px, 1vw, 28px) clamp(20px, 1vw, 28px);
+}
+
+.timelineControlBar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: clamp(12px, 0.65vw, 18px);
+  padding: clamp(8px, 0.45vw, 12px) 0;
+  border-bottom: 1px solid #d4d2c9;
+}
+
+.timelineOptions label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: #777970;
+  font:
+    var(--v2-font-micro) "Atkinson Hyperlegible Mono",
+    monospace;
+  text-transform: uppercase;
+}
+
+.timelineOptions {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns:
+    clamp(240px, 10.5vw, 280px)
+    clamp(150px, 6.5vw, 175px)
+    clamp(190px, 8.25vw, 220px)
+    clamp(210px, 9vw, 240px);
+  gap: 8px;
+  align-items: end;
+}
+
+.markingToolbar {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+
+.markingToolbar button {
+  display: inline-flex;
+  min-height: clamp(38px, 1.8vw, 48px);
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid #b8b7ae;
+  background: #fff;
+  color: #2b2d27;
+  cursor: pointer;
+  font-size: var(--v2-font-xs);
+  font-weight: 700;
+}
+
+.markingToolbar button[data-tone="start"],
+.markingToolbar button[data-tone="end"] {
+  border-color: #171914;
+  background: #171914;
+  color: #fff;
+}
+
+.markingToolbar button[data-tone="near"] {
+  border-color: #2b676d;
+  color: #20555b;
+}
+
+.markingToolbar button[data-tone="far"] {
+  border-color: #275fc2;
+  color: #2753a0;
+}
+
+.markingToolbar button[data-tone="switch"] {
+  border-color: #d95335;
+  color: #a83b25;
+}
+
+.markingToolbar button:disabled {
+  border-color: #d0cfc8;
+  background: #e5e4df;
+  color: #989991;
+  cursor: default;
+}
+
+.timelineLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 10px 0 12px;
+  color: #686a62;
+  font:
+    var(--v2-font-micro) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.timelineLegend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.timelineLegend i {
+  width: 12px;
+  height: 7px;
+  background: #171914;
+}
+
+.timelineLegend span[data-tone="model"] i {
+  background: #275fc2;
+}
+.timelineLegend span[data-tone="disagreement"] i {
+  background: #f2c94c;
+}
+.timelineLegend span[data-tone="near"] i {
+  border-radius: 50%;
+  background: #2b676d;
+}
+.timelineLegend span[data-tone="far"] i {
+  border-radius: 50%;
+  background: #275fc2;
+}
+.timelineLegend span[data-tone="switch"] i {
+  width: 3px;
+  height: 12px;
+  background: #ff5c35;
+}
+
+.timelineLegend span[data-tone="model-switch"] i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5c35;
+}
+
+.timelineLegend span[data-tone="suppressed"] i {
+  background: repeating-linear-gradient(
+    135deg,
+    #8f3d8f 0,
+    #8f3d8f 2px,
+    #e5b9e5 2px,
+    #e5b9e5 4px
+  );
+}
+
+.timelineLegend span[data-tone="miss"] i {
+  background: #d81717;
+}
+
+.timelineScroll {
+  overflow-x: auto;
+  padding: 12px 0 4px;
+  border-top: 1px solid #d4d2c9;
+}
+
+.emptyTimeline {
+  display: grid;
+  min-height: 130px;
+  place-items: center;
+  color: #777970;
+  font:
+    var(--v2-font-xs) "Atkinson Hyperlegible Mono",
+    monospace;
+}
+
+.timelineHint {
+  margin: 10px 0 0;
+  color: #777970;
+  font-size: var(--v2-font-xs);
+}
+
+@media (max-width: 1180px) {
+  .page .commandBar {
+    grid-template-columns: auto minmax(160px, 210px) minmax(280px, 1fr) auto;
+  }
+
+  .sourcePicker {
+    grid-template-columns: minmax(220px, 1fr) 160px minmax(280px, 1.5fr) auto;
+  }
+
+  .sourceState {
+    display: none;
+  }
+
+  .page .editorShell {
+    grid-template-columns:
+      var(--v2-left-sidebar-width, 250px)
+      9px minmax(0, 1fr);
+  }
+
+  .page .playerWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .page .playerWorkspace > .sidebarResizeHandle {
+    display: none;
+  }
+
+  .selectionCard {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 1600px) {
+  .commandBar {
+    grid-template-columns:
+      auto minmax(180px, 220px) minmax(320px, 1fr) auto minmax(180px, auto);
+  }
+
+  .stepBadge {
+    display: none;
+  }
+
+  .timelineControlBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .markingToolbar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 820px) {
+  .page {
+    padding: 0 12px 48px;
+  }
+
+  .page .commandBar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .commandBar .compactField:first-of-type {
+    display: none;
+  }
+
+  .compactField > span {
+    display: none;
+  }
+
+  .page .editorShell {
+    grid-template-columns: 1fr;
+  }
+
+  .editorShell > .sidebarResizeHandle {
+    display: none;
+  }
+
+  .summaryCard {
+    position: static;
+  }
+
+  .videoStage {
+    height: min(70vh, 520px);
+    min-height: 240px;
+  }
+
+  .playerControls {
+    grid-template-columns: 1fr;
+  }
+
+  .timecode {
+    padding: 10px;
+    text-align: center;
+  }
+
+  .transport button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .timelineOptions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .brand {
+    font-size: 0;
+  }
+}

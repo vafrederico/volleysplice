@@ -54,6 +54,7 @@ import {
   totalRallySeconds,
 } from "@/lib/timeline-comparison";
 import styles from "./labeling-editor.module.css";
+import v2 from "./labeling-editor-v2.module.css";
 
 type IntervalKind = "rally" | "ignored" | "negative";
 type LabelingBatch = "full" | "pilot";
@@ -64,6 +65,12 @@ type ModelReference = {
   modelLabel: string;
   description?: string;
   rallies: RallyLabel[];
+  serveMarkers?: ServeMarker[];
+  humanServeMarkers?: ServeMarker[];
+  serveModelLabel?: string;
+  sideSwitches?: SideSwitch[];
+  sideSwitchModelLabel?: string;
+  suppressedRanges?: RallyLabel[];
 };
 type CourtAnchorId =
   | "nearLeft"
@@ -141,6 +148,19 @@ type BatchSummary = Record<
   { ready: number; total: number; saved: number; prelabeled: number }
 >;
 
+type WorkspaceLayoutDimension =
+  | "videoHeight"
+  | "leftSidebarWidth"
+  | "rightSidebarWidth";
+type WorkspaceLayout = Partial<Record<WorkspaceLayoutDimension, number>>;
+type WorkspaceResizeDrag = {
+  dimension: WorkspaceLayoutDimension;
+  direction: 1 | -1;
+  pointerId: number;
+  startCoordinate: number;
+  startSize: number;
+};
+
 const emptyBatchSummary: BatchSummary = {
   full: { ready: 0, total: 0, saved: 0, prelabeled: 0 },
   pilot: { ready: 0, total: 0, saved: 0, prelabeled: 0 },
@@ -150,9 +170,45 @@ const editableRallyTags = new Set(["service-fault", "ace", "interrupted-replay"]
 const playbackResumeKey = "volleycut.labeling.playback.v1";
 const timestampEpsilon = 0.0005;
 const trackletFrameEpsilon = 0.001;
-const comparisonPaddingCases = [2, 3] as const;
+const comparisonPaddingCases = [0, 1, 2, 3] as const;
 const activityPaddingStorageKey = "volleycut:activity-padding:v1";
 const activityPaddingEvent = "volleycut:activity-padding";
+const workspaceLayoutStorageKey = "volleycut.labelv2.workspace-layout.v1";
+const workspaceLayoutBounds: Record<
+  WorkspaceLayoutDimension,
+  { min: number; max: number; fallback: number }
+> = {
+  videoHeight: { min: 320, max: 1200, fallback: 900 },
+  leftSidebarWidth: { min: 260, max: 520, fallback: 330 },
+  rightSidebarWidth: { min: 220, max: 520, fallback: 290 },
+};
+
+function clampWorkspaceLayoutDimension(
+  dimension: WorkspaceLayoutDimension,
+  value: number,
+): number {
+  const bounds = workspaceLayoutBounds[dimension];
+  return Math.round(Math.max(bounds.min, Math.min(bounds.max, value)));
+}
+
+function readWorkspaceLayout(): WorkspaceLayout {
+  try {
+    const raw = window.localStorage.getItem(workspaceLayoutStorageKey);
+    if (!raw) return {};
+    const value = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const layout: WorkspaceLayout = {};
+    for (const dimension of Object.keys(workspaceLayoutBounds) as WorkspaceLayoutDimension[]) {
+      const candidate = value[dimension];
+      if (typeof candidate === "number" && Number.isFinite(candidate)) {
+        layout[dimension] = clampWorkspaceLayoutDimension(dimension, candidate);
+      }
+    }
+    return layout;
+  } catch {
+    return {};
+  }
+}
 
 function metricPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -280,8 +336,17 @@ function hardNegativeLabel(value: (typeof hardNegativeCategories)[number]): stri
   return labels[value] ?? value.replaceAll("-", " ");
 }
 
-export function LabelingEditor() {
+type LabelingEditorProps = {
+  variant?: "legacy" | "v2";
+};
+
+export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {}) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoStageRef = useRef<HTMLDivElement>(null);
+  const leftSidebarRef = useRef<HTMLElement>(null);
+  const rightSidebarRef = useRef<HTMLElement>(null);
+  const workspaceLayoutRef = useRef<WorkspaceLayout>({});
+  const workspaceResizeRef = useRef<WorkspaceResizeDrag | null>(null);
   const preparedRequestRef = useRef<AbortController | null>(null);
   const pendingResumeSecondsRef = useRef<number | null>(null);
   const resumeAttemptedRef = useRef(false);
@@ -297,6 +362,7 @@ export function LabelingEditor() {
   const [selectedPreparedTask, setSelectedPreparedTask] = useState("");
   const [preparedTasksLoading, setPreparedTasksLoading] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [publishingLabels, setPublishingLabels] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoFilename, setVideoFilename] = useState<string | null>(null);
@@ -305,6 +371,8 @@ export function LabelingEditor() {
   const [rallyStart, setRallyStart] = useState<number | null>(null);
   const [mergeRallyIndexes, setMergeRallyIndexes] = useState<number[]>([]);
   const [focusedServeMarkerIndex, setFocusedServeMarkerIndex] =
+    useState<number | null>(null);
+  const [focusedSideSwitchIndex, setFocusedSideSwitchIndex] =
     useState<number | null>(null);
   const [ignoredStart, setIgnoredStart] = useState<number | null>(null);
   const [negativeStart, setNegativeStart] = useState<number | null>(null);
@@ -327,6 +395,128 @@ export function LabelingEditor() {
   );
   const [error, setError] = useState<string | null>(null);
   const [joinGapSeconds, setJoinGapSeconds] = useState(DEFAULT_JOIN_GAP_SECONDS);
+  const [referenceLayer, setReferenceLayer] = useState("production");
+  const [timelinePaddingSeconds, setTimelinePaddingSeconds] = useState(2);
+  const [modelServeVisibility, setModelServeVisibility] = useState<
+    "disagreements" | "all" | "none"
+  >("disagreements");
+  const [modelSideSwitchVisibility, setModelSideSwitchVisibility] = useState<
+    "all" | "disagreements"
+  >("all");
+  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>({});
+
+  useEffect(() => {
+    if (variant !== "v2") return;
+    const syncWorkspaceLayout = () => {
+      const next = readWorkspaceLayout();
+      workspaceLayoutRef.current = next;
+      setWorkspaceLayout(next);
+    };
+    syncWorkspaceLayout();
+    window.addEventListener("storage", syncWorkspaceLayout);
+    return () => window.removeEventListener("storage", syncWorkspaceLayout);
+  }, [variant]);
+
+  function persistWorkspaceLayout(layout: WorkspaceLayout) {
+    try {
+      window.localStorage.setItem(workspaceLayoutStorageKey, JSON.stringify(layout));
+    } catch {
+      // Resizing still works for the current session if browser storage is unavailable.
+    }
+  }
+
+  function updateWorkspaceLayoutDimension(
+    dimension: WorkspaceLayoutDimension,
+    value: number,
+    persist = false,
+  ) {
+    const next = {
+      ...workspaceLayoutRef.current,
+      [dimension]: clampWorkspaceLayoutDimension(dimension, value),
+    };
+    workspaceLayoutRef.current = next;
+    setWorkspaceLayout(next);
+    if (persist) persistWorkspaceLayout(next);
+  }
+
+  function beginWorkspaceResize(
+    event: React.PointerEvent<HTMLDivElement>,
+    dimension: WorkspaceLayoutDimension,
+    element: HTMLElement | null,
+    direction: 1 | -1,
+  ) {
+    if (!element) return;
+    event.preventDefault();
+    event.currentTarget.focus();
+    const bounds = element.getBoundingClientRect();
+    workspaceResizeRef.current = {
+      dimension,
+      direction,
+      pointerId: event.pointerId,
+      startCoordinate: dimension === "videoHeight" ? event.clientY : event.clientX,
+      startSize: dimension === "videoHeight" ? bounds.height : bounds.width,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveWorkspaceResize(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = workspaceResizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const coordinate = drag.dimension === "videoHeight" ? event.clientY : event.clientX;
+    updateWorkspaceLayoutDimension(
+      drag.dimension,
+      drag.startSize + (coordinate - drag.startCoordinate) * drag.direction,
+    );
+  }
+
+  function finishWorkspaceResize(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = workspaceResizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const coordinate = drag.dimension === "videoHeight" ? event.clientY : event.clientX;
+    updateWorkspaceLayoutDimension(
+      drag.dimension,
+      drag.startSize + (coordinate - drag.startCoordinate) * drag.direction,
+      true,
+    );
+    workspaceResizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function cancelWorkspaceResize(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = workspaceResizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    persistWorkspaceLayout(workspaceLayoutRef.current);
+    workspaceResizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function resizeWorkspaceWithKeyboard(
+    event: React.KeyboardEvent<HTMLDivElement>,
+    dimension: WorkspaceLayoutDimension,
+    element: HTMLElement | null,
+    direction: 1 | -1,
+  ) {
+    if (!element) return;
+    const vertical = dimension === "videoHeight";
+    const decreaseKey = vertical ? "ArrowUp" : "ArrowLeft";
+    const increaseKey = vertical ? "ArrowDown" : "ArrowRight";
+    const bounds = workspaceLayoutBounds[dimension];
+    const currentBounds = element.getBoundingClientRect();
+    const current = vertical ? currentBounds.height : currentBounds.width;
+    let next: number | null = null;
+    if (event.key === decreaseKey) next = current - (event.shiftKey ? 40 : 10) * direction;
+    else if (event.key === increaseKey) next = current + (event.shiftKey ? 40 : 10) * direction;
+    else if (event.key === "Home") next = bounds.min;
+    else if (event.key === "End") next = bounds.max;
+    if (next === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    updateWorkspaceLayoutDimension(dimension, next, true);
+  }
 
   useEffect(() => {
     const syncJoinGap = () => {
@@ -478,6 +668,10 @@ export function LabelingEditor() {
   const focusedServeMarker =
     labels && focusedServeMarkerIndex !== null
       ? labels.serveMarkers[focusedServeMarkerIndex] ?? null
+      : null;
+  const focusedSideSwitch =
+    labels && focusedSideSwitchIndex !== null
+      ? labels.sideSwitches[focusedSideSwitchIndex] ?? null
       : null;
   const serveControlRallyIndex = focusedServeMarker && labels
     ? findServeMarkerRallyIndex(labels.rallies, focusedServeMarker.time)
@@ -751,6 +945,17 @@ export function LabelingEditor() {
     videoUrl,
   ]);
 
+  const publishIssues = useMemo(
+    () =>
+      completionIssues.filter(
+        (issue) =>
+          issue !== "Enter the annotator name" &&
+          issue !== "Confirm the complete video was reviewed" &&
+          issue !== "Set players per team",
+      ),
+    [completionIssues],
+  );
+
   function markChanged(document: LabelDocument): LabelDocument {
     return {
       ...document,
@@ -774,6 +979,7 @@ export function LabelingEditor() {
       setLabels(document);
       setMergeRallyIndexes([]);
       setFocusedServeMarkerIndex(null);
+      setFocusedSideSwitchIndex(null);
       setProductionReference(null);
       setExperimentReferences([]);
       setSolReferenceRallies([]);
@@ -834,13 +1040,14 @@ export function LabelingEditor() {
       const batch = response.headers.get("X-VolleyCut-Batch");
       const documentSource = response.headers.get("X-VolleyCut-Document-Source");
       const savedAt = response.headers.get("X-VolleyCut-Saved-At");
-      const document = parseLabelDocument(await response.json());
+      let document = parseLabelDocument(await response.json());
       let referenceRallies: RallyLabel[] = [];
       let nextProductionReference: ModelReference | null = null;
       let nextExperimentReferences: ModelReference[] = [];
       if (referencesResponse?.ok) {
         const references = (await referencesResponse.json()) as {
           production?: Partial<ModelReference> | null;
+          models?: Array<Partial<ModelReference>>;
           experiments?: Array<Partial<ModelReference>>;
           sol?: { rallies?: RallyLabel[] } | null;
         };
@@ -851,21 +1058,39 @@ export function LabelingEditor() {
         ) {
           nextProductionReference = references.production as ModelReference;
         }
-        if (Array.isArray(references.experiments)) {
-          nextExperimentReferences = references.experiments.filter(
+        const modelReferences = [
+          ...(Array.isArray(references.models) ? references.models : []),
+          ...(Array.isArray(references.experiments) ? references.experiments : []),
+        ];
+        if (modelReferences.length > 0) {
+          nextExperimentReferences = modelReferences.filter(
             (reference): reference is ModelReference =>
               typeof reference.modelId === "string" &&
               typeof reference.modelLabel === "string" &&
               Array.isArray(reference.rallies),
+          );
+          nextExperimentReferences = nextExperimentReferences.filter(
+            (reference, index, rows) =>
+              rows.findIndex((candidate) => candidate.modelId === reference.modelId) === index,
           );
         }
         if (Array.isArray(references.sol?.rallies)) {
           referenceRallies = references.sol.rallies;
         }
       }
+      if (
+        document.serveMarkers.length === 0 &&
+        nextProductionReference?.humanServeMarkers?.length
+      ) {
+        document = {
+          ...document,
+          serveMarkers: nextProductionReference.humanServeMarkers,
+        };
+      }
       setLabels(document);
       setMergeRallyIndexes([]);
       setFocusedServeMarkerIndex(null);
+      setFocusedSideSwitchIndex(null);
       setProductionReference(nextProductionReference);
       setExperimentReferences(nextExperimentReferences);
       setSolReferenceRallies(referenceRallies);
@@ -1016,6 +1241,66 @@ export function LabelingEditor() {
       setError(saveError instanceof Error ? saveError.message : "The draft could not be saved");
     } finally {
       setSavingDraft(false);
+    }
+  }
+
+  async function publishLabelsDirectly() {
+    if (!labels || publishIssues.length > 0) return;
+    const preparedTask = preparedTasks.find((task) => task.id === labels.recording.id);
+    if (!preparedTask) {
+      setError("Publishing is available only for a prepared NAS dataset video.");
+      return;
+    }
+    const completed: LabelDocument = {
+      ...labels,
+      annotation: {
+        ...labels.annotation,
+        status: "complete",
+        continuousVideoReviewed: true,
+        reviewedAt: new Date().toISOString(),
+      },
+    };
+    setError(null);
+    setPublishingLabels(true);
+    try {
+      const response = await fetch(
+        `/api/labeling/tasks/${encodeURIComponent(preparedTask.id)}/complete`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(completed),
+        },
+      );
+      const result = (await response.json()) as { error?: string; savedAt?: string };
+      if (!response.ok || !result.savedAt) {
+        throw new Error(result.error ?? "The completed labels could not be published");
+      }
+      setLabels(completed);
+      setLastSavedAt(result.savedAt);
+      setPreparedTasks((current) =>
+        current.map((task) =>
+          task.id === preparedTask.id
+            ? {
+                ...task,
+                annotationStatus: "complete",
+                documentSource: "completed",
+                rallyCount: completed.rallies.length,
+                savedAt: result.savedAt ?? null,
+              }
+            : task,
+        ),
+      );
+      setMessage(
+        `Published ${completed.rallies.length} human rallies to the NAS at ${new Date(result.savedAt).toLocaleTimeString()}.`,
+      );
+    } catch (publishError) {
+      setError(
+        publishError instanceof Error
+          ? publishError.message
+          : "The completed labels could not be published",
+      );
+    } finally {
+      setPublishingLabels(false);
     }
   }
 
@@ -1475,12 +1760,14 @@ export function LabelingEditor() {
     const sideSwitches = [...labels.sideSwitches, { time }].sort(
       (left, right) => left.time - right.time,
     );
+    setFocusedServeMarkerIndex(null);
+    setFocusedSideSwitchIndex(sideSwitches.findIndex((marker) => marker.time === time));
     setError(null);
     setLabels(markChanged({ ...labels, sideSwitches }));
     setMessage(`Marked a side switch at ${formatPreciseTime(time)}.`);
   }
 
-  function addServeMarker() {
+  function addServeMarker(sideOverride?: ServeMarker["side"]) {
     if (!labels || !videoRef.current) return;
     const time = roundTime(videoRef.current.currentTime);
     if (labels.serveMarkers.some((marker) => marker.time === time)) {
@@ -1491,14 +1778,17 @@ export function LabelingEditor() {
       setError("A serving-side marker cannot be placed beyond the task duration.");
       return;
     }
+    const side = sideOverride ?? newServeSide;
     const serveMarkers = [
       ...labels.serveMarkers,
-      { time, side: newServeSide, origin: "manual" as const },
+      { time, side, origin: "manual" as const },
     ].sort((left, right) => left.time - right.time);
+    setFocusedSideSwitchIndex(null);
+    setFocusedServeMarkerIndex(serveMarkers.findIndex((marker) => marker.time === time));
     setError(null);
     setLabels(markChanged({ ...labels, serveMarkers }));
     setMessage(
-      `Marked a ${newServeSide === "review" ? "needs-review" : newServeSide} serve at ${formatPreciseTime(time)}.`,
+      `Marked a ${side === "review" ? "needs-review" : side} serve at ${formatPreciseTime(time)}.`,
     );
   }
 
@@ -1594,9 +1884,21 @@ export function LabelingEditor() {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, button, [contenteditable='true']")) return;
       const key = event.key.toLowerCase();
-      if (key === " ") {
+      if (
+        target?.closest(
+          variant === "v2"
+            ? "input, textarea, select, [contenteditable='true']"
+            : "input, textarea, select, button, [contenteditable='true']",
+        ) ||
+        (variant === "v2" && target?.closest("button") && [" ", "enter"].includes(key))
+      ) {
+        return;
+      }
+      if (key === "s" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        void saveDraftDirectly();
+      } else if (key === " ") {
         event.preventDefault();
         togglePlayback();
       } else if (key === "s" && event.shiftKey) {
@@ -1607,6 +1909,8 @@ export function LabelingEditor() {
       else if (key === "[") toggleIgnored();
       else if (key === "]" && ignoredStart !== null) toggleIgnored();
       else if (key === "h") toggleNegative();
+      else if (key === "n") addServeMarker("near");
+      else if (key === "f") addServeMarker("far");
       else if (key === "v") addServeMarker();
       else if (key === "x") addSideSwitch();
       else if (key === "escape") cancelMarker();
@@ -1701,20 +2005,26 @@ export function LabelingEditor() {
 
   function updateSideSwitch(index: number, patch: Partial<SideSwitch>) {
     if (!labels) return;
-    const sideSwitches = labels.sideSwitches.map((marker, markerIndex) =>
-      markerIndex === index ? { ...marker, ...patch } : marker,
-    );
+    const updated = { ...labels.sideSwitches[index], ...patch };
+    const sideSwitches = labels.sideSwitches
+      .map((marker, markerIndex) => (markerIndex === index ? updated : marker))
+      .sort((left, right) => left.time - right.time);
     setLabels(markChanged({ ...labels, sideSwitches }));
+    if (focusedSideSwitchIndex === index) {
+      setFocusedSideSwitchIndex(sideSwitches.indexOf(updated));
+    }
   }
 
   function updateServeMarker(index: number, patch: Partial<ServeMarker>) {
     if (!labels) return;
+    const updated = { ...labels.serveMarkers[index], ...patch };
     const serveMarkers = labels.serveMarkers
-      .map((marker, markerIndex) =>
-        markerIndex === index ? { ...marker, ...patch } : marker,
-      )
+      .map((marker, markerIndex) => (markerIndex === index ? updated : marker))
       .sort((left, right) => left.time - right.time);
     setLabels(markChanged({ ...labels, serveMarkers }));
+    if (focusedServeMarkerIndex === index) {
+      setFocusedServeMarkerIndex(serveMarkers.indexOf(updated));
+    }
   }
 
   function removeServeMarker(index: number) {
@@ -1739,6 +2049,7 @@ export function LabelingEditor() {
         sideSwitches: labels.sideSwitches.filter((_, markerIndex) => markerIndex !== index),
       }),
     );
+    setFocusedSideSwitchIndex(null);
     setMessage(`Deleted side-switch marker ${index + 1}.`);
   }
 
@@ -1778,6 +2089,834 @@ export function LabelingEditor() {
         }),
       );
     }
+  }
+
+  if (variant === "v2") {
+    const preparedTaskIndex = tasksForSelectedBatch.findIndex(
+      (task) => task.id === selectedPreparedTask,
+    );
+    const visibleModelReferences = [
+      ...(productionReference &&
+      (referenceLayer === "production" || referenceLayer === "all")
+        ? [productionReference]
+        : []),
+      ...experimentReferences.filter((reference) =>
+        referenceLayer === "all" || referenceLayer === `model:${reference.modelId}`,
+      ),
+    ];
+    const referenceTracks: TimelineTrack[] = visibleModelReferences.map((reference) => {
+      const comparison = referenceComparisons.find(
+        (candidate) =>
+          candidate.reference.modelId === reference.modelId &&
+          candidate.paddingSeconds === timelinePaddingSeconds,
+      );
+      const isProduction = reference === productionReference;
+      return {
+        id: isProduction ? "production-reference" : reference.modelId,
+        label: isProduction ? "Production ensemble" : reference.modelLabel,
+        detail: `${reference.rallies.length} core rallies · ${timelinePaddingSeconds}s pad · < ${joinGapSeconds}s joins`,
+        title: reference.description,
+        ...(comparison
+          ? {
+              summary: {
+                exportTime: formatPreciseTime(comparison.exportSeconds),
+                metricsLabel: `${timelinePaddingSeconds}s P_pad/R_core/F1`,
+                coreMetrics: `P ${metricPercent(comparison.precision)} · R ${metricPercent(comparison.recall)} · F1 ${metricPercent(comparison.f1)}`,
+              },
+              exportIntervals: comparison.exportRallies.map((rally, index) => ({
+                id: `${reference.modelId}-export-${index}`,
+                start: rally.start,
+                end: rally.end,
+                title: `${reference.modelLabel} · final padded export · ${formatPreciseTime(rally.start)}–${formatPreciseTime(rally.end)}`,
+              })),
+              joinedGapIntervals: comparison.joinedGapRallies.map((gap, index) => ({
+                id: `${reference.modelId}-gap-${index}`,
+                start: gap.start,
+                end: gap.end,
+                title: `${reference.modelLabel} · retained gap under ${joinGapSeconds}s`,
+              })),
+              missingHumanIntervals: comparison.missingHumanSegments.map((segment, index) => ({
+                id: `${reference.modelId}-miss-${index}`,
+                start: segment.start,
+                end: segment.end,
+                title: `${reference.modelLabel} · missed human live time`,
+              })),
+              intervals: comparison.segments.map((segment) => {
+                const midpoint = segment.start + (segment.end - segment.start) / 2;
+                const disagreement = comparison.disagreementRallies.find(
+                  (rally) => rally.start <= midpoint && midpoint < rally.end,
+                );
+                return {
+                  id: `${reference.modelId}-${segment.id}`,
+                  selectionId: null,
+                  start: segment.start,
+                  end: segment.end,
+                  tone: disagreement
+                    ? "model-disagreement" as const
+                    : `model-${segment.kind}` as const,
+                  paddingOrigin: segment.paddingOrigin,
+                  title: `${reference.modelLabel} · ${disagreement
+                    ? productionModelAgreementLabel(disagreement.agreement)
+                    : segment.kind === "match"
+                      ? "matches human live time"
+                      : segment.kind === "added"
+                        ? "predicted outside human live time"
+                        : "human live time missed by model"
+                  }${segment.paddingOrigin ? ` · ${segment.paddingOrigin} padding` : " · model core"}`,
+                };
+              }),
+            }
+          : {
+              intervals: reference.rallies.map((row, index) => ({
+                id: `${reference.modelId}-${index}`,
+                selectionId: null,
+                start: row.start,
+                end: row.end,
+                confidence: modelConfidenceFromTags(row.tags),
+                tone: "model" as const,
+              })),
+            }),
+        ...(reference.suppressedRanges?.length
+          ? {
+              suppressedIntervals: reference.suppressedRanges.map((range, index) => ({
+                id: `${reference.modelId}-suppressed-${index}`,
+                start: range.start,
+                end: range.end,
+                title: `Removed by suppression v3 · ${formatPreciseTime(range.start)}–${formatPreciseTime(range.end)}`,
+              })),
+            }
+          : {}),
+      } satisfies TimelineTrack;
+    });
+    if ((referenceLayer === "all" || referenceLayer === "sol") && solReferenceRallies.length > 0) {
+      referenceTracks.push({
+        id: "sol-reference",
+        label: "Sol reference",
+        detail: `${solReferenceRallies.length} rallies · read only`,
+        intervals: solReferenceRallies.map((row, index) => ({
+          id: `sol-${index}`,
+          selectionId: null,
+          start: row.start,
+          end: row.end,
+          tone: "sol",
+          title: `Sol rally ${index + 1} · ${formatPreciseTime(row.start)}–${formatPreciseTime(row.end)}`,
+        })),
+      });
+    }
+    const timelineTracks: TimelineTrack[] = labels
+      ? [
+          {
+            id: "human-labels",
+            label: "Human labels",
+            detail: `${labels.rallies.length} rallies · editable`,
+            active: true,
+            intervals: labels.rallies.map((row, index) => ({
+              id: `rally-${index}`,
+              start: row.start,
+              end: row.end,
+              tone: "gold",
+              title: `Human rally ${index + 1} · ${formatPreciseTime(row.start)}–${formatPreciseTime(row.end)}`,
+            })),
+          },
+          ...referenceTracks,
+          ...(labels.ignoredIntervals.length > 0
+            ? [
+                {
+                  id: "ignored",
+                  label: "Ignored footage",
+                  detail: `${labels.ignoredIntervals.length} spans · outside evaluation`,
+                  intervals: labels.ignoredIntervals.map((row, index) => ({
+                    id: `ignored-${index}`,
+                    selectionId: null,
+                    start: row.start,
+                    end: row.end,
+                    tone: "ignored" as const,
+                    title: `${row.reason} · ${formatPreciseTime(row.start)}–${formatPreciseTime(row.end)}`,
+                  })),
+                } satisfies TimelineTrack,
+              ]
+            : []),
+        ]
+      : [];
+    const productionServeMarkers = labels && productionReference?.serveMarkers
+      ? productionReference.serveMarkers.map((marker, index) => {
+          const rallyIndex = findServeMarkerRallyIndex(labels.rallies, marker.time);
+          const humanIndex = rallyIndex >= 0
+            ? findServeMarkerIndexForRally(labels.rallies, labels.serveMarkers, rallyIndex)
+            : -1;
+          const humanMarker = humanIndex >= 0 ? labels.serveMarkers[humanIndex] : null;
+          const disagrees = humanMarker === null || humanMarker.side !== marker.side;
+          return {
+            id: `production-serve-marker-${index}`,
+            trackId: "production-reference",
+            time: marker.time,
+            tone: `serve-${marker.side}` as const,
+            label: marker.side === "near" ? "N" : "F",
+            disagrees,
+            title: `${productionReference.serveModelLabel ?? "Serving-side model"} · ${marker.side} · ${formatPreciseTime(marker.time)}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% confidence` : ""}${humanMarker ? ` · human: ${humanMarker.side}${disagrees ? " (DISAGREES)" : " (agrees)"}` : " · no matching human serve (DISAGREES)"}`,
+          };
+        })
+        .filter((marker) =>
+          modelServeVisibility === "all" ||
+          (modelServeVisibility === "disagreements" && marker.disagrees),
+        )
+      : [];
+    const humanServeMarkers = labels
+      ? labels.serveMarkers.map((marker, index) => {
+          const rallyIndex = findServeMarkerRallyIndex(labels.rallies, marker.time);
+          const modelMarker = rallyIndex >= 0
+            ? productionReference?.serveMarkers?.find(
+                (candidate) =>
+                  findServeMarkerRallyIndex(labels.rallies, candidate.time) === rallyIndex,
+              )
+            : undefined;
+          return {
+            id: `serve-marker-${index}`,
+            trackId: "human-labels",
+            time: marker.time,
+            tone: `serve-${marker.side}` as const,
+            label: marker.side === "near" ? "N" : marker.side === "far" ? "F" : "?",
+            disagrees: modelMarker !== undefined && modelMarker.side !== marker.side,
+            title: `Human serve ${index + 1} · ${marker.side} · ${formatPreciseTime(marker.time)}${modelMarker ? ` · model: ${modelMarker.side}${modelMarker.side !== marker.side ? " (DISAGREES)" : " (agrees)"}` : ""}`,
+          };
+        })
+      : [];
+    const productionSideSwitchMarkers = labels && productionReference?.sideSwitches
+      ? productionReference.sideSwitches
+          .map((marker, index) => {
+            const matchingHuman = labels.sideSwitches.find(
+              (candidate) => Math.abs(candidate.time - marker.time) <= 4,
+            );
+            const disagrees = matchingHuman === undefined;
+            return {
+              id: `production-side-switch-${index}`,
+              trackId: "production-reference",
+              time: marker.time,
+              tone: "model-side-switch" as const,
+              label: "X",
+              disagrees,
+              title: `${productionReference.sideSwitchModelLabel ?? "Side-switch model"} · ${formatPreciseTime(marker.time)}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% confidence` : ""}${matchingHuman ? ` · human switch at ${formatPreciseTime(matchingHuman.time)} (agrees)` : " · no human switch within 4s (DISAGREES)"}`,
+            };
+          })
+          .filter(
+            (marker) =>
+              modelSideSwitchVisibility === "all" || marker.disagrees,
+          )
+      : [];
+    const workspaceStyle = {
+      ...(workspaceLayout.leftSidebarWidth
+        ? { "--v2-left-sidebar-width": `${workspaceLayout.leftSidebarWidth}px` }
+        : {}),
+      ...(workspaceLayout.rightSidebarWidth
+        ? { "--v2-right-sidebar-width": `${workspaceLayout.rightSidebarWidth}px` }
+        : {}),
+    } as React.CSSProperties;
+
+    return (
+      <main className={v2.page}>
+        <header className={v2.commandBar} aria-label="Labeling workspace controls">
+          <Brand className={v2.brand} label="R&D LABELS" priority />
+          <span className={v2.stepBadge}><b>{labels ? 2 : 1}</b>{labels ? "Human labels" : "Dataset video"}</span>
+          <label className={v2.compactField}>
+            <span>Dataset</span>
+            <select
+              aria-label="Labeling dataset"
+              value={selectedBatch}
+              disabled={preparedTasksLoading}
+              onChange={(event) => {
+                setSelectedBatch(event.target.value as LabelingBatch);
+                setSelectedPreparedTask("");
+              }}
+            >
+              <option value="full">Full corpus · {batchSummary.full.ready} ready</option>
+              <option value="pilot">Pilot · {batchSummary.pilot.ready} ready</option>
+            </select>
+          </label>
+          <label className={`${v2.compactField} ${v2.videoSelect}`}>
+            <span>Video</span>
+            <select
+              aria-label="Prepared dataset video"
+              value={selectedPreparedTask}
+              disabled={preparedTasksLoading || tasksForSelectedBatch.length === 0}
+              onChange={(event) => void loadPreparedTask(event.target.value)}
+            >
+              <option value="">
+                {preparedTasksLoading ? "Loading videos…" : "Choose a video…"}
+              </option>
+              {tasksForSelectedBatch.map((task) => (
+                <option key={task.id} value={task.id}>
+                  {task.priority}. {task.originalFilename} · {formatPreciseTime(task.durationSeconds)} · {task.savedAt ? `${task.rallyCount} saved` : task.modelSeeded ? "model ready" : "unlabeled"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className={v2.sourceNavigation}>
+            <button
+              type="button"
+              disabled={preparedTaskIndex <= 0}
+              onClick={() => {
+                const task = tasksForSelectedBatch[preparedTaskIndex - 1];
+                if (task) void loadPreparedTask(task.id);
+              }}
+              aria-label="Previous dataset video"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              disabled={preparedTaskIndex < 0 || preparedTaskIndex >= tasksForSelectedBatch.length - 1}
+              onClick={() => {
+                const task = tasksForSelectedBatch[preparedTaskIndex + 1];
+                if (task) void loadPreparedTask(task.id);
+              }}
+              aria-label="Next dataset video"
+            >
+              →
+            </button>
+          </div>
+          <div className={v2.sourceState} data-saved={lastSavedAt ? "true" : undefined}>
+            <i data-ready={labels ? "true" : undefined} />
+            <span>
+              {!labels
+                ? "Choose a video"
+                : lastSavedAt
+                  ? `Connected · saved ${new Date(lastSavedAt).toLocaleTimeString()}`
+                  : selectedPreparedSummary
+                    ? "Connected · not saved"
+                    : "Dataset connected"}
+            </span>
+          </div>
+        </header>
+
+        {error && <p className={v2.error} role="alert">{error}</p>}
+
+        <section className={v2.editorShell} style={workspaceStyle}>
+          <aside ref={leftSidebarRef} className={v2.summaryCard} aria-label="Human label summary and save actions">
+            <div className={v2.summaryStats}>
+              <span>HUMAN LABEL SET</span>
+              <strong>{labels ? `${labels.rallies.length} rallies` : "No video"}</strong>
+              <div>
+                <p>{labels?.serveMarkers.length ?? 0} serve markers</p>
+                <p>{labels?.sideSwitches.length ?? 0} side switches</p>
+                <p>{labels?.ignoredIntervals.length ?? 0} ignored spans</p>
+              </div>
+            </div>
+
+            <div className={v2.boundaryContract}>
+              <span>BOUNDARY CONTRACT</span>
+              <p><b>Start</b> at serve contact.</p>
+              <p><b>End</b> when live play ends.</p>
+              <p>Use ignored spans only for footage that cannot be judged.</p>
+            </div>
+
+            <details className={v2.serveMarkerEditor} open>
+              <summary>
+                <span>Serve markers</span>
+                <small>{labels?.serveMarkers.length ?? 0}</small>
+              </summary>
+              <div className={v2.serveAddButtons} role="group" aria-label="Add serve marker at playhead">
+                <button type="button" data-side="near" disabled={!labels || !videoUrl} onClick={() => addServeMarker("near")}>+ Near <kbd>N</kbd></button>
+                <button type="button" data-side="far" disabled={!labels || !videoUrl} onClick={() => addServeMarker("far")}>+ Far <kbd>F</kbd></button>
+                <button type="button" data-side="review" disabled={!labels || !videoUrl} onClick={() => addServeMarker("review")}>+ Review</button>
+              </div>
+              {focusedServeMarker && focusedServeMarkerIndex !== null && (
+                <div className={v2.serveMarkerInspector}>
+                  <div>
+                    <strong>Serve {focusedServeMarkerIndex + 1}</strong>
+                    <button type="button" onClick={() => seekTo(focusedServeMarker.time, focusedServeMarkerIndex)}>{formatPreciseTime(focusedServeMarker.time)}</button>
+                  </div>
+                  <div className={v2.serveChoices} role="group" aria-label="Selected serving side">
+                    {(["near", "far", "review"] as const).map((side) => (
+                      <button
+                        type="button"
+                        key={side}
+                        data-side={side}
+                        data-selected={focusedServeMarker.side === side || undefined}
+                        onClick={() => updateServeMarker(focusedServeMarkerIndex, { side })}
+                      >
+                        {side === "review" ? "Review" : side}
+                      </button>
+                    ))}
+                  </div>
+                  <div className={v2.serveMarkerActions}>
+                    <button type="button" onClick={() => updateServeMarker(focusedServeMarkerIndex, { time: roundTime(currentTime) })}>Move to playhead</button>
+                    <button type="button" data-danger="true" onClick={() => removeServeMarker(focusedServeMarkerIndex)}>Delete</button>
+                  </div>
+                </div>
+              )}
+              <div className={v2.serveMarkerList} role="region" aria-label="Human serve markers">
+                {labels?.serveMarkers.map((marker, index) => {
+                  const rallyIndex = findServeMarkerRallyIndex(labels.rallies, marker.time);
+                  const modelMarker = rallyIndex >= 0
+                    ? productionReference?.serveMarkers?.find(
+                        (candidate) => findServeMarkerRallyIndex(labels.rallies, candidate.time) === rallyIndex,
+                      )
+                    : undefined;
+                  const disagrees = modelMarker !== undefined && modelMarker.side !== marker.side;
+                  return (
+                    <button
+                      type="button"
+                      key={`serve-${marker.time}`}
+                      data-selected={focusedServeMarkerIndex === index || undefined}
+                      data-disagrees={disagrees || undefined}
+                      onClick={() => {
+                        setFocusedSideSwitchIndex(null);
+                        setFocusedServeMarkerIndex(index);
+                        seekTo(marker.time, index);
+                      }}
+                    >
+                      <i data-side={marker.side}>{marker.side === "near" ? "N" : marker.side === "far" ? "F" : "?"}</i>
+                      <span>
+                        <strong>Serve {index + 1}</strong>
+                        <small>{formatPreciseTime(marker.time)}</small>
+                      </span>
+                      <em>{modelMarker ? (disagrees ? `Model ${modelMarker.side} ≠` : "Agrees") : "No model"}</em>
+                    </button>
+                  );
+                })}
+                {labels?.serveMarkers.length === 0 && <p>No human serve markers yet.</p>}
+              </div>
+            </details>
+
+            <details className={v2.courtGeometry}>
+              <summary>
+                <span>Court geometry</span>
+                <small>
+                  {labels
+                    ? `${courtAnchorSpecs.filter((anchor) => courtPoint(labels.recording.courtGeometry, anchor.id)).length}/${courtAnchorSpecs.length}`
+                    : "optional"}
+                </small>
+              </summary>
+              <p>Pause on a clear frame, choose an anchor, then click it in the video.</p>
+              <div className={v2.courtAnchorGrid}>
+                {courtAnchorSpecs.map((anchor) => {
+                  const point = courtPoint(labels?.recording.courtGeometry, anchor.id);
+                  return (
+                    <button
+                      type="button"
+                      key={anchor.id}
+                      disabled={!labels || !videoUrl}
+                      data-active={courtAnchor === anchor.id || undefined}
+                      data-saved={point ? "true" : undefined}
+                      onClick={() => selectCourtAnchor(anchor.id)}
+                      title={point ? `${point.x.toFixed(3)}, ${point.y.toFixed(3)}` : undefined}
+                    >
+                      <i />
+                      <span>{anchor.label}</span>
+                      <small>{anchor.optional ? "Optional" : point ? "Saved" : "Required"}</small>
+                    </button>
+                  );
+                })}
+              </div>
+              {courtAnchor && (
+                <button type="button" className={v2.finishCourtMode} onClick={() => setCourtAnchor(null)}>
+                  Finish court mode
+                </button>
+              )}
+            </details>
+
+            <div className={v2.saveActions}>
+              <button
+                type="button"
+                className={v2.saveDraft}
+                disabled={savingDraft || !selectedPreparedSummary || !labels}
+                onClick={() => void saveDraftDirectly()}
+              >
+                {savingDraft ? "Saving…" : "Save draft to NAS"}
+              </button>
+              <button
+                type="button"
+                className={v2.publish}
+                disabled={publishingLabels || publishIssues.length > 0 || !selectedPreparedSummary}
+                onClick={() => void publishLabelsDirectly()}
+              >
+                {publishingLabels ? "Publishing…" : "Publish human labels"}
+              </button>
+              {publishIssues.length > 0 && labels && (
+                <details className={v2.publishIssues}>
+                  <summary>{publishIssues.length} item{publishIssues.length === 1 ? "" : "s"} before publish</summary>
+                  <ul>{publishIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+                </details>
+              )}
+            </div>
+
+            <details className={v2.shortcutPanel} open>
+              <summary>Keyboard shortcuts</summary>
+              <dl>
+                <div><dt><kbd>Space</kbd></dt><dd>Play / pause</dd></div>
+                <div><dt><kbd>S</kbd> <kbd>E</kbd></dt><dd>Rally start / end</dd></div>
+                <div><dt><kbd>N</kbd> <kbd>F</kbd></dt><dd>Near / far serve</dd></div>
+                <div><dt><kbd>X</kbd></dt><dd>Side switch</dd></div>
+                <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Ignored span</dd></div>
+                <div><dt><kbd>J</kbd> <kbd>K</kbd></dt><dd>Step 0.1 sec</dd></div>
+                <div><dt><kbd>⌘/Ctrl S</kbd></dt><dd>Save draft</dd></div>
+              </dl>
+            </details>
+
+            <details className={v2.localFallback}>
+              <summary>Local files</summary>
+              <label>
+                Open label JSON
+                <input type="file" accept="application/json,.json" onChange={(event) => void loadTask(event.target.files?.[0])} />
+              </label>
+              <label>
+                Open matching video
+                <input type="file" accept="video/mp4,video/*" onChange={(event) => loadVideo(event.target.files?.[0])} />
+              </label>
+              {labels && (
+                <button type="button" onClick={() => downloadLabels(labels, false)}>
+                  Download JSON copy
+                </button>
+              )}
+            </details>
+          </aside>
+
+          <div
+            className={v2.sidebarResizeHandle}
+            role="separator"
+            aria-label="Resize labeling sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={workspaceLayoutBounds.leftSidebarWidth.min}
+            aria-valuemax={workspaceLayoutBounds.leftSidebarWidth.max}
+            aria-valuenow={workspaceLayout.leftSidebarWidth ?? workspaceLayoutBounds.leftSidebarWidth.fallback}
+            tabIndex={0}
+            title="Drag to resize the labeling sidebar"
+            onPointerDown={(event) => beginWorkspaceResize(event, "leftSidebarWidth", leftSidebarRef.current, 1)}
+            onPointerMove={moveWorkspaceResize}
+            onPointerUp={finishWorkspaceResize}
+            onPointerCancel={cancelWorkspaceResize}
+            onKeyDown={(event) => resizeWorkspaceWithKeyboard(event, "leftSidebarWidth", leftSidebarRef.current, 1)}
+          />
+
+          <div className={v2.playerColumn}>
+            <div className={v2.playerWorkspace}>
+              <div className={v2.videoColumn}>
+                <div
+                  ref={videoStageRef}
+                  className={v2.videoStage}
+                  style={workspaceLayout.videoHeight ? { height: `${workspaceLayout.videoHeight}px` } : undefined}
+                >
+                  {videoUrl ? (
+                    <>
+                      <video
+                        key={videoUrl}
+                        ref={videoRef}
+                        src={videoUrl}
+                        controls={courtAnchor === null}
+                        playsInline
+                        preload="metadata"
+                        onTimeUpdate={(event) => {
+                          setCurrentTime(event.currentTarget.currentTime);
+                          persistPlaybackPosition(event.currentTarget);
+                        }}
+                        onSeeked={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                        onPlay={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                        onPause={(event) => persistPlaybackPosition(event.currentTarget, true)}
+                        onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget)}
+                      />
+                      {labels?.recording.courtGeometry && (
+                        <svg
+                          className={v2.courtDrawing}
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                          aria-hidden="true"
+                        >
+                          {courtPolygon && <polyline points={courtPolygon} />}
+                          {labels.recording.courtGeometry.netAnchors?.left &&
+                            labels.recording.courtGeometry.netAnchors?.right && (
+                              <line
+                                x1={labels.recording.courtGeometry.netAnchors.left.x * 100}
+                                y1={labels.recording.courtGeometry.netAnchors.left.y * 100}
+                                x2={labels.recording.courtGeometry.netAnchors.right.x * 100}
+                                y2={labels.recording.courtGeometry.netAnchors.right.y * 100}
+                              />
+                            )}
+                          {courtAnchorSpecs.map((anchor) => {
+                            const point = courtPoint(labels.recording.courtGeometry, anchor.id);
+                            return point ? (
+                              <circle
+                                key={anchor.id}
+                                cx={point.x * 100}
+                                cy={point.y * 100}
+                                r={anchor.optional ? 0.9 : 1.2}
+                                data-optional={anchor.optional || undefined}
+                              />
+                            ) : null;
+                          })}
+                        </svg>
+                      )}
+                      {courtAnchor && (
+                        <button
+                          type="button"
+                          className={v2.courtClickLayer}
+                          aria-label={`Click ${courtAnchorSpecs.find((item) => item.id === courtAnchor)?.label}`}
+                          onClick={captureCourtPoint}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <div className={v2.noVideo}>
+                      <span>Choose a dataset video</span>
+                      <p>The proxy, current human labels, and model reference will load together.</p>
+                    </div>
+                  )}
+                </div>
+                <div
+                  className={v2.videoResizeHandle}
+                  role="separator"
+                  aria-label="Resize video height"
+                  aria-orientation="horizontal"
+                  aria-valuemin={workspaceLayoutBounds.videoHeight.min}
+                  aria-valuemax={workspaceLayoutBounds.videoHeight.max}
+                  aria-valuenow={workspaceLayout.videoHeight ?? workspaceLayoutBounds.videoHeight.fallback}
+                  tabIndex={0}
+                  title="Drag to resize the video height"
+                  onPointerDown={(event) => beginWorkspaceResize(event, "videoHeight", videoStageRef.current, 1)}
+                  onPointerMove={moveWorkspaceResize}
+                  onPointerUp={finishWorkspaceResize}
+                  onPointerCancel={cancelWorkspaceResize}
+                  onKeyDown={(event) => resizeWorkspaceWithKeyboard(event, "videoHeight", videoStageRef.current, 1)}
+                />
+                <div className={v2.playerControls}>
+                  <span className={v2.timecode}>{formatPreciseTime(currentTime)}</span>
+                  <div className={v2.transport}>
+                    <button type="button" onClick={() => seek(-1)} aria-label="Back one second">−1s</button>
+                    <button type="button" onClick={() => seek(-0.1)} aria-label="Back one tenth second">−.1</button>
+                    <button type="button" className={v2.playButton} onClick={togglePlayback}>Play / pause</button>
+                    <button type="button" onClick={() => seek(0.1)} aria-label="Forward one tenth second">+.1</button>
+                    <button type="button" onClick={() => seek(1)} aria-label="Forward one second">+1s</button>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={v2.sidebarResizeHandle}
+                role="separator"
+                aria-label="Resize selected-label sidebar"
+                aria-orientation="vertical"
+                aria-valuemin={workspaceLayoutBounds.rightSidebarWidth.min}
+                aria-valuemax={workspaceLayoutBounds.rightSidebarWidth.max}
+                aria-valuenow={workspaceLayout.rightSidebarWidth ?? workspaceLayoutBounds.rightSidebarWidth.fallback}
+                tabIndex={0}
+                title="Drag to resize the selected-label sidebar"
+                onPointerDown={(event) => beginWorkspaceResize(event, "rightSidebarWidth", rightSidebarRef.current, -1)}
+                onPointerMove={moveWorkspaceResize}
+                onPointerUp={finishWorkspaceResize}
+                onPointerCancel={cancelWorkspaceResize}
+                onKeyDown={(event) => resizeWorkspaceWithKeyboard(event, "rightSidebarWidth", rightSidebarRef.current, -1)}
+              />
+
+              <aside ref={rightSidebarRef} className={v2.selectionCard} aria-label="Selected human label">
+                <span className={v2.selectionEyebrow}>SELECTED LABEL</span>
+                {focusedServeMarker && focusedServeMarkerIndex !== null ? (
+                  <>
+                    <strong>Serve {focusedServeMarkerIndex + 1}</strong>
+                    <button type="button" className={v2.selectionTime} onClick={() => seekTo(focusedServeMarker.time, focusedServeMarkerIndex)}>
+                      {formatPreciseTime(focusedServeMarker.time)}
+                    </button>
+                    <div className={v2.serveChoices} role="group" aria-label="Serving side">
+                      {(["near", "far", "review"] as const).map((side) => (
+                        <button
+                          type="button"
+                          key={side}
+                          data-side={side}
+                          data-selected={focusedServeMarker.side === side || undefined}
+                          onClick={() => updateServeMarker(focusedServeMarkerIndex, { side })}
+                        >
+                          {side === "review" ? "Review" : side}
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => updateServeMarker(focusedServeMarkerIndex, { time: roundTime(currentTime) })}>Move to playhead</button>
+                    <button type="button" className={v2.danger} onClick={() => removeServeMarker(focusedServeMarkerIndex)}>Delete serve</button>
+                  </>
+                ) : focusedSideSwitch && focusedSideSwitchIndex !== null ? (
+                  <>
+                    <strong>Side switch {focusedSideSwitchIndex + 1}</strong>
+                    <button type="button" className={v2.selectionTime} onClick={() => seekTo(focusedSideSwitch.time)}>
+                      {formatPreciseTime(focusedSideSwitch.time)}
+                    </button>
+                    <p>Applies to the next serve marker.</p>
+                    <button type="button" onClick={() => updateSideSwitch(focusedSideSwitchIndex, { time: roundTime(currentTime) })}>Move to playhead</button>
+                    <button type="button" className={v2.danger} onClick={() => removeSideSwitch(focusedSideSwitchIndex)}>Delete switch</button>
+                  </>
+                ) : sidebarRally ? (
+                  <>
+                    <strong>Rally {sidebarRallyIndex + 1}</strong>
+                    <div className={v2.rallyTimes}>
+                      <button type="button" onClick={() => seekTo(sidebarRally.start)}>{formatPreciseTime(sidebarRally.start)}</button>
+                      <span>→</span>
+                      <button type="button" onClick={() => seekTo(sidebarRally.end)}>{formatPreciseTime(sidebarRally.end)}</button>
+                    </div>
+                    <p>{(sidebarRally.end - sidebarRally.start).toFixed(2)} seconds of live play</p>
+                    <button type="button" onClick={beginRally}>Move start to playhead</button>
+                    <button type="button" onClick={finishRally}>Move end to playhead</button>
+                    <button type="button" className={v2.danger} onClick={removeSelectedRally} disabled={selectedRallyIndex < 0}>Delete rally</button>
+                  </>
+                ) : (
+                  <div className={v2.noSelection}>
+                    <strong>No label selected</strong>
+                    <p>Click a human rally or marker in the timeline.</p>
+                  </div>
+                )}
+              </aside>
+            </div>
+
+            <section className={v2.timelineSection} aria-label="Human and model label timeline">
+              <div className={v2.timelineControlBar}>
+                <div className={v2.markingToolbar} role="toolbar" aria-label="Labeling tools">
+                  <button type="button" data-tone="start" onClick={beginRally} disabled={!labels || !videoUrl || rallyStart !== null}>
+                    {playheadInsideRally ? "Move rally start" : "Rally start"} <kbd>S</kbd>
+                  </button>
+                  <button type="button" data-tone="end" onClick={finishRally} disabled={!labels || !videoUrl || (rallyStart === null && selectedRallyIndex < 0 && previousRallyIndex < 0)}>
+                    {rallyStart !== null ? "Rally end" : playheadInsideRally ? "Move rally end" : "Extend previous"} <kbd>E</kbd>
+                  </button>
+                  <button type="button" data-tone="near" onClick={() => addServeMarker("near")} disabled={!labels || !videoUrl}>Near serve <kbd>N</kbd></button>
+                  <button type="button" data-tone="far" onClick={() => addServeMarker("far")} disabled={!labels || !videoUrl}>Far serve <kbd>F</kbd></button>
+                  <button type="button" data-tone="switch" onClick={addSideSwitch} disabled={!labels || !videoUrl}>Side switch <kbd>X</kbd></button>
+                  <button type="button" onClick={toggleIgnored} disabled={!labels || !videoUrl}>{ignoredStart === null ? "Ignored start" : "Ignored end"} <kbd>[</kbd></button>
+                  <button type="button" onClick={mergeRallySelection} disabled={mergeRallyIndexes.length < 2}>Merge {mergeRallyIndexes.length > 0 ? mergeRallyIndexes.length : "rallies"}</button>
+                  <button type="button" onClick={cancelMarker} disabled={rallyStart === null && ignoredStart === null}>Cancel <kbd>Esc</kbd></button>
+                </div>
+
+                <div className={v2.timelineOptions}>
+                  <label>
+                    Model breakdown
+                    <select value={referenceLayer} onChange={(event) => setReferenceLayer(event.target.value)}>
+                      <option value="production">Production ensemble</option>
+                      {experimentReferences.map((reference) => (
+                        <option key={reference.modelId} value={`model:${reference.modelId}`}>
+                          {reference.modelLabel}
+                        </option>
+                      ))}
+                      {solReferenceRallies.length > 0 && <option value="sol">Sol reference</option>}
+                      <option value="all">All model rails</option>
+                      <option value="none">Human only</option>
+                    </select>
+                  </label>
+                  <label>
+                    Rail padding
+                    <select value={timelinePaddingSeconds} onChange={(event) => setTimelinePaddingSeconds(Number(event.target.value))}>
+                      {comparisonPaddingCases.map((seconds) => (
+                        <option key={seconds} value={seconds}>{seconds}s before / after</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Model serves
+                    <select
+                      value={modelServeVisibility}
+                      onChange={(event) =>
+                        setModelServeVisibility(
+                          event.target.value as typeof modelServeVisibility,
+                        )
+                      }
+                    >
+                      <option value="disagreements">Disagreements only</option>
+                      <option value="all">All predictions</option>
+                      <option value="none">Hidden</option>
+                    </select>
+                  </label>
+                  <label>
+                    Model side switches
+                    <select
+                      value={modelSideSwitchVisibility}
+                      onChange={(event) =>
+                        setModelSideSwitchVisibility(
+                          event.target.value as typeof modelSideSwitchVisibility,
+                        )
+                      }
+                    >
+                      <option value="all">All predictions</option>
+                      <option value="disagreements">Disagreements only</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div className={v2.timelineLegend}>
+                <span data-tone="human"><i /> Human</span>
+                <span data-tone="model"><i /> Model</span>
+                <span data-tone="disagreement"><i /> Model disagreement</span>
+                <span data-tone="near"><i /> Near serve</span>
+                <span data-tone="far"><i /> Far serve</span>
+                <span data-tone="switch"><i /> Human side switch</span>
+                <span data-tone="model-switch"><i /> Model side switch</span>
+                <span data-tone="suppressed"><i /> Suppressed / vetoed</span>
+                <span data-tone="miss"><i /> Missed human time</span>
+              </div>
+
+              <div className={v2.timelineScroll}>
+                {labels ? (
+                  <RallyTimeline
+                    duration={labels.recording.durationSeconds}
+                    currentTime={currentTime}
+                    tracks={timelineTracks}
+                    markers={[
+                      ...humanServeMarkers,
+                      ...productionServeMarkers,
+                      ...productionSideSwitchMarkers,
+                      ...labels.sideSwitches.map((marker, index) => ({
+                        id: `side-switch-${index}`,
+                        trackId: "human-labels",
+                        time: marker.time,
+                        tone: "side-switch" as const,
+                        title: `Side switch ${index + 1} · ${formatPreciseTime(marker.time)}`,
+                      })),
+                    ]}
+                    selectedTrackId="human-labels"
+                    selectedMarkerId={focusedServeMarkerIndex !== null ? `serve-marker-${focusedServeMarkerIndex}` : undefined}
+                    selectedIntervalId={sidebarRallyIndex >= 0 ? `rally-${sidebarRallyIndex}` : undefined}
+                    selectedIntervalIds={mergeRallyIndexes.map((index) => `rally-${index}`)}
+                    onSeek={(time, trackId, intervalId, interaction) => {
+                      if (interaction?.shiftKey && trackId === "human-labels" && intervalId?.startsWith("rally-")) {
+                        const index = Number(intervalId.slice("rally-".length));
+                        if (Number.isInteger(index)) toggleMergeRally(index);
+                        return;
+                      }
+                      setMergeRallyIndexes([]);
+                      setFocusedServeMarkerIndex(null);
+                      setFocusedSideSwitchIndex(null);
+                      seekTo(time);
+                    }}
+                    onMarkerSeek={(time, _trackId, markerId) => {
+                      setMergeRallyIndexes([]);
+                      if (markerId.startsWith("serve-marker-")) {
+                        const index = Number(markerId.slice("serve-marker-".length));
+                        setFocusedSideSwitchIndex(null);
+                        setFocusedServeMarkerIndex(index);
+                        seekTo(time, index);
+                      } else if (markerId.startsWith("production-serve-marker-")) {
+                        setFocusedServeMarkerIndex(null);
+                        setFocusedSideSwitchIndex(null);
+                        seekTo(time);
+                        setMessage(`Selected the production serving-side prediction at ${formatPreciseTime(time)}.`);
+                      } else if (markerId.startsWith("production-side-switch-")) {
+                        setFocusedServeMarkerIndex(null);
+                        setFocusedSideSwitchIndex(null);
+                        seekTo(time);
+                        setMessage(`Selected the production side-switch prediction at ${formatPreciseTime(time)}.`);
+                      } else {
+                        const index = Number(markerId.slice("side-switch-".length));
+                        setFocusedServeMarkerIndex(null);
+                        setFocusedSideSwitchIndex(index);
+                        seekTo(time);
+                      }
+                    }}
+                    ariaLabel="Editable human labels and read-only model references"
+                  />
+                ) : (
+                  <div className={v2.emptyTimeline}>Choose a dataset video to load human and model label layers.</div>
+                )}
+              </div>
+              <p className={v2.timelineHint}>Click to seek. Shift-click consecutive human rallies to merge them. Model rows are read-only.</p>
+            </section>
+
+            {message && <p className={v2.editorMessage} aria-live="polite">{message}</p>}
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -2078,7 +3217,7 @@ export function LabelingEditor() {
                 <option value="far">Far side</option>
               </select>
             </label>
-            <button onClick={addServeMarker} disabled={!labels || !videoUrl}>
+            <button onClick={() => addServeMarker()} disabled={!labels || !videoUrl}>
               Mark serve side <kbd>V</kbd>
             </button>
             <button onClick={addSideSwitch} disabled={!labels || !videoUrl}>

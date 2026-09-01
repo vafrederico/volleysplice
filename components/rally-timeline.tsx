@@ -1,5 +1,5 @@
-import styles from "./rally-timeline.module.css";
 import { formatTime, timelinePercent, timelineTicks } from "@/lib/edit-list";
+import styles from "./rally-timeline.module.css";
 
 export type TimelineInterval = {
   id: string;
@@ -43,13 +43,22 @@ export type TimelineTrack = {
   exportIntervals?: TimelineInterval[];
   joinedGapIntervals?: TimelineInterval[];
   missingHumanIntervals?: TimelineInterval[];
+  suppressedIntervals?: TimelineInterval[];
 };
 
 export type TimelineMarker = {
   id: string;
   time: number;
   title: string;
-  tone?: "side-switch" | "serve-near" | "serve-far" | "serve-review";
+  label?: string;
+  trackId?: string;
+  disagrees?: boolean;
+  tone?:
+    | "side-switch"
+    | "model-side-switch"
+    | "serve-near"
+    | "serve-far"
+    | "serve-review";
 };
 
 type RallyTimelineProps = {
@@ -57,9 +66,11 @@ type RallyTimelineProps = {
   currentTime: number;
   tracks: TimelineTrack[];
   markers?: TimelineMarker[];
+  markerTrackId?: string;
   selectedTrackId?: string;
   selectedIntervalId?: string;
   selectedIntervalIds?: readonly string[];
+  selectedMarkerId?: string;
   ariaLabel?: string;
   onSeek?: (
     time: number,
@@ -76,27 +87,41 @@ export function RallyTimeline({
   currentTime,
   tracks,
   markers = [],
+  markerTrackId,
   selectedTrackId,
   selectedIntervalId,
   selectedIntervalIds = [],
+  selectedMarkerId,
   ariaLabel = "Rally timeline",
   onSeek,
   onMarkerSeek,
   onTrackSelect,
 }: RallyTimelineProps) {
   const ticks = timelineTicks(duration);
+  const hasSummaries = tracks.some((track) => track.summary !== undefined);
+  const markersForTrack = (trackId: string) => markers.filter((marker) =>
+    marker.trackId !== undefined
+      ? marker.trackId === trackId
+      : markerTrackId === undefined || markerTrackId === trackId,
+  );
   return (
-    <div className={styles.timeline} aria-label={ariaLabel}>
+    <div
+      className={`${styles.timeline} ${hasSummaries ? "" : styles.timelineCompact}`}
+      role="group"
+      aria-label={ariaLabel}
+    >
       <div className={styles.ticks} aria-hidden="true">
         <span />
         <div className={styles.tickRail}>
-          {ticks.map((tick) => <span key={tick}>{formatTime(tick)}</span>)}
+          {ticks.map((tick) => (
+            <span key={tick}>{formatTime(tick)}</span>
+          ))}
         </div>
         <span className={styles.summaryHeading}>Output summary</span>
       </div>
       {tracks.map((track) => (
         <div
-          className={`${styles.track} ${track.active ? styles.trackActive : ""}`}
+          className={`${styles.track} ${track.active ? styles.trackActive : ""} ${markersForTrack(track.id).length > 0 ? styles.trackWithMarkers : ""}`}
           key={track.id}
           aria-current={track.id === selectedTrackId ? "true" : undefined}
         >
@@ -131,8 +156,11 @@ export function RallyTimeline({
                 data-selected={
                   track.id === selectedTrackId &&
                   interval.selectionId !== null &&
-                  ((interval.selectionId ?? interval.id) === selectedIntervalId ||
-                    selectedIntervalIds.includes(interval.selectionId ?? interval.id))
+                  ((interval.selectionId ?? interval.id) ===
+                    selectedIntervalId ||
+                    selectedIntervalIds.includes(
+                      interval.selectionId ?? interval.id,
+                    ))
                     ? "true"
                     : undefined
                 }
@@ -147,21 +175,28 @@ export function RallyTimeline({
                     track.id,
                     interval.selectionId === null
                       ? undefined
-                      : interval.selectionId ?? interval.id,
+                      : (interval.selectionId ?? interval.id),
                     { shiftKey: event.shiftKey },
                   )
                 }
-                title={interval.title ?? `${interval.id}: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
+                title={
+                  interval.title ??
+                  `${interval.id}: ${formatTime(interval.start)}–${formatTime(interval.end)}`
+                }
                 aria-label={`Seek to ${interval.id} at ${formatTime(interval.start)}`}
               />
             ))}
-            {track.intervals.length === 0 && <span className={styles.empty}>No intervals</span>}
-            {markers.map((marker) => (
+            {track.intervals.length === 0 && (
+              <span className={styles.empty}>No intervals</span>
+            )}
+            {markersForTrack(track.id).map((marker) => (
               <button
                 type="button"
                 key={marker.id}
                 className={styles.marker}
                 data-tone={marker.tone}
+                data-disagrees={marker.disagrees || undefined}
+                data-selected={marker.id === selectedMarkerId || undefined}
                 style={{ left: `${timelinePercent(marker.time, duration)}%` }}
                 onClick={() =>
                   onMarkerSeek
@@ -170,7 +205,9 @@ export function RallyTimeline({
                 }
                 title={marker.title}
                 aria-label={marker.title}
-              />
+              >
+                {marker.label && <span aria-hidden="true">{marker.label}</span>}
+              </button>
             ))}
             {track.exportIntervals && (
               <div
@@ -188,7 +225,10 @@ export function RallyTimeline({
                       width: `${timelinePercent(interval.end - interval.start, duration)}%`,
                     }}
                     onClick={() => onSeek?.(interval.start, track.id)}
-                    title={interval.title ?? `Exported: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
+                    title={
+                      interval.title ??
+                      `Exported: ${formatTime(interval.start)}–${formatTime(interval.end)}`
+                    }
                     aria-label={`Seek to exported segment at ${formatTime(interval.start)}`}
                   />
                 ))}
@@ -202,7 +242,10 @@ export function RallyTimeline({
                       width: `${timelinePercent(interval.end - interval.start, duration)}%`,
                     }}
                     onClick={() => onSeek?.(interval.start, track.id)}
-                    title={interval.title ?? `Joined short gap: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
+                    title={
+                      interval.title ??
+                      `Joined short gap: ${formatTime(interval.start)}–${formatTime(interval.end)}`
+                    }
                     aria-label={`Seek to joined short gap at ${formatTime(interval.start)}`}
                   />
                 ))}
@@ -216,8 +259,28 @@ export function RallyTimeline({
                       width: `${timelinePercent(interval.end - interval.start, duration)}%`,
                     }}
                     onClick={() => onSeek?.(interval.start, track.id)}
-                    title={interval.title ?? `Missed human rally: ${formatTime(interval.start)}–${formatTime(interval.end)}`}
+                    title={
+                      interval.title ??
+                      `Missed human rally: ${formatTime(interval.start)}–${formatTime(interval.end)}`
+                    }
                     aria-label={`Seek to missed human rally at ${formatTime(interval.start)}`}
+                  />
+                ))}
+                {track.suppressedIntervals?.map((interval) => (
+                  <button
+                    type="button"
+                    key={interval.id}
+                    className={`${styles.exportInterval} ${styles.suppressedInterval}`}
+                    style={{
+                      left: `${timelinePercent(interval.start, duration)}%`,
+                      width: `${timelinePercent(interval.end - interval.start, duration)}%`,
+                    }}
+                    onClick={() => onSeek?.(interval.start, track.id)}
+                    title={
+                      interval.title ??
+                      `Suppressed: ${formatTime(interval.start)}–${formatTime(interval.end)}`
+                    }
+                    aria-label={`Seek to suppressed model range at ${formatTime(interval.start)}`}
                   />
                 ))}
               </div>
@@ -235,7 +298,9 @@ export function RallyTimeline({
                   <b>Export</b>
                   <span>
                     {track.summary.exportTime}
-                    {track.summary.exportDelta && <> · {track.summary.exportDelta}</>}
+                    {track.summary.exportDelta && (
+                      <> · {track.summary.exportDelta}</>
+                    )}
                   </span>
                 </small>
                 {track.summary.coreMetrics && (
@@ -245,10 +310,16 @@ export function RallyTimeline({
                   </small>
                 )}
                 {track.summary.paddedMetrics && (
-                  <small><b>Padded P/R/F1</b><span>{track.summary.paddedMetrics}</span></small>
+                  <small>
+                    <b>Padded P/R/F1</b>
+                    <span>{track.summary.paddedMetrics}</span>
+                  </small>
                 )}
                 {track.summary.hybridF1 && (
-                  <small><b>Padded P/Core R F1</b><span>{track.summary.hybridF1}</span></small>
+                  <small>
+                    <b>Padded P/Core R F1</b>
+                    <span>{track.summary.hybridF1}</span>
+                  </small>
                 )}
               </>
             )}

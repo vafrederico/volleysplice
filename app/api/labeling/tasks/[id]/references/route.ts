@@ -1,5 +1,6 @@
 import {
   getExperimentModelReferenceLabels,
+  getModelBreakdownReferenceLabels,
   getPreparedLabelingTask,
   getProductionReferenceLabels,
   getSolReferenceLabels,
@@ -16,13 +17,14 @@ export async function GET(
   try {
     const { id } = await params;
     const task = await getPreparedLabelingTask(id);
-    const [production, experiments, sol] = await Promise.all([
+    const [production, models, experiments, sol] = await Promise.all([
       getProductionReferenceLabels(task),
+      getModelBreakdownReferenceLabels(task),
       getExperimentModelReferenceLabels(task),
       getSolReferenceLabels(task),
     ]);
     return Response.json(
-      { production, experiments, sol },
+      { production, models, experiments, sol },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

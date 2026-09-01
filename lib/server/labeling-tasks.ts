@@ -9,6 +9,9 @@ import {
   terminalCueValues,
   type LabelDocument,
   type NormalizedPoint,
+  type RallyLabel,
+  type ServeMarker,
+  type SideSwitch,
 } from "@/lib/annotations";
 import {
   buildProductionEnsembleLabelSeed,
@@ -17,8 +20,10 @@ import {
 } from "@/lib/production-label-seed";
 import {
   PREVIOUS_PRODUCTION_MODEL_ID,
+  PREVIOUS_PRODUCTION_MODEL_LABEL,
   PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION,
   PRODUCTION_ENSEMBLE_MODEL_ID,
+  PRODUCTION_MODEL_LABEL,
   PRODUCTION_MODEL_DESCRIPTION,
   PRODUCTION_MODEL_ID,
 } from "@/lib/production-model";
@@ -44,6 +49,16 @@ const labelingWorkspace = path.resolve(
 const manifestsDirectory = path.join(labelingWorkspace, "manifests");
 const pilotIndexPath = path.join(manifestsDirectory, "pilot-task-index.json");
 const fullPlanPath = path.join(manifestsDirectory, "full-corpus-plan.json");
+const suppressionExperiment = "feedback-suppression-v3-corrected-2026-08-18";
+const suppressionVariant = "production-plus-suppression-zero-non-exempt-misses";
+const servingSideInferencePath = path.resolve(
+  /* turbopackIgnore: true */
+  process.env.VOLLEYCUT_SERVING_SIDE_INFERENCE_PATH ??
+    path.join(
+      DEFAULT_LABELING_WORKSPACE,
+      "reports/serving-side/serving-side-flight-v3-hybrid-serve-gate-all-video-inference-v2.json",
+    ),
+);
 
 export type LabelingBatch = "pilot" | "full";
 
@@ -117,6 +132,12 @@ export type ProductionReferenceLabels = SolReferenceLabels & {
   modelId: string;
   modelLabel: string;
   description?: string;
+  serveMarkers?: ServeMarker[];
+  humanServeMarkers?: ServeMarker[];
+  serveModelLabel?: string;
+  sideSwitches?: SideSwitch[];
+  sideSwitchModelLabel?: string;
+  suppressedRanges?: RallyLabel[];
 };
 
 export type ExperimentModelReferenceLabels = ProductionReferenceLabels & {
@@ -154,6 +175,18 @@ function isMissingFile(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "ENOENT"
   );
+}
+
+type JsonObject = Record<string, unknown>;
+
+function jsonObject(value: unknown): JsonObject | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JsonObject
+    : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 async function isFile(filePath: string): Promise<boolean> {
@@ -231,8 +264,7 @@ function validateDraftContent(
     typeof annotation.notes !== "string" ||
     typeof annotation.continuousVideoReviewed !== "boolean" ||
     (expectedStatus === "complete"
-      ? annotation.annotator.trim().length === 0 ||
-        annotation.continuousVideoReviewed !== true ||
+      ? annotation.continuousVideoReviewed !== true ||
         typeof annotation.reviewedAt !== "string" ||
         annotation.reviewedAt.trim().length === 0
       : annotation.reviewedAt !== null && typeof annotation.reviewedAt !== "string")
@@ -712,20 +744,339 @@ async function loadProductionLabelSeed(
   }
 }
 
+function taskAnalysesRoot(task: PreparedLabelingTask): string {
+  return task.workspaceRoot === labelingWorkspace
+    ? getIntakeAnalysesRoot()
+    : path.join(task.workspaceRoot, "analyses");
+}
+
+async function loadAnalysisReference(
+  task: PreparedLabelingTask,
+  modelId: string,
+  modelLabel: string,
+  description: string,
+  analysesRoot: string,
+): Promise<ExperimentModelReferenceLabels | null> {
+  try {
+    const seed = buildProductionLabelSeed(
+      task.document,
+      JSON.parse(
+        await readFile(
+          path.join(analysesRoot, `${modelId}--${task.id}`, "analysis.json"),
+          "utf8",
+        ),
+      ) as unknown,
+      modelId,
+    );
+    return {
+      modelId,
+      modelLabel,
+      description,
+      rallies: seed.document.rallies,
+    };
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
+}
+
+function inferenceRanges(
+  value: unknown,
+  task: PreparedLabelingTask,
+): RallyLabel[] {
+  const root = jsonObject(value);
+  if (
+    root?.recordingId !== task.id ||
+    root.sourceFilename !== task.document.recording.videoFilename ||
+    Math.abs((finiteNumber(root.duration) ?? -1) - task.document.recording.durationSeconds) > 0.1 ||
+    !Array.isArray(root.ranges)
+  ) {
+    throw new Error("suppression inference does not match the labeling task");
+  }
+  return root.ranges.map((value, index) => {
+    const range = jsonObject(value);
+    const start = finiteNumber(range?.start);
+    const end = finiteNumber(range?.end);
+    if (
+      start === null ||
+      end === null ||
+      start < 0 ||
+      end <= start ||
+      end > task.document.recording.durationSeconds
+    ) {
+      throw new Error(`suppression inference range ${index + 1} is invalid`);
+    }
+    return { start, end, tags: ["ai-reference", "suppression-v3"] };
+  });
+}
+
+function subtractRanges(
+  source: RallyLabel[],
+  retained: RallyLabel[],
+): RallyLabel[] {
+  return source.flatMap((range) => {
+    let segments = [{ start: range.start, end: range.end }];
+    for (const keep of retained) {
+      segments = segments.flatMap((segment) => {
+        if (keep.end <= segment.start || keep.start >= segment.end) return [segment];
+        return [
+          ...(keep.start > segment.start
+            ? [{ start: segment.start, end: Math.min(keep.start, segment.end) }]
+            : []),
+          ...(keep.end < segment.end
+            ? [{ start: Math.max(keep.end, segment.start), end: segment.end }]
+            : []),
+        ];
+      });
+    }
+    return segments.map((segment) => ({
+      ...segment,
+      tags: ["suppression-veto"],
+    }));
+  });
+}
+
+async function loadSuppressionReference(
+  task: PreparedLabelingTask,
+): Promise<ExperimentModelReferenceLabels | null> {
+  const workspaceCandidates = [
+    task.workspaceRoot,
+    ...getIntakeWorkspaces().filter((root) => root !== task.workspaceRoot),
+  ];
+  for (const workspace of workspaceCandidates) {
+    const inferenceRoot = path.join(
+      workspace,
+      "experiments",
+      suppressionExperiment,
+      "inference",
+    );
+    try {
+      const [suppressedValue, productionValue] = await Promise.all([
+        readFile(path.join(inferenceRoot, suppressionVariant, `${task.id}.json`), "utf8"),
+        readFile(path.join(inferenceRoot, "current-production-ensemble", `${task.id}.json`), "utf8"),
+      ]);
+      const rallies = inferenceRanges(JSON.parse(suppressedValue) as unknown, task);
+      const productionRanges = inferenceRanges(JSON.parse(productionValue) as unknown, task);
+      return {
+        modelId: `suppression-v3:${suppressionVariant}`,
+        modelLabel: "Suppression-adjusted ensemble",
+        description:
+          "Corrected v3 suppression specialist applied to the held production ensemble with the zero-non-exempt-miss policy.",
+        rallies,
+        suppressedRanges: subtractRanges(productionRanges, rallies),
+      };
+    } catch (error) {
+      if (isMissingFile(error)) continue;
+      throw error;
+    }
+  }
+  return null;
+}
+
+function scoreMarkerServeMarkers(value: unknown): ServeMarker[] | null {
+  const root = jsonObject(value);
+  if (!root || !Array.isArray(root.serveMarkers)) return null;
+  const markers = root.serveMarkers.flatMap((value): ServeMarker[] => {
+    const marker = jsonObject(value);
+    const time = finiteNumber(marker?.time);
+    const modelConfidence = finiteNumber(marker?.modelConfidence);
+    const modelSide = marker?.modelSide;
+    const side = modelSide === "near" || modelSide === "far"
+      ? modelSide
+      : marker?.side === "near" || marker?.side === "far"
+        ? marker.side
+        : null;
+    if (time === null || side === null) return [];
+    return [{
+      time,
+      side,
+      origin: "model",
+      modelSide: side,
+      ...(modelConfidence === null ? {} : { modelConfidence }),
+      ...(typeof marker?.modelId === "string" ? { modelId: marker.modelId } : {}),
+      ...(typeof marker?.rallyId === "string" ? { rallyId: marker.rallyId } : {}),
+    }];
+  });
+  return markers.sort((left, right) => left.time - right.time);
+}
+
+function scoreMarkerSideSwitches(value: unknown): SideSwitch[] {
+  const root = jsonObject(value);
+  if (!root || !Array.isArray(root.sideSwitches)) return [];
+  return root.sideSwitches.flatMap((value): SideSwitch[] => {
+    const marker = jsonObject(value);
+    const time = finiteNumber(marker?.time);
+    const modelConfidence = finiteNumber(marker?.modelConfidence);
+    if (time === null) return [];
+    return [{
+      time,
+      origin: "model",
+      ...(modelConfidence === null ? {} : { modelConfidence }),
+      ...(typeof marker?.modelId === "string" ? { modelId: marker.modelId } : {}),
+      ...(typeof marker?.modelEventId === "string"
+        ? { modelEventId: marker.modelEventId }
+        : {}),
+    }];
+  }).sort((left, right) => left.time - right.time);
+}
+
+async function loadProductionServeMarkers(
+  task: PreparedLabelingTask,
+): Promise<{
+  markers: ServeMarker[];
+  humanMarkers?: ServeMarker[];
+  label: string;
+  sideSwitches?: SideSwitch[];
+  sideSwitchLabel?: string;
+} | null> {
+  const workspaceCandidates = [
+    task.workspaceRoot,
+    ...getIntakeWorkspaces().filter((root) => root !== task.workspaceRoot),
+  ];
+  for (const workspace of workspaceCandidates) {
+    try {
+      const value = JSON.parse(
+        await readFile(
+          path.join(workspace, "predictions", "score-markers", `${task.id}.json`),
+          "utf8",
+        ),
+      ) as unknown;
+      const root = jsonObject(value);
+      if (root?.recordingId !== task.id) continue;
+      const markers = scoreMarkerServeMarkers(value);
+      if (markers) {
+        return {
+          markers,
+          label: "Serving-side fixed-flight v3",
+          sideSwitches: scoreMarkerSideSwitches(value),
+          sideSwitchLabel: "Side-switch hard-negative-mining v1",
+        };
+      }
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+    }
+  }
+
+  try {
+    const report = jsonObject(
+      JSON.parse(await readFile(servingSideInferencePath, "utf8")) as unknown,
+    );
+    if (!Array.isArray(report?.predictions)) return null;
+    const markers = report.predictions.flatMap((value): ServeMarker[] => {
+      const prediction = jsonObject(value);
+      const evidence = jsonObject(prediction?.serveEvidence);
+      const time = finiteNumber(evidence?.serveAnchor);
+      const side = prediction?.finalPrediction;
+      const nearProbability = finiteNumber(prediction?.nearProbability);
+      if (
+        prediction?.recordingId !== task.id ||
+        prediction?.servePrediction !== "serve" ||
+        time === null ||
+        (side !== "near" && side !== "far")
+      ) {
+        return [];
+      }
+      return [{
+        time,
+        side,
+        origin: "model",
+        modelSide: side,
+        ...(nearProbability === null
+          ? {}
+          : { modelConfidence: side === "near" ? nearProbability : 1 - nearProbability }),
+        modelId: "serving-side-fixed-flight-v3",
+        ...(typeof prediction.rallyId === "string" ? { rallyId: prediction.rallyId } : {}),
+      }];
+    }).sort((left, right) => left.time - right.time);
+    const humanMarkers = report.predictions.flatMap((value): ServeMarker[] => {
+      const prediction = jsonObject(value);
+      const evidence = jsonObject(prediction?.serveEvidence);
+      const time = finiteNumber(evidence?.serveAnchor);
+      const side = prediction?.decision;
+      if (
+        prediction?.recordingId !== task.id ||
+        time === null ||
+        (side !== "near" && side !== "far")
+      ) {
+        return [];
+      }
+      return [{
+        time,
+        side,
+        origin: "manual",
+        notes: "Imported from the frozen serving-side human decision set.",
+        ...(typeof prediction.rallyId === "string" ? { rallyId: prediction.rallyId } : {}),
+      }];
+    }).sort((left, right) => left.time - right.time);
+    return markers.length > 0
+      ? { markers, humanMarkers, label: "Serving-side fixed-flight v3" }
+      : null;
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
+}
+
 export async function getProductionReferenceLabels(
   task: PreparedLabelingTask,
 ): Promise<ProductionReferenceLabels | null> {
-  const seed = await loadProductionLabelSeed(task);
-  return seed
+  const [seed, serveReference] = await Promise.all([
+    loadProductionLabelSeed(task),
+    loadProductionServeMarkers(task),
+  ]);
+  return seed || serveReference
     ? {
-        modelId: seed.modelId,
-        modelLabel: seed.modelLabel,
-        description: seed.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
-          ? PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION
-          : PRODUCTION_MODEL_DESCRIPTION,
-        rallies: seed.document.rallies,
+        modelId: seed?.modelId ?? PRODUCTION_ENSEMBLE_MODEL_ID,
+        modelLabel: seed?.modelLabel ?? "Production ensemble · frozen score-marker run",
+        description: seed
+          ? seed.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
+            ? PRODUCTION_ENSEMBLE_MODEL_DESCRIPTION
+            : PRODUCTION_MODEL_DESCRIPTION
+          : "Frozen production rally ensemble and score-marker specialists used to initialize this labeling task.",
+        rallies: seed?.document.rallies ?? task.document.rallies,
+        ...(serveReference
+          ? {
+              serveMarkers: serveReference.markers,
+              ...(serveReference.humanMarkers
+                ? { humanServeMarkers: serveReference.humanMarkers }
+                : {}),
+              serveModelLabel: serveReference.label,
+              ...(serveReference.sideSwitches?.length
+                ? {
+                    sideSwitches: serveReference.sideSwitches,
+                    sideSwitchModelLabel: serveReference.sideSwitchLabel,
+                  }
+                : {}),
+            }
+          : {}),
       }
     : null;
+}
+
+export async function getModelBreakdownReferenceLabels(
+  task: PreparedLabelingTask,
+): Promise<ExperimentModelReferenceLabels[]> {
+  if (task.batch !== "full") return [];
+  const references = await Promise.all([
+    loadAnalysisReference(
+      task,
+      PRODUCTION_MODEL_ID,
+      PRODUCTION_MODEL_LABEL,
+      PRODUCTION_MODEL_DESCRIPTION,
+      taskAnalysesRoot(task),
+    ),
+    loadAnalysisReference(
+      task,
+      PREVIOUS_PRODUCTION_MODEL_ID,
+      PREVIOUS_PRODUCTION_MODEL_LABEL,
+      "The production model immediately preceding all-labels v2.",
+      getAnalysesRoot("without-beach"),
+    ),
+    loadSuppressionReference(task),
+  ]);
+  return references.filter(
+    (reference): reference is ExperimentModelReferenceLabels => reference !== null,
+  );
 }
 
 export async function getExperimentModelReferenceLabels(
@@ -736,9 +1087,7 @@ export async function getExperimentModelReferenceLabels(
     ENVIRONMENT_EXPERIMENT_MODELS.map(async (model): Promise<ExperimentModelReferenceLabels | null> => {
       try {
         const analysisPath = path.join(
-          task.workspaceRoot === labelingWorkspace
-            ? getIntakeAnalysesRoot()
-            : path.join(task.workspaceRoot, "analyses"),
+          taskAnalysesRoot(task),
           `${model.id}--${task.id}`,
           "analysis.json",
         );
@@ -814,4 +1163,41 @@ export async function saveLabelingDraft(
   }
   const metadata = await stat(task.draftPath);
   return { document, source: "draft", savedAt: metadata.mtime.toISOString() };
+}
+
+export async function saveCompletedLabelingDocument(
+  task: PreparedLabelingTask,
+  value: unknown,
+): Promise<SavedLabelingDocument> {
+  let document: LabelDocument;
+  try {
+    document = parseLabelDocument(value);
+  } catch (error) {
+    throw new LabelingDraftValidationError(
+      error instanceof Error ? error.message : "completed label document is invalid",
+    );
+  }
+  validateDraftContent(document, task, "complete");
+  const completedDirectory = path.dirname(task.completedPath);
+  if (!isWithin(task.workspaceRoot, task.completedPath)) {
+    throw new Error("completed-label destination is outside the labeling workspace");
+  }
+  await mkdir(completedDirectory, { recursive: true });
+  const temporaryPath = path.join(
+    completedDirectory,
+    `.${task.id}.${randomUUID()}.labels.json.tmp`,
+  );
+  try {
+    await writeFile(temporaryPath, `${JSON.stringify(document, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    await rename(temporaryPath, task.completedPath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+  await rm(task.draftPath, { force: true });
+  const metadata = await stat(task.completedPath);
+  return { document, source: "completed", savedAt: metadata.mtime.toISOString() };
 }
