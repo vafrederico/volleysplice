@@ -63,8 +63,7 @@ preview or encode an optional score overlay. The required parity and product beh
 specified in
 [`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
-The current checked-in release is
-[`VolleyCut v0.10.12`](android/releases/VolleyCut-v0.10.12-arm64-release-signed.apk). See
+Install [VolleyCut on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis). See
 [`android/README.md`](android/README.md) for the SDK requirements, debug build/install
 workflow, editor behavior, benchmarks, cache behavior, and native-versus-browser parity
 caveats.

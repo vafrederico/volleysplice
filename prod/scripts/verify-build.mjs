@@ -7,10 +7,6 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const expectedHashes = new Map([
   [
-    "android/VolleyCut-v0.10.12-arm64-release-signed.apk",
-    "1169716e885b160cefc09b6518d17ce675f63a1fe18721c94a03ba76d8ae27fc",
-  ],
-  [
     "runtime/model-1ca43e38eefc.json",
     "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f",
   ],
@@ -60,6 +56,7 @@ for (const [asset, expected] of expectedHashes) {
 }
 
 for (const asset of [
+  "google-play-badge.png",
   "runtime/suppression-39eddf581639.manifest.json",
   "runtime/opencv.js",
   "runtime/opencv-worker.js",

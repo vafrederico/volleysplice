@@ -132,9 +132,10 @@ curl -I https://volleycut.vafrederico.com
 
 ## Runtime contents
 
-- `public/android/VolleyCut-v0.10.12-arm64-release-signed.apk`: the signed
-  arm64 Android release offered from the production header. The production
-  build verifies its SHA-256 digest before it can be deployed.
+- `public/google-play-badge.png`: the official [Google Play badge](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)
+  linking the Android banner to [VolleyCut on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis).
+  Android navigation and help links use the same listing. APKs are not bundled
+  with the website; nginx redirects legacy `/android/` download URLs to Google Play.
 - `public/runtime/model-1ca43e38eefc.json`: the promoted all-labels v2 inference heads and decoders.
 - `public/runtime/model-9c92b8e9333f.json`: the previous production heads used by the two-model consensus pass.
 - `public/runtime/suppression-39eddf581639.json`: the held corrected suppression

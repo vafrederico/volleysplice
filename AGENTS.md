@@ -20,31 +20,30 @@ an APK or request the release-keystore password. Build the unsigned release APK,
 provide the signing command, and ask the user to run it themselves. Never request,
 read, handle, store, or pass the keystore password.
 
-### Android version bumps and production downloads
+### Android version bumps and Google Play distribution
 
-When publishing a new Android APK version, keep the Android package, checked-in
-release artifact, and production-web download synchronized:
+The production Android app is distributed through
+`https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis`.
+Keep website install links pointed at that listing. Do not check APKs into the
+repository or copy them into the production website.
+
+When publishing a new Android version:
 
 1. Increment both `versionCode` and `versionName` in
    `android/app/build.gradle.kts`. Keep the debug `versionNameSuffix` so debug
    installs report the corresponding `-debug` version.
-2. Build `assembleDebug` and `assembleRelease`. The release build is unsigned;
-   ask the user to sign that exact APK as described above.
-3. Verify the user-signed APK with `apksigner`, confirm its package version with
-   `aapt`, confirm that its signer certificate matches the established release
+2. Build `assembleDebug` and `bundleRelease` for Google Play. If a local APK is
+   needed, also build `assembleRelease`. Release artifacts must be signed by the
+   user with the helpers documented in `android/README.md`; never handle the
+   keystore password.
+3. For a user-signed local APK, verify it with `apksigner`, confirm its package
+   version with `aapt`, confirm that its signer certificate matches the established release
    certificate, and confirm that its non-signature ZIP payload matches the
    unsigned APK that was just built.
-4. Replace the previous file in `android/releases/` with the newly signed APK,
-   named `VolleyCut-v<version>-arm64-release-signed.apk`. Keep only signed APKs
-   in this directory; never commit the unsigned build.
-5. Copy the exact same signed bytes to `prod/public/android/`. Update
-   `APK_FILENAME`, the visible version, and the accessible download label in
-   `prod/src/components/AndroidAppBanner.tsx`, the APK SHA-256 in
-   `prod/scripts/verify-build.mjs`, and the APK references in `README.md` and
-   `prod/README.md`.
-6. Confirm the repository and production copies have identical SHA-256 hashes,
-   run the Android build/tests and the production static build checks, and do not
-   start or serve the production app unless the user explicitly asks.
+4. Keep generated APKs and release bundles in ignored build output directories.
+5. Run the Android build/tests and, for website changes, the production static
+   build checks. Do not start or serve the production app unless the user
+   explicitly asks.
 
 ## Rally-model iteration ranking
 
