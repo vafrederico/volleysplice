@@ -90,7 +90,7 @@ function safeBaseName(filename: string): string {
     filename
       .replace(/\.[^.]+$/, "")
       .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "volleycut"
+      .replace(/^-+|-+$/g, "") || "volleysplice"
   );
 }
 
@@ -176,7 +176,7 @@ export async function exportRawQualityReel(
   mode: VideoExportMode = "compatible",
   options: VideoExportOptions = {},
 ): Promise<PreparedVideoExport | null> {
-  const outputName = `${safeBaseName(file.name)}-volleycut.mp4`;
+  const outputName = `${safeBaseName(file.name)}-volleysplice.mp4`;
   const destination = await chooseExportDestination(
     outputName,
     mode,

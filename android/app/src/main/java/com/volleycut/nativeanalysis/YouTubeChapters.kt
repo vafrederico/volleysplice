@@ -153,7 +153,7 @@ internal object YouTubeChapters {
         val base = sourceFilename.substringBeforeLast('.', sourceFilename)
             .replace(Regex("[^A-Za-z0-9._-]+"), "-")
             .trim('-')
-            .ifBlank { "volleycut" }
+            .ifBlank { "volleysplice" }
         return "$base-youtube-chapters.txt"
     }
 

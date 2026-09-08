@@ -6,7 +6,7 @@ import { SuppressionReviewClient } from "../suppression-review-client";
 import type { SuppressionReviewDataset } from "../types";
 
 export const metadata: Metadata = {
-  title: "Padded/joined any-overlap suppression review · VolleyCut",
+  title: "Padded/joined any-overlap suppression review · VolleySplice",
   description:
     "Inspect missed rallies when cross-model support in a padded and joined export component protects its full production span.",
   robots: { index: false, follow: false },

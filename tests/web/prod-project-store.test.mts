@@ -38,7 +38,7 @@ import {
   sourceFileFingerprint,
   sourceMatchesFile,
   type ProjectSource,
-  type VolleyCutProject,
+  type VolleySpliceProject,
 } from "../../prod/src/lib/project-store.ts";
 import type {
   OnDeviceAnalysis,
@@ -89,7 +89,7 @@ function cachedAnalysis(modelId: string, currentShape = false): OnDeviceAnalysis
   };
 }
 
-function storedProject(analysis: OnDeviceAnalysis): VolleyCutProject {
+function storedProject(analysis: OnDeviceAnalysis): VolleySpliceProject {
   return {
     schemaVersion: 1,
     id: "project-fixture",
@@ -147,10 +147,10 @@ test("project IDs and visual caches are isolated by marked game window", () => {
 test("legacy projects default to the full source window", () => {
   const legacy = storedProject(
     cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true),
-  ) as VolleyCutProject & { analysisWindow?: undefined };
+  ) as VolleySpliceProject & { analysisWindow?: undefined };
   delete legacy.analysisWindow;
   assert.deepEqual(
-    normalizeStoredProject(legacy as VolleyCutProject).analysisWindow,
+    normalizeStoredProject(legacy as VolleySpliceProject).analysisWindow,
     { start: 0, end: info.duration },
   );
   assert.deepEqual(normalizeAnalysisWindow({ start: -5, end: 120 }, 90), {

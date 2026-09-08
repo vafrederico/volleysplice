@@ -40,8 +40,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends Activity {
-    private static final String TAG = "VolleyCut";
-    private static final String BENCHMARK_TAG = "VolleyCutBenchmark";
+    private static final String TAG = "VolleySplice";
+    private static final String BENCHMARK_TAG = "VolleySpliceBenchmark";
     private static final String EXTRA_AUTO_RUN = "benchmark_auto_run";
     private static final String EXTRA_RUN_ID = "benchmark_run_id";
     private static final String EXTRA_SOURCE_FRAME_LIMIT = "benchmark_source_frame_limit";
@@ -129,7 +129,7 @@ public final class MainActivity extends Activity {
             return insets;
         });
 
-        TextView brand = text("VOLLEYCUT", 14, ORANGE);
+        TextView brand = text("VOLLEYSPLICE", 14, ORANGE);
         brand.setLetterSpacing(.18f);
         root.addView(brand);
         TextView title = text("Analysis benchmark", 30, INK);
@@ -602,7 +602,7 @@ public final class MainActivity extends Activity {
     private void copyResult() {
         if (lastResult == null) return;
         ClipboardManager clipboard = getSystemService(ClipboardManager.class);
-        clipboard.setPrimaryClip(ClipData.newPlainText("VolleyCut analysis", resultJson(lastResult).toString()));
+        clipboard.setPrimaryClip(ClipData.newPlainText("VolleySplice analysis", resultJson(lastResult).toString()));
         Toast.makeText(this, "Result JSON copied", Toast.LENGTH_SHORT).show();
     }
 

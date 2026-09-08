@@ -78,8 +78,8 @@ internal enum class GuidedTourStep(
     SETUP_CREATE(
         GuidedTourStage.SETUP,
         "setup-create",
-        "Let VolleyCut find the rallies",
-        "Tap Find rallies. Keep VolleyCut open while it prepares the suggested clips; the editor opens when they are ready.",
+        "Let VolleySplice find the rallies",
+        "Tap Find rallies. Keep VolleySplice open while it prepares the suggested clips; the editor opens when they are ready.",
         "Find rallies first",
     ),
     EDITOR_SETTINGS(
@@ -93,7 +93,7 @@ internal enum class GuidedTourStep(
         GuidedTourStage.EDITOR,
         "editor-export",
         "Save the finished video",
-        "Tap Save final video when the review looks right. Choose the original video first if VolleyCut asks you to reconnect it.",
+        "Tap Save final video when the review looks right. Choose the original video first if VolleySplice asks you to reconnect it.",
         "Next",
     ),
     EDITOR_SCORE_TOGGLE(
@@ -141,7 +141,7 @@ internal enum class GuidedTourStep(
     EDITOR_MARKING(
         GuidedTourStage.EDITOR,
         "editor-marking",
-        "Add anything VolleyCut missed",
+        "Add anything VolleySplice missed",
         "For a missed rally, mark its start and end. Leave out a section for camera gaps, breaks, or other footage that should not appear in the final video.",
         "Finish tutorial",
     ),

@@ -332,7 +332,7 @@ class ExportService : Service() {
             }
         }.getOrNull()?.takeIf(String::isNotBlank)
         return queriedName ?: sourceName.substringBeforeLast('.', sourceName)
-            .ifBlank { "VolleyCut" }
+            .ifBlank { "VolleySplice" }
             .let { "$it-final.mp4" }
     }
 
@@ -469,7 +469,7 @@ class ExportService : Service() {
         )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("VolleyCut export")
+            .setContentTitle("VolleySplice export")
             .setContentText(detail)
             .setOnlyAlertOnce(true)
             .setOngoing(ongoing)
@@ -560,7 +560,7 @@ class ExportService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val TAG = "VolleyCutExport"
+        private const val TAG = "VolleySpliceExport"
         private const val CHANNEL_ID = "volleycut_exports"
         private const val NOTIFICATION_ID = 401
         private const val WAKE_LOCK_TIMEOUT_MS = 12 * 60 * 60 * 1_000L

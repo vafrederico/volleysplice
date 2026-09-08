@@ -5,7 +5,7 @@ import { parseOnDeviceRuntimeVariantQueryValue } from "@/lib/on-device/runtime-v
 import { OnDeviceBatchClient } from "./on-device-batch-client";
 
 export const metadata: Metadata = {
-  title: "On-device batch runner · VolleyCut",
+  title: "On-device batch runner · VolleySplice",
   description: "Generate browser-native model predictions for the comparison dataset.",
   robots: { index: false, follow: false },
 };

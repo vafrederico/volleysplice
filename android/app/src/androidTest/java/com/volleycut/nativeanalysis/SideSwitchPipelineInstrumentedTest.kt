@@ -131,7 +131,7 @@ class SideSwitchPipelineInstrumentedTest {
     }
 
     companion object {
-        private const val TAG = "VolleyCutSwitchE2E"
+        private const val TAG = "VolleySpliceSwitchE2E"
 
         @JvmStatic
         @BeforeClass

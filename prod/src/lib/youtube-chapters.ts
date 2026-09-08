@@ -294,6 +294,6 @@ export function youtubeChaptersFilename(sourceFilename: string): string {
     sourceFilename
       .replace(/\.[^.]+$/, "")
       .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "volleycut";
+      .replace(/^-+|-+$/g, "") || "volleysplice";
   return `${base}-youtube-chapters.txt`;
 }

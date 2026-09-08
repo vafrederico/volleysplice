@@ -1,4 +1,4 @@
-# VolleyCut Editor Design Language
+# VolleySplice Editor Design Language
 
 This document defines the production web editor’s visual and interaction language. New UI should feel like part of one compact, dependable match-review console—not a collection of cards.
 
@@ -65,7 +65,7 @@ Color always has a second cue: text, icon, border, pattern, or state label. Butt
 
 ## Components and states
 
-- **Top bar:** transparent VolleyCut mark, current-project selector, Review/Export stages, review counters, settings, and Export.
+- **Top bar:** transparent VolleySplice mark, current-project selector, Review/Export stages, review counters, settings, and Export.
 - **Timelines:** use green for retained rally core, pale green for padding, red/blue for teams, volleyball icons for serves, and arrows for side switches. Every marker is clickable and seekable.
 - **Scrollable registers:** automatically reveal and highlight the event or rally at the playhead. Do not leave a separate persistent selection that makes controls stale.
 - **Current rally:** follows the rally at the playhead, or the latest preceding rally when between rallies. Keep/Remove are joined equal-width buttons; green means kept, red means explicitly removed, and pale red means removed only by automatic cleanup.

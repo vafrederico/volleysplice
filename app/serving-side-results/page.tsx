@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Serving-side model results · VolleyCut",
+  title: "Serving-side model results · VolleySplice",
   description:
     "Compare frozen serving-side model predictions with human labels.",
   robots: { index: false, follow: false },

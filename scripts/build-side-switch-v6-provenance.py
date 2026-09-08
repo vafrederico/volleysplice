@@ -113,7 +113,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             **detector,
             "license": "Apache-2.0",
             "trainingRole": (
-                "third-party frozen general-person localizer; no VolleyCut labels "
+                "third-party frozen general-person localizer; no VolleySplice labels "
                 "altered detector weights"
             ),
         },

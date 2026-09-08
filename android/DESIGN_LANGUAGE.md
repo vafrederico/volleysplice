@@ -1,4 +1,4 @@
-# VolleyCut Android Design Language
+# VolleySplice Android Design Language
 
 This document extends the shared [`../DESIGN_LANGUAGE.md`](../DESIGN_LANGUAGE.md)
 for the native Android app. The root document is the source of truth for the
@@ -71,7 +71,7 @@ it happens to fit; rearrange the same controls into the appropriate workspace.
 
 Setup and ready projects use the same compact shell:
 
-- transparent VolleyCut mark and a clearly labeled current-project selector;
+- transparent VolleySplice mark and a clearly labeled current-project selector;
 - concise stage navigation;
 - settings and project actions at the trailing edge;
 - review counters and export summary derived from the current draft;

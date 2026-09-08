@@ -88,6 +88,6 @@ class SpecialistDecodePlanInstrumentedTest {
     }
 
     companion object {
-        private const val TAG = "VolleyCutSpecialistPlan"
+        private const val TAG = "VolleySpliceSpecialistPlan"
     }
 }

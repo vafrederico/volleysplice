@@ -191,7 +191,7 @@ class ServingSidePipelineBenchmarkInstrumentedTest {
         (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
 
     companion object {
-        private const val TAG = "VolleyCutServingBench"
+        private const val TAG = "VolleySpliceServingBench"
 
         @JvmStatic
         @BeforeClass

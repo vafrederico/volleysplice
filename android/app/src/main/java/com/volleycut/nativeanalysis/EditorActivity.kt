@@ -169,7 +169,7 @@ class EditorActivity : ComponentActivity() {
                     setUiScalePreference(this, normalizedScale)
                 },
             ) {
-                VolleyCutTheme {
+                VolleySpliceTheme {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                         val desktop = editorLayoutMode(
                             maxWidth.value.roundToInt(),
@@ -387,7 +387,7 @@ private fun EditableCut.modelAgreementLabel(): String = when (agreement) {
 }
 
 @Composable
-private fun VolleyCutTheme(content: @Composable () -> Unit) {
+private fun VolleySpliceTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Green,
@@ -1274,8 +1274,8 @@ private fun ProjectHeaderBar(
                     horizontalArrangement = Arrangement.spacedBy(if (condensed) 5.dp else 8.dp),
                 ) {
                     Image(
-                        painter = painterResource(R.drawable.volleycut_logo),
-                        contentDescription = "VolleyCut",
+                        painter = painterResource(R.drawable.volleysplice_logo),
+                        contentDescription = "VolleySplice",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.width(if (condensed) 64.dp else 92.dp).height(26.dp),
                     )
@@ -1407,8 +1407,8 @@ private fun ProjectHeaderBar(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Image(
-                    painter = painterResource(R.drawable.volleycut_logo),
-                    contentDescription = "VolleyCut",
+                    painter = painterResource(R.drawable.volleysplice_logo),
+                    contentDescription = "VolleySplice",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.width(112.dp).height(36.dp),
                 )
@@ -1619,14 +1619,14 @@ private fun AppSettingsDialog(
                 Text("DISPLAY", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 UiScaleControl()
                 HorizontalDivider(color = Rail)
-                Text("Enjoying VolleyCut? A Google Play rating helps other volleyball players find it.")
+                Text("Enjoying VolleySplice? A Google Play rating helps other volleyball players find it.")
                 OutlinedButton(
                     onClick = {
                         storeError = !AppRating.openPlayStore(context)
                         if (!storeError) onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth().testTag("settings-rate-app"),
-                ) { Text("Rate VolleyCut on Google Play") }
+                ) { Text("Rate VolleySplice on Google Play") }
                 if (storeError) {
                     Text("Google Play could not be opened on this device.", color = Danger, fontSize = 12.sp)
                 }
@@ -1635,7 +1635,7 @@ private fun AppSettingsDialog(
                     onCheckedChange = onDisplayAnalysisMeasurements,
                 )
                 Text(
-                    "Rating opens Google Play. VolleyCut does not send your videos or rating activity anywhere.",
+                    "Rating opens Google Play. VolleySplice does not send your videos or rating activity anywhere.",
                     color = Muted,
                     fontSize = 12.sp,
                 )
@@ -1732,7 +1732,7 @@ private fun EditorSettingsDialog(
                 PaddingControl("Keep short breaks under", joinGapMs, onJoinGap)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Clips to check", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text("Move toward More to have VolleyCut flag more suggested clips for review.", color = Muted, fontSize = 12.sp)
+                    Text("Move toward More to have VolleySplice flag more suggested clips for review.", color = Muted, fontSize = 12.sp)
                     Slider(
                         value = reviewThreshold,
                         onValueChange = onReviewThreshold,
@@ -1750,14 +1750,14 @@ private fun EditorSettingsDialog(
                     onCheckedChange = onDisplayAnalysisMeasurements,
                 )
                 HorizontalDivider(color = Rail)
-                Text("Enjoying VolleyCut? A Google Play rating helps other volleyball players find it.")
+                Text("Enjoying VolleySplice? A Google Play rating helps other volleyball players find it.")
                 OutlinedButton(
                     onClick = {
                         storeError = !AppRating.openPlayStore(context)
                         if (!storeError) onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth().testTag("settings-rate-app"),
-                ) { Text("Rate VolleyCut on Google Play") }
+                ) { Text("Rate VolleySplice on Google Play") }
                 if (storeError) {
                     Text("Google Play could not be opened on this device.", color = Danger, fontSize = 12.sp)
                 }
@@ -1838,8 +1838,8 @@ private fun ProjectInferenceCard(
         Text(
             when (project.status) {
                 ProjectStatus.QUEUED -> "Waiting to start"
-                ProjectStatus.ANALYZING -> "VolleyCut is finding the rallies on this device"
-                ProjectStatus.ERROR -> "VolleyCut could not finish preparing this video"
+                ProjectStatus.ANALYZING -> "VolleySplice is finding the rallies on this device"
+                ProjectStatus.ERROR -> "VolleySplice could not finish preparing this video"
                 ProjectStatus.READY -> "Your suggested clips are ready"
             },
             color = Muted,
@@ -1853,7 +1853,7 @@ private fun ProjectInferenceCard(
         if (project.status == ProjectStatus.ERROR && detail.isNotBlank()) {
             Text(detail, fontSize = 12.sp, color = Danger)
         } else if (project.status == ProjectStatus.ANALYZING) {
-            Text("Keep VolleyCut open while it prepares the review.", fontSize = 12.sp, color = Muted)
+            Text("Keep VolleySplice open while it prepares the review.", fontSize = 12.sp, color = Muted)
         }
         state.performance?.takeIf {
             state.stepMeasurements.isEmpty() && state.stage == "video"
@@ -1885,7 +1885,7 @@ private fun ProjectInferenceCard(
         if (sourceAvailable == false) {
             Text(
                 relinkMessage
-                    ?: "Choose the original video again so VolleyCut can continue.",
+                    ?: "Choose the original video again so VolleySplice can continue.",
                 color = Danger,
                 fontSize = 12.sp,
             )
@@ -2172,7 +2172,7 @@ private fun NewProjectIntro() {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                "NEW PROJECT · SETUP",
+                "Bump. Set. Splice.",
                 color = Green,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,
@@ -2180,7 +2180,7 @@ private fun NewProjectIntro() {
                 letterSpacing = 1.sp,
             )
             Text(
-                "Choose the game.\nVolleyCut finds the rallies.",
+                "Choose the game.\nVolleySplice finds the rallies.",
                 color = Ink,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Black,
@@ -2188,7 +2188,7 @@ private fun NewProjectIntro() {
                 letterSpacing = (-.8).sp,
             )
             Text(
-                "Choose a game video, confirm the part to analyze, then let VolleyCut prepare the review timeline.",
+                "Choose a game video, confirm the part to analyze, then let VolleySplice prepare the review timeline.",
                 color = Muted,
                 fontSize = 13.sp,
                 lineHeight = 20.sp,
@@ -2398,7 +2398,7 @@ private fun NewProjectCard(
                     Column(Modifier.padding(top = 4.dp)) {
                         Text("Teams change court sides", fontWeight = FontWeight.SemiBold)
                         Text(
-                            "VolleyCut will find side switches for the optional scoreboard.",
+                            "VolleySplice will find side switches for the optional scoreboard.",
                             fontSize = 12.sp,
                             color = Muted,
                         )
@@ -2662,7 +2662,7 @@ private fun LegalFooter() {
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        "VolleyCut includes the following open-source components. " +
+                        "VolleySplice includes the following open-source components. " +
                             "Their licenses remain available to you under their original terms.",
                     )
                     Text("AndroidX and Jetpack Compose — Apache License 2.0")
@@ -3246,9 +3246,9 @@ private fun EditorScreen(
                 AppRating.deferPrompt(context)
                 showRatingPrompt = false
             },
-            title = { Text("Enjoying VolleyCut?") },
+            title = { Text("Enjoying VolleySplice?") },
             text = {
-                Text("Your highlight video is ready. If VolleyCut helped, would you rate it on Google Play?")
+                Text("Your highlight video is ready. If VolleySplice helped, would you rate it on Google Play?")
             },
             confirmButton = {
                 TextButton(
@@ -3257,7 +3257,7 @@ private fun EditorScreen(
                         showRatingPrompt = false
                     },
                     modifier = Modifier.testTag("export-rate-app"),
-                ) { Text("Rate VolleyCut") }
+                ) { Text("Rate VolleySplice") }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -3890,7 +3890,7 @@ private fun EditorScreen(
                                             text = if (activeRally.cutIds.all { it in draft.reviewedCutIds }) {
                                                 "Checked · your keep/remove choice is saved."
                                             } else {
-                                                "VolleyCut is less certain about this rally."
+                                                "VolleySplice is less certain about this rally."
                                             },
                                             warning = true,
                                         )
@@ -4127,7 +4127,7 @@ private fun EditorScreen(
                 ) {
                     Text(
                         relinkMessage
-                            ?: "VolleyCut cannot open the saved video location. Choose the original recording again to restore playback and MP4 export.",
+                            ?: "VolleySplice cannot open the saved video location. Choose the original recording again to restore playback and MP4 export.",
                         color = if (relinkFailed) Danger else Muted,
                         fontSize = 12.sp,
                     )
@@ -4543,7 +4543,7 @@ private fun EditorScreen(
                             text = if (selectedRally.cutIds.all { it in draft.reviewedCutIds }) {
                                 "Checked · your keep/remove choice is saved."
                             } else {
-                                "VolleyCut is less certain about this rally. Check it, then choose Keep or Remove."
+                                "VolleySplice is less certain about this rally. Check it, then choose Keep or Remove."
                             },
                             warning = true,
                         )
@@ -4559,7 +4559,7 @@ private fun EditorScreen(
                                 explicitDecision == SuppressionDecision.SUPPRESS ->
                                     "Removed by you · this cleanup section will be left out."
                                 else ->
-                                    "Suggested removal · VolleyCut will leave out this likely non-play section unless you keep it."
+                                    "Suggested removal · VolleySplice will leave out this likely non-play section unless you keep it."
                             },
                             removal = cleanupDecision == SuppressionDecision.SUPPRESS,
                         )
@@ -7094,7 +7094,7 @@ internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<
 
 private fun exportFilename(sourceName: String): String {
     val base = sourceName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-')
-    return "${base.ifBlank { "volleycut" }}-cut.mp4"
+    return "${base.ifBlank { "volleysplice" }}-cut.mp4"
 }
 
 private fun createModelFeedback(

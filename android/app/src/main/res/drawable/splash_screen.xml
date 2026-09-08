@@ -7,6 +7,6 @@
         android:gravity="center">
         <bitmap
             android:gravity="fill"
-            android:src="@drawable/volleycut_logo" />
+            android:src="@drawable/volleysplice_logo" />
     </item>
 </layer-list>

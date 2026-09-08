@@ -742,7 +742,7 @@ function usePrototype(
     const file = event.currentTarget.files?.[0];
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".json")) {
-      setSourceStatus("Choose a saved VolleyCut project JSON file.");
+      setSourceStatus("Choose a saved VolleySplice project JSON file.");
       return;
     }
     const importedExpectedSource = review.sourceName;
@@ -1179,7 +1179,7 @@ function usePrototype(
         modelFeedbackFilename(review.sourceName),
       );
       setExportProgress(100);
-      setExportStatus("The current VolleyCut project was downloaded.");
+      setExportStatus("The current VolleySplice project was downloaded.");
       return;
     }
     if (!review.sourceFile || finalIntervals.length === 0) return;
@@ -1249,16 +1249,16 @@ type Prototype = ReturnType<typeof usePrototype>;
 
 function Brand({ compact = false, logo = false }: { compact?: boolean; logo?: boolean }) {
   return (
-    <a className="td-brand" href="/" aria-label="VolleyCut home">
+    <a className="td-brand" href="/" aria-label="VolleySplice home">
       {logo ? (
         <>
-          <img src={runtimeAssetUrl("volleycut-icon-transparent.png")} alt="" />
-          <strong className="td-wordmark">volley<span>cut</span></strong>
+          <img src={runtimeAssetUrl("volleysplice-icon-transparent.png")} alt="" />
+          <strong className="td-wordmark">volley<span>splice</span></strong>
         </>
       ) : (
         <>
-          <span aria-hidden="true">V/C</span>
-          {!compact && <strong>VolleyCut</strong>}
+          <span aria-hidden="true">V/S</span>
+          {!compact && <strong>VolleySplice</strong>}
         </>
       )}
     </a>
@@ -1298,7 +1298,7 @@ function StageButtons({
     ? STAGES.filter((item) => item.id === "review" || item.id === "deliver")
     : STAGES;
   return (
-    <nav className={`td-stages ${className}`} data-editor-only={editorOnly || undefined} aria-label="VolleyCut workflow">
+    <nav className={`td-stages ${className}`} data-editor-only={editorOnly || undefined} aria-label="VolleySplice workflow">
       {stages.map((item) => (
         <button
           key={item.id}
@@ -1444,9 +1444,9 @@ function SourceSetup({ state, intro }: { state: Prototype; intro?: ReactNode }) 
   return (
     <section className="td-source-panel" aria-labelledby="td-source-title">
       <header className="td-section-intro">
-        <p className="td-kicker">Local project setup</p>
+        <p className="td-kicker">{state.fileName ? "Local project setup" : "Bump. Set. Splice."}</p>
         <h1 id="td-source-title">Choose the part worth watching.</h1>
-        <p>{intro ?? "Open a game video, trim unused setup time, and let VolleyCut analyze only what matters."}</p>
+        <p>{intro ?? "Open a game video, trim unused setup time, and let VolleySplice analyze only what matters."}</p>
       </header>
 
       <div className="td-source-grid">
@@ -1807,7 +1807,7 @@ function ClipInspector({ state, condensed = false, current = false }: { state: P
       <button className="td-split-button" type="button" onClick={state.splitSelectedAtPlayhead}>Split {current ? "current rally" : "selected clip"} at {formatPreciseTime(state.playhead)}</button>
       {suppression && (
         <aside className="td-suppression-review" data-state={suppression}>
-          <div><strong>Automatic cleanup suggestion</strong><span>{suppression === "pending" ? "VolleyCut suggested leaving this footage out. Watch it before deciding." : suppression === "kept" ? "Kept after your review." : "Confirmed as left out. You can still keep it."}</span></div>
+          <div><strong>Automatic cleanup suggestion</strong><span>{suppression === "pending" ? "VolleySplice suggested leaving this footage out. Watch it before deciding." : suppression === "kept" ? "Kept after your review." : "Confirmed as left out. You can still keep it."}</span></div>
         </aside>
       )}
       {current ? (
@@ -2706,7 +2706,7 @@ function MatchLedger({ review }: { review: ReadyDesignReview }) {
           </>
         ) : <StandardStage state={state} />}
       </div>
-      <footer className="ml-footer"><span>VolleyCut keeps projects and analysis in this browser.</span><UtilityLinks state={state} /></footer>
+      <footer className="ml-footer"><span>VolleySplice keeps projects and analysis in this browser.</span><UtilityLinks state={state} /></footer>
       <HelpDrawer state={state} />
     </main>
   );

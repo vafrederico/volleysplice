@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Side-switch model review · VolleyCut",
+  title: "Side-switch model review · VolleySplice",
   description:
     "Review V5, production-state V5, and V6 side-switch proposals against volleyball footage.",
   robots: { index: false, follow: false },

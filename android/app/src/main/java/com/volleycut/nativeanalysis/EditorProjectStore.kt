@@ -11,7 +11,7 @@ import java.nio.file.StandardCopyOption
 /** Stores only enough metadata to reopen the most recent editor after process death. */
 internal object EditorProjectStore {
     private const val VERSION = 5
-    private const val TAG = "VolleyCutEditor"
+    private const val TAG = "VolleySpliceEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
     @Synchronized

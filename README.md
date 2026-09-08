@@ -1,6 +1,10 @@
-# VolleyCut
+# VolleySplice
 
-VolleyCut is a local-first volleyball video editor that finds likely rallies, lets a
+**Bump. Set. Splice.**
+
+Formerly VolleyCut. See [brand assets and compatibility notes](docs/brand.md).
+
+VolleySplice is a local-first volleyball video editor that finds likely rallies, lets a
 human correct the proposed cuts, and exports the retained footage. Video analysis and
 editing run on the user's device; production inference does not upload source media.
 
@@ -63,7 +67,7 @@ preview or encode an optional score overlay. The required parity and product beh
 specified in
 [`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
-Install [VolleyCut on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis). See
+Install [VolleySplice on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis). See
 [`android/README.md`](android/README.md) for the SDK requirements, debug build/install
 workflow, editor behavior, benchmarks, cache behavior, and native-versus-browser parity
 caveats.

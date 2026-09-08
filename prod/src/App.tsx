@@ -67,7 +67,7 @@ import {
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
   sourceFileFingerprint,
-  type VolleyCutProject,
+  type VolleySpliceProject,
 } from "@/lib/project-store";
 
 import styles from "./App.module.css";
@@ -100,7 +100,7 @@ function ReadyProjectEditor({
   onDeleteProject,
 }: {
   projectId: string;
-  projects: VolleyCutProject[];
+  projects: VolleySpliceProject[];
   workActivity: DesignWorkActivity[];
   exportJobs: DesignExportJob[];
   sourceFile: File | null;
@@ -205,7 +205,7 @@ function clampRoi(roi: NormalizedRoi): NormalizedRoi {
   };
 }
 
-function sortProjects(projects: VolleyCutProject[]): VolleyCutProject[] {
+function sortProjects(projects: VolleySpliceProject[]): VolleySpliceProject[] {
   return [...projects].sort((left, right) =>
     right.updatedAt.localeCompare(left.updatedAt),
   );
@@ -217,14 +217,14 @@ const LANDING_COPY: {
   description: string;
   steps: string[];
 } = {
-  kicker: "NEW PROJECT · SETUP",
-  title: <>Choose the game.<br /><em>VolleyCut finds the rallies.</em></>,
-  description: "Choose a game video from this device, confirm the part of the recording to analyze, then let VolleyCut prepare the review timeline.",
+  kicker: "Bump. Set. Splice.",
+  title: <>Choose the game.<br /><em>VolleySplice finds the rallies.</em></>,
+  description: "Choose a game video from this device, confirm the part of the recording to analyze, then let VolleySplice prepare the review timeline.",
   steps: ["Choose video", "Set game window", "Analyze locally", "Review rallies"],
 };
 
 export function App() {
-  const [projects, setProjects] = useState<VolleyCutProject[]>([]);
+  const [projects, setProjects] = useState<VolleySpliceProject[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
@@ -256,7 +256,7 @@ export function App() {
   const [feedbackImporting, setFeedbackImporting] = useState(false);
   const [exportJobs, setExportJobs] = useState<AppExportJob[]>([]);
 
-  const projectsRef = useRef<VolleyCutProject[]>([]);
+  const projectsRef = useRef<VolleySpliceProject[]>([]);
   const filesRef = useRef(new Map<string, File>());
   const videoUrlsRef = useRef(new Map<string, string>());
   const exportJobsRef = useRef(new Map<string, AppExportJob>());
@@ -292,13 +292,13 @@ export function App() {
     ? (videoUrlsRef.current.get(selectedProjectId) ?? null)
     : null;
 
-  function replaceProjects(next: VolleyCutProject[]) {
+  function replaceProjects(next: VolleySpliceProject[]) {
     const sorted = sortProjects(next);
     projectsRef.current = sorted;
     setProjects(sorted);
   }
 
-  function commitProject(project: VolleyCutProject) {
+  function commitProject(project: VolleySpliceProject) {
     const next = projectsRef.current.some(
       (candidate) => candidate.id === project.id,
     )
@@ -675,7 +675,7 @@ export function App() {
       .catch((cause) => {
         if (active) {
           setError(
-            `VolleyCut could not refresh this saved project: ${cause instanceof Error ? cause.message : String(cause)}`,
+            `VolleySplice could not refresh this saved project: ${cause instanceof Error ? cause.message : String(cause)}`,
           );
         }
       })
@@ -702,7 +702,7 @@ export function App() {
     if (!selected) return;
     if (safariUnsupported) {
       setError(
-        "Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.",
+        "Safari is not supported on macOS or iOS. Open VolleySplice in Google Chrome instead.",
       );
       setWorkState("error");
       return;
@@ -711,7 +711,7 @@ export function App() {
       setError(
         secureContext
           ? "This browser cannot open the video. Please use the latest version of Chrome or Edge."
-          : "VolleyCut needs a secure connection before it can open your video.",
+          : "VolleySplice needs a secure connection before it can open your video.",
       );
       setWorkState("error");
       return;
@@ -839,7 +839,7 @@ export function App() {
     }
 
     const now = new Date().toISOString();
-    const project: VolleyCutProject = {
+    const project: VolleySpliceProject = {
       schemaVersion: 1,
       id,
       source,
@@ -881,7 +881,7 @@ export function App() {
           ),
         };
     if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
-    const running: VolleyCutProject = {
+    const running: VolleySpliceProject = {
       ...project,
       source,
       status: "analyzing",
@@ -1062,7 +1062,7 @@ export function App() {
         }
       }
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
-      const ready: VolleyCutProject = {
+      const ready: VolleySpliceProject = {
         ...running,
         status: "ready",
         analysis: completedAnalysis,
@@ -1072,7 +1072,7 @@ export function App() {
       commitProject(ready);
     } catch (cause) {
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
-      const failed: VolleyCutProject = {
+      const failed: VolleySpliceProject = {
         ...running,
         status: "error",
         error: cause instanceof Error ? cause.message : String(cause),
@@ -1110,9 +1110,9 @@ export function App() {
     });
   }, [queueIds]);
 
-  function queueAttachedProject(project: VolleyCutProject) {
+  function queueAttachedProject(project: VolleySpliceProject) {
     if (!filesRef.current.has(project.id)) return;
-    const queued: VolleyCutProject = {
+    const queued: VolleySpliceProject = {
       ...project,
       status: "queued",
       error: null,
@@ -1123,7 +1123,7 @@ export function App() {
   }
 
   async function attachSource(
-    project: VolleyCutProject,
+    project: VolleySpliceProject,
     selected: File | null,
   ) {
     if (!selected) return;
@@ -1221,7 +1221,7 @@ export function App() {
   );
   const analysisActivity: DesignWorkActivity[] = projects
     .filter(
-      (project): project is VolleyCutProject & {
+      (project): project is VolleySpliceProject & {
         status: "analyzing" | "queued";
       } => project.status === "analyzing" || project.status === "queued",
     )
@@ -1379,7 +1379,7 @@ export function App() {
             <div
               className={styles.pipeline}
               role="list"
-              aria-label="How VolleyCut works"
+              aria-label="How VolleySplice works"
               data-count={LANDING_COPY.steps.length}
             >
               {LANDING_COPY.steps.map((step, index) => (
@@ -1391,13 +1391,13 @@ export function App() {
 
             {safariUnsupported && (
               <p className={styles.notice} role="status">
-                <strong>Safari is not supported.</strong> VolleyCut cannot open
+                <strong>Safari is not supported.</strong> VolleySplice cannot open
                 videos here yet. Please use Google Chrome to continue.
               </p>
             )}
             {!safariUnsupported && !secureContext && (
               <p className={styles.notice}>
-                VolleyCut needs a secure connection before it can open your video.
+                VolleySplice needs a secure connection before it can open your video.
               </p>
             )}
             {error && <p className={styles.error}>{error}</p>}
@@ -1644,7 +1644,7 @@ export function App() {
                     <strong>Teams change court sides during this video</strong>
                     <small>
                       This is needed for accurate scorekeeping when teams switch
-                      ends. VolleyCut will look for the switches; you can add any
+                      ends. VolleySplice will look for the switches; you can add any
                       it misses while reviewing the score.
                     </small>
                   </span>
@@ -1684,7 +1684,7 @@ export function App() {
           <h1>{selectedProject.source.name}</h1>
           <p>
             {selectedProject.status === "analyzing"
-              ? "VolleyCut is finding the rallies. You can review another finished video while this continues."
+              ? "VolleySplice is finding the rallies. You can review another finished video while this continues."
               : selectedProject.status === "queued"
                 ? `Waiting to start${queueIds.indexOf(selectedProject.id) > 0 ? ` · ${queueIds.indexOf(selectedProject.id)} video ahead` : ""}.`
                 : (selectedProject.error ??
@@ -1750,7 +1750,7 @@ export function App() {
             <i style={{ width: `${percent}%` }} />
           </div>
           <p>
-            Your video stays on this device while VolleyCut works.
+            Your video stays on this device while VolleySplice works.
           </p>
         </section>
       )}

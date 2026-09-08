@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the held VolleyCut suppression head as deterministic browser JSON."""
+"""Export the held VolleySplice suppression head as deterministic browser JSON."""
 
 from __future__ import annotations
 

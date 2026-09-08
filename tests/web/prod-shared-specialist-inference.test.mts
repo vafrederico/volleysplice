@@ -42,7 +42,7 @@ test("production score specialists share one sequential video decode", async () 
   );
   assert.match(app, /servingSideEnabled: false/);
   assert.match(app, /const shouldInferServing = Boolean\(result\.productionServeOutputs\)/);
-  assert.match(editor, /VolleyCut builds the score from serve markers/);
+  assert.match(editor, /VolleySplice builds the score from serve markers/);
   assert.match(editor, />\s*Save project\s*</);
   assert.doesNotMatch(editor, /downloadEditList|Save a review copy/);
   assert.match(scorePanel, /HOW THE SCORE IS BUILT/);
@@ -77,7 +77,7 @@ test("the task-focused tutorial remains available in setup and review", async ()
   assert.match(tutorial, /Restart tutorial/);
   assert.match(tutorial, /Choose your video/);
   assert.match(tutorial, /Review the suggested clips/);
-  assert.match(tutorial, /Add anything VolleyCut missed/);
+  assert.match(tutorial, /Add anything VolleySplice missed/);
   assert.match(tutorial, /The first serve sets who starts serving/);
   assert.match(tutorial, /Save the finished video/);
   assert.doesNotMatch(tutorial, /Choose a suppression policy/);

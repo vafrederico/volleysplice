@@ -364,7 +364,7 @@ internal object ModelFeedbackExporter {
         val safe = sourceName.substringBeforeLast('.')
             .replace(Regex("[^A-Za-z0-9._-]+"), "-")
             .trim('-')
-        return "${safe.ifBlank { "volleycut" }}.model-feedback.json"
+        return "${safe.ifBlank { "volleysplice" }}.model-feedback.json"
     }
 
     internal fun encode(values: FloatArray, shape: IntArray): JSONObject =

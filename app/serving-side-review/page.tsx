@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Serving-side review · VolleyCut",
+  title: "Serving-side review · VolleySplice",
   description:
     "Review interpretable serving-side evidence across the NAS video corpus.",
   robots: { index: false, follow: false },

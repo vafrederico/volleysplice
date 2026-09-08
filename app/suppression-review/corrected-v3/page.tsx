@@ -9,7 +9,7 @@ import styles from "../tuning/tuning.module.css";
 import type { SuppressionReviewDataset } from "../types";
 
 export const metadata: Metadata = {
-  title: "Held-decoder suppression options · VolleyCut",
+  title: "Held-decoder suppression options · VolleySplice",
   description:
     "Compare the three retained production suppression rules with corrected targets and the held production decoder.",
   robots: { index: false, follow: false },

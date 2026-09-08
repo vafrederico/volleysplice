@@ -566,7 +566,7 @@ function validateIntervalMetadata(value: unknown, kind: "ignored" | "negative"):
 
 export function parseLabelDocument(value: unknown): LabelDocument {
   if (!isObject(value) || value.schemaVersion !== 1 || value.kind !== "volleycut-rally-labels") {
-    throw new Error("This is not a VolleyCut rally-label document (schema version 1)");
+    throw new Error("This is not a VolleySplice rally-label document (schema version 1)");
   }
   if (!isObject(value.recording)) throw new Error("recording must be an object");
   const recording = value.recording;

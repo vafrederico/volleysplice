@@ -9,10 +9,10 @@ type BrandProps = {
 
 export function Brand({ className, label, priority = false }: BrandProps) {
   return (
-    <Link className={className} href="/" aria-label={`VolleyCut ${label}`}>
+    <Link className={className} href="/" aria-label={`VolleySplice ${label}`}>
       <Image
-        src="/volleycut-logo.png"
-        alt="VolleyCut"
+        src="/volleysplice-logo.png"
+        alt="VolleySplice"
         width={920}
         height={310}
         priority={priority}

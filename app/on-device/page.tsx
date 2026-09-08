@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { OnDeviceClient } from "./on-device-client";
 
 export const metadata: Metadata = {
-  title: "On-device cut · VolleyCut",
+  title: "On-device cut · VolleySplice",
   description: "Analyze and export volleyball footage locally in a desktop browser.",
 };
 

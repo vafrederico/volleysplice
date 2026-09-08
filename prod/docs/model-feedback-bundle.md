@@ -115,7 +115,7 @@ corrections, and does not rerun either model. Importing the same bundle again cr
 project instead of replacing the first import.
 
 The restored project initially has no video because `videoBytesIncluded` is always false. Use the
-editor's source reconnect action to select the original recording. VolleyCut verifies the source
+editor's source reconnect action to select the original recording. VolleySplice verifies the source
 metadata or sampled fingerprint before enabling playback and video export; reconnecting does not
 replace the imported inference or corrections.
 

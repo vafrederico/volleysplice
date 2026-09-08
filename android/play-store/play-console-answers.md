@@ -6,7 +6,7 @@ These answers describe the audited source and dependency set. Recheck them if pe
 
 ## Data safety
 
-Google Play defines collection as transmitting user data off the device and excludes access or processing that remains only on the device. VolleyCut does not request `INTERNET`, includes no analytics or advertising SDK, and performs its media processing locally.
+Google Play defines collection as transmitting user data off the device and excludes access or processing that remains only on the device. VolleySplice does not request `INTERNET`, includes no analytics or advertising SDK, and performs its media processing locally.
 
 - Does the app collect or share any required user data types? **No**
 - Is any user data shared with other companies or organizations? **No**
@@ -30,7 +30,7 @@ User-initiated exports to a destination chosen through Android's system file pic
 
 - Are all features available without special access? **Yes**
 - Login credentials or reviewer instructions: **Not required**
-- Suggested review note: "VolleyCut has no account or network dependency. Choose a local volleyball recording through Android's system document picker. Analysis and export can be time-consuming because all processing happens on-device."
+- Suggested review note: "VolleySplice has no account or network dependency. Choose a local volleyball recording through Android's system document picker. Analysis and export can be time-consuming because all processing happens on-device."
 
 Do not attach a personal recording to the Play listing. For review, prepare a short, rights-cleared synthetic or public-domain volleyball clip that demonstrates analysis and export.
 
@@ -62,7 +62,7 @@ Declared type: `mediaProcessing`
 
 **Feature description**
 
-"VolleyCut uses a media-processing foreground service for user-started, on-device analysis of a selected volleyball recording and for user-started MP4 highlight export. The service keeps long video decoding, audiovisual feature extraction, rally inference, and video transcoding running while the user views another screen. A persistent notification shows progress. Export can be cancelled from the notification or the app, and deleting an active project cancels its analysis."
+"VolleySplice uses a media-processing foreground service for user-started, on-device analysis of a selected volleyball recording and for user-started MP4 highlight export. The service keeps long video decoding, audiovisual feature extraction, rally inference, and video transcoding running while the user views another screen. A persistent notification shows progress. Export can be cancelled from the notification or the app, and deleting an active project cancels its analysis."
 
 **Impact if deferred**
 

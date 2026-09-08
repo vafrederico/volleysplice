@@ -14,7 +14,7 @@ import {
   putProjectReviewDraft,
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
-  type VolleyCutProject,
+  type VolleySpliceProject,
 } from "@/lib/project-store";
 import type { OnDeviceSuppression } from "@/lib/on-device/types";
 import type {
@@ -30,7 +30,7 @@ import {
 export type DesignProjectOption = {
   id: string;
   name: string;
-  status: VolleyCutProject["status"];
+  status: VolleySpliceProject["status"];
   exportJob: DesignExportJob | null;
 };
 
@@ -90,7 +90,7 @@ export type ReadyDesignReview = {
   gameEnd: number;
   cropCourt: boolean;
   sideSwitchEnabled: boolean;
-  projectStatus: VolleyCutProject["status"];
+  projectStatus: VolleySpliceProject["status"];
   draft: CutDraft;
   suppression: OnDeviceSuppression | undefined;
   cleanupSuggestions: DesignCleanupSuggestion[];
@@ -131,7 +131,7 @@ function reloadSelectedProject(projectId: string | null): void {
 }
 
 function projectOptions(
-  projects: VolleyCutProject[],
+  projects: VolleySpliceProject[],
   exportJobs: readonly DesignExportJob[] = [],
 ): DesignProjectOption[] {
   const jobsByProject = new Map(
@@ -146,9 +146,9 @@ function projectOptions(
 }
 
 function selectedProject(
-  projects: VolleyCutProject[],
+  projects: VolleySpliceProject[],
   preferredProjectId?: string,
-): VolleyCutProject | null {
+): VolleySpliceProject | null {
   let selectedId: string | null = null;
   try {
     selectedId = window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
@@ -164,7 +164,7 @@ function selectedProject(
   );
 }
 
-function reviewSeed(project: VolleyCutProject): CutDraftSeed | null {
+function reviewSeed(project: VolleySpliceProject): CutDraftSeed | null {
   const analysisId = projectAnalysisId(project);
   if (!project.analysis || !analysisId) return null;
   return {
@@ -200,7 +200,7 @@ function reviewSeed(project: VolleyCutProject): CutDraftSeed | null {
   };
 }
 
-function restoredDraft(project: VolleyCutProject, seed: CutDraftSeed): CutDraft {
+function restoredDraft(project: VolleySpliceProject, seed: CutDraftSeed): CutDraft {
   const withGeneratedScoreMarkers = (draft: CutDraft) => {
     let scoreTracking = draft.scoreTracking;
     if (project.analysis?.servingSide) {
@@ -259,7 +259,7 @@ function restoredDraft(project: VolleyCutProject, seed: CutDraftSeed): CutDraft 
 }
 
 function cleanupSuggestions(
-  project: VolleyCutProject,
+  project: VolleySpliceProject,
   draft: CutDraft,
 ): DesignCleanupSuggestion[] {
   return (project.analysis?.suppression?.suggestions ?? []).map((suggestion) => {
@@ -291,7 +291,7 @@ function cleanupSuggestions(
 
 type DesignReviewOptions = {
   projectId?: string;
-  projects?: readonly VolleyCutProject[];
+  projects?: readonly VolleySpliceProject[];
   workActivity?: DesignWorkActivity[];
   exportJobs?: DesignExportJob[];
   sourceFile?: File | null;
@@ -322,7 +322,7 @@ export function useDesignReview(
         if (!project) {
           setReview({
             state: "empty",
-            message: "No VolleyCut project is saved in this browser yet.",
+            message: "No VolleySplice project is saved in this browser yet.",
             projects: projectChoices,
             selectProject: navigateProject,
           });
@@ -429,8 +429,8 @@ export function useDesignReview(
           state: "error",
           message:
             cause instanceof Error
-              ? `VolleyCut could not open the saved review: ${cause.message}`
-              : "VolleyCut could not open the saved review.",
+              ? `VolleySplice could not open the saved review: ${cause.message}`
+              : "VolleySplice could not open the saved review.",
           projects: [],
           selectProject: navigateProject,
         });

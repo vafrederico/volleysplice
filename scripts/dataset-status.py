@@ -146,7 +146,7 @@ def build_status(data_root: Path) -> str:
 
     generated = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     lines = [
-        "# VolleyCut dataset status",
+        "# VolleySplice dataset status",
         "",
         f"Generated: `{generated}`",
         "",
@@ -167,7 +167,7 @@ def build_status(data_root: Path) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Write a Markdown status report for the external VolleyCut dataset.")
+    parser = argparse.ArgumentParser(description="Write a Markdown status report for the external VolleySplice dataset.")
     parser.add_argument("--data-root", type=Path, default=Path(os.environ.get("VOLLEYCUT_DATA_ROOT", "data")))
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()

@@ -159,7 +159,7 @@ internal object ProcessingTimeoutTracker {
                 NOTIFICATION_ID_BASE + event.sequence,
                 NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(android.R.drawable.stat_notify_error)
-                    .setContentTitle("VolleyCut processing stopped")
+                    .setContentTitle("VolleySplice processing stopped")
                     .setContentText(message)
                     .setStyle(NotificationCompat.BigTextStyle().bigText("$message ${event.detail}"))
                     .setContentIntent(pending)

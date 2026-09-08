@@ -1,11 +1,11 @@
-import type { VolleyCutProject } from "@/lib/project-store";
+import type { VolleySpliceProject } from "@/lib/project-store";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
 import type { DesignExportJob } from "@/designs/useDesignReview";
 
 import styles from "./ProjectHeader.module.css";
 
 type ProjectHeaderProps = {
-  projects: VolleyCutProject[];
+  projects: VolleySpliceProject[];
   exportJobs: DesignExportJob[];
   selectedProjectId: string | null;
   queueLabel: string | null;
@@ -14,7 +14,7 @@ type ProjectHeaderProps = {
 };
 
 function projectStatus(
-  project: VolleyCutProject,
+  project: VolleySpliceProject,
   exportJob: DesignExportJob | undefined,
 ): string {
   if (project.status === "ready" && exportJob) {
@@ -59,11 +59,11 @@ export function ProjectHeader({
       <span className={styles.brand}>
         {/* biome-ignore lint/performance/noImgElement: This standalone Vite app ships a local pre-sized logo without an image optimizer. */}
         <img
-          src={runtimeAssetUrl("volleycut-icon-transparent.png")}
+          src={runtimeAssetUrl("volleysplice-icon-transparent.png")}
           alt=""
         />
         <strong className={styles.wordmark}>
-          volley<span>cut</span>
+          volley<span>splice</span>
         </strong>
         <span className={styles.productLabel}>VIDEO EDITOR</span>
       </span>

@@ -52,7 +52,7 @@ internal object ModelFeedbackImporter {
         val bundle = JSONObject(text)
         require(bundle.optString("schema") == MODEL_FEEDBACK_SCHEMA &&
             bundle.optInt("schemaVersion") == MODEL_FEEDBACK_SCHEMA_VERSION
-        ) { "Choose a VolleyCut model-feedback schema v3 JSON file" }
+        ) { "Choose a VolleySplice model-feedback schema v3 JSON file" }
         val source = bundle.getJSONObject("source")
         require(source.getString("timelineCoordinates") == "seconds-from-start-of-source" &&
             !source.getBoolean("videoBytesIncluded")

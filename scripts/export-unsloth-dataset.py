@@ -19,9 +19,9 @@ from analysis.unsloth_dataset import (
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Export a validated VolleyCut manifest as an Unsloth video-chat JSONL dataset."
+        description="Export a validated VolleySplice manifest as an Unsloth video-chat JSONL dataset."
     )
-    parser.add_argument("manifest", type=Path, help="Frozen VolleyCut manifest")
+    parser.add_argument("manifest", type=Path, help="Frozen VolleySplice manifest")
     parser.add_argument("output", type=Path, help="New output directory (must not exist)")
     parser.add_argument("--window-seconds", type=float, default=DEFAULT_WINDOW_SECONDS)
     parser.add_argument("--stride-seconds", type=float, default=DEFAULT_STRIDE_SECONDS)

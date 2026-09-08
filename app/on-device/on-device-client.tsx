@@ -586,7 +586,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
   async function chooseFile(selected: File | null) {
     if (!selected) return;
     if (isUnsupportedSafariBrowser()) {
-      setError("Safari is not supported on macOS or iOS. Open VolleyCut in Google Chrome instead.");
+      setError("Safari is not supported on macOS or iOS. Open VolleySplice in Google Chrome instead.");
       return;
     }
     if (!compatibility.decode) {
@@ -837,7 +837,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
         <div className={styles.compatibilityNotice} role="status">
           <strong>{compatibility.safariUnsupported ? "Safari is not supported." : "Browser media processing is unavailable on this origin."}</strong>{" "}
           {compatibility.safariUnsupported
-            ? "Feature extraction is unreliable in Safari on macOS and iOS. Open VolleyCut in the latest Google Chrome instead."
+            ? "Feature extraction is unreliable in Safari on macOS and iOS. Open VolleySplice in the latest Google Chrome instead."
             : !compatibility.secureContext
             ? "WebCodecs is restricted on plain HTTP. Deploy this web app over HTTPS to analyze local files; the files still remain on-device."
             : "Use a current desktop Chrome or Edge build with WebCodecs enabled."}
@@ -1777,7 +1777,7 @@ export function OnDeviceClient({ fixture = null }: { fixture?: OnDeviceUiFixture
                   <small>
                     {streamFallbackReason
                       ? `The Service Worker download failed or was unavailable (${streamFallbackReason}). This export will use OPFS, then offer Share or save.`
-                      : "Chrome on iOS streams directly to Downloads by default. If that fails, VolleyCut automatically retries once using OPFS."}
+                      : "Chrome on iOS streams directly to Downloads by default. If that fails, VolleySplice automatically retries once using OPFS."}
                   </small>
                 </span>
               </div>

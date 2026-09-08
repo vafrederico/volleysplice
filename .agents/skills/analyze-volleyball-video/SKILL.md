@@ -1,6 +1,6 @@
 ---
 name: analyze-volleyball-video
-description: Blind audiovisual analysis of volleyball MP4 footage to create validation-ready serve-contact-to-dead-ball candidate JSON, evidence packs, confidence notes, and heuristic feature proposals. Use when Codex must inspect volleyball videos without existing labels or predictions, reproduce a direct-Sol/ChatGPT-style video review, generate VolleyCut AI prelabels, or analyze frame/audio cues for serve and rally detection.
+description: Blind audiovisual analysis of volleyball MP4 footage to create validation-ready serve-contact-to-dead-ball candidate JSON, evidence packs, confidence notes, and heuristic feature proposals. Use when Codex must inspect volleyball videos without existing labels or predictions, reproduce a direct-Sol/ChatGPT-style video review, generate VolleySplice AI prelabels, or analyze frame/audio cues for serve and rally detection.
 ---
 
 # Analyze Volleyball Video

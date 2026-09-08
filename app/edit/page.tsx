@@ -50,7 +50,7 @@ export default async function EditPage({ searchParams }: EditPageProps) {
     return (
       <main style={{ padding: "min(8vw, 5rem)" }}>
         <p>No cached video labels are available for editing.</p>
-        <Link href="/">Return to VolleyCut Lab</Link>
+        <Link href="/">Return to VolleySplice Lab</Link>
       </main>
     );
   }

@@ -19,8 +19,8 @@ function exportFilename(sourceFilename: string): string {
     sourceFilename
       .replace(/\.[^.]+$/, "")
       .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "volleycut";
-  return `${baseName}-volleycut.mp4`;
+      .replace(/^-+|-+$/g, "") || "volleysplice";
+  return `${baseName}-volleysplice.mp4`;
 }
 
 export function requestVideoExportTarget(

@@ -104,7 +104,7 @@ final class NativeVideoDecoder {
                     samplePlan.sortedPresentationUs(), times, resumeStartRow
             );
             featureWorker = new FeatureWorker(output, times, cacheWriter);
-            codecThread = new HandlerThread("VolleyCut-MediaCodec");
+            codecThread = new HandlerThread("VolleySplice-MediaCodec");
             codecThread.start();
             AsyncDecodeState state = new AsyncDecodeState(
                     extractor, samplePlan, media, roi, times,
@@ -1150,7 +1150,7 @@ final class NativeVideoDecoder {
             this.output = output;
             this.times = times;
             this.cacheWriter = cacheWriter;
-            thread = new Thread(this::run, "VolleyCut-OpenCV");
+            thread = new Thread(this::run, "VolleySplice-OpenCV");
             thread.start();
         }
 

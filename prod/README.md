@@ -1,4 +1,4 @@
-# VolleyCut production web app
+# VolleySplice production web app
 
 This directory is a standalone, static, browser-only application. It combines local
 video loading, audiovisual feature extraction, rally inference, and the cut editor in
@@ -133,7 +133,7 @@ curl -I https://volleycut.vafrederico.com
 ## Runtime contents
 
 - `public/google-play-badge.png`: the official [Google Play badge](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)
-  linking the Android banner to [VolleyCut on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis).
+  linking the Android banner to [VolleySplice on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis).
   Android navigation and help links use the same listing. APKs are not bundled
   with the website; nginx redirects legacy `/android/` download URLs to Google Play.
 - `public/runtime/model-1ca43e38eefc.json`: the promoted all-labels v2 inference heads and decoders.

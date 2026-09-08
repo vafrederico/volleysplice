@@ -4,7 +4,7 @@ import { SuppressionReviewClient } from "../../suppression-review-client";
 import type { SuppressionReviewDataset } from "../../types";
 
 export const metadata: Metadata = {
-  title: "Held decoder · raw-connected review · VolleyCut",
+  title: "Held decoder · raw-connected review · VolleySplice",
   robots: { index: false, follow: false },
 };
 

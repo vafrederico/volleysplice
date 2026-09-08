@@ -113,7 +113,7 @@ function detailWindow(
 
 function downloadFilename(value: string): string {
   const safe = value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return `${safe || "volleycut"}.edit-list.json`;
+  return `${safe || "volleysplice"}.edit-list.json`;
 }
 
 export function CutEditor({

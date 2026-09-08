@@ -1,4 +1,4 @@
-# VolleyCut production model architecture
+# VolleySplice production model architecture
 
 This document summarizes audiovisual feature extraction and specifies learned-model
 inference, temporal model decoding, ensemble composition, and the suppression safety
@@ -8,7 +8,7 @@ and predecessor changes are registered in [`MODELS.md`](MODELS.md). This documen
 not describe the broader editor, project-storage, playback, video-decoding, or
 export-encoding architecture.
 
-VolleyCut's production architecture is a lightweight, on-device audiovisual signal-
+VolleySplice's production architecture is a lightweight, on-device audiovisual signal-
 processing system. It does not explicitly detect the volleyball, players, net, score,
 or named volleyball actions. Instead, it learns statistical patterns that distinguish
 live rallies, serve contact, end-of-play transitions, common false positives, and—in
@@ -37,7 +37,7 @@ contract is specified in
 
 ## What the models look for
 
-Every quarter-second, VolleyCut measures low-resolution video and audio signals including:
+Every quarter-second, VolleySplice measures low-resolution video and audio signals including:
 
 - motion magnitude and the fraction of the court that is active;
 - whether motion is distributed across several court regions;

@@ -422,7 +422,7 @@ final class AnalysisEngine {
                     servingSideError = error.getMessage() == null
                             ? "Score-specialist analysis failed" : error.getMessage();
                     sideSwitchError = includeSideSwitch ? servingSideError : null;
-                    android.util.Log.w("VolleyCutAnalysis", "Recoverable score-specialist failure", error);
+                    android.util.Log.w("VolleySpliceAnalysis", "Recoverable score-specialist failure", error);
                     progress.onProgress(
                             "score-specialists", 1,
                             includeSideSwitch

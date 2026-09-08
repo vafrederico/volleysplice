@@ -1,4 +1,4 @@
-# VolleyCut native Android analysis and editor
+# VolleySplice native Android analysis and editor
 
 Android UI work follows [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md), which extends the
 shared product guidance in [`../DESIGN_LANGUAGE.md`](../DESIGN_LANGUAGE.md) for the
@@ -82,9 +82,9 @@ To create and sign the release APK and Android App Bundle, build the unsigned ar
 ```bash
 cd android
 bash ./sign-release.sh app/build/outputs/apk/release/app-release-unsigned.apk \
-  --output app/build/outputs/apk/release/VolleyCut-v0.10.12-arm64-release-signed.apk
+  --output app/build/outputs/apk/release/VolleySplice-v0.10.12-arm64-release-signed.apk
 bash ./sign-release.sh app/build/outputs/bundle/release/app-release.aab \
-  --output app/build/outputs/bundle/release/VolleyCut-v0.10.12-arm64-release-signed.aab
+  --output app/build/outputs/bundle/release/VolleySplice-v0.10.12-arm64-release-signed.aab
 ```
 
 The helper selects APK or AAB signing from the input extension, uses `.android-keystores/volleycut-release.jks` under the Windows user profile (or `$HOME` on other platforms) and the `volleycut-release` alias, lets `apksigner` or `jarsigner` prompt directly for the password, and verifies the signed result. Use `--keystore` and `--alias` if Play App Signing has a separate upload key. Never put a keystore password on the command line or commit a keystore. The PowerShell-specific `sign-apk.ps1` and `sign-aab.ps1` helpers remain available when needed.
@@ -111,7 +111,7 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
   features, both production serve outputs, raw serving-side features/evidence, original inference,
   corrections, score state, ignored intervals, and final export ranges, without raw video bytes.
 
-The player is Media3 ExoPlayer. Export builds a Media3 `Composition` from the final merged ranges after ignored sections are subtracted, then uses Transformer to encode AVC video and AAC audio into MP4. Export runs as an Android `mediaProcessing` foreground service. A custom Media3 muxer factory writes directly to the seekable file descriptor returned for the document selected with Android's system picker, so normal local exports do not need duplicate temporary storage. Streaming-only document providers automatically retain the app-cache-and-copy fallback. Failed, cancelled, or abandoned exports remove their incomplete destination document. The service logs a `VolleyCutExport` JSON record containing the selected `outputWriteMode`, wall time, real-time ratio, frame rate, encoder names, bitrates, output geometry, file size, conversion modes, and failures.
+The player is Media3 ExoPlayer. Export builds a Media3 `Composition` from the final merged ranges after ignored sections are subtracted, then uses Transformer to encode AVC video and AAC audio into MP4. Export runs as an Android `mediaProcessing` foreground service. A custom Media3 muxer factory writes directly to the seekable file descriptor returned for the document selected with Android's system picker, so normal local exports do not need duplicate temporary storage. Streaming-only document providers automatically retain the app-cache-and-copy fallback. Failed, cancelled, or abandoned exports remove their incomplete destination document. The service logs a `VolleySpliceExport` JSON record containing the selected `outputWriteMode`, wall time, real-time ratio, frame rate, encoder names, bitrates, output geometry, file size, conversion modes, and failures.
 
 All new UI/media dependencies are open source: Jetpack Compose, AndroidX Activity/Core, and Media3 are Apache-2.0. OpenCV remains Apache-2.0. No commercial editor SDK is embedded.
 

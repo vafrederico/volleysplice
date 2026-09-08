@@ -122,5 +122,5 @@ internal object ScoreSpecialistInference {
     private fun elapsedMilliseconds(started: Long): Double =
         (System.nanoTime() - started) / 1_000_000.0
 
-    private const val TAG = "VolleyCutScoreProfile"
+    private const val TAG = "VolleySpliceScoreProfile"
 }

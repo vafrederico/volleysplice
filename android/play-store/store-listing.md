@@ -1,12 +1,12 @@
-# VolleyCut Google Play listing
+# VolleySplice Google Play listing
 
-Prepared: 2026-08-26
+Prepared: 2026-09-08
 
 ## Main listing
 
-**App name (9/30 characters)**
+**App name (12/30 characters)**
 
-VolleyCut
+VolleySplice
 
 **Short description (78/80 characters)**
 
@@ -14,9 +14,11 @@ Offline volleyball video editor that finds rallies and builds highlight reels.
 
 **Full description**
 
-Turn a full volleyball match into a polished highlight reelâ€”without uploading your footage or needing an internet connection.
+Turn a full volleyball match into a polished highlight reel—without uploading your footage or needing an internet connection.
 
-VolleyCut is an offline sports video editor and volleyball highlight maker built for players, coaches, parents, and clubs. Choose a recording, mark the part of the video that contains the game, and let on-device video and audio analysis automatically find likely rallies. Review every suggestion, fine-tune the clips, and export one shareable MP4 highlight video.
+Bump. Set. Splice.
+
+VolleySplice is an offline sports video editor and volleyball highlight maker built for players, coaches, parents, and clubs. Choose a recording, mark the part of the video that contains the game, and let on-device video and audio analysis automatically find likely rallies. Review every suggestion, fine-tune the clips, and export one shareable MP4 highlight video.
 
 MAKE VOLLEYBALL HIGHLIGHTS FASTER
 
@@ -53,14 +55,14 @@ PRIVATE, OFFLINE VIDEO EDITING
 
 - Your selected recordings are processed on your device
 - Automatic rally detection works without internet access
-- VolleyCut has no internet permission; opening the Play Store to rate the app is handled by Android
+- VolleySplice has no internet permission; opening the Play Store to rate the app is handled by Android
 - No account, ads, analytics, or tracking
 - Your original recording remains in the location you selected
 - You decide where exported files are saved
 
-VolleyCut's automatic rally detection is an editing aid and may not find every play perfectly. You stay in control: review the suggested clips, make manual cuts, adjust padding, and preview the result before exporting your volleyball highlights.
+VolleySplice's automatic rally detection is an editing aid and may not find every play perfectly. You stay in control: review the suggested clips, make manual cuts, adjust padding, and preview the result before exporting your volleyball highlights.
 
-VolleyCut is designed for 64-bit Android phones running Android 14 or later.
+VolleySplice is designed for 64-bit Android phones running Android 14 or later.
 
 ## Suggested classification
 
@@ -88,10 +90,14 @@ The same privacy policy and terms cover both the Android app and browser-based w
 
 ## Screenshot order and alt text
 
+The files below are historical captures of the previous brand. Recapture them
+from the rebranded screenshot build before uploading; the alt text below is the
+copy for that refreshed set.
+
 1. `screenshots/phone-upload-featured/01-choose-game-window.png`
    - Alt text: "Select the game window for a local volleyball video and start on-device rally analysis."
 2. `screenshots/phone-upload-featured/02-fine-tune-when-needed.png`
-   - Alt text: "VolleyCut Settings with Strong automatic cleanup, clip padding, short-break joining, and review controls."
+   - Alt text: "VolleySplice Settings with Strong automatic cleanup, clip padding, short-break joining, and review controls."
 3. `screenshots/phone-upload-featured/03-save-finished-video.png`
    - Alt text: "Final-video card showing included duration, items needing attention, score options, video export, and YouTube chapters."
 4. `screenshots/phone-upload-featured/04-check-score-markers.png`
@@ -119,7 +125,7 @@ visible. The current source captures remain in
 1. `screenshots/tablet-release-sources-v1/01-new-project-setup.png`
    - Alt text: "Landscape tablet setup screen for choosing a local volleyball video and starting on-device rally analysis."
 2. `screenshots/tablet-release-sources-v1/02-desktop-review-workspace.png`
-   - Alt text: "VolleyCut's three-column tablet workspace with score markers, a resizable video player, rally controls, and a two-row game timeline."
+   - Alt text: "VolleySplice's three-column tablet workspace with score markers, a resizable video player, rally controls, and a two-row game timeline."
 3. `screenshots/tablet-release-sources-v1/03-editor-settings.png`
    - Alt text: "Tablet Settings dialog with automatic cleanup, clip padding, short-break joining, and review sensitivity controls."
 4. `screenshots/tablet-release-sources-v1/04-export-options.png`
@@ -140,8 +146,8 @@ timeline, saved-export, and review-state data.
 
 ## Feature graphic alt text
 
-"VolleyCut logo over a blue volleyball court and video-editing timeline."
+"VolleySplice logo over a blue volleyball court and video-editing timeline."
 
 ## Release notes draft
 
-Initial Google Play release of VolleyCut for private, on-device volleyball rally detection, cut review, and MP4 highlight export.
+VolleyCut is now VolleySplice. Bump. Set. Splice. Your saved projects stay in place, with the same private, on-device rally detection, review, and MP4 export.

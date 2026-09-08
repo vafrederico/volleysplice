@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Serving-side flight error review · VolleyCut",
+  title: "Serving-side flight error review · VolleySplice",
   description:
     "Annotate visibility and timing failure modes for serving-side flight predictions.",
   robots: { index: false, follow: false },

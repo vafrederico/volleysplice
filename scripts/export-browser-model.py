@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the three-head VolleyCut browser inference bundle as plain JSON."""
+"""Export the three-head VolleySplice browser inference bundle as plain JSON."""
 
 from __future__ import annotations
 

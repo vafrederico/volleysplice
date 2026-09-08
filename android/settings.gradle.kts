@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VolleyCutNative"
+rootProject.name = "VolleySpliceNative"
 include(":app")

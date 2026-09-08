@@ -429,7 +429,7 @@ export function CutEditor({
     setScoreInferenceMessage(
       sourceFile
         ? "This older project cannot find score markers automatically. You can still add them yourself."
-        : "Choose the original video once so VolleyCut can find and save the score markers.",
+        : "Choose the original video once so VolleySplice can find and save the score markers.",
     );
   }, [draft.scoreTracking.enabled, draft.scoreTracking.serveMarkers, initialAnalysis.productionComponents, initialAnalysis.productionServeOutputs, initialAnalysis.productionStateOutputs, initialAnalysis.servingSide, initialAnalysis.sideSwitch, scoreInferenceStatus, sideSwitchEnabled, sourceFile, storageReady]);
 
@@ -751,7 +751,7 @@ export function CutEditor({
       }
       setScoreInferenceStatus("error");
       setScoreInferenceMessage(
-        `VolleyCut could not finish finding score markers: ${message}. You can still check or add them yourself.`,
+        `VolleySplice could not finish finding score markers: ${message}. You can still check or add them yourself.`,
       );
     } finally {
       media?.input.dispose();
@@ -1441,7 +1441,7 @@ export function CutEditor({
     scoreInferenceStartedRef.current = false;
     setScoreInferenceStatus("idle");
     setScoreInferenceMessage(null);
-    setEditorMessage("Your review has been reset to VolleyCut's original suggestions.");
+    setEditorMessage("Your review has been reset to VolleySplice's original suggestions.");
   }
 
   async function saveProjectFile() {
@@ -1458,9 +1458,9 @@ export function CutEditor({
         try {
           await navigator.share({
             files: [file],
-            title: `VolleyCut project · ${initialAnalysis.sourceFilename}`,
+            title: `VolleySplice project · ${initialAnalysis.sourceFilename}`,
           });
-          setEditorMessage("Shared your VolleyCut project file.");
+          setEditorMessage("Shared your VolleySplice project file.");
           return;
         } catch (cause) {
           if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -1473,7 +1473,7 @@ export function CutEditor({
       link.download = filename;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      setEditorMessage("Saved your VolleyCut project file.");
+      setEditorMessage("Saved your VolleySplice project file.");
     } catch (cause) {
       setEditorMessage(
         `Could not save the project: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -1804,7 +1804,7 @@ export function CutEditor({
         <span>
           <strong>Add a scoreboard <em>Optional</em></strong>
           <small>
-            VolleyCut builds the score from serve markers. You’ll check which
+            VolleySplice builds the score from serve markers. You’ll check which
             court side is serving and add any missing serves or team side switches.
           </small>
         </span>
@@ -1914,8 +1914,8 @@ export function CutEditor({
                   </strong>
                   <small>
                     {streamFallbackReason
-                      ? `The direct download was unavailable (${streamFallbackReason}). VolleyCut will use private on-device storage instead.`
-                      : "VolleyCut will save directly to Downloads when possible and automatically try another private on-device method if needed."}
+                      ? `The direct download was unavailable (${streamFallbackReason}). VolleySplice will use private on-device storage instead.`
+                      : "VolleySplice will save directly to Downloads when possible and automatically try another private on-device method if needed."}
                   </small>
                 </span>
               </div>
@@ -2006,7 +2006,7 @@ export function CutEditor({
                         <small>No extra cleanup is suggested for this game.</small>
                       ) : (
                         <small>
-                          VolleyCut will leave out {suppressionSuggestions.length} likely non-play moments. You can keep any of them while reviewing.
+                          VolleySplice will leave out {suppressionSuggestions.length} likely non-play moments. You can keep any of them while reviewing.
                         </small>
                       )}
                     </>

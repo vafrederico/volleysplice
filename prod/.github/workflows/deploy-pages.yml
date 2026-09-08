@@ -1,4 +1,4 @@
-name: Deploy VolleyCut to Pages
+name: Deploy VolleySplice to Pages
 
 on:
   push:

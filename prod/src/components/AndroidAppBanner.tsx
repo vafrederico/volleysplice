@@ -12,14 +12,14 @@ export function AndroidAppBanner() {
         <span className={styles.eyebrow}>NATIVE ANDROID APP</span>
         <strong>Faster analysis on Android.</strong>
         <p>
-          Get VolleyCut on Google Play for better speeds and a smoother editing
+          Get VolleySplice on Google Play for better speeds and a smoother editing
           experience.
         </p>
       </div>
       <a
         className={styles.storeLink}
         href={GOOGLE_PLAY_URL}
-        aria-label="Get VolleyCut on Google Play"
+        aria-label="Get VolleySplice on Google Play"
       >
         <img
           src={`${import.meta.env.BASE_URL}google-play-badge.png`}

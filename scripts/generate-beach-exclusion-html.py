@@ -176,7 +176,7 @@ HTML_TEMPLATE = r'''<!doctype html>
 <body>
   <main class="shell">
     <header class="hero">
-      <p class="eyebrow">VolleyCut AI · retraining study</p>
+      <p class="eyebrow">VolleySplice AI · retraining study</p>
       <h1>What changed when beach videos left the training set?</h1>
       <p>Paired before/after comparison for every model version in the established lineage, plus fresh inference on every full recording.</p>
       <div class="hero-meta">

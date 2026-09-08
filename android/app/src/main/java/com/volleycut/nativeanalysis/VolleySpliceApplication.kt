@@ -4,7 +4,7 @@ import android.app.Application
 import android.util.Log
 import org.opencv.android.OpenCVLoader
 
-class VolleyCutApplication : Application() {
+class VolleySpliceApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (!OpenCVLoader.initLocal()) {
@@ -13,6 +13,6 @@ class VolleyCutApplication : Application() {
     }
 
     companion object {
-        private const val TAG = "VolleyCut"
+        private const val TAG = "VolleySplice"
     }
 }

@@ -1,9 +1,20 @@
-# Play Store submission pack
+# VolleySplice Play Store submission pack
 
-## Ready-to-upload graphics
+## Current brand graphics
 
 - `app-icon-512.png` — 512×512 PNG, existing launcher artwork
 - `feature-graphic-1024x500.png` — 1024×500 RGB PNG
+
+The feature graphic now uses **VolleySplice** and **Bump. Set. Splice.** See
+[`../../docs/brand.md`](../../docs/brand.md) for the selected artwork and exact
+built-in image generation prompts. The icon contains no wordmark and is retained.
+
+## Historical screenshot sets — refresh before the rebrand release
+
+These are genuine captures of earlier VolleyCut releases. They retain the old
+in-app name and must be recaptured from the rebranded screenshot build before a new
+Play submission. The composition script is updated to use the new logo and name.
+
 - `screenshots/phone-upload-featured/` — eight ordered 1080×2160 RGB PNGs with tutorial-led Play Store copy
 - `screenshots/phone-release-sources-v2/` — eight native-resolution source captures from the release-equivalent screenshot build
 - `screenshots/phone-upload-final/` — eight legacy 1280×2560 source/reference captures
@@ -41,7 +52,7 @@ These are shared policies for the Android app and browser-based web app.
 
 The Android app still needs an in-app privacy link or privacy text before submission.
 
-## Generated artwork provenance
+## Original artwork provenance (before the rebrand)
 
 The feature graphic was generated with the built-in image generation tool using the existing `logo.png` as a brand reference. Final prompt:
 

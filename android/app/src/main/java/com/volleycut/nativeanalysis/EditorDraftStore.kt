@@ -223,7 +223,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         if (!has(key) || isNull(key)) null else getString(key)
 
     companion object {
-        private const val TAG = "VolleyCutEditor"
+        private const val TAG = "VolleySpliceEditor"
 
         fun relink(context: Context, oldSeed: EditorSeed, newSeed: EditorSeed) {
             val oldDraft = EditorDraftStore(context, oldSeed).load() ?: return

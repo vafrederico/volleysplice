@@ -640,7 +640,7 @@ final class NativeFeatureCache {
         File target = new File(entryDirectory, MANIFEST_NAME);
         File temporary = new File(entryDirectory, MANIFEST_NAME + ".tmp");
         try (FileOutputStream stream = new FileOutputStream(temporary)) {
-            manifest.store(stream, "VolleyCut native feature cache");
+            manifest.store(stream, "VolleySplice native feature cache");
             stream.getFD().sync();
         }
         atomicReplace(temporary, target);

@@ -36,7 +36,7 @@ def render(report: dict[str, object]) -> str:
 
     strip_per_recording(public_report)
     embedded = json.dumps(public_report, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
-    title = "VolleyCut · Feedback Suppression V3"
+    title = "VolleySplice · Feedback Suppression V3"
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -116,7 +116,7 @@ def render(report: dict[str, object]) -> str:
 </head>
 <body>
   <header class="shell">
-    <div class="eyebrow">VolleyCut model research · 16 August 2026</div>
+    <div class="eyebrow">VolleySplice model research · 16 August 2026</div>
     <h1>Suppressing false-positive setup and transition footage</h1>
     <p class="lede">A controlled comparison of a feedback-augmented three-head v3, a four-head v3 with a suppression veto, and suppression applied to the current production ensemble.</p>
     <div class="tag-row">
@@ -419,7 +419,7 @@ def render(report: dict[str, object]) -> str:
       <p class="subtle" style="margin-top:18px">Feedback environment is shown as “unknown” because the feedback schema does not encode environment; it was not inferred from filenames or appearance.</p>
     </section>
   </main>
-  <footer><div class="shell">Generated from the immutable experiment report · VolleyCut feedback-suppression-v3-2026-08-16</div></footer>
+  <footer><div class="shell">Generated from the immutable experiment report · VolleySplice feedback-suppression-v3-2026-08-16</div></footer>
   <script id="report-data" type="application/json">{embedded}</script>
   <script>
     const report = JSON.parse(document.getElementById('report-data').textContent);

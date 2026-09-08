@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "screenshots" / "phone-release-sources-v2"
 OUTPUT_DIR = ROOT / "screenshots" / "phone-upload-featured"
 BACKGROUND = ROOT / "featured-background-v2.png"
-LOGO = ROOT.parent / "app" / "src" / "main" / "res" / "drawable-xxxhdpi" / "volleycut_logo.png"
+LOGO = ROOT.parent / "app" / "src" / "main" / "res" / "drawable-xxxhdpi" / "volleysplice_logo.png"
 
 WIDTH = 1080
 HEIGHT = 2160
@@ -80,7 +80,7 @@ SCREENS = [
         "source": "08-add-missed-rally.png",
         "output": "08-add-missed-rally.png",
         "step": "8 · ADD",
-        "headline": ("Add anything", "VolleyCut missed"),
+        "headline": ("Add anything", "VolleySplice missed"),
         "support": "Mark a missed rally, or leave out camera gaps, breaks, and other unusable footage.",
         "crop_y": 350,
     },

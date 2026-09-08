@@ -729,7 +729,7 @@ class ProjectAnalysisService : Service() {
     private fun ensureForeground(
         detail: String,
         indeterminate: Boolean,
-        title: String = "VolleyCut project inference",
+        title: String = "VolleySplice project inference",
     ) {
         if (foreground) {
             updateNotification(0, detail, indeterminate, title)
@@ -750,7 +750,7 @@ class ProjectAnalysisService : Service() {
         progress: Int,
         detail: String,
         indeterminate: Boolean,
-        title: String = "VolleyCut project inference",
+        title: String = "VolleySplice project inference",
     ) {
         getSystemService(NotificationManager::class.java).notify(
             NOTIFICATION_ID,
@@ -848,7 +848,7 @@ class ProjectAnalysisService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val TAG = "VolleyCutProjects"
+        private const val TAG = "VolleySpliceProjects"
         private const val CHANNEL_ID = "volleycut_project_inference"
         private const val NOTIFICATION_ID = 402
         private val liveProjectIds = ConcurrentHashMap.newKeySet<String>()

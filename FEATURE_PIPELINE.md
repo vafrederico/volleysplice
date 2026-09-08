@@ -1,6 +1,6 @@
-# VolleyCut feature pipeline
+# VolleySplice feature pipeline
 
-This document is the rebuild contract for features consumed by VolleyCut models. It
+This document is the rebuild contract for features consumed by VolleySplice models. It
 defines the deployed production feature signature, how every production feature family
 is computed, and which additional features are research-only. Model architecture,
 targets, decoders, and ensemble behavior are documented separately in

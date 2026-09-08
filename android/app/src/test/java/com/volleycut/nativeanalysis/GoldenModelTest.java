@@ -123,6 +123,6 @@ public final class GoldenModelTest {
             if (Files.exists(current.resolve("public/on-device/model-9c92b8e9333f.json"))) return current;
             current = current.getParent();
         }
-        throw new IllegalStateException("Could not locate the VolleyCut repository root");
+        throw new IllegalStateException("Could not locate the VolleySplice repository root");
     }
 }

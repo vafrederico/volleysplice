@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export a VolleyCut suppression logistic head as deterministic plain JSON."""
+"""Export a VolleySplice suppression logistic head as deterministic plain JSON."""
 
 from __future__ import annotations
 

@@ -185,7 +185,7 @@ for ($run = 1; $run -le $Runs; $run++) {
         Start-Sleep -Milliseconds 250
     }
     if (-not $completed) {
-        $logTail = & adb @adbTargetArguments logcat -d -t 120 -s VolleyCutBenchmark VolleyCut 2>&1
+        $logTail = & adb @adbTargetArguments logcat -d -t 120 -s VolleySpliceBenchmark VolleySplice 2>&1
         throw "Benchmark timed out after $TimeoutSeconds seconds.`n$($logTail -join "`n")"
     }
 }

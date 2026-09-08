@@ -273,7 +273,7 @@ def render(report: dict[str, Any], audits: dict[str, dict[str, Any]]) -> str:
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VolleyCut corrected v3 comparison</title>
+<title>VolleySplice corrected v3 comparison</title>
 <style>
 :root{{--ink:#171813;--paper:#f3f0e7;--acid:#dfff35;--line:#aaa99f;--muted:#5f6259;--red:#b52222;--blue:#173f73}}
 *{{box-sizing:border-box}} body{{margin:0;color:var(--ink);background:var(--paper);font:15px/1.55 system-ui,sans-serif}}
@@ -294,7 +294,7 @@ th[data-tip]:hover::after,th[data-tip]:focus::after{{opacity:1;transform:transla
 .callout{{border-left:5px solid var(--red);padding:4px 18px}} details{{border:1px solid var(--line);background:#fff}} summary{{cursor:pointer;padding:16px;font-weight:700}} details .table-wrap{{border:0;border-top:1px solid var(--line)}}
 @media(max-width:900px){{.grid,.rules{{grid-template-columns:1fr 1fr}}}} @media(max-width:560px){{.grid,.rules{{grid-template-columns:1fr}}}}
 </style></head><body>
-<header class="shell"><div class="eyebrow">VolleyCut · suppression product decision · 18 August 2026</div><h1>Hold the prior decoder. Do not advance either v3 candidate.</h1>
+<header class="shell"><div class="eyebrow">VolleySplice · suppression product decision · 18 August 2026</div><h1>Hold the prior decoder. Do not advance either v3 candidate.</h1>
 <p class="lede">The current production ensemble remains the base model. Product suppression uses the corrected overlap-safe weights with the prior production decoder, while both retrained v3 candidates remain research artifacts only.</p></header>
 <nav><div class="shell"><a href="#outcome">Outcome</a><a href="#policies">Product policies</a><a href="#all">All recordings</a><a href="#development">Development</a><a href="#scopes">Scopes</a><a href="#rules">Implementation</a><a href="#models">Models</a><a href="#sensitivity">Padding</a></div></nav>
 <main class="shell">

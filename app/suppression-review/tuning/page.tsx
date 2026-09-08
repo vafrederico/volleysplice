@@ -7,7 +7,7 @@ import sweepData from "@/data/single-model-agreement-policy-sweep.json";
 import styles from "./tuning.module.css";
 
 export const metadata: Metadata = {
-  title: "Suppression agreement tuning · VolleyCut",
+  title: "Suppression agreement tuning · VolleySplice",
   description:
     "Compare how agreement padding and join thresholds change false-positive removal and rally retention.",
   robots: { index: false, follow: false },

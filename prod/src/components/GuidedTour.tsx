@@ -142,7 +142,7 @@ export function GuidedTour({
           : {
               label: stepLabel,
               title: "Choose a video first",
-              body: "After you choose a video, VolleyCut will show simple controls for marking where the game starts and ends.",
+              body: "After you choose a video, VolleySplice will show simple controls for marking where the game starts and ends.",
               action: "Next",
             };
       }
@@ -150,21 +150,21 @@ export function GuidedTour({
         return sourceReady
           ? {
               label: stepLabel,
-              title: "Let VolleyCut find the rallies",
-              body: "Select Find the rallies. Keep this page open while VolleyCut prepares the clips; you can come back when the project is ready.",
+              title: "Let VolleySplice find the rallies",
+              body: "Select Find the rallies. Keep this page open while VolleySplice prepares the clips; you can come back when the project is ready.",
               action: "Continue to editor",
             }
           : {
               label: stepLabel,
               title: "Choose a video first",
-              body: "Once a video is ready, you can ask VolleyCut to find the rallies and prepare the review.",
+              body: "Once a video is ready, you can ask VolleySplice to find the rallies and prepare the review.",
               action: "Continue",
             };
       }
       return {
         label: stepLabel,
         title: "Choose your video",
-        body: "Pick a game video from this device, or open a saved VolleyCut project. Your video stays on this device and is not uploaded.",
+        body: "Pick a game video from this device, or open a saved VolleySplice project. Your video stays on this device and is not uploaded.",
         action: sourceReady ? "Next" : "Choose a video first",
       };
     }
@@ -201,7 +201,7 @@ export function GuidedTour({
       case "editor-marking":
         return {
           label: stepLabel,
-          title: "Add anything VolleyCut missed",
+          title: "Add anything VolleySplice missed",
           body: "For a missed rally, mark its start and end. Use Leave out a section for camera gaps, breaks, or other footage that should not appear in the final video.",
           action: "Next",
         };
@@ -444,7 +444,7 @@ const RALLY_DESK_STEPS = [
     id: "project-selector",
     target: "rd-project-selector",
     title: "Choose the project you are reviewing",
-    body: "Switch between saved VolleyCut projects here. Start a new project opens the production setup so you can choose and analyze another local video.",
+    body: "Switch between saved VolleySplice projects here. Start a new project opens the production setup so you can choose and analyze another local video.",
     action: "Next",
   },
   {
@@ -485,7 +485,7 @@ const RALLY_DESK_STEPS = [
   {
     id: "range-tools",
     target: "rd-range-tools",
-    title: "Add a rally VolleyCut missed",
+    title: "Add a rally VolleySplice missed",
     body: "Move to the first frame and set the rally start. Move to its final frame and set the end. The manual rally then appears in the clip register like every detected rally.",
     action: "Next",
   },
@@ -507,7 +507,7 @@ const RALLY_DESK_STEPS = [
     id: "export",
     target: "rd-export",
     title: "Export when the review is ready",
-    body: "Export opens the output choices for the final video, YouTube chapters, and a saved VolleyCut project using the decisions shown here.",
+    body: "Export opens the output choices for the final video, YouTube chapters, and a saved VolleySplice project using the decisions shown here.",
     action: "Finish tutorial",
   },
 ] as const;

@@ -6,7 +6,7 @@ import { getBallReviewBenchmarkBundle } from "@/lib/server/ball-review-benchmark
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Ball review effort benchmark · VolleyCut",
+  title: "Ball review effort benchmark · VolleySplice",
   description: "Visual comparison of nine blinded ball-presence review runs.",
 };
 

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ModelFeedbackImporter } from "./model-feedback-importer";
 
 export const metadata: Metadata = {
-  title: "Import model feedback · VolleyCut",
+  title: "Import model feedback · VolleySplice",
   description:
     "Inspect and permanently link production web and Android model-feedback bundles.",
 };

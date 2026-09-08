@@ -42,7 +42,7 @@ export type ProjectStatus =
   | "ready"
   | "error";
 
-export type VolleyCutProject = {
+export type VolleySpliceProject = {
   schemaVersion: 1;
   id: string;
   source: ProjectSource;
@@ -178,7 +178,7 @@ export function projectId(
   )}`;
 }
 
-export function projectAnalysisId(project: VolleyCutProject): string | null {
+export function projectAnalysisId(project: VolleySpliceProject): string | null {
   return project.analysis
     ? `${project.id}-${project.analysis.modelId}-${project.analysis.featurePath}`
     : null;
@@ -452,10 +452,10 @@ function validImportedFeedback(
   value: unknown,
   projectIdValue: string,
   analysisId: string | null,
-): value is NonNullable<VolleyCutProject["importedFeedback"]> {
+): value is NonNullable<VolleySpliceProject["importedFeedback"]> {
   if (!value || typeof value !== "object" || !analysisId) return false;
   const feedback = value as Partial<
-    NonNullable<VolleyCutProject["importedFeedback"]>
+    NonNullable<VolleySpliceProject["importedFeedback"]>
   >;
   const draft = feedback.initialDraft as Partial<CutDraft> | undefined;
   return (
@@ -482,9 +482,9 @@ function validImportedFeedback(
   );
 }
 
-function validProject(value: unknown): value is VolleyCutProject {
+function validProject(value: unknown): value is VolleySpliceProject {
   if (!value || typeof value !== "object") return false;
-  const project = value as Partial<VolleyCutProject>;
+  const project = value as Partial<VolleySpliceProject>;
   const statuses: ProjectStatus[] = [
     "queued",
     "analyzing",
@@ -540,8 +540,8 @@ function validProject(value: unknown): value is VolleyCutProject {
 }
 
 export function normalizeStoredProject(
-  project: VolleyCutProject,
-): VolleyCutProject {
+  project: VolleySpliceProject,
+): VolleySpliceProject {
   const analysisWindow = normalizeAnalysisWindow(
     project.analysisWindow,
     project.info.duration,
@@ -610,7 +610,7 @@ export function normalizeStoredProject(
   return normalizedProject;
 }
 
-export async function listProjects(): Promise<VolleyCutProject[]> {
+export async function listProjects(): Promise<VolleySpliceProject[]> {
   const database = await openProjectDatabase();
   try {
     const transaction = database.transaction(PROJECT_STORE, "readonly");
@@ -628,7 +628,7 @@ export async function listProjects(): Promise<VolleyCutProject[]> {
   }
 }
 
-export async function putProject(project: VolleyCutProject): Promise<void> {
+export async function putProject(project: VolleySpliceProject): Promise<void> {
   if (!validProject(project)) throw new Error("The project record is invalid.");
   const database = await openProjectDatabase();
   try {

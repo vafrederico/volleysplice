@@ -1,6 +1,6 @@
 # Model iteration ranking metric
 
-VolleyCut ranks rally-model iterations by **Padded P/Core R F1**, written
+VolleySplice ranks rally-model iterations by **Padded P/Core R F1**, written
 `F1_padP_coreR`. This is the hybrid F1 shown in the review timeline. It rewards an
 export that covers the core rally action while measuring the footage cost against
 the equally padded human export.

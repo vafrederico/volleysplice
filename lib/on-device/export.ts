@@ -63,7 +63,7 @@ function safeBaseName(filename: string): string {
     filename
       .replace(/\.[^.]+$/, "")
       .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "volleycut"
+      .replace(/^-+|-+$/g, "") || "volleysplice"
   );
 }
 
@@ -176,7 +176,7 @@ export async function exportRawQualityReel(
   onWakeLockState?: (state: WakeLockState) => void,
   mode: VideoExportMode = "compatible",
 ): Promise<PreparedVideoExport | null> {
-  const outputName = `${safeBaseName(file.name)}-volleycut.mp4`;
+  const outputName = `${safeBaseName(file.name)}-volleysplice.mp4`;
   // Destination selection stays at the top of the user-initiated call for the desktop picker.
   const destination = await chooseExportDestination(outputName, mode);
   let media: Awaited<ReturnType<typeof openLocalMedia>>;
@@ -411,7 +411,7 @@ export function downloadEditDecisionList(
   );
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${safeBaseName(file.name)}-volleycut-edl.json`;
+  anchor.download = `${safeBaseName(file.name)}-volleysplice-edl.json`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

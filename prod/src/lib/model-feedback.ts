@@ -555,7 +555,7 @@ export function modelFeedbackFilename(sourceName: string): string {
     .replace(/\.[^.]+$/, "")
     .replace(/[^A-Za-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `${safe || "volleycut"}.model-feedback.json`;
+  return `${safe || "volleysplice"}.model-feedback.json`;
 }
 
 export function modelFeedbackBlob(bundle: ModelFeedbackBundle): Blob {

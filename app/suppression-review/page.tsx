@@ -6,7 +6,7 @@ import { SuppressionReviewClient } from "./suppression-review-client";
 import type { SuppressionReviewDataset } from "./types";
 
 export const metadata: Metadata = {
-  title: "Pointwise-overlap suppression review · VolleyCut",
+  title: "Pointwise-overlap suppression review · VolleySplice",
   description:
     "Visually inspect rallies affected by suppression of one-model-only production output.",
   robots: { index: false, follow: false },

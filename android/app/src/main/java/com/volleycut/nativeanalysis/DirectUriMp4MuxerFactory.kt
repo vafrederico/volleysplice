@@ -113,6 +113,6 @@ internal class DirectUriMp4MuxerFactory(
     }
 
     private companion object {
-        const val TAG = "VolleyCutMuxer"
+        const val TAG = "VolleySpliceMuxer"
     }
 }

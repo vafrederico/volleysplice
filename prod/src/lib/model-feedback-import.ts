@@ -21,11 +21,11 @@ import type {
   OnDeviceMediaInfo,
   OnDeviceServingSideOutput,
 } from "./on-device/types.ts";
-import { projectAnalysisId, type VolleyCutProject } from "./project-store.ts";
+import { projectAnalysisId, type VolleySpliceProject } from "./project-store.ts";
 import { migrateScoreTracking } from "./score-tracking.ts";
 
 export type ImportedModelFeedbackProject = {
-  project: VolleyCutProject;
+  project: VolleySpliceProject;
   warnings: string[];
 };
 
@@ -120,7 +120,7 @@ function servingSideOutput(
     output.features.columns !== SERVING_SIDE_FEATURE_COLUMNS
   ) {
     throw new ModelFeedbackValidationError(
-      "The serving-side feature contract is not supported by this VolleyCut version",
+      "The serving-side feature contract is not supported by this VolleySplice version",
     );
   }
   return {
@@ -301,7 +301,7 @@ function sourceIgnoredIntervals(feedback: ParsedModelFeedback) {
 
 function draftFromFeedback(
   feedback: ParsedModelFeedback,
-  project: VolleyCutProject,
+  project: VolleySpliceProject,
 ): CutDraft {
   const analysisId = projectAnalysisId(project);
   if (!analysisId || !project.analysis) {
@@ -393,7 +393,7 @@ export function importModelFeedbackProject(
       ? { fingerprint: feedback.source.file.sampledFingerprint }
       : {}),
   };
-  const projectWithoutFeedback: VolleyCutProject = {
+  const projectWithoutFeedback: VolleySpliceProject = {
     schemaVersion: 1,
     id,
     source,
@@ -407,7 +407,7 @@ export function importModelFeedbackProject(
     updatedAt: importedAt,
   };
   const initialDraft = draftFromFeedback(feedback, projectWithoutFeedback);
-  const project: VolleyCutProject = {
+  const project: VolleySpliceProject = {
     ...projectWithoutFeedback,
     importedFeedback: {
       schemaVersion: feedback.schemaVersion,

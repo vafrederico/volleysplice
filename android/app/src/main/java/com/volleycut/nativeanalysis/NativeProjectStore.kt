@@ -105,7 +105,7 @@ internal data class NativeProject(
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
     private const val VERSION = 8
-    private const val TAG = "VolleyCutProjects"
+    private const val TAG = "VolleySpliceProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
     private const val SELECTED_ID = "selectedProjectId"

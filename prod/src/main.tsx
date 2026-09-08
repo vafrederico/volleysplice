@@ -33,7 +33,7 @@ async function renderRoute() {
     window.history.replaceState(window.history.state, "", deploymentBasePath());
   }
   const { App } = await import("./App");
-  document.title = "VolleyCut";
+  document.title = "VolleySplice";
   root.render(
     <StrictMode>
       <App />
@@ -43,12 +43,12 @@ async function renderRoute() {
 
 void renderRoute().catch((cause: unknown) => {
   console.error(cause);
-  document.title = "VolleyCut route unavailable";
+  document.title = "VolleySplice route unavailable";
   root.render(
     <main style={{ padding: "3rem", fontFamily: "system-ui, sans-serif" }}>
-      <h1>This VolleyCut route could not open.</h1>
+      <h1>This VolleySplice route could not open.</h1>
       <p>Return to the main app and try again.</p>
-      <a href="./">Open VolleyCut</a>
+      <a href="./">Open VolleySplice</a>
     </main>,
   );
 });
