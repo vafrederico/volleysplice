@@ -465,7 +465,7 @@ internal object ModelFeedbackImporter {
                 it.id.isNotBlank() && it.startMs in 0 until it.endMs && it.endMs <= durationMs
             } && draft.userTouchedCutIds.all { touched -> draft.cuts.any { it.id == touched } }
         ) { "Feedback corrections are not compatible with this editor version" }
-        return draft
+        return EditorMath.alignRallyServeMarkers(draft)
     }
 
     private fun decodeServeOutput(

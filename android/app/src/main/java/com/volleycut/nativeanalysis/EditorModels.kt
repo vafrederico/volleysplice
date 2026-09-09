@@ -269,7 +269,7 @@ internal object EditorMath {
             coreStartMs = start,
             keepStartMs = (start - beforePadding).coerceAtLeast(minimumMs),
         )
-    })
+    }).let(::alignRallyServeMarkers)
 
     fun setCoreEnd(
         draft: EditorDraft,
@@ -309,7 +309,7 @@ internal object EditorMath {
                 keepStartMs = (start - beforePadding).coerceAtLeast(minimumMs),
                 keepEndMs = (end + afterPadding).coerceAtMost(maximumMs),
             )
-        })
+        }).let(::alignRallyServeMarkers)
     }
 
     fun splitCut(
@@ -605,7 +605,24 @@ internal object EditorMath {
                 cut.keepStartMs != original.keepStartMs || cut.keepEndMs != original.keepEndMs ||
                 cut.included != original.included
         }.map { it.id }.toSet()
-        return draft.copy(userTouchedCutIds = draft.userTouchedCutIds + changed)
+        return alignRallyServeMarkers(draft.copy(userTouchedCutIds = draft.userTouchedCutIds + changed))
+    }
+
+    /** Linked serves mark the corrected rally start, not its padding or model anchor.
+     * Also repairs older drafts after model markers are reseeded on load.
+     * Explicit rally IDs avoid moving independent manual serves or side switches.
+     */
+    fun alignRallyServeMarkers(draft: EditorDraft): EditorDraft {
+        val starts = draft.cuts.associate { it.id to it.coreStartMs }
+        val markers = draft.scoreTracking.serveMarkers.map { marker ->
+            val start = starts[marker.rallyId]
+            if (start == null || start == marker.timestampMs) marker
+            else marker.copy(timestampMs = start)
+        }
+        if (markers == draft.scoreTracking.serveMarkers) return draft
+        return draft.copy(scoreTracking = draft.scoreTracking.copy(
+            serveMarkers = markers.sortedWith(compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id }),
+        ))
     }
 
     fun totalFinalMs(intervals: List<FinalCutInterval>): Long =
