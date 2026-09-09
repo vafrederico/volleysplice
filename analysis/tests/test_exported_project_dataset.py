@@ -65,6 +65,28 @@ def marker(
 
 
 class ExportedProjectDatasetTests(unittest.TestCase):
+    def test_moved_serve_uses_corrected_timestamp_instead_of_original_model_anchor(self) -> None:
+        for moved_start in (12.0, 8.0):
+            with self.subTest(moved_start=moved_start):
+                value = payload(
+                    [corrected("R001", moved_start, 20.0)],
+                    [marker("serve-R001", moved_start, "R001")],
+                    cut_ids=["R001"],
+                )
+                value["inference"] = {
+                    "servingSide": {"candidates": [{"id": "R001", "anchor": 10.0}]}
+                }
+
+                result = normalize_feedback_annotations(value)
+
+                event = result["serveEvents"][0]
+                self.assertEqual(event["rawTime"], moved_start)
+                self.assertEqual(event["time"], moved_start)
+                self.assertEqual(event["alignedRangeId"], "R001")
+                self.assertEqual(event["time"], result["associationCoreRanges"][0]["start"])
+                self.assertFalse(event["wasTimeAdjusted"])
+                self.assertEqual(event["alignment"], "preserved-export-rally-id")
+
     def test_marker_from_micro_range_moves_to_unmarked_neighbor(self) -> None:
         value = payload(
             [corrected("R001", 10.0, 10.1), corrected("R002", 14.0, 20.0)],

@@ -364,7 +364,7 @@ function decodeNumericArray(
     fail(`${field}.shape`, "contains too many values");
   }
   const bytes = decodeBase64(
-    string(payload.data, `${field}.data`),
+    values === 0 && payload.data === "" ? "" : string(payload.data, `${field}.data`),
     `${field}.data`,
   );
   const elementBytes = dataType === "float32" ? 4 : 8;

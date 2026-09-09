@@ -35,6 +35,8 @@ export function scoreTrackingWithServingSideOutput(
         : candidate.side;
     scoreTracking = addServeMarker(
       scoreTracking,
+      // Restored feedback can move a serve without changing its predicted side.
+      // Keep that source timestamp when refreshing the original model evidence.
       existing?.timestamp ?? candidate.anchor,
       wasCorrected ? existing!.side : modelSide,
       {

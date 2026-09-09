@@ -24,7 +24,8 @@ import {
 import { SUPPRESSION_POLICY_CONTRACT_VERSION } from "../../prod/src/lib/on-device/suppression-policy.ts";
 import type { ProductAnalysis } from "../../prod/src/lib/product-analysis.ts";
 import { normalizeStoredProject } from "../../prod/src/lib/project-store.ts";
-import { addServeMarker } from "../../prod/src/lib/score-tracking.ts";
+import { addServeMarker, deriveScoreAt } from "../../prod/src/lib/score-tracking.ts";
+import { scoreTrackingWithServingSideOutput } from "../../prod/src/lib/score-tracking-inference.ts";
 
 const analysis: ProductAnalysis = {
   id: "analysis-original",
@@ -226,6 +227,47 @@ function feedbackText() {
   );
   return JSON.stringify(bundle);
 }
+
+test("imported moved serves survive the editor's model refresh in both directions", () => {
+  for (const movedStart of [6, 4]) {
+    const bundle = JSON.parse(feedbackText());
+    const corrected = bundle.corrections.correctedRanges[0];
+    corrected.coreStart = movedStart;
+    corrected.keepStart = movedStart - 2;
+    const savedMarker = bundle.corrections.scoreTracking.state.serveMarkers[0];
+    savedMarker.timestamp = movedStart;
+    savedMarker.ignorePreviousPoint = true;
+    const { project } = importModelFeedbackProject(JSON.stringify(bundle));
+    const draft = project.importedFeedback!.initialDraft;
+    assert.equal(draft.scoreTracking.serveMarkers[0].timestamp, movedStart);
+    const refreshed = scoreTrackingWithServingSideOutput(draft.scoreTracking, project.analysis!.servingSide!);
+    assert.equal(refreshed.serveMarkers[0].timestamp, movedStart);
+    assert.equal(refreshed.serveMarkers[0].timestamp, draft.cuts[0].coreStart);
+    assert.equal(refreshed.serveMarkers[0].ignorePreviousPoint, true);
+    assert.equal(deriveScoreAt(refreshed, movedStart - .001).servingSide, null);
+    assert.equal(deriveScoreAt(refreshed, movedStart).servingSide, "near");
+    assert.equal(project.analysis!.servingSide!.candidates[0].anchor, 5);
+  }
+});
+
+test("feedback without cached numeric features imports its corrected markers", () => {
+  const bundle = JSON.parse(feedbackText());
+  bundle.features = null;
+  bundle.initialInference.rows = 0;
+  bundle.initialInference.timestamps = { ...bundle.initialInference.timestamps, shape: [0], data: "" };
+  for (const value of Object.values(bundle.initialInference.probabilities) as { shape: number[]; data: string }[]) {
+    value.shape = [0];
+    value.data = "";
+  }
+  bundle.initialInference.suppression = null;
+  bundle.initialInference.componentServeOutputs = undefined;
+  const { project } = importModelFeedbackProject(JSON.stringify(bundle));
+  assert.equal(project.analysis!.times.length, 0);
+  assert.equal(project.importedFeedback!.initialDraft.scoreTracking.serveMarkers[0].timestamp, 5);
+  bundle.initialInference.timestamps.shape = [1];
+  bundle.initialInference.rows = 1;
+  assert.throws(() => importModelFeedbackProject(JSON.stringify(bundle)), ModelFeedbackValidationError);
+});
 
 test("model feedback imports as a distinct ready project with its editor state", () => {
   const imported = importModelFeedbackProject(feedbackText(), {
