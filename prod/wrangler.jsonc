@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "volleysplice",
+  "compatibility_date": "2026-09-08",
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "volleysplice.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "*.volleysplice.com/*",
+      "zone_name": "volleysplice.com"
+    }
+  ],
+  // Hosting only: all application logic runs in the user's browser.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

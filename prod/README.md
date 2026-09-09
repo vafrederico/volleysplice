@@ -109,6 +109,87 @@ as a repository root. In a monorepo, copy the workflow to the repository-level
 `.github/workflows/` directory and set both `npm` steps' `working-directory` to `prod`
 and the artifact path to `prod/dist`.
 
+## Cloudflare Workers Static Assets (local builds)
+
+Run these commands from `prod/` using Node.js 24. Cloudflare hosts only the
+contents of `dist/`; there is no Worker script, SSR, database, or cloud video
+processing. Git integration and Cloudflare automated builds are not required.
+
+Install dependencies and check the deployment without uploading anything:
+
+```sh
+npm ci
+npm run deploy:check
+```
+
+This builds locally, checks TypeScript and runtime integrity, enforces the Workers
+Free static asset limits (20,000 files, 25 MiB per file), and runs Wrangler's dry run.
+Wrangler is pinned in the dev dependencies and lockfile.
+The Miniflare dependency's `sharp` package is overridden to patched version 0.35.4
+for GHSA-rgj7-g3m4-5g8c; remove this override once upstream pins a patched release.
+
+For the first actual deployment, authenticate with your Cloudflare account:
+
+```sh
+npx wrangler login
+npx wrangler whoami
+npm run deploy
+```
+
+`npm run deploy` always builds and verifies locally before uploading `dist/`.
+It creates or updates the Worker named `volleysplice` in `wrangler.jsonc` and prints
+its URLs, including the production custom domain `https://volleysplice.com`.
+Choose a different `name` before deploying if that name is
+already used by another project in the target account. For multiple accounts, set
+`CLOUDFLARE_ACCOUNT_ID` in the local shell to select the intended account.
+For a headless machine, authenticate with a scoped `CLOUDFLARE_API_TOKEN` supplied
+through the shell's secret management instead of interactive login. Never put
+credentials in the configuration, documentation, or repository.
+
+For later updates, pull or check out the desired revision, run `npm ci` if dependencies
+changed, then run `npm run deploy` again. No remote build is involved. Existing tabs
+use their loaded application until refreshed; finish active video work before reloading.
+The HTML, export service worker, and runtime files revalidate in the browser, while
+Vite's fingerprinted `/assets/` files can be cached for one year. Cloudflare reads
+`public/_headers` and `public/_redirects` after Vite copies them into `dist/`.
+The redirects preserve legacy `/android/` links to the Google Play listing.
+
+`wrangler.jsonc` attaches `volleysplice.com` as the production Custom Domain and
+routes `*.volleysplice.com/*` to the same app. It also retains
+`https://volleysplice.vafrederico.workers.dev`. These URLs serve the same
+deployment; the `workers.dev` address is not a separate staging environment.
+Cloudflare manages the custom domain's DNS and HTTPS certificate. The domain must
+belong to an active Cloudflare zone in the deploying account. Keep the domain in
+the Wrangler configuration so later deployments preserve it.
+After deployment, verify video analysis, playback, MP4 export, privacy/terms pages,
+and Android redirects on `https://volleysplice.com`.
+IndexedDB projects and local edits are scoped to the browser origin; projects made
+on `workers.dev` or the earlier nginx/Traefik hostname will not automatically appear
+on `volleysplice.com`. Users can export/import model-feedback JSON to transfer their
+saved project data, then reconnect the matching local source video.
+
+Cloudflare Custom Domains do not support wildcards, so subdomains use a Worker
+route and a separate DNS record. In Cloudflare **volleysplice.com > DNS > Records**,
+add an `AAAA` record with name `*`, content `100::`, proxy status **Proxied** (orange
+cloud), and TTL **Auto**. This is an originless placeholder: the wildcard Worker
+route serves requests directly from static assets. Wrangler deploys the route but
+does not create this DNS record; its OAuth login does not grant DNS-edit access.
+The wildcard covers otherwise undefined hostnames such as `www.volleysplice.com`
+and `app.volleysplice.com`. Existing explicit DNS records take precedence and need
+to be proxied for the wildcard Worker route to handle their requests.
+The zone's free Universal SSL certificate covers the apex and first-level
+subdomains; deeper names such as `one.two.volleysplice.com` need separate TLS coverage.
+Each hostname has separate browser project storage. Prefer `https://volleysplice.com`
+for normal use. See [wildcard DNS records](https://developers.cloudflare.com/dns/manage-dns-records/reference/wildcard-dns-records/)
+and [Worker routes](https://developers.cloudflare.com/workers/configuration/routing/routes/).
+
+Use direct Static Assets serving; no `run_worker_first`, additional Workers Cache,
+R2 bucket, or paid plan is required for this configuration. Static requests and asset
+storage are free under Cloudflare's current pricing. Local builds consume no
+Cloudflare build minutes. See the official [static asset billing documentation](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/),
+[SPA configuration](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/),
+and [custom domain setup](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
+
 ## Docker
 
 ```sh
