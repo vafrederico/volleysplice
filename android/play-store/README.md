@@ -46,8 +46,8 @@ score and rally controls, Settings, Export, saved projects, and new-project setu
 
 After the production site is built and deployed, the expected URLs are:
 
-- `https://volleycut.vafrederico.com/privacy.html`
-- `https://volleycut.vafrederico.com/terms.html`
+- `https://www.volleysplice.com/privacy.html`
+- `https://www.volleysplice.com/terms.html`
 
 These are shared policies for the Android app and browser-based web app.
 

@@ -15,7 +15,7 @@ Google Play defines collection as transmitting user data off the device and excl
 - Account creation: **No accounts**
 - Account deletion URL: **Not applicable**
 - Data deletion: Users can delete individual projects and feature caches in the app, clear app storage in Android settings, or uninstall the app. The developer has no server-side copy to delete.
-- Privacy policy URL: `https://volleycut.vafrederico.com/privacy.html`
+- Privacy policy URL: `https://www.volleysplice.com/privacy.html`
 
 User-initiated exports to a destination chosen through Android's system file picker are not developer collection. If model-feedback files are later uploaded automatically or a cloud feature is added, this answer must change.
 

@@ -33,7 +33,7 @@ Lint still reports non-blocking warnings (mostly localization/`UseKtx` suggestio
 
 ### Privacy, backup, and attribution
 
-- The app footer now links to `https://volleycut.vafrederico.com/privacy.html`.
+- The app footer now links to `https://www.volleysplice.com/privacy.html`.
 - The footer's **Open source** action presents the required dependency/license attribution and links to the Apache 2.0 license.
 - `android:allowBackup="false"` is set, and `data_extraction_rules.xml` excludes the app root from both cloud backup and device transfer.
 - The privacy and terms pages cover both the Android app and production web app and use `volleycut@vafrederico.com`.

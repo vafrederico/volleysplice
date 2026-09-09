@@ -46,7 +46,10 @@ The following uses of the former name are intentional:
 - Frozen model artifacts, datasets, research reports, external memory-note titles,
   and genuine screenshots of earlier releases. These record the original state.
 
-Do not publish a new `.com` URL or email until it is provisioned. A future web-origin
+Privacy-policy and terms links use `https://www.volleysplice.com/privacy.html`
+and `https://www.volleysplice.com/terms.html`, as requested for the new domain.
+This link update does not provision DNS, hosting, or a new support mailbox.
+A future web-origin
 move also needs a project transfer plan: unchanged IndexedDB keys do not make
 browser storage accessible across origins. Users can export project JSON and
 reconnect source media on the new origin.

@@ -1268,8 +1268,8 @@ function Brand({ compact = false, logo = false }: { compact?: boolean; logo?: bo
 function UtilityLinks({ state, quiet = false }: { state: Prototype; quiet?: boolean }) {
   return (
     <nav className={`td-utility ${quiet ? "is-quiet" : ""}`} aria-label="Product links and downloads">
-      <a href="/privacy.html">Privacy</a>
-      <a href="/terms.html">Terms</a>
+      <a href="https://www.volleysplice.com/privacy.html">Privacy</a>
+      <a href="https://www.volleysplice.com/terms.html">Terms</a>
       <a href={GOOGLE_PLAY_URL}>Get it on Google Play</a>
       <button type="button" onClick={() => state.setDark(!state.dark)} aria-pressed={state.dark}>
         {state.dark ? "Light theme" : "Dark theme"}
@@ -2110,7 +2110,7 @@ function HelpDrawer({ state }: { state: Prototype }) {
         <button type="button" onClick={() => { state.setStage("source"); state.setHelpOpen(false); }}><strong>Set up a new game</strong><span>Choose the game window and camera options.</span></button>
         <button type="button" onClick={() => { state.setStage("review"); state.setHelpOpen(false); }}><strong>Correct a suggested clip</strong><span>Adjust either edge, leave it out, or add a missed rally.</span></button>
         <button type="button" onClick={() => { state.setStage("deliver"); state.setHelpOpen(false); }}><strong>Choose an export</strong><span>Prepare a video, create chapters, or save the current project.</span></button>
-        <div className="td-help-links"><a href="/privacy.html">Read privacy policy</a><a href="/terms.html">Read terms</a><a href={GOOGLE_PLAY_URL}>Get it on Google Play</a></div>
+        <div className="td-help-links"><a href="https://www.volleysplice.com/privacy.html">Read privacy policy</a><a href="https://www.volleysplice.com/terms.html">Read terms</a><a href={GOOGLE_PLAY_URL}>Get it on Google Play</a></div>
       </aside>
     </div>
   );
@@ -2650,7 +2650,7 @@ function FilmRoom({ review }: { review: ReadyDesignReview }) {
   const [tray, setTray] = useState<"clip" | "score">("clip");
   return (
     <main className="taste-root taste-film-room" data-theme={state.dark ? "dark" : "light"}>
-      <header className="fr-header"><Brand /><StageButtons state={state} /><div className="fr-actions"><ProjectChip state={state} /><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href={GOOGLE_PLAY_URL}>Google Play</a><button type="button" onClick={() => state.setDark(!state.dark)}>{state.dark ? "Light theme" : "Dark theme"}</button></div></header>
+      <header className="fr-header"><Brand /><StageButtons state={state} /><div className="fr-actions"><ProjectChip state={state} /><a href="https://www.volleysplice.com/privacy.html">Privacy</a><a href="https://www.volleysplice.com/terms.html">Terms</a><a href={GOOGLE_PLAY_URL}>Google Play</a><button type="button" onClick={() => state.setDark(!state.dark)}>{state.dark ? "Light theme" : "Dark theme"}</button></div></header>
       {state.stage === "review" ? (
         <div className="fr-room">
           <section className="fr-screen">

@@ -2622,7 +2622,7 @@ private fun ProjectShell(
     }
 }
 
-private const val PRIVACY_POLICY_URL = "https://volleycut.vafrederico.com/privacy.html"
+private const val PRIVACY_POLICY_URL = "https://www.volleysplice.com/privacy.html"
 private const val APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0"
 
 @Composable

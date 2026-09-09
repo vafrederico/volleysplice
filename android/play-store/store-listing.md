@@ -82,8 +82,8 @@ VolleySplice is designed for 64-bit Android phones running Android 14 or later.
 ## Contact fields
 
 - Support email: `volleycut@vafrederico.com`
-- Privacy policy: `https://volleycut.vafrederico.com/privacy.html`
-- Terms: `https://volleycut.vafrederico.com/terms.html`
+- Privacy policy: `https://www.volleysplice.com/privacy.html`
+- Terms: `https://www.volleysplice.com/terms.html`
 - Website: `https://volleycut.vafrederico.com`
 
 The same privacy policy and terms cover both the Android app and browser-based web app.
