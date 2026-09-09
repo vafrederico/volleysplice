@@ -41,7 +41,8 @@ import { runtimeAssetUrl } from "@/lib/runtime-assets";
 import { scrollElementIntoContainer } from "@/lib/scroll-container";
 import type { ReadyDesignReview } from "../useDesignReview";
 
-import { ResizableWorkspace } from "./ResizableWorkspace";
+import { ResizableWorkspace, useWorkspaceLayout } from "./ResizableWorkspace";
+import { AppMenu } from "./AppMenu";
 
 import "./taste-designs.css";
 
@@ -1566,10 +1567,12 @@ function VideoStage({
   state,
   minimal = false,
   desk = false,
+  resizeControl,
 }: {
   state: Prototype;
   minimal?: boolean;
   desk?: boolean;
+  resizeControl?: ReactNode;
 }) {
   const videoRef = state.videoElementRef;
 
@@ -1649,43 +1652,50 @@ function VideoStage({
         )}
         <output>{formatTime(state.playhead)}</output>
       </div>
-      <div className="td-transport">
-        <button type="button" onClick={() => state.setPlayhead(Math.max(state.gameStart, state.playhead - 1))}>Back 1s</button>
-        <button className="td-play" type="button" onClick={() => state.setPlaying(!state.playing)} aria-pressed={state.playing}>{state.playing ? "Pause" : "Play"}</button>
-        <button type="button" onClick={() => state.setPlayhead(Math.min(state.gameEnd, state.playhead + 1))}>Ahead 1s</button>
-        <label className="td-playhead-control">
-          <span>Playhead</span>
-          <input type="range" min={state.gameStart} max={state.gameEnd} step="any" value={state.playhead} onChange={(event) => state.setPlayhead(Number(event.currentTarget.value))} />
-        </label>
-        {desk && (
-          <>
-            <label className="td-speed-control">
-              <span>Speed</span>
-              <select
-                aria-label="Playback speed"
-                value={state.playbackRate}
-                onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value) as (typeof PLAYBACK_RATES)[number])}
-              >
-                {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
-              </select>
+      <div className={desk ? "rd-player-controls" : undefined}>
+        <div className="td-transport">
+          <div className="td-playback-buttons">
+            <button type="button" onClick={() => state.setPlayhead(Math.max(state.gameStart, state.playhead - 1))}>Back 1s</button>
+            <button className="td-play" type="button" onClick={() => state.setPlaying(!state.playing)} aria-pressed={state.playing}>{state.playing ? "Pause" : "Play"}</button>
+            <button type="button" onClick={() => state.setPlayhead(Math.min(state.gameEnd, state.playhead + 1))}>Ahead 1s</button>
+            <label className="td-playhead-control">
+              <span>Playhead</span>
+              <input type="range" min={state.gameStart} max={state.gameEnd} step="any" value={state.playhead} onChange={(event) => state.setPlayhead(Number(event.currentTarget.value))} />
             </label>
-            <div className="td-transport-toggles">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={state.scoreEnabled && state.scoreOverlay}
-                  disabled={!state.scoreEnabled}
-                  onChange={(event) => state.setScoreOverlay(event.currentTarget.checked)}
-                />
-                <span>Add score to video</span>
-              </label>
-              <label>
-                <input type="checkbox" checked={state.finalPreview} onChange={(event) => state.setFinalPreview(event.currentTarget.checked)} />
-                <span>Play final cut</span>
-              </label>
-            </div>
-          </>
-        )}
+          </div>
+          <div className="td-playback-settings">
+            {desk && (
+              <>
+                <label className="td-speed-control">
+                  <span>Speed</span>
+                  <select
+                    aria-label="Playback speed"
+                    value={state.playbackRate}
+                    onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value) as (typeof PLAYBACK_RATES)[number])}
+                  >
+                    {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+                  </select>
+                </label>
+                <div className="td-transport-toggles">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={state.scoreEnabled && state.scoreOverlay}
+                      disabled={!state.scoreEnabled}
+                      onChange={(event) => state.setScoreOverlay(event.currentTarget.checked)}
+                    />
+                    <span>Add score to video</span>
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={state.finalPreview} onChange={(event) => state.setFinalPreview(event.currentTarget.checked)} />
+                    <span>Play final cut</span>
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        {resizeControl}
       </div>
       {!desk && (
         <label className="td-final-preview">
@@ -2550,6 +2560,7 @@ export function RallyDesk({
 }) {
   const state = usePrototype(review, "review", false, true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const layoutPreferences = useWorkspaceLayout();
   return (
     <main className="taste-root taste-rally-desk" data-theme={state.dark ? "dark" : "light"}>
       <header className="rd-topbar" data-review={state.stage === "review" || undefined}>
@@ -2557,10 +2568,11 @@ export function RallyDesk({
         {state.stage === "review" && <RallyDeskProjectSelector state={state} className="rd-topbar-project" onDeleteProject={onDeleteProject} />}
         <StageButtons state={state} editorOnly />
         {state.stage === "review" && <ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} />}
-        <UtilityLinks state={state} quiet />
+        <AppMenu dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
       </header>
       {state.stage === "review" ? (
         <ResizableWorkspace
+          {...layoutPreferences}
           ledger={<><RallyDeskEventRail state={state} /><RallyDeskClipRegister state={state} /></>}
           inspector={<><ClipInspector state={state} condensed current /><RallyDeskRangeTools state={state} /></>}
           mobileRegister={<RallyDeskClipRegister state={state} />}
@@ -2569,7 +2581,7 @@ export function RallyDesk({
             <header className="rd-review-head"><div><p className="td-kicker">Current review workspace</p><RallyDeskProjectSelector state={state} className="rd-review-project" onDeleteProject={onDeleteProject} /></div><ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} /></header>
             <ReconnectNotice state={state} />
             <div className="rd-mobile-events"><RallyDeskEventRail state={state} /></div>
-            <div className="rd-media-stack"><VideoStage state={state} desk />{videoResize}<RallyDeskTimeline state={state} /></div>
+            <div className="rd-media-stack"><VideoStage state={state} desk resizeControl={videoResize} /><RallyDeskTimeline state={state} /></div>
           </>}
         </ResizableWorkspace>
       ) : (

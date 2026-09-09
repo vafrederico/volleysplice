@@ -56,3 +56,19 @@ export function clampLayout(
     videoMax,
   };
 }
+
+// Reserve the measured controls/timeline height plus breathing room below the legend.
+export function fittedVideoHeight(
+  width: number,
+  viewportHeight: number,
+  overhead: number,
+) {
+  return Math.max(
+    180,
+    Math.min(
+      (width * 9) / 16,
+      viewportHeight * 0.7,
+      viewportHeight - overhead - 16,
+    ),
+  );
+}

@@ -33,3 +33,12 @@ test("two-column and mobile layouts ignore hidden sidebar space", () => {
   assert.equal(clampLayout({}, 800, 900).video, ((800 - 36) * 9) / 16);
   assert.equal(clampLayout({}, 390, 844).video, ((390 - 28) * 9) / 16);
 });
+
+test("desktop auto-fit reserves measured timeline space and retains a usable minimum", async () => {
+  const { fittedVideoHeight } = await import(
+    "../../prod/src/designs/taste/workspace-layout.ts"
+  );
+  assert.equal(fittedVideoHeight(900, 764, 400), 348);
+  assert.equal(fittedVideoHeight(640, 1000, 300), 360);
+  assert.equal(fittedVideoHeight(900, 400, 350), 180);
+});

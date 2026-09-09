@@ -1,13 +1,17 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
+  type Dispatch,
+  type SetStateAction,
   type ReactNode,
 } from "react";
 import {
   clampLayout,
   readLayout,
+  fittedVideoHeight,
   type WorkspaceLayout,
 } from "./workspace-layout";
 
@@ -102,18 +106,7 @@ function ResizeHandle({
   );
 }
 
-export function ResizableWorkspace({
-  ledger,
-  children,
-  inspector,
-  mobileRegister,
-}: {
-  ledger: ReactNode;
-  children: (videoResize: ReactNode) => ReactNode;
-  inspector: ReactNode;
-  mobileRegister: ReactNode;
-}) {
-  const shell = useRef<HTMLDivElement>(null);
+export function useWorkspaceLayout() {
   const [saved, setSaved] = useState<WorkspaceLayout>(() => {
     try {
       return readLayout(localStorage.getItem(STORAGE_KEY));
@@ -121,6 +114,32 @@ export function ResizableWorkspace({
       return {};
     }
   });
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    } catch {
+      /* Resizing still works when storage is unavailable. */
+    }
+  }, [saved]);
+  return { savedLayout: saved, onLayoutChange: setSaved };
+}
+
+export function ResizableWorkspace({
+  ledger,
+  children,
+  inspector,
+  mobileRegister,
+  savedLayout: saved,
+  onLayoutChange: setSaved,
+}: {
+  ledger: ReactNode;
+  children: (videoResize: ReactNode) => ReactNode;
+  inspector: ReactNode;
+  mobileRegister: ReactNode;
+  savedLayout: WorkspaceLayout;
+  onLayoutChange: Dispatch<SetStateAction<WorkspaceLayout>>;
+}) {
+  const shell = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   useEffect(() => {
     const update = () =>
@@ -137,13 +156,54 @@ export function ResizableWorkspace({
       window.removeEventListener("resize", update);
     };
   }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-    } catch {
-      /* Resizing still works when storage is unavailable. */
+  const [autoHeight, setAutoHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const root = shell.current;
+    const video = root?.querySelector<HTMLElement>(".td-video-picture");
+    const legend = root?.querySelector<HTMLElement>(".rd-timeline-key");
+    if (!root || !video || !legend) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      if (window.innerWidth <= 960 || saved.video !== undefined) {
+        setAutoHeight(null);
+        return;
+      }
+      const picture = video.getBoundingClientRect();
+      // Document coordinates keep fitting independent of the user's scroll position.
+      const overhead =
+        legend.getBoundingClientRect().bottom + window.scrollY - picture.height;
+      const next = fittedVideoHeight(
+        picture.width,
+        window.innerHeight,
+        overhead,
+      );
+      setAutoHeight((current) =>
+        current !== null && Math.abs(current - next) < 0.5 ? current : next,
+      );
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    const observer = new ResizeObserver(schedule);
+    for (const element of [
+      root,
+      video,
+      legend,
+      root.querySelector(".rd-main"),
+      root.querySelector(".td-transport"),
+      root.parentElement?.querySelector(".rd-topbar"),
+    ]) {
+      if (element) observer.observe(element);
     }
-  }, [saved]);
+    window.addEventListener("resize", schedule);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [saved.video]);
   const layout = clampLayout(saved, viewport.width, viewport.height);
   const change = (key: keyof WorkspaceLayout, value: number) =>
     setSaved((current) => ({ ...current, [key]: value }));
@@ -153,6 +213,8 @@ export function ResizableWorkspace({
       delete next[key];
       return next;
     });
+  const videoHeight =
+    saved.video !== undefined ? layout.video : (autoHeight ?? layout.video);
   const style = {
     ...(viewport.width > 0
       ? {
@@ -160,8 +222,8 @@ export function ResizableWorkspace({
           "--rd-right-width": `${layout.right}px`,
         }
       : {}),
-    ...(saved.video !== undefined
-      ? { "--rd-video-height": `${layout.video}px` }
+    ...(saved.video !== undefined || autoHeight !== null
+      ? { "--rd-video-height": `${videoHeight}px` }
       : {}),
   } as CSSProperties;
   return (
@@ -184,20 +246,16 @@ export function ResizableWorkspace({
       </aside>
       <div className="rd-main">
         {children(
-          <div className="rd-video-resize-row">
-            <ResizeHandle
-              axis="vertical"
-              label="Resize video player"
-              value={layout.video}
-              min={180}
-              max={layout.videoMax}
-              onChange={(value) => change("video", value)}
-              onReset={() => reset("video")}
-            />
-            <button type="button" onClick={() => setSaved({})}>
-              Reset layout
-            </button>
-          </div>,
+          <ResizeHandle
+            className="rd-video-resize"
+            axis="vertical"
+            label="Resize video player"
+            value={videoHeight}
+            min={180}
+            max={layout.videoMax}
+            onChange={(value) => change("video", value)}
+            onReset={() => reset("video")}
+          />,
         )}
       </div>
       <aside className="rd-inspector-stack">
