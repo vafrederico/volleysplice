@@ -7,6 +7,10 @@
     {
       "pattern": "volleysplice.com",
       "custom_domain": true
+    },
+    {
+      "pattern": "*.volleysplice.com/*",
+      "zone_name": "volleysplice.com"
     }
   ],
   // Hosting only: all application logic runs in the user's browser.

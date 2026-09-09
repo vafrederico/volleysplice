@@ -155,7 +155,8 @@ Vite's fingerprinted `/assets/` files can be cached for one year. Cloudflare rea
 The redirects preserve legacy `/android/` links to the Google Play listing.
 
 `wrangler.jsonc` attaches `volleysplice.com` as the production Custom Domain and
-also retains `https://volleysplice.vafrederico.workers.dev`. Both URLs serve the same
+routes `*.volleysplice.com/*` to the same app. It also retains
+`https://volleysplice.vafrederico.workers.dev`. These URLs serve the same
 deployment; the `workers.dev` address is not a separate staging environment.
 Cloudflare manages the custom domain's DNS and HTTPS certificate. The domain must
 belong to an active Cloudflare zone in the deploying account. Keep the domain in
@@ -166,6 +167,21 @@ IndexedDB projects and local edits are scoped to the browser origin; projects ma
 on `workers.dev` or the earlier nginx/Traefik hostname will not automatically appear
 on `volleysplice.com`. Users can export/import model-feedback JSON to transfer their
 saved project data, then reconnect the matching local source video.
+
+Cloudflare Custom Domains do not support wildcards, so subdomains use a Worker
+route and a separate DNS record. In Cloudflare **volleysplice.com > DNS > Records**,
+add an `AAAA` record with name `*`, content `100::`, proxy status **Proxied** (orange
+cloud), and TTL **Auto**. This is an originless placeholder: the wildcard Worker
+route serves requests directly from static assets. Wrangler deploys the route but
+does not create this DNS record; its OAuth login does not grant DNS-edit access.
+The wildcard covers otherwise undefined hostnames such as `www.volleysplice.com`
+and `app.volleysplice.com`. Existing explicit DNS records take precedence and need
+to be proxied for the wildcard Worker route to handle their requests.
+The zone's free Universal SSL certificate covers the apex and first-level
+subdomains; deeper names such as `one.two.volleysplice.com` need separate TLS coverage.
+Each hostname has separate browser project storage. Prefer `https://volleysplice.com`
+for normal use. See [wildcard DNS records](https://developers.cloudflare.com/dns/manage-dns-records/reference/wildcard-dns-records/)
+and [Worker routes](https://developers.cloudflare.com/workers/configuration/routing/routes/).
 
 Use direct Static Assets serving; no `run_worker_first`, additional Workers Cache,
 R2 bucket, or paid plan is required for this configuration. Static requests and asset
