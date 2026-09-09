@@ -19,7 +19,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -1273,12 +1272,7 @@ private fun ProjectHeaderBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(if (condensed) 5.dp else 8.dp),
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.volleysplice_logo),
-                        contentDescription = "VolleySplice",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.width(if (condensed) 64.dp else 92.dp).height(26.dp),
-                    )
+                    VolleySpliceBrand(compact = condensed)
                     Box(Modifier.width(if (condensed) 160.dp else 250.dp)) {
                         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                             Text(
@@ -1406,24 +1400,20 @@ private fun ProjectHeaderBar(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.volleysplice_logo),
-                    contentDescription = "VolleySplice",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.width(112.dp).height(36.dp),
-                )
+                VolleySpliceBrand()
                 Spacer(Modifier.width(8.dp))
-                Surface(color = SoftPanel, shape = RoundedCornerShape(4.dp)) {
-                    Text(
-                        "VIDEO EDITOR · v$versionName",
-                        Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                        color = Muted,
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = .7.sp,
-                    )
+                Box(Modifier.weight(1f)) {
+                    Surface(color = SoftPanel, shape = RoundedCornerShape(4.dp)) {
+                        Text(
+                            "VIDEO EDITOR · v$versionName",
+                            Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                            color = Muted,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = .7.sp,
+                        )
+                    }
                 }
-                Spacer(Modifier.weight(1f))
                 IconButton(
                     onClick = onOpenSettings,
                     modifier = Modifier

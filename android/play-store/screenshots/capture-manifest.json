@@ -1,0 +1,237 @@
+{
+  "capturedAt": "2026-09-08",
+  "product": "VolleySplice",
+  "versionName": "0.10.12",
+  "versionCode": 26,
+  "package": "com.volleycut.nativeanalysis.screenshot",
+  "variant": "screenshot",
+  "apkSha256": "a2db5049a32646990685eefd126aed456963b6010444c4c127493f6e72fcf0f4",
+  "device": "Pixel_10_Pro_API_37 emulator",
+  "api": 37,
+  "phoneDensityDpi": 400,
+  "tabletDensityDpi": 240,
+  "source": "Existing 1080p60.model-feedback.json analysis reconnected to the matching 371854171-byte MPEG-4 source, duration 1105.833 seconds.",
+  "videoLayer": "Hidden by BLACK_VIDEO_PREVIEW; real app score and timeline UI retained.",
+  "composition": "Phone system bars cropped, complete app viewport fitted into existing branded frame. Tablet images are direct full-display captures. No UI text or state retouched.",
+  "historicalDoNotUpload": [
+    "phone-upload-final"
+  ],
+  "files": [
+    {
+      "path": "phone-release-sources-v2/01-choose-game-window.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "e93ecc5221d3e4882cc397c525c37f00c58400dba999935d8078221c3242526d"
+    },
+    {
+      "path": "phone-release-sources-v2/02-fine-tune-settings.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "19d1a826d529454a63c0d834ce03b8b4f7a861b561b2986bdb382feb978b66cb"
+    },
+    {
+      "path": "phone-release-sources-v2/03-save-final-video.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "85251f1886a4433bb0af46314cd9db0be7d70bef6b0f1a63855718e8f32405b4"
+    },
+    {
+      "path": "phone-release-sources-v2/04-check-score-markers.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "5f4669707da7d2c27008091294063f54d3f913c718281642e61b76a1db0199a9"
+    },
+    {
+      "path": "phone-release-sources-v2/05-review-attention-queues.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "826c9d59ce148065aa2de8e0dd2d6c9681abf688542c8668ba673c8c543e432d"
+    },
+    {
+      "path": "phone-release-sources-v2/06-review-game-timeline.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "daf6fb941e9103bb1bed49fcc14629922964450de1e174de657a1da927c079b1"
+    },
+    {
+      "path": "phone-release-sources-v2/07-fix-selected-rally.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "07acd116172c79e403c4306622337a0fcc0ab5f4de5b6237c9992f4ab0de140b"
+    },
+    {
+      "path": "phone-release-sources-v2/08-add-missed-rally.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "de0220c54497a9d7da3659664b4a2ebe1fce68ee2962b2fd176b77a5c3db4825"
+    },
+    {
+      "path": "phone-upload-featured/01-choose-game-window.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "4acfa68c42dc9663526d558260dda57a05cc7e9ae6865347cfdfe76eccdb2fbf"
+    },
+    {
+      "path": "phone-upload-featured/02-fine-tune-when-needed.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "21b22f9154e710c6869659fc2bdd028235e562251f105f91559cc2fdf3e193c9"
+    },
+    {
+      "path": "phone-upload-featured/03-save-finished-video.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "1bb41daff552476625ee7f5f82b04e875f05963de3608af7c93ab99770ee8efc"
+    },
+    {
+      "path": "phone-upload-featured/04-check-score-markers.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "349821684911d82fd7569e2e54b0d6e2c062d98635618b696fe2099b451f6e6c"
+    },
+    {
+      "path": "phone-upload-featured/05-start-with-attention.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "43648d03da588620ceff96d986e35043232f7cee20f400df6abbf02ab479b61c"
+    },
+    {
+      "path": "phone-upload-featured/06-review-suggested-clips.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "8cfe86f7010755321ffaf53b5266bfe4f54f4611e8234587ed184e1218546f8a"
+    },
+    {
+      "path": "phone-upload-featured/07-fix-one-clip.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "6c9b3f284db2b287613621f1b46a9b50f9f8a13c2b248d87421f2c608f017613"
+    },
+    {
+      "path": "phone-upload-featured/08-add-missed-rally.png",
+      "dimensions": [
+        1080,
+        2160
+      ],
+      "mode": "RGB",
+      "sha256": "c10d04f178910350c0700025fa55fdcbf99085bee8c807f6c6cda26d9d907894"
+    },
+    {
+      "path": "tablet-release-sources-v1/01-new-project-setup.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "a4accdb88e043924f32c928ae8b36f2167dcf4bacc66352c0e427ba39081fa8b"
+    },
+    {
+      "path": "tablet-release-sources-v1/02-desktop-review-workspace.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "2b049aaf6955ad5da40e54c504798ef4a069178aba5c0d97018c7e9fdfea2f2a"
+    },
+    {
+      "path": "tablet-release-sources-v1/03-editor-settings.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "746b47f8c671fdba520c5e36a2aed543bb6d3e07eff458e5ad367aba284692a4"
+    },
+    {
+      "path": "tablet-release-sources-v1/04-export-options.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "f5806382efa0bedb3dd7a537e5eec93482f0ec0e669d1fa68089ef1825620c4f"
+    },
+    {
+      "path": "tablet-release-sources-v1/05-project-library.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "e636bf2ebfbc1d78e6cd541c490af070744dc4aa2fcb1b00562927c545e8bcd7"
+    },
+    {
+      "path": "tablet-release-sources-v1/06-score-and-rally-review.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "6447a4c1c9ad02520743ba0750fb3676b79544f8a4f780cc2ae0c198bdf44936"
+    },
+    {
+      "path": "tablet-release-sources-v1/07-review-attention-queue.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "28abd62100aa4057ef832f2b633dc285e95dc9aea171889b519ad43b2953e935"
+    },
+    {
+      "path": "tablet-release-sources-v1/08-game-timeline-tour.png",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "mode": "RGB",
+      "sha256": "fe3c72c77ec12737ffc9655b5fb4f676c32999930627002318aff702abf89d98"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,9 +24,8 @@ SCREENS = [
         "source": "01-choose-game-window.png",
         "output": "01-choose-game-window.png",
         "step": "1 · SET UP",
-        "headline": ("Choose the part", "with the game"),
-        "support": "Use the full video, or mark exactly where the game starts and ends.",
-        "crop_y": 80,
+        "headline": ("Bump. Set.", "Splice."),
+        "support": "Choose your game video. Find the rallies. Keep the moments that matter.",
     },
     {
         "source": "02-fine-tune-settings.png",
@@ -34,7 +33,6 @@ SCREENS = [
         "step": "2 · SETTINGS",
         "headline": ("Fine-tune only", "when you need to"),
         "support": "Automatic cleanup, clip padding, short breaks, and review sensitivity live in Settings.",
-        "crop_y": 300,
     },
     {
         "source": "03-save-final-video.png",
@@ -42,7 +40,6 @@ SCREENS = [
         "step": "3 · EXPORT",
         "headline": ("Save the", "finished video"),
         "support": "Save the final video when the review looks right—or create YouTube chapters.",
-        "crop_y": 800,
     },
     {
         "source": "04-check-score-markers.png",
@@ -50,7 +47,6 @@ SCREENS = [
         "step": "4 · SCORE",
         "headline": ("Check the", "score markers"),
         "support": "Correct which side serves, add missed serves, and record team side switches.",
-        "crop_y": 550,
     },
     {
         "source": "05-review-attention-queues.png",
@@ -58,7 +54,6 @@ SCREENS = [
         "step": "5 · REVIEW",
         "headline": ("Start with what", "needs attention"),
         "support": "Review automatic cleanup, clips, and serves; ignored footage stays out of the queues.",
-        "crop_y": 300,
     },
     {
         "source": "06-review-game-timeline.png",
@@ -66,7 +61,6 @@ SCREENS = [
         "step": "6 · TIMELINE",
         "headline": ("Review the", "suggested clips"),
         "support": "Each timeline block is a clip planned for the final video—select one to check it.",
-        "crop_y": 450,
     },
     {
         "source": "07-fix-selected-rally.png",
@@ -74,7 +68,6 @@ SCREENS = [
         "step": "7 · EDIT",
         "headline": ("Fix one", "clip"),
         "support": "Keep or remove a rally, then adjust padding, rally length, or split at the playhead.",
-        "crop_y": 350,
     },
     {
         "source": "08-add-missed-rally.png",
@@ -82,7 +75,6 @@ SCREENS = [
         "step": "8 · ADD",
         "headline": ("Add anything", "VolleySplice missed"),
         "support": "Mark a missed rally, or leave out camera gaps, breaks, and other unusable footage.",
-        "crop_y": 350,
     },
 ]
 
@@ -108,11 +100,15 @@ def fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, start_size: i
     return ImageFont.truetype(str(REGULAR_FONT), size)
 
 
-def rounded_source(source: Image.Image, crop_y: int, size: tuple[int, int]) -> Image.Image:
-    crop_height = round(source.width * size[1] / size[0])
-    crop_y = min(max(0, crop_y), max(0, source.height - crop_height))
-    crop = source.crop((0, crop_y, source.width, crop_y + crop_height))
-    crop = crop.resize(size, Image.Resampling.LANCZOS).convert("RGBA")
+def rounded_source(source: Image.Image, size: tuple[int, int]) -> Image.Image:
+    # September rebrand captures are 1080x2160 at 400 dpi. Remove only the
+    # system bars and fit the whole app viewport so controls are never cropped.
+    # Keep original captures intact; no UI text or pixels are retouched.
+    assert source.size == (1080, 2160), source.size
+    viewport = source.crop((0, 130, source.width, 2100))
+    fitted = ImageOps.contain(viewport, size, Image.Resampling.LANCZOS)
+    crop = Image.new("RGBA", size, "#f8f7ee")
+    crop.paste(fitted, ((size[0] - fitted.width) // 2, (size[1] - fitted.height) // 2))
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, size[0] - 1, size[1] - 1), radius=34, fill=255)
     crop.putalpha(mask)
@@ -143,7 +139,7 @@ def compose(item: dict[str, object], index: int) -> Image.Image:
     background.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(20)))
 
     source = Image.open(SOURCE_DIR / str(item["source"])).convert("RGB")
-    screenshot = rounded_source(source, int(item["crop_y"]), card_size)
+    screenshot = rounded_source(source, card_size)
     background.alpha_composite(screenshot, (card_x, card_y))
 
     # Create the drawing context only after all alpha composites. Keeping an

@@ -9,26 +9,27 @@ The feature graphic now uses **VolleySplice** and **Bump. Set. Splice.** See
 [`../../docs/brand.md`](../../docs/brand.md) for the selected artwork and exact
 built-in image generation prompts. The icon contains no wordmark and is retained.
 
-## Historical screenshot sets — refresh before the rebrand release
+## Current screenshots — refreshed 2026-09-08
 
-These are genuine captures of earlier VolleyCut releases. They retain the old
-in-app name and must be recaptured from the rebranded screenshot build before a new
-Play submission. The composition script is updated to use the new logo and name.
+The current phone and tablet sets are genuine captures of VolleySplice 0.10.12
+from the minified, non-debuggable `screenshot` build on the Pixel 10 Pro Android
+17 emulator. The isolated package is `com.volleycut.nativeanalysis.screenshot`.
+No production install, release signing, or Play Console upload is involved.
 
 - `screenshots/phone-upload-featured/` — eight ordered 1080×2160 RGB PNGs with tutorial-led Play Store copy
-- `screenshots/phone-release-sources-v2/` — eight native-resolution source captures from the release-equivalent screenshot build
-- `screenshots/phone-upload-final/` — eight legacy 1280×2560 source/reference captures
+- `screenshots/phone-release-sources-v2/` — eight unretouched 1080×2160 source captures at 400 dpi
+- `screenshots/phone-upload-final/` — historical captures of the old brand; do not upload
 - `screenshots/tablet-release-sources-v1/` — eight ordered, Play-ready 2560×1600 landscape PNGs showing the desktop-mode tablet layout
 
 The featured upload set turns real app captures into the same ordered story as the
-in-app tutorial: choose the game window, fine-tune optional settings, understand the
+in-app tutorial: choose a game video, fine-tune optional settings, understand the
 final-video card, check score markers, start with review queues, inspect the whole-game
-timeline, fix one clip, and add anything VolleyCut missed. Large branded headers make
+timeline, fix one clip, and add anything VolleySplice missed. Large branded headers make
 each section readable in the Play Store thumbnail while the underlying product UI
 demonstrates the exact feature.
 
-The tablet set was captured directly from the Pixel 9 Pro XL's 2560×1600 overlay
-display using the release-equivalent `screenshot` build. It demonstrates the
+The tablet set was captured with the emulator display set to 2560×1600 at 240 dpi
+using the release-equivalent `screenshot` build. It demonstrates the
 large-screen three-column review workspace, resizable player, two-row game timeline,
 score and rally controls, Settings, Export, saved projects, and new-project setup.
 
@@ -50,7 +51,7 @@ After the production site is built and deployed, the expected URLs are:
 
 These are shared policies for the Android app and browser-based web app.
 
-The Android app still needs an in-app privacy link or privacy text before submission.
+The Android app includes Privacy and Open source links.
 
 ## Original artwork provenance (before the rebrand)
 
@@ -69,14 +70,14 @@ and unmodified app captures were then composed deterministically by
 `scripts/compose_featured_screenshots.py`. The exact headline/supporting-copy pairs
 follow the tutorial sections and are:
 
-1. `Choose the part with the game` / `Use the full video, or mark exactly where the game starts and ends.`
+1. `Bump. Set. Splice.` / `Choose your game video. Find the rallies. Keep the moments that matter.`
 2. `Fine-tune only when you need to` / `Automatic cleanup, clip padding, short breaks, and review sensitivity live in Settings.`
 3. `Save the finished video` / `Save the final video when the review looks right—or create YouTube chapters.`
 4. `Check the score markers` / `Correct which side serves, add missed serves, and record team side switches.`
 5. `Start with what needs attention` / `Review automatic cleanup, clips, and serves; ignored footage stays out of the queues.`
 6. `Review the suggested clips` / `Each timeline block is a clip planned for the final video—select one to check it.`
 7. `Fix one clip` / `Keep or remove a rally, then adjust padding, rally length, or split at the playhead.`
-8. `Add anything VolleyCut missed` / `Mark a missed rally, or leave out camera gaps, breaks, and other unusable footage.`
+8. `Add anything VolleySplice missed` / `Mark a missed rally, or leave out camera gaps, breaks, and other unusable footage.`
 
 The generated background prompt was:
 
@@ -95,3 +96,22 @@ decoded 33,175 video frames, generated 4,424 feature rows, found 61 rally clips 
 screenshot build replaces only the decoded video layer with black; the scoreboard,
 point history, playhead, rally ranges, cleanup suggestions, and score are real app
 output from that analysis.
+
+For the September refresh, the existing `1080p60.model-feedback.json` analysis
+was imported through the app and reconnected to the matching 371,854,171-byte
+`Movies/1080p60.mp4` MPEG-4 source on the emulator. Its duration is 1105.833 seconds.
+The phone score view is at 1:51.1 (1–2); the main tablet workspace is at 9:26.8
+(11–13). Counts and review decisions come from the imported project, not fixtures
+invented for the screenshots. Setup is captured before choosing another source.
+
+Regenerate the eight upload images with Python and Pillow:
+
+```powershell
+python android/play-store/scripts/compose_featured_screenshots.py
+```
+
+The compositor removes only Android's system bars from the phone captures and
+fits the complete remaining viewport inside the frame. It does not retouch UI
+text, scores, or controls. The tablet PNGs are direct full-display captures.
+`screenshots/capture-manifest.json` records build identity and image hashes.
+Keep the historical `phone-upload-final` set out of the upload selection.

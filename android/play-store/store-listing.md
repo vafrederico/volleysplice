@@ -90,20 +90,20 @@ The same privacy policy and terms cover both the Android app and browser-based w
 
 ## Screenshot order and alt text
 
-The files below are historical captures of the previous brand. Recapture them
-from the rebranded screenshot build before uploading; the alt text below is the
-copy for that refreshed set.
+The phone and tablet sets below were recaptured from the rebranded screenshot
+build on 2026-09-08. Use these sets for the VolleySplice listing; the legacy
+`phone-upload-final` folder is historical and must not be uploaded.
 
 1. `screenshots/phone-upload-featured/01-choose-game-window.png`
-   - Alt text: "Select the game window for a local volleyball video and start on-device rally analysis."
+   - Alt text: "Bump. Set. Splice. VolleySplice setup screen for choosing a game video and finding rallies on the device."
 2. `screenshots/phone-upload-featured/02-fine-tune-when-needed.png`
-   - Alt text: "VolleySplice Settings with Strong automatic cleanup, clip padding, short-break joining, and review controls."
+   - Alt text: "VolleySplice Settings with interface sizing, Strong automatic cleanup, and two seconds of padding before and after clips."
 3. `screenshots/phone-upload-featured/03-save-finished-video.png`
    - Alt text: "Final-video card showing included duration, items needing attention, score options, video export, and YouTube chapters."
 4. `screenshots/phone-upload-featured/04-check-score-markers.png`
-   - Alt text: "Score marker editor at 9:25.9 with an 11–13 score, point history, serving team, and Near and Far controls."
+   - Alt text: "Score marker editor at 1:51.1 with a 1–2 score, point history, serving team, and Near and Far controls."
 5. `screenshots/phone-upload-featured/05-start-with-attention.png`
-   - Alt text: "Video review at 9:25.9 with an 11–13 scoreboard, review cleanup, clip, and serve queues, and the game timeline."
+   - Alt text: "Video review at 1:51.1 with review cleanup, clip, and serve queues above the two-row game timeline."
 6. `screenshots/phone-upload-featured/06-review-suggested-clips.png`
    - Alt text: "Whole-game rally timeline with serve markers and selected rally controls."
 7. `screenshots/phone-upload-featured/07-fix-one-clip.png`
@@ -111,11 +111,11 @@ copy for that refreshed set.
 8. `screenshots/phone-upload-featured/08-add-missed-rally.png`
    - Alt text: "Tools for adding a missed rally or excluding unusable footage alongside the rally register."
 
-The featured screenshots use exact `v0.10.9` UI captures from a minified,
+The featured screenshots use exact `v0.10.12` UI captures from a minified,
 non-debuggable release-equivalent build, with concise marketing headers added for
 Play Store readability. Their order and explanations mirror the in-app tutorial.
 The review screens use app-generated rally and score output
-from the complete `1080p60.mp4` match at 9:25.9; its screenshot-only build hides the
+from the complete `1080p60.mp4` match; its screenshot-only build hides the
 decoded video layer behind black while leaving the real score and timeline UI
 visible. The current source captures remain in
 `screenshots/phone-release-sources-v2/` for audit and future regeneration.
@@ -127,22 +127,22 @@ visible. The current source captures remain in
 2. `screenshots/tablet-release-sources-v1/02-desktop-review-workspace.png`
    - Alt text: "VolleySplice's three-column tablet workspace with score markers, a resizable video player, rally controls, and a two-row game timeline."
 3. `screenshots/tablet-release-sources-v1/03-editor-settings.png`
-   - Alt text: "Tablet Settings dialog with automatic cleanup, clip padding, short-break joining, and review sensitivity controls."
+   - Alt text: "Tablet Settings dialog with interface sizing, Strong automatic cleanup, and clip padding controls."
 4. `screenshots/tablet-release-sources-v1/04-export-options.png`
    - Alt text: "Tablet Export tab with options to save an MP4, generate YouTube chapters, and save the editable project."
 5. `screenshots/tablet-release-sources-v1/05-project-library.png`
-   - Alt text: "Saved-project switcher showing several local volleyball projects and which videos have already been exported."
+   - Alt text: "Saved-project switcher showing the local 1080p60.mp4 project ready to review and the option to start a new video."
 6. `screenshots/tablet-release-sources-v1/06-score-and-rally-review.png`
-   - Alt text: "Tablet rally editor at 14:50.8 with an 18–14 scoreboard, point history, selected serve, trim handles, and keep or remove controls."
+   - Alt text: "Tablet rally editor with an expanded score sidebar, point history, selected serve, trim handles, and keep or remove controls."
 7. `screenshots/tablet-release-sources-v1/07-review-attention-queue.png`
-   - Alt text: "Large-screen review workspace with a low-confidence rally selected and the remaining review queue highlighted in the header."
+   - Alt text: "Guided tutorial highlighting the cleanup, clip, and serve review queues above the tablet workspace."
 8. `screenshots/tablet-release-sources-v1/08-game-timeline-tour.png`
    - Alt text: "Guided review of the two-row game timeline with rally, padding, review, serve, side-switch, excluded-footage, and joined-gap legend."
 
-These are exact `v0.10.11` captures from a minified, non-debuggable
-release-equivalent build on a 2560×1600 Pixel overlay display. The screenshot-only
+These are exact `v0.10.12` captures from a minified, non-debuggable
+release-equivalent build on an Android 17 emulator at 2560×1600. The screenshot-only
 build hides the decoded video layer while retaining real project, score, rally,
-timeline, saved-export, and review-state data.
+timeline, and review-state data. See `screenshots/capture-manifest.json` for hashes.
 
 ## Feature graphic alt text
 

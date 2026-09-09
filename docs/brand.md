@@ -24,8 +24,11 @@ messages, and policy text focused on their task.
 - `android/play-store/feature-graphic-1024x500.png`: the campaign artwork normalized
   to Play's exact 1024 × 500 RGB dimensions.
 
-The web headers use the retained symbol with an editable HTML wordmark. This keeps
-the new spelling sharp on both themes and narrow screens.
+Web and Android headers use the retained transparent symbol with a native text
+wordmark: navy `volley`, blue `splice`, bold italic lowercase lettering. Android
+uses just the accessible symbol in the condensed desktop review header to leave
+room for editing controls. The white-background horizontal artwork remains on
+the white Android splash screen.
 
 ## Compatibility and historical names
 
@@ -48,10 +51,11 @@ move also needs a project transfer plan: unchanged IndexedDB keys do not make
 browser storage accessible across origins. Users can export project JSON and
 reconnect source media on the new origin.
 
-The Play screenshot sets are historical captures of the previous name. Refresh
-those from a rebranded screenshot build before a store update; do not present
-retouched historical UI as a new app capture. The screenshot composition script
-already points at the new wordmark and uses the new product name in its copy.
+The current featured phone screenshots, their source captures, and the tablet
+screenshots were recaptured from the rebranded Android screenshot build on
+2026-09-08. The first featured phone image uses the campaign line. See
+`android/play-store/README.md` and the capture manifest for provenance. Only the
+legacy `phone-upload-final` directory retains historical UI; do not upload it.
 
 This change prepares the rebrand in source. It does not publish the website, update
 Play Console, change the Android version, or sign a release.
