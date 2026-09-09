@@ -1264,7 +1264,7 @@
 /* Saved widths are clamped to the current CSS viewport by ResizableWorkspace. */
 .rd-resizable > .rd-ledger-column { overflow: visible; }
 .rd-resizable > .rd-inspector-stack { position: relative; }
-.rd-resizable .td-video.is-rally-desk .td-video-picture { width: 100%; height: var(--rd-video-height, auto); min-height: 180px; max-height: max(180px, 70dvh); }
+.rd-resizable .td-video.is-rally-desk .td-video-picture { width: 100%; height: var(--rd-video-height, auto); min-height: 180px; max-height: max(180px, 70dvh, var(--rd-video-height, 0px)); }
 .rd-resize-handle { position: relative; z-index: 10; touch-action: none; user-select: none; cursor: row-resize; }
 .rd-resize-handle::after { content: ""; position: absolute; border-radius: 3px; background: var(--td-line); }
 .rd-resize-handle:hover::after,

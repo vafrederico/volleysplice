@@ -35,7 +35,8 @@ export function clampLayout(
   const left = clamp(saved.left ?? leftDefault, 240, leftMax);
   const rightMax = Math.max(260, Math.min(480, width - left - 480));
   const right = clamp(saved.right ?? rightDefault, 260, rightMax);
-  const videoMax = Math.max(180, height * 0.7);
+  // Manual sizing is independent of the viewport; the timeline may scroll below it.
+  const videoMax = 4096;
   const videoWidth = Math.max(
     0,
     width -
@@ -43,7 +44,10 @@ export function clampLayout(
       (threeColumns ? right : 0) -
       (width > 1600 ? 44 : width > 767 ? 36 : 28),
   );
-  const video = clamp(saved.video ?? (videoWidth * 9) / 16, 180, videoMax);
+  const video =
+    saved.video !== undefined
+      ? clamp(saved.video, 180, videoMax)
+      : clamp((videoWidth * 9) / 16, 180, Math.max(180, height * 0.7));
   return {
     left,
     right,

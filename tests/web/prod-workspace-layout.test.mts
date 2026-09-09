@@ -22,7 +22,7 @@ test("scaled desktop viewports retain usable center space without changing saved
     assert.ok(width - layout.left - layout.right >= 480);
     assert.ok(layout.left >= 240 && layout.left <= layout.leftMax);
     assert.ok(layout.right >= 260 && layout.right <= layout.rightMax);
-    assert.ok(layout.video <= 434);
+    assert.equal(layout.video, 800);
   }
   assert.deepEqual(saved, { left: 480, right: 480, video: 800 });
   assert.equal(clampLayout(saved, 1920, 1200).video, 800);
@@ -41,4 +41,16 @@ test("desktop auto-fit reserves measured timeline space and retains a usable min
   assert.equal(fittedVideoHeight(900, 764, 400), 348);
   assert.equal(fittedVideoHeight(640, 1000, 300), 360);
   assert.equal(fittedVideoHeight(900, 400, 350), 180);
+});
+
+test("manual video heights can exceed the viewport and survive smaller windows", () => {
+  for (const [width, height] of [
+    [1536, 764],
+    [1092, 514],
+    [390, 700],
+  ]) {
+    assert.equal(clampLayout({ video: 1200 }, width, height).video, 1200);
+    assert.equal(clampLayout({ video: 9000 }, width, height).video, 4096);
+    assert.ok(clampLayout({}, width, height).video <= height * 0.7);
+  }
 });
