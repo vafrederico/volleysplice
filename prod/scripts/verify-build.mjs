@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,6 +56,8 @@ for (const [asset, expected] of expectedHashes) {
 }
 
 for (const asset of [
+  "_headers",
+  "_redirects",
   "google-play-badge.png",
   "runtime/suppression-39eddf581639.manifest.json",
   "runtime/opencv.js",
@@ -75,4 +77,20 @@ if (!index.includes('src="./assets/') || !index.includes('href="./assets/')) {
   throw new Error("The static build does not use deployment-portable relative assets.");
 }
 
-console.log("Verified portable build assets, integrity hashes, and relative paths.");
+// Fail locally before uploading an asset set that exceeds Workers Free limits.
+const distEntries = await readdir(resolve(appRoot, "dist"), {
+  recursive: true,
+  withFileTypes: true,
+});
+const files = distEntries.filter((entry) => entry.isFile());
+if (files.length > 20_000) {
+  throw new Error(`Static build contains ${files.length} files; maximum is 20,000.`);
+}
+for (const entry of files) {
+  const metadata = await stat(resolve(entry.parentPath, entry.name));
+  if (metadata.size > 25 * 1024 * 1024) {
+    throw new Error(`${entry.name} exceeds Cloudflare's 25 MiB per-file limit.`);
+  }
+}
+
+console.log("Verified portable build assets, integrity hashes, relative paths, and Cloudflare asset limits.");
