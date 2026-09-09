@@ -3,6 +3,12 @@
   "name": "volleysplice",
   "compatibility_date": "2026-09-08",
   "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "volleysplice.com",
+      "custom_domain": true
+    }
+  ],
   // Hosting only: all application logic runs in the user's browser.
   "assets": {
     "directory": "./dist",

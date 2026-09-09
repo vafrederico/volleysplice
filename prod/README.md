@@ -138,7 +138,8 @@ npm run deploy
 
 `npm run deploy` always builds and verifies locally before uploading `dist/`.
 It creates or updates the Worker named `volleysplice` in `wrangler.jsonc` and prints
-its `workers.dev` URL. Choose a different `name` before deploying if that name is
+its URLs, including the production custom domain `https://volleysplice.com`.
+Choose a different `name` before deploying if that name is
 already used by another project in the target account. For multiple accounts, set
 `CLOUDFLARE_ACCOUNT_ID` in the local shell to select the intended account.
 For a headless machine, authenticate with a scoped `CLOUDFLARE_API_TOKEN` supplied
@@ -153,14 +154,18 @@ Vite's fingerprinted `/assets/` files can be cached for one year. Cloudflare rea
 `public/_headers` and `public/_redirects` after Vite copies them into `dist/`.
 The redirects preserve legacy `/android/` links to the Google Play listing.
 
-The initial configuration publishes only to `workers.dev`. After verifying video
-analysis, playback, MP4 export, privacy/terms pages, and redirects there, attach the
-existing production HTTPS hostname through Cloudflare **Settings > Domains & Routes >
-Add > Custom Domain**. This requires an active Cloudflare DNS zone and may require
-replacing an existing DNS record. That is the production traffic cutover; deploying
-to `workers.dev` alone does not change the current nginx/Traefik route.
-Preserve the exact production origin: IndexedDB projects and local edits are scoped
-to the browser origin and will not appear on a different hostname such as `workers.dev`.
+`wrangler.jsonc` attaches `volleysplice.com` as the production Custom Domain and
+also retains `https://volleysplice.vafrederico.workers.dev`. Both URLs serve the same
+deployment; the `workers.dev` address is not a separate staging environment.
+Cloudflare manages the custom domain's DNS and HTTPS certificate. The domain must
+belong to an active Cloudflare zone in the deploying account. Keep the domain in
+the Wrangler configuration so later deployments preserve it.
+After deployment, verify video analysis, playback, MP4 export, privacy/terms pages,
+and Android redirects on `https://volleysplice.com`.
+IndexedDB projects and local edits are scoped to the browser origin; projects made
+on `workers.dev` or the earlier nginx/Traefik hostname will not automatically appear
+on `volleysplice.com`. Users can export/import model-feedback JSON to transfer their
+saved project data, then reconnect the matching local source video.
 
 Use direct Static Assets serving; no `run_worker_first`, additional Workers Cache,
 R2 bucket, or paid plan is required for this configuration. Static requests and asset
