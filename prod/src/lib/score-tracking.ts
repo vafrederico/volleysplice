@@ -643,3 +643,21 @@ export function removeSideSwitchMarker(
         : scoreTracking.removedModelMarkerIds,
   };
 }
+
+/** Linked serves follow the corrected rally start; independent markers stay put. */
+export function alignServeMarkersToRallyStarts(
+  markers: ServeMarker[],
+  rallies: readonly { id: string; start: number }[],
+): ServeMarker[] {
+  const starts = new Map(rallies.map((rally) => [rally.id, rally.start]));
+  let changed = false;
+  const aligned = markers.map((marker) => {
+    const start = marker.rallyId ? starts.get(marker.rallyId) : undefined;
+    if (start === undefined || start === marker.timestamp) return marker;
+    changed = true;
+    return { ...marker, timestamp: start };
+  });
+  return changed
+    ? aligned.sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id))
+    : markers;
+}

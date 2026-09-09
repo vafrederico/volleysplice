@@ -4,6 +4,7 @@ import {
   createCutDraft,
   cutDraftStorageKey,
   cutDraftStorageKeys,
+  alignRallyServeMarkers,
   parseCutDraft,
   type CutDraft,
   type CutDraftSeed,
@@ -220,9 +221,7 @@ function restoredDraft(project: VolleySpliceProject, seed: CutDraftSeed): CutDra
         project.analysis.sideSwitch,
       );
     }
-    return scoreTracking === draft.scoreTracking
-      ? draft
-      : { ...draft, scoreTracking };
+    return alignRallyServeMarkers({ ...draft, scoreTracking });
   };
   const persistedDrafts: CutDraft[] = [];
   try {

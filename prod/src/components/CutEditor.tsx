@@ -16,6 +16,7 @@ import {
   activeSuppressionSuggestions,
   applyPaddingToCachedCuts,
   buildFinalCutIntervals,
+  alignRallyServeMarkers,
   createCutDraft,
   cutDraftStorageKey,
   cutDraftStorageKeys,
@@ -592,7 +593,7 @@ export function CutEditor({
       setExportError(null);
     }
     setDraft((current) => ({
-      ...mutate(current),
+      ...alignRallyServeMarkers(mutate(current)),
       updatedAt: new Date().toISOString(),
     }));
   }

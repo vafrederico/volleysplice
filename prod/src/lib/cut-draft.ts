@@ -8,6 +8,7 @@ import {
 import type { OnDeviceSuppression } from "./on-device/types.ts";
 import type { IgnoredInterval } from "./product-analysis.ts";
 import {
+  alignServeMarkersToRallyStarts,
   createScoreTracking,
   isValidScoreTracking,
   migrateScoreTracking,
@@ -531,7 +532,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       value.reviewedCutIds.some((id) => !cachedCutIds.has(id)) ||
       value.userTouchedCutIds.some((id) => !cachedCutIds.has(id))
     ) return null;
-    return value as CutDraft;
+    return alignRallyServeMarkers(value as CutDraft);
   } catch {
     return null;
   }
@@ -586,7 +587,7 @@ export function setCutCoreStart(
       keepStart: roundTime(Math.max(minimum, start - beforePadding)),
     };
   });
-  return withTouchedCachedCuts({ ...draft, cuts }, [cutId]);
+  return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
 }
 
 export function setCutCoreEnd(
@@ -608,7 +609,7 @@ export function setCutCoreEnd(
       keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
     };
   });
-  return withTouchedCachedCuts({ ...draft, cuts }, [cutId]);
+  return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
 }
 
 export function setCutCoreRange(
@@ -638,7 +639,7 @@ export function setCutCoreRange(
       keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
     };
   });
-  return withTouchedCachedCuts({ ...draft, cuts }, [cutId]);
+  return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
 }
 
 export function splitCutAt(
@@ -1017,4 +1018,14 @@ export function nextFinalCutTime(
     if (playbackTime < interval.start) return interval.start;
   }
   return null;
+}
+
+export function alignRallyServeMarkers(draft: CutDraft): CutDraft {
+  const serveMarkers = alignServeMarkersToRallyStarts(
+    draft.scoreTracking.serveMarkers,
+    draft.cuts.map((cut) => ({ id: cut.id, start: cut.coreStart })),
+  );
+  return serveMarkers === draft.scoreTracking.serveMarkers
+    ? draft
+    : { ...draft, scoreTracking: { ...draft.scoreTracking, serveMarkers } };
 }

@@ -17,6 +17,7 @@ import {
 import { GOOGLE_PLAY_URL } from "@/lib/android-app";
 import { timelinePercent } from "@/lib/edit-list";
 import {
+  alignServeMarkersToRallyStarts,
   deriveScoreAt,
   scoreTrackingOutsideExcludedRallies,
   scoreTrackingOutsideIgnoredIntervals,
@@ -311,7 +312,11 @@ function usePrototype(
   const [teamOne, setTeamOne] = useState(review.draft.scoreTracking.team1Name);
   const [teamTwo, setTeamTwo] = useState(review.draft.scoreTracking.team2Name);
   const [servingSide, setServingSide] = useState<Side>("near");
-  const [scoreMarkers, setScoreMarkers] = useState<DesignServeMarker[]>(review.draft.scoreTracking.serveMarkers);
+  const [savedScoreMarkers, setScoreMarkers] = useState<DesignServeMarker[]>(review.draft.scoreTracking.serveMarkers);
+  const scoreMarkers = useMemo(
+    () => alignServeMarkersToRallyStarts(savedScoreMarkers, clips),
+    [savedScoreMarkers, clips],
+  );
   const [sideSwitchMarkers, setSideSwitchMarkers] = useState<DesignSideSwitchMarker[]>(review.draft.scoreTracking.sideSwitchMarkers);
   const [selectedScoreMarkerId, setSelectedScoreMarkerId] = useState(
     review.draft.scoreTracking.serveMarkers.find((marker) => marker.side === "review")?.id ??

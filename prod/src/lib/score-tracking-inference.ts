@@ -1,12 +1,12 @@
 import type {
   OnDeviceSideSwitchOutput,
   OnDeviceServingSideOutput,
-} from "@/lib/on-device/types";
+} from "./on-device/types.ts";
 import {
   addServeMarker,
   addSideSwitchMarker,
   type ScoreTracking,
-} from "@/lib/score-tracking";
+} from "./score-tracking.ts";
 
 export function scoreTrackingWithServingSideOutput(
   current: ScoreTracking,
@@ -35,7 +35,7 @@ export function scoreTrackingWithServingSideOutput(
         : candidate.side;
     scoreTracking = addServeMarker(
       scoreTracking,
-      candidate.anchor,
+      existing?.timestamp ?? candidate.anchor,
       wasCorrected ? existing!.side : modelSide,
       {
         id: `serve-${candidate.id}`,
