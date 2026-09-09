@@ -4,3 +4,4 @@ public/runtime/opencv.js
 public/runtime/opencv-worker.js
 public/licenses/
 *.tsbuildinfo
+.wrangler/

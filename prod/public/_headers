@@ -1,0 +1,31 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+
+# Vite fingerprints these filenames. HTML, service worker, and runtime assets
+# keep revalidating so updates to stable filenames reach returning visitors.
+/
+  Cache-Control: no-cache
+
+/*.html
+  Cache-Control: no-cache
+
+/privacy
+  Cache-Control: no-cache
+
+/terms
+  Cache-Control: no-cache
+
+/volleycut-export-sw.js
+  Cache-Control: no-cache
+
+/runtime/*
+  Cache-Control: no-cache
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/licenses/*
+  Cache-Control: public, max-age=3600
