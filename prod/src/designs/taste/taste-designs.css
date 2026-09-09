@@ -672,7 +672,8 @@
 .rd-settings-dialog .td-tune-grid { margin-top: 0; grid-template-columns: 1fr 1fr; gap: 18px; }
 .rd-settings-dialog > footer { margin-top: 22px; display: flex; justify-content: flex-end; }
 
-.rd-ledger-column { position: sticky; top: var(--design-bar-height, 58px); min-width: 0; height: calc(100dvh - var(--design-bar-height, 58px) - 74px); display: grid; grid-template-rows: minmax(300px, 1.15fr) minmax(220px, .85fr); overflow: hidden; border-right: 1px solid var(--td-line); background: var(--td-panel); }
+/* Keep both lists reachable when display scaling reduces the CSS viewport height. */
+.rd-ledger-column { position: sticky; top: var(--design-bar-height, 0px); min-width: 0; min-height: 520px; height: calc(100dvh - var(--design-bar-height, 0px) - 74px); display: grid; grid-template-rows: minmax(300px, 1.15fr) minmax(220px, .85fr); overflow: hidden; border-right: 1px solid var(--td-line); background: var(--td-panel); }
 .rd-mobile-events,
 .rd-mobile-register { display: none; }
 .rd-register,
@@ -794,10 +795,12 @@
 .rd-rally-decision button[data-remove][data-active] { border-color: #b42318; background: #b42318; }
 .rd-rally-decision button[data-remove][data-active][data-pending-suppression] { border-color: #d65549; color: var(--td-ink); background: color-mix(in srgb, #d65549, var(--td-panel) 68%); }
 
-.td-video.is-rally-desk .td-video-picture { min-height: 300px; }
+.td-video.is-rally-desk { container: rally-video / inline-size; }
+.td-video.is-rally-desk .td-video-picture { min-height: 0; }
 .td-video.is-rally-desk .td-video-picture > video { cursor: pointer; }
 .td-video.is-rally-desk .td-transport { width: 100%; grid-template-columns: auto auto auto minmax(120px, 220px) 88px minmax(220px, 1fr); justify-content: start; }
 .td-video.is-rally-desk .td-playhead-control { width: min(220px, 100%); }
+.td-video.is-rally-desk .td-playhead-control input { min-width: 0; margin: 0; }
 .td-video.is-rally-desk .td-speed-control { padding-left: 0; display: grid; grid-template-columns: auto 1fr; }
 .td-video.is-rally-desk .td-speed-control select { width: 58px; padding: 7px 5px; font-size: 10px; font-weight: 800; }
 
@@ -1148,11 +1151,6 @@
   .rd-main { padding: 18px 14px 52px; }
   .rd-review-head { margin-top: 14px; }
   .rd-media-stack { padding: 0; }
-  .td-video.is-rally-desk .td-video-picture { min-height: 0; }
-  .td-video.is-rally-desk .td-transport { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .td-video.is-rally-desk .td-playhead-control { grid-column: 1 / 3; width: 100%; padding-top: 8px; }
-  .td-video.is-rally-desk .td-speed-control { grid-column: 3; padding-top: 8px; }
-  .td-video.is-rally-desk .td-transport-toggles { grid-column: 1 / -1; padding-top: 8px; flex-wrap: wrap; }
 
   .cc-header { padding: 12px 14px 0; }
   .cc-header-row { grid-template-columns: 1fr auto; gap: 12px; }
@@ -1237,13 +1235,66 @@
   .rd-inspector-stack { grid-template-columns: 1fr; }
   .rd-review-head > div > span { max-width: 90vw; }
   .rd-timeline > header { align-items: flex-start; flex-direction: column; }
+}
+
+/* CSS pixels already reflect OS scaling and browser zoom. Query the actual
+   video panel because desktop sidebars can leave it narrower than the viewport. */
+@container rally-video (max-width: 760px) {
+  .td-video.is-rally-desk .td-transport { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .td-video.is-rally-desk .td-playhead-control { grid-column: 1 / 3; width: 100%; min-width: 0; padding-top: 8px; }
+  .td-video.is-rally-desk .td-speed-control { grid-column: 3; padding-top: 8px; }
+  .td-video.is-rally-desk .td-transport-toggles { grid-column: 1 / -1; padding-top: 8px; flex-wrap: wrap; }
+}
+
+@container rally-video (max-width: 452px) {
   .td-video.is-rally-desk .td-playhead-control { grid-column: 1 / -1; }
   .td-video.is-rally-desk .td-speed-control { grid-column: 1 / -1; width: max-content; }
-  .td-video.is-rally-desk .td-transport-toggles { grid-column: 1 / -1; }
+}
+
+@media (max-height: 650px) {
+  .rd-ledger-column { position: static; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .taste-root *,
   .taste-root *::before,
   .taste-root *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* Saved widths are clamped to the current CSS viewport by ResizableWorkspace. */
+.rd-resizable > .rd-ledger-column { overflow: visible; }
+.rd-resizable > .rd-inspector-stack { position: relative; }
+.rd-resizable .td-video.is-rally-desk .td-video-picture { height: var(--rd-video-height, auto); min-height: 180px; max-height: max(180px, 70dvh); }
+.rd-resize-handle { position: relative; z-index: 10; touch-action: none; user-select: none; cursor: row-resize; }
+.rd-resize-handle::after { content: ""; position: absolute; border-radius: 3px; background: var(--td-line); }
+.rd-resize-handle:hover::after,
+.rd-resize-handle:focus-visible::after { background: var(--td-accent); }
+.rd-resize-handle:focus-visible { outline: 2px solid var(--td-accent); outline-offset: -2px; }
+.rd-resize-left,
+.rd-resize-right { position: absolute; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
+.rd-resize-left { right: -15px; }
+.rd-resize-right { left: -15px; }
+.rd-resize-left::after,
+.rd-resize-right::after { top: calc(50% - 32px); left: calc(50% - 1.5px); width: 3px; height: 64px; }
+.rd-resize-left:focus-visible,
+.rd-resize-right:focus-visible { outline: none; }
+.rd-resize-left:focus-visible::after,
+.rd-resize-right:focus-visible::after { outline: 2px solid var(--td-accent); outline-offset: 3px; }
+.rd-video-resize-row { display: flex; align-items: center; gap: 12px; margin-block: -12px; }
+.rd-video-resize-row > .rd-resize-handle { height: 24px; flex: 1; }
+.rd-video-resize-row > .rd-resize-handle::after { width: 64px; height: 3px; top: 10px; left: calc(50% - 32px); }
+.rd-video-resize-row > button { padding: 4px 0; border: 0; color: var(--td-muted); background: transparent; font-size: 10px; cursor: pointer; }
+@media (min-width: 1321px) {
+  .rd-shell.is-review.rd-resizable { grid-template-columns: var(--rd-left-width, 285px) minmax(0, 1fr) var(--rd-right-width, 310px); }
+}
+@media (min-width: 961px) and (max-width: 1320px) {
+  .rd-shell.is-review.rd-resizable { grid-template-columns: var(--rd-left-width, 275px) minmax(0, 1fr); }
+  .rd-resize-right { display: none; }
+}
+@media (max-width: 960px) {
+  .rd-resize-left,
+  .rd-resize-right { display: none; }
+}
+@media (max-height: 650px) {
+  .rd-resizable > .rd-ledger-column { position: relative; }
 }

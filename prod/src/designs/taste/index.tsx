@@ -41,6 +41,8 @@ import { runtimeAssetUrl } from "@/lib/runtime-assets";
 import { scrollElementIntoContainer } from "@/lib/scroll-container";
 import type { ReadyDesignReview } from "../useDesignReview";
 
+import { ResizableWorkspace } from "./ResizableWorkspace";
+
 import "./taste-designs.css";
 
 export type TasteDesignMeta = {
@@ -2558,20 +2560,18 @@ export function RallyDesk({
         <UtilityLinks state={state} quiet />
       </header>
       {state.stage === "review" ? (
-        <div className="rd-shell is-review">
-          <aside className="rd-ledger-column" aria-label="Clip and match-event ledger">
-            <RallyDeskEventRail state={state} />
-            <RallyDeskClipRegister state={state} />
-          </aside>
-          <div className="rd-main">
+        <ResizableWorkspace
+          ledger={<><RallyDeskEventRail state={state} /><RallyDeskClipRegister state={state} /></>}
+          inspector={<><ClipInspector state={state} condensed current /><RallyDeskRangeTools state={state} /></>}
+          mobileRegister={<RallyDeskClipRegister state={state} />}
+        >
+          {(videoResize) => <>
             <header className="rd-review-head"><div><p className="td-kicker">Current review workspace</p><RallyDeskProjectSelector state={state} className="rd-review-project" onDeleteProject={onDeleteProject} /></div><ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} /></header>
             <ReconnectNotice state={state} />
             <div className="rd-mobile-events"><RallyDeskEventRail state={state} /></div>
-            <div className="rd-media-stack"><VideoStage state={state} desk /><RallyDeskTimeline state={state} /></div>
-          </div>
-          <aside className="rd-inspector-stack"><ClipInspector state={state} condensed current /><RallyDeskRangeTools state={state} /></aside>
-          <div className="rd-mobile-register"><RallyDeskClipRegister state={state} /></div>
-        </div>
+            <div className="rd-media-stack"><VideoStage state={state} desk />{videoResize}<RallyDeskTimeline state={state} /></div>
+          </>}
+        </ResizableWorkspace>
       ) : (
         <div className="rd-shell"><div className="rd-main"><StandardStage state={state} /></div></div>
       )}
