@@ -611,10 +611,10 @@ def _extract_recording(
     audit = {
         "recordingId": recording.id,
         "sourceGroup": recording.source_group,
-        "proxyVideoPath": str(recording.video),
+        "proxyVideoSource": recording.id,
         "proxyVideoSizeBytes": recording.video.stat().st_size,
         "proxyVideoSha256": sha256_path(recording.video),
-        "nativeVideoPath": str(native_path),
+        "nativeVideoSource": recording.id,
         "nativeVideoSizeBytes": native_path.stat().st_size,
         "nativeVideoSha256": NATIVE_VIDEO_SHA256[recording.id],
         "nativeVideoDecoder": (
