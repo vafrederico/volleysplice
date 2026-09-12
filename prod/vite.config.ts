@@ -6,6 +6,10 @@ import { defineConfig } from "vite";
 
 const httpsKey = process.env.VOLLEYCUT_DEV_HTTPS_KEY;
 const httpsCertificate = process.env.VOLLEYCUT_DEV_HTTPS_CERT;
+const allowedHosts = (process.env.VOLLEYCUT_DEV_ORIGINS ?? "")
+  .split(",")
+  .map((host) => host.trim())
+  .filter(Boolean);
 
 export default defineConfig({
   // Relative output works at a domain root, a GitHub Pages subpath, or from
@@ -13,7 +17,7 @@ export default defineConfig({
   base: "./",
   plugins: [react()],
   server: {
-    allowedHosts: ["internal.example"],
+    allowedHosts,
     ...(httpsKey && httpsCertificate
       ? {
           https: {

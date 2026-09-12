@@ -57,7 +57,7 @@ The nine v2 proxies are hard links to the existing normalized proxies, so they d
 ## Reproduce
 
 ```bash
-cd /home/developer/volleycut
+cd /path/to/volleysplice
 npm run reanalyze-no-model:dataset
 npm run evaluate:labels -- \
   --labels /mnt/freenas/volleycut/labeling-v1-2026-08-09/labels/full \

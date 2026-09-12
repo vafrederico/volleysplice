@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 from pathlib import Path
 
 
@@ -14,9 +15,11 @@ DEFAULT_SOURCE = Path(
     "feedback-suppression-v3-2026-08-16/report.json"
 )
 DEFAULT_OUTPUT = Path(
-    "/home/developer/server/docker/caddy/html/reports/"
-    "volleycut-feedback-suppression-v3-2026-08-16.html"
-)
+    os.environ.get("VOLLEYCUT_REPORT_OUTPUT_DIR", "artifacts/reports")
+) / "volleycut-feedback-suppression-v3-2026-08-16.html"
+APP_BASE_URL = os.environ.get(
+    "VOLLEYCUT_APP_BASE_URL", "http://localhost:3000"
+).rstrip("/")
 
 
 def render(report: dict[str, object]) -> str:
@@ -256,8 +259,8 @@ def render(report: dict[str, object]) -> str:
       </div>
       <p class="subtle">7 videos · 10 affected rallies · 5 complete misses · 5 partial misses · 23.9 seconds of core coverage lost.</p>
       <p>The visual review page includes source video playback, rally seeking, raw/padded/joined interval layers, an explicit veto rail, and muted textured ranges outside each affected context. Raw previous-production, all-labels-v2, and suppression intervals show their uncalibrated decoder scores; derived union and padding ranges are explicitly marked as having no standalone confidence.</p>
-      <a class="review-cta" href="https://internal.example/suppression-review">Open pointwise review →</a>
-      <a class="review-cta" href="https://internal.example/suppression-review/any-overlap">Open full-span overlap review →</a>
+      <a class="review-cta" href="{APP_BASE_URL}/suppression-review">Open pointwise review →</a>
+      <a class="review-cta" href="{APP_BASE_URL}/suppression-review/any-overlap">Open full-span overlap review →</a>
     </section>
 
     <section id="grass-audit">

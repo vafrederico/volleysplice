@@ -1,7 +1,5 @@
 import { networkInterfaces } from "node:os";
 
-const PROJECT_DEV_ORIGINS = ["internal.example"];
-
 function localInterfaceOrigins() {
   return Object.values(networkInterfaces())
     .flatMap((addresses) => addresses ?? [])
@@ -21,7 +19,6 @@ const nextConfig = {
   // requested through the host's real LAN address. Values are hostnames only.
   allowedDevOrigins: [
     ...new Set([
-      ...PROJECT_DEV_ORIGINS,
       ...localInterfaceOrigins(),
       ...configuredDevOrigins(),
     ]),

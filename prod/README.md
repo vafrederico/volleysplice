@@ -278,13 +278,16 @@ python scripts/export-browser-suppression-model.py \
   public/runtime/suppression-39eddf581639.manifest.json
 ```
 
-`npm run preview` serves the verified production build on `0.0.0.0:3000`, matching
-the local Traefik target for `https://internal.example`.
+`npm run preview` serves the verified production build on `0.0.0.0:3000`. Configure
+any private reverse-proxy target through `VOLLEYCUT_APP_BASE_URL` and allow its
+hostname for development through `VOLLEYCUT_DEV_ORIGINS`.
 - `public/runtime/feature-reductions.wasm`: fused visual feature reductions.
 - `public/runtime/libswresample.*`: filtered local audio resampling.
 - `public/runtime/opencv*.js`: generated from the pinned npm dependency by the
   `prepare-assets` script before development and production builds.
-- `licenses/`: redistributed FFmpeg license and wrapper source. These and the OpenCV
-  package license are copied into the built site during asset preparation.
+- `licenses/`: the VolleySplice MIT license, third-party notice index,
+  Mediabunny/React/fft.js/OpenCV license material, and redistributed FFmpeg
+  license and wrapper source. These are copied into the built site during asset
+  preparation and linked from the footer.
 
 No runtime file is fetched from the parent repository or from an external CDN.

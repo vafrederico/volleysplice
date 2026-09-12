@@ -870,7 +870,7 @@ The next rare-event objective compares within-recording pairwise ranking while h
 that promoted control fixed:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/train-side-switch-pairwise-ranking.py
 ```
 
@@ -883,7 +883,7 @@ The recording-level reliability experiment predicts a threshold-logit offset fro
 label-free video summaries:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/train-side-switch-recording-reliability.py
 ```
 
@@ -894,7 +894,7 @@ See the
 Focal and effective-number loss variants are evaluated with:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/train-side-switch-rare-event-losses.py
 ```
 
@@ -905,7 +905,7 @@ See the
 The non-reanchored latent score prior is evaluated with:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/train-side-switch-soft-score-prior.py
 ```
 
@@ -916,7 +916,7 @@ reliable point count and every cadence variant regresses. See the
 The expanded internal-candidate specialist is evaluated with:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/train-side-switch-internal-specialist.py
 ```
 

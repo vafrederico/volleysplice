@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import os
 import runpy
 import sys
 import tempfile
@@ -166,10 +167,9 @@ def main() -> None:
             "the product decision. Use the held-decoder UI datasets and HTML "
             "report for the retained product-policy comparison."
         ),
-        "htmlReport": (
-            "https://internal.example/reports/"
-            "volleycut-corrected-v3-comparison-2026-08-18.html"
-        ),
+        "htmlReport": os.environ.get(
+            "VOLLEYCUT_REPORT_BASE_URL", "http://localhost:8080/reports"
+        ).rstrip("/") + "/volleycut-corrected-v3-comparison-2026-08-18.html",
     }
     atomic_write(report_path, json.dumps(report, indent=2, allow_nan=False) + "\n")
     atomic_write(experiment_root / "report.md", ns["markdown_report"](report))

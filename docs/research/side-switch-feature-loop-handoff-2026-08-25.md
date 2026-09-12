@@ -125,7 +125,7 @@ git push -u origin t3code/analyze-side-switching-features
 On the destination machine:
 
 ```bash
-git clone ssh://git@internal.example:2222/vafrederico/volleycut.git
+git clone git@github.com:vafrederico/volleysplice.git
 cd volleycut
 git fetch origin t3code/analyze-side-switching-features
 git switch --track origin/t3code/analyze-side-switching-features

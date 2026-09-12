@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The next labeling increment is ready at `http://192.0.2.1:3000/label`. The **Full corpus** batch contains nine complete, seekable task/proxy pairs totaling 9,082.23 seconds (2:31:22). The original raw recordings remain unchanged under `/mnt/freenas/volleycut/raw`.
+The next labeling increment is available at `${VOLLEYCUT_APP_BASE_URL}/label`. The **Full corpus** batch contains nine complete, seekable task/proxy pairs totaling 9,082.23 seconds (2:31:22). The original raw recordings remain unchanged under `${VOLLEYCUT_DATA_ROOT}/raw`.
 
 The pack contains two beach 2v2 recordings, four grass reverse-2s/KOB recordings, and three indoor reverse-4s recordings. Six tasks are assigned to train, two grass tasks to validation, and one indoor task to test. All recordings from the same source group remain in the same split.
 

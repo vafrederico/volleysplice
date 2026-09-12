@@ -56,9 +56,9 @@ than a new candidate.
 ## Artifacts and reproduction
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/train-side-switch-rare-event-losses.py
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   -m unittest discover -s analysis/tests -p 'test_side_switch*.py'
 ```
 

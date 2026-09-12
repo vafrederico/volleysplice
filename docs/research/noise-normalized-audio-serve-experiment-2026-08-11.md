@@ -149,26 +149,26 @@ contact-head research candidate, not as a promoted pair. Before another candidat
 ## Reproduction and immutable artifacts
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python scripts/augment-audio-feature-cache.py \
+PYTHONPATH=. .venv/bin/python scripts/augment-audio-feature-cache.py \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --base-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-v2-final \
   --source-cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-v2 \
   --output-cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-audio-normalized-v3
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train \
+PYTHONPATH=. .venv/bin/python -m analysis train \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
   --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-audio-normalized-v3 \
   --audio-feature-set noise-normalized-bands-v3 \
   --epochs 180 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python scripts/analyze-serve-audio-features.py \
+PYTHONPATH=. .venv/bin/python scripts/analyze-serve-audio-features.py \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
   --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-audio-normalized-v3 \
   --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/noise-normalized-audio-feature-auc-v1-audited.json
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-serve \
+PYTHONPATH=. .venv/bin/python -m analysis train-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audio-normalized-v5 \
@@ -176,7 +176,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-serve 
   --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serve-specialist-audio-normalized-v5-validation.json \
   --target-radius 1 --epochs 180 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-serve \
+PYTHONPATH=. .venv/bin/python -m analysis train-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audio-normalized-v6-no-legacy \
@@ -185,7 +185,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-serve 
   --serve-input-profile visual-plus-normalized-band-audio \
   --target-radius 1 --epochs 180 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-serve \
+PYTHONPATH=. .venv/bin/python -m analysis train-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audio-normalized-v7-new-only \
@@ -194,14 +194,14 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-serve 
   --serve-input-profile normalized-band-audio-only \
   --target-radius 1 --epochs 180 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate \
+PYTHONPATH=. .venv/bin/python -m analysis evaluate \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
   --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-audio-normalized-v3 \
   --split validation \
   --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-audiovisual-audio-normalized-v3-final-validation.json
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate \
+PYTHONPATH=. .venv/bin/python -m analysis evaluate \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
   --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-audio-normalized-v3 \
@@ -213,7 +213,7 @@ for SERVE_VERSION in \
   serve-specialist-audio-normalized-v6-no-legacy \
   serve-specialist-audio-normalized-v7-new-only
 do
-  PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-serve \
+  PYTHONPATH=. .venv/bin/python -m analysis evaluate-serve \
     --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
     --rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
     --serve-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/$SERVE_VERSION \
@@ -221,7 +221,7 @@ do
     --split validation \
     --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/$SERVE_VERSION-final-ablation-validation.json
 
-  PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-serve \
+  PYTHONPATH=. .venv/bin/python -m analysis evaluate-serve \
     --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
     --rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-audio-normalized-v3 \
     --serve-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/$SERVE_VERSION \

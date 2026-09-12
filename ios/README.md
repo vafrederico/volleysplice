@@ -21,15 +21,15 @@ On the configured Windows/macOS lab:
 ./ios/scripts/build-device.ps1 -Install
 ```
 
-The helpers use the pinned `ios-build-host` SSH alias and configuration under
-`E:/wslmac`. Follow the shared iOS Windows/macOS Lab skill for starting, signing,
+The helpers use the pinned `${VOLLEYCUT_IOS_SSH_HOST}` SSH alias and configuration under
+`${VOLLEYCUT_IOS_LAB_ROOT}`. Follow the shared iOS Windows/macOS Lab skill for starting, signing,
 device access and shutdown. Xcode can remain closed for command-line builds;
 signing requires the configured account, unlocked keychain and valid provisioning
 profile. The signing helper verifies the app identity, paired device and expiry,
 then compares the downloaded IPA hash before installation.
 
 `scripts/prepare-source.py` uploads an explicit source manifest to
-`~/wslmac-projects/volleysplice`. It stages canonical models from
+`${VOLLEYCUT_IOS_REMOTE_PROJECT_ROOT}`. It stages canonical models from
 `android/app/src/main/assets` and test inputs into generated `Fixtures/` resources.
 Do not commit that generated directory, recordings, signing files or build output.
 Small synthetic test assets under `Tests/Fixtures` are intentional source inputs;

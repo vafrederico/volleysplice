@@ -28,7 +28,7 @@ Full-file SHA-256 read from the existing Android emulator copy:
   `1786727888`, geometry/codecs, ROI `(0.03,0.12,0.94,0.86)` and source-frame cap
   1,000,000. The cap was not reached: 66,349 source frames, 4,424 rows, software
   decoder `c2.android.avc.decoder`.
-- iPad artifact `E:/wslmac/artifacts/analysis-25c03a1835e4.json`, 29,543,721 bytes,
+- iPad artifact `${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/analysis-25c03a1835e4.json`, 29,543,721 bytes,
   SHA-256 `57b928665a143c6d701c886bc3497a771341b0926ac83418464e85205888b506`.
   Hashing the source SHA's ASCII text followed by
   `[0,1105.817,0.03,0.12,0.94,0.86,0]` reproduces its full cache identity
@@ -49,7 +49,7 @@ Full-file SHA-256 read from the existing Android emulator copy:
   `d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d`.
   Both use `overlap-union-disagreement-v1` ensemble composition.
 
-Artifacts are in `E:/wslmac/artifacts/android-reference/`: `provenance.json`, original
+Artifacts are in `${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/android-reference/`: `provenance.json`, original
 cache binaries and identity preimages, `CacheInference.java`, `compare_cached.py`,
 `android-ipad-native-comparison.json`, and `same-source-padding-report.json`.
 `android-analysis.json` is inside the original cache directory. These retain model,

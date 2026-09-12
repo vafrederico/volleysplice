@@ -181,7 +181,7 @@ Use single-thread numerical kernels on this host to avoid repeating the observed
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 MALLOC_ARENA_MAX=2
 ROOT=/mnt/freenas/volleycut/labeling-v1-2026-08-09
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-dead-ball \
+PYTHONPATH=. .venv/bin/python -m analysis train-dead-ball \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --rally-model $ROOT/models/full-audiovisual-audio-normalized-v3 \
   --serve-model $ROOT/models/serve-specialist-audio-normalized-v5 \
@@ -191,7 +191,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-dead-b
   --dead-ball-input-profile full \
   --target-radius 0.5 --epochs 120 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dead-ball \
+PYTHONPATH=. .venv/bin/python -m analysis evaluate-dead-ball \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --rally-model $ROOT/models/full-audiovisual-audio-normalized-v3 \
   --serve-model $ROOT/models/serve-specialist-audio-normalized-v5 \
@@ -200,7 +200,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dea
   --split test --retrospective \
   --output $ROOT/reports/dead-ball-specialist-audio-normalized-v3-final-retrospective-test.json
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-dead-state \
+PYTHONPATH=. .venv/bin/python -m analysis train-dead-state \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --rally-model $ROOT/models/full-audiovisual-audio-normalized-v3 \
   --serve-model $ROOT/models/serve-specialist-audio-normalized-v5 \
@@ -212,7 +212,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-dead-s
   --before-end-seconds 2 --after-end-seconds 2 --pre-serve-setup-seconds 1 \
   --epochs 120 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dead-state \
+PYTHONPATH=. .venv/bin/python -m analysis evaluate-dead-state \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --rally-model $ROOT/models/full-audiovisual-audio-normalized-v3 \
   --serve-model $ROOT/models/serve-specialist-audio-normalized-v5 \
@@ -221,7 +221,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dea
   --split test --retrospective \
   --output $ROOT/reports/dead-state-transition-audio-normalized-v3-legacy-only-final-retrospective-test.json
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-dead-state \
+PYTHONPATH=. .venv/bin/python -m analysis train-dead-state \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --rally-model $ROOT/models/full-audiovisual-audio-normalized-v3 \
   --serve-model $ROOT/models/serve-specialist-audio-normalized-v5 \
@@ -231,7 +231,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis train-dead-s
   --target-mode global-dead --dead-state-input-profile full \
   --epochs 120 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dead-state \
+PYTHONPATH=. .venv/bin/python -m analysis evaluate-dead-state \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --rally-model $ROOT/models/full-audiovisual-audio-normalized-v3 \
   --serve-model $ROOT/models/serve-specialist-audio-normalized-v5 \

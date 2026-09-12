@@ -10,6 +10,21 @@ __pycache__/
 # Local configuration
 .env*
 !.env.example
+**/source-id-aliases*.json
+
+# Signing and provisioning material
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.mobileprovision
+*.cer
+*.der
+*.pem
+android/key.properties
+android/keystore.properties
+*.ipa
+*.xcarchive
 
 # Local video corpus and generated media
 /data/videos/*
@@ -22,6 +37,8 @@ __pycache__/
 /data/models/
 /data/reports/
 /data/model-feedback/
+/private/
+/artifacts/private-media/
 
 # Logs and editor files
 *.log

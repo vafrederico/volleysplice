@@ -19,6 +19,7 @@ including failed preflight. No install/build/VM/service lifecycle is managed.
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -302,7 +303,11 @@ class PhysicalParitySmoke(editor_module.EditorSmoke):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--lab", type=Path, default=Path("E:/wslmac"))
+    parser.add_argument(
+        "--lab",
+        type=Path,
+        default=Path(os.environ.get("VOLLEYCUT_IOS_LAB_ROOT", "artifacts/ios-lab")),
+    )
     parser.add_argument("--url", default="http://127.0.0.1:18100")
     parser.add_argument("--mjpeg", default="http://127.0.0.1:19100/")
     parser.add_argument("--bundle", default="com.vafrederico.VolleySplice")

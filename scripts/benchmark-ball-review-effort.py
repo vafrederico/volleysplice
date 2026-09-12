@@ -24,7 +24,7 @@ PILOT_ROOT = Path("/mnt/freenas/volleycut/ball-presence-v1/round-01")
 DEFAULT_OUTPUT = Path(
     "/mnt/freenas/volleycut/ball-presence-v1/reports/ball-review-effort-screen12-v1"
 )
-CODEX_BIN = Path("/home/developer/.nvm/versions/node/v24.15.0/bin/codex")
+CODEX_BIN = Path(os.environ.get("VOLLEYCUT_CODEX_BIN", shutil.which("codex") or "codex"))
 FRAME_WIDTH = 960
 FRAME_HEIGHT = 540
 

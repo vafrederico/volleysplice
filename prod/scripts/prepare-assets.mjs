@@ -43,6 +43,30 @@ for (const filename of licenseCandidates) {
 await mkdir(licenseDirectory, { recursive: true });
 await Promise.all([
   copyFile(
+    resolve(appRoot, "../LICENSE"),
+    resolve(licenseDirectory, "VolleySplice-MIT.txt"),
+  ),
+  copyFile(
+    resolve(appRoot, "../THIRD_PARTY_NOTICES.md"),
+    resolve(licenseDirectory, "THIRD_PARTY_NOTICES.md"),
+  ),
+  copyFile(
+    resolve(appRoot, "node_modules/mediabunny/LICENSE"),
+    resolve(licenseDirectory, "mediabunny-MPL-2.0.txt"),
+  ),
+  copyFile(
+    resolve(appRoot, "node_modules/react/LICENSE"),
+    resolve(licenseDirectory, "react-MIT.txt"),
+  ),
+  copyFile(
+    resolve(appRoot, "node_modules/react-dom/LICENSE"),
+    resolve(licenseDirectory, "react-dom-MIT.txt"),
+  ),
+  copyFile(
+    resolve(appRoot, "licenses/fft.js-MIT.txt"),
+    resolve(licenseDirectory, "fft.js-MIT.txt"),
+  ),
+  copyFile(
     resolve(appRoot, "licenses/FFmpeg-LGPL-2.1.txt"),
     resolve(licenseDirectory, "FFmpeg-LGPL-2.1.txt"),
   ),

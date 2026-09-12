@@ -229,7 +229,7 @@ The original development study took 2,591.1 seconds. The warm-cache targeted pru
 Run the development-only pruning pass first. It refuses to overwrite an existing report and never prepares the test split:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python scripts/evaluate-pruned-features.py development \
+PYTHONPATH=. .venv/bin/python scripts/evaluate-pruned-features.py development \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --baseline-report /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/audiovisual-v2-feature-study-development.json \
   --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-v2 \
@@ -239,7 +239,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python scripts/evaluate-pruned-
 Only after that report is frozen, an explicit retrospective diagnostic can open the already-used test labels. `--allow-unpromoted-diagnostic` records that this candidate did not pass development promotion:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python scripts/evaluate-pruned-features.py final-test \
+PYTHONPATH=. .venv/bin/python scripts/evaluate-pruned-features.py final-test \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --pruning-report /path/to/new-targeted-pruning-development.json \
   --cache-dir /mnt/freenas/volleycut/labeling-v1-2026-08-09/features/audiovisual-v2 \

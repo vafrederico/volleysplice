@@ -119,7 +119,7 @@ Do not promote the composition. Preserve it for comparison and pursue:
 ## Reproduction and artifacts
 
 ```bash
-/home/developer/volleycut/.venv/bin/python -m analysis train-serve \
+.venv/bin/python -m analysis train-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-v2-final \
   --model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audiovisual-v4 \
@@ -127,7 +127,7 @@ Do not promote the composition. Preserve it for comparison and pursue:
   --target-radius 1.0 --epochs 120 \
   --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serve-specialist-audiovisual-v4-validation.json
 
-/home/developer/volleycut/.venv/bin/python -m analysis evaluate-serve \
+.venv/bin/python -m analysis evaluate-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-v2-final \
   --serve-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audiovisual-v4 \

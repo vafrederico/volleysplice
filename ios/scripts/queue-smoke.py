@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import importlib.util
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import time
@@ -23,9 +24,13 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--recording", required=True)
 parser.add_argument("--project", required=True, help="Existing reference project button ID")
 parser.add_argument("--end-seconds", type=float, default=1100, help="Uncached window long enough for interruption checks")
-parser.add_argument("--output", type=Path, default=Path("E:/wslmac/artifacts/volleysplice/queue-smoke"))
+lab_root = Path(os.environ.get("VOLLEYCUT_IOS_LAB_ROOT", "artifacts/ios-lab"))
+parser.add_argument("--output", type=Path, default=lab_root / "artifacts/volleysplice/queue-smoke")
 args = parser.parse_args()
-config = SimpleNamespace(lab=Path("E:/wslmac"), url="http://127.0.0.1:18100", mjpeg="http://127.0.0.1:19100/",
+device_udid = os.environ.get("VOLLEYCUT_IOS_DEVICE_UDID")
+if not device_udid:
+    parser.error("VOLLEYCUT_IOS_DEVICE_UDID is required")
+config = SimpleNamespace(lab=lab_root, url="http://127.0.0.1:18100", mjpeg="http://127.0.0.1:19100/",
                          bundle="com.vafrederico.VolleySplice", project=args.project, output=args.output)
 test = editor.EditorSmoke(config)
 created = []
@@ -33,7 +38,7 @@ original_scoring = None
 failed = False
 
 async def read_jobs():
-    async with await create_using_usbmux(serial="<ios-device-udid>") as lockdown:
+    async with await create_using_usbmux(serial=device_udid) as lockdown:
         async with await HouseArrestService.create(lockdown=lockdown, bundle_id=config.bundle) as afc:
             # AFC stats the path before opening it. An atomic progress-ledger
             # replacement between those calls can make that read too short.

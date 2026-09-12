@@ -65,6 +65,12 @@ for (const asset of [
   "runtime/volleysplice-logo.png",
   "runtime/volleysplice-icon-transparent.png",
   "licenses/FFmpeg-LGPL-2.1.txt",
+  "licenses/VolleySplice-MIT.txt",
+  "licenses/THIRD_PARTY_NOTICES.md",
+  "licenses/mediabunny-MPL-2.0.txt",
+  "licenses/react-MIT.txt",
+  "licenses/react-dom-MIT.txt",
+  "licenses/fft.js-MIT.txt",
   "licenses/libswresample-wrapper-source.c",
   "licenses/opencv-js.txt",
 ]) {

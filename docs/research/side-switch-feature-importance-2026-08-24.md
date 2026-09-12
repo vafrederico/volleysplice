@@ -397,7 +397,7 @@ SHA-256: `b2c501c61e9f7b3aeb2bbb04cf73f3f9793e1831053a7762c08993924daea14d`
 Reproduce it from the repository root:
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/analyze-side-switch-feature-importance.py \
   --permutation-repeats 200 \
   --overwrite

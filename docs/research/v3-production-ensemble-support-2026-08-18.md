@@ -63,4 +63,4 @@ suppression specialist, and a one-model-only eligibility gate.
 - Markdown report:
   `/mnt/freenas/volleycut/intake-2026-08-13/experiments/v3-production-ensemble-support-2026-08-18/report.md`
 - Reproduction script:
-  `/home/developer/volleycut/scripts/evaluate-v3-ensemble-support.py`
+  `scripts/evaluate-v3-ensemble-support.py`

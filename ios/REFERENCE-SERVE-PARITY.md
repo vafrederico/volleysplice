@@ -135,7 +135,7 @@ are not presented as that edge-case fixture.
 
 ## Evidence and reproduction
 
-All local evidence is under `E:/wslmac/artifacts/serve-parity/`:
+All local evidence is under `${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/serve-parity/`:
 
 - `comparison-summary.json`: assertions, counts, deleted marker times and input hashes.
 - `ServeParityReplay.java`, `replay.ps1`: executable harness; outputs are written
@@ -150,17 +150,17 @@ All local evidence is under `E:/wslmac/artifacts/serve-parity/`:
 From the repository root, using existing compiled Android debug classes:
 
 ```powershell
-& E:/wslmac/artifacts/serve-parity/replay.ps1 -Repo (Get-Location).Path -Mode ipad
-& E:/wslmac/artifacts/serve-parity/replay.ps1 -Repo (Get-Location).Path -Mode native-slice
-& E:/wslmac/artifacts/serve-parity/replay.ps1 -Repo (Get-Location).Path -Mode native-full
+& ${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/serve-parity/replay.ps1 -Repo (Get-Location).Path -Mode ipad
+& ${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/serve-parity/replay.ps1 -Repo (Get-Location).Path -Mode native-slice
+& ${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/serve-parity/replay.ps1 -Repo (Get-Location).Path -Mode native-full
 ```
 
 The full-project editor snapshot has ID
 `import-37bdca07-2465-4ed9-bc90-2a957770a12c`; it is an **imported project**, not
 independent proof of native decoding provenance. The native replay instead uses
 the cache `c490bc66537f0510ec3359439fb79f9ee88b533ee6767bc843b19f9a26add6a3` under
-`E:/wslmac/artifacts/android-reference/files/native-features-v1/`, bound by
-`E:/wslmac/artifacts/android-reference/provenance.json` to the original MP4 and ROI. Its retained
+`${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/android-reference/files/native-features-v1/`, bound by
+`${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/android-reference/provenance.json` to the original MP4 and ROI. Its retained
 `android-analysis.json` SHA256 is
 `d11fe35b3f3b111ef9bd4aeaceb4cc27f656ef485644ae3e9ef1058fcc5ff2b8`.
 The iPad and imported Android snapshots have identical sampled source fingerprints

@@ -30,7 +30,7 @@ for name in ['model-1ca43e38eefc.json', 'model-9c92b8e9333f.json', 'suppression-
     ref = obj('resource:' + name, f'isa = PBXFileReference; path = "Fixtures/{name}"; sourceTree = "<group>";')
     refs.append(ref)
     resources.append(obj('resource-build:' + name, f'isa = PBXBuildFile; fileRef = {ref};'))
-framework = obj('opencv', 'isa = PBXFileReference; path = "../../wslmac-dependencies/opencv-4.12.0/opencv2.framework"; sourceTree = "<group>"; lastKnownFileType = wrapper.framework;')
+framework = obj('opencv', 'isa = PBXFileReference; path = "$(VOLLEYCUT_IOS_OPENCV_FRAMEWORK_ROOT)/opencv2.framework"; sourceTree = "<absolute>"; lastKnownFileType = wrapper.framework;')
 refs.append(framework)
 frameworkBuild = obj('opencv-build', f'isa = PBXBuildFile; fileRef = {framework};')
 product = obj('product', 'isa = PBXFileReference; path = VolleySplice.app; sourceTree = BUILT_PRODUCTS_DIR; explicitFileType = wrapper.application;')
@@ -42,7 +42,7 @@ configs = []
 for name in ['Debug', 'Release']:
     settings = {
         'PRODUCT_NAME': 'VolleySplice', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.vafrederico.VolleySplice',
-        'DEVELOPMENT_TEAM': '<apple-development-team-id>', 'CODE_SIGN_STYLE': 'Automatic', 'CODE_SIGN_IDENTITY': 'Apple Development',
+        'CODE_SIGN_STYLE': 'Automatic', 'CODE_SIGN_IDENTITY': 'Apple Development',
         'CURRENT_PROJECT_VERSION': '1', 'MARKETING_VERSION': '0.1.0', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0',
         'SDKROOT': 'iphoneos', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator',
         'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon',
@@ -50,7 +50,7 @@ for name in ['Debug', 'Release']:
         'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG' if name == 'Debug' else '',
         'CLANG_CXX_LANGUAGE_STANDARD': 'c++17', 'CLANG_ENABLE_MODULES': 'YES',
         'SWIFT_OBJC_BRIDGING_HEADER': 'App/OpenCVBridge.h',
-        'FRAMEWORK_SEARCH_PATHS': '$(inherited) $(SRCROOT)/../../wslmac-dependencies/opencv-4.12.0',
+        'FRAMEWORK_SEARCH_PATHS': '$(inherited) $(VOLLEYCUT_IOS_OPENCV_FRAMEWORK_ROOT)',
         'OTHER_LDFLAGS': '-lc++ -framework Accelerate -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework CoreGraphics -framework UIKit -framework Foundation -framework ImageIO -framework QuartzCore -framework VideoToolbox',
         'GENERATE_INFOPLIST_FILE': 'YES', 'INFOPLIST_FILE': 'App/Info.plist', 'INFOPLIST_KEY_CFBundleDisplayName': 'VolleySplice',
         'INFOPLIST_KEY_UILaunchScreen_Generation': 'YES', 'INFOPLIST_KEY_UIFileSharingEnabled': 'YES',

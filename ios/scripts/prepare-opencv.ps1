@@ -1,6 +1,14 @@
-param([string]$LabRoot = 'E:\wslmac')
+param(
+    [string]$LabRoot = $env:VOLLEYCUT_IOS_LAB_ROOT,
+    [string]$SshHost = $env:VOLLEYCUT_IOS_SSH_HOST,
+    [string]$RemoteDependencyRoot = $env:VOLLEYCUT_IOS_REMOTE_DEPENDENCY_ROOT
+)
 $ErrorActionPreference = 'Stop'
-if ((Get-PSDrive E).Free -lt 25GB) { throw 'Keep at least 25 GiB free on E:' }
+if (-not $LabRoot) { throw 'Set VOLLEYCUT_IOS_LAB_ROOT or pass -LabRoot' }
+if (-not $SshHost) { throw 'Set VOLLEYCUT_IOS_SSH_HOST or pass -SshHost' }
+if (-not $RemoteDependencyRoot) { throw 'Set VOLLEYCUT_IOS_REMOTE_DEPENDENCY_ROOT or pass -RemoteDependencyRoot' }
+$labDrive = Split-Path -Qualifier ([IO.Path]::GetFullPath($LabRoot))
+if ($labDrive -and (Get-PSDrive $labDrive.TrimEnd(':')).Free -lt 25GB) { throw "Keep at least 25 GiB free on $labDrive" }
 $archive = Join-Path $LabRoot 'artifacts/opencv-4.12.0-ios-framework.zip'
 $expected = '86b42c9f141cd9169b91be2fc380b0e556a88a95c98ccc8e7aef8349ab74cf70'
 if (!(Test-Path -LiteralPath $archive)) {
@@ -10,7 +18,7 @@ if (!(Test-Path -LiteralPath $archive)) {
 if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLower() -ne $expected) {
     throw 'OpenCV release checksum mismatch'
 }
-scp $archive ios-build-host:opencv-4.12.0-ios-framework.zip
+scp $archive "${SshHost}:opencv-4.12.0-ios-framework.zip"
 if ($LASTEXITCODE -ne 0) { throw 'OpenCV upload failed' }
-ssh ios-build-host 'mkdir -p ~/wslmac-dependencies/opencv-4.12.0; ditto -xk ~/opencv-4.12.0-ios-framework.zip ~/wslmac-dependencies/opencv-4.12.0; test -f ~/wslmac-dependencies/opencv-4.12.0/opencv2.framework/opencv2'
+ssh $SshHost "mkdir -p '$RemoteDependencyRoot/opencv-4.12.0'; ditto -xk ~/opencv-4.12.0-ios-framework.zip '$RemoteDependencyRoot/opencv-4.12.0'; test -f '$RemoteDependencyRoot/opencv-4.12.0/opencv2.framework/opencv2'"
 if ($LASTEXITCODE -ne 0) { throw 'OpenCV extraction failed' }

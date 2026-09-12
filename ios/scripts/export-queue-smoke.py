@@ -5,7 +5,7 @@ Pass its observed project-button ID via --project. Use the lab's existing
 pymobiledevice3 Python. The app must remain the same process after background
 cancellation; only user-requested Resume starts the export again. Always parks.
 """
-import argparse, asyncio, importlib.util, json, time
+import argparse, asyncio, importlib.util, json, os, time
 from pathlib import Path
 from types import SimpleNamespace
 from pymobiledevice3.lockdown import create_using_usbmux
@@ -13,13 +13,16 @@ from pymobiledevice3.services.house_arrest import HouseArrestService
 spec=importlib.util.spec_from_file_location('editor',Path(__file__).with_name('editor-smoke.py'));editor=importlib.util.module_from_spec(spec);spec.loader.exec_module(editor)
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--project',required=True)
-parser.add_argument('--output',type=Path,default=Path('E:/wslmac/artifacts/volleysplice/queued-export'))
+lab_root=Path(os.environ.get('VOLLEYCUT_IOS_LAB_ROOT','artifacts/ios-lab'))
+parser.add_argument('--output',type=Path,default=lab_root/'artifacts/volleysplice/queued-export')
 args=parser.parse_args()
+device_udid=os.environ.get('VOLLEYCUT_IOS_DEVICE_UDID')
+if not device_udid:parser.error('VOLLEYCUT_IOS_DEVICE_UDID is required')
 output=args.output
-config=SimpleNamespace(lab=Path('E:/wslmac'),url='http://127.0.0.1:18100',mjpeg='http://127.0.0.1:19100/',output=output,project=args.project)
+config=SimpleNamespace(lab=lab_root,url='http://127.0.0.1:18100',mjpeg='http://127.0.0.1:19100/',output=output,project=args.project)
 t=editor.EditorSmoke(config)
 async def ledger():
- async with await create_using_usbmux(serial='<ios-device-udid>') as lock:
+ async with await create_using_usbmux(serial=device_udid) as lock:
   async with await HouseArrestService.create(lockdown=lock,bundle_id='com.vafrederico.VolleySplice') as afc:
    for attempt in range(5):
     try: return json.loads(await afc.get_file_contents('/Library/Application Support/ProcessingJobs/queue.json'))['jobs']

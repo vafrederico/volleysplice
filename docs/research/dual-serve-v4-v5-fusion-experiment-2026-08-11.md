@@ -92,7 +92,7 @@ dead-ball/end score. Do not select thresholds from this repeatedly inspected sin
 ```bash
 ROOT=/mnt/freenas/volleycut/labeling-v1-2026-08-09
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dual-serve-fusion \
+PYTHONPATH=. .venv/bin/python -m analysis evaluate-dual-serve-fusion \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --v4-rally-model $ROOT/models/full-audiovisual-v2-final \
   --v4-serve-model $ROOT/models/serve-specialist-audiovisual-v4 \
@@ -103,7 +103,7 @@ PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dua
   --split validation \
   --output $ROOT/reports/dual-serve-v4-v5-fusion-v1-validation.json
 
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python -m analysis evaluate-dual-serve-fusion \
+PYTHONPATH=. .venv/bin/python -m analysis evaluate-dual-serve-fusion \
   --manifest $ROOT/manifests/full-gold-v1.json \
   --v4-rally-model $ROOT/models/full-audiovisual-v2-final \
   --v4-serve-model $ROOT/models/serve-specialist-audiovisual-v4 \

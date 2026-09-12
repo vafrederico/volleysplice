@@ -148,7 +148,7 @@ decision.
 ## Reproduction and artifacts
 
 ```bash
-/home/developer/volleycut/.venv/bin/python -m analysis train-rally-with-serve \
+.venv/bin/python -m analysis train-rally-with-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --baseline-rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-v2-final \
   --serve-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audiovisual-v4 \
@@ -158,7 +158,7 @@ decision.
   --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-audiovisual-serve-prob-stack-v1-validation.json \
   --epochs 180 --batch-size 2048 --learning-rate 0.02 --seed 7
 
-/home/developer/volleycut/.venv/bin/python -m analysis evaluate-rally-with-serve \
+.venv/bin/python -m analysis evaluate-rally-with-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --baseline-rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-v2-final \
   --serve-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audiovisual-v4 \
@@ -168,7 +168,7 @@ decision.
   --split validation \
   --output /mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/full-audiovisual-serve-prob-stack-v1-final-validation.json
 
-/home/developer/volleycut/.venv/bin/python -m analysis evaluate-rally-with-serve \
+.venv/bin/python -m analysis evaluate-rally-with-serve \
   --manifest /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/full-gold-v1.json \
   --baseline-rally-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/full-audiovisual-v2-final \
   --serve-model /mnt/freenas/volleycut/labeling-v1-2026-08-09/models/serve-specialist-audiovisual-v4 \

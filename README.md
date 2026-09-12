@@ -359,3 +359,9 @@ the normal automated build workflow.
 - The browser client intentionally keeps source video local and therefore cannot reopen
   playback/export until the original file is reconnected. Android similarly depends on
   a valid document grant or explicit relinking.
+## License
+
+VolleySplice project code and project-owned assets are available under the
+[MIT License](LICENSE). Third-party components and brand assets retain their
+original terms; see [third-party notices](THIRD_PARTY_NOTICES.md) and
+[asset provenance](ASSET_PROVENANCE.md).

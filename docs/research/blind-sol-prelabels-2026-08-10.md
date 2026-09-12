@@ -8,7 +8,7 @@ This increment answers a narrower question than the learned live/dead classifier
 
 ## Relationship to the shared ChatGPT run
 
-The reference conversation, [Volleyball Serve Timestamps](internal-reference-removed), did not send a native video stream directly through a video-capable model endpoint. Its sandbox used OpenCV/FFmpeg-style preprocessing, audio novelty/transient measurements, sampled frames and contact sheets, followed by model visual reasoning. The run initially proposed 42 starts for one 22:08 grass video, then corrected the set to 41 by removing the final 1309.2-second candidate.
+An earlier internal reference conversation did not send a native video stream directly through a video-capable model endpoint. Its sandbox used OpenCV/FFmpeg-style preprocessing, audio novelty/transient measurements, sampled frames and contact sheets, followed by model visual reasoning. The run initially proposed 42 starts for one 22:08 grass video, then corrected the set to 41 by removing the final 1309.2-second candidate.
 
 That distinction matters for reproducibility. The official [GPT-5.6 Sol model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-sol) lists image input but not audio or video input. Our blind agents therefore reproduced the useful behavior of the ChatGPT sandbox workflow: inspect the complete MP4, derive audio and visual evidence locally, and reason over sampled imagery. The candidate metadata describes this as audiovisual analysis, not native video-token input.
 

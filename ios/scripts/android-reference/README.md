@@ -3,7 +3,7 @@
 These diagnostic utilities call the repository's compiled Android Java math and
 frozen JSON models on retained device features. They do not decode media, contact
 a device, change Android sources, or select a model. Keep inputs and generated
-outputs outside the repository, for example under `E:/wslmac/artifacts`.
+outputs outside the repository, for example under `${VOLLEYCUT_IOS_LAB_ROOT}/artifacts`.
 
 `CacheInference` requires a complete `native-features-v1` cache directory containing
 `visual-complete.bin` (schema 2), `audio.bin` and `context.bin`, and the exact
@@ -25,20 +25,20 @@ has produced Java classes. Compilation below writes only the external diagnostic
 class directory; it does not run Gradle or rebuild the app.
 
 ```powershell
-$replayRoot = 'E:/wslmac/artifacts/android-reference'
+$replayRoot = '${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/android-reference'
 $replayCache = Join-Path $replayRoot 'files/native-features-v1/EXACT-CACHE-KEY'
 $replayDuration = '1105.817' # Read the matching manifest, do not infer from filename.
 $replayRepo = (Get-Location).Path
 $replayJava = 'C:/Program Files/Android/Android Studio/jbr/bin'
 $replayCompiled = Join-Path $replayRepo 'android/app/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes'
-$replayJSON = (Get-ChildItem 'C:/Users/developer/.gradle/caches/modules-2/files-2.1/org.json/json' -Recurse -Filter '*.jar' | Select-Object -First 1).FullName
-$replayAndroid = 'C:/Users/developer/AppData/Local/Android/Sdk/platforms/android-37.0/android.jar'
+$replayJSON = (Get-ChildItem "$env:GRADLE_USER_HOME/caches/modules-2/files-2.1/org.json/json" -Recurse -Filter '*.jar' | Select-Object -First 1).FullName
+$replayAndroid = "$env:ANDROID_HOME/platforms/android-37.0/android.jar"
 $replayCP = "$replayRoot/classes;$replayCompiled;$replayJSON;$replayAndroid"
 & "$replayJava/javac.exe" -cp $replayCP -d "$replayRoot/classes" ios/scripts/android-reference/CacheInference.java ios/scripts/android-reference/AudioAttribution.java
 if ($LASTEXITCODE -ne 0) { throw 'Diagnostic compilation failed' }
 & "$replayJava/java.exe" -cp $replayCP com.volleycut.nativeanalysis.CacheInference $replayRepo $replayCache $replayDuration
 if ($LASTEXITCODE -ne 0) { throw 'Cache replay failed' }
-& "$replayJava/java.exe" -cp $replayCP com.volleycut.nativeanalysis.AudioAttribution $replayRepo "$replayCache/android-analysis.json" 'E:/wslmac/artifacts/analysis-25c03a1835e4.json' "$replayRoot/audio-attribution.json"
+& "$replayJava/java.exe" -cp $replayCP com.volleycut.nativeanalysis.AudioAttribution $replayRepo "$replayCache/android-analysis.json" '${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/analysis-25c03a1835e4.json' "$replayRoot/audio-attribution.json"
 if ($LASTEXITCODE -ne 0) { throw 'Audio attribution failed' }
 ```
 

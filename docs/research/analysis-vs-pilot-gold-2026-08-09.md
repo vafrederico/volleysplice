@@ -66,7 +66,7 @@ Most of those learned runs share a source group with training or validation mate
 ## Reproduce
 
 ```bash
-cd /home/developer/volleycut
+cd /path/to/volleysplice
 npm run evaluate:labels -- \
   --labels /mnt/freenas/volleycut/labeling-v1-2026-08-09/manifests/pilot-gold-v1.json \
   --parameter-search \

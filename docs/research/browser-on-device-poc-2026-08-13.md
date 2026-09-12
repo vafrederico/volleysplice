@@ -157,7 +157,7 @@ npm run build
 npm run dev -- --hostname 0.0.0.0 -p 3001
 ```
 
-Open `https://internal.example/on-device` for media operations, or `/on-device-ui` for the no-decode UI fixture. The reverse-proxy hostname is included in `allowedDevOrigins`; additional development hosts can be supplied with the comma-separated `VOLLEYCUT_DEV_ORIGINS` environment variable. Plain HTTP is useful only for inspecting UI and static assets.
+Open `${VOLLEYCUT_APP_BASE_URL}/on-device` for media operations, or `/on-device-ui` for the no-decode UI fixture. Additional development hosts can be supplied with the comma-separated `VOLLEYCUT_DEV_ORIGINS` environment variable. Plain HTTP is useful only for inspecting UI and static assets.
 
 The corpus batch writer is off by default. For an explicitly authorized local run, start the server with temporary credentials and the existing no-beach analysis root:
 
@@ -167,7 +167,7 @@ export VOLLEYCUT_ON_DEVICE_BATCH_OUTPUT_ROOT='/mnt/freenas/volleycut/labeling-v1
 npm run dev -- --hostname 0.0.0.0 -p 3001
 ```
 
-Then open `https://internal.example/on-device-batch#token=<temporary-high-entropy-token>`. Completed artifact directories are skipped on resume and are never overwritten. Unset the two variables or stop the temporary server after the run. Results appear automatically in the main comparison UI; for example, the Y9 browser run is selected by `/?video=indoor-source-07&analysis=model-browser-on-device-9c92b8e9333f--indoor-source-07&corpus=without-beach`.
+Then open `${VOLLEYCUT_APP_BASE_URL}/on-device-batch#token=<temporary-high-entropy-token>`. Completed artifact directories are skipped on resume and are never overwritten. Unset the two variables or stop the temporary server after the run. Results appear automatically in the main comparison UI; for example, an anonymous browser run is selected by `/?video=indoor-source-07&analysis=model-browser-on-device-9c92b8e9333f--indoor-source-07&corpus=without-beach`.
 
 Do not start this mode until the reverse proxy's access-log header policy explicitly redacts or drops `Authorization`; a default “keep” policy can record the bearer on rejected requests.
 

@@ -2,6 +2,7 @@
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import time
 import urllib.request
@@ -9,7 +10,7 @@ import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lab', type=Path, default=Path('E:/wslmac'))
+parser.add_argument('--lab', type=Path, default=Path(os.environ.get('VOLLEYCUT_IOS_LAB_ROOT', 'artifacts/ios-lab')))
 parser.add_argument('--recording')
 parser.add_argument('--analyze', action='store_true')
 parser.add_argument('--export-check', action='store_true')

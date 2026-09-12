@@ -10,8 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Local production-app proxy
 
-When the production app is served on port 3000, it is available through the
-reverse proxy at `https://internal.example`.
+When the production app is served on port 3000, its optional reverse-proxy URL
+is configured outside Git through `VOLLEYCUT_APP_BASE_URL`.
 
 ## Android release signing
 

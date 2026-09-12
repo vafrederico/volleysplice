@@ -204,9 +204,12 @@ struct VolleySpliceLegalFooter: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
                             Text("VolleySplice includes the following open-source components. Their licenses remain available to you under their original terms.")
+                            Text("VolleySplice project code and project-owned assets — MIT License")
                             Text("OpenCV 4.12.0 — Apache License 2.0")
                             Text("Apple system frameworks, device codecs, and other platform components are provided under their respective system licenses.")
                                 .font(.system(size: 12)).foregroundStyle(SetupPalette.muted)
+                            Link("View VolleySplice MIT License", destination: URL(string: "https://github.com/vafrederico/volleysplice/blob/main/LICENSE")!)
+                            Link("View all third-party notices", destination: URL(string: "https://github.com/vafrederico/volleysplice/blob/main/THIRD_PARTY_NOTICES.md")!)
                             Link("View Apache License 2.0", destination: URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding()
                     }.background(SetupPalette.paper).foregroundStyle(SetupPalette.ink)

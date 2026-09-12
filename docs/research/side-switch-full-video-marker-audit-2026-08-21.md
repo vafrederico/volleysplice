@@ -194,7 +194,7 @@ the one-row-per-model primary-padding summary. The original unsuffixed artifacts
 immutable; `r2` adds summary fields without changing matches, metrics, or rank order.
 
 ```bash
-PYTHONPATH=. /home/developer/volleycut/.venv/bin/python \
+PYTHONPATH=. .venv/bin/python \
   scripts/evaluate-side-switch-full-video-markers.py
 ```
 

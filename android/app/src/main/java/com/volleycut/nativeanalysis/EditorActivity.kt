@@ -2623,6 +2623,10 @@ private fun ProjectShell(
 }
 
 private const val PRIVACY_POLICY_URL = "https://www.volleysplice.com/privacy.html"
+private const val PROJECT_LICENSE_URL =
+    "https://github.com/vafrederico/volleysplice/blob/main/LICENSE"
+private const val THIRD_PARTY_NOTICES_URL =
+    "https://github.com/vafrederico/volleysplice/blob/main/THIRD_PARTY_NOTICES.md"
 private const val APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0"
 
 @Composable
@@ -2655,6 +2659,7 @@ private fun LegalFooter() {
                         "VolleySplice includes the following open-source components. " +
                             "Their licenses remain available to you under their original terms.",
                     )
+                    Text("VolleySplice project code and project-owned assets — MIT License")
                     Text("AndroidX and Jetpack Compose — Apache License 2.0")
                     Text("AndroidX Media3 1.10.1 — Apache License 2.0")
                     Text("OpenCV 4.12.0 — Apache License 2.0")
@@ -2665,6 +2670,16 @@ private fun LegalFooter() {
                         color = Muted,
                         fontSize = 12.sp,
                     )
+                    TextButton(onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PROJECT_LICENSE_URL)))
+                        }
+                    }) { Text("View VolleySplice MIT License") }
+                    TextButton(onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(THIRD_PARTY_NOTICES_URL)))
+                        }
+                    }) { Text("View all third-party notices") }
                     TextButton(onClick = {
                         runCatching {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(APACHE_LICENSE_URL)))

@@ -136,7 +136,7 @@ Select individual pipeline stages or combinations with `-Stages`. For example, t
 fresh audio decode and feature generation over the first 60 seconds on a specific ADB transport:
 
 ```powershell
-.\benchmark.ps1 -DeviceSerial "192.0.2.1:40461" -VideoName "1080p60.mp4" `
+.\benchmark.ps1 -DeviceSerial "<device-ip>:<adb-port>" -VideoName "1080p60.mp4" `
   -Stages Audio -DurationSeconds 60 -CacheMode Bypass -AudioDecoderMode Batched -Runs 5
 ```
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,10 +16,11 @@ DEFAULT_EXPERIMENT = Path(
     "feedback-suppression-v3-corrected-2026-08-18"
 )
 DEFAULT_OUTPUT = Path(
-    "/home/developer/server/docker/caddy/html/reports/"
-    "volleycut-corrected-v3-comparison-2026-08-18.html"
-)
-UI_ROOT = "http://192.0.2.1:3001/suppression-review/corrected-v3"
+    os.environ.get("VOLLEYCUT_REPORT_OUTPUT_DIR", "artifacts/reports")
+) / "volleycut-corrected-v3-comparison-2026-08-18.html"
+UI_ROOT = os.environ.get(
+    "VOLLEYCUT_APP_BASE_URL", "http://localhost:3000"
+).rstrip("/") + "/suppression-review/corrected-v3"
 
 
 def esc(value: object) -> str:

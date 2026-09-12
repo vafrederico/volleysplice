@@ -195,9 +195,9 @@ no standalone score.
 - Old-only suppression rally CSV: `/mnt/freenas/volleycut/intake-2026-08-13/experiments/feedback-suppression-v3-2026-08-16/old-only-suppression-rally-audit.csv`
 - V2-only suppression rally audit: `/mnt/freenas/volleycut/intake-2026-08-13/experiments/feedback-suppression-v3-2026-08-16/v2-only-suppression-rally-audit.json`
 - V2-only suppression rally CSV: `/mnt/freenas/volleycut/intake-2026-08-13/experiments/feedback-suppression-v3-2026-08-16/v2-only-suppression-rally-audit.csv`
-- Interactive HTML report: `https://internal.example/reports/volleycut-feedback-suppression-v3-2026-08-16.html`
-- Missed-rally visual review: `https://internal.example/suppression-review`
-- Any-overlap full-span visual review: `https://internal.example/suppression-review/any-overlap`
+- Interactive HTML report: `${VOLLEYCUT_REPORT_BASE_URL}/volleycut-feedback-suppression-v3-2026-08-16.html`
+- Missed-rally visual review: `${VOLLEYCUT_APP_BASE_URL}/suppression-review`
+- Any-overlap full-span visual review: `${VOLLEYCUT_APP_BASE_URL}/suppression-review/any-overlap`
 - Candidate 1: `model-dfbb67c7c0c2`
 - Candidate 2: `model-cacb15849ba8`
 - Inference artifacts: 180 JSON files (6 variants × 30 videos)

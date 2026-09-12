@@ -26,7 +26,7 @@ through the actual browser project importer. A current 50x104-feature iPad paylo
 with valid `corrections.ui.preferences.chapterOptions` passes Swift
 `VolleyProjectCheck`, preserving the options and immutable features/inference.
 Browser validation/import accepts the same file but discards `corrections.ui`.
-Reproduction inputs/results: `E:/wslmac/artifacts/project-interop-audit/`.
+Reproduction inputs/results: `${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/project-interop-audit/`.
 
 ## Confirmed gaps
 

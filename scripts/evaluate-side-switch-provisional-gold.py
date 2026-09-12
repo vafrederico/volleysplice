@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import subprocess
 import sys
 import time
@@ -111,17 +112,6 @@ PREDICTION_SHA256 = {
     "grass-source-11": "b0e0361ee01c697edd5fa075b3e0ef586e30222c1e2f935fbc63a39293e496c1",
     "grass-source-07": "21eafa8bd7a9390a43cb27938294d9f200ac73ff242f3c9b4434c40799c22550",
 }
-NATIVE_VIDEO = {
-    "grass-source-11": Path(
-        "/mnt/freenas/volleycut-raw-no-backups/"
-        "grass-source-11.mkv"
-    ),
-    "grass-source-07": Path(
-        "/mnt/freenas/volleycut-raw-no-backups/"
-        "20250614 - KB private event Grass Rev2s - Game 1 "
-        "(w⧸ player-a vs player-b + player-c) (-15) [grass-source-07].mkv"
-    ),
-}
 NATIVE_VIDEO_SHA256 = {
     "grass-source-11": "c4f4b7ade66c0318c79e46d078f6acab2a4bd4eae44fb7976e5bc8163ed8125f",
     "grass-source-07": "beac7f3ab7cc303e6e2acc613751eccefdc0ebdd50971c54f924dd1d16bd55b7",
@@ -131,6 +121,25 @@ NATIVE_VIDEO_SHAPE = {
     "grass-source-07": (1080, 1920),
 }
 FFMPEG_NATIVE_RECORDINGS = frozenset({"grass-source-11"})
+
+
+def _private_media_paths() -> Mapping[str, Path]:
+    ledger_value = os.environ.get("VOLLEYCUT_PRIVATE_SOURCE_MAP")
+    if not ledger_value:
+        raise RuntimeError(
+            "VOLLEYCUT_PRIVATE_SOURCE_MAP must point to the untracked source alias ledger"
+        )
+    ledger_path = Path(ledger_value).expanduser().resolve()
+    ledger = load_json(ledger_path)
+    entries = ledger.get("privateMediaPaths")
+    if not isinstance(entries, Mapping):
+        raise ValueError(f"privateMediaPaths is missing from {ledger_path}")
+    missing = [recording_id for recording_id in RECORDING_IDS if recording_id not in entries]
+    if missing:
+        raise ValueError(f"private media path is missing for aliases: {', '.join(missing)}")
+    return {recording_id: Path(str(entries[recording_id])) for recording_id in RECORDING_IDS}
+
+
 PROFILE_ARTIFACTS = {
     "boundary-t0": (
         REPORTS / "side-switch-feature-development-t20-compact-medoid-disagreement-opened-v1.json",
@@ -379,6 +388,7 @@ def _extract_recording(
     new_heads: ProductionHeads,
     switch_runtime: Mapping[str, Any],
     detector_dir: Path,
+    native_path: Path,
     opencv_threads: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     started = time.perf_counter()
@@ -489,7 +499,6 @@ def _extract_recording(
                 round(float(window["end"]), 9),
             )
             windows[key] = window
-    native_path = NATIVE_VIDEO[recording.id]
     if sha256_path(native_path) != NATIVE_VIDEO_SHA256[recording.id]:
         raise ValueError(f"native video changed for {recording.id}")
     detector = QuantizedPersonDetector(detector_dir, opencv_threads=opencv_threads)
@@ -661,6 +670,7 @@ def extract_features(args: argparse.Namespace) -> Mapping[str, Any]:
         LABELING_ROOT
         / "models/third-party/opencv-zoo-mediapipe-person-int8bq-2023mar"
     ).resolve()
+    native_paths = _private_media_paths()
 
     def run(recording: Recording) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         prepared = prepare_recording(
@@ -673,6 +683,7 @@ def extract_features(args: argparse.Namespace) -> Mapping[str, Any]:
             new_heads,
             switch_runtime,
             detector_dir,
+            native_paths[recording.id],
             args.opencv_threads,
         )
 
