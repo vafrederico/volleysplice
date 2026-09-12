@@ -87,6 +87,30 @@
   box-shadow: 0 0 0 3px rgba(37, 135, 86, 0.12);
 }
 
+.labActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: clamp(10px, 0.6vw, 16px);
+}
+
+.labActions > a {
+  padding: 7px 9px;
+  border: 1px solid #2653a8;
+  color: #204889;
+  font:
+    700 var(--v2-font-micro) "Atkinson Hyperlegible Mono",
+    monospace;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.labActions > a:hover {
+  background: #2653a8;
+  color: #fff;
+}
+
 .workflow {
   display: flex;
   max-width: 720px;
@@ -1151,7 +1175,7 @@
 
 @media (max-width: 1180px) {
   .page .commandBar {
-    grid-template-columns: auto minmax(160px, 210px) minmax(280px, 1fr) auto;
+    grid-template-columns: auto minmax(160px, 210px) minmax(280px, 1fr) auto auto;
   }
 
   .sourcePicker {
@@ -1211,6 +1235,10 @@
   }
 
   .commandBar .compactField:first-of-type {
+    display: none;
+  }
+
+  .sourceNavigation {
     display: none;
   }
 

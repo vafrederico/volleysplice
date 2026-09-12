@@ -505,9 +505,7 @@ export function ModelFeedbackImporter({
       <header className={styles.topbar}>
         <Brand className={styles.brand} label="LAB" priority />
         <nav>
-          <Link href="/">Dataset review</Link>
-          <Link href="/edit">Cut editor</Link>
-          <Link href="/label">Labeling station</Link>
+          <Link href="/labelv2">V2 labeling workspace</Link>
         </nav>
       </header>
 

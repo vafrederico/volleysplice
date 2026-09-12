@@ -12,8 +12,7 @@ const allowedHosts = (process.env.VOLLEYCUT_DEV_ORIGINS ?? "")
   .filter(Boolean);
 
 export default defineConfig({
-  // Relative output works at a domain root, a GitHub Pages subpath, or from
-  // any ordinary static host without a deployment-specific rebuild.
+  // Relative output works at a domain root or subpath on a static host.
   base: "./",
   plugins: [react()],
   server: {

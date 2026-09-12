@@ -48,15 +48,12 @@ test("storage supports a supplemental intake workspace", () => {
   else process.env.VOLLEYCUT_INTAKE_WORKSPACE = previous;
 });
 
-test("storage includes every prepared intake workspace by default", () => {
+test("storage uses a neutral intake directory by default", () => {
   const previousWorkspace = process.env.VOLLEYCUT_INTAKE_WORKSPACE;
   const previousWorkspaces = process.env.VOLLEYCUT_INTAKE_WORKSPACES;
   delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
   delete process.env.VOLLEYCUT_INTAKE_WORKSPACES;
-  assert.deepEqual(getIntakeWorkspaces(), [
-    "/mnt/freenas/volleycut/intake-2026-08-13",
-    "/mnt/freenas/volleycut/intake-2026-08-25-shoreline-kb",
-  ]);
+  assert.deepEqual(getIntakeWorkspaces(), [path.join(getDataRoot(), "intake")]);
   if (previousWorkspace === undefined)
     delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
   else process.env.VOLLEYCUT_INTAKE_WORKSPACE = previousWorkspace;

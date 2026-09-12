@@ -94,7 +94,7 @@ npm run build
 ```
 
 Serve `dist/` from any static HTTPS host. The build uses relative asset URLs, so it
-works at a domain root or a subpath such as GitHub Pages without changing the config.
+works at a domain root or subpath without changing the config.
 Do not open `dist/index.html` directly through `file://`; WebCodecs and module workers
 need an HTTP origin.
 
@@ -103,11 +103,6 @@ into origin-private file storage without holding the complete video in JavaScrip
 then presents a separate Share or Save action so Safari has fresh user activation for its
 native share sheet. Exact boundaries require a single AVC/AAC transcode; the output keeps
 the source display dimensions and uses the very-high-quality encoder preset.
-
-The included `.github/workflows/deploy-pages.yml` is ready when this directory is used
-as a repository root. In a monorepo, copy the workflow to the repository-level
-`.github/workflows/` directory and set both `npm` steps' `working-directory` to `prod`
-and the artifact path to `prod/dist`.
 
 ## Cloudflare Workers Static Assets (local builds)
 

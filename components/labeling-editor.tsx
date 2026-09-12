@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Brand } from "@/components/brand";
 import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
@@ -2439,17 +2440,20 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
               →
             </button>
           </div>
-          <div className={v2.sourceState} data-saved={lastSavedAt ? "true" : undefined}>
-            <i data-ready={labels ? "true" : undefined} />
-            <span>
-              {!labels
-                ? "Choose a video"
-                : lastSavedAt
-                  ? `Connected · saved ${new Date(lastSavedAt).toLocaleTimeString()}`
-                  : selectedPreparedSummary
-                    ? "Connected · not saved"
-                    : "Dataset connected"}
-            </span>
+          <div className={v2.labActions}>
+            <Link href="/model-feedback">Import feedback</Link>
+            <div className={v2.sourceState} data-saved={lastSavedAt ? "true" : undefined}>
+              <i data-ready={labels ? "true" : undefined} />
+              <span>
+                {!labels
+                  ? "Choose a video"
+                  : lastSavedAt
+                    ? `Connected · saved ${new Date(lastSavedAt).toLocaleTimeString()}`
+                    : selectedPreparedSummary
+                      ? "Connected · not saved"
+                      : "Dataset connected"}
+              </span>
+            </div>
           </div>
         </header>
 

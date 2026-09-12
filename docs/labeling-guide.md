@@ -1,6 +1,6 @@
 # Rally labeling guide
 
-The `/label` route is a local-only annotation workstation. Prepared tasks and their MP4 proxies stream from the NAS through the local application; fallback browser file pickers remain available. Nothing is uploaded to a cloud service or copied into the web application.
+The `/labelv2` route is the local-only annotation workstation. Prepared tasks and their MP4 proxies stream from the configured workspace through the local application; fallback browser file pickers remain available. Nothing is uploaded to a cloud service or copied into the web application.
 
 ## Required label contract
 
@@ -84,7 +84,7 @@ Do **not** label player identity, individual touches, ball trajectories, scores 
 
 ## Workstation controls
 
-1. Start the app with `npm run dev -- --hostname 0.0.0.0` and open `/label` on the printed LAN URL.
+1. Start the app with `npm run dev -- --hostname 0.0.0.0` and open `/labelv2` on the printed LAN URL. The root route redirects there.
 2. Choose the **Full corpus** or **Pilot** batch, then choose a prepared task. The app loads both its task JSON and matching NAS proxy. Ready and saved counts appear in the batch selector; the catalog refreshes while full proxies are being prepared.
    When no human draft has been saved yet, the task picker first loads an existing completed human document as an editable copy, when available; saving later writes a separate draft without modifying that completed source. Otherwise it loads the exact offline predictions from the model bundle promoted to production (`model-1ca43e38eefc`, all-labels v2) as the editable starting point. The same production inference and the blind GPT-5.6 Sol labels appear on synchronized read-only timelines immediately below the editable track. Separate production rows recompute `P_pad`, `R_core`, and `F1_padP_coreR` live at two and three seconds of symmetric padding as the human labels change. Overlapping or touching padded ranges are merged before durations and metrics are calculated, as are positive gaps strictly shorter than the configurable join threshold (3 seconds by default). Each model row has a final-export rail: black is retained export, light gray is a joined short gap, and red is missed unpadded human rally time. If the production-model artifact is unavailable, the editor falls back to the Sol prelabel. AI rows are marked `AI`; inspect and correct both boundaries rather than accepting either source as ground truth.
 3. To resume a downloaded draft, use the two local fallback pickers for the draft and its matching MP4.
@@ -96,7 +96,7 @@ Do **not** label player identity, individual touches, ball trajectories, scores 
 9. For the optional player pilot, choose the rally and boundary window, enter a short anonymous track ID, then click footpoints or draw boxes on two or more paused frames. **Finish player clicks** restores native video controls.
 10. Use `[` then `]` for an ignored span and `H` twice for an optional hard negative. An ignored span may be drawn over existing rallies or hard negatives; the underlying labels stay intact, and the overlay removes that time from fitting and evaluation.
 11. Use `Space` to play/pause, `J`/`K` for ±0.1 seconds, and either Shift+`J`/`K` or `←`/`→` for ±1 second. The vertical line on the label timeline tracks the current video time.
-12. Use **Save draft to NAS** often. Selecting that prepared task later resumes the saved draft automatically; downloading a backup JSON is optional. Independently, the browser records the last prepared task and playhead time in versioned local storage during playback and seeking. Reloading `/label` reopens that prepared task at the saved time; local fallback files are never stored.
+12. Use **Save draft to NAS** often. Selecting that prepared task later resumes the saved draft automatically; downloading a backup JSON is optional. Independently, the browser records the last prepared task and playhead time in versioned local storage during playback and seeking. Reloading `/labelv2` reopens that prepared task at the saved time; local fallback files are never stored.
 13. After the entire video is reviewed, check the confirmation box and export completed labels.
 
 Direct drafts are written atomically to `labels/full/<recording-id>.labels.json` or `labels/pilot/<recording-id>.labels.json`, according to the selected batch. The browser can also download the same naming format for offline backups. Do not modify the originals under `tasks/`.

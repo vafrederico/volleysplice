@@ -933,10 +933,10 @@ source groups, and can aggregate a validated high-rate detector sidecar into
 eight raw 4 fps signals. It rejects test/challenge tasks and excludes any human
 frame that saw proposals before its label was finalized.
 
-See the [ball-presence labeling guide](../docs/ball-presence-labeling-guide.md)
-for the UI workflow and the [pilot decision record](../docs/research/minimum-ball-presence-pilot-2026-08-11.md)
-for frozen artifacts, quality gates, and the reason downstream model training
-is deferred until independent labels exist.
+See the [pilot decision record](../docs/research/minimum-ball-presence-pilot-2026-08-11.md)
+for the historical workflow, frozen artifacts, quality gates, and the reason
+downstream model training is deferred until independent labels exist. The former
+ball-presence review UI is no longer part of the maintained lab application.
 
 ## What the current model does not do
 
