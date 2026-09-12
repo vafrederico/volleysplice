@@ -36,11 +36,11 @@ LGPL compliance material are documented in `THIRD_PARTY_NOTICES.md` and
 The VolleySplice wordmark and Play Store feature graphic were generated and
 edited for the project using an image-generation tool. Exact prompts and the
 mechanical resize steps are recorded in `docs/brand.md` and
-`android/play-store/README.md`. Before public release, the project owner must
-confirm ownership or authorized reuse of the original VolleyCut logo and symbol
-used as edit references. Once confirmed, the resulting repository assets are
-published under MIT. Trademark rights, if any, are not granted merely by the
-software license.
+`android/play-store/README.md`. On 2026-09-12, the project owner confirmed
+ownership of the original VolleyCut logo and symbol used as edit references.
+The resulting repository brand assets are therefore project-owned and published
+under MIT. Trademark rights, if any, are not granted merely by the software
+license.
 
 The corresponding web, Android, iOS, favicon, and Play Store renditions are
 copies or mechanical resizes of those project assets.
