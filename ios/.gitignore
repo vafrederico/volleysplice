@@ -1,0 +1,16 @@
+.build/
+.swiftpm/
+build/
+artifacts/
+/Fixtures/
+**/xcuserdata/
+*.ipa
+DerivedData/
+*.xcresult/
+*.xcarchive/
+*.dSYM/
+*.xcuserstate
+*.mobileprovision
+*.cer
+*.p12
+*.p8
