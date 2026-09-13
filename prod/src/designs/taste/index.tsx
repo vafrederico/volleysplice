@@ -1825,6 +1825,20 @@ function Timeline({ state, labeled = true }: { state: Prototype; labeled?: boole
   );
 }
 
+function rallyTimelineStatus(state: Prototype, id: string) {
+  if (!state.effectiveKeptIds.has(id)) {
+    return state.suppressionReviewIds.has(id) ? "pending-suppression" : "removed";
+  }
+  return state.reviewClipIds.has(id) ? "review" : "kept";
+}
+
+const RALLY_TIMELINE_LABELS = {
+  kept: "Kept rally",
+  review: "Needs review",
+  "pending-suppression": "Suppressed · awaiting review",
+  removed: "Removed rally",
+};
+
 function RallyFocusTimeline({ state, clip }: { state: Prototype; clip: Clip }) {
   const cut = state.workingDraft.cuts.find((candidate) => candidate.id === clip.id);
   if (!cut) return null;
@@ -1847,7 +1861,7 @@ function RallyFocusTimeline({ state, clip }: { state: Prototype; clip: Clip }) {
   };
 
   return (
-    <section className="rd-rally-focus" aria-label="Current rally timeline">
+    <section className="rd-rally-focus" data-status={rallyTimelineStatus(state, clip.id)} aria-label={`Current rally timeline · ${RALLY_TIMELINE_LABELS[rallyTimelineStatus(state, clip.id)]}`}>
       <div className="rd-rally-focus-times"><span>{formatPreciseTime(start)}</span><span>{formatPreciseTime((start + end) / 2)}</span><span>{formatPreciseTime(end)}</span></div>
       <div
         className="rd-rally-focus-rail"
@@ -1855,8 +1869,8 @@ function RallyFocusTimeline({ state, clip }: { state: Prototype; clip: Clip }) {
         onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seek(event); }}
         onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
       >
-        <span className="rd-rally-focus-padding" data-included={clip.included || undefined} style={position(cut.keepStart, cut.keepEnd)} />
-        <span className="rd-rally-focus-core" data-included={clip.included || undefined} style={position(cut.coreStart, cut.coreEnd)}><small>{clip.origin === "manual" ? "ADDED RALLY" : "RALLY"}</small></span>
+        <span className="rd-rally-focus-padding" data-included={state.effectiveKeptIds.has(clip.id) || undefined} style={position(cut.keepStart, cut.keepEnd)} />
+        <span className="rd-rally-focus-core" data-included={state.effectiveKeptIds.has(clip.id) || undefined} style={position(cut.coreStart, cut.coreEnd)}><small>{clip.origin === "manual" ? "ADDED RALLY" : "RALLY"}</small></span>
         {state.playhead >= start && state.playhead <= end && <span className="rd-rally-focus-playhead" style={{ left: `${timelinePercent(state.playhead - start, windowDuration)}%` }} />}
       </div>
       <div className="rd-rally-focus-key"><span>Padding</span><span>Rally core</span><em>Click or drag to seek</em></div>
@@ -2522,14 +2536,15 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
                 data-timeline-cut-id={cut.id}
                 data-playing={cut.id === state.currentPlayingClipId || undefined}
                 data-kept={state.effectiveKeptIds.has(cut.id) || undefined}
-                data-review={!state.workingDraft.reviewedCutIds.includes(cut.id) && cut.included || undefined}
+                data-status={rallyTimelineStatus(state, cut.id)}
+                data-review={state.reviewClipIds.has(cut.id) || undefined}
                 data-origin={cut.origin}
                 style={position(clipped.start, clipped.end)}
                 onClick={(event) => {
                   event.stopPropagation();
                   state.selectClip(cut.id);
                 }}
-                title={`${cut.id} · ${formatPreciseTime(cut.keepStart)}–${formatPreciseTime(cut.keepEnd)}`}
+                title={`${cut.id} · ${RALLY_TIMELINE_LABELS[rallyTimelineStatus(state, cut.id)]} · ${formatPreciseTime(cut.keepStart)}–${formatPreciseTime(cut.keepEnd)}`}
               >
                 <span className="rd-timeline-padding" />
                 {core.end > core.start && <i className="rd-timeline-core" style={inner(core.start, core.end)} />}
@@ -2538,7 +2553,10 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
           })}
           {state.cleanupSuggestions.map((suggestion) => {
             const clipped = segment(suggestion.start, suggestion.end);
-            return clipped.end > clipped.start ? <span key={suggestion.id} className="rd-timeline-suppression" data-state={suggestion.decision} style={position(clipped.start, clipped.end)} title={`Cleanup ${suggestion.decision} · ${Math.round(suggestion.score * 100)}%`} /> : null;
+            const decision = state.workingDraft.suppressionDecisionOverrides[suggestion.id]
+              ?? (suggestion.cutId && state.suppressionReviewIds.has(suggestion.cutId)
+                && !state.effectiveKeptIds.has(suggestion.cutId) ? "pending" : "keep");
+            return clipped.end > clipped.start ? <span key={suggestion.id} className="rd-timeline-suppression" data-state={decision} style={position(clipped.start, clipped.end)} title={`Cleanup ${decision} · ${Math.round(suggestion.score * 100)}%`} /> : null;
           })}
           {state.finalIntervals.flatMap((interval) => (interval.joinedGaps ?? []).map((gap) => {
             const clipped = segment(gap.start, gap.end);
@@ -2589,7 +2607,7 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
       <header><div><p className="td-kicker">Game timeline</p><h2 id="rd-timeline-title">Source time, cuts, and match events</h2></div><span>Drag anywhere to seek</span></header>
       {renderRow(state.gameStart, midpoint, 0)}
       {renderRow(midpoint, state.gameEnd, 1)}
-      <div className="rd-timeline-key"><span data-kind="core">Rally core</span><span data-kind="padding">Padding</span><span data-kind="review">Needs review</span><span data-kind="serve">Serve</span><span data-kind="switch">Side switch</span><span data-kind="ignored">Excluded</span><span data-kind="gap">Joined gap</span></div>
+      <div className="rd-timeline-key"><span data-kind="core">Rally core</span><span data-kind="padding">Padding</span><span data-kind="review">Needs review</span><span data-kind="suppression">Pending suppression</span><span data-kind="removed">Removed</span><span data-kind="serve">Serve</span><span data-kind="switch">Side switch</span><span data-kind="ignored">Excluded</span><span data-kind="gap">Joined gap</span></div>
     </section>
   );
 }
