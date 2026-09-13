@@ -5,3 +5,4 @@ public/runtime/opencv-worker.js
 public/licenses/
 *.tsbuildinfo
 .wrangler/
+vite.config.local.ts

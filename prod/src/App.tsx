@@ -51,6 +51,7 @@ import {
 } from "@/lib/on-device/wake-lock";
 import type { ProductAnalysis } from "@/lib/product-analysis";
 import { RallyDesk } from "@/designs/taste";
+import { editHistoryKey } from "@/designs/taste/edit-history";
 import {
   type DesignExportJob,
   type DesignVideoExportRequest,
@@ -1181,6 +1182,7 @@ export function App() {
     const analysisId = projectAnalysisId(selectedProject);
     if (analysisId) {
       try {
+        window.localStorage.removeItem(editHistoryKey(selectedProject.id));
         for (const key of cutDraftStorageKeys(analysisId))
           window.localStorage.removeItem(key);
       } catch {

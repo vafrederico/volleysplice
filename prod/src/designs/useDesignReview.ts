@@ -93,6 +93,7 @@ export type ReadyDesignReview = {
   sideSwitchEnabled: boolean;
   projectStatus: VolleySpliceProject["status"];
   draft: CutDraft;
+  draftSeed: CutDraftSeed;
   suppression: OnDeviceSuppression | undefined;
   cleanupSuggestions: DesignCleanupSuggestion[];
   projects: DesignProjectOption[];
@@ -409,6 +410,7 @@ export function useDesignReview(
           sideSwitchEnabled: project.sideSwitchEnabled !== false,
           projectStatus: project.status,
           draft,
+          draftSeed: seed,
           suppression: project.analysis.suppression,
           cleanupSuggestions: cleanupSuggestions(project, draft),
           projects: projectChoices,

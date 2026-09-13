@@ -19,6 +19,8 @@ import { timelinePercent } from "@/lib/edit-list";
 import {
   alignServeMarkersToRallyStarts,
   deriveScoreAt,
+  removeServeMarker,
+  removeSideSwitchMarker,
   scoreTrackingOutsideExcludedRallies,
   scoreTrackingOutsideIgnoredIntervals,
   type ScoreTracking,
@@ -43,6 +45,8 @@ import type { ReadyDesignReview } from "../useDesignReview";
 
 import { ResizableWorkspace, useWorkspaceLayout } from "./ResizableWorkspace";
 import { AppMenu } from "./AppMenu";
+import { editHistoryKey, moveHistory, readEditHistory, recordEdit, writeEditHistory } from "./edit-history";
+import { nextReviewItem, shortcutAction, type ReviewItem } from "./keyboard-shortcuts";
 
 import "./taste-designs.css";
 
@@ -268,6 +272,7 @@ function usePrototype(
   initialDark = false,
   followPlayhead = false,
 ) {
+  const [baseDraft, setBaseDraft] = useState(review.draft);
   const initialClips = clipsFromReview(review);
   const firstClip =
     initialClips.find((clip) =>
@@ -320,6 +325,7 @@ function usePrototype(
     () => alignServeMarkersToRallyStarts(savedScoreMarkers, clips),
     [savedScoreMarkers, clips],
   );
+  const [removedModelMarkerIds, setRemovedModelMarkerIds] = useState(review.draft.scoreTracking.removedModelMarkerIds);
   const [sideSwitchMarkers, setSideSwitchMarkers] = useState<DesignSideSwitchMarker[]>(review.draft.scoreTracking.sideSwitchMarkers);
   const [selectedScoreMarkerId, setSelectedScoreMarkerId] = useState(
     review.draft.scoreTracking.serveMarkers.find((marker) => marker.side === "review")?.id ??
@@ -373,12 +379,12 @@ function usePrototype(
   }
 
   const workingDraft = useMemo<CutDraft>(() => {
-    const previousCuts = new Map(review.draft.cuts.map((cut) => [cut.id, cut]));
+    const previousCuts = new Map(baseDraft.cuts.map((cut) => [cut.id, cut]));
     const previousIgnored = new Map(
-      review.draft.ignoredIntervals.map((interval) => [interval.id, interval]),
+      baseDraft.ignoredIntervals.map((interval) => [interval.id, interval]),
     );
     const suppressionDecisionOverrides = {
-      ...review.draft.suppressionDecisionOverrides,
+      ...baseDraft.suppressionDecisionOverrides,
     };
     for (const suggestion of review.cleanupSuggestions) {
       if (!suggestion.cutId) continue;
@@ -391,7 +397,7 @@ function usePrototype(
       }
     }
     return {
-      ...review.draft,
+      ...baseDraft,
       beforePaddingSeconds: beforePadding,
       afterPaddingSeconds: afterPadding,
       joinGapSeconds: joinGap,
@@ -402,7 +408,7 @@ function usePrototype(
       renderScoreOverlay: scoreOverlay,
       selectedSuppressionPolicy: suppressionPolicyForCleanup(cleanup),
       suppressionDecisionOverrides,
-      reviewedCutIds: clips.filter((clip) => clip.reviewed).map((clip) => clip.id),
+      reviewedCutIds: clips.filter((clip) => clip.reviewed && clip.origin === "model").map((clip) => clip.id),
       cuts: clips.map((clip) => {
         const previous = previousCuts.get(clip.id);
         const startChanged = previous
@@ -416,11 +422,11 @@ function usePrototype(
           coreStart: clip.start,
           coreEnd: clip.end,
           keepStart:
-            !startChanged && beforePadding === review.draft.beforePaddingSeconds
+            !startChanged && beforePadding === baseDraft.beforePaddingSeconds
               ? previous!.keepStart
               : Math.max(gameStart, clip.start - beforePadding),
           keepEnd:
-            !endChanged && afterPadding === review.draft.afterPaddingSeconds
+            !endChanged && afterPadding === baseDraft.afterPaddingSeconds
               ? previous!.keepEnd
               : Math.min(gameEnd, clip.end + afterPadding),
           confidence: clip.confidence,
@@ -443,7 +449,7 @@ function usePrototype(
       })),
       userTouchedCutIds: [
         ...new Set([
-          ...review.draft.userTouchedCutIds,
+          ...baseDraft.userTouchedCutIds.filter((id) => clips.some((clip) => clip.id === id && clip.origin === "model")),
           ...clips.flatMap((clip) => {
             const previous = previousCuts.get(clip.id);
             return previous?.origin === "cached-label" &&
@@ -456,12 +462,13 @@ function usePrototype(
         ]),
       ],
       scoreTracking: {
-        ...review.draft.scoreTracking,
+        ...baseDraft.scoreTracking,
         enabled: scoreEnabled,
         team1Name: teamOne.trim() || "Team 1",
         team2Name: teamTwo.trim() || "Team 2",
         serveMarkers: scoreMarkers,
         sideSwitchMarkers,
+        removedModelMarkerIds,
       },
     };
   }, [
@@ -478,15 +485,72 @@ function usePrototype(
     manualStart,
     playbackRate,
     review.cleanupSuggestions,
-    review.draft,
+    baseDraft,
     scoreEnabled,
     scoreMarkers,
     scoreOverlay,
     sideSwitchMarkers,
+    removedModelMarkerIds,
     suppressionDecisions,
     teamOne,
     teamTwo,
   ]);
+
+  const [initialHistory] = useState(() => {
+    let raw: string | null = null;
+    try { raw = window.localStorage.getItem(editHistoryKey(review.projectId)); } catch { /* Keep history in memory. */ }
+    return readEditHistory(raw, workingDraft, review.draftSeed);
+  });
+  const historyRef = useRef(initialHistory);
+  const [historyStorageFailed, setHistoryStorageFailed] = useState(false);
+
+  function persistHistory() {
+    let saved = false;
+    try { saved = writeEditHistory(window.localStorage, editHistoryKey(review.projectId), historyRef.current); } catch { /* Storage may be disabled. */ }
+    setHistoryStorageFailed(!saved);
+  }
+
+  useEffect(() => {
+    const next = recordEdit(historyRef.current, workingDraft);
+    if (next !== historyRef.current) {
+      historyRef.current = next;
+      persistHistory();
+    }
+  }, [workingDraft]);
+
+  function restoreHistory(direction: "undo" | "redo") {
+    const current = recordEdit(historyRef.current, workingDraft);
+    const next = moveHistory(current, direction);
+    if (next === current) {
+      setReviewMessage(`Nothing to ${direction}.`);
+      return;
+    }
+    historyRef.current = next;
+    const draft = next.present;
+    setBaseDraft(draft);
+    setClips(clipsFromReview({ ...review, draft }));
+    setExcludedRanges(excludedFromReview({ ...review, draft }));
+    setManualStart(draft.pendingManualStart);
+    setExcludedStart(draft.pendingIgnoreStart);
+    setBeforePadding(draft.beforePaddingSeconds);
+    setAfterPadding(draft.afterPaddingSeconds);
+    setJoinGap(draft.joinGapSeconds);
+    setCleanup(cleanupStrengthForPolicy(draft.selectedSuppressionPolicy));
+    setScoreEnabled(draft.scoreTracking.enabled);
+    setScoreOverlay(draft.renderScoreOverlay);
+    setTeamOne(draft.scoreTracking.team1Name);
+    setTeamTwo(draft.scoreTracking.team2Name);
+    setScoreMarkers(draft.scoreTracking.serveMarkers);
+    setSideSwitchMarkers(draft.scoreTracking.sideSwitchMarkers);
+    setRemovedModelMarkerIds(draft.scoreTracking.removedModelMarkerIds);
+    setSuppressionDecisions(Object.fromEntries(review.cleanupSuggestions.flatMap((suggestion) => {
+      if (!suggestion.cutId) return [];
+      const decision = draft.suppressionDecisionOverrides[suggestion.id];
+      return [[suggestion.cutId, decision === "keep" ? "kept" : decision === "suppress" ? "excluded" : "pending"]];
+    })));
+    setReviewMessage(direction === "undo" ? "Last edit undone." : "Edit restored.");
+    persistHistory();
+  }
 
   useEffect(() => {
     review.saveDraft(workingDraft);
@@ -881,6 +945,7 @@ function usePrototype(
 
   function markManualBoundary() {
     if (manualStart === null) {
+      setExcludedStart(null);
       setManualStart(playhead);
       setReviewMessage(`Missed rally starts at ${formatTime(playhead)}. Move the playhead, then mark its end.`);
       return;
@@ -915,6 +980,7 @@ function usePrototype(
 
   function markExcludedBoundary(reason: ExcludedRange["reason"] = excludedReason) {
     if (excludedStart === null) {
+      setManualStart(null);
       setExcludedStart(playhead);
       setReviewMessage(`Excluded section starts at ${formatTime(playhead)}. Move the playhead, then mark its end.`);
       return;
@@ -1050,7 +1116,9 @@ function usePrototype(
   }
 
   function addServeAtPlayhead() {
-    const id = `manual-serve-${scoreMarkers.filter((marker) => marker.origin === "manual").length + 1}`;
+    let sequence = 1;
+    while (scoreMarkers.some((marker) => marker.id === `manual-serve-${sequence}`)) sequence += 1;
+    const id = `manual-serve-${sequence}`;
     setScoreMarkers((current) => [
       ...current,
       { id, timestamp: playhead, side: servingSide, ignorePreviousPoint: false, origin: "manual" },
@@ -1061,7 +1129,9 @@ function usePrototype(
   }
 
   function addSideSwitchAtPlayhead() {
-    const id = `manual-switch-${sideSwitchMarkers.filter((marker) => marker.origin === "manual").length + 1}`;
+    let sequence = 1;
+    while (sideSwitchMarkers.some((marker) => marker.id === `manual-switch-${sequence}`)) sequence += 1;
+    const id = `manual-switch-${sequence}`;
     setSideSwitchMarkers((current) => [...current, { id, timestamp: playhead, origin: "manual" }]);
     setSelectedSideSwitchId(id);
     setSelectedScoreMarkerId("");
@@ -1097,16 +1167,20 @@ function usePrototype(
   }
 
   function removeSelectedEvent() {
-    if (selectedScoreMarker?.origin === "manual") {
-      setScoreMarkers((current) => current.filter((marker) => marker.id !== selectedScoreMarker.id));
+    if (selectedScoreMarker) {
+      const next = removeServeMarker(workingDraft.scoreTracking, selectedScoreMarker.id);
+      setScoreMarkers(next.serveMarkers);
+      setRemovedModelMarkerIds(next.removedModelMarkerIds);
       setSelectedScoreMarkerId("");
-      setScoreMessage(`Manual serve at ${formatTime(selectedScoreMarker.timestamp)} removed.`);
+      setScoreMessage(`Serve at ${formatTime(selectedScoreMarker.timestamp)} removed.`);
       return;
     }
-    if (selectedSideSwitch?.origin === "manual") {
-      setSideSwitchMarkers((current) => current.filter((marker) => marker.id !== selectedSideSwitch.id));
+    if (selectedSideSwitch) {
+      const next = removeSideSwitchMarker(workingDraft.scoreTracking, selectedSideSwitch.id);
+      setSideSwitchMarkers(next.sideSwitchMarkers);
+      setRemovedModelMarkerIds(next.removedModelMarkerIds);
       setSelectedSideSwitchId("");
-      setScoreMessage(`Manual side switch at ${formatTime(selectedSideSwitch.timestamp)} removed.`);
+      setScoreMessage(`Side switch at ${formatTime(selectedSideSwitch.timestamp)} removed.`);
     }
   }
 
@@ -1217,6 +1291,7 @@ function usePrototype(
     playbackRate, setPlaybackRate,
     beforePadding, setBeforePadding,
     afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup,
+    restoreHistory, historyStorageFailed,
     reviewMessage, scoreEnabled, setScoreEnabled, scoreOverlay, setScoreOverlay,
     teamOne, setTeamOne, teamTwo, setTeamTwo, scoreOne: derivedScore.team1Score,
     scoreTwo: derivedScore.team2Score, servingTeam: derivedScore.servingTeamId,
@@ -1896,7 +1971,7 @@ function RallyDeskRangeTools({ state }: { state: Prototype }) {
           ))}
           {state.excludedRanges.length === 0 && <p>No excluded sections.</p>}
         </div>
-        <p className="rd-sidebar-tool-status" aria-live="polite">{state.reviewMessage}</p>
+        <p className="rd-sidebar-tool-status" aria-live="polite">{state.reviewMessage}{state.historyStorageFailed && " Undo history is available this session, but browser storage could not save it."}</p>
       </section>
     </>
   );
@@ -2256,11 +2331,11 @@ function RallyDeskEventRail({ state }: { state: Prototype }) {
                 ))}
               </fieldset>
               <label><input type="checkbox" checked={state.selectedScoreMarker.ignorePreviousPoint} onChange={(event) => state.setScoreMarkerReplay(state.selectedScoreMarker!.id, event.currentTarget.checked)} /><span>Previous rally was a replay</span></label>
-              {state.selectedScoreMarker.origin === "manual" && <button className="rd-remove-event" type="button" onClick={state.removeSelectedEvent}>Remove manual serve</button>}
+              <button className="rd-remove-event" type="button" onClick={state.removeSelectedEvent}>Remove serve</button>
             </section>
           )}
           {state.selectedSideSwitch && (
-            <section className="rd-event-editor"><header><strong>Side switch</strong><span>{formatPreciseTime(state.selectedSideSwitch.timestamp)}</span></header><p>Team-to-court mapping changes from the next serve.</p>{state.selectedSideSwitch.origin === "manual" && <button className="rd-remove-event" type="button" onClick={state.removeSelectedEvent}>Remove side switch</button>}</section>
+            <section className="rd-event-editor"><header><strong>Side switch</strong><span>{formatPreciseTime(state.selectedSideSwitch.timestamp)}</span></header><p>Team-to-court mapping changes from the next serve.</p><button className="rd-remove-event" type="button" onClick={state.removeSelectedEvent}>Remove side switch</button></section>
           )}
           <div className="rd-event-add"><button type="button" onClick={state.addServeAtPlayhead}>+ Serve at playhead</button><button type="button" onClick={state.addSideSwitchAtPlayhead}>+ Side switch</button></div>
         </>
@@ -2551,6 +2626,93 @@ function RallyDeskSettingsModal({
   );
 }
 
+function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
+  const reviewCursor = useRef<ReviewItem | null>(null);
+  useEffect(() => { reviewCursor.current = null; }, [state.selectedProjectId]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.defaultPrevented || settingsOpen || state.helpOpen ||
+        document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]') ||
+        target?.closest('select, [role="combobox"], .rd-menu-panel, [role="dialog"]')) return;
+      const action = shortcutAction(event);
+      if (!action) return;
+      if (action !== "cancelRange" && target?.closest('input, textarea, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="slider"]')) return;
+      if (state.stage !== "review" && !["new", "projects", "export"].includes(action)) return;
+      if (action === "cancelRange" && state.manualStart === null && state.excludedStart === null) return;
+      event.preventDefault();
+      switch (action) {
+        case "undo": state.restoreHistory("undo"); break;
+        case "redo": state.restoreHistory("redo"); break;
+        case "playPause": state.setPlaying((playing) => !playing); break;
+        case "new": state.selectProject(null); break;
+        case "export": state.setStage("deliver"); break;
+        case "projects": {
+          const select = [...document.querySelectorAll<HTMLSelectElement>('[data-tour="rd-project-selector"] select')]
+            .find((element) => element.getClientRects().length > 0);
+          if (select) {
+            select.scrollIntoView({ block: "nearest" });
+            select.focus();
+            // Native picker support varies; focus still enables normal arrow navigation.
+            try { select.showPicker?.(); } catch { /* Leave the select focused. */ }
+          }
+          break;
+        }
+        case "near":
+        case "far":
+          if (state.scoreEnabled && state.selectedScoreMarker)
+            state.updateScoreMarkerSide(state.selectedScoreMarker.id, action);
+          break;
+        case "keep": state.setCurrentRallyIncluded(true); break;
+        case "remove": state.setCurrentRallyIncluded(false); break;
+        case "split": state.splitSelectedAtPlayhead(); break;
+        case "serve": if (state.scoreEnabled) state.addServeAtPlayhead(); break;
+        case "exclude": state.markExcludedBoundary("other"); break;
+        case "missed": state.markManualBoundary(); break;
+        case "cancelRange":
+          if (state.manualStart !== null) state.cancelManualBoundary();
+          if (state.excludedStart !== null) state.cancelExcludedBoundary();
+          break;
+        case "switch": if (state.scoreEnabled) state.addSideSwitchAtPlayhead(); break;
+        case "removeEvent": if (state.scoreEnabled) state.removeSelectedEvent(); break;
+        case "back":
+        case "forward":
+          state.setPlayhead(Math.max(state.gameStart, Math.min(state.gameEnd,
+            state.playhead + (action === "back" ? -5 : 5))));
+          break;
+        case "faster":
+        case "slower": {
+          const index = PLAYBACK_RATES.indexOf(state.playbackRate);
+          state.setPlaybackRate(PLAYBACK_RATES[Math.max(0, Math.min(PLAYBACK_RATES.length - 1,
+            index + (action === "faster" ? 1 : -1)))]);
+          break;
+        }
+        case "review": {
+          const items: ReviewItem[] = state.clips.flatMap((clip) => {
+            const kind = state.suppressionReviewIds.has(clip.id) ? "cleanup"
+              : state.reviewClipIds.has(clip.id) ? "clip" : null;
+            return kind ? [{ kind, id: clip.id, time: clip.start }] : [];
+          });
+          if (state.scoreEnabled) items.push(...state.activeScoreMarkers
+            .filter((marker) => marker.side === "review")
+            .map((marker): ReviewItem => ({ kind: "serve", id: marker.id, time: marker.timestamp })));
+          const next = nextReviewItem(items, reviewCursor.current);
+          reviewCursor.current = next;
+          if (next) {
+            state.setFinalPreview(false);
+            state.setPlaying(false);
+            if (next.kind === "serve") state.selectScoreMarker(next.id);
+            else state.selectClip(next.id);
+          }
+          break;
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+}
+
 export function RallyDesk({
   review,
   onDeleteProject,
@@ -2560,6 +2722,7 @@ export function RallyDesk({
 }) {
   const state = usePrototype(review, "review", false, true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  useRallyDeskShortcuts(state, settingsOpen);
   const layoutPreferences = useWorkspaceLayout();
   return (
     <main className="taste-root taste-rally-desk" data-theme={state.dark ? "dark" : "light"}>
@@ -2585,7 +2748,7 @@ export function RallyDesk({
           </>}
         </ResizableWorkspace>
       ) : (
-        <div className="rd-shell"><div className="rd-main"><StandardStage state={state} /></div></div>
+        <div className="rd-shell"><div className="rd-main"><RallyDeskProjectSelector state={state} className="rd-review-project" onDeleteProject={onDeleteProject} /><StandardStage state={state} /></div></div>
       )}
       <HelpDrawer state={state} />
       {settingsOpen && <RallyDeskSettingsModal state={state} onClose={() => setSettingsOpen(false)} />}

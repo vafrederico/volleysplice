@@ -1327,3 +1327,11 @@
   .rd-topbar > .td-stages { grid-column: 1 / -1; grid-row: 2; }
   .rd-topbar > .rd-app-menu { grid-column: 2; grid-row: 1; }
 }
+
+.rd-shortcuts-dialog { color: var(--td-ink); }
+.rd-shortcuts-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.rd-shortcuts-list { margin: 0; }
+.rd-shortcuts-list > div { display: grid; grid-template-columns: minmax(130px, 1fr) 2fr; align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid var(--td-line); }
+.rd-shortcuts-list dt { font-size: 12px; }
+.rd-shortcuts-list kbd { display: inline-block; padding: 4px 7px; border: 1px solid var(--td-line); border-radius: 4px; background: var(--td-panel-2); font-family: inherit; font-weight: 700; }
+.rd-shortcuts-list dd { margin: 0; font-size: 12px; line-height: 1.5; }

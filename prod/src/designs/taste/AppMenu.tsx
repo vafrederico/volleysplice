@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { GOOGLE_PLAY_URL } from "@/lib/android-app";
+import { KEYBOARD_SHORTCUTS } from "./keyboard-shortcuts";
 
 export function AppMenu({
   dark,
@@ -13,6 +14,7 @@ export function AppMenu({
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const shortcuts = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
     if (!open) return;
@@ -81,8 +83,39 @@ export function AppMenu({
           <button type="button" onClick={() => select(onResetLayout)}>
             Reset layout
           </button>
+          <button type="button" onClick={() => {
+            setOpen(false);
+            trigger.current?.focus();
+            shortcuts.current?.showModal();
+          }}>
+            Keyboard shortcuts
+          </button>
         </nav>
       )}
+      <dialog
+        ref={shortcuts}
+        className="rd-settings-dialog rd-shortcuts-dialog"
+        aria-labelledby={`${id}-shortcuts-title`}
+        aria-describedby={`${id}-shortcuts-description`}
+        onClose={() => trigger.current?.focus()}
+        onClick={(event) => {
+          if (event.target !== event.currentTarget) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX > rect.right ||
+            event.clientY < rect.top || event.clientY > rect.bottom) shortcuts.current?.close();
+        }}
+      >
+        <header>
+          <h2 id={`${id}-shortcuts-title`}>Keyboard shortcuts</h2>
+          <button type="button" aria-label="Close keyboard shortcuts" onClick={() => shortcuts.current?.close()}>×</button>
+        </header>
+        <p id={`${id}-shortcuts-description`}>Review shortcuts work in the review workspace. They pause while you type, use a dropdown, or open a modal. Escape closes this window.</p>
+        <dl className="rd-shortcuts-list">
+          {KEYBOARD_SHORTCUTS.map((shortcut) => (
+            <div key={shortcut.action}><dt><kbd>{shortcut.label}</kbd></dt><dd>{shortcut.description}</dd></div>
+          ))}
+        </dl>
+      </dialog>
     </div>
   );
 }
