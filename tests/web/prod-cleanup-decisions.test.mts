@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createCutDraft, materializeFinalCutIntervals } from "../../prod/src/lib/cut-draft.ts";
-import { cleanupDecisionsForRally, normalizeCleanupDecisions } from "../../prod/src/designs/taste/cleanup-decisions.ts";
+import { createCutDraft, materializeFinalCutIntervals, rallySuppressionDecisionKey } from "../../prod/src/lib/cut-draft.ts";
+import { cleanupDecisionsForRally, cleanupReviewDecisions, normalizeCleanupDecisions } from "../../prod/src/designs/taste/cleanup-decisions.ts";
 import { readEditHistory, recordEdit, moveHistory } from "../../prod/src/designs/taste/edit-history.ts";
 import type { SuppressionSuggestion } from "../../prod/src/lib/on-device/suppression-policy.ts";
 
@@ -23,11 +23,30 @@ test("Remove then Keep restores a suppressed rally when fragment and logical IDs
   assert.deepEqual(materializeFinalCutIntervals(restored, suppression).intervals.flatMap((i) => i.cutIds), ["R001"]);
 });
 
-test("shared cleanup decisions cannot be overwritten by another fragment's pending state", () => {
-  const suggestions = [{ ...suggestion, cutId: "R001" }, { ...suggestion, id: "fragment-two", cutId: "R002" },
-    { ...suggestion, id: "other", logicalId: "unrelated", cutId: "R003" }];
-  const kept = cleanupDecisionsForRally({ R001: "excluded", R002: "pending", R003: "pending" }, suggestions, "R001", "kept");
-  assert.deepEqual(kept, { R001: "kept", R002: "kept", R003: "pending" });
+test("Keep and Remove update only the selected rally's review decision", () => {
+  const decisions = { R001: "excluded" as const, R002: "pending" as const, R003: "pending" as const };
+  assert.deepEqual(cleanupDecisionsForRally(decisions, "R001", "kept"), { R001: "kept", R002: "pending", R003: "pending" });
+});
+
+test("rallies sharing one suppression event can be removed and restored independently", () => {
+  const draft = createCutDraft({ ...seed, rallies: [
+    ...seed.rallies, { id: "R002", start: 25, end: 35, confidence: 0.9, included: true },
+  ] });
+  const suppression = { suggestions: [{ ...suggestion, end: 35 }] };
+  const keptIds = (value: typeof draft) => [...new Set(materializeFinalCutIntervals(value, suppression).intervals.flatMap((i) => i.cutIds))];
+  assert.deepEqual(keptIds(draft), []);
+  const removed = { ...draft, cuts: draft.cuts.map((cut) => cut.id === "R001" ? { ...cut, included: false } : cut),
+    userTouchedCutIds: ["R001"], suppressionDecisionOverrides: { [rallySuppressionDecisionKey("R001")]: "suppress" as const } };
+  assert.deepEqual(keptIds(removed), []);
+  assert.equal(removed.cuts[1].included, true);
+  const restored = { ...removed, cuts: draft.cuts,
+    suppressionDecisionOverrides: { [suggestion.logicalId]: "suppress" as const, [rallySuppressionDecisionKey("R001")]: "keep" as const } };
+  assert.deepEqual(keptIds(restored), ["R001"], "Keep overrides an old shared suppression without keeping the other rally");
+  const both = { ...restored, suppressionDecisionOverrides: { ...restored.suppressionDecisionOverrides, [rallySuppressionDecisionKey("R002")]: "keep" as const } };
+  assert.deepEqual(keptIds(both), ["R001", "R002"]);
+  assert.deepEqual(keptIds({ ...both, cuts: removed.cuts, suppressionDecisionOverrides: {
+    ...both.suppressionDecisionOverrides, [rallySuppressionDecisionKey("R001")]: "suppress",
+  } }), ["R002"], "Removing one kept rally leaves the other kept");
 });
 
 test("legacy saved history migrates decisions without losing undo or redo", () => {
@@ -41,4 +60,11 @@ test("legacy saved history migrates decisions without losing undo or redo", () =
   const undone = moveHistory(reloaded, "undo");
   assert.deepEqual(undone.present.suppressionDecisionOverrides, { [suggestion.logicalId]: "suppress" });
   assert.deepEqual(moveHistory(undone, "redo").present.suppressionDecisionOverrides, { [suggestion.logicalId]: "keep" });
+});
+
+test("reset recomputes pending cleanup from model policy instead of imported review decisions", () => {
+  const baseline = createCutDraft(seed);
+  const imported = [{ ...suggestion, decision: "suppress" as const }];
+  assert.deepEqual(cleanupReviewDecisions(baseline, imported), { R001: "pending" });
+  assert.deepEqual(cleanupReviewDecisions({ ...baseline, selectedSuppressionPolicy: "none" }, imported), { R001: "kept" });
 });

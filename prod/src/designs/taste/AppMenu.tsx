@@ -6,15 +6,21 @@ export function AppMenu({
   dark,
   onToggleTheme,
   onResetLayout,
+  projectName,
+  onResetProject,
 }: {
   dark: boolean;
   onToggleTheme: () => void;
   onResetLayout: () => void;
+  projectName: string;
+  onResetProject: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const shortcuts = useRef<HTMLDialogElement>(null);
+  const resetProject = useRef<HTMLDialogElement>(null);
+  const cancelReset = useRef<HTMLButtonElement>(null);
   const id = useId();
   useEffect(() => {
     if (!open) return;
@@ -86,12 +92,38 @@ export function AppMenu({
           <button type="button" onClick={() => {
             setOpen(false);
             trigger.current?.focus();
+            resetProject.current?.showModal();
+            cancelReset.current?.focus();
+          }}>
+            Reset project changes
+          </button>
+          <button type="button" onClick={() => {
+            setOpen(false);
+            trigger.current?.focus();
             shortcuts.current?.showModal();
           }}>
             Keyboard shortcuts
           </button>
         </nav>
       )}
+      <dialog
+        ref={resetProject}
+        className="rd-settings-dialog rd-reset-project-dialog"
+        aria-labelledby={`${id}-reset-title`}
+        aria-describedby={`${id}-reset-description`}
+        onClose={() => trigger.current?.focus()}
+      >
+        <header><h2 id={`${id}-reset-title`}>Reset project changes?</h2></header>
+        <p id={`${id}-reset-description`}>Restore “{projectName}” to its saved model results and default review settings? This clears your rally edits, keep/remove decisions, added markers, excluded footage, and score corrections. Your source video and analysis stay saved; inference will not run again.</p>
+        <p>You can undo this reset with Ctrl+Z.</p>
+        <footer>
+          <button ref={cancelReset} className="td-secondary-button" type="button" onClick={() => resetProject.current?.close()}>Cancel</button>
+          <button className="td-primary-button" type="button" onClick={() => {
+            resetProject.current?.close();
+            onResetProject();
+          }}>Reset project changes</button>
+        </footer>
+      </dialog>
       <dialog
         ref={shortcuts}
         className="rd-settings-dialog rd-shortcuts-dialog"

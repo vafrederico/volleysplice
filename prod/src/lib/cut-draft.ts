@@ -792,12 +792,29 @@ function subtractRanges(
   );
 }
 
+export function rallySuppressionDecisionKey(cutId: string): string {
+  return `rally:${cutId}`;
+}
+
+function suppressionAppliesToCut(suggestion: SuppressionSuggestion, draft: CutDraft, cut: EditableCut): boolean {
+  const decision = draft.suppressionDecisionOverrides[rallySuppressionDecisionKey(cut.id)];
+  if (decision === "keep") return false;
+  if (decision === "suppress") return true;
+  // A correction to one rally must never exempt another rally in the same event.
+  return suppressionSuggestionState(suggestion, {
+    ...draft,
+    userTouchedCutIds: draft.userTouchedCutIds.includes(cut.id) ? [cut.id] : [],
+  }) === "suppressed";
+}
+
 export function materializeFinalCutIntervals(
   draft: CutDraft,
   suppression?: Pick<OnDeviceSuppression, "suggestions">,
 ): FinalCutMaterialization {
   const appliedSuggestions = activeSuppressionSuggestions(draft, suppression)
-    .filter((suggestion) => suppressionSuggestionState(suggestion, draft) === "suppressed");
+    .filter((suggestion) => draft.cuts.some((cut) => cut.origin === "cached-label" &&
+      cut.coreStart < suggestion.end && suggestion.start < cut.coreEnd &&
+      suppressionAppliesToCut(suggestion, draft, cut)));
   const wholeRallySuggestions = appliedSuggestions.filter(
     (suggestion) => suppressionSuggestionScope(suggestion, draft) === "whole-rally",
   );
@@ -808,7 +825,8 @@ export function materializeFinalCutIntervals(
     draft.cuts
       .filter((cut) => cut.origin === "cached-label")
       .filter((cut) => wholeRallySuggestions.some(
-        (suggestion) => cut.coreStart < suggestion.end && suggestion.start < cut.coreEnd,
+        (suggestion) => cut.coreStart < suggestion.end && suggestion.start < cut.coreEnd &&
+          suppressionAppliesToCut(suggestion, draft, cut),
       ))
       .map((cut) => cut.id),
   );
@@ -836,9 +854,10 @@ export function materializeFinalCutIntervals(
       continue;
     }
     if (wholeRallyCutIds.has(cut.id)) continue;
+    const cutVetoSuggestions = vetoRegionSuggestions.filter((suggestion) => suppressionAppliesToCut(suggestion, draft, cut));
     const fragments = subtractRanges(
       { start: cut.coreStart, end: cut.coreEnd },
-      vetoRegionSuggestions,
+      cutVetoSuggestions,
     );
     for (const fragment of fragments) {
       const outerStart = Math.abs(fragment.start - cut.coreStart) < 0.000_5;
@@ -856,7 +875,7 @@ export function materializeFinalCutIntervals(
       if (paddedEnd <= paddedStart) continue;
       const hardClipped = subtractRanges(
         { start: paddedStart, end: paddedEnd },
-        vetoRegionSuggestions,
+        cutVetoSuggestions,
       );
       hardClipped.forEach((interval) => {
         if (interval.end > interval.start) {

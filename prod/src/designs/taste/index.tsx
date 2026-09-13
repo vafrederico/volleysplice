@@ -10,6 +10,7 @@ import {
 
 import {
   materializeFinalCutIntervals,
+  rallySuppressionDecisionKey,
   PLAYBACK_RATES,
   type CutDraft,
   type EditableCut,
@@ -45,7 +46,7 @@ import type { ReadyDesignReview } from "../useDesignReview";
 
 import { ResizableWorkspace, useWorkspaceLayout } from "./ResizableWorkspace";
 import { AppMenu } from "./AppMenu";
-import { cleanupDecisionsForRally, normalizeCleanupDecisions } from "./cleanup-decisions";
+import { cleanupDecisionsForRally, cleanupReviewDecisions, normalizeCleanupDecisions } from "./cleanup-decisions";
 import { editHistoryKey, moveHistory, readEditHistory, recordEdit, writeEditHistory } from "./edit-history";
 import { nextReviewItem, shortcutAction, type ReviewItem } from "./keyboard-shortcuts";
 
@@ -193,21 +194,7 @@ function excludedFromReview(review: ReadyDesignReview): ExcludedRange[] {
 function suppressionFromReview(
   review: ReadyDesignReview,
 ): Record<string, SuppressionDecision> {
-  const overrides = normalizeCleanupDecisions(review.draft, review.cleanupSuggestions).suppressionDecisionOverrides;
-  return Object.fromEntries(
-    review.cleanupSuggestions.flatMap((suggestion) =>
-      suggestion.cutId
-        ? [[
-            suggestion.cutId,
-            (overrides[suggestion.logicalId] ?? suggestion.decision) === "keep"
-              ? "kept"
-              : (overrides[suggestion.logicalId] ?? suggestion.decision) === "suppress"
-                ? "excluded"
-                : "pending",
-          ]]
-        : [],
-    ),
-  );
+  return cleanupReviewDecisions(review.draft, review.cleanupSuggestions);
 }
 
 function clipRequiresConfidenceReview(clip: Clip, threshold: number): boolean {
@@ -298,12 +285,17 @@ function usePrototype(
   const [detectSwitches, setDetectSwitches] = useState(review.sideSwitchEnabled);
   const [analysisProgress, setAnalysisProgress] = useState(100);
   const [clips, setClips] = useState<Clip[]>(initialClips);
+  const cleanupSuggestions = useMemo(() => review.cleanupSuggestions.flatMap((suggestion) => {
+    const related = clips.filter((clip) => clip.start < suggestion.end && clip.end > suggestion.start);
+    return related.map((clip) => ({ ...suggestion, cutId: clip.id }));
+  }), [clips, review.cleanupSuggestions]);
   const [manualStart, setManualStart] = useState<number | null>(review.draft.pendingManualStart);
   const [excludedStart, setExcludedStart] = useState<number | null>(review.draft.pendingIgnoreStart);
   const [excludedReason, setExcludedReason] = useState<ExcludedRange["reason"]>("camera-break");
   const [excludedRanges, setExcludedRanges] = useState<ExcludedRange[]>(() => excludedFromReview(review));
   const [suppressionDecisions, setSuppressionDecisions] = useState<Record<string, SuppressionDecision>>(() => suppressionFromReview(review));
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
+  const [openedClipId, setOpenedClipId] = useState<string | null>(null);
   const initialPlayhead = firstClip?.start ?? review.gameStart;
   const [playhead, setPlayheadValue] = useState(initialPlayhead);
   const [seekRequest, setSeekRequest] = useState({ revision: 0, target: initialPlayhead });
@@ -371,6 +363,7 @@ function usePrototype(
       : localExportProgress > 0;
 
   function setPlayhead(value: number) {
+    setOpenedClipId(null);
     const target = Math.max(gameStart, Math.min(gameEnd, value));
     setPlayheadValue(target);
     setSeekRequest((current) => ({ revision: current.revision + 1, target }));
@@ -386,17 +379,12 @@ function usePrototype(
       baseDraft.ignoredIntervals.map((interval) => [interval.id, interval]),
     );
     const suppressionDecisionOverrides = {
-      ...normalizeCleanupDecisions(baseDraft, review.cleanupSuggestions).suppressionDecisionOverrides,
+      ...normalizeCleanupDecisions(baseDraft, cleanupSuggestions).suppressionDecisionOverrides,
     };
-    for (const suggestion of review.cleanupSuggestions) {
-      if (!suggestion.cutId) continue;
-      const decision = suppressionDecisions[suggestion.cutId];
-      if (!decision || decision === "pending") {
-        delete suppressionDecisionOverrides[suggestion.logicalId];
-      } else {
-        suppressionDecisionOverrides[suggestion.logicalId] =
-          decision === "kept" ? "keep" : "suppress";
-      }
+    for (const [cutId, decision] of Object.entries(suppressionDecisions)) {
+      const key = rallySuppressionDecisionKey(cutId);
+      if (!decision || decision === "pending") delete suppressionDecisionOverrides[key];
+      else suppressionDecisionOverrides[key] = decision === "kept" ? "keep" : "suppress";
     }
     return {
       ...baseDraft,
@@ -486,7 +474,7 @@ function usePrototype(
     joinGap,
     manualStart,
     playbackRate,
-    review.cleanupSuggestions,
+    cleanupSuggestions,
     baseDraft,
     scoreEnabled,
     scoreMarkers,
@@ -502,7 +490,7 @@ function usePrototype(
     let raw: string | null = null;
     try { raw = window.localStorage.getItem(editHistoryKey(review.projectId)); } catch { /* Keep history in memory. */ }
     return readEditHistory(raw, workingDraft, review.draftSeed,
-      (draft) => normalizeCleanupDecisions(draft, review.cleanupSuggestions));
+      (draft) => normalizeCleanupDecisions(draft, cleanupSuggestions));
   });
   const historyRef = useRef(initialHistory);
   const [historyStorageFailed, setHistoryStorageFailed] = useState(false);
@@ -521,15 +509,7 @@ function usePrototype(
     }
   }, [workingDraft]);
 
-  function restoreHistory(direction: "undo" | "redo") {
-    const current = recordEdit(historyRef.current, workingDraft);
-    const next = moveHistory(current, direction);
-    if (next === current) {
-      setReviewMessage(`Nothing to ${direction}.`);
-      return;
-    }
-    historyRef.current = next;
-    const draft = next.present;
+  function applyReviewDraft(draft: CutDraft) {
     setBaseDraft(draft);
     setClips(clipsFromReview({ ...review, draft }));
     setExcludedRanges(excludedFromReview({ ...review, draft }));
@@ -546,13 +526,37 @@ function usePrototype(
     setScoreMarkers(draft.scoreTracking.serveMarkers);
     setSideSwitchMarkers(draft.scoreTracking.sideSwitchMarkers);
     setRemovedModelMarkerIds(draft.scoreTracking.removedModelMarkerIds);
-    setSuppressionDecisions(Object.fromEntries(review.cleanupSuggestions.flatMap((suggestion) => {
-      if (!suggestion.cutId) return [];
-      const decision = draft.suppressionDecisionOverrides[suggestion.logicalId];
-      return [[suggestion.cutId, decision === "keep" ? "kept" : decision === "suppress" ? "excluded" : "pending"]];
-    })));
+    setSuppressionDecisions(cleanupReviewDecisions(draft, review.cleanupSuggestions));
+  }
+
+  function restoreHistory(direction: "undo" | "redo") {
+    const current = recordEdit(historyRef.current, workingDraft);
+    const next = moveHistory(current, direction);
+    if (next === current) {
+      setReviewMessage(`Nothing to ${direction}.`);
+      return;
+    }
+    historyRef.current = next;
+    const draft = next.present;
+    applyReviewDraft(draft);
     setReviewMessage(direction === "undo" ? "Last edit undone." : "Edit restored.");
     persistHistory();
+  }
+
+  function resetProjectChanges() {
+    applyReviewDraft(review.modelDraft);
+    setPlaying(false);
+    setFinalPreview(review.modelDraft.cutPreviewEnabled);
+    setPlaybackRate(review.modelDraft.playbackRate);
+    setGameStart(review.gameStart);
+    setGameEnd(review.gameEnd);
+    setServingSide("near");
+    setExcludedReason("camera-break");
+    setSelectedScoreMarkerId("");
+    setSelectedSideSwitchId("");
+    setPlayhead(review.gameStart);
+    setStage("review");
+    setReviewMessage("Project restored to the saved model results. Ctrl+Z undoes the reset.");
   }
 
   useEffect(() => {
@@ -631,8 +635,8 @@ function usePrototype(
   );
   const remaining = reviewClipIds.size;
   const suppressionReviewIds = useMemo(() => {
-    const suggestionsByCut = new Map<string, typeof review.cleanupSuggestions>();
-    for (const suggestion of review.cleanupSuggestions) {
+    const suggestionsByCut = new Map<string, typeof cleanupSuggestions>();
+    for (const suggestion of cleanupSuggestions) {
       if (!suggestion.cutId) continue;
       suggestionsByCut.set(suggestion.cutId, [
         ...(suggestionsByCut.get(suggestion.cutId) ?? []),
@@ -664,7 +668,7 @@ function usePrototype(
         })
         .map(([id]) => id),
     );
-  }, [clips, review.cleanupSuggestions, suppressionDecisions, workingDraft.ignoredIntervals]);
+  }, [clips, cleanupSuggestions, suppressionDecisions, workingDraft.ignoredIntervals]);
   const suppressionPending = suppressionReviewIds.size;
   const clipReviewTaskIds = useMemo(
     () => new Set([
@@ -706,8 +710,16 @@ function usePrototype(
   );
   const activeScoreMarkers = activeScoreTracking.serveMarkers;
   const activeSideSwitchMarkers = activeScoreTracking.sideSwitchMarkers;
+  const openedCut = workingDraft.cuts.find((cut) => cut.id === openedClipId);
+  const withinOpenedCut = openedCut != null && playhead >= openedCut.keepStart && playhead < openedCut.keepEnd;
+  useEffect(() => {
+    if (!withinOpenedCut) setOpenedClipId(null);
+  }, [withinOpenedCut]);
   const currentPlayingCut = useMemo(
     () => {
+      // Opening a rally seeks to its padding, which can overlap another rally's core.
+      // Keep edits directed at the opened rally until playback leaves it or the user seeks.
+      if (withinOpenedCut) return openedCut;
       const ordered = [...workingDraft.cuts].sort(
         (left, right) => left.keepStart - right.keepStart || left.keepEnd - right.keepEnd,
       );
@@ -724,7 +736,7 @@ function usePrototype(
         .filter((cut) => cut.keepEnd <= playhead)
         .sort((left, right) => right.keepEnd - left.keepEnd)[0] ?? ordered[0] ?? null;
     },
-    [playhead, workingDraft.cuts],
+    [playhead, workingDraft.cuts, withinOpenedCut, openedCut],
   );
   const currentServeMarker = useMemo(
     () => {
@@ -877,11 +889,9 @@ function usePrototype(
   function setCurrentRallyIncluded(included: boolean) {
     if (!selected) return;
     updateSelected({ included, reviewed: true });
-    if (suppressionDecisions[selected.id]) {
-      setSuppressionDecisions((current) => cleanupDecisionsForRally(
-        current, review.cleanupSuggestions, selected.id, included ? "kept" : "excluded",
-      ));
-    }
+    setSuppressionDecisions((current) => cleanupDecisionsForRally(
+      current, selected.id, included ? "kept" : "excluded",
+    ));
     setReviewMessage(`${selected.id} ${included ? "kept in" : "removed from"} the final cut.`);
   }
 
@@ -892,6 +902,7 @@ function usePrototype(
     const target = draftCut?.keepStart ?? Math.max(gameStart, clip.start - beforePadding);
     setSelectedId(id);
     setPlayhead(target);
+    setOpenedClipId(id);
     setReviewMessage(`${clip.id} opened at its ${formatTime(target)} padded start.`);
   }
 
@@ -1012,7 +1023,7 @@ function usePrototype(
   function decideSuppression(keep: boolean) {
     if (!selected || !suppressionDecisions[selected.id]) return;
     setSuppressionDecisions((current) => cleanupDecisionsForRally(
-      current, review.cleanupSuggestions, selected.id, keep ? "kept" : "excluded",
+      current, selected.id, keep ? "kept" : "excluded",
     ));
     updateSelected({ included: keep, reviewed: true });
     setReviewMessage(
@@ -1292,7 +1303,7 @@ function usePrototype(
     playbackRate, setPlaybackRate,
     beforePadding, setBeforePadding,
     afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup,
-    restoreHistory, historyStorageFailed,
+    restoreHistory, historyStorageFailed, resetProjectChanges,
     reviewMessage, scoreEnabled, setScoreEnabled, scoreOverlay, setScoreOverlay,
     teamOne, setTeamOne, teamTwo, setTeamTwo, scoreOne: derivedScore.team1Score,
     scoreTwo: derivedScore.team2Score, servingTeam: derivedScore.servingTeamId,
@@ -1310,7 +1321,7 @@ function usePrototype(
     clipReviewTaskIds, preparedScoreOverlay,
     currentPlayingClipId: currentPlayingCut?.id ?? null,
     currentServeMarkerId: currentServeMarker?.id ?? null,
-    cleanupSuggestions: review.cleanupSuggestions, projectName, storageMessage,
+    cleanupSuggestions, projectName, storageMessage,
     projects: review.projects, selectedProjectId: review.projectId,
     workActivity: review.workActivity,
     selectProject: review.selectProject,
@@ -2553,11 +2564,13 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
             );
           })}
           {state.cleanupSuggestions.map((suggestion) => {
-            const clipped = segment(suggestion.start, suggestion.end);
-            const decision = state.workingDraft.suppressionDecisionOverrides[suggestion.logicalId]
+            const cut = state.workingDraft.cuts.find((cut) => cut.id === suggestion.cutId);
+            const clipped = segment(Math.max(suggestion.start, cut?.coreStart ?? suggestion.start), Math.min(suggestion.end, cut?.coreEnd ?? suggestion.end));
+            const decision = (suggestion.cutId ? state.workingDraft.suppressionDecisionOverrides[rallySuppressionDecisionKey(suggestion.cutId)] : undefined)
+              ?? state.workingDraft.suppressionDecisionOverrides[suggestion.logicalId]
               ?? (suggestion.cutId && state.suppressionReviewIds.has(suggestion.cutId)
                 && !state.effectiveKeptIds.has(suggestion.cutId) ? "pending" : "keep");
-            return clipped.end > clipped.start ? <span key={suggestion.id} className="rd-timeline-suppression" data-state={decision} style={position(clipped.start, clipped.end)} title={`Cleanup ${decision} · ${Math.round(suggestion.score * 100)}%`} /> : null;
+            return clipped.end > clipped.start ? <span key={`${suggestion.id}-${suggestion.cutId}`} className="rd-timeline-suppression" data-state={decision} style={position(clipped.start, clipped.end)} title={`Cleanup ${decision} · ${Math.round(suggestion.score * 100)}%`} /> : null;
           })}
           {state.finalIntervals.flatMap((interval) => (interval.joinedGaps ?? []).map((gap) => {
             const clipped = segment(gap.start, gap.end);
@@ -2750,7 +2763,7 @@ export function RallyDesk({
         {state.stage === "review" && <RallyDeskProjectSelector state={state} className="rd-topbar-project" onDeleteProject={onDeleteProject} />}
         <StageButtons state={state} editorOnly />
         {state.stage === "review" && <ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} />}
-        <AppMenu dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
+        <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
       </header>
       {state.stage === "review" ? (
         <ResizableWorkspace

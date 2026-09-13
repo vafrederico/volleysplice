@@ -4,7 +4,6 @@ import {
   createCutDraft,
   cutDraftStorageKey,
   cutDraftStorageKeys,
-  alignRallyServeMarkers,
   parseCutDraft,
   type CutDraft,
   type CutDraftSeed,
@@ -23,10 +22,7 @@ import type {
   ScoreOverlayOptions,
 } from "@/lib/on-device/export";
 import type { ProductAnalysis } from "@/lib/product-analysis";
-import {
-  scoreTrackingWithServingSideOutput,
-  scoreTrackingWithSideSwitchOutput,
-} from "@/lib/score-tracking-inference";
+import { createModelReviewDraft, withModelScoreMarkers } from "@/lib/model-review-draft";
 
 import { normalizeCleanupDecisions } from "./taste/cleanup-decisions";
 
@@ -70,6 +66,7 @@ export type DesignWorkActivity = {
 export type DesignCleanupSuggestion = {
   id: string;
   logicalId: string;
+  eligiblePolicyIds: readonly string[];
   start: number;
   end: number;
   score: number;
@@ -96,6 +93,7 @@ export type ReadyDesignReview = {
   sideSwitchEnabled: boolean;
   projectStatus: VolleySpliceProject["status"];
   draft: CutDraft;
+  modelDraft: CutDraft;
   draftSeed: CutDraftSeed;
   suppression: OnDeviceSuppression | undefined;
   cleanupSuggestions: DesignCleanupSuggestion[];
@@ -206,27 +204,7 @@ function reviewSeed(project: VolleySpliceProject): CutDraftSeed | null {
 }
 
 function restoredDraft(project: VolleySpliceProject, seed: CutDraftSeed): CutDraft {
-  const withGeneratedScoreMarkers = (draft: CutDraft) => {
-    let scoreTracking = draft.scoreTracking;
-    if (project.analysis?.servingSide) {
-      const hadServeMarkers = scoreTracking.serveMarkers.length > 0;
-      const generated = scoreTrackingWithServingSideOutput(
-        scoreTracking,
-        project.analysis.servingSide,
-      );
-      scoreTracking =
-        !hadServeMarkers && generated.serveMarkers.length > 0
-          ? { ...generated, enabled: true }
-          : generated;
-    }
-    if (project.analysis?.sideSwitch) {
-      scoreTracking = scoreTrackingWithSideSwitchOutput(
-        scoreTracking,
-        project.analysis.sideSwitch,
-      );
-    }
-    return alignRallyServeMarkers({ ...draft, scoreTracking });
-  };
+  const withGeneratedScoreMarkers = (draft: CutDraft) => withModelScoreMarkers(draft, project.analysis!);
   const persistedDrafts: CutDraft[] = [];
   try {
     for (const key of cutDraftStorageKeys(seed.analysisId)) {
@@ -279,6 +257,7 @@ function cleanupSuggestions(
     return {
       id: suggestion.id,
       logicalId: suggestion.logicalId,
+      eligiblePolicyIds: suggestion.eligiblePolicyIds,
       start: suggestion.start,
       end: suggestion.end,
       score: suggestion.score,
@@ -417,6 +396,7 @@ export function useDesignReview(
           projectStatus: project.status,
           draft,
           draftSeed: seed,
+          modelDraft: createModelReviewDraft(seed, project.analysis),
           suppression: project.analysis.suppression,
           cleanupSuggestions: cleanupSuggestions(project, draft),
           projects: projectChoices,
