@@ -3503,6 +3503,15 @@ private fun EditorScreen(
                                                 },
                                             )
                                         }
+                                        if (draft.renderScoreOverlay) {
+                                            ScoreVisibilityOptions(
+                                                fade = draft.fadeScoreOverlay,
+                                                onChange = { fade ->
+                                                    exportPreferences.edit().putBoolean("fadeScoreOverlay", fade).apply()
+                                                    updateDraft { it.copy(fadeScoreOverlay = fade) }
+                                                },
+                                            )
+                                        }
                                     }
                                     if (exportState.status == "running") {
                                         LinearProgressIndicator(
@@ -4220,20 +4229,14 @@ private fun EditorScreen(
                         )
                     }
                     if (draft.renderScoreOverlay) {
-                        Column(Modifier.padding(start = 18.dp)) {
-                            Text("Score visibility", fontWeight = FontWeight.SemiBold)
-                            listOf(false to "Always visible", true to "Fade in and out").forEach { (fade, label) ->
-                                FilterChip(
-                                    selected = draft.fadeScoreOverlay == fade,
-                                    onClick = {
-                                        exportPreferences.edit().putBoolean("fadeScoreOverlay", fade).apply()
-                                        updateDraft { it.copy(fadeScoreOverlay = fade) }
-                                    },
-                                    label = { Text(label) },
-                                )
-                            }
-                            Text("Fading follows the point timeline. The timeline always fades in and out.", fontSize = 12.sp, color = Muted)
-                        }
+                        ScoreVisibilityOptions(
+                            fade = draft.fadeScoreOverlay,
+                            onChange = { fade ->
+                                exportPreferences.edit().putBoolean("fadeScoreOverlay", fade).apply()
+                                updateDraft { it.copy(fadeScoreOverlay = fade) }
+                            },
+                            modifier = Modifier.padding(start = 18.dp),
+                        )
                         Row(
                             modifier = Modifier.padding(start = 18.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -5039,6 +5042,25 @@ private fun VideoResizeHandle(
                 .clip(RoundedCornerShape(2.dp))
                 .background(Muted.copy(alpha = 0.55f)),
         )
+    }
+}
+
+@Composable
+private fun ScoreVisibilityOptions(
+    fade: Boolean,
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
+        Text("Score visibility", fontWeight = FontWeight.SemiBold)
+        listOf(false to "Always visible", true to "Fade in and out").forEach { (value, label) ->
+            FilterChip(
+                selected = fade == value,
+                onClick = { onChange(value) },
+                label = { Text(label) },
+            )
+        }
+        Text("Fading follows the point timeline. The timeline always fades in and out.", fontSize = 12.sp, color = Muted)
     }
 }
 
