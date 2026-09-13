@@ -816,17 +816,17 @@
 .rd-timeline-cut[data-status="pending-suppression"],
 .rd-rally-focus[data-status="pending-suppression"] { --rd-rally-color: color-mix(in srgb, #d65549, var(--td-panel) 58%); }
 .rd-timeline-cut[data-status="removed"],
-.rd-rally-focus[data-status="removed"] { --rd-rally-color: #b42318; }
+.rd-rally-focus[data-status="removed"] { --rd-rally-color: #777; }
 .rd-timeline-cut[data-status="review"] { border-color: #d99a24; }
 .rd-timeline-cut[data-status="pending-suppression"] { border: 1px dashed #d65549; }
-.rd-timeline-cut[data-status="removed"] { border-color: #b42318; }
+.rd-timeline-cut[data-status="removed"] { border-color: #777; }
 .rd-rally-focus[data-status="review"] .rd-rally-focus-core { color: #291600; }
 .rd-rally-focus[data-status="pending-suppression"] .rd-rally-focus-core { color: var(--td-ink); }
 .rd-timeline-cut[data-playing] { z-index: 3; outline: 2px solid var(--td-ink); outline-offset: 2px; }
 .rd-timeline-cut[data-origin="manual"] { border-style: dashed; }
 .rd-timeline-padding { position: absolute; inset: 0; background: color-mix(in srgb, var(--rd-rally-color), var(--td-panel) 68%); }
 .rd-timeline-core { position: absolute; inset-block: 4px; background: var(--rd-rally-color); }
-.rd-timeline-suppression { position: absolute; z-index: 4; bottom: 7px; height: 4px; background: #b42318; }
+.rd-timeline-suppression { position: absolute; z-index: 4; bottom: 7px; height: 4px; background: #777; }
 .rd-timeline-suppression[data-state="pending"] { background: color-mix(in srgb, #d65549, var(--td-panel) 58%); border: 1px dashed #d65549; }
 .rd-timeline-suppression[data-state="keep"] { background: var(--td-ink); opacity: .35; }
 .rd-timeline-gap { position: absolute; z-index: 3; top: 32px; height: 6px; background: repeating-linear-gradient(90deg, var(--td-accent) 0 3px, transparent 3px 6px); }
@@ -847,7 +847,7 @@
 .rd-timeline-key [data-kind="padding"]::before { background: color-mix(in srgb, var(--td-accent), var(--td-panel) 68%); }
 .rd-timeline-key [data-kind="review"]::before { background: #d99a24; }
 .rd-timeline-key [data-kind="suppression"]::before { background: color-mix(in srgb, #d65549, var(--td-panel) 58%); border: 1px dashed #d65549; }
-.rd-timeline-key [data-kind="removed"]::before { background: #b42318; }
+.rd-timeline-key [data-kind="removed"]::before { background: #777; }
 .rd-timeline-key [data-kind="serve"]::before { content: "🏐"; width: auto; height: auto; background: transparent; font-size: 11px; line-height: 1; }
 .rd-timeline-key [data-kind="switch"]::before { content: "⇄"; width: auto; height: auto; background: transparent; font-weight: 900; }
 .rd-timeline-key [data-kind="ignored"]::before { background: repeating-linear-gradient(135deg, var(--td-alert) 0 2px, transparent 2px 4px); }
