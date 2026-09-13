@@ -31,14 +31,17 @@ export function moveHistory(history: EditHistory, direction: "undo" | "redo"): E
   } : history;
 }
 
-export function readEditHistory(raw: string | null, current: CutDraft, seed: CutDraftSeed): EditHistory {
+export function readEditHistory(raw: string | null, current: CutDraft, seed: CutDraftSeed, normalize: (draft: CutDraft) => CutDraft = (draft) => draft): EditHistory {
   const fresh = { past: [], present: current, future: [] };
   if (!raw) return fresh;
   try {
     const value = JSON.parse(raw);
     if (value?.version !== 1 || !Array.isArray(value.past) || !Array.isArray(value.future) ||
       value.past.length + value.future.length > HISTORY_LIMIT) return fresh;
-    const parse = (draft: unknown) => parseCutDraft(JSON.stringify(draft), seed);
+    const parse = (draft: unknown) => {
+      const parsed = parseCutDraft(JSON.stringify(draft), seed);
+      return parsed ? normalize(parsed) : null;
+    };
     const present = parse(value.present);
     const past = value.past.map(parse);
     const future = value.future.map(parse);

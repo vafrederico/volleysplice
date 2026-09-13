@@ -45,6 +45,7 @@ import type { ReadyDesignReview } from "../useDesignReview";
 
 import { ResizableWorkspace, useWorkspaceLayout } from "./ResizableWorkspace";
 import { AppMenu } from "./AppMenu";
+import { cleanupDecisionsForRally, normalizeCleanupDecisions } from "./cleanup-decisions";
 import { editHistoryKey, moveHistory, readEditHistory, recordEdit, writeEditHistory } from "./edit-history";
 import { nextReviewItem, shortcutAction, type ReviewItem } from "./keyboard-shortcuts";
 
@@ -192,14 +193,15 @@ function excludedFromReview(review: ReadyDesignReview): ExcludedRange[] {
 function suppressionFromReview(
   review: ReadyDesignReview,
 ): Record<string, SuppressionDecision> {
+  const overrides = normalizeCleanupDecisions(review.draft, review.cleanupSuggestions).suppressionDecisionOverrides;
   return Object.fromEntries(
     review.cleanupSuggestions.flatMap((suggestion) =>
       suggestion.cutId
         ? [[
             suggestion.cutId,
-            suggestion.decision === "keep"
+            (overrides[suggestion.logicalId] ?? suggestion.decision) === "keep"
               ? "kept"
-              : suggestion.decision === "suppress"
+              : (overrides[suggestion.logicalId] ?? suggestion.decision) === "suppress"
                 ? "excluded"
                 : "pending",
           ]]
@@ -384,15 +386,15 @@ function usePrototype(
       baseDraft.ignoredIntervals.map((interval) => [interval.id, interval]),
     );
     const suppressionDecisionOverrides = {
-      ...baseDraft.suppressionDecisionOverrides,
+      ...normalizeCleanupDecisions(baseDraft, review.cleanupSuggestions).suppressionDecisionOverrides,
     };
     for (const suggestion of review.cleanupSuggestions) {
       if (!suggestion.cutId) continue;
       const decision = suppressionDecisions[suggestion.cutId];
       if (!decision || decision === "pending") {
-        delete suppressionDecisionOverrides[suggestion.id];
+        delete suppressionDecisionOverrides[suggestion.logicalId];
       } else {
-        suppressionDecisionOverrides[suggestion.id] =
+        suppressionDecisionOverrides[suggestion.logicalId] =
           decision === "kept" ? "keep" : "suppress";
       }
     }
@@ -499,7 +501,8 @@ function usePrototype(
   const [initialHistory] = useState(() => {
     let raw: string | null = null;
     try { raw = window.localStorage.getItem(editHistoryKey(review.projectId)); } catch { /* Keep history in memory. */ }
-    return readEditHistory(raw, workingDraft, review.draftSeed);
+    return readEditHistory(raw, workingDraft, review.draftSeed,
+      (draft) => normalizeCleanupDecisions(draft, review.cleanupSuggestions));
   });
   const historyRef = useRef(initialHistory);
   const [historyStorageFailed, setHistoryStorageFailed] = useState(false);
@@ -545,7 +548,7 @@ function usePrototype(
     setRemovedModelMarkerIds(draft.scoreTracking.removedModelMarkerIds);
     setSuppressionDecisions(Object.fromEntries(review.cleanupSuggestions.flatMap((suggestion) => {
       if (!suggestion.cutId) return [];
-      const decision = draft.suppressionDecisionOverrides[suggestion.id];
+      const decision = draft.suppressionDecisionOverrides[suggestion.logicalId];
       return [[suggestion.cutId, decision === "keep" ? "kept" : decision === "suppress" ? "excluded" : "pending"]];
     })));
     setReviewMessage(direction === "undo" ? "Last edit undone." : "Edit restored.");
@@ -875,10 +878,9 @@ function usePrototype(
     if (!selected) return;
     updateSelected({ included, reviewed: true });
     if (suppressionDecisions[selected.id]) {
-      setSuppressionDecisions((current) => ({
-        ...current,
-        [selected.id]: included ? "kept" : "excluded",
-      }));
+      setSuppressionDecisions((current) => cleanupDecisionsForRally(
+        current, review.cleanupSuggestions, selected.id, included ? "kept" : "excluded",
+      ));
     }
     setReviewMessage(`${selected.id} ${included ? "kept in" : "removed from"} the final cut.`);
   }
@@ -1009,10 +1011,9 @@ function usePrototype(
 
   function decideSuppression(keep: boolean) {
     if (!selected || !suppressionDecisions[selected.id]) return;
-    setSuppressionDecisions((current) => ({
-      ...current,
-      [selected.id]: keep ? "kept" : "excluded",
-    }));
+    setSuppressionDecisions((current) => cleanupDecisionsForRally(
+      current, review.cleanupSuggestions, selected.id, keep ? "kept" : "excluded",
+    ));
     updateSelected({ included: keep, reviewed: true });
     setReviewMessage(
       keep
@@ -2553,7 +2554,7 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
           })}
           {state.cleanupSuggestions.map((suggestion) => {
             const clipped = segment(suggestion.start, suggestion.end);
-            const decision = state.workingDraft.suppressionDecisionOverrides[suggestion.id]
+            const decision = state.workingDraft.suppressionDecisionOverrides[suggestion.logicalId]
               ?? (suggestion.cutId && state.suppressionReviewIds.has(suggestion.cutId)
                 && !state.effectiveKeptIds.has(suggestion.cutId) ? "pending" : "keep");
             return clipped.end > clipped.start ? <span key={suggestion.id} className="rd-timeline-suppression" data-state={decision} style={position(clipped.start, clipped.end)} title={`Cleanup ${decision} · ${Math.round(suggestion.score * 100)}%`} /> : null;

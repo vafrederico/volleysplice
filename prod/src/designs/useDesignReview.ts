@@ -28,6 +28,8 @@ import {
   scoreTrackingWithSideSwitchOutput,
 } from "@/lib/score-tracking-inference";
 
+import { normalizeCleanupDecisions } from "./taste/cleanup-decisions";
+
 export type DesignProjectOption = {
   id: string;
   name: string;
@@ -67,6 +69,7 @@ export type DesignWorkActivity = {
 
 export type DesignCleanupSuggestion = {
   id: string;
+  logicalId: string;
   start: number;
   end: number;
   score: number;
@@ -262,8 +265,10 @@ function cleanupSuggestions(
   project: VolleySpliceProject,
   draft: CutDraft,
 ): DesignCleanupSuggestion[] {
-  return (project.analysis?.suppression?.suggestions ?? []).map((suggestion) => {
-    const override = draft.suppressionDecisionOverrides[suggestion.id];
+  const suggestions = project.analysis?.suppression?.suggestions ?? [];
+  const normalized = normalizeCleanupDecisions(draft, suggestions);
+  return suggestions.map((suggestion) => {
+    const override = normalized.suppressionDecisionOverrides[suggestion.logicalId];
     const enabledByPolicy =
       draft.selectedSuppressionPolicy !== "none" &&
       suggestion.eligiblePolicyIds.includes(draft.selectedSuppressionPolicy);
@@ -273,6 +278,7 @@ function cleanupSuggestions(
     );
     return {
       id: suggestion.id,
+      logicalId: suggestion.logicalId,
       start: suggestion.start,
       end: suggestion.end,
       score: suggestion.score,
