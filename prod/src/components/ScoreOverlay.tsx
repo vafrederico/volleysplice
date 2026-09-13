@@ -34,7 +34,7 @@ export function ScoreOverlay({
   );
   const timeline = useMemo(
     () =>
-      prepared.renderPointTimeline
+      prepared.renderPointTimeline || prepared.fadeScoreOverlay
         ? scorePointTimelineSnapshot(prepared, timestamp)
         : { points: [], opacity: 0 },
     [prepared, timestamp],
@@ -78,6 +78,7 @@ export function ScoreOverlay({
     >
       <canvas
         ref={scoreboardCanvas}
+        style={{ opacity: prepared.fadeScoreOverlay ? timeline.opacity : 1 }}
         width={width}
         height={height}
         aria-hidden="true"
@@ -87,7 +88,6 @@ export function ScoreOverlay({
         width={width}
         height={height}
         aria-hidden="true"
-        className={styles.timeline}
         style={{ opacity: prepared.renderPointTimeline ? timeline.opacity : 0 }}
       />
     </div>

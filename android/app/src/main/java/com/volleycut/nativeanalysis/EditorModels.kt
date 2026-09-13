@@ -137,6 +137,7 @@ internal data class EditorDraft(
     val scoreTracking: ScoreTracking = ScoreTracking(),
     val renderScoreOverlay: Boolean = true,
     val renderScoreTimeline: Boolean = true,
+    val fadeScoreOverlay: Boolean = false,
 )
 
 internal data class JoinedGap(val startMs: Long, val endMs: Long)

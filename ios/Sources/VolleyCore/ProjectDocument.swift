@@ -100,6 +100,8 @@ public struct EditorDraft: Codable, Equatable, Sendable {
     ])
     public var renderScoreOverlay = true
     public var renderScoreTimeline = true
+    /// Missing in older projects; nil preserves the always-visible scoreboard.
+    public var fadeScoreOverlay: Bool?
     /// Nil keeps the score-aware defaults for projects saved before chapter preferences existed.
     public var chapterOptions: YouTubeChapterOptions?
     public init(sourceRevision: String, cuts: [EditableCut] = []) { self.sourceRevision = sourceRevision; self.cuts = cuts }

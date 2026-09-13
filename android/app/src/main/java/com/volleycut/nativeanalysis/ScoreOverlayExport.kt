@@ -15,6 +15,7 @@ import kotlin.math.roundToInt
 internal data class ScoreExportSnapshot(
     val render: Boolean,
     val renderPointTimeline: Boolean = true,
+    val fadeScoreOverlay: Boolean = false,
     val scoreTracking: ScoreTracking,
     val ignoredIntervals: List<IgnoredSourceInterval>,
     val excludedRallyIds: Set<String>,
@@ -42,6 +43,7 @@ internal object ScoreExportSnapshotJson {
     fun encode(value: ScoreExportSnapshot) = JSONObject().apply {
         put("render", value.render)
         put("renderPointTimeline", value.renderPointTimeline)
+        put("fadeScoreOverlay", value.fadeScoreOverlay)
         put("scoreTracking", ScoreTrackingJson.encode(value.scoreTracking))
         put("ignoredIntervals", JSONArray().apply {
             value.ignoredIntervals.forEach { put(JSONObject().apply {
@@ -79,6 +81,7 @@ internal object ScoreExportSnapshotJson {
         ScoreExportSnapshot(
             render = json.optBoolean("render") && tracking.enabled,
             renderPointTimeline = json.optBoolean("renderPointTimeline", true),
+            fadeScoreOverlay = json.optBoolean("fadeScoreOverlay", false),
             scoreTracking = tracking,
             ignoredIntervals = List(ignored.length()) { index -> ignored.getJSONObject(index).let {
                 IgnoredSourceInterval(
@@ -123,6 +126,10 @@ internal class ScoreCanvasOverlay(
             paint.measureText(text)
         }
         val inset = layout.borderWidth / 2f
+        val scoreLayer = canvas.saveLayerAlpha(
+            0f, 0f, layout.width.toFloat(), layout.height.toFloat(),
+            ((if (snapshot.fadeScoreOverlay) timeline.opacity else 1f) * 255).roundToInt(),
+        )
         val path = bottomRightRoundedPath(
             layout.width.toFloat(), layout.height.toFloat(), layout.radius.toFloat(), inset,
         )
@@ -172,6 +179,7 @@ internal class ScoreCanvasOverlay(
         canvas.drawLine(divider, 0f, divider, layout.height.toFloat(), paint)
         canvas.drawPath(path, paint)
         paint.style = Paint.Style.FILL
+        canvas.restoreToCount(scoreLayer)
         if (snapshot.renderPointTimeline) {
             drawPointTimeline(canvas, layout, timeline)
         }

@@ -15,7 +15,7 @@ import {
   type ScoreTracking,
 } from "./score-tracking.ts";
 
-export const CUT_DRAFT_VERSION = 14 as const;
+export const CUT_DRAFT_VERSION = 15 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -59,6 +59,7 @@ export type CutDraft = {
   cutPreviewEnabled: boolean;
   renderScoreOverlay: boolean;
   renderScoreTimeline: boolean;
+  fadeScoreOverlay: boolean;
   playbackRate: (typeof PLAYBACK_RATES)[number];
   confidenceReviewThreshold: number;
   reviewedCutIds: string[];
@@ -198,7 +199,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -223,6 +224,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     cutPreviewEnabled: false,
     renderScoreOverlay: true,
     renderScoreTimeline: false,
+    fadeScoreOverlay: false,
     playbackRate: 1,
     confidenceReviewThreshold: DEFAULT_CONFIDENCE_REVIEW_THRESHOLD,
     reviewedCutIds: [],
@@ -355,7 +357,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, CUT_DRAFT_VERSION].includes(
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, CUT_DRAFT_VERSION].includes(
         persistedVersion,
       )
     ) {
@@ -388,6 +390,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       renderScoreOverlay: persistedVersion >= 13
         ? persisted.renderScoreOverlay
         : false,
+      fadeScoreOverlay: persistedVersion >= 15 ? persisted.fadeScoreOverlay : false,
       renderScoreTimeline: persistedVersion >= 14
         ? persisted.renderScoreTimeline
         : persistedVersion >= 13
@@ -480,6 +483,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       typeof value.cutPreviewEnabled !== "boolean" ||
       typeof value.renderScoreOverlay !== "boolean" ||
       typeof value.renderScoreTimeline !== "boolean" ||
+      typeof value.fadeScoreOverlay !== "boolean" ||
       !PLAYBACK_RATES.includes(value.playbackRate as (typeof PLAYBACK_RATES)[number]) ||
       !finiteTime(value.confidenceReviewThreshold) ||
       value.confidenceReviewThreshold < 0 ||

@@ -195,8 +195,9 @@ struct VideoExportResult: Sendable {
                             let outputStart = span.outputStartMs + start - span.source.startMs
                             overlayInstructions.append(YUVScoreInstruction(timeRange: CMTimeRange(start: time(outputStart), duration: time(end - start)),
                                 videoTrackID: video.trackID, transform: upright, raster: raster, sourceStartMs: start,
-                                pointRevealTimestampMs: project.draft.renderScoreTimeline ? snapshot.revealTimestampMs : nil,
-                                uses601Matrix: matrix == AVVideoYCbCrMatrix_ITU_R_601_4))
+                                pointRevealTimestampMs: snapshot.revealTimestampMs,
+                                uses601Matrix: matrix == AVVideoYCbCrMatrix_ITU_R_601_4,
+                                fadeScoreOverlay: project.draft.fadeScoreOverlay == true))
                             // Preparing many score states must not starve scene changes
                             // or cancellation while UIKit rasterizes their small strips.
                             await Task.yield()

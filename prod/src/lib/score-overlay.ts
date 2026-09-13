@@ -26,6 +26,7 @@ export const SCORE_POINT_TIMELINE_FADE_OUT_SECONDS = 0.35;
 
 export type ScoreOverlayOptions = {
   scoreTracking: ScoreTracking;
+  fadeScoreOverlay?: boolean;
   renderPointTimeline?: boolean;
   excludedRallyIds?: readonly string[];
   ignoredIntervals?: readonly ScoreIgnoredInterval[];
@@ -35,6 +36,7 @@ export type ScoreOverlayOptions = {
 
 export type PreparedScoreOverlay = {
   scoreTracking: ScoreTracking;
+  fadeScoreOverlay: boolean;
   renderPointTimeline: boolean;
   rallyRanges: readonly ScoreRallyRange[];
   mergedRanges: readonly ScoreMergedRange[];
@@ -107,6 +109,7 @@ export function prepareScoreOverlay(
   );
   return {
     scoreTracking,
+    fadeScoreOverlay: options.fadeScoreOverlay ?? false,
     renderPointTimeline: options.renderPointTimeline ?? true,
     rallyRanges: options.rallyRanges ?? [],
     mergedRanges: options.mergedRanges ?? [],
@@ -521,13 +524,17 @@ export function drawScoreOverlay(
   snapshot: ScoreOverlaySnapshot,
   timeline: ScorePointTimelineSnapshot,
   renderPointTimeline = true,
+  fadeScoreOverlay = false,
 ): void {
+  context.save();
+  context.globalAlpha *= fadeScoreOverlay ? timeline.opacity : 1;
   const layout = drawScoreOverlayScoreboard(
     context,
     videoWidth,
     videoHeight,
     snapshot,
   );
+  context.restore();
   if (renderPointTimeline) {
     drawScorePointTimeline(context, videoWidth, videoHeight, layout, timeline);
   }

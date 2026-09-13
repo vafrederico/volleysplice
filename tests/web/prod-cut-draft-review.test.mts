@@ -28,17 +28,22 @@ test("production drafts persist reviewed model ranges", () => {
   draft.reviewedCutIds = ["R001"];
   draft.renderScoreOverlay = true;
   draft.renderScoreTimeline = true;
+  draft.fadeScoreOverlay = true;
 
   const restored = parseCutDraft(JSON.stringify(draft), seed);
 
   assert.deepEqual(restored?.reviewedCutIds, ["R001"]);
   assert.equal(restored?.renderScoreOverlay, true);
   assert.equal(restored?.renderScoreTimeline, true);
+  assert.equal(restored?.fadeScoreOverlay, true);
   assert.deepEqual(restored?.cuts, JSON.parse(JSON.stringify(draft.cuts)));
 });
 
-test("score overlay export defaults off and migrates older drafts", () => {
-  assert.equal(createCutDraft(seed).renderScoreOverlay, false);
+test("score overlay defaults on with an always-visible scoreboard and migrates older drafts", () => {
+  const priorVisibilityDraft = { ...createCutDraft(seed), version: 14 } as Record<string, unknown>;
+  delete priorVisibilityDraft.fadeScoreOverlay;
+  assert.equal(parseCutDraft(JSON.stringify(priorVisibilityDraft), seed)?.fadeScoreOverlay, false);
+  assert.equal(createCutDraft(seed).renderScoreOverlay, true);
   assert.equal(createCutDraft(seed).renderScoreTimeline, false);
 
   const legacy = createCutDraft(seed) as unknown as Record<string, unknown>;

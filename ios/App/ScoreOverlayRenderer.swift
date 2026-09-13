@@ -153,6 +153,7 @@ final class ScoreOverlayRaster: NSObject, @unchecked Sendable {
     let prepared: PreparedScoreOverlay
     let sourceTimestampMs: Int64
     let renderTimeline: Bool
+    var fadeScoreOverlay = false
     @Environment(\.displayScale) private var displayScale
     @Environment(\.interfaceScale) private var interfaceScale
     var body: some View {
@@ -166,6 +167,7 @@ final class ScoreOverlayRaster: NSObject, @unchecked Sendable {
                 HStack(spacing: 0) {
                     if let score = raster.image.cropping(to: CGRect(x: 0, y: 0, width: scoreWidth, height: raster.height)) {
                         Image(decorative: score, scale: previewScale).resizable().frame(width: CGFloat(scoreWidth) / previewScale, height: CGFloat(raster.height) / previewScale)
+                            .opacity(Double(fadeScoreOverlay ? snapshot.opacity : 1))
                     }
                     if raster.width > scoreWidth, let points = raster.image.cropping(to: CGRect(x: scoreWidth, y: 0, width: raster.width - scoreWidth, height: raster.height)) {
                         Image(decorative: points, scale: previewScale).resizable().frame(width: CGFloat(raster.width - scoreWidth) / previewScale, height: CGFloat(raster.height) / previewScale)

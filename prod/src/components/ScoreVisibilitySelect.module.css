@@ -1,0 +1,18 @@
+.setting {
+  display: grid;
+  gap: 6px;
+  margin-block: 12px;
+  font-size: 12px;
+}
+
+.setting select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  font: inherit;
+}
+
+.setting small {
+  color: var(--td-muted, #65766f);
+  line-height: 1.5;
+}

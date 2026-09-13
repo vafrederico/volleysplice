@@ -353,6 +353,7 @@ export async function exportRawQualityReel(
                     sourceTimestamp,
                   ),
                   preparedScoreOverlay.renderPointTimeline,
+                  preparedScoreOverlay.fadeScoreOverlay,
                 );
                 const overlaidSample = new VideoSample(overlaySurface.canvas, {
                   timestamp: outputTimestamp,

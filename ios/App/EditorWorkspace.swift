@@ -48,6 +48,7 @@ private struct LegendHeightKey: PreferenceKey {
 
 /// One source-time editor rearranged by usable window size, including iPad split view.
 struct EditorWorkspace: View {
+    @AppStorage("video-export-fade-scores") private var fadeScoreOverlay = false
     @Binding var project: ProjectDocument
     let player: AVPlayer
     let onSave: () -> Void
@@ -491,13 +492,14 @@ struct EditorWorkspace: View {
                         compactToggleLabel("Add scores to the final video", detail: "Preview the scoreboard and include it when you save")
                     }.accessibilityIdentifier("renderScores")
                     if draft.renderScoreOverlay {
+                        scoreVisibilityPicker
                         Toggle(isOn: Binding(get: { draft.renderScoreTimeline }, set: { value in edit { $0.renderScoreTimeline = value } })) {
                             compactToggleLabel("Show the point history", detail: "Show the two team rails beside the score when a new point starts")
                         }.padding(.leading, 18).accessibilityIdentifier("renderPointTimeline")
                     }
                 }
                 Divider()
-                Button("Save final video") { onSave(); onExportVideo() }
+                Button("Save final video") { saveVideoWithOverlaySettings() }
                     .buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white, expand: true, minimumHeight: 48))
                     .disabled(intervals.isEmpty || player.currentItem == nil).accessibilityIdentifier("exportVideo")
                 Button("YouTube chapters") { compactChapters = true }
@@ -563,7 +565,7 @@ struct EditorWorkspace: View {
                         let aspect = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize.width / sourceSize.height : 16.0 / 9.0
                         let width = min(geometry.size.width, geometry.size.height * aspect)
                         let height = width / aspect
-                        ScoreOverlayPreview(prepared: preparedOverlay, sourceTimestampMs: playheadMs, renderTimeline: draft.renderScoreTimeline)
+                        ScoreOverlayPreview(prepared: preparedOverlay, sourceTimestampMs: playheadMs, renderTimeline: draft.renderScoreTimeline, fadeScoreOverlay: fadeScoreOverlay)
                             .frame(width: width, height: height)
                             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                     }.allowsHitTesting(false)
@@ -838,6 +840,21 @@ struct EditorWorkspace: View {
             }
         }
     }
+    private var scoreVisibilityPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("Score visibility", selection: $fadeScoreOverlay) {
+                Text("Always visible").tag(false)
+                Text("Fade in and out").tag(true)
+            }.pickerStyle(.menu).accessibilityIdentifier("scoreVisibility")
+            Text("Fading follows the point timeline. The timeline always fades in and out.")
+                .font(.caption).foregroundStyle(EditorPalette.muted)
+        }
+    }
+    private func saveVideoWithOverlaySettings() {
+        edit { $0.fadeScoreOverlay = fadeScoreOverlay }
+        onSave()
+        onExportVideo()
+    }
     private var playbackOptions: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeading("PLAYBACK")
@@ -847,6 +864,7 @@ struct EditorWorkspace: View {
             sectionHeading("VIDEO OVERLAY")
             Toggle("Render scores", isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value; if !value { $0.renderScoreTimeline = false } } }))
                 .accessibilityIdentifier("renderScores")
+            if draft.renderScoreOverlay && score.enabled { scoreVisibilityPicker }
             Toggle("Render point timeline", isOn: Binding(get: { draft.renderScoreTimeline }, set: { value in edit { $0.renderScoreTimeline = value } }))
                 .disabled(!draft.renderScoreOverlay).accessibilityIdentifier("renderPointTimeline")
         }.font(.system(size: 11, weight: .semibold))
@@ -1097,7 +1115,8 @@ struct EditorWorkspace: View {
                 sectionHeading("FINAL VIDEO")
                 Toggle("Render scores", isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value } })).disabled(!score.enabled)
                     .accessibilityIdentifier("renderScoreOverlay")
-                Button("Save final video") { onSave(); onExportVideo() }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white)).disabled(intervals.isEmpty || player.currentItem == nil).accessibilityIdentifier("exportVideo")
+                if draft.renderScoreOverlay && score.enabled { scoreVisibilityPicker }
+                Button("Save final video") { saveVideoWithOverlaySettings() }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white)).disabled(intervals.isEmpty || player.currentItem == nil).accessibilityIdentifier("exportVideo")
                 if player.currentItem == nil { Text("Reconnect the source video to export MP4.").font(isPhone ? .system(size: 11) : .caption) }
         }
     }
@@ -1160,7 +1179,7 @@ struct EditorWorkspace: View {
         // materialization. Do not rebuild its caches when those controls change.
         input.updatedAtMs = 0; input.pendingManualStartMs = nil; input.pendingIgnoreStartMs = nil
         input.ignoreReason = ""; input.finalPreviewEnabled = false; input.playbackRate = 1
-        input.renderScoreOverlay = false; input.renderScoreTimeline = false; input.chapterOptions = nil
+        input.renderScoreOverlay = false; input.renderScoreTimeline = false; input.fadeScoreOverlay = nil; input.chapterOptions = nil
         guard input != preparedInput else { return }
         preparedInput = input
         let updated = EditorPresentation(draft: draft, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs)
@@ -1279,6 +1298,7 @@ struct EditorWorkspace: View {
         }
         var value = EditorMath.newDraft(ranges: cuts, durationMs: project.durationMs, gameWindow: bounds, sourceRevision: draft.sourceRevision)
         value.scoreTracking = draft.scoreTracking; value.renderScoreOverlay = draft.renderScoreOverlay; value.renderScoreTimeline = draft.renderScoreTimeline
+        value.fadeScoreOverlay = draft.fadeScoreOverlay
         replaceDraft(EditorMath.alignRallyServeMarkers(value)); setTrimWindow()
     }
     private func time(_ value: Int64, precise: Bool = false) -> String {

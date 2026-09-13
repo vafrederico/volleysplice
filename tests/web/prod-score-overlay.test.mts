@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  drawScoreOverlay,
+  type ScoreOverlayCanvasContext,
   formatOverlayScore,
   prepareScoreOverlay,
   scoreOverlayLayout,
@@ -29,6 +31,39 @@ function trackingFixture() {
   tracking = addServeMarker(tracking, 20, "near", { id: "S4", rallyId: "R4" });
   return tracking;
 }
+
+test("score rendering follows timeline alpha only when fading, even with the timeline hidden", () => {
+  const prepared = prepareScoreOverlay({ scoreTracking: trackingFixture(), fadeScoreOverlay: true });
+  assert.equal(prepareScoreOverlay({ scoreTracking: trackingFixture() }).fadeScoreOverlay, false);
+  const stack: number[] = [];
+  const scoreAlphas: number[] = [];
+  const pointAlphas: number[] = [];
+  const target = {
+    globalAlpha: 1,
+    save() { stack.push(this.globalAlpha); },
+    restore() { this.globalAlpha = stack.pop()!; },
+    measureText() { return { width: 80 }; },
+    fillRect() { scoreAlphas.push(this.globalAlpha); },
+    fill() { pointAlphas.push(this.globalAlpha); },
+  };
+  const context = new Proxy(target, {
+    get(object, key) { return key in object ? Reflect.get(object, key) : () => {}; },
+  }) as unknown as ScoreOverlayCanvasContext;
+  for (const fade of [false, true]) {
+    for (const renderTimeline of [false, true]) {
+      for (const timestamp of [8, 8.125, 8.25, 10.25, 10.425, 10.6]) {
+        scoreAlphas.length = 0;
+        pointAlphas.length = 0;
+        const timeline = scorePointTimelineSnapshot(prepared, timestamp);
+        drawScoreOverlay(context, 1920, 1080, scoreOverlaySnapshot(prepared, timestamp), timeline, renderTimeline, fade);
+        assert.deepEqual(scoreAlphas, Array(4).fill(fade ? timeline.opacity : 1));
+        assert.ok(pointAlphas.every((alpha) => alpha === timeline.opacity));
+        assert.equal(pointAlphas.length > 0, renderTimeline && timeline.opacity > 0);
+        assert.equal(context.globalAlpha, 1);
+      }
+    }
+  }
+});
 
 test("overlay scores are always padded to at least two digits", () => {
   assert.equal(formatOverlayScore(0), "00");

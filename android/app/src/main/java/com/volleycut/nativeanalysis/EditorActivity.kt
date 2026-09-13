@@ -1,5 +1,7 @@
 package com.volleycut.nativeanalysis
 
+import androidx.compose.ui.draw.alpha
+
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -2720,7 +2722,14 @@ private fun EditorScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var draft by remember { mutableStateOf(initialDraft) }
+    val exportPreferences = remember(context) {
+        context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
+    }
+    var draft by remember {
+        mutableStateOf(initialDraft.copy(
+            fadeScoreOverlay = exportPreferences.getBoolean("fadeScoreOverlay", initialDraft.fadeScoreOverlay),
+        ))
+    }
     var selectedId by remember { mutableStateOf(initialDraft.cuts.firstOrNull()?.id.orEmpty()) }
     var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -3147,6 +3156,7 @@ private fun EditorScreen(
                     ScoreExportSnapshotJson.encode(ScoreExportSnapshot(
                         render = draft.renderScoreOverlay && draft.scoreTracking.enabled,
                         renderPointTimeline = draft.renderScoreTimeline,
+                        fadeScoreOverlay = draft.fadeScoreOverlay,
                         scoreTracking = draft.scoreTracking,
                         ignoredIntervals = draft.ignoredIntervals,
                         excludedRallyIds = excludedScoreRallyIds,
@@ -3700,6 +3710,7 @@ private fun EditorScreen(
                                                 snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
                                                 timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
                                                 renderTimeline = draft.renderScoreTimeline,
+                                                fadeScoreOverlay = draft.fadeScoreOverlay,
                                                 modifier = videoModifier.align(Alignment.Center),
                                             )
                                         }
@@ -4209,6 +4220,20 @@ private fun EditorScreen(
                         )
                     }
                     if (draft.renderScoreOverlay) {
+                        Column(Modifier.padding(start = 18.dp)) {
+                            Text("Score visibility", fontWeight = FontWeight.SemiBold)
+                            listOf(false to "Always visible", true to "Fade in and out").forEach { (fade, label) ->
+                                FilterChip(
+                                    selected = draft.fadeScoreOverlay == fade,
+                                    onClick = {
+                                        exportPreferences.edit().putBoolean("fadeScoreOverlay", fade).apply()
+                                        updateDraft { it.copy(fadeScoreOverlay = fade) }
+                                    },
+                                    label = { Text(label) },
+                                )
+                            }
+                            Text("Fading follows the point timeline. The timeline always fades in and out.", fontSize = 12.sp, color = Muted)
+                        }
                         Row(
                             modifier = Modifier.padding(start = 18.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -4366,6 +4391,7 @@ private fun EditorScreen(
                                 snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
                                 timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
                                 renderTimeline = draft.renderScoreTimeline,
+                                fadeScoreOverlay = draft.fadeScoreOverlay,
                                 modifier = videoModifier.align(Alignment.Center),
                             )
                         }
@@ -5846,6 +5872,7 @@ private fun ScoreOverlayPreview(
     snapshot: ScoreOverlaySnapshot,
     timeline: ScorePointTimelineSnapshot,
     renderTimeline: Boolean,
+    fadeScoreOverlay: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -5871,6 +5898,7 @@ private fun ScoreOverlayPreview(
         val rowShape = RoundedCornerShape(bottomEnd = pxDp(layout.radius))
         Box(
             Modifier
+                .alpha(if (fadeScoreOverlay) timeline.opacity else 1f)
                 .width(pxDp(layout.width))
                 .height(pxDp(layout.height))
                 .clip(rowShape)
@@ -7095,6 +7123,7 @@ internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<
         put("scoreTracking", ScoreTrackingJson.encodeWire(draft.scoreTracking))
         put("renderScoreOverlay", draft.renderScoreOverlay)
         put("renderScoreTimeline", draft.renderScoreTimeline)
+        put("fadeScoreOverlay", draft.fadeScoreOverlay)
     }
 
 private fun exportFilename(sourceName: String): String {

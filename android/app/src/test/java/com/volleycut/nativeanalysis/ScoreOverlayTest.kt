@@ -153,6 +153,7 @@ class ScoreOverlayTest {
         val original = ScoreExportSnapshot(
             render = true,
             renderPointTimeline = false,
+            fadeScoreOverlay = true,
             scoreTracking = ScoreTracking(team1Name = "Falcons", team2Name = "Wolves"),
             ignoredIntervals = listOf(IgnoredSourceInterval("I1", 1_000, 2_000, "timeout")),
             excludedRallyIds = setOf("R002"),
@@ -168,6 +169,9 @@ class ScoreOverlayTest {
         assertNotNull(restored)
         assertEquals(original.render, restored?.render)
         assertEquals(original.renderPointTimeline, restored?.renderPointTimeline)
+        assertEquals(true, restored?.fadeScoreOverlay)
+        val legacy = org.json.JSONObject(ScoreExportSnapshotJson.encode(original)).apply { remove("fadeScoreOverlay") }
+        assertEquals(false, ScoreExportSnapshotJson.decode(legacy.toString(), 10_000)?.fadeScoreOverlay)
         assertEquals(original.scoreTracking, restored?.scoreTracking)
         assertEquals(original.ignoredIntervals, restored?.ignoredIntervals)
         assertEquals(original.excludedRallyIds, restored?.excludedRallyIds)

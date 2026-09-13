@@ -40,6 +40,8 @@ import {
   modelFeedbackFilename,
 } from "@/lib/model-feedback";
 import { prepareScoreOverlay, scorePointTimelineSnapshot } from "@/lib/score-overlay";
+import { readScoreVisibilityPreference, saveScoreVisibilityPreference } from "@/lib/score-visibility-preference";
+import { ScoreVisibilitySelect } from "@/components/ScoreVisibilitySelect";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
 import { scrollElementIntoContainer } from "@/lib/scroll-container";
 import type { ReadyDesignReview } from "../useDesignReview";
@@ -311,6 +313,11 @@ function usePrototype(
   const [reviewMessage, setReviewMessage] = useState(`${initialClips.filter((clip) => clip.included && !clip.reviewed && clipRequiresConfidenceReview(clip, review.draft.confidenceReviewThreshold)).length} clips remain to check in the current review.`);
   const [scoreEnabled, setScoreEnabled] = useState(review.draft.scoreTracking.enabled);
   const [scoreOverlay, setScoreOverlay] = useState(review.draft.renderScoreOverlay);
+  const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(() => readScoreVisibilityPreference(review.draft.fadeScoreOverlay));
+  function setFadeScoreOverlay(fade: boolean) {
+    setFadeScoreOverlayState(fade);
+    saveScoreVisibilityPreference(fade);
+  }
   const [teamOne, setTeamOne] = useState(review.draft.scoreTracking.team1Name);
   const [teamTwo, setTeamTwo] = useState(review.draft.scoreTracking.team2Name);
   const [servingSide, setServingSide] = useState<Side>("near");
@@ -396,6 +403,7 @@ function usePrototype(
       cutPreviewEnabled: finalPreview,
       playbackRate,
       renderScoreOverlay: scoreOverlay,
+      fadeScoreOverlay,
       selectedSuppressionPolicy: suppressionPolicyForCleanup(cleanup),
       suppressionDecisionOverrides,
       reviewedCutIds: clips.filter((clip) => clip.reviewed && clip.origin === "model").map((clip) => clip.id),
@@ -479,6 +487,7 @@ function usePrototype(
     scoreEnabled,
     scoreMarkers,
     scoreOverlay,
+    fadeScoreOverlay,
     sideSwitchMarkers,
     removedModelMarkerIds,
     suppressionDecisions,
@@ -697,12 +706,13 @@ function usePrototype(
     () => ({
       scoreTracking: workingDraft.scoreTracking,
       renderPointTimeline: true,
+      fadeScoreOverlay,
       excludedRallyIds: [...excludedRallyIds],
       ignoredIntervals: workingDraft.ignoredIntervals,
       rallyRanges: workingDraft.cuts.filter((cut) => effectiveKeptIds.has(cut.id)),
       mergedRanges: finalIntervals,
     }),
-    [excludedRallyIds, effectiveKeptIds, finalIntervals, workingDraft],
+    [excludedRallyIds, effectiveKeptIds, finalIntervals, workingDraft, fadeScoreOverlay],
   );
   const preparedScoreOverlay = useMemo(
     () => prepareScoreOverlay(scoreOverlayOptions),
@@ -1305,6 +1315,7 @@ function usePrototype(
     afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup,
     restoreHistory, historyStorageFailed, resetProjectChanges,
     reviewMessage, scoreEnabled, setScoreEnabled, scoreOverlay, setScoreOverlay,
+    fadeScoreOverlay, setFadeScoreOverlay,
     teamOne, setTeamOne, teamTwo, setTeamTwo, scoreOne: derivedScore.team1Score,
     scoreTwo: derivedScore.team2Score, servingTeam: derivedScore.servingTeamId,
     servingSide, scoreMarkers, activeScoreMarkers, sideSwitchMarkers,
@@ -2140,6 +2151,9 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
           {state.exportKind === "video" && (
             <>
               <label className="td-check-row"><input type="checkbox" checked={state.includeScore} disabled={!state.scoreEnabled} onChange={(event) => state.setIncludeScore(event.currentTarget.checked)} /><span><strong>Render score on final video</strong><small>Available after the serve and side markers are checked.</small></span></label>
+              {state.scoreEnabled && state.includeScore && (
+                <ScoreVisibilitySelect fade={state.fadeScoreOverlay} onChange={state.setFadeScoreOverlay} />
+              )}
               <p className="td-privacy-line">The browser uses the original local video. Nothing is uploaded.</p>
             </>
           )}

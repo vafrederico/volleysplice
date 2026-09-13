@@ -9,6 +9,8 @@ import {
 
 import { GuidedTour } from "@/components/GuidedTour";
 import { ScoreOverlay } from "@/components/ScoreOverlay";
+import { readScoreVisibilityPreference, saveScoreVisibilityPreference } from "@/lib/score-visibility-preference";
+import { ScoreVisibilitySelect } from "./ScoreVisibilitySelect";
 import { ScoreTrackingPanel } from "@/components/ScoreTrackingPanel";
 import { SiteFooter } from "@/components/SiteFooter";
 import { YouTubeChaptersModal } from "@/components/YouTubeChaptersModal";
@@ -327,6 +329,7 @@ export function CutEditor({
     () => prepareScoreOverlay({
       scoreTracking: draft.scoreTracking,
       renderPointTimeline: draft.renderScoreTimeline,
+      fadeScoreOverlay: draft.fadeScoreOverlay,
       excludedRallyIds: [...excludedRallyIds],
       ignoredIntervals: draft.ignoredIntervals,
       rallyRanges: activeScoreRallyRanges,
@@ -336,6 +339,7 @@ export function CutEditor({
       activeScoreRallyRanges,
       draft.ignoredIntervals,
       draft.renderScoreTimeline,
+      draft.fadeScoreOverlay,
       draft.scoreTracking,
       excludedRallyIds,
       finalIntervals,
@@ -358,7 +362,7 @@ export function CutEditor({
         ? parseCutDraft(JSON.stringify(importedInitialDraft), seed)
         : null;
       const next = restored ?? imported ?? initialDraft;
-      setDraft(next);
+      setDraft({ ...next, fadeScoreOverlay: readScoreVisibilityPreference(next.fadeScoreOverlay) });
       setSelectedId((current) =>
         next.cuts.some((cut) => cut.id === current) ? current : next.cuts[0]?.id ?? "",
       );
@@ -1509,6 +1513,7 @@ export function CutEditor({
               ? {
                   scoreTracking: draft.scoreTracking,
                   renderPointTimeline: draft.renderScoreTimeline,
+                  fadeScoreOverlay: draft.fadeScoreOverlay,
                   excludedRallyIds: [...excludedRallyIds],
                   ignoredIntervals: draft.ignoredIntervals,
                   rallyRanges: activeScoreRallyRanges,
@@ -1884,6 +1889,15 @@ export function CutEditor({
                 </small>
               </span>
             </label>
+            {draft.scoreTracking.enabled && draft.renderScoreOverlay && (
+              <ScoreVisibilitySelect
+                fade={draft.fadeScoreOverlay}
+                onChange={(fadeScoreOverlay) => {
+                  saveScoreVisibilityPreference(fadeScoreOverlay);
+                  setDraft((current) => ({ ...current, fadeScoreOverlay }));
+                }}
+              />
+            )}
             {draft.scoreTracking.enabled && draft.renderScoreOverlay && (
               <label
                 className={`${styles.cutPreviewToggle} ${styles.scoreTimelineToggle}`}

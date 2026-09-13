@@ -15,14 +15,17 @@ final class YUVScoreInstruction: NSObject, AVVideoCompositionInstructionProtocol
     let raster: ScoreOverlayRaster
     let sourceStartMs: Int64
     let pointRevealTimestampMs: Int64?
+    let fadeScoreOverlay: Bool
     let uses601Matrix: Bool
 
     init(timeRange: CMTimeRange, videoTrackID: CMPersistentTrackID, transform: CGAffineTransform,
-         raster: ScoreOverlayRaster, sourceStartMs: Int64, pointRevealTimestampMs: Int64?, uses601Matrix: Bool) {
+         raster: ScoreOverlayRaster, sourceStartMs: Int64, pointRevealTimestampMs: Int64?, uses601Matrix: Bool,
+         fadeScoreOverlay: Bool = false) {
         self.timeRange = timeRange; self.videoTrackID = videoTrackID
         self.transform = transform; self.raster = raster
         self.sourceStartMs = sourceStartMs; self.pointRevealTimestampMs = pointRevealTimestampMs
         self.uses601Matrix = uses601Matrix
+        self.fadeScoreOverlay = fadeScoreOverlay
         requiredSourceTrackIDs = [NSNumber(value: videoTrackID)]
         super.init()
     }
@@ -85,7 +88,8 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
                     ExportTimeline.pointTimelineOpacity(sourceTimestampMs: sourceTimestamp, revealTimestampMs: $0)
                 } ?? 0
                 try Self.compose(source: source, raster: instruction.raster, output: output,
-                                 transform: instruction.transform, pointOpacity: opacity, uses601Matrix: instruction.uses601Matrix)
+                                 transform: instruction.transform, pointOpacity: opacity, uses601Matrix: instruction.uses601Matrix,
+                                 scoreOpacity: instruction.fadeScoreOverlay ? opacity : 1)
                 if generation() == current { request.finish(withComposedVideoFrame: output) }
                 else { request.finishCancelledRequest() }
             } catch {
@@ -104,7 +108,7 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
     }
 
     static func compose(source: CVPixelBuffer, raster: ScoreOverlayRaster, output: CVPixelBuffer,
-                        transform: CGAffineTransform, pointOpacity: Float, uses601Matrix: Bool) throws {
+                        transform: CGAffineTransform, pointOpacity: Float, uses601Matrix: Bool, scoreOpacity: Float = 1) throws {
         guard CVPixelBufferGetPixelFormatType(source) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
               CVPixelBufferGetPixelFormatType(output) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
               CVPixelBufferGetPlaneCount(source) == 2, CVPixelBufferGetPlaneCount(output) == 2,
@@ -136,7 +140,8 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
             blend(bgra: bytes.bindMemory(to: UInt8.self).baseAddress!, bgraStride: raster.rowBytes,
                   y: y, yStride: CVPixelBufferGetBytesPerRowOfPlane(output, 0),
                   uv: uv, uvStride: CVPixelBufferGetBytesPerRowOfPlane(output, 1), width: width, height: height,
-                  uses601Matrix: uses601Matrix, pointStartX: raster.scoreWidth, pointOpacity: Double(pointOpacity))
+                  uses601Matrix: uses601Matrix, pointStartX: raster.scoreWidth, pointOpacity: Double(pointOpacity),
+                  scoreOpacity: Double(scoreOpacity))
         }
     }
 
@@ -184,7 +189,7 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
     private static func blend(bgra: UnsafePointer<UInt8>, bgraStride: Int,
                               y: UnsafeMutablePointer<UInt8>, yStride: Int,
                               uv: UnsafeMutablePointer<UInt8>, uvStride: Int, width: Int, height: Int, uses601Matrix: Bool = false,
-                              pointStartX: Int = .max, pointOpacity: Double = 1) {
+                              pointStartX: Int = .max, pointOpacity: Double = 1, scoreOpacity: Double = 1) {
         // BT.709/601 non-linear RGB -> studio-range Y'CbCr. This is the standard
         // coding matrix for the graphics, not a transfer/gamma adjustment of video.
         let kr = uses601Matrix ? 0.299 : 0.2126, kb = uses601Matrix ? 0.114 : 0.0722
@@ -197,7 +202,7 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
                         // BGRA is premultiplied: fade color and alpha together.
                         // Evaluate per pixel so an odd-width scoreboard does not
                         // fade the score side of its shared 2x2 chroma block.
-                        let opacity = column + dx >= pointStartX ? max(0, min(1, pointOpacity)) : 1
+                        let opacity = max(0, min(1, column + dx >= pointStartX ? pointOpacity : scoreOpacity))
                         let alpha = Double(bgra[offset + 3]) / 255 * opacity
                         if alpha == 0 { continue }
                         let blue = Double(bgra[offset]) * opacity, green = Double(bgra[offset + 1]) * opacity, red = Double(bgra[offset + 2]) * opacity
