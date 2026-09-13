@@ -9,6 +9,8 @@ export const KEYBOARD_SHORTCUTS = [
   { action: "keep", keys: ["k"], label: "K", description: "Keep current rally" },
   { action: "back", keys: ["arrowleft"], label: "←", description: "Move playhead back 5 seconds" },
   { action: "forward", keys: ["arrowright"], label: "→", description: "Move playhead forward 5 seconds" },
+  { action: "previousRally", keys: ["shift+arrowleft"], label: "Shift + ←", description: "Jump to previous rally" },
+  { action: "nextRally", keys: ["shift+arrowright"], label: "Shift + →", description: "Jump to next rally" },
   { action: "faster", keys: ["+", "="], label: "+", description: "Increase playback speed" },
   { action: "slower", keys: ["-"], label: "−", description: "Decrease playback speed" },
   { action: "switch", keys: ["t"], label: "T", description: "Add team side switch at playhead" },

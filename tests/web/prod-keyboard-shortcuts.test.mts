@@ -12,6 +12,7 @@ test("review shortcuts distinguish shifted actions including serve and split", (
     ["n", "near", "new"], ["r", "review", "missed"],
     ["e", "exclude", "export"], ["s", "serve", "split"],
     ["Backspace", "remove", "removeEvent"],
+    ["ArrowLeft", "back", "previousRally"], ["ArrowRight", "forward", "nextRally"],
   ]) {
     assert.equal(key(value), plain);
     assert.equal(key(value.toUpperCase(), { shiftKey: true }), shifted);

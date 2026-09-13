@@ -2707,6 +2707,18 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           break;
         case "switch": if (state.scoreEnabled) state.addSideSwitchAtPlayhead(); break;
         case "removeEvent": if (state.scoreEnabled) state.removeSelectedEvent(); break;
+        case "previousRally":
+        case "nextRally": {
+          const ordered = [...state.clips].sort((left, right) => left.start - right.start || left.id.localeCompare(right.id));
+          const index = ordered.findIndex((clip) => clip.id === state.selectedId);
+          const next = ordered[index + (action === "previousRally" ? -1 : 1)];
+          if (next) {
+            state.setFinalPreview(false);
+            state.setPlaying(false);
+            state.selectClip(next.id);
+          }
+          break;
+        }
         case "back":
         case "forward":
           state.setPlayhead(Math.max(state.gameStart, Math.min(state.gameEnd,
