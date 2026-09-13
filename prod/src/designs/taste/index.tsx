@@ -343,6 +343,7 @@ function usePrototype(
   const [includeScore, setIncludeScore] = useState(true);
   const [chapterScore, setChapterScore] = useState(true);
   const [chapterServer, setChapterServer] = useState(true);
+  const [chapterCredit, setChapterCredit] = useState(true);
   const [projectName, setProjectName] = useState(review.projectName);
   const [storageMessage, setStorageMessage] = useState("Live review data loaded");
   const videoElementRef = useRef<HTMLVideoElement>(null);
@@ -814,7 +815,10 @@ function usePrototype(
     }),
     [activeScoreTracking, chapterOptions, effectiveKeptIds, finalIntervals, scoreEnabled, workingDraft.cuts],
   );
-  const chapterText = useMemo(() => youtubeChaptersText(chapters), [chapters]);
+  const chapterText = useMemo(
+    () => youtubeChaptersText(chapters, chapterCredit),
+    [chapters, chapterCredit],
+  );
 
   async function chooseVideo(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
@@ -1328,6 +1332,7 @@ function usePrototype(
     setExportProgress, exportSpeed, exportEtaSeconds, exportStatus,
     exportBusy, showExportProgress, includeScore, setIncludeScore, chapterScore,
     setChapterScore, chapterServer, setChapterServer, chapters, chapterText,
+    chapterCredit, setChapterCredit,
     finalIntervals, workingDraft, effectiveKeptIds, reviewClipIds,
     clipReviewTaskIds, preparedScoreOverlay,
     currentPlayingClipId: currentPlayingCut?.id ?? null,
@@ -2161,6 +2166,7 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
             <div className="td-chapter-options">
               <label className="td-check-row"><input type="checkbox" checked={state.chapterScore} onChange={(event) => state.setChapterScore(event.currentTarget.checked)} /><span><strong>Include score</strong><small>Uses the score at each visible serve.</small></span></label>
               <label className="td-check-row"><input type="checkbox" checked={state.chapterServer} onChange={(event) => state.setChapterServer(event.currentTarget.checked)} /><span><strong>Include serving team</strong><small>Uses the team names from score tracking.</small></span></label>
+              <label className="td-check-row"><input type="checkbox" checked={state.chapterCredit} onChange={(event) => state.setChapterCredit(event.currentTarget.checked)} /><span><strong>Include VolleySplice credit</strong><small>Adds “Edited with https://volleysplice.com” above the chapters.</small></span></label>
               <pre>{state.chapterText || "No retained rally is available for chapters."}</pre>
             </div>
           )}
