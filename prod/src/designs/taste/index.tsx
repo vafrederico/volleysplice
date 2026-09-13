@@ -760,7 +760,7 @@ function usePrototype(
     clip.id === (followPlayhead ? currentPlayingCut?.id : selectedId),
   ) ?? (followPlayhead ? undefined : clips[0]);
   const serveReviewMarkers = activeScoreMarkers.filter(
-    (marker) => marker.side === "review",
+    (marker) => scoreEnabled && marker.side === "review",
   );
   const serveReview = serveReviewMarkers.length;
   const selectedScoreMarker = followPlayhead
@@ -1435,12 +1435,12 @@ function RallyDeskProjectSelector({
       switch (project.exportJob.status) {
         case "queued": return "Export queued";
         case "exporting": return `Exporting ${project.exportJob.progress}%`;
-        case "saved": return "Export saved";
+        case "saved": return "Exported";
         case "error": return "Export stopped";
       }
     }
     switch (project.status) {
-      case "ready": return "Ready";
+      case "ready": return project.lastExportedAt ? "Exported" : "Ready";
       case "analyzing": return "Analyzing";
       case "queued": return "Queued";
       case "waiting": return "Needs video";
@@ -2076,7 +2076,7 @@ function ReviewSummary({
     <aside className="td-review-summary" data-review-actions={reviewActions || undefined} data-settings={Boolean(onOpenSettings) || undefined} data-tour={reviewActions ? "rd-review-summary" : undefined}>
       {reviewActions && (
         <nav className="td-review-shortcuts" aria-label="Items needing review">
-          <button type="button" disabled={state.serveReview === 0} onClick={state.openServeReview}><strong>{state.serveReview}</strong><span>Review serves</span></button>
+          {state.scoreEnabled && <button type="button" disabled={state.serveReview === 0} onClick={state.openServeReview}><strong>{state.serveReview}</strong><span>Review serves</span></button>}
           <button type="button" disabled={clipReviewCount === 0} onClick={state.openClipReview}><strong>{clipReviewCount}</strong><span>Review clips</span></button>
           <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleaned up</span></button>
         </nav>
@@ -2659,8 +2659,8 @@ function RallyDeskSettingsModal({
 }
 
 function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
-  const reviewCursor = useRef<ReviewItem | null>(null);
-  useEffect(() => { reviewCursor.current = null; }, [state.selectedProjectId]);
+  const reviewCategory = useRef<ReviewItem["kind"] | null>(null);
+  useEffect(() => { reviewCategory.current = null; }, [state.selectedProjectId]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -2714,7 +2714,6 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           const next = ordered[index + (action === "previousRally" ? -1 : 1)];
           if (next) {
             state.setFinalPreview(false);
-            state.setPlaying(false);
             state.selectClip(next.id);
           }
           break;
@@ -2740,8 +2739,9 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           if (state.scoreEnabled) items.push(...state.activeScoreMarkers
             .filter((marker) => marker.side === "review")
             .map((marker): ReviewItem => ({ kind: "serve", id: marker.id, time: marker.timestamp })));
-          const next = nextReviewItem(items, reviewCursor.current);
-          reviewCursor.current = next;
+          const next = nextReviewItem(items, reviewCategory.current, state.playhead,
+            reviewCategory.current === "serve" ? state.selectedScoreMarkerId : state.selectedId);
+          reviewCategory.current = next?.kind ?? null;
           if (next) {
             state.setFinalPreview(false);
             state.setPlaying(false);

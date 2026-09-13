@@ -68,6 +68,8 @@ export type VolleySpliceProject = {
   };
   /** Latest editor state, mirrored from localStorage for durable project restore. */
   reviewDraft?: CutDraft;
+  /** Most recent successful video export; retained across edits and reloads. */
+  lastExportedAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -635,6 +637,22 @@ export async function putProject(project: VolleySpliceProject): Promise<void> {
     const transaction = database.transaction(PROJECT_STORE, "readwrite");
     const complete = transactionComplete(transaction);
     transaction.objectStore(PROJECT_STORE).put(project);
+    await complete;
+  } finally {
+    database.close();
+  }
+}
+
+export async function markProjectExported(projectIdToUpdate: string, exportedAt: string): Promise<void> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    const store = transaction.objectStore(PROJECT_STORE);
+    const stored = await requestResult(store.get(projectIdToUpdate) as IDBRequest<unknown>);
+    // Update the latest record atomically, preserving concurrent review edits.
+    // An export finishing after deletion must not recreate the project.
+    if (validProject(stored)) store.put({ ...stored, lastExportedAt: exportedAt });
     await complete;
   } finally {
     database.close();

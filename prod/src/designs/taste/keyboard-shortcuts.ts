@@ -4,7 +4,7 @@ export const KEYBOARD_SHORTCUTS = [
   { action: "playPause", keys: [" "], label: "Space", description: "Play / pause playback" },
   { action: "near", keys: ["n"], label: "N", description: "Set near serve" },
   { action: "far", keys: ["f"], label: "F", description: "Set far serve" },
-  { action: "review", keys: ["r"], label: "R", description: "Next review: cleaned up → clips → serves (cycles)" },
+  { action: "review", keys: ["r"], label: "R", description: "Next review after playhead; cycles cleaned up → clips → serves" },
   { action: "remove", keys: ["backspace"], label: "Backspace", description: "Remove current rally" },
   { action: "keep", keys: ["k"], label: "K", description: "Keep current rally" },
   { action: "back", keys: ["arrowleft"], label: "←", description: "Move playhead back 5 seconds" },
@@ -51,8 +51,22 @@ function compareReviewItems(left: ReviewItem, right: ReviewItem) {
     left.time - right.time || left.id.localeCompare(right.id);
 }
 
-// Keep the cursor even when a decision removes its item from the pending queue.
-export function nextReviewItem(items: ReviewItem[], previous: ReviewItem | null) {
+// Remember the category, but derive progress from the timeline so seeking back
+// revisits earlier pending items. Opening a rally at its padding must not repeat it.
+export function nextReviewItem(
+  items: ReviewItem[],
+  category: ReviewItem["kind"] | null,
+  playhead: number,
+  currentId?: string,
+) {
   const ordered = [...items].sort(compareReviewItems);
-  return (previous && ordered.find((item) => compareReviewItems(item, previous) > 0)) || ordered[0] || null;
+  const kinds = ["cleanup", "clip", "serve"] as const;
+  const index = REVIEW_ORDER[category ?? "cleanup"];
+  const next = ordered.find((item) => item.kind === kinds[index] && item.time > playhead && item.id !== currentId);
+  if (next) return next;
+  for (let offset = 1; offset <= kinds.length; offset++) {
+    const first = ordered.find((item) => item.kind === kinds[(index + offset) % kinds.length]);
+    if (first) return first;
+  }
+  return null;
 }

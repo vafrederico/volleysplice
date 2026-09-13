@@ -56,7 +56,7 @@ test("R starts with cleanup and visits every item before wrapping, without modif
   let cursor: ReviewItem | null = null;
   const visited = [];
   for (let i = 0; i < 6; i++) {
-    cursor = nextReviewItem(items, cursor);
+    cursor = nextReviewItem(items, cursor?.kind ?? null, cursor?.time ?? 0, cursor?.id);
     visited.push(cursor?.id);
   }
   assert.deepEqual(visited, ["x1", "x2", "c1", "s1", "s2", "x1"]);
@@ -65,8 +65,26 @@ test("R starts with cleanup and visits every item before wrapping, without modif
 
 test("review progression survives resolving the current item and skips empty queues", () => {
   const previous = items.find((item) => item.id === "x2")!;
-  assert.equal(nextReviewItem(items.filter((item) => item.id !== "x2"), previous)?.id, "c1");
-  assert.equal(nextReviewItem(items.filter((item) => item.kind === "serve"), null)?.id, "s1");
-  assert.equal(nextReviewItem([], previous), null);
-  assert.equal(nextReviewItem([], null), null);
+  assert.equal(nextReviewItem(items.filter((item) => item.id !== "x2"), previous.kind, previous.time)?.id, "c1");
+  assert.equal(nextReviewItem(items.filter((item) => item.kind === "serve"), null, 0)?.id, "s1");
+  assert.equal(nextReviewItem([], previous.kind, previous.time), null);
+  assert.equal(nextReviewItem([], null, 0), null);
+  const withoutServes = items.filter((item) => item.kind !== "serve");
+  assert.equal(nextReviewItem(withoutServes, "serve", 50)?.id, "x1");
+  assert.equal(nextReviewItem(withoutServes, "clip", 1, "c1")?.id, "x1");
+});
+
+test("R uses the playhead within the current category after seeking backward or forward", () => {
+  assert.equal(nextReviewItem(items, "cleanup", 5)?.id, "x1");
+  assert.equal(nextReviewItem(items, "cleanup", 20)?.id, "x2");
+  assert.equal(nextReviewItem(items, "cleanup", 95)?.id, "c1");
+  assert.equal(nextReviewItem(items, "serve", 1)?.id, "s1");
+  assert.equal(nextReviewItem(items, "serve", 10)?.id, "s2");
+  assert.equal(nextReviewItem(items, null, 20)?.id, "x2");
+});
+
+test("R skips the opened rally in its padding and advances after resolving it", () => {
+  assert.equal(nextReviewItem(items, "cleanup", 8, "x1")?.id, "x2");
+  assert.equal(nextReviewItem(items.filter(item => item.id !== "x1"), "cleanup", 8, "x1")?.id, "x2");
+  assert.equal(nextReviewItem(items, "cleanup", 88, "x2")?.id, "c1");
 });

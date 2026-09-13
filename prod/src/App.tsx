@@ -61,6 +61,7 @@ import {
 import {
   deleteProject,
   listProjects,
+  markProjectExported,
   projectAnalysisId,
   projectId,
   projectSource,
@@ -338,6 +339,15 @@ export function App() {
     }
     exportJobsRef.current.set(job.projectId, job);
     setExportJobs([...exportJobsRef.current.values()]);
+    if (job.status === "saved") {
+      const lastExportedAt = new Date().toISOString();
+      replaceProjects(projectsRef.current.map((project) =>
+        project.id === job.projectId ? { ...project, lastExportedAt } : project,
+      ));
+      void markProjectExported(job.projectId, lastExportedAt).catch(() => {
+        if (mountedRef.current) setError("The video was exported, but its exported status could not be saved in browser storage.");
+      });
+    }
   }, []);
 
   const drainVideoExportQueue = useCallback(async () => {

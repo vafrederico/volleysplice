@@ -30,6 +30,7 @@ export type DesignProjectOption = {
   id: string;
   name: string;
   status: VolleySpliceProject["status"];
+  lastExportedAt?: string;
   exportJob: DesignExportJob | null;
 };
 
@@ -144,6 +145,7 @@ function projectOptions(
     id: project.id,
     name: project.source.name,
     status: project.status,
+    lastExportedAt: project.lastExportedAt,
     exportJob: jobsByProject.get(project.id) ?? null,
   }));
 }

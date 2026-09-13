@@ -24,14 +24,14 @@ function projectStatus(
       case "exporting":
         return `Exporting ${exportJob.progress}%`;
       case "saved":
-        return "Export saved";
+        return "Exported";
       case "error":
         return "Export stopped";
     }
   }
   switch (project.status) {
     case "ready":
-      return "Ready";
+      return project.lastExportedAt ? "Exported" : "Ready";
     case "analyzing":
       return "Analyzing";
     case "queued":
