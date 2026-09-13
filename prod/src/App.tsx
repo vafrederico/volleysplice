@@ -22,7 +22,7 @@ import {
   MIN_ANALYSIS_WINDOW_SECONDS,
   normalizeAnalysisWindow,
 } from "@/lib/on-device/analysis-window";
-import { isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
+import { isIosBrowser, isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
 import { deleteFeatureCachesForSource } from "@/lib/on-device/feature-cache";
 import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
@@ -276,6 +276,7 @@ export function App() {
   const candidateVideoRef = useRef<HTMLVideoElement>(null);
   const suppressionAugmentingRef = useRef(new Set<string>());
 
+  const iosBrowser = isIosBrowser();
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
     !safariUnsupported &&
@@ -703,7 +704,9 @@ export function App() {
     if (!selected) return;
     if (safariUnsupported) {
       setError(
-        "Safari is not supported on macOS or iOS. Open VolleySplice in Google Chrome instead.",
+        iosBrowser
+          ? "WARNING: Browsers on iOS create temporary video copies that use extra device storage, and VolleySplice cannot delete those copies. Please use Google Chrome on a desktop computer instead. Safari is not supported."
+          : "Safari is not supported. Open VolleySplice in Google Chrome on your desktop computer instead.",
       );
       setWorkState("error");
       return;
@@ -1391,12 +1394,23 @@ export function App() {
             <p className={styles.privacyNote}>Your video stays on this device.</p>
             </section>
 
-            {safariUnsupported && (
+            {iosBrowser ? (
+              <p className={styles.notice} role="status">
+                <strong>WARNING:</strong> Browsers
+                on iOS, including Chrome and Safari, create temporary copies of
+                selected videos, duplicating their storage use on your device.
+                VolleySplice cannot delete these browser-managed copies, and they
+                may remain after you finish. Please use Google Chrome on a desktop
+                computer instead.
+                {safariUnsupported && " Safari is not supported."}
+              </p>
+            ) : safariUnsupported ? (
               <p className={styles.notice} role="status">
                 <strong>Safari is not supported.</strong> VolleySplice cannot open
-                videos here yet. Please use Google Chrome to continue.
+                videos here yet. Please use Google Chrome on your desktop computer
+                to continue.
               </p>
-            )}
+            ) : null}
             {!safariUnsupported && !secureContext && (
               <p className={styles.notice}>
                 VolleySplice needs a secure connection before it can open your video.
