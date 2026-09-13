@@ -53,6 +53,7 @@ const rallyOnly: YouTubeChapterOptions = {
   includeScore: false,
   includeServingTeam: false,
   includeSideSwitches: false,
+  includeCredit: true,
 };
 
 test("chapter defaults favor score and serving team when scoring is available", () => {
@@ -62,6 +63,7 @@ test("chapter defaults favor score and serving team when scoring is available", 
     includeScore: true,
     includeServingTeam: true,
     includeSideSwitches: true,
+    includeCredit: true,
   });
   assert.deepEqual(defaultYouTubeChapterOptions(false, false), rallyOnly);
 });
@@ -81,7 +83,7 @@ test("chapter timestamps follow the concatenated final MP4 timeline", () => {
       { outputSeconds: 10, title: "Rally 2" },
     ],
   );
-  assert.equal(youtubeChaptersText(chapters), "0:00 Rally 1\n0:10 Rally 2");
+  assert.equal(youtubeChaptersText(chapters, false), "0:00 Rally 1\n0:10 Rally 2");
 });
 
 test("score and serving-team titles use checked serve and team data", () => {
@@ -163,9 +165,8 @@ test("manually added side switches become chapters without a project-creation fl
   assert.deepEqual(
     chapters.map(({ outputSeconds, title }) => [outputSeconds, title]),
     [
-      [0, "Rally 1"],
       [5, "Side switch 1"],
-      [10, "Rally 2 / Side switch 2"],
+      [10, "Side switch 2"],
       [15, "Side switch 3"],
     ],
   );
@@ -177,4 +178,26 @@ test("chapter helpers support long videos and safe text filenames", () => {
     youtubeChaptersFilename("My match (final).mov"),
     "My-match-final-youtube-chapters.txt",
   );
+});
+
+
+test("credit defaults on, can be omitted, and never creates an empty export", () => {
+  const chapters = buildYouTubeChapters({ intervals, cuts, scoreTracking: null, options: rallyOnly });
+  assert.equal(youtubeChaptersText(chapters), "Edited with https://volleysplice.com\n\n0:00 Rally 1\n0:10 Rally 2");
+  assert.equal(youtubeChaptersText(chapters, false), "0:00 Rally 1\n0:10 Rally 2");
+  assert.equal(youtubeChaptersText([]), "");
+});
+
+test("enabled serves and sides omit unmarked rallies without shifting output timestamps or numbering", () => {
+  const tracking = addServeMarker(createScoreTracking(), 42, "far", { id: "S2", rallyId: "R002" });
+  const build = (scoreTracking: typeof tracking | null) => buildYouTubeChapters({ intervals, cuts, scoreTracking, options: rallyOnly });
+  assert.deepEqual(build(tracking).map(c => [c.outputSeconds, c.title]), [[10, "Rally 2"]]);
+  assert.equal(build(createScoreTracking()).length, 0);
+  assert.equal(build({ ...tracking, enabled: false }).length, 2);
+  assert.equal(build(null).length, 2);
+});
+
+test("unlinked serves within kept padding still qualify a rally", () => {
+  const tracking = addServeMarker(createScoreTracking(), 10.5, "near", { id: "S1" });
+  assert.deepEqual(buildYouTubeChapters({ intervals, cuts, scoreTracking: tracking, options: rallyOnly }).map(c => c.title), ["Rally 1"]);
 });

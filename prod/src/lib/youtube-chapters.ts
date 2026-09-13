@@ -12,6 +12,7 @@ export type YouTubeChapterOptions = {
   includeScore: boolean;
   includeServingTeam: boolean;
   includeSideSwitches: boolean;
+  includeCredit: boolean;
 };
 
 export type YouTubeChapter = {
@@ -31,6 +32,7 @@ export function defaultYouTubeChapterOptions(
     includeScore: hasScoreTracking,
     includeServingTeam: hasScoreTracking,
     includeSideSwitches: hasSideSwitches,
+    includeCredit: true,
   };
 }
 
@@ -220,22 +222,25 @@ export function buildYouTubeChapters({
     ),
   );
   const claimedMarkerIds = new Set<string>();
-  const rallyChapters = visibleCuts.map((visible, index): YouTubeChapter => {
+  const rallyChapters = visibleCuts.flatMap((visible, index): YouTubeChapter[] => {
     const marker = markerForCut(visible.cut, markers, claimedMarkerIds);
+    if (scoreTracking?.enabled && !marker) return [];
     if (marker) claimedMarkerIds.add(marker.id);
-    return {
-      kind: "rally",
-      outputSeconds: visible.outputSeconds,
-      sourceTimestamp: visible.sourceTimestamp,
-      title: rallyTitle(
-        index + 1,
-        marker,
-        marker ? redoMarkerIds.has(marker.id) : false,
-        serveNumbers,
-        scoreTracking,
-        options,
-      ),
-    };
+    return [
+      {
+        kind: "rally",
+        outputSeconds: visible.outputSeconds,
+        sourceTimestamp: visible.sourceTimestamp,
+        title: rallyTitle(
+          index + 1,
+          marker,
+          marker ? redoMarkerIds.has(marker.id) : false,
+          serveNumbers,
+          scoreTracking,
+          options,
+        ),
+      },
+    ];
   });
 
   const switchChapters =
@@ -280,13 +285,17 @@ export function formatYouTubeChapterTimestamp(seconds: number): string {
 
 export function youtubeChaptersText(
   chapters: readonly YouTubeChapter[],
+  includeCredit = true,
 ): string {
-  return chapters
+  const text = chapters
     .map(
       (chapter) =>
         `${formatYouTubeChapterTimestamp(chapter.outputSeconds)} ${chapter.title}`,
     )
     .join("\n");
+  return text && includeCredit
+    ? `Edited with https://volleysplice.com\n\n${text}`
+    : text;
 }
 
 export function youtubeChaptersFilename(sourceFilename: string): string {

@@ -16,7 +16,7 @@ class YouTubeChaptersTest {
             null,
             YouTubeChapters.defaultOptions(false, false),
         )
-        assertEquals("0:02 Rally 1\n0:11 Rally 2", YouTubeChapters.text(chapters))
+        assertEquals("0:02 Rally 1\n0:11 Rally 2", YouTubeChapters.text(chapters, false))
     }
 
     @Test
@@ -55,10 +55,10 @@ class YouTubeChaptersTest {
                 cuts,
                 null,
                 YouTubeChapters.defaultOptions(false, false),
-            )),
+            ), false),
         )
         assertEquals(
-            "0:00 Rally 1\n0:09 Rally 2",
+            "0:09 Rally 2",
             YouTubeChapters.text(YouTubeChapters.build(
                 intervals,
                 cuts,
@@ -66,7 +66,7 @@ class YouTubeChaptersTest {
                     serve("S002", 17_000, ServingSide.FAR, "R002"),
                 )),
                 YouTubeChapterOptions(true, false, false, false, false),
-            )),
+            ), false),
         )
     }
 
@@ -79,7 +79,7 @@ class YouTubeChaptersTest {
             YouTubeChapters.defaultOptions(false, true),
         )
         assertEquals(1, chapters.size)
-        assertEquals("Rally 1 / Side switch 1", chapters.single().title)
+        assertEquals("Side switch 1", chapters.single().title)
     }
 
     @Test
@@ -127,10 +127,8 @@ class YouTubeChaptersTest {
 
         assertEquals(
             "0:00 0–0 - Team 1 serving - Re-do\n" +
-                "0:14 0–0 - Team 1 serving / Side switch 1\n" +
-                "0:30 Rally 3\n" +
-                "0:46 Rally 4",
-            YouTubeChapters.text(chapters),
+                "0:14 0–0 - Team 1 serving / Side switch 1",
+            YouTubeChapters.text(chapters, false),
         )
     }
 
@@ -139,6 +137,29 @@ class YouTubeChaptersTest {
         assertEquals("0:00", YouTubeChapters.formatTimestamp(999))
         assertEquals("1:05", YouTubeChapters.formatTimestamp(65_999))
         assertEquals("1:01:01", YouTubeChapters.formatTimestamp(3_661_999))
+    }
+
+    @Test
+    fun creditDefaultsOnAndCanBeOmittedWithoutCreatingAnEmptyExport() {
+        assertTrue(YouTubeChapters.defaultOptions(false, false).includeCredit)
+        assertTrue(YouTubeChapters.defaultOptions(true, true).includeCredit)
+        val chapters = listOf(YouTubeChapter(YouTubeChapter.Kind.RALLY, 0, 0, "Rally 1"))
+        assertEquals("Edited with https://volleysplice.com\n\n0:00 Rally 1", YouTubeChapters.text(chapters))
+        assertEquals("0:00 Rally 1", YouTubeChapters.text(chapters, false))
+        assertEquals("", YouTubeChapters.text(emptyList()))
+    }
+
+    @Test
+    fun enabledTrackingOmitsUnmarkedRalliesAndPreservesOutputTimeAndNumber() {
+        val cuts = listOf(cut("R1", 10_000, 20_000), cut("R2", 40_000, 50_000))
+        val intervals = cuts.map { FinalCutInterval(it.keepStartMs, it.keepEndMs, listOf(it.id)) }
+        val options = YouTubeChapters.defaultOptions(false, false)
+        val tracking = ScoreTracking(serveMarkers = listOf(serve("S2", 42_000, ServingSide.FAR, "R2")))
+        fun build(score: ScoreTracking?) = YouTubeChapters.build(intervals, cuts, score, options)
+        assertEquals("0:10 Rally 2", YouTubeChapters.text(build(tracking), false))
+        assertTrue(build(ScoreTracking()).isEmpty())
+        assertEquals(2, build(tracking.copy(enabled = false)).size)
+        assertEquals(2, build(null).size)
     }
 
     private fun cut(id: String, startMs: Long, endMs: Long) = EditableCut(

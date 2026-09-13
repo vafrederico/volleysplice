@@ -206,7 +206,7 @@ final class ProjectContractTests: XCTestCase {
         let legacyData = try JSONEncoder().encode(project)
         XCTAssertNil(try JSONDecoder().decode(ProjectDocument.self, from: legacyData).draft.chapterOptions)
         let selected = YouTubeChapterOptions(includeRallyNumber: false, includeServeNumber: true,
-            includeScore: false, includeServingTeam: true, includeSideSwitches: false)
+            includeScore: false, includeServingTeam: true, includeSideSwitches: false, includeCredit: false)
         project.draft.chapterOptions = selected
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
         defer { try? FileManager.default.removeItem(at: path) }

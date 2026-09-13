@@ -40,6 +40,7 @@ internal data class YouTubeChapterOptions(
     val includeScore: Boolean,
     val includeServingTeam: Boolean,
     val includeSideSwitches: Boolean,
+    val includeCredit: Boolean = true,
 )
 
 internal data class YouTubeChapter(
@@ -96,8 +97,9 @@ internal object YouTubeChapters {
             marker.id.takeIf { markers.getOrNull(index + 1)?.ignorePreviousPoint == true }
         }.toSet()
         val claimedMarkerIds = mutableSetOf<String>()
-        val rallyChapters = visibleRallies.mapIndexed { index, visible ->
+        val rallyChapters = visibleRallies.mapIndexedNotNull { index, visible ->
             val marker = markerForRally(visible.rally, markers, claimedMarkerIds)
+            if (scoreTracking?.enabled == true && marker == null) return@mapIndexedNotNull null
             if (marker != null) claimedMarkerIds += marker.id
             YouTubeChapter(
                 YouTubeChapter.Kind.RALLY,
@@ -145,8 +147,9 @@ internal object YouTubeChapters {
             }
     }
 
-    fun text(chapters: List<YouTubeChapter>): String = chapters.joinToString("\n") {
-        "${formatTimestamp(it.outputMs)} ${it.title}"
+    fun text(chapters: List<YouTubeChapter>, includeCredit: Boolean = true): String {
+        val text = chapters.joinToString("\n") { "${formatTimestamp(it.outputMs)} ${it.title}" }
+        return if (text.isNotEmpty() && includeCredit) "Edited with https://volleysplice.com\n\n$text" else text
     }
 
     fun filename(sourceFilename: String): String {
@@ -253,7 +256,7 @@ internal fun YouTubeChaptersDialog(
         mutableStateOf(YouTubeChapters.defaultOptions(hasScoreTracking, hasSideSwitches))
     }
     val chapters = YouTubeChapters.build(intervals, cuts, scoreTracking, options)
-    val chapterText = YouTubeChapters.text(chapters)
+    val chapterText = YouTubeChapters.text(chapters, options.includeCredit)
 
     fun updateOptions(next: YouTubeChapterOptions) {
         options = next
@@ -306,6 +309,9 @@ internal fun YouTubeChaptersDialog(
                             options.includeSideSwitches,
                         ) { updateOptions(options.copy(includeSideSwitches = it)) }
                     }
+                    ChapterCheckbox("Include VolleySplice credit", "Edited with https://volleysplice.com", options.includeCredit) {
+                        updateOptions(options.copy(includeCredit = it))
+                    }
                     Column(
                         Modifier.fillMaxWidth().background(Color(0xFFF1EEE7), RoundedCornerShape(10.dp))
                             .border(1.dp, Color(0xFFE0DCD3), RoundedCornerShape(10.dp)).padding(14.dp),
@@ -357,7 +363,7 @@ internal fun YouTubeChaptersDialog(
 @Composable
 private fun ChapterCheckbox(title: String, detail: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onChecked)
+        Checkbox(checked = checked, onCheckedChange = onChecked, modifier = Modifier.testTag("chapter-option-$title"))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(detail, color = Color(0xFF66615A), fontSize = 11.sp)

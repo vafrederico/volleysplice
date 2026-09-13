@@ -1129,10 +1129,12 @@ struct EditorWorkspace: View {
             Toggle("Scores", isOn: chapterBinding(\.includeScore)).disabled(!score.enabled).accessibilityIdentifier("chapterScores")
             Toggle("Serving team", isOn: chapterBinding(\.includeServingTeam)).disabled(!score.enabled).accessibilityIdentifier("chapterServingTeam")
             Toggle("Side switches", isOn: chapterBinding(\.includeSideSwitches)).disabled(score.sideSwitchMarkers.isEmpty).accessibilityIdentifier("chapterSideSwitches")
-            ShareLink("Share chapters", item: YouTubeChapters.text(chapters)).buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).disabled(chapters.isEmpty).accessibilityIdentifier("exportChapters")
+            Toggle("Include VolleySplice credit", isOn: chapterBinding(\.includeCredit)).accessibilityIdentifier("chapterCredit")
+            Text("Edited with https://volleysplice.com").font(.caption).foregroundStyle(.secondary)
+            ShareLink("Share chapters", item: YouTubeChapters.text(chapters, includeCredit: chapterOptions.includeCredit)).buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).disabled(chapters.isEmpty).accessibilityIdentifier("exportChapters")
             if !chapters.isEmpty {
                 DisclosureGroup("Preview chapters") {
-                    Text(YouTubeChapters.text(chapters)).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    Text(YouTubeChapters.text(chapters, includeCredit: chapterOptions.includeCredit)).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                 }
             }
         }

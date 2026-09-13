@@ -12,7 +12,7 @@ final class ChaptersTests: XCTestCase {
         let chapters = YouTubeChapters.build(intervals: [.init(startMs: 8000, endMs: 17000, cutIds: ["R1"]),
             .init(startMs: 38000, endMs: 48000, cutIds: ["R2"])], cuts: [cut("R1", 10000, 15000), cut("R2", 40000, 46000)],
             scoreTracking: nil, options: YouTubeChapters.defaultOptions(hasScoreTracking: false, hasSideSwitches: false))
-        XCTAssertEqual(YouTubeChapters.text(chapters), "0:02 Rally 1\n0:11 Rally 2")
+        XCTAssertEqual(YouTubeChapters.text(chapters, includeCredit: false), "0:02 Rally 1\n0:11 Rally 2")
     }
     func testScoreAndServingTeamDefaults() {
         let tracking = ScoreTracking(team1Name: "Falcons", team2Name: "Owls",
@@ -27,16 +27,16 @@ final class ChaptersTests: XCTestCase {
             joinedGaps: [.init(startMs: 15000, endMs: 17000)])]
         let cuts = [cut("R1", 8000, 15000), cut("R2", 17000, 24000)]
         let options = YouTubeChapters.defaultOptions(hasScoreTracking: false, hasSideSwitches: false)
-        XCTAssertEqual(YouTubeChapters.text(YouTubeChapters.build(intervals: intervals, cuts: cuts, scoreTracking: nil, options: options)), "0:00 Rally 1")
+        XCTAssertEqual(YouTubeChapters.text(YouTubeChapters.build(intervals: intervals, cuts: cuts, scoreTracking: nil, options: options), includeCredit: false), "0:00 Rally 1")
         let tracking = ScoreTracking(serveMarkers: [serve("S2", 17000, .far, "R2")])
-        XCTAssertEqual(YouTubeChapters.text(YouTubeChapters.build(intervals: intervals, cuts: cuts, scoreTracking: tracking, options: options)), "0:00 Rally 1\n0:09 Rally 2")
+        XCTAssertEqual(YouTubeChapters.text(YouTubeChapters.build(intervals: intervals, cuts: cuts, scoreTracking: tracking, options: options), includeCredit: false), "0:09 Rally 2")
         XCTAssertEqual(EditorMath.editableRallyGroups(cuts: cuts, intervals: intervals, serveMarkers: [], hardBoundaryCutIds: ["R2"]).count, 2)
     }
     func testRemovedSwitchAttachesToNextVisibleClipAndMergesWholeSecond() {
         let chapters = YouTubeChapters.build(intervals: [.init(startMs: 10000, endMs: 15000, cutIds: ["R1"])],
             cuts: [cut("R1", 10000, 12000)], scoreTracking: ScoreTracking(sideSwitchMarkers: [.init(id: "X", timestampMs: 8000)]),
             options: YouTubeChapters.defaultOptions(hasScoreTracking: false, hasSideSwitches: true))
-        XCTAssertEqual(chapters.count, 1); XCTAssertEqual(chapters.first?.title, "Rally 1 / Side switch 1")
+        XCTAssertEqual(chapters.count, 1); XCTAssertEqual(chapters.first?.title, "Side switch 1")
         XCTAssertEqual(chapters.first?.sourceTimestampMs, 10000)
     }
     func testRedoScoreSwitchAndPaddedFinalTimeline() {
@@ -51,7 +51,33 @@ final class ChaptersTests: XCTestCase {
         let intervals = cuts.map { FinalCutInterval(startMs: $0.keepStartMs, endMs: $0.keepEndMs, cutIds: [$0.id]) }
         let chapters = YouTubeChapters.build(intervals: intervals, cuts: cuts, scoreTracking: tracking,
             options: YouTubeChapters.defaultOptions(hasScoreTracking: true, hasSideSwitches: true))
-        XCTAssertEqual(YouTubeChapters.text(chapters), "0:00 0–0 - Team 1 serving - Re-do\n0:14 0–0 - Team 1 serving / Side switch 1\n0:30 Rally 3\n0:46 Rally 4")
+        XCTAssertEqual(YouTubeChapters.text(chapters, includeCredit: false), "0:00 0–0 - Team 1 serving - Re-do\n0:14 0–0 - Team 1 serving / Side switch 1")
+    }
+    func testCreditDefaultsAndLegacyOptionsDecode() throws {
+        let legacy = Data(#"{"includeRallyNumber":true,"includeServeNumber":false,"includeScore":false,"includeServingTeam":false,"includeSideSwitches":false}"#.utf8)
+        var options = try JSONDecoder().decode(YouTubeChapterOptions.self, from: legacy)
+        XCTAssertTrue(options.includeCredit)
+        XCTAssertTrue(YouTubeChapters.defaultOptions(hasScoreTracking: true, hasSideSwitches: true).includeCredit)
+        options.includeCredit = false
+        XCTAssertEqual(try JSONDecoder().decode(YouTubeChapterOptions.self, from: JSONEncoder().encode(options)), options)
+        let chapters = [YouTubeChapter(kind: .rally, outputMs: 0, sourceTimestampMs: 0, title: "Rally 1")]
+        XCTAssertEqual(YouTubeChapters.text(chapters), "Edited with https://volleysplice.com\n\n0:00 Rally 1")
+        XCTAssertEqual(YouTubeChapters.text(chapters, includeCredit: false), "0:00 Rally 1")
+        XCTAssertEqual(YouTubeChapters.text([]), "")
+    }
+    func testEnabledTrackingOmitsUnmarkedRalliesWithoutShiftingTimeOrNumber() {
+        let cuts = [cut("R1", 10000, 20000), cut("R2", 40000, 50000)]
+        let intervals = cuts.map { FinalCutInterval(startMs: $0.keepStartMs, endMs: $0.keepEndMs, cutIds: [$0.id]) }
+        let options = YouTubeChapters.defaultOptions(hasScoreTracking: false, hasSideSwitches: false)
+        var tracking = ScoreTracking(serveMarkers: [serve("S2", 42000, .far, "R2")])
+        func build(_ score: ScoreTracking?) -> [YouTubeChapter] {
+            YouTubeChapters.build(intervals: intervals, cuts: cuts, scoreTracking: score, options: options)
+        }
+        XCTAssertEqual(YouTubeChapters.text(build(tracking), includeCredit: false), "0:10 Rally 2")
+        XCTAssertTrue(build(ScoreTracking()).isEmpty)
+        tracking.enabled = false
+        XCTAssertEqual(build(tracking).count, 2)
+        XCTAssertEqual(build(nil).count, 2)
     }
     func testFormattingAndFilename() {
         XCTAssertEqual(YouTubeChapters.formatTimestamp(999), "0:00")

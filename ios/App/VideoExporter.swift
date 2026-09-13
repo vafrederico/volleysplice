@@ -204,10 +204,11 @@ struct VideoExportResult: Sendable {
                     }
                     videoComposition.instructions = overlayInstructions
                 }
+                let chapterOptions = project.draft.chapterOptions ?? YouTubeChapters.defaultOptions(
+                    hasScoreTracking: tracking.enabled, hasSideSwitches: !tracking.sideSwitchMarkers.isEmpty)
                 let chapters = YouTubeChapters.build(intervals: intervals, cuts: project.draft.cuts, scoreTracking: tracking,
-                    options: project.draft.chapterOptions ?? YouTubeChapters.defaultOptions(hasScoreTracking: !tracking.serveMarkers.isEmpty,
-                                                            hasSideSwitches: !tracking.sideSwitchMarkers.isEmpty))
-                try Data(YouTubeChapters.text(chapters).utf8).write(to: temporaryChapters, options: .withoutOverwriting)
+                    options: chapterOptions)
+                try Data(YouTubeChapters.text(chapters, includeCredit: chapterOptions.includeCredit).utf8).write(to: temporaryChapters, options: .withoutOverwriting)
                 guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality),
                       session.supportedFileTypes.contains(.mp4) else { throw ProjectError.invalid("H.264/AAC MP4 export is unavailable for this recording") }
                 session.outputURL = temporaryVideo

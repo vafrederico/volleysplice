@@ -71,7 +71,10 @@ export function YouTubeChaptersModal({
     () => buildYouTubeChapters({ intervals, cuts, scoreTracking, options }),
     [cuts, intervals, options, scoreTracking],
   );
-  const text = useMemo(() => youtubeChaptersText(chapters), [chapters]);
+  const text = useMemo(
+    () => youtubeChaptersText(chapters, options.includeCredit),
+    [chapters, options.includeCredit],
+  );
 
   function updateOption(option: keyof YouTubeChapterOptions, checked: boolean) {
     setOptions((current) => ({ ...current, [option]: checked }));
@@ -219,6 +222,23 @@ export function YouTubeChaptersModal({
               </span>
             </label>
           )}
+        </fieldset>
+
+        <fieldset className={styles.options}>
+          <legend>Description</legend>
+          <label>
+            <input
+              type="checkbox"
+              checked={options.includeCredit}
+              onChange={(event) =>
+                updateOption("includeCredit", event.currentTarget.checked)
+              }
+            />
+            <span>
+              <strong>Include VolleySplice credit</strong>
+              <small>Edited with https://volleysplice.com</small>
+            </span>
+          </label>
         </fieldset>
 
         <section

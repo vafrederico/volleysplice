@@ -46,10 +46,24 @@ public struct YouTubeChapterOptions: Codable, Equatable, Sendable {
     public var includeScore: Bool
     public var includeServingTeam: Bool
     public var includeSideSwitches: Bool
+    public var includeCredit: Bool
     public init(includeRallyNumber: Bool, includeServeNumber: Bool, includeScore: Bool,
-                includeServingTeam: Bool, includeSideSwitches: Bool) {
+                includeServingTeam: Bool, includeSideSwitches: Bool, includeCredit: Bool = true) {
+        self.includeCredit = includeCredit
         self.includeRallyNumber = includeRallyNumber; self.includeServeNumber = includeServeNumber
         self.includeScore = includeScore; self.includeServingTeam = includeServingTeam; self.includeSideSwitches = includeSideSwitches
+    }
+    private enum CodingKeys: String, CodingKey {
+        case includeRallyNumber, includeServeNumber, includeScore, includeServingTeam, includeSideSwitches, includeCredit
+    }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        includeRallyNumber = try values.decode(Bool.self, forKey: .includeRallyNumber)
+        includeServeNumber = try values.decode(Bool.self, forKey: .includeServeNumber)
+        includeScore = try values.decode(Bool.self, forKey: .includeScore)
+        includeServingTeam = try values.decode(Bool.self, forKey: .includeServingTeam)
+        includeSideSwitches = try values.decode(Bool.self, forKey: .includeSideSwitches)
+        includeCredit = try values.decodeIfPresent(Bool.self, forKey: .includeCredit) ?? true
     }
 }
 public struct YouTubeChapter: Codable, Equatable, Sendable {
@@ -84,8 +98,9 @@ public enum YouTubeChapters {
             serveNumbers[marker.id] = index + 1
             if index + 1 < markers.count && markers[index + 1].ignorePreviousPoint { redo.insert(marker.id) }
         }
-        var chapters = visible.enumerated().map { index, visible in
+        var chapters = visible.enumerated().compactMap { index, visible -> YouTubeChapter? in
             let marker = markerForRally(visible.rally, markers: markers, claimed: claimed)
+            if scoreTracking?.enabled == true && marker == nil { return nil }
             if let marker { claimed.insert(marker.id) }
             return YouTubeChapter(kind: .rally, outputMs: visible.outputMs, sourceTimestampMs: visible.sourceTimestampMs,
                 title: rallyTitle(number: index + 1, marker: marker, isRedo: marker.map { redo.contains($0.id) } ?? false,
@@ -141,8 +156,9 @@ public enum YouTubeChapters {
         if isRedo { parts.append("Re-do") }
         return (parts.isEmpty ? ["Rally \(number)"] : parts).joined(separator: " - ")
     }
-    public static func text(_ chapters: [YouTubeChapter]) -> String {
-        chapters.map { "\(formatTimestamp($0.outputMs)) \($0.title)" }.joined(separator: "\n")
+    public static func text(_ chapters: [YouTubeChapter], includeCredit: Bool = true) -> String {
+        let text = chapters.map { "\(formatTimestamp($0.outputMs)) \($0.title)" }.joined(separator: "\n")
+        return !text.isEmpty && includeCredit ? "Edited with https://volleysplice.com\n\n" + text : text
     }
     public static func filename(_ sourceFilename: String) -> String {
         let base = sourceFilename.lastIndex(of: ".").map { String(sourceFilename[..<$0]) } ?? sourceFilename
