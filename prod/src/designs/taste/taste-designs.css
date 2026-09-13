@@ -476,14 +476,14 @@
 .td-review-summary button { min-width: 105px; padding: 10px 14px; border: 0; border-radius: 0 calc(var(--td-radius) - 1px) calc(var(--td-radius) - 1px) 0; color: var(--td-accent-ink); background: var(--td-accent); font-size: 10px; font-weight: 800; white-space: nowrap; }
 .td-review-summary .td-review-settings { min-width: 44px; padding-inline: 10px; border-right: 1px solid var(--td-line); border-radius: 0; color: var(--td-ink); background: var(--td-panel-2); font-size: 17px; }
 .td-review-summary .td-review-settings:hover { background: color-mix(in srgb, var(--td-accent), var(--td-panel) 82%); }
-.td-review-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(66px, 1fr)); border-right: 1px solid var(--td-line); }
-.td-review-summary .td-review-shortcuts button { min-width: 0; padding: 8px 10px; display: grid; align-content: center; gap: 3px; border-right: 1px solid var(--td-line); border-radius: 0; color: var(--td-ink); background: var(--td-panel-2); }
+.td-review-shortcuts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(66px, 1fr); border-right: 1px solid var(--td-line); }
+.td-review-summary .td-review-shortcuts button { grid-column: auto; min-width: 0; padding: 8px 10px; display: grid; align-content: center; gap: 3px; border-right: 1px solid var(--td-line); border-radius: 0; color: var(--td-ink); background: var(--td-panel-2); }
 .td-review-summary .td-review-shortcuts button:last-child { border-right: 0; }
 .td-review-summary .td-review-shortcuts button:not(:disabled) { color: #291600; background: #f3b43f; box-shadow: inset 0 -3px 0 #bd6818; }
 .td-review-summary .td-review-shortcuts button:not(:disabled):hover { background: #e9a126; }
 .td-review-summary .td-review-shortcuts button:not(:disabled) span { color: inherit; }
-.td-review-summary .td-review-shortcuts button:nth-child(3):not(:disabled) { color: #302500; background: #f4dc78; box-shadow: inset 0 -3px 0 #c6a62f; }
-.td-review-summary .td-review-shortcuts button:nth-child(3):not(:disabled):hover { background: #ead05f; }
+.td-review-summary .td-review-shortcuts button:last-child:not(:disabled) { color: #302500; background: #f4dc78; box-shadow: inset 0 -3px 0 #c6a62f; }
+.td-review-summary .td-review-shortcuts button:last-child:not(:disabled):hover { background: #ead05f; }
 .td-review-shortcuts strong { font-size: 13px; }
 .td-review-shortcuts span { font-size: 8px; white-space: nowrap; }
 
