@@ -41,9 +41,9 @@ frameworkPhase = obj('framework-phase', f'isa = PBXFrameworksBuildPhase; buildAc
 configs = []
 for name in ['Debug', 'Release']:
     settings = {
-        'PRODUCT_NAME': 'VolleySplice', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.vafrederico.VolleySplice',
+        'PRODUCT_NAME': 'VolleySplice', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.volleysplice.VolleySplice',
         'CODE_SIGN_STYLE': 'Automatic', 'CODE_SIGN_IDENTITY': 'Apple Development',
-        'CURRENT_PROJECT_VERSION': '1', 'MARKETING_VERSION': '0.1.0', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0',
+        'CURRENT_PROJECT_VERSION': '1', 'MARKETING_VERSION': '1.0.0', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0',
         'SDKROOT': 'iphoneos', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator',
         'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon',
         'SWIFT_VERSION': '5.0', 'SWIFT_OPTIMIZATION_LEVEL': '-O', 'ENABLE_TESTABILITY': 'YES' if name == 'Debug' else 'NO',
@@ -78,7 +78,7 @@ for test_name, folder, ui_test in [('VolleySpliceTests', 'Tests/AppIntegrationTe
     dependency = obj(test_name + ':dependency', f'isa = PBXTargetDependency; target = {target}; targetProxy = {proxy};')
     test_configs = []
     for config in ['Debug', 'Release']:
-        values = {'PRODUCT_NAME': test_name, 'PRODUCT_BUNDLE_IDENTIFIER': 'com.vafrederico.' + test_name,
+        values = {'PRODUCT_NAME': test_name, 'PRODUCT_BUNDLE_IDENTIFIER': 'com.volleysplice.' + test_name,
                   'SDKROOT': 'iphoneos', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator',
                   'TARGETED_DEVICE_FAMILY': '1,2', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0',
                   'SWIFT_VERSION': '5.0', 'GENERATE_INFOPLIST_FILE': 'YES', 'CODE_SIGNING_ALLOWED': 'NO'}

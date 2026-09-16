@@ -18,6 +18,6 @@
     <!-- iPad landscape-only compatibility on the supported iOS 17–26 SDKs.
          Multitasking without this opt-out requires all interface orientations. -->
     <key>UIRequiresFullScreen</key><true/>
-    <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>com.vafrederico.VolleySplice.processing.*</string></array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>com.volleysplice.VolleySplice.processing.*</string></array>
     <key>UIBackgroundModes</key><array><string>processing</string></array>
 </dict></plist>

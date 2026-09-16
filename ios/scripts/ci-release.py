@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 
-BUNDLE_ID = "com.vafrederico.VolleySplice"
+BUNDLE_ID = "com.volleysplice.VolleySplice"
 
 
 def required(name):

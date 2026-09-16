@@ -9,7 +9,7 @@ final class AppOrientationDeclarationTests: XCTestCase {
         // phone, hiding the iPad declaration. Inspect the processed plist bytes.
         let data = try Data(contentsOf: Bundle.main.bundleURL.appendingPathComponent("Info.plist"))
         let info = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
-        XCTAssertEqual(info["CFBundleIdentifier"] as? String, "com.vafrederico.VolleySplice")
+        XCTAssertEqual(info["CFBundleIdentifier"] as? String, "com.volleysplice.VolleySplice")
         let landscapes = Set(["UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"])
         let tablet = try XCTUnwrap(info["UISupportedInterfaceOrientations~ipad"] as? [String])
         XCTAssertEqual(Set(tablet), landscapes)

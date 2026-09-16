@@ -54,7 +54,7 @@ def capture(name):
 
 try:
     wda.connect()
-    wda.activate('com.vafrederico.VolleySplice')
+    wda.activate('com.volleysplice.VolleySplice')
     if any(e.get('name') == 'queueDone' for e in ET.fromstring(wda.command('/source')).iter()):
         click('queueDone')
     if any(e.get('name') == 'backToProjects' for e in ET.fromstring(wda.command('/source')).iter()):

@@ -490,7 +490,7 @@ def main():
     )
     parser.add_argument("--url", default="http://127.0.0.1:18100")
     parser.add_argument("--mjpeg", default="http://127.0.0.1:19100/")
-    parser.add_argument("--bundle", default="com.vafrederico.VolleySplice")
+    parser.add_argument("--bundle", default="com.volleysplice.VolleySplice")
     parser.add_argument("--project", help="Exact observed project-button ID, required when several projects are listed")
     parser.add_argument("--clip", default="R001", help="Retainable fixture clip with room to nudge its core start")
     parser.add_argument("--restart", action="store_true", help="Also terminate/relaunch VolleySplice during persistence check")

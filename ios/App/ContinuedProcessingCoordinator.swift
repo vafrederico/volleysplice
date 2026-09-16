@@ -11,7 +11,7 @@ import Foundation
     func request(jobCount: Int, granted: @escaping @MainActor () -> Void,
                  expired: @escaping @MainActor () -> Void) throws -> Bool {
         guard #available(iOS 26.0, *) else { return false }
-        let identifier = "com.vafrederico.VolleySplice.processing." + UUID().uuidString
+        let identifier = "com.volleysplice.VolleySplice.processing." + UUID().uuidString
         pendingIdentifier = identifier
         let scheduler = BGTaskScheduler.shared
         let registered = scheduler.register(forTaskWithIdentifier: identifier, using: .main) { [weak self] task in

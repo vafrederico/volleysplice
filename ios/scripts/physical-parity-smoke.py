@@ -310,7 +310,7 @@ def main():
     )
     parser.add_argument("--url", default="http://127.0.0.1:18100")
     parser.add_argument("--mjpeg", default="http://127.0.0.1:19100/")
-    parser.add_argument("--bundle", default="com.vafrederico.VolleySplice")
+    parser.add_argument("--bundle", default="com.volleysplice.VolleySplice")
     projects = parser.add_mutually_exclusive_group()
     projects.add_argument("--project", help="Exact observed project-<filename> identifier; otherwise inspect already-open editor")
     projects.add_argument("--disposable-project", help="Exact observed disposable project identifier; authorizes persistent cleanup decision")

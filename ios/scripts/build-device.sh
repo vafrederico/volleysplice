@@ -33,8 +33,8 @@ with open(sys.argv[1], 'rb') as handle:
     profile = plistlib.load(handle)
 with open(sys.argv[2], 'rb') as handle:
     info = plistlib.load(handle)
-assert info['CFBundleIdentifier'] == 'com.vafrederico.VolleySplice', 'Unexpected bundle identity'
-assert profile['Entitlements']['application-identifier'] == f'{sys.argv[4]}.com.vafrederico.VolleySplice', 'Wrong provisioning identity'
+assert info['CFBundleIdentifier'] == 'com.volleysplice.VolleySplice', 'Unexpected bundle identity'
+assert profile['Entitlements']['application-identifier'] == f'{sys.argv[4]}.com.volleysplice.VolleySplice', 'Wrong provisioning identity'
 assert sys.argv[3] in profile.get('ProvisionedDevices', []), 'Profile excludes the requested iOS device'
 assert profile['ExpirationDate'] > datetime.datetime.utcnow(), 'Provisioning profile expired'
 assert info.get('UIFileSharingEnabled') and info.get('LSSupportsOpeningDocumentsInPlace'), 'Files access is missing'

@@ -96,7 +96,7 @@ struct NewProjectWorkspace: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 VolleySpliceBrand()
-                Text("VIDEO EDITOR · v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0")")
+                Text("VIDEO EDITOR · v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0")")
                     .font(.system(size: 8, weight: .bold)).tracking(0.7).foregroundStyle(SetupPalette.muted)
                     .padding(5).background(SetupPalette.rail.opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
                     .lineLimit(1).minimumScaleFactor(0.8)

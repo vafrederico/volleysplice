@@ -445,7 +445,7 @@ def main():
     )
     parser.add_argument("--url", default="http://127.0.0.1:18100")
     parser.add_argument("--mjpeg", default="http://127.0.0.1:19100/")
-    parser.add_argument("--bundle", default="com.vafrederico.VolleySplice")
+    parser.add_argument("--bundle", default="com.volleysplice.VolleySplice")
     parser.add_argument("--project", help="Exact observed project-<filename> accessibility identifier")
     parser.add_argument("--layout", action="store_true", help="Also resize player/both sidebars; requires --project and --udid")
     parser.add_argument("--orientation-only", action="store_true", help="Verify landscape-only iPad and Settings without changing display preferences")

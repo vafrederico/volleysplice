@@ -5,6 +5,7 @@ on:
     inputs:
       version:
         description: 'Release version (for example 1.0.0)'
+        default: '1.0.0'
         required: true
         type: string
       build_number:

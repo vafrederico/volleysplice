@@ -31,7 +31,7 @@ device_udid = os.environ.get("VOLLEYCUT_IOS_DEVICE_UDID")
 if not device_udid:
     parser.error("VOLLEYCUT_IOS_DEVICE_UDID is required")
 config = SimpleNamespace(lab=lab_root, url="http://127.0.0.1:18100", mjpeg="http://127.0.0.1:19100/",
-                         bundle="com.vafrederico.VolleySplice", project=args.project, output=args.output)
+                         bundle="com.volleysplice.VolleySplice", project=args.project, output=args.output)
 test = editor.EditorSmoke(config)
 created = []
 original_scoring = None

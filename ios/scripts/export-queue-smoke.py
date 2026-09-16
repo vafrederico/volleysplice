@@ -23,7 +23,7 @@ config=SimpleNamespace(lab=lab_root,url='http://127.0.0.1:18100',mjpeg='http://1
 t=editor.EditorSmoke(config)
 async def ledger():
  async with await create_using_usbmux(serial=device_udid) as lock:
-  async with await HouseArrestService.create(lockdown=lock,bundle_id='com.vafrederico.VolleySplice') as afc:
+  async with await HouseArrestService.create(lockdown=lock,bundle_id='com.volleysplice.VolleySplice') as afc:
    for attempt in range(5):
     try: return json.loads(await afc.get_file_contents('/Library/Application Support/ProcessingJobs/queue.json'))['jobs']
     except json.JSONDecodeError:
@@ -31,7 +31,7 @@ async def ledger():
      await asyncio.sleep(.2)
 def jobs(): return asyncio.run(ledger())
 try:
- t.wda.connect();t.wda.activate('com.vafrederico.VolleySplice');t.source(refresh=True)
+ t.wda.connect();t.wda.activate('com.volleysplice.VolleySplice');t.source(refresh=True)
  if t.nodes('queueDone'):t.click('queueDone')
  if t.nodes('backToProjects'):t.click('backToProjects')
  t.choose_project();t.click('exportTab');baseline={v['id'] for v in jobs()}
@@ -47,7 +47,7 @@ try:
  else:raise TimeoutError('Video did not interrupt safely')
  assert job['stopReason']=='backgrounded' and not job['outputNames'],job
  t.record('video-background-interruption',job=ident)
- t.wda.activate('com.vafrederico.VolleySplice');assert t.command('/wda/activeAppInfo')['pid']==initial_pid, 'App exited during background cancellation'
+ t.wda.activate('com.volleysplice.VolleySplice');assert t.command('/wda/activeAppInfo')['pid']==initial_pid, 'App exited during background cancellation'
  t.click('processingQueueBar');t.click('resumeJob-'+ident)
  deadline=time.monotonic()+90
  while time.monotonic()<deadline:

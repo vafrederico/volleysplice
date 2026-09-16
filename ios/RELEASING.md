@@ -11,7 +11,7 @@ source manifest and checksum-pinned OpenCV 4.12.0 framework.
    Complete any pending agreements. A free personal development team cannot
    distribute through TestFlight or the App Store.
 2. In [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/),
-   register an explicit App ID for **`com.vafrederico.VolleySplice`** under the
+   register an explicit App ID for **`com.volleysplice.VolleySplice`** under the
    intended team. Keep this identifier: it also appears in the app's background
    task configuration. Find your 10-character **Team ID** in Membership details.
 3. Create an **Apple Distribution** certificate using the Windows instructions
