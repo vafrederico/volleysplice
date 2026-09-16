@@ -22,6 +22,9 @@ __pycache__/
 *.cer
 *.der
 *.pem
+*.p8
+*.key
+*.csr
 android/key.properties
 android/keystore.properties
 *.ipa
