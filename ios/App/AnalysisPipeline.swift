@@ -192,6 +192,7 @@ enum AnalysisPipeline {
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
+    #if DEBUG
     static func golden() throws -> String {
         try ServingSideFeatureExtractor.validateStaticGrayFixture()
         try SideSwitchFeatureExtractor.validateStaticFixture()
@@ -210,4 +211,5 @@ enum AnalysisPipeline {
         let previous = try loadModel("model-9c92b8e9333f").run(times: times, contextual: context, duration: metadata.duration)
         return "PASS: 42 canonical rallies; \(ProductionEnsemble.merge(allLabelsV2: all.intervals, previousProduction: previous.intervals).count) ensemble rallies; 3474 × 104 features"
     }
+    #endif
 }

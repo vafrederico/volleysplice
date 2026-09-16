@@ -380,6 +380,7 @@ struct VolleySpliceApp: App {
     @Published var showExportDestination = false
     @Published var showExportFolder = false
     func exportVideo() { showExportDestination = true }
+    #if DEBUG
     func golden() {
         guard !busy else { return }; busy = true; status = "Checking canonical features"
         work = Task {
@@ -389,7 +390,6 @@ struct VolleySpliceApp: App {
             } catch { fail(error) }
         }
     }
-    #if DEBUG
     func mediaCheck() {
         guard !busy else { return }; busy = true; status = "Checking Android rotation fixtures"
         work = Task {

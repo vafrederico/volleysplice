@@ -14,7 +14,7 @@ args.output.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(args.output, 'w:gz') as archive:
     for folder in ('Sources', 'Tests', 'App', 'scripts', 'VolleySplice.xcodeproj'):
         for path in sorted((root / folder).rglob('*')):
-            if path.is_file() and (path.suffix in ('.swift', '.py', '.sh', '.ps1', '.plist', '.pbxproj', '.xcscheme', '.h', '.mm') or ('Assets.xcassets' in path.parts and path.suffix in ('.json', '.png'))):
+            if path.is_file() and (path.suffix in ('.swift', '.py', '.sh', '.ps1', '.plist', '.xcprivacy', '.pbxproj', '.xcscheme', '.h', '.mm') or ('Assets.xcassets' in path.parts and path.suffix in ('.json', '.png'))):
                 if path.suffix == '.sh':
                     # Windows checkouts may use CRLF; uploaded shell scripts must execute on macOS.
                     data = path.read_bytes().replace(b'\r\n', b'\n')

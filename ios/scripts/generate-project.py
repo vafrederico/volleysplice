@@ -18,6 +18,9 @@ for path in sources:
     refs.append(ref)
     builds.append(obj('build:' + rel, f'isa = PBXBuildFile; fileRef = {ref};'))
 resources = []
+privacy = obj('resource:privacy', 'isa = PBXFileReference; path = "App/PrivacyInfo.xcprivacy"; sourceTree = "<group>"; lastKnownFileType = text.xml;')
+refs.append(privacy)
+resources.append(obj('resource-build:privacy', f'isa = PBXBuildFile; fileRef = {privacy};'))
 assets = root / 'App/Assets.xcassets'
 if assets.exists():
     ref = obj('resource:assets', 'isa = PBXFileReference; path = "App/Assets.xcassets"; sourceTree = "<group>"; lastKnownFileType = folder.assetcatalog;')
@@ -59,6 +62,10 @@ for name in ['Debug', 'Release']:
         # App/Info.plist, so project regeneration cannot override the iPad policy.
         'INFOPLIST_KEY_UIApplicationSceneManifest_Generation': 'YES',
     }
+    if name == 'Release':
+        # This filter applies to Copy Bundle Resources as well as compilation.
+        # Keep the production models; diagnostic input data belongs only in Debug.
+        settings['EXCLUDED_SOURCE_FILE_NAMES'] = '$(inherited) golden.json base.bin *fixture* *golden*'
     configs.append(obj('config:' + name, 'isa = XCBuildConfiguration; name = '+name+'; buildSettings = {'+''.join(f'{k} = {quote(v)};' for k,v in settings.items())+'};'))
 configList = obj('config-list', f'isa = XCConfigurationList; buildConfigurations = ({",".join(configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
 target = obj('target', f'isa = PBXNativeTarget; name = VolleySplice; productName = VolleySplice; productType = "com.apple.product-type.application"; productReference = {product}; buildConfigurationList = {configList}; buildPhases = ({sourcePhase},{frameworkPhase},{resourcePhase}); dependencies = (); buildRules = ();')

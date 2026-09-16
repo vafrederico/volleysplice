@@ -142,7 +142,8 @@ following [GitHub's signing pattern](https://docs.github.com/en/actions/how-tos/
 3. Leave **Upload to App Store Connect** unchecked for an artifact-only build,
    or check it to send the IPA to Apple. Only the latter needs API key secrets.
 4. Download `VolleySplice-VERSION-BUILD` from the run's Artifacts. It contains
-   `VolleySplice.ipa`, `dSYMs.zip`, and `release.json` with the commit, version,
+   `VolleySplice.ipa`, `dSYMs.zip`, `VolleySplice.xcarchive.zip`,
+   `privacy-resource-audit.json`, and `release.json` with the commit, version,
    Xcode version, and IPA SHA-256. Artifacts expire after 14 days; retain symbols
    securely for released builds. The artifact is saved before upload so it remains
    available if Apple rejects the upload.
@@ -165,6 +166,8 @@ Signing is manual; it does not create or modify signing assets in your Apple acc
 The Xcode path is deliberately pinned. If GitHub removes it or Apple's SDK
 submission requirements advance, update `DEVELOPER_DIR` in the workflow after
 checking the [runner image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md).
-Local helper checks: `python -m unittest discover -s ios/scripts/tests -p 'test_ci_release.py'`.
+Local helper checks: `python -m unittest discover -s ios/scripts/tests -p 'test_*.py'`.
+See [privacy and Release resource checks](PRIVACY.md) for the manifest reasons,
+archive/IPA checks, and Xcode Organizer privacy-report review.
 The first credentialed GitHub run must validate the actual macOS archive/export
 and optional upload; those cannot be executed on Windows.

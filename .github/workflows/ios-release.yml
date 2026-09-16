@@ -44,6 +44,7 @@ jobs:
           set -euo pipefail
           xcodebuild -version
           python3 ios/scripts/ci-release.py validate
+          python3 -m unittest discover -s ios/scripts/tests -p 'test_*.py'
           python3 ios/scripts/prepare-source.py --output "$RUNNER_TEMP/source.tar.gz"
           mkdir -p "$RUNNER_TEMP/ios-source" "$RUNNER_TEMP/opencv"
           tar -xzf "$RUNNER_TEMP/source.tar.gz" -C "$RUNNER_TEMP/ios-source"

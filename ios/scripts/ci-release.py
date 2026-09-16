@@ -116,8 +116,13 @@ def build(temp):
         raise ValueError("Expected exactly one exported IPA")
     output = temp / "ios-release-output"
     output.mkdir(exist_ok=True)
+    run(sys.executable, source / "scripts/audit-release.py", "--archive", archive,
+        "--ipa", ipas[0], "--manifest", source / "App/PrivacyInfo.xcprivacy",
+        "--output", output / "privacy-resource-audit.json")
     shutil.copyfile(ipas[0], output / "VolleySplice.ipa")
     run("ditto", "-c", "-k", "--keepParent", archive / "dSYMs", output / "dSYMs.zip")
+    # Retain the exact signed archive for Xcode Organizer's Generate Privacy Report.
+    run("ditto", "-c", "-k", "--keepParent", archive, output / "VolleySplice.xcarchive.zip")
     metadata = {"version": required("RELEASE_VERSION"), "build": required("RELEASE_BUILD_NUMBER"),
                 "bundle_id": BUNDLE_ID, "commit": os.environ.get("GITHUB_SHA"),
                 "sha256": hashlib.sha256(ipas[0].read_bytes()).hexdigest(),
