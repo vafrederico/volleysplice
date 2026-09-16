@@ -196,6 +196,7 @@ struct VolleySpliceLegalFooter: View {
     var body: some View {
         HStack(spacing: 10) {
             Link("Privacy", destination: URL(string: "https://www.volleysplice.com/privacy.html")!)
+            Link("Support", destination: URL(string: "https://www.volleysplice.com/support.html")!)
             Text("·").foregroundStyle(SetupPalette.muted)
             Button("Open source") { showNotices = true }.accessibilityIdentifier("openSourceNotices")
         }.font(.system(size: 12)).frame(maxWidth: .infinity, minHeight: 44)

@@ -3,6 +3,7 @@
 This is a bundle audit, not Xcode's generated privacy report or an API scanner.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import plistlib
@@ -28,9 +29,15 @@ def audit(files, read, expected_manifest):
             forbidden.append(name)
     if forbidden:
         raise ValueError('Unexpected/test resources in Release bundle: ' + ', '.join(forbidden))
-    for required in sorted(MODELS | {'PrivacyInfo.xcprivacy', 'volleysplice_logo.png'}):
+    for required in sorted(MODELS | {'Info.plist', 'PrivacyInfo.xcprivacy', 'volleysplice_logo.png'}):
         if required not in files:
             raise ValueError('Missing Release resource: ' + required)
+    info = plistlib.loads(read('Info.plist'))
+    if info.get('ITSAppUsesNonExemptEncryption') is not False:
+        raise ValueError('Release must declare ITSAppUsesNonExemptEncryption as Boolean false')
+    executable = info.get('CFBundleExecutable')
+    if not isinstance(executable, str) or executable not in files or '/' in executable:
+        raise ValueError('Missing or invalid app executable')
     manifests = {}
     for name in files:
         if name.endswith('.xcprivacy'):
@@ -42,7 +49,10 @@ def audit(files, read, expected_manifest):
             manifests[name] = manifest
     if manifests['PrivacyInfo.xcprivacy'] != expected_manifest:
         raise ValueError('Bundled app privacy manifest differs from reviewed source')
-    return {'files': files, 'privacy_manifests': manifests, 'test_resources_found': False}
+    return {'files': files, 'privacy_manifests': manifests, 'test_resources_found': False,
+            'bundle_id': info.get('CFBundleIdentifier'), 'version': info.get('CFBundleShortVersionString'),
+            'build': info.get('CFBundleVersion'), 'uses_non_exempt_encryption': False,
+            'executable_sha256': hashlib.sha256(read(executable)).hexdigest()}
 
 
 def audit_release(archive, ipa, source_manifest, output):
@@ -58,6 +68,7 @@ def audit_release(archive, ipa, source_manifest, output):
         'scope': 'Release archive and exported IPA resource/privacy manifest inventory',
         'limitations': 'Not an API/symbol scan or Xcode Organizer privacy report; review SDK behavior separately.',
         'archive': archive_report, 'ipa': ipa_report,
+        'ipa_sha256': hashlib.sha256(ipa.read_bytes()).hexdigest(),
     }
     output.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print('Release archive and IPA verified: privacy manifest present; no test resources found.')

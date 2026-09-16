@@ -7,7 +7,7 @@
     <title>VolleySplice Privacy Policy</title>
     <meta
       name="description"
-      content="Privacy Policy for the VolleySplice Android and web applications."
+      content="Privacy Policy for the VolleySplice Android, iOS/iPadOS, and web applications."
     />
     <style>
       :root {
@@ -31,30 +31,32 @@
     <main>
       <p class="eyebrow">VolleySplice</p>
       <h1>Privacy Policy</h1>
-      <p>Effective: August 19, 2026</p>
+      <p>Effective: September 15, 2026</p>
 
       <div class="card">
-        <p class="summary"><strong>Short version:</strong> The VolleySplice Android app and web app process the videos you choose on your device. VolleySplice does not upload your videos, analysis results, or exports, and does not sell or share them.</p>
+        <p class="summary"><strong>Short version:</strong> The VolleySplice Android, iOS/iPadOS, and web apps process the videos you choose on your device. VolleySplice does not upload your videos, analysis results, or exports, and does not sell or share them.</p>
       </div>
 
       <h2>Scope and contact</h2>
-      <p>This policy applies to the VolleySplice Android application and the browser-based VolleySplice web application. Privacy questions can be sent to <a href="mailto:volleysplice@vafrederico.com">volleysplice@vafrederico.com</a>.</p>
+      <p>This policy applies to the VolleySplice Android and iOS/iPadOS applications and the browser-based VolleySplice web application. Privacy questions can be sent to <a href="mailto:volleysplice@vafrederico.com">volleysplice@vafrederico.com</a>.</p>
 
       <h2>Media and project information</h2>
       <p>VolleySplice accesses a video only after you select it. To provide rally detection, editing, and export, VolleySplice may read the selected video's image frames, audio track, filename, file size, modification time, duration, dimensions, rotation, and codec information. It derives audiovisual features, rally suggestions, confidence information, edit decisions, ignored sections, and export ranges from that media.</p>
 
       <h2>On-device processing and storage</h2>
-      <p>The selected video and its audio are processed locally on your Android device or inside your browser to suggest volleyball rally ranges, preview edits, and create exports.</p>
+      <p>The selected video and its audio are processed locally on your Android device, iPhone, or iPad, or inside your browser to suggest volleyball rally ranges, preview edits, and create exports.</p>
       <p>On Android, VolleySplice uses Android's system file picker and stores project metadata, derived features, model results, edit decisions, preferences, and caches in app-private storage. The Android app has no internet permission.</p>
+      <p>On iOS and iPadOS, you select recordings through Photos (Camera Roll) or Files. The app reads the selected original for local video and audio analysis. If an original is stored in iCloud Photo Library, Apple Photos may download it through Apple before it can be processed. A Files provider may likewise download a cloud-stored file. These transfers are handled by Apple or your chosen storage provider, not by a VolleySplice developer server.</p>
+      <p>Local iOS/iPadOS storage may include Photos asset identifiers, security-scoped file access bookmarks, file metadata and fingerprints, generated audiovisual features, model results, edits, exports, preferences, and cached or unfinished project state. Access bookmarks and Photos asset identifiers let the app reopen a selected source; they are not developer account identifiers or tracking IDs and are not included in portable project exports. New selections are read in place rather than copied into the app's private video library.</p>
       <p>On the web, the browser downloads VolleySplice's application code, model files, and processing components from the VolleySplice website. Projects, source metadata, locally derived fingerprints, features, model results, edit decisions, preferences, and temporary export data may be stored in browser storage such as IndexedDB, local storage, or the browser's origin-private file system. Your browser may require you to select the original video again after a page reload.</p>
 
       <h2>Network information</h2>
-      <p>The Android app does not transmit user data to VolleySplice or third parties. The web app necessarily communicates with the website to load its pages and processing assets. As with ordinary website access, hosting and security infrastructure may process technical request information such as your IP address, browser or user-agent information, requested URL, referring page if supplied by your browser, and the date and time of a request. This information is used to deliver, secure, maintain, and troubleshoot the website; it is not used to upload or analyze your selected videos.</p>
+      <p>The native Android and iOS/iPadOS apps have no developer-server upload, account, advertising, analytics, or tracking feature. On iOS/iPadOS, Photos and Files may communicate with Apple or a selected cloud provider to access or save your files; opening a website link or sending a support email uses the relevant external service. The web app necessarily communicates with the website to load its pages and processing assets. As with ordinary website access, hosting and security infrastructure may process technical request information such as your IP address, browser or user-agent information, requested URL, referring page if supplied by your browser, and the date and time of a request. This information is used to deliver, secure, maintain, and troubleshoot the website; it is not used to upload or analyze your selected videos.</p>
 
       <h2>Collection and sharing</h2>
       <p>VolleySplice does not upload selected video or audio, derived audiovisual features, rally suggestions, edit decisions, or exported files. It has no advertising, behavioral analytics, tracking, account, or cloud-media-storage feature and does not sell personal information.</p>
       <p>Website hosting and email providers may process the limited connection or contact information needed to provide those services. If you email VolleySplice, the message and your email address are processed by the email providers involved so that the request can be received and answered.</p>
-      <p>When you explicitly export an MP4, edit list, or model-feedback file, your Android device or browser asks where to save or download it. You control the destination and any later sharing.</p>
+      <p>When you explicitly export an MP4, edit list, or model-feedback file, you choose where to save or share it. On iOS/iPadOS, video exports can be saved to Files or Camera Roll; project and model-feedback files can be saved or shared through the system interfaces. You control the destination and any later sharing.</p>
 
       <h2>Android permissions</h2>
       <ul>
@@ -62,27 +64,32 @@
         <li><strong>Foreground media processing and wake lock:</strong> used to keep long, user-started video analysis and export running visibly.</li>
         <li><strong>Selected-file access:</strong> granted by Android only for documents you choose through the system picker.</li>
       </ul>
-      <p>VolleySplice does not request internet, camera, microphone, location, contacts, advertising ID, or broad photo/video-library access.</p>
+      <p>The Android app does not request internet, camera, microphone, location, contacts, advertising ID, or broad photo/video-library access.</p>
+
+      <h2>iOS and iPadOS permissions</h2>
+      <p>Photos permission is used to read the original videos you select and to save exports to Camera Roll. Files access is granted for user-selected documents. The app does not record through the camera or microphone; it analyzes the audio already present in your selected video. You can manage Photos access in Settings. If access to a source is revoked or its location changes, VolleySplice may ask you to select it again.</p>
 
       <h2>Cookies and browser storage</h2>
       <p>VolleySplice does not use advertising or analytics cookies. The web app uses browser storage to remember project state, editor choices, tour progress, derived feature caches, and related preferences. Browser or hosting infrastructure may use essential technical storage if needed to deliver or secure the website.</p>
 
       <h2>Storage, retention, and deletion</h2>
       <p>Local project data and feature caches remain on your device until you delete them or clear the relevant application storage. On Android, you can delete projects and caches, clear VolleySplice's storage in Android settings, or uninstall the app. On the web, you can delete projects in VolleySplice or clear the site's stored data through your browser settings. Incomplete exports and temporary export files are removed after failure or cancellation where the platform and selected storage provider permit it.</p>
+      <p>On iOS/iPadOS, use VolleySplice's storage controls to delete projects, caches, app-owned exports, and items in its Recently deleted area. Deleting a project does not delete the original recording in Photos or Files. Copies exported outside the app must be managed separately in Photos, Files, or the chosen provider. Deleting the app removes its local app data; offloading an app may retain its documents and data. Apple or your provider may retain deleted items or backups according to their own settings and retention rules.</p>
+      <p>Apple's device backup, migration, iCloud Backup, iCloud Photos, and iCloud Drive features may back up, transfer, download, or synchronize eligible app data and files according to your settings. An export saved to Camera Roll or an iCloud Drive folder may therefore sync through Apple. This is platform-managed storage and transfer, not collection by the VolleySplice developer. VolleySplice cannot delete Apple's backups or copies held by your storage provider.</p>
       <p>Depending on your Android device and backup settings, Android may back up or transfer some app-private preferences or project metadata as part of operating-system backup or device migration. This is controlled by Android and your device account; VolleySplice does not receive that data.</p>
       <p>Technical website logs and email correspondence may remain with the relevant hosting, security, or email provider according to operational, security, and legal needs. VolleySplice has no server-side copy of your selected videos or locally generated project data to delete.</p>
 
       <h2>Security</h2>
-      <p>VolleySplice relies on Android app sandboxing, the Android system document picker, browser security controls, and origin-scoped browser storage. No software can guarantee absolute security, so keep your device and browser updated and use trusted storage providers.</p>
+      <p>VolleySplice relies on Android and iOS/iPadOS app sandboxing, system Photos and document access controls, browser security controls, and origin-scoped browser storage. No software can guarantee absolute security, so keep your device and browser updated and use trusted storage providers.</p>
 
       <h2>Children</h2>
       <p>VolleySplice is a general-purpose sports video editor and is not directed specifically to children under 13. It does not knowingly collect selected media or project data from anyone, including children.</p>
 
       <h2>Changes to this policy</h2>
-      <p>If VolleySplice's data practices change, this policy and the Google Play Data safety declaration will be updated before the changed behavior is released. The effective date above identifies the current version.</p>
+      <p>If VolleySplice's data practices change, this policy, the Google Play Data safety declaration, and the App Store privacy disclosures will be updated before the changed behavior is released. The effective date above identifies the current version.</p>
 
       <footer>
-        <p><a href="/">VolleySplice</a> · <a href="https://www.volleysplice.com/terms.html">Terms of Use</a></p>
+        <p><a href="/">VolleySplice</a> · <a href="https://www.volleysplice.com/terms.html">Terms of Use</a> &middot; <a href="/support.html">Support</a></p>
       </footer>
     </main>
   </body>

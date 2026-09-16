@@ -169,5 +169,7 @@ checking the [runner image inventory](https://github.com/actions/runner-images/b
 Local helper checks: `python -m unittest discover -s ios/scripts/tests -p 'test_*.py'`.
 See [privacy and Release resource checks](PRIVACY.md) for the manifest reasons,
 archive/IPA checks, and Xcode Organizer privacy-report review.
+See [export compliance](EXPORT-COMPLIANCE.md) for the encryption declaration,
+the inspected uploaded build, and App Store contact URLs.
 The first credentialed GitHub run must validate the actual macOS archive/export
 and optional upload; those cannot be executed on Windows.

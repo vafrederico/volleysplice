@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
+    <key>ITSAppUsesNonExemptEncryption</key><false/>
     <key>NSPhotoLibraryAddUsageDescription</key><string>Save your exported volleyball video to your camera roll.</string>
     <key>NSPhotoLibraryUsageDescription</key><string>Read selected original game videos directly from Photos for playback, analysis, and export, without copying them into VolleySplice.</string>
     <key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key><true/>

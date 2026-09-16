@@ -56,6 +56,9 @@ for (const [asset, expected] of expectedHashes) {
 }
 
 for (const asset of [
+  "privacy.html",
+  "terms.html",
+  "support.html",
   "_headers",
   "_redirects",
   "google-play-badge.png",

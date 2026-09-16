@@ -16,7 +16,15 @@ class ReleaseResourceTests(unittest.TestCase):
         self.manifest = plistlib.loads(self.manifest_path.read_bytes())
         self.files = {name: b'{}' for name in audit.MODELS}
         self.files.update({'PrivacyInfo.xcprivacy': self.manifest_path.read_bytes(),
+                           'Info.plist': plistlib.dumps({'CFBundleExecutable': 'VolleySplice',
+                                                        'ITSAppUsesNonExemptEncryption': False}),
                            'volleysplice_logo.png': b'logo', 'VolleySplice': b'executable'})
+
+    def test_export_compliance_requires_boolean_false(self):
+        for extra in [{}, {'ITSAppUsesNonExemptEncryption': True}, {'ITSAppUsesNonExemptEncryption': 'false'}]:
+            files = self.files | {'Info.plist': plistlib.dumps({'CFBundleExecutable': 'VolleySplice'} | extra)}
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, 'NonExemptEncryption'):
+                audit.audit(files, files.__getitem__, self.manifest)
 
     def test_archive_and_exported_ipa(self):
         with tempfile.TemporaryDirectory() as directory:
