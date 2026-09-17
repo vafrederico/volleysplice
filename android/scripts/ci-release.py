@@ -193,7 +193,7 @@ class PublisherClient:
                      self.edit_path(package_name, edit_id))
 
     def upload_bundle(self, package_name: str, edit_id: str, bundle: Path) -> int:
-        path = self.edit_path(package_name, edit_id) + "/bundles?uploadType=media"
+        path = "/upload" + self.edit_path(package_name, edit_id) + "/bundles?uploadType=media"
         response = self.request("POST", "androidpublisher.googleapis.com", path,
                                 file_path=bundle)
         try:
@@ -207,7 +207,7 @@ class PublisherClient:
         if file_type not in {"proguard", "nativeCode"}:
             raise ValueError("Unsupported Google Play deobfuscation file type")
         path = (
-            self.edit_path(package_name, edit_id)
+            "/upload" + self.edit_path(package_name, edit_id)
             + f"/apks/{version_code}/deobfuscationFiles/{file_type}?uploadType=media"
         )
         return self.request("POST", "androidpublisher.googleapis.com", path,

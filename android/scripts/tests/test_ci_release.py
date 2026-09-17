@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 spec = importlib.util.spec_from_file_location(
@@ -66,6 +67,48 @@ class ReleasePayloadTests(unittest.TestCase):
         for fraction in ["0", "1", "1.1", "not-a-number"]:
             with self.subTest(fraction=fraction), self.assertRaises(ValueError):
                 release.release_payload(42, "release", "inProgress", user_fraction=fraction)
+
+
+class UploadRequestTests(unittest.TestCase):
+    def test_bundle_uses_media_upload_endpoint(self):
+        client = release.PublisherClient("test-token")
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "release.aab"
+            bundle.write_bytes(b"bundle-content")
+            with patch.object(release.http.client, "HTTPSConnection") as connection:
+                response = connection.return_value.getresponse.return_value
+                response.status = 200
+                response.read.return_value = b'{"versionCode":42}'
+                self.assertEqual(client.upload_bundle(
+                    release.DEFAULT_PACKAGE_NAME, "edit-1", bundle
+                ), 42)
+                connection.return_value.putrequest.assert_called_once_with(
+                    "POST", "/upload/androidpublisher/v3/applications/"
+                    "com.volleycut.nativeanalysis/edits/edit-1/bundles?uploadType=media"
+                )
+                connection.return_value.send.assert_called_once_with(b"bundle-content")
+
+    def test_mapping_and_native_symbols_use_media_upload_endpoint(self):
+        client = release.PublisherClient("test-token")
+        with tempfile.TemporaryDirectory() as directory:
+            symbols = Path(directory) / "symbols"
+            symbols.write_bytes(b"symbol-content")
+            for file_type in ("proguard", "nativeCode"):
+                with self.subTest(file_type=file_type), patch.object(
+                    release.http.client, "HTTPSConnection"
+                ) as connection:
+                    response = connection.return_value.getresponse.return_value
+                    response.status = 200
+                    response.read.return_value = b'{}'
+                    client.upload_deobfuscation_file(
+                        release.DEFAULT_PACKAGE_NAME, "edit-1", 42, file_type, symbols
+                    )
+                    connection.return_value.putrequest.assert_called_once_with(
+                        "POST", "/upload/androidpublisher/v3/applications/"
+                        "com.volleycut.nativeanalysis/edits/edit-1/apks/42/"
+                        f"deobfuscationFiles/{file_type}?uploadType=media"
+                    )
+                    connection.return_value.send.assert_called_once_with(b"symbol-content")
 
 
 class FakePublisherClient:
