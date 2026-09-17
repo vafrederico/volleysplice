@@ -33,7 +33,7 @@ concurrency:
 jobs:
   build:
     name: Build, sign, and verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: android-release
     outputs:
@@ -52,6 +52,12 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: 'platform-tools platforms;android-37 build-tools;37.0.0'
+          log-accepted-android-sdk-licenses: false
 
       - name: Verify required Android SDK packages
         shell: bash
