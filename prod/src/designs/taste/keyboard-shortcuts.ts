@@ -16,6 +16,8 @@ export const KEYBOARD_SHORTCUTS = [
   { action: "switch", keys: ["t"], label: "T", description: "Add team side switch at playhead" },
   { action: "serve", keys: ["s"], label: "S", description: "Add serve at playhead" },
   { action: "split", keys: ["shift+s"], label: "Shift + S", description: "Split current rally at playhead" },
+  { action: "setStart", keys: ["ctrl+shift+s"], label: "Ctrl + Shift + S", description: "Set current rally start to playhead" },
+  { action: "setEnd", keys: ["ctrl+shift+e"], label: "Ctrl + Shift + E", description: "Set current rally end to playhead" },
   { action: "exclude", keys: ["e"], label: "E", description: "Mark excluded footage start / end" },
   { action: "missed", keys: ["shift+r"], label: "Shift + R", description: "Mark missed rally start / end" },
   { action: "cancelRange", keys: ["escape"], label: "Esc", description: "Cancel unfinished missed rally or excluded footage selection" },
