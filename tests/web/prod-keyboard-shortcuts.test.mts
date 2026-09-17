@@ -28,6 +28,10 @@ test("review shortcuts distinguish shifted actions including serve and split", (
   assert.equal(key("f", { shiftKey: true }), null);
   assert.equal(key("z", { ctrlKey: true }), "undo");
   assert.equal(key("y", { ctrlKey: true }), "redo");
+  assert.equal(key("s", { ctrlKey: true, shiftKey: true }), "setStart");
+  assert.equal(key("S", { ctrlKey: true, shiftKey: true }), "setStart");
+  assert.equal(key("e", { ctrlKey: true, shiftKey: true }), "setEnd");
+  assert.equal(key("E", { ctrlKey: true, shiftKey: true }), "setEnd");
   assert.equal(key("z"), null);
   assert.equal(key("y"), null);
   assert.equal(key("z", { ctrlKey: true, shiftKey: true }), null);

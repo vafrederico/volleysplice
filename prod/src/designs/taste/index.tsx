@@ -900,6 +900,20 @@ function usePrototype(
     setStorageMessage("Saving to the live review…");
   }
 
+  function setSelectedBoundaryAtPlayhead(boundary: "start" | "end") {
+    if (!selected) return;
+    if (boundary === "start" && playhead > selected.end - 0.1) {
+      setReviewMessage(`Move the playhead at least 0.1 seconds before ${selected.id}'s rally end.`);
+      return;
+    }
+    if (boundary === "end" && playhead < selected.start + 0.1) {
+      setReviewMessage(`Move the playhead at least 0.1 seconds after ${selected.id}'s rally start.`);
+      return;
+    }
+    updateSelected({ [boundary]: playhead });
+    setReviewMessage(`${selected.id} rally ${boundary} set to the playhead at ${formatPreciseTime(playhead)}.`);
+  }
+
   function setCurrentRallyIncluded(included: boolean) {
     if (!selected) return;
     updateSelected({ included, reviewed: true });
@@ -1343,7 +1357,8 @@ function usePrototype(
     selectProject: review.selectProject,
     duration: review.duration, width: review.width, height: review.height,
     included, remaining, keptSeconds, chooseVideo, importProject, beginAnalysis,
-    resumeProject, updateSelected, setCurrentRallyIncluded, selectClip, reviewNext, openClipReview,
+    resumeProject, updateSelected, setSelectedBoundaryAtPlayhead,
+    setCurrentRallyIncluded, selectClip, reviewNext, openClipReview,
     openServeReview, splitSelectedAtPlayhead,
     markManualBoundary, cancelManualBoundary, markExcludedBoundary,
     cancelExcludedBoundary, removeExcludedRange, decideSuppression,
@@ -1927,10 +1942,12 @@ function ClipInspector({ state, condensed = false, current = false }: { state: P
         <div>
           <span>Rally core starts</span>
           <div><button type="button" aria-label="Move rally core start 0.5 seconds earlier" onClick={() => state.updateSelected({ start: Math.max(state.gameStart, clip.start - 0.5) })}>-0.5</button><output>{formatPreciseTime(clip.start)}</output><button type="button" aria-label="Move rally core start 0.5 seconds later" onClick={() => state.updateSelected({ start: Math.min(clip.end - 0.1, clip.start + 0.5) })}>+0.5</button></div>
+          <button className="td-set-playhead" type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("start")}>Set start to playhead <kbd>Ctrl + Shift + S</kbd></button>
         </div>
         <div>
           <span>Rally core ends</span>
           <div><button type="button" aria-label="Move rally core end 0.5 seconds earlier" onClick={() => state.updateSelected({ end: Math.max(clip.start + 0.1, clip.end - 0.5) })}>-0.5</button><output>{formatPreciseTime(clip.end)}</output><button type="button" aria-label="Move rally core end 0.5 seconds later" onClick={() => state.updateSelected({ end: Math.min(state.gameEnd, clip.end + 0.5) })}>+0.5</button></div>
+          <button className="td-set-playhead" type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("end")}>Set end to playhead <kbd>Ctrl + Shift + E</kbd></button>
         </div>
       </div>
       <div className="td-final-range">
@@ -2718,6 +2735,8 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
         case "keep": state.setCurrentRallyIncluded(true); break;
         case "remove": state.setCurrentRallyIncluded(false); break;
         case "split": state.splitSelectedAtPlayhead(); break;
+        case "setStart": state.setSelectedBoundaryAtPlayhead("start"); break;
+        case "setEnd": state.setSelectedBoundaryAtPlayhead("end"); break;
         case "serve": if (state.scoreEnabled) state.addServeAtPlayhead(); break;
         case "exclude": state.markExcludedBoundary("other"); break;
         case "missed": state.markManualBoundary(); break;
