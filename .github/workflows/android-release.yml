@@ -13,8 +13,8 @@ on:
           - internal
           - production
       production_rollout_fraction:
-        description: Production fraction between 0 and 1 (used only for production)
-        default: '0.10'
+        description: 'Production fraction: 1 = 100%; values between 0 and 1 stage the rollout'
+        default: '1'
         required: true
         type: string
       release_notes:
@@ -236,7 +236,7 @@ jobs:
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
 
-      - name: Promote internal version to a staged production rollout
+      - name: Promote internal version to production
         shell: bash
         env:
           ANDROID_PUBLISHER_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}

@@ -115,6 +115,10 @@ class FakePublisherClient:
     def __init__(self):
         self.calls = []
         self.fail_update = False
+        self.internal_releases = [{
+            "name": "VolleySplice 1.2.3 (42)", "status": "completed", "versionCodes": ["42"],
+            "releaseNotes": [{"language": "en-US", "text": "Internal release notes"}],
+        }]
 
     def create_edit(self, package):
         self.calls.append(("create", package))
@@ -130,6 +134,10 @@ class FakePublisherClient:
     def upload_deobfuscation_file(self, package, edit, version_code, file_type, file_path):
         self.calls.append(("symbols", package, edit, version_code, file_type, file_path.name))
         return {}
+
+    def get_track(self, package, edit, track):
+        self.calls.append(("get", package, edit, track))
+        return {"track": track, "releases": self.internal_releases}
 
     def update_track(self, package, edit, track, payload):
         self.calls.append(("update", package, edit, track, payload))
@@ -170,6 +178,32 @@ class PublishingFlowTests(unittest.TestCase):
         update = next(call for call in client.calls if call[0] == "update")
         self.assertEqual(update[3], "production")
         self.assertEqual(update[4]["versionCodes"], ["42"])
+        self.assertEqual(update[4]["status"], "inProgress")
+        self.assertEqual(update[4]["userFraction"], 0.1)
+        self.assertEqual([call[0] for call in client.calls], ["create", "get", "update", "commit"])
+
+    def test_promotion_only_inherits_internal_release_metadata(self):
+        client = FakePublisherClient()
+        args = release.parser().parse_args([
+            "promote-production", "--version-code", "42", "--user-fraction", "1"
+        ])
+        with patch.object(release, "client_from_environment", return_value=client), patch("builtins.print"):
+            args.handler(args)
+        update = next(call for call in client.calls if call[0] == "update")
+        self.assertEqual(update[4]["name"], client.internal_releases[0]["name"])
+        self.assertEqual(update[4]["releaseNotes"], client.internal_releases[0]["releaseNotes"])
+        self.assertNotIn("userFraction", update[4])
+        self.assertEqual([call[0] for call in client.calls], ["create", "get", "update", "commit"])
+
+    def test_rejects_missing_or_draft_internal_version(self):
+        for releases in ([], [{"versionCodes": ["41"], "status": "completed"}],
+                         [{"versionCodes": ["42"], "status": "draft"}]):
+            with self.subTest(releases=releases):
+                client = FakePublisherClient()
+                client.internal_releases = releases
+                with self.assertRaisesRegex(ValueError, "not an active internal"):
+                    release.promote_version(client, release.DEFAULT_PACKAGE_NAME, 42, "", "1")
+                self.assertEqual([call[0] for call in client.calls], ["create", "get", "delete"])
 
     def test_failed_edit_is_deleted(self):
         client = FakePublisherClient()
@@ -179,6 +213,33 @@ class PublishingFlowTests(unittest.TestCase):
                 client, release.DEFAULT_PACKAGE_NAME, 42, "release", "0.10"
             )
         self.assertEqual(client.calls[-1][0], "delete")
+
+    def test_full_production_release_omits_staged_fraction(self):
+        for fraction in ("1", "1.0", "1.00"):
+            with self.subTest(fraction=fraction):
+                client = FakePublisherClient()
+                result = release.promote_version(
+                    client, release.DEFAULT_PACKAGE_NAME, 42, "release", fraction, "Fixes"
+                )
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["user_fraction"], 1.0)
+                update = next(call for call in client.calls if call[0] == "update")
+                self.assertEqual(update[3], "production")
+                self.assertEqual(update[4]["status"], "completed")
+                self.assertEqual(update[4]["versionCodes"], ["42"])
+                self.assertEqual(update[4]["releaseNotes"][0]["text"], "Fixes")
+                self.assertNotIn("userFraction", update[4])
+                self.assertEqual(client.calls[-1][0], "commit")
+
+    def test_invalid_production_fraction_does_not_create_edit(self):
+        for fraction in ("0", "-0.1", "1.1", "100", "NaN", "Infinity", "bad", ""):
+            with self.subTest(fraction=fraction):
+                client = FakePublisherClient()
+                with self.assertRaises(ValueError):
+                    release.promote_version(
+                        client, release.DEFAULT_PACKAGE_NAME, 42, "release", fraction
+                    )
+                self.assertEqual(client.calls, [])
 
 
 if __name__ == "__main__":

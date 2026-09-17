@@ -5,7 +5,7 @@ runs the JVM tests and debug/release lint, builds the required debug APK and
 release Android App Bundle, signs the bundle with a dedicated Play upload key,
 and retains the bundle plus R8 mapping and native symbols as workflow artifacts.
 It can then publish to internal testing and, after a separate protected-environment
-approval, promote that same version to a staged production rollout.
+approval, promote that same version to production (100% by default).
 
 The workflow reads `versionCode` and `versionName` from
 `app/build.gradle.kts`. Increment and commit both values before every release.
@@ -121,10 +121,13 @@ service-account JSON key for this workflow.
    - **internal** also commits the version to internal testing;
    - **production** first publishes to internal testing, then pauses at the
      protected `android-production` environment. Test the Play-installed build
-     before approving the staged production rollout.
-4. For production, enter a rollout fraction greater than `0` and less than `1`.
-   `0.10` releases to ten percent of eligible users. Complete or change the
-   rollout later in Play Console after checking crashes, ANRs, and feedback.
+     before approving the production rollout.
+4. For production, the default fraction is `1` (100%). The helper publishes a
+   `completed` release without a `userFraction` field, as required by Google Play.
+   To stage the rollout, enter a fraction greater than `0` and less than `1`;
+   for example, `0.10` releases to ten percent of eligible users. Complete or
+   change a staged rollout later in Play Console after checking crashes, ANRs,
+   and feedback.
 
 The API commit submits the release to the selected track. Google Play review,
 policy declarations, or Managed Publishing can delay when it becomes available.
@@ -136,6 +139,24 @@ The GitHub artifact is retained for 30 days and contains the signed AAB,
 publishing attaches the R8 mapping and any generated native-symbol ZIP to that
 exact Play version for crash deobfuscation. The workflow removes the temporary
 keystore even when an earlier step fails.
+
+## Promote an existing internal version without rebuilding
+
+Use **Actions > Android promote to production > Run workflow** to promote a
+version already published to the internal testing track. Enter its `versionCode`
+(for example, `29`) and a rollout fraction (`1` defaults to 100%; `0.10` means 10%).
+Approve the `android-production` environment when prompted.
+
+This workflow uses the existing Play bundle and copies its internal release name
+and notes. It verifies that the version is an active internal release before
+updating production. It does not build, sign, upload, or increment the version.
+It uses the same production environment variables and serializes Play edits with
+the normal release workflow.
+
+To change the fraction after a failed promotion, start a new promotion-only run
+with the same version code and the corrected fraction. GitHub's **Re-run job**
+reuses the original inputs and commit, so it cannot pick up changed inputs or
+updated workflow/helper code.
 
 ## Local credential-free validation
 

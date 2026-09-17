@@ -213,6 +213,10 @@ class PublisherClient:
         return self.request("POST", "androidpublisher.googleapis.com", path,
                             file_path=file_path)
 
+    def get_track(self, package_name: str, edit_id: str, track: str) -> dict[str, Any]:
+        path = self.edit_path(package_name, edit_id) + "/tracks/" + quote(track, safe="")
+        return self.request("GET", "androidpublisher.googleapis.com", path)
+
     def update_track(self, package_name: str, edit_id: str, track: str,
                      release: dict[str, Any]) -> dict[str, Any]:
         path = self.edit_path(package_name, edit_id) + "/tracks/" + quote(track, safe="")
@@ -245,7 +249,7 @@ def release_payload(version_code: int, name: str, status: str,
             fraction = Decimal(user_fraction or "")
         except InvalidOperation as error:
             raise ValueError("Production rollout fraction must be a decimal") from error
-        if fraction <= 0 or fraction >= 1:
+        if not fraction.is_finite() or fraction <= 0 or fraction >= 1:
             raise ValueError("A staged production rollout fraction must be greater than 0 and less than 1")
         release["userFraction"] = float(fraction)
     elif user_fraction is not None:
@@ -314,17 +318,36 @@ def promote_version(client: PublisherClient, package_name: str, version_code: in
                     release_name: str, user_fraction: str,
                     release_notes: str = "") -> dict[str, Any]:
     validate_package_name(package_name)
+    try:
+        fraction = Decimal(user_fraction)
+    except InvalidOperation as error:
+        raise ValueError("Production rollout fraction must be a decimal") from error
+    if not fraction.is_finite() or fraction <= 0 or fraction > 1:
+        raise ValueError("Production rollout fraction must be greater than 0 and at most 1")
+    # Google Play represents 100% as completed, without a userFraction field.
+    status = "completed" if fraction == 1 else "inProgress"
+    release = release_payload(
+        version_code, release_name, status, release_notes,
+        user_fraction if status == "inProgress" else None,
+    )
 
     def operation(edit_id: str) -> dict[str, Any]:
-        release = release_payload(
-            version_code, release_name, "inProgress", release_notes, user_fraction
-        )
+        internal = client.get_track(package_name, edit_id, "internal")
+        source = next((item for item in internal.get("releases", [])
+                       if item.get("status") == "completed"
+                       and str(version_code) in item.get("versionCodes", [])), None)
+        if source is None:
+            raise ValueError(f"Version {version_code} is not an active internal testing release")
+        if not release_name:
+            release["name"] = source.get("name") or f"VolleySplice ({version_code})"
+        if not release_notes and source.get("releaseNotes"):
+            release["releaseNotes"] = source["releaseNotes"]
         client.update_track(package_name, edit_id, "production", release)
         return {
             "version_code": version_code,
             "track": "production",
-            "status": "inProgress",
-            "user_fraction": float(Decimal(user_fraction)),
+            "status": status,
+            "user_fraction": float(fraction),
         }
 
     return run_edit(client, package_name, operation)
@@ -406,7 +429,7 @@ def parser() -> argparse.ArgumentParser:
     promote = commands.add_parser("promote-production")
     promote.add_argument("--package-name", default=DEFAULT_PACKAGE_NAME)
     promote.add_argument("--version-code", type=int, required=True)
-    promote.add_argument("--release-name", required=True)
+    promote.add_argument("--release-name", default="")
     promote.add_argument("--release-notes", default="")
     promote.add_argument("--user-fraction", required=True)
     promote.set_defaults(handler=promote_command)

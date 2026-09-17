@@ -1,0 +1,61 @@
+name: Android promote to production
+run-name: 'Promote Android version ${{ inputs.version_code }} (fraction ${{ inputs.production_rollout_fraction }})'
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: Existing versionCode on the Google Play internal testing track
+        required: true
+        type: string
+      production_rollout_fraction:
+        description: 'Production fraction: 1 = 100%; values between 0 and 1 stage the rollout'
+        default: '1'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Serialize Play edits with the build-and-publish workflow too.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Approve and promote existing internal version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: android-production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Test release helper
+        run: python3 -m unittest discover -s android/scripts/tests -p 'test_*.py'
+
+      - name: Authenticate to Google Play through Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PLAY_PUBLISHER_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+
+      - name: Promote existing internal version
+        shell: bash
+        env:
+          ANDROID_PUBLISHER_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          ROLLOUT_FRACTION: ${{ inputs.production_rollout_fraction }}
+        run: |
+          set -euo pipefail
+          python3 android/scripts/ci-release.py promote-production \
+            --version-code "$VERSION_CODE" \
+            --user-fraction "$ROLLOUT_FRACTION"
