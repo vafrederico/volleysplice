@@ -1,0 +1,235 @@
+name: Android release
+
+on:
+  workflow_dispatch:
+    inputs:
+      destination:
+        description: Build only, publish to internal testing, or stage for production
+        default: artifact-only
+        required: true
+        type: choice
+        options:
+          - artifact-only
+          - internal
+          - production
+      production_rollout_fraction:
+        description: Production fraction between 0 and 1 (used only for production)
+        default: '0.10'
+        required: true
+        type: string
+      release_notes:
+        description: Optional en-US Google Play release notes (maximum 500 characters)
+        default: ''
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, sign, and verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: android-release
+    outputs:
+      bundle_name: ${{ steps.names.outputs.bundle_name }}
+      package_name: ${{ steps.metadata.outputs.package_name }}
+      version_code: ${{ steps.metadata.outputs.version_code }}
+      version_name: ${{ steps.metadata.outputs.version_name }}
+      release_name: ${{ steps.names.outputs.release_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0'
+
+      - name: Validate release metadata and helper
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s android/scripts/tests -p 'test_*.py'
+          python3 android/scripts/ci-release.py metadata \
+            --gradle-file android/app/build.gradle.kts \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Define artifact names
+        id: names
+        shell: bash
+        env:
+          VERSION_CODE: ${{ steps.metadata.outputs.version_code }}
+          VERSION_NAME: ${{ steps.metadata.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          echo "bundle_name=VolleySplice-v${VERSION_NAME}-${VERSION_CODE}-release.aab" >> "$GITHUB_OUTPUT"
+          echo "release_name=VolleySplice ${VERSION_NAME} (${VERSION_CODE})" >> "$GITHUB_OUTPUT"
+
+      - name: Test and build release artifacts
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon \
+            testDebugUnitTest lintDebug lintRelease assembleDebug bundleRelease
+
+      - name: Restore Play upload keystore
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_UPLOAD_KEYSTORE_BASE64"
+          umask 077
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | tr -d '\r\n ' | \
+            base64 --decode > "$RUNNER_TEMP/play-upload.jks"
+          test -s "$RUNNER_TEMP/play-upload.jks"
+
+      - name: Sign and verify Android App Bundle
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          BUNDLE_NAME: ${{ steps.names.outputs.bundle_name }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/android-release-output/$BUNDLE_NAME"
+          python3 android/scripts/ci-release.py sign \
+            --input android/app/build/outputs/bundle/release/app-release.aab \
+            --output "$output" \
+            --keystore "$RUNNER_TEMP/play-upload.jks" \
+            --gradle-file android/app/build.gradle.kts
+          if test -f android/app/build/outputs/mapping/release/mapping.txt; then
+            cp android/app/build/outputs/mapping/release/mapping.txt \
+              "$RUNNER_TEMP/android-release-output/mapping.txt"
+          fi
+          symbols=android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
+          if test -f "$symbols"; then
+            cp "$symbols" "$RUNNER_TEMP/android-release-output/native-debug-symbols.zip"
+          fi
+
+      - name: Save signed bundle and diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: VolleySplice-${{ steps.metadata.outputs.version_name }}-${{ steps.metadata.outputs.version_code }}
+          path: ${{ runner.temp }}/android-release-output/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove temporary upload keystore
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/play-upload.jks"
+
+  publish-internal:
+    name: Publish to internal testing
+    if: ${{ inputs.destination == 'internal' || inputs.destination == 'production' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: android-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: VolleySplice-${{ needs.build.outputs.version_name }}-${{ needs.build.outputs.version_code }}
+          path: ${{ runner.temp }}/android-release-output
+
+      - name: Authenticate to Google Play through Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PLAY_PUBLISHER_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+
+      - name: Upload and publish internal release
+        shell: bash
+        env:
+          ANDROID_PUBLISHER_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          BUNDLE_NAME: ${{ needs.build.outputs.bundle_name }}
+          PACKAGE_NAME: ${{ needs.build.outputs.package_name }}
+          RELEASE_NAME: ${{ needs.build.outputs.release_name }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          VERSION_CODE: ${{ needs.build.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          args=(python3 android/scripts/ci-release.py publish-internal \
+            --bundle "$RUNNER_TEMP/android-release-output/$BUNDLE_NAME" \
+            --package-name "$PACKAGE_NAME" \
+            --version-code "$VERSION_CODE" \
+            --release-name "$RELEASE_NAME" \
+            --release-notes "$RELEASE_NOTES" \
+            --mapping "$RUNNER_TEMP/android-release-output/mapping.txt")
+          symbols="$RUNNER_TEMP/android-release-output/native-debug-symbols.zip"
+          if test -f "$symbols"; then
+            args+=(--native-symbols "$symbols")
+          fi
+          "${args[@]}"
+
+  publish-production:
+    name: Approve and start production rollout
+    if: ${{ inputs.destination == 'production' }}
+    needs:
+      - build
+      - publish-internal
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: android-production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Play through Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PLAY_PUBLISHER_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+
+      - name: Promote internal version to a staged production rollout
+        shell: bash
+        env:
+          ANDROID_PUBLISHER_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          PACKAGE_NAME: ${{ needs.build.outputs.package_name }}
+          RELEASE_NAME: ${{ needs.build.outputs.release_name }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          ROLLOUT_FRACTION: ${{ inputs.production_rollout_fraction }}
+          VERSION_CODE: ${{ needs.build.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          python3 android/scripts/ci-release.py promote-production \
+            --package-name "$PACKAGE_NAME" \
+            --version-code "$VERSION_CODE" \
+            --release-name "$RELEASE_NAME" \
+            --release-notes "$RELEASE_NOTES" \
+            --user-fraction "$ROLLOUT_FRACTION"

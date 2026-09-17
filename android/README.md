@@ -89,6 +89,10 @@ bash ./sign-release.sh app/build/outputs/bundle/release/app-release.aab \
 
 The helper selects APK or AAB signing from the input extension, uses `.android-keystores/volleycut-release.jks` under the Windows user profile (or `$HOME` on other platforms) and the `volleycut-release` alias, lets `apksigner` or `jarsigner` prompt directly for the password, and verifies the signed result. Use `--keystore` and `--alias` if Play App Signing has a separate upload key. Never put a keystore password on the command line or commit a keystore. The PowerShell-specific `sign-apk.ps1` and `sign-aab.ps1` helpers remain available when needed.
 
+For automated builds and Google Play publishing, see
+[`RELEASING.md`](RELEASING.md). The GitHub workflow uses a separate, resettable
+Play upload key; it must not receive the permanent direct-install APK key.
+
 ## Native editor and export
 
 Run full inference, then tap **Open native cut editor**. The editor uses the unpadded inferred ranges as its immutable cores and provides:
