@@ -53,9 +53,14 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Install required Android SDK packages
+      - name: Verify required Android SDK packages
         shell: bash
-        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0'
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          test -f "$sdk_root/platforms/android-37/android.jar"
+          test -x "$sdk_root/build-tools/37.0.0/aapt2"
 
       - name: Validate release metadata and helper
         id: metadata
