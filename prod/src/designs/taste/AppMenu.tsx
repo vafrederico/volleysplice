@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { GOOGLE_PLAY_URL } from "@/lib/android-app";
+import { APP_STORE_URL } from "@/lib/ios-app";
 import { KEYBOARD_SHORTCUTS } from "./keyboard-shortcuts";
 
 export function AppMenu({
@@ -79,6 +80,7 @@ export function AppMenu({
           <a href="https://www.volleysplice.com/privacy.html">Privacy</a>
           <a href="https://www.volleysplice.com/terms.html">Terms</a>
           <a href={GOOGLE_PLAY_URL}>Get it on Google Play</a>
+          <a href={APP_STORE_URL}>Download on the App Store</a>
           <button
             type="button"
             aria-pressed={dark}
