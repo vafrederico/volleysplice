@@ -24,7 +24,7 @@ reconnecting the exact local file for playback or export—not rerunning inferen
 a project also deletes its cached features, inference, and edit draft. The editor exports
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
-file or origin-private storage before iOS sharing. JSON edit-list export is also available.
+file. JSON edit-list export is also available.
 For model improvement, the editor can additionally download a versioned model-feedback JSON
 containing the retained 104-column base feature matrix, source timestamps, probability traces,
 untouched initial inference ranges, corrected ranges, explicit false-positive and false-negative
@@ -74,7 +74,12 @@ frame through a reusable canvas.
 
 ## Run locally
 
-Requirements: Node.js 24 and a current Chrome or Edge browser, or Safari 26 on iOS/macOS.
+Requirements: Node.js 24 and a current Chrome or Edge browser. Safari is not supported.
+
+iPhone and iPad users must use the native app, available on
+[the App Store](https://apps.apple.com/us/app/volleysplice/id6812621538).
+All iOS browsers, including iPad desktop mode, show an App Store banner and landing
+screen instead of the web editor. Android browsers show a Google Play banner.
 
 ```sh
 npm install
@@ -98,10 +103,8 @@ works at a domain root or subpath without changing the config.
 Do not open `dist/index.html` directly through `file://`; WebCodecs and module workers
 need an HTTP origin.
 
-MP4 export uses direct File System Access when available. On iOS it streams the output
-into origin-private file storage without holding the complete video in JavaScript memory,
-then presents a separate Share or Save action so Safari has fresh user activation for its
-native share sheet. Exact boundaries require a single AVC/AAC transcode; the output keeps
+MP4 export uses direct File System Access when available.
+Exact boundaries require a single AVC/AAC transcode; the output keeps
 the source display dimensions and uses the very-high-quality encoder preset.
 
 ## Cloudflare Workers Static Assets (local builds)

@@ -3,7 +3,8 @@
 **Bump. Set. Splice.**
 
 [Open the web app](https://www.volleysplice.com/) ·
-[Get the Android app on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis)
+[Get the Android app on Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis) ·
+[Download for iPhone and iPad on the App Store](https://apps.apple.com/us/app/volleysplice/id6812621538)
 
 VolleySplice is a local-first volleyball video editor that finds likely rallies,
 lets a human correct the proposed cuts, and exports the retained footage. Video
@@ -18,7 +19,7 @@ Formerly VolleyCut. See [brand assets and compatibility notes](docs/brand.md).
 | --- | --- | --- |
 | [`prod/`](prod/) | Static browser app for local analysis, review, and MP4 export | Published at [volleysplice.com](https://www.volleysplice.com/) |
 | [`android/`](android/) | Native on-device analysis, editor, and MP4 exporter | Published on [Google Play](https://play.google.com/store/apps/details?id=com.volleycut.nativeanalysis) |
-| [`ios/`](ios/) | Native Swift/SwiftUI port for iPhone and iPad | Source code only; **not published as an app** |
+| [`ios/`](ios/) | Native Swift/SwiftUI port for iPhone and iPad | Published on [the App Store](https://apps.apple.com/us/app/volleysplice/id6812621538) |
 | Root Next.js workspace | V2 labeling and model-feedback import | Local development tool |
 
 Model suggestions and confidence scores are review aids, not semantic truth or
@@ -56,8 +57,8 @@ The [`ios/`](ios/) directory contains the native Swift/SwiftUI implementation an
 portable `VolleyCore` code. It supports the local analysis, project, editing, scoring,
 and export architecture used by the other clients.
 
-The iOS client is a development port and is **not currently published through the
-Apple App Store**. See [`ios/README.md`](ios/README.md) for supported platforms,
+The iOS and iPadOS app is published on [the Apple App Store](https://apps.apple.com/us/app/volleysplice/id6812621538).
+Use the native app on iPhone and iPad; the web editor is unavailable on iOS. See [`ios/README.md`](ios/README.md) for supported platforms,
 source layout, build preparation, tests, and current limitations.
 
 ## Labeling workspace
@@ -132,7 +133,7 @@ README files. Release signing remains separate from normal automated builds.
 
 - `prod/` — published static browser client and runtime assets;
 - `android/` — published native Android client;
-- `ios/` — unpublished native iOS/iPadOS source;
+- `ios/` — published native iOS/iPadOS client;
 - `app/`, `components/`, `lib/` — V2 labeling and model-feedback import;
 - `analysis/`, `scripts/` — feature extraction, training, evaluation, and reporting;
 - `tests/` — web, model, and cross-runtime tests;

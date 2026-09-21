@@ -1,5 +1,7 @@
 # VolleySplice for iOS and iPadOS
 
+Available for iPhone and iPad on [the App Store](https://apps.apple.com/us/app/volleysplice/id6812621538).
+
 Native Swift port of the Android app. `Sources/VolleyCore` contains portable DSP,
 model inference, project formats, scoring and editor math. `App` contains SwiftUI,
 AVFoundation, PhotoKit and thin Objective-C++ bridges for OpenCV primitives.
