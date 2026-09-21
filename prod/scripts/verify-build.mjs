@@ -62,6 +62,7 @@ for (const asset of [
   "_headers",
   "_redirects",
   "google-play-badge.png",
+  "app-store-badge.svg",
   "runtime/suppression-39eddf581639.manifest.json",
   "runtime/opencv.js",
   "runtime/opencv-worker.js",

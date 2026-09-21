@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AndroidAppBanner } from "@/components/AndroidAppBanner";
+import { MobileAppBanner } from "@/components/MobileAppBanner";
 import { GuidedTour } from "@/components/GuidedTour";
 import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
@@ -226,6 +226,29 @@ const LANDING_COPY: {
 };
 
 export function App() {
+  if (isIosBrowser()) {
+    return (
+      <main className={styles.page}>
+        <MobileAppBanner />
+        <section className={styles.hero}>
+          <p>VOLLEYSPLICE FOR iOS</p>
+          <h1>Bump. Set. Splice.</h1>
+          <p className={styles.lede}>
+            To use VolleySplice on iPhone or iPad, download the app from the App
+            Store using the link above. The web editor is unavailable on iOS.
+          </p>
+          <p className={styles.privacyNote}>
+            You can also use the web editor in Chrome or Edge on a desktop computer.
+          </p>
+          <p><a href="./support.html">Support</a> · <a href="./privacy.html">Privacy</a> · <a href="./terms.html">Terms</a></p>
+        </section>
+      </main>
+    );
+  }
+  return <WebApp />;
+}
+
+function WebApp() {
   const [projects, setProjects] = useState<VolleySpliceProject[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
@@ -277,7 +300,6 @@ export function App() {
   const candidateVideoRef = useRef<HTMLVideoElement>(null);
   const suppressionAugmentingRef = useRef(new Set<string>());
 
-  const iosBrowser = isIosBrowser();
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
     !safariUnsupported &&
@@ -714,9 +736,7 @@ export function App() {
     if (!selected) return;
     if (safariUnsupported) {
       setError(
-        iosBrowser
-          ? "WARNING: Browsers on iOS create temporary video copies that use extra device storage, and VolleySplice cannot delete those copies. Please use Google Chrome on a desktop computer instead. Safari is not supported."
-          : "Safari is not supported. Open VolleySplice in Google Chrome on your desktop computer instead.",
+        "Safari is not supported. Open VolleySplice in Google Chrome on your desktop computer instead.",
       );
       setWorkState("error");
       return;
@@ -1274,7 +1294,7 @@ export function App() {
   const workActivity = [...analysisActivity, ...exportActivity];
   const projectHeader = (
     <>
-      <AndroidAppBanner />
+      <MobileAppBanner />
       <ProjectHeader
         projects={projects}
         exportJobs={designExportJobs}
@@ -1404,17 +1424,7 @@ export function App() {
             <p className={styles.privacyNote}>Your video stays on this device.</p>
             </section>
 
-            {iosBrowser ? (
-              <p className={styles.notice} role="status">
-                <strong>WARNING:</strong> Browsers
-                on iOS, including Chrome and Safari, create temporary copies of
-                selected videos, duplicating their storage use on your device.
-                VolleySplice cannot delete these browser-managed copies, and they
-                may remain after you finish. Please use Google Chrome on a desktop
-                computer instead.
-                {safariUnsupported && " Safari is not supported."}
-              </p>
-            ) : safariUnsupported ? (
+            {safariUnsupported ? (
               <p className={styles.notice} role="status">
                 <strong>Safari is not supported.</strong> VolleySplice cannot open
                 videos here yet. Please use Google Chrome on your desktop computer
