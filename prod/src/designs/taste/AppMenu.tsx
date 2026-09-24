@@ -79,6 +79,9 @@ export function AppMenu({
         <nav id={id} className="rd-menu-panel" aria-label="App options">
           <a href="https://www.volleysplice.com/privacy.html">Privacy</a>
           <a href="https://www.volleysplice.com/terms.html">Terms</a>
+          <a href="https://github.com/vafrederico/volleysplice">
+            GitHub repository
+          </a>
           <a href={GOOGLE_PLAY_URL}>Get it on Google Play</a>
           <a href={APP_STORE_URL}>Download on the App Store</a>
           <button
