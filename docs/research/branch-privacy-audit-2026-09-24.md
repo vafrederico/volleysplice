@@ -1,7 +1,8 @@
 # Neural research branch privacy audit
 
-The files have been sanitized. The pre-cleanup history audit found 226 earlier
-blobs containing private references. The user approved replacing the research
+The files have been sanitized. The initial history scan flagged 226 earlier
+blobs; one was a dependency-version false positive corrected before the final
+publication gate. The user approved replacing the research
 branch history with a sanitized squash and updating its Forgejo branch. The
 replacement snapshot must pass both the current-content and historical-object
 checks before it is pushed. A private NAS backup preserves the original history.
@@ -31,7 +32,7 @@ It is not a new privacy certification of inherited main-branch content.
 
 ## Validation
 
-The current-file scan passes. The pre-cleanup history scan found the 226 older
+The current-file scan passes. The initial history scan flagged the 226 older
 blobs; no flagged commit messages were found. Commit author metadata remains
 unchanged. Existing ignored environment files, media and private receipts are
 intentionally outside the publication scan. The sanitized squash preserves the
@@ -47,6 +48,10 @@ The focused research suite passed 57 tests; five additional privacy-detector
 tests passed. The focused UI suite passed 29 tests, including frozen catalog
 fixtures. TypeScript checking passed. The three research plot PNGs were visually
 checked and contain aggregate metrics, without recording names or private paths.
+The replacement commit `291e206f` passed a committed-snapshot and history scan:
+620 committed files checked, zero findings in files or branch-specific historical
+objects. Forgejo was updated with an explicit lease and its remote tip verified.
+Pending benchmark files were byte-checked and preserved through the rewrite.
 The optimized Next build passed in an isolated NAS directory. It emitted export
 warnings in untouched model-feedback modules; the privacy changes did not edit
 those modules. No development or production server was started for this check.
