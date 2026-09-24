@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Brand } from "@/components/brand";
+import { ModelBreakdownSelect } from "@/components/model-breakdown-select";
+import { LabelingResearchPanel } from "@/components/labeling-research-panel";
+import { LabelingServingPanel } from "@/components/labeling-serving-panel";
+import type { ServingPrediction } from "@/lib/labeling-serving";
 import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
 import {
   downloadLabels,
@@ -39,6 +43,8 @@ import {
   isProductionModelDisagreement,
   productionModelAgreementLabel,
 } from "@/lib/production-ensemble";
+import { referenceExportCore, type LabelingResearch, type ResearchExportPolicy } from "@/lib/labeling-research";
+import { initialModelSelection, selectedModelReferences } from "@/lib/labeling-model-selection";
 import {
   findClosestNextRallyIndex,
   findServeMarkerIndexForRally,
@@ -70,9 +76,13 @@ type ModelReference = {
   serveMarkers?: ServeMarker[];
   humanServeMarkers?: ServeMarker[];
   serveModelLabel?: string;
+  servingPredictions?: ServingPrediction[];
   sideSwitches?: SideSwitch[];
   sideSwitchModelLabel?: string;
   suppressedRanges?: RallyLabel[];
+  exportRallies?: RallyLabel[];
+  exportPolicy?: ResearchExportPolicy;
+  research?: LabelingResearch;
 };
 type CourtAnchorId =
   | "nearLeft"
@@ -143,12 +153,14 @@ type PreparedTaskSummary = {
   annotationStatus: LabelDocument["annotation"]["status"];
   rallyCount: number;
   modelSeeded: boolean;
+  humanReviewedImport?: boolean;
   sourceType: string | null;
   targetStatus: string | null;
 };
 
 function preparedTaskStateLabel(task: PreparedTaskSummary): string {
   if (task.savedAt) return `${task.rallyCount} saved`;
+  if (task.humanReviewedImport) return `${task.rallyCount} human import`;
   if (task.targetStatus === "reviewed-export-coverage") {
     return `${task.rallyCount} reviewed import`;
   }
@@ -419,7 +431,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
   );
   const [error, setError] = useState<string | null>(null);
   const [joinGapSeconds, setJoinGapSeconds] = useState(DEFAULT_JOIN_GAP_SECONDS);
-  const [referenceLayer, setReferenceLayer] = useState("production");
+  const [referenceLayers, setReferenceLayers] = useState<string[]>(["production"]);
   const [timelinePaddingSeconds, setTimelinePaddingSeconds] = useState(2);
   const [modelServeVisibility, setModelServeVisibility] = useState<
     "disagreements" | "all" | "none"
@@ -617,11 +629,16 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
         setBatchSummary(payload.batches);
         if (!resumeAttemptedRef.current) {
           resumeAttemptedRef.current = true;
+          const linkedId = new URLSearchParams(window.location.search).get("task");
+          const linkedTask = payload.tasks.find((task) => task.id === linkedId);
           const resume = readPlaybackResume();
           const resumedTask = resume
             ? payload.tasks.find((task) => task.id === resume.taskId)
             : undefined;
-          if (resume && resumedTask) {
+          if (linkedTask) {
+            setSelectedBatch(linkedTask.batch);
+            void loadPreparedTask(linkedTask.id, resume?.taskId === linkedTask.id ? resume.time : null);
+          } else if (resume && resumedTask) {
             setSelectedBatch(resumedTask.batch);
             void loadPreparedTask(resume.taskId, resume.time);
           }
@@ -793,12 +810,13 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
     ];
     return references.flatMap((reference) => {
       const modelCore = comparableRallies(reference.rallies, reference.modelId);
+      const exportCore = comparableRallies(referenceExportCore(reference), `${reference.modelId}-export`);
       const rallyComparison = compareRalliesToHumanLabels(modelCore, humanCore);
       return comparisonPaddingCases.map((paddingSeconds) => {
         // Padding is merged before any duration or metric calculation, so
         // overlapping/touching model exports contribute to the union only once.
         const paddedModel = padAndMergeRallies(
-          modelCore,
+          exportCore,
           paddingSeconds,
           paddingSeconds,
           duration,
@@ -825,7 +843,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
         const recall = coreHumanMetrics.recall;
         const segments = markModelPaddingOrigins(
           buildLiveTimeComparisonSegments(paddedModel, humanCore, ignored),
-          modelCore,
+          exportCore,
           paddingSeconds,
           paddingSeconds,
           duration,
@@ -1137,6 +1155,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
       setFocusedSideSwitchIndex(null);
       setProductionReference(nextProductionReference);
       setExperimentReferences(nextExperimentReferences);
+      setReferenceLayers(initialModelSelection(nextProductionReference, nextExperimentReferences));
       setSolReferenceRallies(referenceRallies);
       setVideoUrl(`/api/labeling/tasks/${encodeURIComponent(id)}/video`);
       setVideoFilename(document.recording.videoFilename);
@@ -2139,15 +2158,10 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
     const preparedTaskIndex = tasksForSelectedBatch.findIndex(
       (task) => task.id === selectedPreparedTask,
     );
-    const visibleModelReferences = [
-      ...(productionReference &&
-      (referenceLayer === "production" || referenceLayer === "all")
-        ? [productionReference]
-        : []),
-      ...experimentReferences.filter((reference) =>
-        referenceLayer === "all" || referenceLayer === `model:${reference.modelId}`,
-      ),
-    ];
+    const visibleModelReferences = selectedModelReferences(productionReference, experimentReferences, referenceLayers);
+    const researchReference = (visibleModelReferences.some(reference => reference.exportPolicy === "fixed-production")
+      ? experimentReferences.find(reference => reference.exportPolicy === "fixed-production" && reference.research) : undefined)
+      ?? visibleModelReferences.find(reference => reference.research);
     const referenceTracks: TimelineTrack[] = visibleModelReferences.map((reference) => {
       const comparison = referenceComparisons.find(
         (candidate) =>
@@ -2158,7 +2172,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
       return {
         id: isProduction ? "production-reference" : reference.modelId,
         label: isProduction ? "Production ensemble" : reference.modelLabel,
-        detail: `${reference.rallies.length} core rallies · ${timelinePaddingSeconds}s pad · < ${joinGapSeconds}s joins`,
+        detail: `${reference.rallies.length} core rallies${reference.exportPolicy ? " · blocks: unpadded boundaries" : ""} · export: ${timelinePaddingSeconds}s pad · < ${joinGapSeconds}s joins${reference.exportPolicy === "fixed-production" ? " · production export retained" : reference.exportPolicy === "model-predictions" ? " · compact export" : ""}`,
         title: reference.description,
         ...(comparison
           ? {
@@ -2236,9 +2250,19 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
               })),
             }
           : {}),
+        ...(reference.exportPolicy ? {
+          intervals: reference.rallies.map((row, index) => ({
+            id: `${reference.modelId}-core-${index}`,
+            selectionId: null,
+            start: row.start,
+            end: row.end,
+            tone: "model" as const,
+            title: `${reference.modelLabel} · core rally ${index + 1} · ${formatPreciseTime(row.start)}–${formatPreciseTime(row.end)}. ${reference.exportPolicy === "fixed-production" ? "Production export remains unchanged." : "Standalone compact boundary; padding and joins apply only to the export strip."}`,
+          })),
+        } : {}),
       } satisfies TimelineTrack;
     });
-    if ((referenceLayer === "all" || referenceLayer === "sol") && solReferenceRallies.length > 0) {
+    if (referenceLayers.includes("sol") && solReferenceRallies.length > 0) {
       const solCore = comparableRallies(solReferenceRallies, "sol");
       const solComparison = compareRalliesToHumanLabels(
         solCore,
@@ -2314,9 +2338,9 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
             trackId: "production-reference",
             time: marker.time,
             tone: `serve-${marker.side}` as const,
-            label: marker.side === "near" ? "N" : "F",
+            label: marker.side === "review" ? "?" : marker.side === "near" ? "N" : "F",
             disagrees,
-            title: `${productionReference.serveModelLabel ?? "Serving-side model"} · ${marker.side} · ${formatPreciseTime(marker.time)}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% confidence` : ""}${humanMarker ? ` · human: ${humanMarker.side}${disagrees ? " (DISAGREES)" : " (agrees)"}` : " · no matching human serve (DISAGREES)"}`,
+            title: `${productionReference.serveModelLabel ?? "Serving-side model"} · ${marker.side} · ${formatPreciseTime(marker.time)}${marker.modelConfidence !== undefined ? ` · ${marker.modelSide ?? marker.side} score ${marker.modelConfidence.toFixed(3)}` : ""}${marker.notes ? ` · ${marker.notes}` : ""}${humanMarker ? ` · human: ${humanMarker.side}${disagrees ? " (DISAGREES)" : " (agrees)"}` : " · no matching human serve (DISAGREES)"}`,
           };
         })
         .filter((marker) =>
@@ -2441,6 +2465,9 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
             </button>
           </div>
           <div className={v2.labActions}>
+            {selectedPreparedTask && experimentReferences.some(reference => reference.research) && (
+              <Link href={`/editor-lab?task=${encodeURIComponent(selectedPreparedTask)}`}>Editor lab</Link>
+            )}
             <Link href="/model-feedback">Import feedback</Link>
             <div className={v2.sourceState} data-saved={lastSavedAt ? "true" : undefined}>
               <i data-ready={labels ? "true" : undefined} />
@@ -2849,20 +2876,15 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                 </div>
 
                 <div className={v2.timelineOptions}>
-                  <label>
-                    Model breakdown
-                    <select value={referenceLayer} onChange={(event) => setReferenceLayer(event.target.value)}>
-                      <option value="production">Production ensemble</option>
-                      {experimentReferences.map((reference) => (
-                        <option key={reference.modelId} value={`model:${reference.modelId}`}>
-                          {reference.modelLabel}
-                        </option>
-                      ))}
-                      {solReferenceRallies.length > 0 && <option value="sol">Sol reference</option>}
-                      <option value="all">All model rails</option>
-                      <option value="none">Human only</option>
-                    </select>
-                  </label>
+                  <ModelBreakdownSelect
+                    options={[
+                      ...(productionReference ? [{ value: "production", label: "Production ensemble" }] : []),
+                      ...experimentReferences.map(reference => ({ value: `model:${reference.modelId}`, label: reference.modelLabel })),
+                      ...(solReferenceRallies.length ? [{ value: "sol", label: "Sol reference" }] : []),
+                    ]}
+                    selected={referenceLayers}
+                    onChange={setReferenceLayers}
+                  />
                   <label>
                     Rail padding
                     <select value={timelinePaddingSeconds} onChange={(event) => setTimelinePaddingSeconds(Number(event.target.value))}>
@@ -2981,6 +3003,21 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                 )}
               </div>
               <p className={v2.timelineHint}>Click to seek. Shift-click consecutive human rallies to merge them. Model rows are read-only.</p>
+              {labels && productionReference?.servingPredictions && <LabelingServingPanel
+                predictions={productionReference.servingPredictions}
+                modelLabel={productionReference.serveModelLabel ?? "Production serving-side model"}
+                ignoredIntervals={labels.ignoredIntervals}
+                onSeek={time => seekTo(time)}
+              />}
+              {labels && researchReference?.research && <LabelingResearchPanel
+                key={researchReference.modelId}
+                modelLabel={researchReference.modelLabel}
+                exportPolicy={researchReference.exportPolicy}
+                research={researchReference.research}
+                duration={labels.recording.durationSeconds}
+                currentTime={currentTime}
+                onSeek={time => seekTo(time)}
+              />}
             </section>
 
             {message && <p className={v2.editorMessage} aria-live="polite">{message}</p>}
@@ -3500,7 +3537,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                   id: `serve-marker-${index}`,
                   time: marker.time,
                   tone: `serve-${marker.side}` as const,
-                  title: `${marker.side === "review" ? "Serving side needs review" : `${marker.side} side serves`}${marker.origin === "model" ? " · model" : " · manual"}${marker.modelConfidence !== undefined ? ` · ${(marker.modelConfidence * 100).toFixed(1)}% near-side probability` : ""}${marker.notes ? ` · ${marker.notes}` : ""}`,
+                  title: `${marker.side === "review" ? "Serving side needs review" : `${marker.side} side serves`}${marker.origin === "model" ? " · model" : " · manual"}${marker.modelConfidence !== undefined ? ` · ${marker.modelSide ?? marker.side} score ${marker.modelConfidence.toFixed(3)}` : ""}${marker.notes ? ` · ${marker.notes}` : ""}`,
                 })),
                 ...labels.sideSwitches.map((marker, index) => ({
                   id: `side-switch-${index}`,

@@ -1,3 +1,4 @@
+import { privateValue } from "./private-ledger.mjs";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -30,15 +31,18 @@ import {
   PRODUCTION_MODEL_ID,
 } from "@/lib/production-model";
 import { ENVIRONMENT_EXPERIMENT_MODELS } from "@/lib/experiment-models";
+import type { LabelingResearch, ResearchExportPolicy } from "@/lib/labeling-research";
+import { parseServingPredictions, servingPredictionsToMarkers, type ServingPrediction } from "@/lib/labeling-serving";
+import { loadLabelingResearchReferences } from "@/lib/server/labeling-research";
 import {
   getAnalysesRoot,
   getIntakeAnalysesRoot,
   getIntakeWorkspaces,
 } from "@/lib/storage";
 
-const DEFAULT_MEDIA_ROOT = "/mnt/freenas/volleycut";
+const DEFAULT_MEDIA_ROOT = process.env.VOLLEYCUT_MEDIA_ROOT ?? privateValue("private-reference-0059");
 const DEFAULT_LABELING_WORKSPACE =
-  "/mnt/freenas/volleycut/labeling-v1-2026-08-09";
+  process.env.VOLLEYCUT_LABELING_WORKSPACE ?? privateValue("private-reference-0102");
 
 const mediaRoot = path.resolve(
   /* turbopackIgnore: true */
@@ -59,7 +63,7 @@ const fullNasCorpusV3Path = path.resolve(
 const rawNoBackupRoot = path.resolve(
   /* turbopackIgnore: true */
   process.env.VOLLEYCUT_RAW_NO_BACKUP_ROOT ??
-    "/mnt/freenas/volleycut-raw-no-backup",
+    privateValue("private-reference-0106"),
 );
 const fullVideoSideSwitchMarkersPath = path.join(
   labelingWorkspace,
@@ -122,6 +126,7 @@ type LabelingTaskEntry = {
 };
 
 type FullNasCorpusRecord = {
+  humanReviewedImport?: boolean;
   recordingId: string;
   environment: LabelDocument["recording"]["environment"];
   sourceGroup: string;
@@ -188,9 +193,13 @@ export type ProductionReferenceLabels = SolReferenceLabels & {
   serveMarkers?: ServeMarker[];
   humanServeMarkers?: ServeMarker[];
   serveModelLabel?: string;
+  servingPredictions?: ServingPrediction[];
   sideSwitches?: SideSwitch[];
   sideSwitchModelLabel?: string;
   suppressedRanges?: RallyLabel[];
+  exportRallies?: RallyLabel[];
+  exportPolicy?: ResearchExportPolicy;
+  research?: LabelingResearch;
 };
 
 export type ExperimentModelReferenceLabels = ProductionReferenceLabels & {
@@ -619,6 +628,7 @@ function readCorpusRecord(value: unknown, index: number): FullNasCorpusRecord {
     serveMarkers: (record.serveMarkers ?? []) as ServeMarker[],
     sideSwitches: (record.sideSwitches ?? []) as SideSwitch[],
     candidateSource: record.candidateSource as Record<string, unknown>,
+    humanReviewedImport: record.humanReviewedImport === true,
   };
 }
 
@@ -744,7 +754,7 @@ async function readAllEntries(): Promise<LabelingTaskEntry[]> {
 function corpusTaskDocument(entry: LabelingTaskEntry): LabelDocument {
   const record = entry.corpusRecord;
   if (!record) throw new Error("corpus task entry has no record");
-  const reviewedExport = record.sourceType === "human-reviewed-model-feedback-export";
+  const reviewedExport = record.humanReviewedImport === true || record.sourceType === "human-reviewed-model-feedback-export";
   const document = {
     schemaVersion: 1,
     kind: "volleycut-rally-labels",
@@ -766,7 +776,7 @@ function corpusTaskDocument(entry: LabelingTaskEntry): LabelDocument {
       game: {
         playersPerTeam: null,
         targetPoints: null,
-        format: reviewedExport ? "human-reviewed exported project" : null,
+        format: record.sourceType === "human-reviewed-model-feedback-export" ? "human-reviewed exported project" : null,
       },
       capture: {
         sourceType: record.sourceType,
@@ -834,7 +844,9 @@ function corpusTaskDocument(entry: LabelingTaskEntry): LabelDocument {
 }
 
 async function loadCorpusEntry(entry: LabelingTaskEntry): Promise<PreparedLabelingTask> {
-  const document = corpusTaskDocument(entry);
+  const document = entry.corpusRecord?.sourceType === "imported-human-labels"
+    ? parseLabelDocument(JSON.parse(await readFile(entry.taskPath, "utf8"))) : corpusTaskDocument(entry);
+  if (document.recording.id !== entry.id) throw new Error("Imported human recording identity does not match");
   const proxyMetadata = await stat(entry.proxyPath);
   if (!proxyMetadata.isFile() || proxyMetadata.size === 0) {
     throw new Error(`full-NAS corpus video is unavailable: ${entry.id}`);
@@ -1002,6 +1014,9 @@ export async function getSavedLabelingDocument(
     return { document, source: "completed", savedAt: metadata.mtime.toISOString() };
   } catch (error) {
     if (!isMissingFile(error)) throw error;
+  }
+  if (task.corpusRecord?.humanReviewedImport || ["human-reviewed-model-feedback-export", "imported-human-labels"].includes(task.corpusRecord?.sourceType ?? "")) {
+    return { document: task.document, source: "task", savedAt: null };
   }
   if (task.batch === "full") {
     const seed = await loadProductionLabelSeed(task);
@@ -1291,37 +1306,12 @@ async function loadCorpusModelReferences(
       .map((range) => ({ ...range, tags: ["ai-reference", "suppression-adjusted"] }));
     const suppressedRanges = subtractRanges(productionRallies, suppressionAdjusted);
     const servingSide = jsonObject(evaluation.servingSide);
-    const serveMarkers = Array.isArray(servingSide?.candidates)
-      ? servingSide.candidates.flatMap((value): ServeMarker[] => {
-          const candidate = jsonObject(value);
-          const time = finiteNumber(candidate?.anchor);
-          const nearProbability = finiteNumber(candidate?.nearProbability);
-          const predictedSide = candidate?.side;
-          const side = candidate?.verdict === "review"
-            ? "review"
-            : predictedSide === "near" || predictedSide === "far"
-              ? predictedSide
-              : null;
-          if (time === null || side === null) return [];
-          return [{
-            time,
-            side,
-            origin: "model",
-            modelSide: side,
-            ...(nearProbability === null
-              ? {}
-              : {
-                  modelConfidence: side === "far"
-                    ? 1 - nearProbability
-                    : nearProbability,
-                }),
-            ...(typeof servingSide.modelId === "string"
-              ? { modelId: servingSide.modelId }
-              : {}),
-            ...(typeof candidate?.id === "string" ? { rallyId: candidate.id } : {}),
-          }];
-        }).sort((left, right) => left.time - right.time)
-      : [];
+    const servingPredictions = servingSide
+      ? parseServingPredictions(servingSide, task.document.recording.durationSeconds)
+      : undefined;
+    const serveMarkers = servingPredictions
+      ? servingPredictionsToMarkers(servingPredictions, String(servingSide?.modelId ?? "Serving-side production model"))
+      : undefined;
     const sideSwitch = jsonObject(evaluation.sideSwitch);
     const sideSwitches = Array.isArray(sideSwitch?.candidates)
       ? sideSwitch.candidates.flatMap((value): SideSwitch[] => {
@@ -1371,6 +1361,7 @@ async function loadCorpusModelReferences(
           "Fresh label-independent replay of all current production models for the full-NAS v3 corpus.",
         rallies: productionRallies,
         serveMarkers,
+        servingPredictions,
         serveModelLabel: String(servingSide?.modelId ?? "Serving-side production model"),
         sideSwitches,
         sideSwitchModelLabel: String(sideSwitch?.modelId ?? "Side-switch production model"),
@@ -1649,10 +1640,10 @@ export async function getProductionReferenceLabels(
           : "Frozen production rally ensemble and score-marker specialists used to initialize this labeling task."),
         rallies:
           corpusProduction?.rallies ?? seed?.document.rallies ?? task.document.rallies,
-        ...((corpusProduction?.serveMarkers?.length ?? 0) > 0 || serveReference
+        ...(corpusProduction?.serveMarkers !== undefined || serveReference
           ? {
               serveMarkers:
-                corpusProduction?.serveMarkers?.length
+                corpusProduction?.serveMarkers !== undefined
                   ? corpusProduction.serveMarkers
                   : serveReference?.markers ?? [],
               ...(serveReference?.humanMarkers
@@ -1661,6 +1652,9 @@ export async function getProductionReferenceLabels(
               serveModelLabel:
                 corpusProduction?.serveModelLabel ?? serveReference?.label,
             }
+          : {}),
+        ...(corpusProduction?.servingPredictions !== undefined
+          ? { servingPredictions: corpusProduction.servingPredictions }
           : {}),
         ...((corpusProduction?.sideSwitches?.length ?? 0) > 0 ||
         (serveReference?.sideSwitches?.length ?? 0) > 0
@@ -1718,8 +1712,8 @@ export async function getModelBreakdownReferenceLabels(
 export async function getExperimentModelReferenceLabels(
   task: PreparedLabelingTask,
 ): Promise<ExperimentModelReferenceLabels[]> {
-  if (task.batch !== "full") return [];
-  if (task.corpusRecord) return [];
+  const researchReferences = await loadLabelingResearchReferences(task.document);
+  if (task.batch !== "full" || task.corpusRecord) return researchReferences;
   const references = await Promise.all(
     ENVIRONMENT_EXPERIMENT_MODELS.map(async (model): Promise<ExperimentModelReferenceLabels | null> => {
       try {
@@ -1745,9 +1739,9 @@ export async function getExperimentModelReferenceLabels(
       }
     }),
   );
-  return references.filter(
+  return [...references.filter(
     (reference): reference is ExperimentModelReferenceLabels => reference !== null,
-  );
+  ), ...researchReferences];
 }
 
 export async function getSolReferenceLabels(

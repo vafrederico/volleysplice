@@ -1,0 +1,11 @@
+# Scoped task membership in the report
+
+The frozen v3 task picker compares its selected draw literally with each task's numeric draw. At the default `all registered draws` mean, it finds no task. Its fallback all-tasks choice then renders roles from every saved task, irrespective of scenario, model or precision. With the 270 neural task/precision records this can produce a large, misleading inventory.
+
+The additive v4 renderer retains the exact v3 compressed report and source-download bytes and all numerical chart/table behavior. The task picker now uses the current scenario or selected variants, model, actual draw and embedding precision. A saved mean makes its actual registered draws available for inspection; it does not create a mean training task. The default is one concrete matching task. The explicit “All matching saved tasks” option combines only that filtered set. A view without matching saved tasks shows a clear empty membership state while keeping the source inventory and production exposure visible.
+
+The renderer has two lossless-payload/audit-contract tests and five Node tests that execute its actual task-selection JavaScript. A metadata-only extension of the existing synthetic series adds 270 invented neural task memberships plus two fixed production tasks. Bounded offline browser QA checks the default 24 matching neural tasks with one selected and explicit combined roles limited to those 24. The fixed-production scenario keeps its shipped task memberships available independently of neural model/draw/precision controls, matching its charts. The compatible, separately named actual-report QA v4 retains the frozen v3 QA checks and additionally verifies task options, selected membership and every visible inventory role against source task metadata. All temporary files, browser artifacts and screenshots stay on the NAS.
+
+No genuine model outcome was opened for this interface correction. Actual final audited-data desktop/390px checks and visual inspection remain required before publication. The v1–v3 renderers and the original actual-report QA remain unchanged.
+
+A short explanatory sentence near the operating-point table defines event F1 and conditional boundary errors using the existing evaluation contract. It distinguishes these diagnostics from retained-core-time recall without changing any metric.

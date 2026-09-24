@@ -1,0 +1,15 @@
+.field { min-width: 0; padding: 0; margin: 0; border: 0; }
+.field legend { margin-bottom: 5px; padding: 0; color: #777970; font: var(--v2-font-micro, 12px) "Atkinson Hyperlegible Mono", monospace; text-transform: uppercase; }
+.dropdown { position: relative; min-width: 0; }
+.dropdown > summary { min-height: clamp(38px, 1.8vw, 46px); padding: 10px 11px; border: 1px solid #b9b8af; border-radius: 2px; background: white; color: #171914; font: var(--v2-font-sm, 13px) "Atkinson Hyperlegible Mono", monospace; cursor: pointer; }
+.dropdown > summary:focus-visible { outline: 2px solid #275ca7; outline-offset: 2px; }
+.menu { position: absolute; left: 0; top: calc(100% + 5px); z-index: 40; width: max(100%, 330px); max-width: min(440px, calc(100vw - 40px)); padding: 8px; border: 1px solid #b9b8af; border-radius: 3px; background: #fff; box-shadow: 0 7px 22px #1b241f24; }
+.actions { display: flex; align-items: center; gap: 6px; padding: 2px 3px 9px; border-bottom: 1px solid #e0e3d9; }
+.actions > span { flex: 1; color: #5d665a; font-size: 11px; }
+.actions button { padding: 4px 7px; border: 1px solid #b8c5d5; border-radius: 2px; background: #f5f8fc; color: #204b86; cursor: pointer; font-size: 12px; }
+.actions button:disabled { opacity: .45; cursor: default; }
+.options { display: grid; max-height: min(380px, 55vh); overflow-y: auto; padding-top: 5px; }
+.field label.option { display: flex; align-items: flex-start; gap: 9px; padding: 8px 5px; color: #273022; font: 13px/1.4 sans-serif; text-transform: none; cursor: pointer; }
+.field label.option:hover { background: #f1f5fa; }
+.option input { flex: 0 0 auto; width: 16px; height: 16px; margin: 1px 0 0; accent-color: #275ca7; }
+.options p { padding: 5px; color: #777970; font-size: 12px; }

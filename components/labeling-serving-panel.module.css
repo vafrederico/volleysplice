@@ -1,0 +1,13 @@
+.panel { margin-top: 18px; padding: 18px; border: 1px solid #b9c3cd; background: #fafbf8; color: #20241e; }
+.panel h3 { margin: 0; font-size: 16px; }
+.panel p { margin: 8px 0; font-size: 12px; line-height: 1.5; }
+.toggle { display: flex; align-items: center; gap: 7px; font-size: 12px; margin: 10px 0; }
+.scroll { max-height: 340px; overflow: auto; border: 1px solid #d0d4c9; }
+.panel table { width: 100%; border-collapse: collapse; background: white; font-size: 12px; text-align: left; }
+.panel th { position: sticky; top: 0; background: #eef1ea; z-index: 1; }
+.panel th, .panel td { padding: 8px 10px; vertical-align: top; border-bottom: 1px solid #e0e3dc; }
+.panel td:nth-child(1), .panel td:nth-child(3) { white-space: nowrap; }
+.panel tr[data-verdict="review"] { background: #fff9e7; }
+.panel tr[data-verdict="not-serve"] { background: #f3f3f1; color: #53584e; }
+.panel small { display: block; margin-top: 5px; line-height: 1.4; }
+.panel button { padding: 5px; border: 1px solid #bbc5d0; color: #204b86; background: white; cursor: pointer; font: inherit; }
