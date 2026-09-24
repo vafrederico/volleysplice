@@ -724,7 +724,7 @@ final class NativeFeatureCache {
         );
         String identity = String.join("\n",
                 CACHE_VERSION,
-                "visual-extractor=opencv-v1-yuv-lut",
+                "visual-extractor=opencv-v2-decoded-yuv-color",
                 "audio-extractor=native-dsp-v1",
                 "frame=" + String.join(",", FeatureSchema.FRAME),
                 "audio=" + String.join(",", FeatureSchema.AUDIO),

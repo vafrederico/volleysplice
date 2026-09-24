@@ -31,7 +31,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = if (providers.gradleProperty("pipelineBenchmark").isPresent) ".pipelinebenchmark" else ".debug"
             versionNameSuffix = "-debug"
         }
         release {
@@ -59,6 +59,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    sourceSets.getByName("main").java.srcDir("../video-common/src/main/java")
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -66,6 +68,22 @@ android {
 
     packaging {
         jniLibs.useLegacyPackaging = false
+    }
+}
+
+providers.environmentVariable("VOLLEYCUT_BENCH_BUILD_DIR").orNull?.let {
+    layout.buildDirectory.set(file(it).resolveSibling("pipeline-build"))
+}
+
+if (providers.gradleProperty("pipelineBenchmark").isPresent) {
+    android.sourceSets.getByName("debug").java.srcDir("src/pipelineBenchmark/java")
+    android.sourceSets.getByName("debug").manifest.srcFile("src/pipelineBenchmark/AndroidManifest.xml")
+    android.sourceSets.getByName("debug").java.srcDir("../neuralbenchmark/src/main/java")
+    dependencies {
+        add("debugImplementation", "com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
+        add("debugImplementation", "com.google.ai.edge.litert:litert:1.4.2")
+        add("debugImplementation", "com.google.ai.edge.litert:litert-gpu:1.4.2")
+        add("debugImplementation", "com.google.ai.edge.litert:litert-gpu-api:1.4.2")
     }
 }
 

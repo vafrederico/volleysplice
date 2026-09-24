@@ -13,6 +13,22 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 When the production app is served on port 3000, its optional reverse-proxy URL
 is configured outside Git through `VOLLEYCUT_APP_BASE_URL`.
 
+## Private research inputs and artifacts
+
+Never embed private dataset files, original media names, identifying recording or
+project IDs, machine/NAS paths, private URLs, or private artifact locations directly
+in checked-in code, documentation, tests, generated reports, or client bundles. Use
+stable recording, source-group, and artifact indexes from the external private
+ledger. Resolve exact runtime values through `VOLLEYCUT_PRIVATE_LEDGER` (or its
+`_WINDOWS`/`_POSIX` override) and other ignored local environment configuration.
+Repository-relative links to checked-in code and public artifacts are allowed.
+
+Keep the ledger and its mappings outside Git. A missing ledger entry must fail
+closed; do not substitute a default private path or copy an identifying value into
+a fallback. Before committing research changes, run the branch publication audit
+described in [`docs/research/private-research-ledger.md`](docs/research/private-research-ledger.md)
+against the changed files and branch history.
+
 ## Android release signing
 
 Do not open PowerShell, a terminal window, or any other interactive process to sign

@@ -9,6 +9,9 @@ import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.net.Uri;
 
+import com.volleycut.video.DecodedVideoColor;
+import com.volleycut.video.YuvColorConversion;
+
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
@@ -165,6 +168,16 @@ final class SpecialistFrameDecoder {
         return finalOutput || atOrAfterTarget || nearEndFallback;
     }
 
+    static int terminalConversionEnd(int satisfiedEnd, int requestCount,
+            long presentationUs, long lastTargetUs, long durationUs) {
+        // EOS can arrive in a separate empty output buffer. Preserve the last
+        // actual image for a request just beyond its PTS, even when this image
+        // also satisfies the preceding request. Include both consumers' formats.
+        boolean terminal = lastTargetUs + 1_000_000 >= durationUs
+                && presentationUs + 1_000_000 >= lastTargetUs;
+        return satisfiedEnd < requestCount && terminal ? requestCount : satisfiedEnd;
+    }
+
     private SegmentResult decodeSegment(
             Uri uri,
             AnalysisTypes.MediaInfo media,
@@ -258,7 +271,11 @@ final class SpecialistFrameDecoder {
                         }
                         boolean produceServing = false;
                         boolean produceSideSwitch = false;
-                        for (int index = target; index < satisfiedEnd; index++) {
+                        int conversionEnd = terminalConversionEnd(
+                                satisfiedEnd, requests.size(), info.presentationTimeUs,
+                                Math.round(requests.get(requests.size() - 1).time * 1_000_000), durationUs
+                        );
+                        for (int index = target; index < conversionEnd; index++) {
                             produceServing |= requests.get(index).serving;
                             produceSideSwitch |= requests.get(index).sideSwitch;
                         }
@@ -271,7 +288,8 @@ final class SpecialistFrameDecoder {
                         try (image) {
                             long conversionStarted = System.nanoTime();
                             converted = converter.convert(
-                                    image, produceServing, produceSideSwitch
+                                    image, produceServing, produceSideSwitch,
+                                    DecodedVideoColor.resolve(codec.getOutputFormat(outputIndex), format).conversion()
                             );
                             conversionNanos += System.nanoTime() - conversionStarted;
                             convertedOutputs++;
@@ -281,7 +299,7 @@ final class SpecialistFrameDecoder {
                                 put(requests.get(target), converted, serving, switches);
                                 target++;
                             }
-                            fallback = null;
+                            fallback = conversionEnd > satisfiedEnd ? converted : null;
                         } else {
                             fallback = converted;
                         }
@@ -302,7 +320,8 @@ final class SpecialistFrameDecoder {
                 while (target < requests.size()) put(requests.get(target++), fallback, serving, switches);
             }
             if (target != requests.size()) {
-                throw new IOException("Specialist frame segment ended early (" + target + "/" + requests.size() + ")");
+                throw new IOException("Specialist frame segment ended early (" + target + "/" + requests.size()
+                        + "; next=" + requests.get(target).time + "; duration=" + media.durationSeconds() + ")");
             }
             return new SegmentResult(
                     target, decodedOutputs, convertedOutputs, setupNanos, conversionNanos
@@ -327,7 +346,8 @@ final class SpecialistFrameDecoder {
             this.roi = roi;
         }
 
-        Converted convert(Image image, boolean produceServing, boolean produceSideSwitch) {
+        Converted convert(Image image, boolean produceServing, boolean produceSideSwitch,
+                YuvColorConversion color) {
             Mat servingRgba = null;
             Mat servingGray = null;
             Mat switchRgba = null;
@@ -343,7 +363,7 @@ final class SpecialistFrameDecoder {
                                 ServingSideModelsKt.SERVING_SIDE_HEIGHT
                         );
                     }
-                    servingRgba = servingSampler.convert(image);
+                    servingRgba = servingSampler.convert(image, color);
                     servingGray = new Mat(
                             ServingSideModelsKt.SERVING_SIDE_HEIGHT,
                             ServingSideModelsKt.SERVING_SIDE_WIDTH,
@@ -362,7 +382,7 @@ final class SpecialistFrameDecoder {
                                 SideSwitchModelsKt.SIDE_SWITCH_HEIGHT
                         );
                     }
-                    switchRgba = switchSampler.convert(image);
+                    switchRgba = switchSampler.convert(image, color);
                     switchBgr = new Mat(
                             SideSwitchModelsKt.SIDE_SWITCH_HEIGHT,
                             SideSwitchModelsKt.SIDE_SWITCH_WIDTH,

@@ -16,6 +16,9 @@ import android.os.HandlerThread;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 
+import com.volleycut.video.DecodedVideoColor;
+import com.volleycut.video.YuvColorConversion;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -107,7 +110,7 @@ final class NativeVideoDecoder {
             codecThread = new HandlerThread("VolleySplice-MediaCodec");
             codecThread.start();
             AsyncDecodeState state = new AsyncDecodeState(
-                    extractor, samplePlan, media, roi, times,
+                    extractor, format, samplePlan, media, roi, times,
                     progress, cancelled, profiler, featureWorker, decoderName,
                     System.nanoTime(), resumeStartRow, cached.rows(), materializedPresentationUs
             );
@@ -289,7 +292,8 @@ final class NativeVideoDecoder {
                     }
                     try {
                         operationStarted = System.nanoTime();
-                        Mat rgba = imageToAnalysisRgba(image, roi, media.rotation());
+                        Mat rgba = imageToAnalysisRgba(image, roi, media.rotation(),
+                                DecodedVideoColor.resolve(codec.getOutputFormat(outputIndex), format).conversion());
                         profiler.add("yuv_crop_scale_color", System.nanoTime() - operationStarted);
                         try {
                             operationStarted = System.nanoTime();
@@ -597,6 +601,7 @@ final class NativeVideoDecoder {
 
     private static final class AsyncDecodeState extends MediaCodec.Callback {
         private final MediaExtractor extractor;
+        private final MediaFormat trackFormat;
         private final SamplePlan samplePlan;
         private final AnalysisTypes.MediaInfo media;
         private final AnalysisTypes.Roi roi;
@@ -624,6 +629,7 @@ final class NativeVideoDecoder {
 
         AsyncDecodeState(
                 MediaExtractor extractor,
+                MediaFormat trackFormat,
                 SamplePlan samplePlan,
                 AnalysisTypes.MediaInfo media,
                 AnalysisTypes.Roi roi,
@@ -639,6 +645,7 @@ final class NativeVideoDecoder {
                 Set<Long> materializedPresentationUs
         ) {
             this.extractor = extractor;
+            this.trackFormat = trackFormat;
             this.samplePlan = samplePlan;
             this.media = media;
             this.roi = roi;
@@ -764,7 +771,8 @@ final class NativeVideoDecoder {
                     profiler.add("yuv_sampler_setup", System.nanoTime() - operationStarted);
                     operationStarted = System.nanoTime();
                 }
-                Mat rgba = yuvCropSampler.convert(image);
+                Mat rgba = yuvCropSampler.convert(image,
+                        DecodedVideoColor.resolve(codec.getOutputFormat(outputIndex), trackFormat).conversion());
                 profiler.add("yuv_crop_scale_color", System.nanoTime() - operationStarted);
                 try {
                     operationStarted = System.nanoTime();
@@ -879,10 +887,11 @@ final class NativeVideoDecoder {
         }
     }
 
-    static Mat imageToAnalysisRgba(Image image, AnalysisTypes.Roi roi, int rotation) {
+    static Mat imageToAnalysisRgba(Image image, AnalysisTypes.Roi roi, int rotation,
+            YuvColorConversion color) {
         return imageToRgba(
                 image, roi, rotation,
-                FeatureSchema.ANALYSIS_WIDTH, FeatureSchema.ANALYSIS_HEIGHT
+                FeatureSchema.ANALYSIS_WIDTH, FeatureSchema.ANALYSIS_HEIGHT, color
         );
     }
 
@@ -891,7 +900,8 @@ final class NativeVideoDecoder {
             AnalysisTypes.Roi roi,
             int rotation,
             int outputWidth,
-            int outputHeight
+            int outputHeight,
+            YuvColorConversion color
     ) {
         if (outputWidth <= 0 || outputHeight <= 0) {
             throw new IllegalArgumentException("Output dimensions must be positive");
@@ -931,15 +941,10 @@ final class NativeVideoDecoder {
                 int uValue = uBuffer.get(chromaY * uRowStride + chromaX * uPixelStride) & 0xff;
                 int vValue = vBuffer.get(chromaY * vRowStride + chromaX * vPixelStride) & 0xff;
 
-                int c = Math.max(0, yValue - 16);
-                int d = uValue - 128;
-                int e = vValue - 128;
-                int red = clamp((298 * c + 409 * e + 128) >> 8, 0, 255);
-                int green = clamp((298 * c - 100 * d - 208 * e + 128) >> 8, 0, 255);
-                int blue = clamp((298 * c + 516 * d + 128) >> 8, 0, 255);
-                rgba[outputIndex++] = (byte) red;
-                rgba[outputIndex++] = (byte) green;
-                rgba[outputIndex++] = (byte) blue;
+                int rgb = color.rgb(yValue, uValue, vValue);
+                rgba[outputIndex++] = (byte) (rgb >> 16);
+                rgba[outputIndex++] = (byte) (rgb >> 8);
+                rgba[outputIndex++] = (byte) rgb;
                 rgba[outputIndex++] = (byte) 255;
             }
         }
@@ -949,23 +954,6 @@ final class NativeVideoDecoder {
     }
 
     static final class YuvCropSampler {
-        private static final int[] Y_COMPONENT = new int[256];
-        private static final int[] RED_FROM_V = new int[256];
-        private static final int[] GREEN_FROM_U = new int[256];
-        private static final int[] GREEN_FROM_V = new int[256];
-        private static final int[] BLUE_FROM_U = new int[256];
-
-        static {
-            for (int value = 0; value < 256; value++) {
-                Y_COMPONENT[value] = 298 * Math.max(0, value - 16);
-                int chroma = value - 128;
-                RED_FROM_V[value] = 409 * chroma;
-                GREEN_FROM_U[value] = -100 * chroma;
-                GREEN_FROM_V[value] = -208 * chroma;
-                BLUE_FROM_U[value] = 516 * chroma;
-            }
-        }
-
         private final Rect crop;
         private final int yRowStride;
         private final int yPixelStride;
@@ -1061,7 +1049,7 @@ final class NativeVideoDecoder {
                     && vPixelStride == planes[2].getPixelStride();
         }
 
-        Mat convert(Image image) {
+        Mat convert(Image image, YuvColorConversion color) {
             Image.Plane[] planes = image.getPlanes();
             ByteBuffer yBuffer = planes[0].getBuffer().duplicate();
             ByteBuffer uBuffer = planes[1].getBuffer().duplicate();
@@ -1071,14 +1059,10 @@ final class NativeVideoDecoder {
                 int yValue = yBuffer.get(yOffsets[index]) & 0xff;
                 int uValue = uBuffer.get(uOffsets[index]) & 0xff;
                 int vValue = vBuffer.get(vOffsets[index]) & 0xff;
-                int yComponent = Y_COMPONENT[yValue];
-                int red = clamp((yComponent + RED_FROM_V[vValue] + 128) >> 8, 0, 255);
-                int green = clamp((yComponent + GREEN_FROM_U[uValue]
-                        + GREEN_FROM_V[vValue] + 128) >> 8, 0, 255);
-                int blue = clamp((yComponent + BLUE_FROM_U[uValue] + 128) >> 8, 0, 255);
-                rgba[outputIndex++] = (byte) red;
-                rgba[outputIndex++] = (byte) green;
-                rgba[outputIndex++] = (byte) blue;
+                int rgb = color.rgb(yValue, uValue, vValue);
+                rgba[outputIndex++] = (byte) (rgb >> 16);
+                rgba[outputIndex++] = (byte) (rgb >> 8);
+                rgba[outputIndex++] = (byte) rgb;
                 rgba[outputIndex++] = (byte) 255;
             }
             Mat result = new Mat(

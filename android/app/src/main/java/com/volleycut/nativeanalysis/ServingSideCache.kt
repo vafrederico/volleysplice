@@ -2,7 +2,7 @@ package com.volleycut.nativeanalysis
 
 import java.security.MessageDigest
 
-internal const val SERVING_SIDE_DECODE_VARIANT = "shared-gap5-mediacodec-yuv-gray-bgr-v2"
+internal const val SERVING_SIDE_DECODE_VARIANT = "shared-gap5-mediacodec-decoded-yuv-color-gray-bgr-v3"
 
 internal data class ServingSideCacheIdentity(
     val sourceUri: String,

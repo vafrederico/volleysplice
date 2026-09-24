@@ -21,9 +21,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 final class AnalysisEngine {
     private final Context context;
+    interface RallyOverride {
+        List<AnalysisTypes.Interval> run(Uri uri, AnalysisTypes.Roi roi, double[] times,
+                float[] contextual, double duration, Map<String, Double> profile) throws IOException;
+    }
+    private final RallyOverride rallyOverride;
 
     AnalysisEngine(Context context) {
+        this(context, null);
+    }
+
+    AnalysisEngine(Context context, RallyOverride rallyOverride) {
         this.context = context.getApplicationContext();
+        this.rallyOverride = rallyOverride;
     }
 
     AnalysisTypes.AnalysisResult analyze(
@@ -403,6 +413,11 @@ final class AnalysisEngine {
                     allLabelsRaw, previousRaw
             );
             profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
+            if (rallyOverride != null) {
+                // Production signals remain available to the frozen score specialists.
+                // The override alone determines the selected rally boundaries.
+                ranges = rallyOverride.run(uri, roi, times, contextual, analyzedDurationSeconds, profile);
+            }
             operation = System.nanoTime();
             if (includeServingSide) {
                 try {
