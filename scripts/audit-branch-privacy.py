@@ -4,6 +4,7 @@ Use the private source ledger for known identities as well as generic detectors.
 This is a publication gate, not a claim to detect every possible credential.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -19,17 +20,35 @@ PATTERNS = {
     "credential": re.compile(r"(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bghp_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\bAKIA[A-Z0-9]{16}\b)"),
 }
 
+# These two established public app links lead to LICENSE and THIRD_PARTY_NOTICES.
+# Only exact URL tokens in this source file may bypass ledger-identity matching;
+# generic privacy detectors still inspect the original text. Hashes keep the
+# public repository owner out of the audit's own source and do not exempt that
+# identity elsewhere, arbitrary GitHub URLs, filenames, or commit messages.
+PUBLIC_LEGAL_URL_SHA256 = {
+    "android/app/src/main/java/com/volleycut/nativeanalysis/EditorActivity.kt": {
+        "77657dab312c536d06976783e15351ce6fec445651a7773fddc727acfb024425",
+        "63d4d0eb3326310a17c5d02bb51151ede47a3956dcd90e04c3e26d77d1b4a728",
+    },
+}
+HTTPS_TOKEN = re.compile(r"https://[^\s\"'<>]+")
+
 
 def git(*args):
     return subprocess.check_output(["git", *args])
 
 
-def categories(text, identities):
+def categories(text, identities, source_path=None):
     # Apply the same version exception to individual lines and historical blobs.
     text = "\n".join(line for line in text.splitlines()
                      if not re.fullmatch(r"[A-Za-z0-9_.-]+==[A-Za-z0-9_.+!-]+", line.strip()))
     result = [name for name, pattern in PATTERNS.items() if pattern.search(text)]
-    if any(value in text for value in identities):
+    approved = PUBLIC_LEGAL_URL_SHA256.get(source_path, set())
+    ledger_text = HTTPS_TOKEN.sub(
+        lambda match: "" if hashlib.sha256(match.group().encode("utf8")).hexdigest() in approved
+        else match.group(), text,
+    ) if approved else text
+    if any(value in ledger_text for value in identities):
         result.append("ledger-identity")
     return result
 
@@ -68,7 +87,7 @@ def main():
             data = source.read_bytes()
         inspected += 1
         for line, text in enumerate(data.decode("utf8", errors="replace").splitlines(), 1):
-            kinds = categories(text, identities)
+            kinds = categories(text, identities, path)
             if kinds:
                 findings.append({"file": path if not categories(path, identities) else "private-filename",
                                  "line": line, "categories": kinds})
@@ -87,7 +106,7 @@ def main():
                 data = process.stdout.read(int(header[2])); process.stdout.read(1)
                 # Commit metadata includes author identities; count separately.
                 if header[1] == "blob":
-                    kinds = sorted(set(categories(data.decode("utf8", errors="replace"), identities)
+                    kinds = sorted(set(categories(data.decode("utf8", errors="replace"), identities, object_path)
                                        + categories(object_path, identities)))
                     if kinds: historical.append({"object": oid, "categories": kinds})
                 elif header[1] == "commit":

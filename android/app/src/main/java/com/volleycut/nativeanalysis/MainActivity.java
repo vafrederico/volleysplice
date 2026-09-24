@@ -81,7 +81,6 @@ public final class MainActivity extends Activity {
     private Button copyButton;
     private Button editorButton;
     private Button clearCacheButton;
-    private CheckBox fullFrame;
     private CheckBox limitSourceFrames;
     private CheckBox useFeatureCache;
     private TextView cacheLabel;
@@ -150,11 +149,6 @@ public final class MainActivity extends Activity {
         fileLabel = text("No video selected", 14, Color.DKGRAY);
         root.addView(fileLabel, margins(0, dp(8), 0, 0));
 
-        fullFrame = new CheckBox(this);
-        fullFrame.setText("Use full frame (distribution-shift diagnostic)");
-        fullFrame.setTextColor(INK);
-        fullFrame.setTextSize(15);
-        root.addView(fullFrame, margins(0, dp(12), 0, 0));
 
         limitSourceFrames = new CheckBox(this);
         limitSourceFrames.setText("Stop after 1,000 source frames (benchmark)");
@@ -351,7 +345,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try { getWindow().setSustainedPerformanceMode(true); } catch (RuntimeException ignored) {}
         Uri uri = selectedUri;
-        boolean useFullFrame = fullFrame.isChecked();
+        boolean useFullFrame = true;
         boolean writeAutomationOutput = automatedRun;
         String runId = automatedRunId;
         int requestedSourceFrameLimit = automatedRun

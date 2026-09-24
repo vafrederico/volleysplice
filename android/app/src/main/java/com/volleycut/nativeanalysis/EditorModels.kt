@@ -65,6 +65,8 @@ internal data class EditorSeed(
     val sideSwitchEnabled: Boolean = false,
     val scoreTrackingInitiallyEnabled: Boolean = false,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
+    /** Null for legacy recovery records that did not retain extraction geometry. */
+    val analysisRoi: AnalysisTypes.Roi? = null,
 ) {
     val sourceRevision: String by lazy {
         val canonical = buildString {

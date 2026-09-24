@@ -546,10 +546,37 @@ these prototype accuracy numbers as intrinsic model accuracy or editor parity.
 The [input-drift report](docs/research/native-small-tcn-input-drift.md) and ledger
 `private-reference-0217` record the counterfactuals. A corrected native implementation
 has not yet passed a controlled video-to-feature qualification.
-The range/matrix correction is now implemented in the normal Android application
-and benchmark, with versioned cache invalidation; normal-app build and unit checks
-pass. Phone work is stopped at the user's request, so no corrected device accuracy
-or timing result is claimed. See the [follow-up report](docs/research/mobile-tcn-follow-up.md).
+The range/matrix correction is implemented in the normal Android application
+and benchmark, with versioned cache invalidation. New Android analyses now use the
+full frame, matching the web default; project matching includes ROI geometry so an
+older cropped project is not reused for a new full-frame analysis. Existing saved
+projects retain their stored geometry and edits. Legacy recovery seeds without ROI
+provenance remain recoverable but cannot satisfy a new full-frame analysis request;
+new seeds retain the exact ROI and provenance. Normal-app build and all 165 unit
+tests pass.
+
+Device testing has resumed. The completed corrected Small and Large cases on
+`recording-044` found 40 and 39 rallies respectively, with no wholly missed saved
+human rallies. At the declared 2s padding, Small's `P_pad` / `R_core` /
+`F1_padP_coreR` is 78.20% / 97.93% / 86.96%; Large's is 86.84% / 96.99% / 91.63%.
+Rallies were ready in 556.871s / 595.719s and both score specialists in
+724.430s / 746.346s. These single observations combine color correction and crop
+removal. Both improve recall over the original native runs but lose precision;
+Small's F1 falls and Large's is nearly unchanged. Both still end a previously
+missed rally early. Frozen replay of the actual corrected tensors reproduces device
+probabilities within 7.75e-7 and reproduces decoded boundaries. AV-only desktop
+substitutions restore the missed-rally end, while embedding-only substitutions do
+not, identifying residual AV input drift. The production ensemble is affected by
+the same preprocessing change: its corrected run finds 60 rallies and wholly misses
+one saved human rally, versus 56 and zero before. Its `P_pad` / `R_core` /
+`F1_padP_coreR` changes from 61.94% / 96.77% / 75.53% to 66.21% / 96.01% / 78.37%,
+with both score specialists ready in 488.151s. The recall regression accompanies
+higher F1; this is not a uniform improvement. An ordinary normal-app editor run of
+the two-minute excerpt also passes, using full-frame geometry and both specialists:
+six rallies are ready in 27.732s and all analysis in 44.929s, with playback and saved
+project reopening verified. Neural runtime options remain in the benchmark flavor,
+not the normal editor. This is not a retrained model or a feature-parity claim. See
+the [follow-up report](docs/research/mobile-tcn-follow-up.md).
 The benchmark implementation is under [`android/neuralbenchmark`](android/neuralbenchmark)
 and [`scripts/summarize-pixel-complete-pipeline.py`](scripts/summarize-pixel-complete-pipeline.py).
 

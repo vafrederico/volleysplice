@@ -675,25 +675,9 @@ final class AnalysisEngine {
     }
 
     static AnalysisTypes.Roi inferRoi(String filename) {
-        record Known(String needle, double x, double y, double width, double height, String label) {}
-        List<Known> profiles = List.of(
-                new Known("beach-source-02", .02, .12, .96, .86, "Known beach camera"),
-                new Known("beach-source-01", .02, .12, .96, .86, "Known beach camera"),
-                new Known("Dm", .02, .22, .96, .76, "Known grass camera"),
-                new Known("GYU", .02, .18, .96, .80, "Known grass camera"),
-                new Known("qpd", .02, .18, .96, .80, "Known grass camera"),
-                new Known("rSs", .02, .22, .96, .76, "Known grass camera"),
-                new Known("9lc", .04, .14, .92, .84, "Known indoor camera"),
-                new Known("indoor-source-07", .04, .14, .92, .84, "Known indoor camera"),
-                new Known("tds", .03, .12, .94, .86, "Known indoor camera")
-        );
-        for (Known profile : profiles) {
-            if (filename.contains(profile.needle)) {
-                return new AnalysisTypes.Roi(profile.x, profile.y, profile.width, profile.height,
-                        profile.label + " · " + profile.needle);
-            }
-        }
-        return new AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default");
+        // New analysis uses the same full-frame input as the production web app.
+        // A recording's name must never change which players or ball pixels we retain.
+        return new AnalysisTypes.Roi(0, 0, 1, 1, "Full frame");
     }
 
     private static long elapsedMs(long startedNanos) {

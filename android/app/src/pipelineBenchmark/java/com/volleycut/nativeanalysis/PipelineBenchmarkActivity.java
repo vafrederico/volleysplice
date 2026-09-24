@@ -43,6 +43,7 @@ public final class PipelineBenchmarkActivity extends Activity {
                 JSONObject spec=cases.getJSONObject(i), row=new JSONObject().put("id",spec.getString("id"));
                 rows.put(row);row.put("status","running");save(report);
                 try {
+                    if(!spec.optBoolean("fullFrame",true))throw new IOException("Legacy cropped plan: regenerate this benchmark with full-frame inputs");
                     if(spec.getString("family").endsWith("-terminal")) {
                         boolean mobile=spec.getString("family").startsWith("mobile");
                         AnalysisTypes.MediaInfo media=new AnalysisEngine(this).probe(getIntent().getData());
@@ -51,7 +52,7 @@ public final class PipelineBenchmarkActivity extends Activity {
                         JSONObject video=new JSONObject().put("id",spec.getString("id"))
                             .put("videoUri",getIntent().getData().toString()).put("startSeconds",start).put("seconds",end)
                             .put("imageSize",mobile?224:336).put("sampleFps",mobile?2:4)
-                            .put("roi",new JSONArray(new double[]{.03,.12,.94,.86}));
+                            .put("roi",new JSONArray(new double[]{0,0,1,1}));
                         if(mobile)video.put("poolWeights","mobile-encoder-pool_weights.f32");
                         try(ai.onnxruntime.OrtSession.SessionOptions options=new ai.onnxruntime.OrtSession.SessionOptions()) {
                             options.setIntraOpNumThreads(4);
@@ -68,7 +69,7 @@ public final class PipelineBenchmarkActivity extends Activity {
                         double end=media.durationSeconds();
                         double[] serve={end-.017},side={end-.01};
                         SpecialistFrameDecoder.Samples samples=new SpecialistFrameDecoder(this).decode(
-                            getIntent().getData(),media,new AnalysisTypes.Roi(.03,.12,.94,.86,"test"),serve,side,
+                            getIntent().getData(),media,new AnalysisTypes.Roi(0,0,1,1,"Full frame"),serve,side,
                             (stage,fraction,detail)->{},()->false);
                         if(samples.servingGray().get(serve[0])==null || samples.sideSwitchBgr().get(side[0])==null)
                             throw new IOException("Terminal specialist format missing");
@@ -93,7 +94,7 @@ public final class PipelineBenchmarkActivity extends Activity {
                     }
                     NeuralRallyPipeline neural=spec.getString("family").equals("production")?null:new NeuralRallyPipeline(this,root,spec);
                     AnalysisTypes.AnalysisResult result=new AnalysisEngine(this,neural).analyze(
-                        getIntent().getData(),spec.optBoolean("fullFrame",false),Integer.MAX_VALUE,new AnalysisTypes.VideoDecoderOptions(240,1),
+                        getIntent().getData(),true,Integer.MAX_VALUE,new AnalysisTypes.VideoDecoderOptions(240,1),
                         NativeFeatureCache.Mode.BYPASS,new AnalysisTypes.AnalysisWindow(0,spec.getDouble("seconds")),
                         AnalysisTypes.AnalysisStages.all(),AnalysisTypes.AudioDecoderMode.AUTO,new AtomicBoolean(),
                         new AnalysisTypes.ProgressListener() {
@@ -102,7 +103,7 @@ public final class PipelineBenchmarkActivity extends Activity {
                         },true,true);
                     JSONObject stages=new JSONObject(result.stageMilliseconds());
                     row.put("stagesMs",stages).put("profileMs",new JSONObject(result.profileMilliseconds()))
-                        .put("fullFrame",spec.optBoolean("fullFrame",false))
+                        .put("fullFrame",true).put("roi",new JSONArray(new double[]{result.roi().x(),result.roi().y(),result.roi().width(),result.roi().height()}))
                         .put("totalMs",result.totalMilliseconds()).put("rallies",intervals(result.ranges()))
                         .put("rallyCount",result.ranges().size()).put("sampleRows",result.sampleRows())
                         .put("thermalStart",result.thermalStatusStart()).put("thermalEnd",result.thermalStatusEnd())

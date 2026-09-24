@@ -42,7 +42,7 @@ def main():
     a = p.parse_args()
     a.output.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(2)
-    roi = (.03, .12, .94, .86)
+    roi = (0., 0., 1., 1.)
     cap = cv2.VideoCapture(str(a.video)); cap.set(cv2.CAP_PROP_POS_MSEC, 30000)
     ok, frame = cap.read(); cap.release()
     if not ok: raise RuntimeError('Cannot read pilot frame')

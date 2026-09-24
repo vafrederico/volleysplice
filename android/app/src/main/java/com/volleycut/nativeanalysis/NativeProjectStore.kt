@@ -52,6 +52,8 @@ internal data class NativeProject(
     val media: AnalysisTypes.MediaInfo,
     val analysisWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
     val roi: AnalysisTypes.Roi,
+    /** False only when recovering saved output without its original input geometry. */
+    val analysisRoiKnown: Boolean = true,
     val status: ProjectStatus,
     val ranges: List<SeedRange> = emptyList(),
     val productionComponents: AnalysisTypes.ProductionComponents =
@@ -98,13 +100,14 @@ internal data class NativeProject(
             sideSwitchEnabled = sideSwitchEnabled,
             scoreTrackingInitiallyEnabled = servingSideStatus != ServingSideAnalysisStatus.DISABLED,
             suppression = suppression,
+            analysisRoi = roi.takeIf { analysisRoiKnown },
         )
     } else null
 }
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 8
+    private const val VERSION = 9
     private const val TAG = "VolleySpliceProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -238,6 +241,7 @@ internal object NativeProjectStore {
             featureCacheSource = null,
             media = result.media(),
             roi = result.roi(),
+            analysisRoiKnown = true,
             status = ProjectStatus.READY,
             ranges = result.ranges().map {
                 SeedRange(
@@ -445,7 +449,7 @@ internal object NativeProjectStore {
     fun newQueued(
         source: ProjectSource,
         media: AnalysisTypes.MediaInfo,
-        roi: AnalysisTypes.Roi,
+        roi: AnalysisTypes.Roi = AnalysisEngine.inferRoi(source.name),
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
         analyzeServingSide: Boolean = true,
         sideSwitchEnabled: Boolean = false,
@@ -453,7 +457,7 @@ internal object NativeProjectStore {
         val now = System.currentTimeMillis()
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, media.durationSeconds())
         return NativeProject(
-            id = projectId(source, media.durationSeconds(), analysisWindow),
+            id = projectId(source, media.durationSeconds(), analysisWindow, roi),
             source = source,
             media = media,
             analysisWindow = analysisWindow,
@@ -469,7 +473,12 @@ internal object NativeProjectStore {
     }
 
     fun findMatching(context: Context, candidate: NativeProject): NativeProject? =
-        get(context, candidate.id) ?: list(context).firstOrNull { existing ->
+        get(context, candidate.id)?.takeIf { matchesAnalysis(it, candidate) }
+            ?: list(context).firstOrNull { matchesAnalysis(it, candidate) }
+
+    internal fun matchesAnalysis(existing: NativeProject, candidate: NativeProject): Boolean =
+        existing.analysisRoiKnown && candidate.analysisRoiKnown &&
+            sameRoi(existing.roi, candidate.roi) &&
             sameWindow(existing.analysisWindow, candidate.analysisWindow) && (
                 existing.source.uri == candidate.source.uri || (
                 existing.source.name == candidate.source.name &&
@@ -479,14 +488,13 @@ internal object NativeProjectStore {
                         existing.media.durationSeconds() - candidate.media.durationSeconds()
                     ) < .001
                 ))
-        }
 
     fun fromResult(context: Context, result: AnalysisTypes.AnalysisResult): NativeProject {
         val source = source(context, result.source(), result.displayName())
         val now = System.currentTimeMillis()
         val sideSwitchEnabled = result.sideSwitch() != null || result.sideSwitchError() != null
         return NativeProject(
-            id = projectId(source, result.media().durationSeconds()),
+            id = projectId(source, result.media().durationSeconds(), roi = result.roi()),
             source = source,
             media = result.media(),
             roi = result.roi(),
@@ -534,17 +542,28 @@ internal object NativeProjectStore {
                 "audio/unknown",
             )
         }
+        return fromSeed(seed, source, media)
+    }
+
+    internal fun fromSeed(
+        seed: EditorSeed,
+        source: ProjectSource,
+        media: AnalysisTypes.MediaInfo,
+    ): NativeProject {
         val now = System.currentTimeMillis()
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
             AnalysisTypes.AnalysisWindow(seed.gameStartMs / 1_000.0, seed.gameEndMs / 1_000.0),
             media.durationSeconds(),
         )
         return NativeProject(
-            id = projectId(source, media.durationSeconds(), analysisWindow),
+            id = projectId(source, media.durationSeconds(), analysisWindow, seed.analysisRoi),
             source = source,
             media = media,
             analysisWindow = analysisWindow,
-            roi = AnalysisEngine.inferRoi(seed.displayName),
+            // A missing legacy ROI is unknown, not evidence that inference used today's default.
+            // Full-frame geometry remains the fallback for explicitly requested future work.
+            roi = seed.analysisRoi ?: AnalysisEngine.inferRoi(seed.displayName),
+            analysisRoiKnown = seed.analysisRoi != null,
             status = ProjectStatus.READY,
             ranges = seed.ranges,
             productionComponents = seed.productionComponents,
@@ -575,7 +594,6 @@ internal object NativeProjectStore {
         return runCatching {
             project.copy(
                 media = AnalysisEngine(context).probe(Uri.parse(project.source.uri)),
-                roi = AnalysisEngine.inferRoi(project.source.name),
                 updatedAtMs = System.currentTimeMillis(),
             ).withServingSideCacheIdentity().also { save(context, it) }
         }.getOrDefault(project)
@@ -585,15 +603,21 @@ internal object NativeProjectStore {
         source: ProjectSource,
         durationSeconds: Double,
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(durationSeconds),
+        roi: AnalysisTypes.Roi? = null,
     ): String {
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, durationSeconds)
-        val identity = listOf(
+        val sourceIdentity = listOf(
             source.name,
             source.size.toString(),
             normalizedModified(source.lastModified).toString(),
             durationSeconds.toString(),
         ).joinToString("\u0000") + if (analysisWindow.isFull(durationSeconds)) "" else {
             "\u0000${analysisWindow.start()}\u0000${analysisWindow.end()}"
+        }
+        // Keep legacy project IDs readable, but never overwrite an older cropped
+        // project's reviewed edits when the same source is analyzed full-frame.
+        val identity = sourceIdentity + if (roi == null) "" else {
+            "\u0000roi=${roi.x()},${roi.y()},${roi.width()},${roi.height()}"
         }
         var hash = 0x811c9dc5u
         identity.forEach { character ->
@@ -633,6 +657,7 @@ internal object NativeProjectStore {
             put("height", project.roi.height())
             put("label", project.roi.label())
         })
+        put("analysisRoiKnown", project.analysisRoiKnown)
         put("status", project.status.wireName)
         put("modelId", project.modelId)
         put("cacheMode", project.cacheMode)
@@ -706,6 +731,7 @@ internal object NativeProjectStore {
                 roiJson.getDouble("height"),
                 roiJson.optString("label"),
             ),
+            analysisRoiKnown = json.optBoolean("analysisRoiKnown", true),
             status = ProjectStatus.fromWireName(json.getString("status")) ?: return null,
             ranges = buildList {
                 for (index in 0 until rangesJson.length()) {
@@ -782,6 +808,9 @@ internal object NativeProjectStore {
         )
         val normalized = if (analysisWindow == project.analysisWindow) project
             else project.copy(analysisWindow = analysisWindow)
+        // Recovery-only output must remain editable even if its old model provenance is absent.
+        // It cannot satisfy a new analysis request; matchesAnalysis enforces that distinction.
+        if (!normalized.analysisRoiKnown && normalized.status == ProjectStatus.READY) return normalized
         val staleInference = normalized.modelId != FeatureSchema.MODEL_ID ||
             (normalized.status == ProjectStatus.READY && normalized.ranges.any {
                 !ProductionEnsemble.isValidAgreement(it.agreement)
@@ -841,6 +870,12 @@ internal object NativeProjectStore {
         right: AnalysisTypes.AnalysisWindow,
     ): Boolean = kotlin.math.abs(left.start() - right.start()) < 1e-9 &&
         kotlin.math.abs(left.end() - right.end()) < 1e-9
+
+    private fun sameRoi(left: AnalysisTypes.Roi, right: AnalysisTypes.Roi): Boolean =
+        kotlin.math.abs(left.x() - right.x()) < 1e-9 &&
+            kotlin.math.abs(left.y() - right.y()) < 1e-9 &&
+            kotlin.math.abs(left.width() - right.width()) < 1e-9 &&
+            kotlin.math.abs(left.height() - right.height()) < 1e-9
 
     private fun projectFile(context: Context, id: String) =
         File(directory(context), "${id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.json")

@@ -352,10 +352,20 @@ AV extraction and both score specialists. Its runtime cache revisions are
 `opencv-v2-decoded-yuv-color` and
 `shared-gap5-mediacodec-decoded-yuv-color-gray-bgr-v3`; prior caches are incompatible.
 This is a versioned native runtime correction toward the existing decoded-pixel
-contract, not a new trained feature family. No weights, feature column signature,
-ROI policy, or frame-sampling policy were changed. Cross-platform feature accuracy
-and corrected device replay remain unqualified; phone work is stopped at the user's
-request. See the [native follow-up](docs/research/mobile-tcn-follow-up.md).
+contract, not a new trained feature family. Weights, feature column signature, and
+frame-sampling policy are unchanged. New Android analyses now use the full frame,
+matching the web default; filename-based automatic crops are disabled. New project
+identities and reuse checks include ROI geometry, so a saved cropped analysis cannot
+satisfy or overwrite a new full-frame analysis. Existing saved/imported ROIs and edits
+are preserved. Editor recovery records now retain the original ROI; older recovery
+records with unknown geometry remain editable but cannot satisfy a new analysis
+request. Corrected full-video runs are complete for production, Small, and Large;
+an ordinary-editor pilot also completed both score specialists, playback, and
+project recovery with full-frame ROI. Production predictions change despite unchanged
+weights: this recording's export F1 improves but retained recall falls and one saved
+human rally becomes wholly missed. Cross-platform feature accuracy still requires
+qualification. See the
+[native follow-up](docs/research/mobile-tcn-follow-up.md).
 
 ## Production-browser serving-side pipeline
 
@@ -599,8 +609,17 @@ and quality scalars while retaining native embeddings. Large exhibits the same t
 of feature-contract failure; this is not evidence that a different checkpoint or
 calibration target was used. The diagnostic is registered at `private-reference-0217`
 and described in [the input-drift report](docs/research/native-small-tcn-input-drift.md).
-Corrected native extraction has not yet been qualified. Keep fixes isolated from
-the shipped feature contract until the required version/parity gates are satisfied.
+The corrected full-frame Small and Large device runs are registered at
+`private-reference-0218`. Both completed all feature generation and score specialists.
+Replaying the saved corrected tensors agrees with phone temporal probabilities within
+8e-7 and reproduces the decoded boundaries. This verifies inference from those inputs,
+not equality of native and desktop extraction. Both models recover the formerly wholly
+missed rallies, but one end remains early and Large still splits one saved human rally.
+Frozen feature substitutions identify residual AV104 differences as the cause of these
+boundary discrepancies; replacing embeddings alone does not resolve them. Native audio
+features are unchanged by the color/ROI correction. Do not treat these single-recording
+results as cross-platform parity or a newly selected model. Keep runtime qualification
+separate from the shipped feature contract until its acceptance gates are satisfied.
 
 Existing DINO artifacts remain reproducible research, but further DINO work was
 stopped at the user's request after the full native timing result. This changes no

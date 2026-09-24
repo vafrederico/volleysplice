@@ -6,6 +6,16 @@ debug and production apps. Without that property, the benchmark sources and
 neural runtime dependencies are excluded. Set `VOLLEYCUT_BENCH_BUILD_DIR`,
 `GRADLE_USER_HOME`, the Gradle project cache and temporary directories to NAS.
 
+New runs use the full frame, matching the normal app default. Archived cropped
+plans are rejected; preserve their original results instead of replaying them
+under a different input contract. Encoder pooling weights must match the full-frame
+letterbox geometry. Each result records the actual ROI.
+For Mobile families, the driver requires `input-contract.json` beside the graphs,
+checks its graph and pool hashes, verifies the full-frame content box against
+the source dimensions reported by MediaStore, and recomputes the expected four
+regional pools before launching analysis. Use a newly verified contract when
+the source aspect ratio changes.
+
 `scripts/prepare-pixel-complete-pipeline.py` exports the frozen high-recall FP32
 DINO-TCN and Mobile-TCN checkpoints, fold scalers, and selected 99% target
 decoders. This does not train or choose a new operating point. Dynamic temporal

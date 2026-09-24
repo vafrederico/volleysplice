@@ -377,7 +377,7 @@ class ProjectAnalysisService : Service() {
         try {
             val result = AnalysisEngine(this).analyze(
                 Uri.parse(project.source.uri),
-                false,
+                true,
                 FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
                 AnalysisTypes.VideoDecoderOptions.defaults(),
                 NativeFeatureCache.Mode.fromWireName(project.cacheMode),

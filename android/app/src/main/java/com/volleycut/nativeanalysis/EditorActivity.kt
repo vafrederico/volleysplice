@@ -296,6 +296,7 @@ private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorS
     sideSwitch = result.sideSwitch(),
     sideSwitchError = result.sideSwitchError(),
     suppression = result.suppression(),
+    analysisRoi = result.roi(),
 )
 
 private val Paper = Color(0xFFF8F7EE)
