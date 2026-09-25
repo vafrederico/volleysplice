@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "kind": "distilled-large-frozen-specialist-head-screen-v1",
+  "selectedModel": "neural-distilled-mobile-large-tcn-fp32-high-recall",
+  "encoderSha256": "0be04fbf8e5633241a473f49176d9d27184f45ea94f90dd454d73fd4109d7bc6",
+  "evaluationSha256": "e19cc187d6f4a76e5fc0a6569fb064e2c0db00e9149679335049448e13f0c949",
+  "projectionDimension": 0,
+  "projectionSeed": 3407,
+  "logisticL2": 0.1,
+  "serving": {
+    "scope": "non-beach development; leave one source group out",
+    "rows": 968,
+    "recordings": 26,
+    "sourceGroups": 8,
+    "maxNearestFrameErrorSeconds": 0.25,
+    "featureDimension": 3840,
+    "head": {
+      "rows": 968,
+      "positives": 480,
+      "truePositive": 371,
+      "trueNegative": 400,
+      "falsePositive": 88,
+      "falseNegative": 109,
+      "balancedAccuracy": 0.7962943989071039
+    },
+    "baseline": {
+      "rows": 968,
+      "positives": 480,
+      "truePositive": 445,
+      "trueNegative": 465,
+      "falsePositive": 23,
+      "falseNegative": 35,
+      "balancedAccuracy": 0.9399760928961749
+    },
+    "groupMacroBalancedAccuracy": 0.8267778095863794,
+    "baselineGroupMacroBalancedAccuracy": 0.9396938615920025,
+    "finalWeights": {
+      "inputDimension": 3840,
+      "nonzero": 3840,
+      "bytesFloat32": 15364,
+      "weightNorm": 38.23438695078193,
+      "intercept": -2.6469662961101452
+    },
+    "sourceHashes": {
+      "labels": "c4ddf9f94bec00ba0fa62f8267dc166fdeeb6f9419180acad2e7eadf4910af7d",
+      "baseline": "c867e8a2a141a5231fb1ceb5a0ba289457ac353fab6a9115dc672b84046f2414"
+    }
+  },
+  "sideSwitch": {
+    "scope": "opened development; leave one recording out; one source group",
+    "rows": 704,
+    "recordings": 11,
+    "positiveCandidates": 46,
+    "humanMarkers": 50,
+    "fallbackWindows": 0,
+    "featureDimension": 3844,
+    "rowAveragePrecision": 0.12203208623986858,
+    "baselineRowAveragePrecision": 0.44499200414601225,
+    "event": {
+      "proposals": 31,
+      "truePositives": 7,
+      "falsePositives": 24,
+      "falseNegatives": 43,
+      "precision": 0.22580645161290322,
+      "recall": 0.14,
+      "f1": 0.1728395061728395
+    },
+    "postHocThresholdUpperBound": {
+      "threshold": 0.020905252322412284,
+      "proposals": 102,
+      "truePositives": 14,
+      "falsePositives": 88,
+      "falseNegatives": 36,
+      "precision": 0.13725490196078433,
+      "recall": 0.28,
+      "f1": 0.1842105263157895
+    },
+    "baselineEvent": {
+      "paddingSeconds": 4.0,
+      "proposals": 52,
+      "truePositives": 29,
+      "falsePositives": 23,
+      "falseNegatives": 21,
+      "precision": 0.5576923076923077,
+      "recall": 0.58,
+      "f1": 0.5686274509803922,
+      "macroPerVideoPrecision": 0.5865800865800866,
+      "macroPerVideoRecall": 0.5772727272727273
+    },
+    "decoder": {
+      "threshold": 0.5,
+      "minimumIndexSeparation": 2,
+      "minimumTimeSeparationSeconds": 0.0,
+      "freePredictionsPerRecording": 6,
+      "countPenaltyLogit": 0.5,
+      "usesCadence": false,
+      "reanchorOnSelection": false,
+      "hardMaximumPredictions": null
+    },
+    "finalWeights": {
+      "inputDimension": 3844,
+      "nonzero": 3844,
+      "bytesFloat32": 15380,
+      "weightNorm": 115.74933425234231,
+      "intercept": 135.83418705036058
+    },
+    "sourceHashes": {
+      "features": "9763cb3e5cd9baada64f4bf54f06140dcff5068bb8cd74a1d485c677d1e6c551",
+      "audit": "142d6617aed7f20b51cdcdfc9b3e61c8c76beaf79a31fc2d7ee54fb0fdf27b89",
+      "baselineModel": "c2570481c30dec62f56ac3284cd4028763ffd8e72a9ad07e9908fec10df387e3",
+      "baselineEvaluation": "e67088b36d177d68c24587efcb186eab4201b5294532be1fdf978ef13aaacc4b"
+    }
+  },
+  "limitations": [
+    "Frozen encoder is label-blind for side/switch but may have seen evaluation video frames during DINO distillation.",
+    "Serving-side anchors are human-reviewed candidates, not neural-rally starts.",
+    "Switch rows come from one source group; recording holdout does not establish source transfer.",
+    "This study fits heads on saved desktop embeddings, not native-device embeddings."
+  ]
+}
