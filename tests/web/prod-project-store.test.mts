@@ -213,6 +213,7 @@ test("audio feature caches are isolated by source and analysis timestamps", () =
     DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
     times,
   );
+  assert.equal(JSON.parse(key).schema, 2, "Old startup-noise-floor audio caches must not be reused");
   assert.equal(
     key,
     audioFeatureCacheKey(

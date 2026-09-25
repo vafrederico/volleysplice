@@ -8,6 +8,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeProjectStoreTest {
+    @Test
+    fun oldAudioOutputRemainsEditableButCannotSatisfyNewAnalysis() {
+        val saved = readyProject()
+        val oldJson = NativeProjectStore.encode(saved).apply { remove("audioExtractorVersion") }
+        val old = requireNotNull(NativeProjectStore.decode(oldJson))
+        val normalized = NativeProjectStore.normalizeStored(old)
+        assertEquals(saved.ranges, normalized.ranges)
+        assertEquals(ProjectStatus.READY, normalized.status)
+        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi)
+        assertFalse(NativeProjectStore.matchesAnalysis(normalized, fresh))
+        val recovered = NativeProjectStore.fromSeed(requireNotNull(old.editorSeed()), old.source, old.media)
+        assertNotEquals(fresh.id, recovered.id)
+        assertFalse(NativeProjectStore.matchesAnalysis(recovered, fresh))
+    }
+
     private val source = ProjectSource(
         uri = "content://recordings/match.mp4",
         name = "match.mp4",

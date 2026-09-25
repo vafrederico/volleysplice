@@ -76,7 +76,7 @@ a model study.
 | `NEURAL-AV104` | 104 per 4 Hz tick | Fold-standardized base audiovisual stream; no five-offset F104 production expansion |
 | `NEURAL-DINO` | 104 AV + 10×384 visual tokens per tick | Frozen DINOv2 representation plus learned temporal projection; encoder precision is part of the artifact identity |
 | `NEURAL-MOBILE` | 104 AV + 4×576 visual values + 8 quality values per tick | Frozen or distilled MobileNetV3-Small regional representation aligned from 2 Hz to 4 Hz |
-| `NEURAL-MOBILE-LARGE` | 104 AV + 4×960 visual values + 8 quality values per tick | Frozen MobileNetV3-Large regional representation aligned from 2 Hz to 4 Hz; completed TCN study and editor-lab options, not production |
+| `NEURAL-MOBILE-LARGE` | 104 AV + 4×960 visual values + 8 quality values per tick | Frozen or DINO-distilled MobileNetV3-Large regional representation aligned from 2 Hz to 4 Hz; encoder identity belongs to each artifact, not production |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
 the authoritative signature.
@@ -487,14 +487,82 @@ None of these options replaces the shipped F104 production rally bundles.
 | --- | --- | --- |
 | DINO-TCN | `NEURAL-DINO`; frozen DINOv2 ViT-S/14 image encoder and learned temporal projection/TCN | Compared with AV104 TCN in source-held development. Later recall operating points and expanded-corpus draws are research and editor-lab options, not production promotion. See [development](docs/research/neural-development-execution-2026-09-18.md), [strict-99 selection](docs/research/neural-recall-operating-point-results-2026-09-23.md), and [UI choices](docs/research/neural-comparison-ui-2026-09-24.md). |
 | Mobile-TCN | `NEURAL-MOBILE`; frozen ImageNet MobileNetV3-Small encoder and learned regional projection/TCN | Compared with the matched AV104 TCN. The original recognition study improved precision but reduced retained play; later expanded-corpus draws are separate editor-lab choices. See [recognition results](docs/research/neural-recognition-results-2026-09-22.md) and [UI choices](docs/research/neural-comparison-ui-2026-09-24.md). |
-| Distilled Mobile-TCN | Same `NEURAL-MOBILE` inference signature; fit the MobileNet feature trunk with a frozen DINO teacher, then fit a temporal head | Compared with frozen Mobile-TCN. The only complete strict-99 matched seed gained retained core time but exported substantially more incorrect footage and lowered primary F1. Retained for research and UI comparison; no replacement claim. See [results](docs/research/distilled-mobile-results-2026-09-23.md) and [qualification](docs/research/distilled-mobile-qualification-2026-09-23.md). |
+| Distilled Mobile-TCN | Same `NEURAL-MOBILE` inference signature; fit the MobileNetV3-Small feature trunk with a frozen DINO teacher, then fit a temporal head | Compared with frozen Mobile-TCN. The only complete strict-99 matched seed gained retained core time but exported substantially more incorrect footage and lowered primary F1. Retained for research and UI comparison; no replacement claim. See [results](docs/research/distilled-mobile-results-2026-09-23.md) and [qualification](docs/research/distilled-mobile-qualification-2026-09-23.md). |
 | DINO-transformer FP32 / mixed INT8 | `NEURAL-DINO`; learned local-attention temporal head, with separately registered encoder precisions | Compared with matched DINO-TCN. The original attention recipe regressed; later expanded-corpus FP32 and mixed-INT8 choices remain editor-lab experiments. Mixed INT8 changes encoder embeddings while the temporal head stays FP32; the tested INT8 graph failed desktop browser numerical parity. See [recognition results](docs/research/neural-recognition-results-2026-09-22.md), [precision results](docs/research/dino-precision-results-2026-09-23.md), and [UI choices](docs/research/neural-comparison-ui-2026-09-24.md). |
 | Frozen MobileNetV3-Large substitution | `NEURAL-MOBILE-LARGE`; learned FP32 TCN on frozen `MobileNet_V3_Large_Weights.IMAGENET1K_V1` features | Completed 24 matched randomized/export-proxy split fits and calibration at only 98% and 99%, compared with Small under the same selection policy. Both selected target-99% options use `original-medium`: F1 draw 20260918 / epoch 30 and recall draw 3407 / epoch 15; both have training seed 3407. Predictions and signals for both options are published for all 42 recordings in the comparison UIs. Retained research, not production. Ledger `private-reference-0211` binds the plan, split/label/artifact hashes, evaluation, selection report, and publication receipt. See [`experiment-mobile-large.py`](scripts/experiment-mobile-large.py) and [`report-mobile-large.py`](scripts/report-mobile-large.py). |
+
+The DINO-distilled Large study is registered as `distilled-mobile-large-v1` in
+ledger `private-reference-0222`. It compares a learned Large encoder with the
+frozen Large study above using the same 24 split configurations, including export
+proxies. The training-only DINO projection has 384 outputs; inference keeps the
+`NEURAL-MOBILE-LARGE` signature and the FP32 four-head TCN. Each student's frames,
+TCN labels and scaler are confined to its registered training sources. Separate
+calibration sources select checkpoints/decoders; the common exact-label panel
+selects the two UI choices. Beach is inference/evaluation only. The immutable
+plan binds ordered inputs, source/label/code hashes, split draws, training seed
+3407 and eight student epochs. All 24 fits are complete, with 15 feasible at the
+strict 99% calibration bar. Both distinct selected models use `expanded-large`:
+the F1 choice is draw 20260918 / epoch 60, and the recall choice is draw 3407 /
+epoch 15. On the one-recording common exact-label selection panel, their
+`P_pad / R_core / F1_padP_coreR` values are respectively
+97.76% / 97.68% / 97.72% and 70.88% / 100.00% / 82.96%, with one versus zero
+wholly missed human rallies. These selected-panel results are not an independent
+test; the two choices use different decoders as well as different weights.
+
+Both options and their four signals are published and browser-validated in
+labelv2 and editor lab for all 44 videos, including two beach recordings.
+Thirty-six videos have eligible scoring labels; eight have predictions/counts
+only. Exact labels, reviewed drafts and reviewed export coverage are reported
+separately, with production-training exclusions and all four padding cases.
+Beach remains unqualified: retained-core recall is 7.63% for the F1 choice and
+78.01% for the recall choice, with 62 versus 16 wholly missed rallies. DINO and
+the distillation projector are absent at inference. This remains research, not
+production or a validated native-phone deployment. See the
+[experiment](docs/research/distilled-mobile-large-experiment.md) and
+[completed results](docs/research/distilled-mobile-large-results.md).
+
+The two selected distilled Large models now have native FP32 CPU measurements on
+the Pixel 10 Pro, bound by ledger `private-reference-0223`. For the same two-minute
+excerpt, median all-analysis time is 67.272s for highest F1 and 69.669s for highest
+recall, versus 70.431s for frozen Large and 43.142s for production. Single full-video
+observations are 604.768s / 602.463s until rallies are ready and 712.924s / 734.295s
+including serving-side and side-switch features and predictions. The encoder
+architecture is unchanged by distillation; differing rally boundaries affect
+specialist work, so lower total time does not establish a faster encoder.
+Both ONNX exports and all saved native temporal/decoder replays pass. Native input
+parity remains unresolved: on the same 37-rally gold snapshot, the two native
+choices wholly miss six / two rallies, versus one / zero using desktop features.
+Their native `P_pad / R_core / F1_padP_coreR` values are 90.69% / 86.35% / 88.46%
+and 87.66% / 93.84% / 90.65%. Frozen-input substitutions isolate most of the F1
+choice's loss to AV104, especially audio; this is diagnostic evidence, not a
+deployed fix. The [native benchmark](docs/research/distilled-mobile-large-native-benchmark.md)
+records graph/checkpoint identities, all four padding cases, storage and timing
+breakdowns, exposure checks and limitations. This does not qualify a production
+native release.
+
+The [highest-recall audio-only follow-up](docs/research/distilled-mobile-large-recall-audio-check.md)
+also reduces wholly missed rallies from two to zero by substituting desktop audio
+values while preserving every other native input and the frozen model/decoder.
+Its `P_pad / R_core / F1_padP_coreR` is 92.29% / 98.75% / 95.41%; one recovered
+rally still loses its last 1.62s. This saved-input diagnostic strengthens the audio
+parity finding without qualifying a deployed fix or complete desktop equivalence.
+
+The [audio root-cause investigation](docs/research/android-audio-timeline-root-cause.md)
+subsequently localizes the dominant mismatch to shared Android batched decoding:
+an irregular first packet timestamp gap is latched as the permanent PCM unit
+size, compressing the audio timeline and discarding overlaps. Exact Java
+reproduction and saved-phone timing signatures agree. This affects production
+and neural inputs on the affected decode path. The model weights need no change
+to address this defect. The [shared app repair](docs/research/android-web-audio-fix.md)
+corrects framing and startup noise-floor features and invalidates affected caches.
+The report distinguishes corrected audio validation from the historical complete
+pipeline benchmarks and remaining production accuracy/timing qualification.
 
 The comparison UIs select one runnable draw per family/precision on the
 `common-unseen / exact-rallies / all` development panel at the declared symmetric
 two-second padding. They require a 99% inner calibration target, falling back to
-98% only when no draw qualifies. The F1 choice maximizes `F1_padP_coreR`; the recall
+98% only when no draw qualifies. The new distilled Large study is strict-99 only
+and does not use this fallback. The F1 choice maximizes `F1_padP_coreR`; the recall
 choice keeps that variant fixed and maximizes eligible draw recall, breaking ties by
 F1. These are calibration targets and selected-panel results, not measured recall
 guarantees on new recordings. The panel now serves selection and cannot be treated

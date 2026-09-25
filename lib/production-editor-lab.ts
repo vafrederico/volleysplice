@@ -16,6 +16,7 @@ export type LabBoundaryProposal = {
   recommended?: boolean; priority?: number;
 };
 export type LabRemoval = LabInterval & {
+  suppressionRemoval?: boolean;
   id: string; parentId: string; kind: "prefix" | "suffix" | "gap" | "whole";
   parent: LabEvent;
   leftEventId?: string; rightEventId?: string;
@@ -24,6 +25,7 @@ export type LabSplit = LabInterval & {
   id: string; parentId: string; leftEventId: string; rightEventId: string;
 };
 export type LabConfiguration = {
+  suppressionBaseId?: string;
   id: string; label: string; description: string; sourcePolicy: string;
   events: LabEvent[]; proposals: LabBoundaryProposal[]; removals: LabRemoval[]; splits: LabSplit[];
   draftEvents?: LabEvent[];
@@ -39,6 +41,11 @@ export type LabConfiguration = {
   }> };
 };
 export type ProductionEditorLabTask = {
+  suppressionSource?: {
+    revision: string;
+    gated: NonNullable<LabConfiguration["suppression"]>;
+    decoded: Array<LabInterval & { score: number }>;
+  };
   schemaVersion: 1; id: string; name: string; durationSeconds: number; mediaUrl: string;
   sourceRevision: string; ignoredIntervals: LabInterval[]; configurations: LabConfiguration[];
   signals: ResearchSignals; serving: ServingPrediction[];

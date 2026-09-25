@@ -51,6 +51,7 @@ internal object EditorProjectStore {
         put("rotation", seed.rotation)
         put("gameStartMs", seed.gameStartMs)
         put("gameEndMs", seed.gameEndMs)
+        put("audioExtractorVersion", seed.audioExtractorVersion)
         put("analysisRoi", seed.analysisRoi?.let { roi -> JSONObject().apply {
             put("x", roi.x())
             put("y", roi.y())
@@ -119,6 +120,7 @@ internal object EditorProjectStore {
                 json.getBoolean("sideSwitchEnabled")
             } else json.optJSONObject("sideSwitch") != null,
             scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", false),
+            audioExtractorVersion = json.optString("audioExtractorVersion", "legacy"),
             analysisRoi = json.optJSONObject("analysisRoi")?.let { roi ->
                 runCatching { AnalysisTypes.Roi(
                     roi.getDouble("x"), roi.getDouble("y"),

@@ -10,6 +10,7 @@ import type { OnDeviceSuppression } from "./editor/lib/on-device/types";
 import { ReviewTools } from "./review-tools";
 import { ComparisonRail } from "./comparison-rail";
 import styles from "./lab.module.css";
+import { canCombineSuppression, LAB_SUPPRESSION_OPTIONS, withLabSuppression, type LabSuppressionMode } from "@/lib/production-editor-lab-suppression";
 
 function saveJson(value: unknown, filename: string) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
@@ -61,6 +62,10 @@ export default function Workspace() {
   const [task, setTask] = useState<ProductionEditorLabTask | null>(null);
   const [error, setError] = useState("");
   const [configurationId, setConfigurationId] = useState(() => new URLSearchParams(location.search).get("mode") ?? "production");
+  const [suppressionMode, setSuppressionMode] = useState<LabSuppressionMode>(() => {
+    const value = new URLSearchParams(location.search).get("suppression") ?? "none";
+    return Object.hasOwn(LAB_SUPPRESSION_OPTIONS, value) ? value as LabSuppressionMode : "none";
+  });
   const [saveMessage, setSaveMessage] = useState("Each mode has its own editable draft.");
   const [taskId, setTaskId] = useState(() => new URLSearchParams(location.search).get("task") ?? "");
   const [recordings, setRecordings] = useState<Array<{ id: string; name: string; tier: string }>>([]);
@@ -85,7 +90,9 @@ export default function Workspace() {
     }).catch(reason => { if (reason.name !== "AbortError") setError(reason.message); });
     return () => controller.abort();
   }, [taskId]);
-  const configuration = task?.configurations.find(item => item.id === configurationId) ?? task?.configurations[0];
+  const baseConfiguration = task?.configurations.find(item => item.id === configurationId) ?? task?.configurations[0];
+  const configuration = useMemo(() => task && baseConfiguration ? withLabSuppression(task, baseConfiguration, suppressionMode) : undefined,
+    [task, baseConfiguration, suppressionMode]);
   const switchConfiguration = (id: string) => {
     setConfigurationId(id); const url = new URL(location.href); url.searchParams.set("task", taskId); url.searchParams.set("mode", id);
     history.replaceState(null, "", url); setSaveMessage("Each mode has its own editable draft.");
@@ -100,10 +107,22 @@ export default function Workspace() {
         setSaveMessage("Each mode has its own editable draft.");
       }}>{recordings.map(recording => <option key={recording.id} value={recording.id}>{recording.name} · {recording.tier}</option>)}</select></label>}
       {task && <div className={styles.modes} role="group" aria-label="Model configuration">{task.configurations.map(item => <button key={item.id} type="button"
-        aria-pressed={configuration?.id === item.id} onClick={() => switchConfiguration(item.id)}>{item.label}</button>)}</div>}
+        aria-pressed={baseConfiguration?.id === item.id} onClick={() => switchConfiguration(item.id)}>{item.label}</button>)}</div>}
+      {task && baseConfiguration && <label>Suppression combination <select aria-label="Suppression combination"
+        disabled={!task.suppressionSource || !canCombineSuppression(baseConfiguration)}
+        value={configuration === baseConfiguration ? "none" : suppressionMode} onChange={event => {
+          const mode = event.target.value as LabSuppressionMode; setSuppressionMode(mode);
+          const url = new URL(location.href); url.searchParams.set("suppression", mode); history.replaceState(null, "", url);
+          setSaveMessage("Each model and suppression combination has its own saved draft.");
+        }}>{Object.entries(LAB_SUPPRESSION_OPTIONS).filter(([key]) => key !== "direct" || !baseConfiguration.id.startsWith("production"))
+          .map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+        <small>{!canCombineSuppression(baseConfiguration) ? " This reference or review mode keeps its existing policy."
+          : !task.suppressionSource ? " Frozen suppression predictions are unavailable for this video." : " Compare with Off; review removals to restore rallies."}</small></label>}
       <div className={styles.description}><p>{configuration?.description ?? "Loading the prepared model results…"}</p>
         <small role="status">{saveMessage}</small></div>
-      {task && configuration && <div className={styles.description}><p>{configuration.events.filter(event => hasVisibleTime(event, configuration.ignoredIntervals ?? task.ignoredIntervals)).length} {configuration.humanReference ? "saved human regions" : "starting rally candidates"} · Original ignored footage excluded · Changes stay in the lab</p></div>}
+      {task && configuration && <div className={styles.description}><p>{configuration.events.filter(event => hasVisibleTime(event, configuration.ignoredIntervals ?? task.ignoredIntervals)).length} {configuration.humanReference ? "saved human regions" : configuration.suppressionBaseId ? "initially kept rallies" : "starting rally candidates"}
+        {configuration.suppressionBaseId && ` · ${new Set(configuration.removals.map(r => r.parent.id)).size} rallies flagged for removal review`}
+        {" · Original ignored footage excluded · Changes stay in the lab"}</p></div>}
     </div>
     {error ? <div className={styles.error} role="alert">{error} <a href={`/labelv2?task=${encodeURIComponent(taskId)}`}>Return to labels</a></div>
       : task && configuration ? <Trial key={labStorageKey(task, configuration)} task={task} configuration={configuration} reportSave={setSaveMessage} />

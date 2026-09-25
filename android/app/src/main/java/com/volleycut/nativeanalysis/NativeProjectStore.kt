@@ -54,6 +54,7 @@ internal data class NativeProject(
     val roi: AnalysisTypes.Roi,
     /** False only when recovering saved output without its original input geometry. */
     val analysisRoiKnown: Boolean = true,
+    val audioExtractorVersion: String = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
     val status: ProjectStatus,
     val ranges: List<SeedRange> = emptyList(),
     val productionComponents: AnalysisTypes.ProductionComponents =
@@ -101,13 +102,14 @@ internal data class NativeProject(
             scoreTrackingInitiallyEnabled = servingSideStatus != ServingSideAnalysisStatus.DISABLED,
             suppression = suppression,
             analysisRoi = roi.takeIf { analysisRoiKnown },
+            audioExtractorVersion = audioExtractorVersion,
         )
     } else null
 }
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 9
+    private const val VERSION = 10
     private const val TAG = "VolleySpliceProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -242,6 +244,7 @@ internal object NativeProjectStore {
             media = result.media(),
             roi = result.roi(),
             analysisRoiKnown = true,
+            audioExtractorVersion = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
             status = ProjectStatus.READY,
             ranges = result.ranges().map {
                 SeedRange(
@@ -478,6 +481,7 @@ internal object NativeProjectStore {
 
     internal fun matchesAnalysis(existing: NativeProject, candidate: NativeProject): Boolean =
         existing.analysisRoiKnown && candidate.analysisRoiKnown &&
+            existing.audioExtractorVersion == candidate.audioExtractorVersion &&
             sameRoi(existing.roi, candidate.roi) &&
             sameWindow(existing.analysisWindow, candidate.analysisWindow) && (
                 existing.source.uri == candidate.source.uri || (
@@ -556,7 +560,8 @@ internal object NativeProjectStore {
             media.durationSeconds(),
         )
         return NativeProject(
-            id = projectId(source, media.durationSeconds(), analysisWindow, seed.analysisRoi),
+            id = projectId(source, media.durationSeconds(), analysisWindow, seed.analysisRoi,
+                seed.audioExtractorVersion),
             source = source,
             media = media,
             analysisWindow = analysisWindow,
@@ -564,6 +569,7 @@ internal object NativeProjectStore {
             // Full-frame geometry remains the fallback for explicitly requested future work.
             roi = seed.analysisRoi ?: AnalysisEngine.inferRoi(seed.displayName),
             analysisRoiKnown = seed.analysisRoi != null,
+            audioExtractorVersion = seed.audioExtractorVersion,
             status = ProjectStatus.READY,
             ranges = seed.ranges,
             productionComponents = seed.productionComponents,
@@ -604,6 +610,7 @@ internal object NativeProjectStore {
         durationSeconds: Double,
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(durationSeconds),
         roi: AnalysisTypes.Roi? = null,
+        audioExtractorVersion: String = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
     ): String {
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, durationSeconds)
         val sourceIdentity = listOf(
@@ -617,7 +624,8 @@ internal object NativeProjectStore {
         // Keep legacy project IDs readable, but never overwrite an older cropped
         // project's reviewed edits when the same source is analyzed full-frame.
         val identity = sourceIdentity + if (roi == null) "" else {
-            "\u0000roi=${roi.x()},${roi.y()},${roi.width()},${roi.height()}"
+            "\u0000roi=${roi.x()},${roi.y()},${roi.width()},${roi.height()}" +
+                "\u0000audio=$audioExtractorVersion"
         }
         var hash = 0x811c9dc5u
         identity.forEach { character ->
@@ -658,6 +666,7 @@ internal object NativeProjectStore {
             put("label", project.roi.label())
         })
         put("analysisRoiKnown", project.analysisRoiKnown)
+        put("audioExtractorVersion", project.audioExtractorVersion)
         put("status", project.status.wireName)
         put("modelId", project.modelId)
         put("cacheMode", project.cacheMode)
@@ -732,6 +741,7 @@ internal object NativeProjectStore {
                 roiJson.optString("label"),
             ),
             analysisRoiKnown = json.optBoolean("analysisRoiKnown", true),
+            audioExtractorVersion = json.optString("audioExtractorVersion", "legacy"),
             status = ProjectStatus.fromWireName(json.getString("status")) ?: return null,
             ranges = buildList {
                 for (index in 0 until rangesJson.length()) {

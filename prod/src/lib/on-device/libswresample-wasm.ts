@@ -1,4 +1,4 @@
-import { runtimeAssetUrl } from "../runtime-assets";
+import { runtimeAssetUrl } from "../runtime-assets.ts";
 
 // Updated by scripts/build-libswresample-wasm.sh together with the checked-in binary.
 export const LIBSWRESAMPLE_WASM_SHA256 =

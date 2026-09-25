@@ -120,7 +120,7 @@ export function audioFeatureCacheKey(
   times: Float64Array,
 ): string {
   return JSON.stringify({
-    schema: 1,
+    schema: 2,
     columns: AUDIO_FEATURE_NAMES,
     source: [source.name, source.size, source.lastModified],
     media: [info.duration, info.hasAudio, info.audioCodec, info.sampleRate, info.channels],

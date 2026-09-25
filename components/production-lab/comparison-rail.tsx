@@ -6,6 +6,8 @@ import { compareLabDraft, labPaddingSensitivity } from "@/lib/production-editor-
 import type { LabConfiguration, ProductionEditorLabTask } from "@/lib/production-editor-lab";
 import type { RallyDeskLabTools } from "./editor/designs/taste";
 import styles from "./lab.module.css";
+import { initialLabDraft } from "@/lib/production-editor-lab-draft";
+import { applyPaddingToCachedCuts } from "./editor/lib/cut-draft";
 
 const percent = (value: number) => `${(100 * value).toFixed(1)}%`;
 const time = (value: number) => `${value < 0 ? "−" : ""}${Math.floor(Math.abs(value) / 60)}:${(Math.abs(value) % 60).toFixed(1).padStart(4, "0")}`;
@@ -13,6 +15,13 @@ const time = (value: number) => `${value < 0 ? "−" : ""}${Math.floor(Math.abs(
 export function ComparisonRail({ task, configuration, tools }: { task: ProductionEditorLabTask; configuration: LabConfiguration; tools: RallyDeskLabTools }) {
   const comparison = useMemo(() => compareLabDraft(task, configuration, tools.draft), [task, configuration, tools.draft]);
   const sensitivity = useMemo(() => labPaddingSensitivity(task, configuration, tools.draft), [task, configuration, tools.draft]);
+  const baseline = useMemo(() => {
+    const base = task.configurations.find(c => c.id === configuration.suppressionBaseId);
+    if (!base) return null;
+    const draft = applyPaddingToCachedCuts(initialLabDraft(task, base), tools.draft.beforePaddingSeconds, tools.draft.afterPaddingSeconds, task.durationSeconds);
+    draft.joinGapSeconds = tools.draft.joinGapSeconds;
+    return compareLabDraft(task, base, draft);
+  }, [task, configuration.suppressionBaseId, tools.draft.beforePaddingSeconds, tools.draft.afterPaddingSeconds, tools.draft.joinGapSeconds]);
   if (!comparison) return <p className={styles.notice}>Save human labels to enable the comparison rail.</p>;
   const rows = (ranges: { start: number; end: number }[], prefix: string, tone?: "gold" | "ignored") => ranges.map((row, index) => ({ ...row, id: `${prefix}-${index}`, tone,
     title: `${prefix} · ${time(row.start)}–${time(row.end)}` }));
@@ -38,6 +47,17 @@ export function ComparisonRail({ task, configuration, tools }: { task: Productio
       <span>Extra footage <strong>{time(comparison.extraSeconds)}</strong></span>
       <span>Missed core <strong>{time(comparison.missedSeconds)}</strong></span>
     </div>
+    {baseline && <div className={styles.comparisonTable} data-testid="suppression-baseline-comparison">
+      <p>Original model versus this combination, including your review edits. Both use the current padding and gap joining.</p>
+      <table><thead><tr><th>Version</th><th>P_pad</th><th>R_core</th><th>F1_padP_coreR</th><th>Export</th><th>Extra footage</th><th>Missed core</th></tr></thead>
+        <tbody>{[["Original model (unedited)", baseline], ["Current combination / edits", comparison]].map(([label, value]) => {
+          const row = value as NonNullable<typeof baseline>;
+          return <tr key={String(label)}><td>{String(label)}</td><td>{row.hasHumanCore ? percent(row.precision) : "—"}</td>
+            <td>{row.hasHumanCore ? percent(row.recall) : "—"}</td><td>{row.hasHumanCore ? percent(row.F1_padP_coreR) : "—"}</td>
+            <td>{time(row.exportSeconds)}</td><td>{time(row.extraSeconds)}</td><td>{time(row.missedSeconds)}</td></tr>;
+        })}</tbody></table>
+      <p>{time(baseline.exportSeconds - comparison.exportSeconds)} less export · {time(baseline.extraSeconds - comparison.extraSeconds)} less extra footage · {time(comparison.missedSeconds - baseline.missedSeconds)} additional missed human play. Negative values indicate the opposite change.</p>
+    </div>}
     <div className={styles.comparisonLegend}><span>Green: matching export</span><span className={styles.extraFootageLegend}>Purple: extra footage vs human labels</span><span>Red marks: missed human core</span><span>Gold: joined gap</span></div>
     <div className={styles.comparisonRail}><RallyTimeline duration={task.durationSeconds} currentTime={tools.currentTime} tracks={tracks} ariaLabel="Human comparison rail"
       onSeek={time => tools.seek(time)} /></div>

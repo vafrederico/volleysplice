@@ -367,6 +367,33 @@ human rally becomes wholly missed. Cross-platform feature accuracy still require
 qualification. See the
 [native follow-up](docs/research/mobile-tcn-follow-up.md).
 
+Both selected DINO-distilled Large choices also completed native FP32 CPU runs
+using this corrected full-frame pipeline. Distillation preserves the four-region
+960-channel encoder computation; neither DINO nor its training projector runs on
+the phone. On the full benchmark source, each run saves 32,609,280 bytes of image
+tokens, 67,104,960 bytes of fused 3,952-column inputs and 67,920 bytes of four-head
+probabilities. These diagnostic files duplicate information and do not measure
+minimum cache size or peak memory. Saved-input temporal and decoder parity passes,
+but native extraction still loses recall relative to desktop. Fixed-checkpoint
+counterfactuals recover most of the highest-F1 choice's loss by replacing native
+audio/AV104 with desktop values; replacing embeddings alone does not. Native linear
+audio resampling differs from desktop FFmpeg, but controlled same-PCM tests show
+that it is secondary here. The [audio root-cause investigation](docs/research/android-audio-timeline-root-cause.md)
+identifies a shared batched-decoder timing bug: the first packet's timestamp gap
+is mistaken for its permanent decoded sample count. On the benchmark recording,
+the resulting overlaps discard about 78.66s of PCM and audio features freeze
+around 16m22.5s. Correcting feature timestamps alone cannot recover discarded
+samples. The shared decoder now uses validated AAC-LC configuration with synchronous
+fallback and PCM accounting checks. Audio/context cache identity and new-analysis
+project provenance invalidate the affected inputs without removing reviewed projects.
+Android and both web implementations also correct integer startup noise quantiles;
+the web path does not have the packet-spacing defect. See the
+[repair and validation report](docs/research/android-web-audio-fix.md) for device
+evidence and remaining qualification limits.
+The [distilled Large native benchmark](docs/research/distilled-mobile-large-native-benchmark.md)
+binds timing, tensor identities and accuracy evidence through ledger
+`private-reference-0223`.
+
 ## Production-browser serving-side pipeline
 
 The production web client runs `serving-side-fixed-flight-v3` followed by
@@ -566,6 +593,7 @@ required client parity is implemented.
 | Current frozen DINO tokens | Ten 384-value DINOv2 spatial tokens per 4 Hz frame; no percentile ranking or fold scaling of those tokens. The downstream model projects them alongside AV104. | Research input to DINO-TCN and DINO-transformer. FP32 and mixed dynamic-INT8 encoder outputs are distinct precision variants; INT8 browser numerical parity failed and neither precision is a deployed production rally model. See [`dino-precision-results-2026-09-23.md`](docs/research/dino-precision-results-2026-09-23.md). |
 | Regional MobileNetV3-Small tokens | One aspect-preserving 224-pixel ROI frame at 2 Hz, four fixed image-relative regional pools of 576 values each, and eight quality/age/availability scalars aligned to the 4 Hz AV104 stream | Research input to Mobile-TCN; the separately distilled encoder retains this inference contract. These regions are not detected court geometry. See [`neural-recognition-results-2026-09-22.md`](docs/research/neural-recognition-results-2026-09-22.md) and [`distilled-mobile-qualification-2026-09-23.md`](docs/research/distilled-mobile-qualification-2026-09-23.md). |
 | Frozen MobileNetV3-Large substitution | Registered 224-pixel, 2 Hz regional extraction with four 960-channel pools and eight aligned quality scalars; the encoder remains frozen. Combined with AV104 this gives 3,952 values per 4 Hz tick. | All 42 non-beach feature extractions and 24 TCN fits are complete, with calibration at only 98% and 99%. Two target-99% selections and their predictions/signals are available in the comparison UIs; frozen inference was also published for two beach recordings without retraining. Native two-minute and full-video complete-pipeline timings are measured; proven native input-contract differences still prevent feature/pixel/PTS qualification. Retained research, not production. Ledger `private-reference-0211` binds the study, `private-reference-0215` the beach evaluation, and `private-reference-0217` the native diagnostics; see [`experiment-mobile-large.py`](scripts/experiment-mobile-large.py) and the selected artifacts in [`MODELS.md`](MODELS.md). |
+| DINO-distilled MobileNetV3-Large tokens | Same 224-pixel, 2 Hz four-region 960-channel contract as frozen Large, plus the same eight aligned quality scalars and AV104. Source-local distillation changes encoder weights; the 960-to-384 DINO projection is training only. FP32 extraction stores cached embeddings as FP16, preserving the earlier feature-cache contract. | Completed 24 student/TCN fits; 15 reached strict 99% calibration. Distinct highest-F1 and highest-recall choices use expanded-large draws 20260918/3407 and TCN epochs 60/15. Predictions and four signals are published and browser-validated for all 44 videos, including two beach recordings; 36 have scoring labels and eight have counts only. DINO is unnecessary during student inference. Research only: beach recall remains poor. Native FP32 CPU runtime is measured for both selections, while feature accuracy remains unqualified; see the [native benchmark](docs/research/distilled-mobile-large-native-benchmark.md). Ledger `private-reference-0222` binds the recipe, source membership, feature/checkpoint identities and publication checks. See [`neural_mobile_large_distillation.py`](analysis/neural_mobile_large_distillation.py), the [experiment](docs/research/distilled-mobile-large-experiment.md) and [completed results](docs/research/distilled-mobile-large-results.md). |
 | Ball presence/trajectory | Full-frame or tiled detector outputs and proposed trajectory/interactions | Rejected/skipped because the detector failed the precision/recall and environment gates. See [`minimum-ball-presence-pilot-2026-08-11.md`](docs/research/minimum-ball-presence-pilot-2026-08-11.md). |
 | Side-switch v1 appearance context | Seven marker-level appearance/detection-change values, before/after count/box/score/coverage summaries, gap duration, and paired missingness indicators | Rejected for automatic use; retained as a 36-input review-ranking baseline. This is a separate marker pipeline, not part of the 104 base columns. See [`side-switch-specialist-v1-2026-08-20.md`](docs/research/side-switch-specialist-v1-2026-08-20.md). |
 | Serving-side v1 existing bank | Nineteen rally-anchor scalars covering near/far whole-half and baseline-band motion/palette change, HOG occupancy/change, and signed margins; paired missingness yields 38 model inputs | Retained research baseline, not production. Strong raw-camera behavior did not hold on the protected indoor recording. This is a separate rally-candidate pipeline, not part of the 104 production base columns. See [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |

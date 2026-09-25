@@ -66,6 +66,8 @@ export function ReviewTools({ task, configuration, tools, download }: {
   const status = item ? currentLabDecision(tools.draft, item.id, item) : undefined;
   const activeProposal = configuration.proposals.find(proposal => proposal.id === item?.id);
   const activeRemoval = configuration.removals.find(removal => removal.id === item?.id);
+  const suppressionEvidence = activeRemoval && configuration.suppressionPolicy ? configuration.suppression?.suggestions.filter(s =>
+    s.eligiblePolicyIds.includes(configuration.suppressionPolicy!) && s.start < activeRemoval.end && s.end > activeRemoval.start) ?? [] : [];
   const activeSplit = configuration.splits.find(split => split.id === item?.id);
   const splitStillExists = activeSplit && [activeSplit.leftEventId, activeSplit.rightEventId].every(id => tools.draft.cuts.some(cut => cut.id === id && cut.included));
   const checked = items.filter(entry => currentLabDecision(tools.draft, entry.id, entry)).length;
@@ -137,6 +139,7 @@ export function ReviewTools({ task, configuration, tools, download }: {
           </select>
           <nav aria-label="Review navigation"><button type="button" disabled={index === 0} onClick={() => choose(index - 1)}>Previous</button><span>{index + 1} / {items.length}</span><button type="button" onClick={nextPending}>Next unchecked</button></nav>
         </div>
+        {suppressionEvidence.length > 0 && <p>Suppression evidence: {suppressionEvidence.map(s => `${stamp(Math.max(s.start, item.start))}–${stamp(Math.min(s.end, item.end))} (${(s.score * 100).toFixed(0)}% mean head score)`).join(", ")}. Any eligible overlap removes the whole rally by default; the score is not a calibrated probability that the removal is correct.</p>}
         <p>{activeTab === "removals" ? `${stamp(item.start)}–${stamp(item.end)} · ${(item.end - item.start).toFixed(2)}s removed. Watch the source, then keep the removal or restore this portion.`
           : activeTab === "proposals" ? status === "Proposal applied" ? "The proposed boundaries are active. Adjust them in the editor or use Undo to return to the previous boundaries." : "Inspect the original and proposed starts and ends, apply the proposal, or keep the original."
           : "Confirm that these are separate rallies. This decision stays visible even when export padding joins the gap."}</p>

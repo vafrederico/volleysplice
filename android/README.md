@@ -159,7 +159,7 @@ Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppre
 The 240 FPS operating-rate request was retained after a 5,000-frame 1080p60 A/B reduced median video-stage time from 29,102.5 ms to 19,749.0 ms (32.1%) with identical sampled timestamps and candidate ranges. Android uses this value for codec resource planning; it does not change source timestamps or the 4 Hz sampling schedule.
 
 The audio-only stage selector exposed a similar codec scheduling opportunity. On the Pixel 10 Pro,
-five fresh 60-second runs of `PXL_20260816_160023210.mp4` improved from a 6,276 ms baseline median
+five fresh 60-second runs of `recording-026` improved from a 6,276 ms baseline median
 to 5,277 ms (15.9%) after requesting a 4x-source-rate audio operating rate with real-time codec
 priority. An 8x request regressed to 6,354 ms, while 4x with best-effort priority measured 5,877 ms.
 The retained request is reported in benchmark JSON. It affects scheduling only; decoded timestamps,
@@ -204,6 +204,7 @@ The media front end is deliberately a native-distribution experiment, not a clai
 - Android supplies decoder YUV planes; the app converts those directly into the 192x108 analysis image. That color conversion and resize are not byte-identical to browser canvas or FFmpeg/OpenCV `INTER_AREA`.
 - Video is decoded in one pass and the first presentation-order frame at or after each 4 Hz target is sampled. Web and offline frame-selection boundaries can differ by one source frame.
 - Audio uses Android's decoded PCM and the existing linear 16 kHz resampling/DSP math. It does not embed FFmpeg `libswresample`.
+- Batched audio uses supported AAC-LC codec framing, with synchronous AUTO fallback for unknown or inconsistent layouts. It no longer infers PCM size from packet spacing. Startup noise-floor interpolation is also corrected; cache and project provenance prevent reuse of old extracted inputs on new analyses. See the [repair and device validation](../docs/research/android-web-audio-fix.md) and [original root cause](../docs/research/android-audio-timeline-root-cause.md). Linear resampling remains a separate desktop-parity difference.
 - Native OpenCV implements phase correlation and Farneback flow. The algorithm settings and 73-channel schema match the web path, but native SIMD and float reductions can produce small numerical differences.
 
 Those differences are why the app reports both performance and final ranges. If the native path is materially faster, the next step is to capture its base features for channel-by-channel comparison and then calibrate/retrain against the Android feature distribution rather than assuming browser/offline thresholds transfer perfectly.

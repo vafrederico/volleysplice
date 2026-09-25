@@ -4,6 +4,7 @@ import path from "node:path";
 import type { LabelDocument } from "../annotations.ts";
 import { parseProductionEditorLabManifest, type LabConfiguration, type ProductionEditorLabTask } from "../production-editor-lab.ts";
 import { loadNeuralComparison } from "./neural-comparison.ts";
+import { loadEditorSuppression } from "./editor-lab-suppression.ts";
 
 /** Human reference is appended after inference loading; never an input to model configurations. */
 export function humanExportConfiguration(document: LabelDocument, source: "draft" | "completed" | "imported"): LabConfiguration {
@@ -61,5 +62,15 @@ export async function loadProductionEditorLab(recording: LabelDocument["recordin
     signals: configurations[0].signals!, serving: [], provenance: { labelBlind: true, sourceHashes: {} } };
   task.configurations.push(...configurations);
   task.provenance.sourceHashes["neural-comparison.json"] = comparison.revision;
+  const suppression = await loadEditorSuppression(recording);
+  if (suppression) {
+    task.suppressionSource = suppression.source;
+    const existing = task.configurations.find(c => c.id === "production");
+    if (!existing) task.configurations.unshift(suppression.production);
+    else if (JSON.stringify(existing.events.map(e => [e.start, e.end])) !== JSON.stringify(suppression.production.events.map(e => [e.start, e.end]))) {
+      task.configurations.push({ ...suppression.production, id: "production-replay", label: "Production ensemble · comparison replay",
+        description: "Frozen production ensemble on the comparison study's cached features. This is the production agreement reference used for neural suppression combinations. The older Production ensemble mode and its saved edits remain separate." });
+    }
+  }
   return task;
 }

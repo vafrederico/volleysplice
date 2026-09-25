@@ -1,5 +1,58 @@
 # Production editor model lab
 
+## Suppression combinations (September 24)
+
+The top **Suppression combination** selector now applies the frozen production
+suppression head to each standalone neural option, including Compact, both
+Small/Large Mobile-TCN selections, distilled Mobile-TCN, DINO-TCN and the two
+DINO-transformer precisions. Off preserves the original model and its saved draft.
+Each combination has independent persistence and a shareable `suppression` query
+parameter. Saved human export and existing boundary-review modes retain their
+original behavior; suppression is not applied twice.
+
+Conservative, balanced and aggressive use the production one-model-only agreement
+gate. Those votes come from production, not from the selected neural model. The
+separate **Head only · neural experiment** applies decoded suppression without
+that gate, only to neural models. Any eligible core overlap suppresses the whole
+rally by default. This experiment can remove real play and is not a recommendation
+to ship ungated suppression. Every removal has a restore/keep decision and undo;
+ignored-only evidence cannot trigger it. Unchanged rallies retain their boundaries,
+identities and any existing serve markers.
+
+The human comparison rail now shows the unedited original model alongside the
+current combination, including subsequent review edits, at identical current
+padding/join settings. It reports padded precision, retained-core recall,
+`F1_padP_coreR`, export time, extra footage and missed core time. The existing
+0/1/2/3-second sensitivity table remains available; default target padding is
+2 seconds each side with strictly-less-than-3-second joining. Suppression barriers
+still apply to the actual export. These are time metrics, not rally-event recall.
+
+Existing label-blind cached predictions support 42 non-beach videos. The two beach
+videos remain usable but explicitly show suppression unavailable. All 44 task
+responses load; 38 currently include a saved human comparison. No training,
+feature extraction, threshold selection or mobile inference ran for this addition.
+
+The historical production editor example uses an older feature replay than the
+comparison study. Its original production gate and drafts remain paired. When
+geometries differ, **Production ensemble · comparison replay** exposes the precise
+production reference used to guard neural combinations, without replacing the
+historical baseline or resetting its drafts.
+
+Prepare evidence with `scripts/prepare-editor-lab-suppression.py`, passing private
+locations through `--comparison-index`, `--production-replay` and `--output` from
+the ledger/ignored environment. Configure the resulting index using server-only
+`VOLLEYCUT_EDITOR_LAB_SUPPRESSION_INDEX_PATH`. The publisher verifies source
+receipts and probability hashes. The API validates recording identity, duration,
+scores and geometry, and strips private provenance fields before sending data to
+the browser. Missing evidence never becomes a fabricated no-op model result.
+
+Browser validation covered all 13 standalone neural options, restore/undo with
+live metric changes, separate drafts, reload, production gating and human-reference
+protection. Focused tests cover ignored spans, exact whole-rally behavior, storage
+isolation, replay pairing and malformed/stale source rejection. Two preexisting
+`prod-suppression.test.mts` assertions still expect veto-region behavior despite
+the current whole-rally default; production code and those tests were unchanged.
+
 Purpose: try the production Rally Desk review experience with frozen production and compact model configurations on NAS footage.
 
 ## Work checklist

@@ -152,7 +152,7 @@ function rankVector(values: Float32Array): Float32Array {
   return percentileRanks(values, values.length, 1);
 }
 
-function rollingPercentile(
+export function rollingPercentile(
   values: Float32Array,
   window: number,
   percentile: number,
@@ -169,8 +169,8 @@ function rollingPercentile(
     const position = (sorted.length - 1) * percentile;
     const lower = Math.floor(position);
     const upper = Math.ceil(position);
-    output[index] =
-      sorted[lower] * (upper - position) + sorted[upper] * (position - lower);
+    const fraction = position - lower;
+    output[index] = sorted[lower] * (1 - fraction) + sorted[upper] * fraction;
   }
   return output;
 }

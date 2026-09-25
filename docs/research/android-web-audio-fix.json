@@ -1,0 +1,379 @@
+{
+  "schema": "android-web-audio-fix-v1",
+  "status": "implemented-device-audio-parity-passed",
+  "recordingIndex": "recording-044",
+  "artifactIndex": "private-reference-0223",
+  "labelSha256": "97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c",
+  "scope": "Actual shared app audio extraction on Pixel 10 Pro; frozen temporal checkpoint replay with corrected phone audio and unchanged saved native non-audio inputs. No training, calibration, selection, fresh image extraction or complete pipeline timing rerun.",
+  "targetPaddingSeconds": 2,
+  "joinGapSeconds": 3,
+  "ignoredIntervals": "Same frozen gold revision, subtracted after union/join without rejoining.",
+  "pilot": {
+    "durationSeconds": 120,
+    "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+    "decoders": [
+      {
+        "requestedMode": "single",
+        "actualMode": "single",
+        "elapsedSeconds": 40.664951125,
+        "decodedPcmFrames": 5759665,
+        "resampledOutputSamples": 1920001,
+        "audioFeatureFrames": 2401,
+        "featureSha256": "46f43a976aafae76446e8c464e5fb514cb0b9b174af345d8e10235075302fd34",
+        "rows": 480,
+        "columns": 27
+      },
+      {
+        "requestedMode": "auto",
+        "actualMode": "batched",
+        "elapsedSeconds": 16.157107616,
+        "decodedPcmFrames": 5759665,
+        "resampledOutputSamples": 1920001,
+        "audioFeatureFrames": 2401,
+        "featureSha256": "46f43a976aafae76446e8c464e5fb514cb0b9b174af345d8e10235075302fd34",
+        "rows": 480,
+        "columns": 27
+      }
+    ]
+  },
+  "full": {
+    "durationSeconds": 1061.016489,
+    "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+    "decoders": [
+      {
+        "requestedMode": "single",
+        "actualMode": "single",
+        "elapsedSeconds": 460.890223346,
+        "decodedPcmFrames": 50927616,
+        "resampledOutputSamples": 16976025,
+        "audioFeatureFrames": 21221,
+        "featureSha256": "163f03af9d3c12fcd209ae1a8c33cbde60456177d38d4f4edd6ffe211a2c598f",
+        "rows": 4245,
+        "columns": 27
+      },
+      {
+        "requestedMode": "auto",
+        "actualMode": "batched",
+        "elapsedSeconds": 87.799463608,
+        "decodedPcmFrames": 50927616,
+        "resampledOutputSamples": 16976025,
+        "audioFeatureFrames": 21221,
+        "featureSha256": "163f03af9d3c12fcd209ae1a8c33cbde60456177d38d4f4edd6ffe211a2c598f",
+        "rows": 4245,
+        "columns": 27
+      }
+    ]
+  },
+  "sourceReceipt": {
+    "artifactIndex": "private-reference-0223",
+    "recordingIndex": "recording-044",
+    "sourceHashes": {
+      "android/app/src/main/java/com/volleycut/nativeanalysis/AacLcFrameLayout.java": "9c48efd088a01bc645615a44bc96004e1fc07fdaa0d65e93ab218e4e4c5caedb",
+      "android/app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java": "ce743abeff99b33ecb9486b49bfd04bff6a6f696c5f63d1f0b7b340d4fdda6d2",
+      "android/app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java": "e67caa4899f3a9a4115569be942d082bb5d88c3bbba8a62f381ee5f328b5ce57",
+      "android/app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java": "1f0b620396030384aee025dd3dc907f122711bffbb9f53fd720c2525d5df2ba1",
+      "android/app/src/main/java/com/volleycut/nativeanalysis/NativeProjectStore.kt": "c6bcf390f3ee8e74f36589f9971e1d97de8a3eb1aed242c6ba4e50bb27f5f1f7",
+      "prod/src/lib/on-device/audio-features.ts": "dfc64106be0579d2d901a978f26ea75b0b936c58a4bad2a91c3e141d8688043a",
+      "lib/on-device/audio-features.ts": "351ca0ad4bcf8fff81213a7705e4909f49825dc1979709ae134d2a90741a0c50",
+      "prod/src/lib/on-device/feature-cache.ts": "e215b824a669cbc21f7154ba5227404e5e542398469a3e2e691ae181297d2421",
+      "android/app/src/androidTest/java/com/volleycut/nativeanalysis/AudioTimelineInstrumentedTest.kt": "1339cc30b43a1ae70baae0db49268cb407bd3bcf2ed50e7067aec3f3b23aacd4"
+    },
+    "apkSha256": "a90e5b91276ec935ba9682c0ccb20aae703865738de50a83d6fc9dbe58fb6f8a"
+  },
+  "verification": {
+    "androidUnitTests": 172,
+    "webTests": 26,
+    "normalDebugBuild": true,
+    "instrumentationBuild": true,
+    "productionTypescript": true,
+    "productionStaticBuild": true,
+    "productionStaticIntegrity": true,
+    "devicePilotPassed": true,
+    "deviceFullPassed": true
+  },
+  "models": [
+    {
+      "selection": "f1",
+      "weightsSha256": "1d73c21e9ecd9c0cf7b454c5860f00a6db317f41cf0286a95c4770948b1d5c1c",
+      "encoderWeightsSha256": "25d6bbd2e2a133cd1a9d6427b9cd9b4619d1efd554356c0bf4a9e15894f45a66",
+      "decoder": {
+        "smoothing": 1.0,
+        "enter": 0.9,
+        "minimum": 0.25,
+        "boundary": false
+      },
+      "correctedAudioSha256": "276a2952be5899245be43935b2d4e71d4912979041ebacd7f3dc3b90c7c7ff68",
+      "savedNativeFeaturesSha256": "9899998c15b7d42441b7f0e06e10de64fa6fb36d9cb17cf75d82cb9ce2512638",
+      "rallyCount": 35,
+      "humanRallyCount": 37,
+      "whollyMissedSavedHumanRallies": 2,
+      "whollyMissedHumanRallyNumbers": [
+        6,
+        16
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9724079012345684,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9587827325818982,
+        "paddedModelExportSeconds": 393.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9279321235275406,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8333773440933578,
+          "paddedModelExportSeconds": 261.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9607493855411482,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9239140507868369,
+          "paddedModelExportSeconds": 327.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9724079012345684,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9587827325818982,
+          "paddedModelExportSeconds": 393.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9850693009485836,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9705282568950274,
+          "paddedModelExportSeconds": 459.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ]
+    },
+    {
+      "selection": "recall",
+      "weightsSha256": "e79a626bb8a01a0de060d759721340b06f1bae2c90033ed8647448e4a9af5488",
+      "encoderWeightsSha256": "0be04fbf8e5633241a473f49176d9d27184f45ea94f90dd454d73fd4109d7bc6",
+      "decoder": {
+        "smoothing": 0.5,
+        "enter": 0.2,
+        "minimum": 1.0,
+        "boundary": true
+      },
+      "correctedAudioSha256": "276a2952be5899245be43935b2d4e71d4912979041ebacd7f3dc3b90c7c7ff68",
+      "savedNativeFeaturesSha256": "28d7111bd6ad030443ffec56b18ff929756ec13ece4b31f3b3c6b2d1d07b8eb3",
+      "rallyCount": 39,
+      "humanRallyCount": 37,
+      "whollyMissedSavedHumanRallies": 0,
+      "whollyMissedHumanRallyNumbers": [],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9285398461309284,
+        "R_core": 0.9875286628735539,
+        "F1_padP_coreR": 0.9571262283840878,
+        "paddedModelExportSeconds": 466.125,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -4.519697777781062,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8829170163170208,
+          "R_core": 0.8845770917513389,
+          "F1_padP_coreR": 0.8837462744416384,
+          "paddedModelExportSeconds": 321.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": 0.6038244444408747,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9108630754882399,
+          "R_core": 0.967950462350549,
+          "F1_padP_coreR": 0.9385394743015061,
+          "paddedModelExportSeconds": 396.125,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -1.020553333336693,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9285398461309284,
+          "R_core": 0.9875286628735539,
+          "F1_padP_coreR": 0.9571262283840878,
+          "paddedModelExportSeconds": 466.125,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -4.519697777781062,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9462884426828342,
+          "R_core": 0.9937563565290681,
+          "F1_padP_coreR": 0.9694416906331922,
+          "paddedModelExportSeconds": 536.125,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -8.518853333336438,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ]
+    }
+  ],
+  "audioCorrelations": [
+    {
+      "feature": "audio_rms",
+      "before": 0.17777831619555043,
+      "after": 0.9959262700341054
+    },
+    {
+      "feature": "audio_peak",
+      "before": 0.08915979739447742,
+      "after": 0.984178907193668
+    },
+    {
+      "feature": "audio_peak_to_rms",
+      "before": -0.008604406732537439,
+      "after": 0.7641895359283025
+    },
+    {
+      "feature": "audio_noise_floor",
+      "before": 0.47413289476242654,
+      "after": 0.9982979742060074
+    },
+    {
+      "feature": "audio_snr",
+      "before": 0.038480932805417346,
+      "after": 0.9925008938311379
+    },
+    {
+      "feature": "audio_spectral_flux",
+      "before": 0.01568747866924032,
+      "after": 0.7711202227044461
+    },
+    {
+      "feature": "audio_rms_novelty",
+      "before": 0.012026446846763314,
+      "after": 0.9219268813615146
+    },
+    {
+      "feature": "audio_onset_strength",
+      "before": 0.014379248026956294,
+      "after": 0.8364691707992922
+    },
+    {
+      "feature": "audio_contact_like_transient",
+      "before": 0.058714426102636254,
+      "after": 0.9140259469279909
+    },
+    {
+      "feature": "audio_onset_cadence",
+      "before": 0.2746941661644454,
+      "after": 0.9925936589370508
+    },
+    {
+      "feature": "audio_cadence_collapse",
+      "before": 0.0010276403810695366,
+      "after": 0.9295734294519449
+    },
+    {
+      "feature": "audio_seconds_since_transient",
+      "before": 0.0772229768566405,
+      "after": 0.8220695098339564
+    },
+    {
+      "feature": "audio_noise_removed_broadband",
+      "before": 0.07400468159238902,
+      "after": 0.9186165555284066
+    },
+    {
+      "feature": "audio_noise_normalized_flux",
+      "before": 0.050262206585636425,
+      "after": 0.8709560128798386
+    },
+    {
+      "feature": "audio_band_80_250_snr",
+      "before": 0.001551075652971042,
+      "after": 0.891778789390119
+    },
+    {
+      "feature": "audio_band_80_250_snr_flux",
+      "before": -0.015569617990345582,
+      "after": 0.7731586265442671
+    },
+    {
+      "feature": "audio_band_250_500_snr",
+      "before": 0.18245393488091358,
+      "after": 0.9217609929862847
+    },
+    {
+      "feature": "audio_band_250_500_snr_flux",
+      "before": 0.1521713669177518,
+      "after": 0.7999069016895545
+    },
+    {
+      "feature": "audio_band_500_1000_snr",
+      "before": 0.0491710100720098,
+      "after": 0.9695208057421042
+    },
+    {
+      "feature": "audio_band_500_1000_snr_flux",
+      "before": 0.08759755563412802,
+      "after": 0.8936443535719621
+    },
+    {
+      "feature": "audio_band_1000_2000_snr",
+      "before": 0.02614638414829862,
+      "after": 0.9522318276863123
+    },
+    {
+      "feature": "audio_band_1000_2000_snr_flux",
+      "before": 0.04239173323502018,
+      "after": 0.8833246739104391
+    },
+    {
+      "feature": "audio_band_2000_4000_snr",
+      "before": 0.03244523269411192,
+      "after": 0.9469790943998511
+    },
+    {
+      "feature": "audio_band_2000_4000_snr_flux",
+      "before": 0.030991482007594474,
+      "after": 0.8738366321220945
+    },
+    {
+      "feature": "audio_band_4000_7800_snr",
+      "before": 0.0626694023174908,
+      "after": 0.935577975009428
+    },
+    {
+      "feature": "audio_band_4000_7800_snr_flux",
+      "before": 0.0030566122763132225,
+      "after": 0.8679101905147119
+    }
+  ]
+}
