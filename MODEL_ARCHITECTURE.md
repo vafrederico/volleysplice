@@ -44,6 +44,14 @@ cannot be reused across the choices. DINO and the training projector are absent
 at inference. See the [bundle manifests](models/distilled-large/README.md) and
 [feature contract](FEATURE_PIPELINE.md#production-profile).
 
+Android also offers an opt-in paired execution experiment. Fresh analyses feed
+each prepared image through both matched encoders, then run each TCN and decoder
+independently. AV features and production serve/state evidence are shared;
+serving-side and side-switch evaluation runs separately for each rally set.
+Both results are saved, so selecting either completed result needs no inference.
+This changes execution scheduling only; the model bundles and decision policies
+remain frozen. See the [paired-variant report](docs/research/paired-distilled-variants.md).
+
 The neural model supplies rally intervals. Existing production serve/dead-state
 heads still provide evidence for serving-side and side-switch classification,
 which run on those neural intervals. The ensemble's learned suppression policy

@@ -109,6 +109,21 @@ and reproducible build preparation, and the
 [normal-app integration checks](docs/research/distilled-large-production-integration.md)
 for browser and emulator validation.
 
+Android's experimental **Prepare both versions** option runs both frozen Large
+encoders on each prepared 224-pixel image during a fresh shared AV decode. One
+bounded four-image queue feeds a worker that runs the two sessions sequentially;
+each encoder writes a separate token stream. Image preparation, selected frame
+timestamps, and quality rows are shared, while normalization, TCN inference,
+decoding, and score outputs retain each variant's identity. Both projects are
+saved so reopening an already prepared choice requires no rally inference.
+An existing completed companion project is preserved, including reviewed edits.
+The option is off by default and does not change model selection or weights.
+Score specialists currently use a separate pass for each proposal set. When AV
+features are already cached, paired analysis currently falls back to the two
+independent embedding passes; the shared fresh-input optimization does not cover
+that case. See the [paired execution experiment](docs/research/paired-distilled-variants.md)
+for timing scope, output checks, and optimization opportunities.
+
 The current production profile is `audiovisual-noise-normalized-audio-v3` with audio
 profile `noise-normalized-bands-v3`:
 

@@ -580,6 +580,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             .getString("rally-model", RallyModels.DEFAULT)?.takeIf(RallyModels::isSupported) ?: RallyModels.DEFAULT)
     }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
+    var prepareBothVariants by remember { mutableStateOf(false) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
     val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
@@ -824,6 +825,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     analyzeServingSide,
                     generateSideSwitchMarkers,
                     rallyModelId,
+                    prepareBothVariants,
                 )
                 val existing = NativeProjectStore.findMatching(context, candidate)
                 val reusable = useCache && existing?.status == ProjectStatus.READY &&
@@ -1136,6 +1138,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 state = inference,
                 generateSideSwitchMarkers = generateSideSwitchMarkers,
                 rallyModelId = rallyModelId,
+                prepareBothVariants = prepareBothVariants,
+                onPrepareBothVariants = { prepareBothVariants = it },
                 onRallyModel = {
                     rallyModelId = it
                     context.getSharedPreferences("analysis-preferences", Context.MODE_PRIVATE)
@@ -2318,6 +2322,8 @@ private fun NewProjectCard(
     state: InferenceUiState,
     generateSideSwitchMarkers: Boolean,
     rallyModelId: String,
+    prepareBothVariants: Boolean,
+    onPrepareBothVariants: (Boolean) -> Unit,
     onRallyModel: (String) -> Unit,
     queueCount: Int,
     gameStartMs: Long,
@@ -2399,6 +2405,18 @@ private fun NewProjectCard(
                 }
                 Text("Highest recall keeps more possible play. Highest F1 makes tighter selections. Changing this creates a separate analysis.",
                     fontSize = 12.sp, color = Muted)
+                if (RallyModels.isNeural(rallyModelId)) {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = !preparing) {
+                        onPrepareBothVariants(!prepareBothVariants)
+                    }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = prepareBothVariants, onCheckedChange = onPrepareBothVariants, enabled = !preparing)
+                        Column {
+                            Text("Prepare both versions (experimental)", fontSize = 13.sp)
+                            Text("New analyses save recall and F1 results for switching without waiting. Initial analysis takes longer.",
+                                fontSize = 12.sp, color = Muted)
+                        }
+                    }
+                }
             }
             Surface(
                 modifier = Modifier

@@ -147,7 +147,7 @@ class DistilledRallyIntegrationTest {
     }
 
     /** Loop the checked-in synthetic overlay fixture and mark display rotation. */
-    private fun fixture(rotation: Int): File {
+    internal fun fixture(rotation: Int): File {
         val encoded = instrumentation.context.assets.open("overlay-fixture.mp4.b64").bufferedReader().use { it.readText() }
         val source = File.createTempFile("neural-source-", ".mp4", context.cacheDir)
         val target = File.createTempFile("neural-integration-", ".mp4", context.cacheDir)

@@ -17,9 +17,12 @@ import org.json.*;
 
 /** Original YUV -> exact existing neural pixels -> bounded encoder worker. */
 final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
+    record Target(String id, File root, File encoder, File pooling) {}
     private record Job(float[] pixels, float[] quality, long pts, int first, int end, float[] pooling) {}
     private static final Job END = new Job(null, null, 0, 0, 0, null);
     private final File root, encoderFile, poolFile;
+    private final List<Target> targets;
+    private final Map<String, JSONObject> targetReports = new LinkedHashMap<>();
     private final double startSeconds;
     private final int rotation;
     private final boolean dynamicPoolWeights;
@@ -52,6 +55,16 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
     SharedEmbeddingConsumer(File root, String prefix, String id, double startSeconds, double seconds,
             double[] roi, int rotation, boolean captureHashes, BooleanSupplier cancelled,
             File encoderFile, File poolFile, boolean dynamicPoolWeights) {
+        this(List.of(new Target(id, root, encoderFile, poolFile)), prefix, startSeconds, seconds,
+                roi, rotation, captureHashes, cancelled, dynamicPoolWeights);
+    }
+    SharedEmbeddingConsumer(List<Target> targets, String prefix, double startSeconds, double seconds,
+            double[] roi, int rotation, boolean captureHashes, BooleanSupplier cancelled, boolean dynamicPoolWeights) {
+        if(targets.isEmpty() || targets.stream().map(Target::id).distinct().count()!=targets.size())
+            throw new IllegalArgumentException("Encoder targets must have distinct identities");
+        this.targets=List.copyOf(targets);
+        Target first=targets.get(0);
+        File root=first.root(),encoderFile=first.encoder(),poolFile=first.pooling(); String id=first.id();
         this.root=root; this.prefix=prefix; this.id=id; this.seconds=seconds;
         this.startSeconds=startSeconds; this.rotation=rotation;
         this.encoderFile=encoderFile; this.poolFile=poolFile; this.dynamicPoolWeights=dynamicPoolWeights;
@@ -111,12 +124,20 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
     }
     private void encode() {
         Map<String,OnnxTensor> inputs=new LinkedHashMap<>();
+        List<OrtSession> encoders=new ArrayList<>();
+        List<OutputStream> tokenStreams=new ArrayList<>();
+        long[] runNs=new long[targets.size()],readbackNs=new long[targets.size()],writeNs=new long[targets.size()];
         try(OrtSession.SessionOptions options=new OrtSession.SessionOptions()) {
             options.setIntraOpNumThreads(4); options.setInterOpNumThreads(1);
             OrtEnvironment env=OrtEnvironment.getEnvironment();
             long start=System.nanoTime();
-            try(OrtSession encoder=env.createSession(encoderFile.toString(),options);
-                FileOutputStream tokens=new FileOutputStream(new File(root,id+"-tokens.f32"))) {
+            for(Target target:targets) {
+                long loadStarted=System.nanoTime();
+                encoders.add(env.createSession(target.encoder().toString(),options));
+                tokenStreams.add(new BufferedOutputStream(new FileOutputStream(new File(target.root(),target.id()+"-tokens.f32"))));
+                targetReports.put(target.id(),new JSONObject().put("encoderLoadMs",(System.nanoTime()-loadStarted)/1e6));
+            }
+            {
                 ByteBuffer rgb=ByteBuffer.allocateDirect(3*224*224*4).order(ByteOrder.LITTLE_ENDIAN);
                 FloatBuffer imageFloats=rgb.asFloatBuffer();
                 inputs.put("image",OnnxTensor.createTensor(env,rgb,new long[]{1,3,224,224},OnnxJavaType.FLOAT));
@@ -136,13 +157,26 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
                         String hash=null;
                         if(captureHashes) { start=System.nanoTime(); hash=NeuralVideoEncoder.pixelHash(rgb); hashNs+=System.nanoTime()-start; }
                         start=System.nanoTime();
-                        try(OrtSession.Result result=encoder.run(inputs)) {
-                            FloatBuffer values=((OnnxTensor)result.get(0)).getFloatBuffer();
-                            ByteBuffer bytes=ByteBuffer.allocate(values.remaining()*4).order(ByteOrder.LITTLE_ENDIAN);
-                            bytes.asFloatBuffer().put(values);
+                        // One prepared image, sequential sessions on the same worker.
+                        // Avoid competing eight-thread encoders while AV work is active.
+                        for(int target=0;target<encoders.size();target++) {
+                            check(); long operation=System.nanoTime();
+                            try(OrtSession.Result result=encoders.get(target).run(inputs)) {
+                                runNs[target]+=System.nanoTime()-operation;
+                                operation=System.nanoTime();
+                                FloatBuffer values=((OnnxTensor)result.get(0)).getFloatBuffer();
+                                if(values.remaining()!=3840 && targets.size()>1) throw new IOException("Unexpected paired encoder output");
+                                ByteBuffer bytes=ByteBuffer.allocate(values.remaining()*4).order(ByteOrder.LITTLE_ENDIAN);
+                                bytes.asFloatBuffer().put(values);
+                                readbackNs[target]+=System.nanoTime()-operation;
+                                operation=System.nanoTime();
+                                for(int i=job.first();i<job.end();i++) tokenStreams.get(target).write(bytes.array());
+                                writeNs[target]+=System.nanoTime()-operation;
+                            }
+                        }
+                        {
                             for(int i=job.first();i<job.end();i++) {
                                 if(sampled!=i) throw new IOException("Shared tokens out of order");
-                                tokens.write(bytes.array());
                                 float[] q=job.quality().clone(); q[5]=(float)(job.pts()/1e6-sampling.targetSeconds()[i]);
                                 JSONArray quality=new JSONArray(); for(float v:q) quality.put(v);
                                 qualities.put(quality); timestamps.put(job.pts()/1e6);
@@ -154,8 +188,19 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
                     } finally { free.put(job.pixels()); }
                 }
             }
+            for(int target=0;target<targets.size();target++) {
+                long operation=System.nanoTime(); tokenStreams.get(target).flush();
+                writeNs[target]+=System.nanoTime()-operation;
+                targetReports.get(targets.get(target).id()).put("encoderRunMs",runNs[target]/1e6)
+                    .put("tokenReadbackMs",readbackNs[target]/1e6).put("tokenWriteMs",writeNs[target]/1e6)
+                    .put("encoderAndReadbackMs",(runNs[target]+readbackNs[target]+writeNs[target])/1e6);
+            }
         } catch(Throwable error) { failure.compareAndSet(null,error); }
-        finally { for(OnnxTensor tensor:inputs.values()) tensor.close(); }
+        finally {
+            for(OnnxTensor tensor:inputs.values()) tensor.close();
+            for(OrtSession encoder:encoders) try { encoder.close(); } catch(Exception error) { failure.compareAndSet(null,error); }
+            for(OutputStream stream:tokenStreams) try { stream.close(); } catch(Exception error) { failure.compareAndSet(null,error); }
+        }
     }
     @Override public void finish() throws IOException {
         if(finished) return;
@@ -173,6 +218,8 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
                 .put("pixelHashMs",hashNs/1e6).put("samplePlanMs",0)
                 .put("totalMs",(System.nanoTime()-started)/1e6)
                 .put("uniqueSelectedImages",uniqueImages).put("bufferCount",4)
+                .put("encoderCount",targets.size()).put("encoderScheduling","sequential-per-image")
+                .put("encoderProfiles",new JSONObject(targetReports))
                 .put("preparedBufferBytes",4*3*224*224*4)
                 .put("tokens",id+"-tokens.f32").put("frameSelection","nearest-media-pts-earlier-tie-v1")
                 .put("sharedDecoding",true).put("timingScope","Nested concurrent work inside AV video stage; do not add totalMs again")
@@ -184,6 +231,16 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
     JSONObject report() throws IOException {
         if(!finished || failure.get()!=null) throw new IOException("Shared embeddings not complete",failure.get());
         return report;
+    }
+    JSONObject report(String targetId) throws IOException {
+        report();
+        if(!targetReports.containsKey(targetId)) throw new IOException("Missing encoder target");
+        try {
+            JSONObject selected=new JSONObject(report.toString()),metrics=targetReports.get(targetId);
+            Iterator<String> keys=metrics.keys();
+            while(keys.hasNext()) { String key=keys.next(); selected.put(key,metrics.get(key)); }
+            return selected.put("tokens",targetId+"-tokens.f32").put("encoderId",targetId);
+        } catch(JSONException error) { throw new IOException(error); }
     }
     @Override public void close() throws IOException {
         closing=true;

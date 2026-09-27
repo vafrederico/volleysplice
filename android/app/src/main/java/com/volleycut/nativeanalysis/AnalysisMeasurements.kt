@@ -5,7 +5,8 @@ import org.json.JSONObject
 
 internal enum class AnalysisRunKind(val wireName: String, val label: String) {
     PROJECT("project", "Full project inference"),
-    SCORE_SPECIALISTS("score-specialists", "Score-tracking inference");
+    SCORE_SPECIALISTS("score-specialists", "Score-tracking inference"),
+    PAIRED_COMPANION("paired-companion", "Companion rally and score inference (shared preparation excluded)");
 
     companion object {
         fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
@@ -149,6 +150,7 @@ internal class InferenceProgressTracker(
     includeCore: Boolean,
     includeServingSide: Boolean,
     includeSideSwitch: Boolean,
+    pairedScores: Boolean = false,
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
     private data class Step(
@@ -167,8 +169,12 @@ internal class InferenceProgressTracker(
             add(Step("audio", "Listening for play"))
             add(Step("rally", "Finding rallies"))
         }
-        if (includeServingSide) add(Step("serving-side", "Finding serve markers"))
-        if (includeSideSwitch) add(Step("side-switch", "Finding team switches"))
+        if (includeServingSide && pairedScores) {
+            add(Step("paired-scores", "Preparing both score results"))
+        } else {
+            if (includeServingSide) add(Step("serving-side", "Finding serve markers"))
+            if (includeSideSwitch) add(Step("side-switch", "Finding team switches"))
+        }
     }
 
     fun update(stage: String, fraction: Double, detail: String): List<InferenceStepMeasurement> {
@@ -229,6 +235,7 @@ internal class InferenceProgressTracker(
         "audio" -> "audio" to fraction
         "normalizing" -> "rally" to (0.05 + 0.25 * fraction)
         "inference" -> "rally" to (0.30 + 0.70 * fraction)
+        "paired-scores" -> "paired-scores" to fraction
         "score-specialists" -> "serving-side" to if (fraction >= 1.0) 1.0 else 0.02
         "specialist-frames", "serving-side-frames" ->
             "serving-side" to (0.05 + 0.63 * fraction)

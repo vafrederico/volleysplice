@@ -166,6 +166,19 @@ class ProjectAnalysisServiceTest {
     }
 
     @Test
+    fun pairedScoresRemainInProgressUntilBothVariantsFinish() {
+        val tracker = InferenceProgressTracker(true, true, true, pairedScores = true)
+        val primary = tracker.update("paired-scores", 0.5, "First variant ready")
+        assertEquals(listOf("video", "audio", "rally", "paired-scores"), primary.map { it.id })
+        assertEquals(InferenceStepStatus.RUNNING, primary.last().status)
+        val alternate = tracker.update("paired-scores", 0.8, "Preparing companion")
+        assertEquals(0.8, alternate.last().fraction, 0.001)
+        assertEquals(0.94, projectCreationOverallProgress("paired-scores", 0.8, true), 0.001)
+        assertEquals(80, projectCreationNotificationStage("paired-scores", 0.8, true).progressPercent)
+        assertEquals(InferenceStepStatus.COMPLETE, tracker.update("complete", 1.0, "Both ready").last().status)
+    }
+
+    @Test
     fun scoreOnlyMeasurementsOmitDisabledTeamSwitchStep() {
         val tracker = InferenceProgressTracker(
             includeCore = false,

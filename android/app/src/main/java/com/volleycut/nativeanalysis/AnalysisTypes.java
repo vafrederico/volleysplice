@@ -312,7 +312,44 @@ public final class AnalysisTypes {
             int availableProcessors,
             long totalMilliseconds,
             NativeFeatureCache.CacheStats featureCache
-    ) {}
+    ) {
+        /** Total readiness for the optional pair, including the later companion score pass. */
+        AnalysisResult withPairedCompletion(long companionScoreMs, long bundleLoadMs, long allReadyMs,
+                double companionThreadCpuMs) {
+            Map<String,Long> timings=new java.util.LinkedHashMap<>(stageMilliseconds);
+            timings.merge("open",bundleLoadMs,Long::sum);
+            timings.merge("score_specialists",companionScoreMs,Long::sum);
+            timings.merge("inference",companionScoreMs,Long::sum);
+            Map<String,Double> profile=new java.util.LinkedHashMap<>(profileMilliseconds);
+            profile.put("paired/companion_score_wall",(double)companionScoreMs);
+            profile.put("paired/both_ready_wall",(double)allReadyMs);
+            return new AnalysisResult(source,displayName,media,roi,analyzedDurationSeconds,sourceFrameLimit,
+                    sourceFrameLimitReached,sampleRows,decodedSourceFrames,decodeOnlySourceFrames,decoderOutputFrames,
+                    decodedAudioFrames,resampledAudioSamples,audioFeatureFrames,videoDecoder,hardwareVideoDecoder,
+                    codecOperatingRate,codecPriority,audioDecoder,audioCodecOperatingRate,audioCodecPriority,
+                    audioMultipleFramesSupported,audioDecoderMode,audioInputAccessUnits,audioInputBatches,
+                    audioOutputAccessUnits,audioOutputBatches,audioFeatureSha256,ranges,productionComponents,
+                    productionServeOutputs,productionStateOutputs,servingSide,servingSideError,sideSwitch,sideSwitchError,
+                    suppression,Map.copyOf(timings),Map.copyOf(profile),threadCpuMilliseconds+companionThreadCpuMs,
+                    thermalStatusStart,thermalStatusEnd,gcCountDelta,gcMillisecondsDelta,javaHeapUsedBytes,
+                    nativeHeapAllocatedBytes,pssKilobytes,availableProcessors,allReadyMs,featureCache);
+        }
+        /** Alternate prediction over the same input features; timings contain only its model work. */
+        AnalysisResult withVariantPredictions(List<Interval> intervals, ServingSideOutput serving,
+                String servingError, SideSwitchOutput switching, String switchingError,
+                long rallyMs, long scoresMs, Map<String,Double> variantProfile) {
+            return new AnalysisResult(source,displayName,media,roi,analyzedDurationSeconds,sourceFrameLimit,
+                    sourceFrameLimitReached,sampleRows,decodedSourceFrames,decodeOnlySourceFrames,decoderOutputFrames,
+                    decodedAudioFrames,resampledAudioSamples,audioFeatureFrames,videoDecoder,hardwareVideoDecoder,
+                    codecOperatingRate,codecPriority,audioDecoder,audioCodecOperatingRate,audioCodecPriority,
+                    audioMultipleFramesSupported,audioDecoderMode,audioInputAccessUnits,audioInputBatches,
+                    audioOutputAccessUnits,audioOutputBatches,audioFeatureSha256,intervals,productionComponents,
+                    productionServeOutputs,productionStateOutputs,serving,servingError,switching,switchingError,null,
+                    Map.of("rally_inference",rallyMs,"score_specialists",scoresMs,"inference",rallyMs+scoresMs),
+                    Map.copyOf(variantProfile),0,thermalStatusStart,thermalStatusEnd,0,0,javaHeapUsedBytes,
+                    nativeHeapAllocatedBytes,pssKilobytes,availableProcessors,rallyMs+scoresMs,featureCache);
+        }
+    }
 
     public interface ProgressListener {
         void onProgress(String stage, double fraction, String detail);

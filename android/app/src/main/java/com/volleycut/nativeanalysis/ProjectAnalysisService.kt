@@ -52,6 +52,7 @@ internal fun projectCreationOverallProgress(
             "audio" -> 0.42 + 0.16 * bounded
             "normalizing" -> 0.58 + 0.06 * bounded
             "inference" -> 0.64 + 0.06 * bounded
+            "paired-scores" -> 0.70 + 0.30 * bounded
             "score-specialists", "specialist-frames", "serving-side",
             "serving-side-frames", "serving-side-features",
             "side-switch", "side-switch-features" ->
@@ -153,6 +154,7 @@ internal fun projectCreationNotificationStage(
         "audio" -> ProjectNotificationStage("Audio analysis", 2, stepCount, bounded * 0.80)
         "normalizing" -> ProjectNotificationStage("Audio analysis", 2, stepCount, 0.80 + bounded * 0.10)
         "inference" -> ProjectNotificationStage("Audio analysis", 2, stepCount, 0.90 + bounded * 0.10)
+        "paired-scores" -> ProjectNotificationStage("Preparing both score results", 3, stepCount, bounded)
         "score-specialists", "specialist-frames", "serving-side", "serving-side-frames",
         "serving-side-features", "side-switch", "side-switch-features" -> {
             if (includeServingSide) {
@@ -341,6 +343,7 @@ class ProjectAnalysisService : Service() {
             includeCore = true,
             includeServingSide = includeServingSide,
             includeSideSwitch = includeServingSide && project.sideSwitchEnabled,
+            pairedScores = project.prepareBothVariants && RallyModels.isNeural(project.modelId),
         )
         val openingDetail = "Preparing game-window video + audio inference"
         broadcast(
@@ -375,16 +378,7 @@ class ProjectAnalysisService : Service() {
             latestNotificationStage.title,
         )
         try {
-            val neural = DistilledRallyModels.open(this, project.modelId, project.media, project.roi, cancelled::get)
-            val result = neural.use { AnalysisEngine(this, it).analyze(
-                Uri.parse(project.source.uri),
-                true,
-                FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
-                AnalysisTypes.VideoDecoderOptions.defaults(),
-                NativeFeatureCache.Mode.fromWireName(project.cacheMode),
-                project.analysisWindow,
-                cancelled,
-                object : AnalysisTypes.ProgressListener {
+            val progress = object : AnalysisTypes.ProgressListener {
                     override fun onProgress(stage: String, fraction: Double, detail: String) {
                         val measurements = stepTracker.update(stage, fraction, detail)
                         val overallProgress = projectCreationOverallProgress(
@@ -420,11 +414,25 @@ class ProjectAnalysisService : Service() {
                         if (!performanceUpdates.shouldEmit("performance", fraction)) return
                         broadcastPerformance(projectId, stats)
                     }
-                },
-                includeServingSide,
-                project.sideSwitchEnabled,
-            ) }
+                }
+            var paired: PairedNeuralAnalysis.Output? = null
+            val result = if (project.prepareBothVariants && RallyModels.isNeural(project.modelId)) {
+                paired = PairedNeuralAnalysis.run(this, Uri.parse(project.source.uri), project.modelId,
+                    project.media, project.roi, project.analysisWindow,
+                    NativeFeatureCache.Mode.fromWireName(project.cacheMode), cancelled, progress,
+                    includeServingSide, project.sideSwitchEnabled)
+                Log.i(TAG, paired.report.toString())
+                paired.primary
+            } else {
+                DistilledRallyModels.open(this, project.modelId, project.media, project.roi, cancelled::get).use {
+                    AnalysisEngine(this, it).analyze(Uri.parse(project.source.uri), true,
+                        FeatureSchema.FULL_SOURCE_FRAME_LIMIT, AnalysisTypes.VideoDecoderOptions.defaults(),
+                        NativeFeatureCache.Mode.fromWireName(project.cacheMode), project.analysisWindow,
+                        cancelled, progress, includeServingSide, project.sideSwitchEnabled)
+                }
+            }
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
+                paired?.let { NativeProjectStore.completeAlternate(this, project, it) }
                 NativeProjectStore.complete(this, projectId, result)
                 val disagreements = result.ranges().count {
                     ProductionEnsemble.isDisagreement(it.agreement())

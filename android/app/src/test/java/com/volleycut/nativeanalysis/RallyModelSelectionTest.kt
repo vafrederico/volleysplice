@@ -7,6 +7,18 @@ class RallyModelSelectionTest {
     private val source = ProjectSource("content://test/video", "synthetic.mp4", 1200, 10, "video/mp4")
     private val media = AnalysisTypes.MediaInfo(12.0, 320, 180, 0, "video/avc", null)
 
+    @Test fun pairedPreparationIsOptInAndDoesNotChangeVariantIdentity() {
+        val single = NativeProjectStore.newQueued(source, media)
+        val paired = NativeProjectStore.newQueued(source, media, prepareBothVariants = true)
+        assertFalse(single.prepareBothVariants)
+        assertEquals(single.id, paired.id)
+        assertTrue(requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(paired))).prepareBothVariants)
+        assertFalse(NativeProjectStore.newQueued(source, media, rallyModelId = FeatureSchema.MODEL_ID,
+            prepareBothVariants = true).prepareBothVariants)
+        val older = NativeProjectStore.encode(single).apply { remove("prepareBothVariants"); put("version", 11) }
+        assertFalse(requireNotNull(NativeProjectStore.decode(older)).prepareBothVariants)
+    }
+
     @Test fun missingOrStaleAgreementNeverChangesTheSelectedNeuralBundle() {
         for (model in listOf(RallyModels.RECALL, RallyModels.F1)) {
             for (agreement in listOf(null, ProductionEnsemble.BOTH_MODELS)) {
