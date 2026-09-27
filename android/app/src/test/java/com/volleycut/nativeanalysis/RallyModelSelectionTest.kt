@@ -37,10 +37,10 @@ class RallyModelSelectionTest {
     }
 
     @Test fun selectionIsDefaultedAndNeverReusesAnotherModelsReviewedProject() {
-        val recall = NativeProjectStore.newQueued(source, media, rallyModelId = RallyModels.RECALL)
-        val f1 = NativeProjectStore.newQueued(source, media)
+        val recall = NativeProjectStore.newQueued(source, media)
+        val f1 = NativeProjectStore.newQueued(source, media, rallyModelId = RallyModels.F1)
         val ensemble = NativeProjectStore.newQueued(source, media, rallyModelId = FeatureSchema.MODEL_ID)
-        assertEquals(RallyModels.F1, f1.modelId)
+        assertEquals(RallyModels.RECALL, recall.modelId)
         assertEquals(3, setOf(recall.id, f1.id, ensemble.id).size)
         assertFalse(NativeProjectStore.matchesAnalysis(recall, f1))
         assertFalse(NativeProjectStore.matchesAnalysis(recall, ensemble))

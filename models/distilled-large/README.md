@@ -1,8 +1,8 @@
 # Distilled Large production bundles
 
-The default rally model is **Distilled MobileNetV3-Large + TCN, highest F1**,
-labeled **Balanced · BETA**. The alternative **highest recall**, labeled
-**Maximum coverage · BETA**, is a separately selected, frozen model. **Legacy model**
+The default rally model is **Distilled MobileNetV3-Large + TCN, highest recall**,
+labeled **Maximum coverage · BETA**. The alternative **highest F1**, labeled
+**Balanced · BETA**, is a separately selected, frozen model. **Legacy model**
 selects the production ensemble. Each analysis runs only one selected rally
 variant. Switching
 selection switches the encoder, temporal head, 112-column normalization, and
@@ -10,8 +10,8 @@ decoder together. No retraining or threshold search happens in either app.
 
 | Selection | Model ID | Selection draw / TCN epoch | Decoder smoothing / entry / minimum / boundaries |
 | --- | --- | --- | --- |
-| Highest F1 (default) | `distilled-large-f1-v1` | 20260918 / 60 | 1 s / 0.9 / 0.25 s / disabled |
-| Highest recall | `distilled-large-recall-v1` | 3407 / 15 | 0.5 s / 0.2 / 1 s / enabled |
+| Highest F1 | `distilled-large-f1-v1` | 20260918 / 60 | 1 s / 0.9 / 0.25 s / disabled |
+| Highest recall (default) | `distilled-large-recall-v1` | 3407 / 15 | 0.5 s / 0.2 / 1 s / enabled |
 
 Both come from the existing target-99% calibration experiment. That calibration
 target is not a guarantee of 99% recall on a new recording. Their fitting and

@@ -64,8 +64,8 @@ change even when the column names do not change.
 ## Production profile
 
 This branch adds the selectable **Distilled Large** rally pipeline to the normal
-production web and Android apps, with the frozen highest-F1 selection as the
-default, labeled **Balanced · BETA**. Highest recall is **Maximum coverage · BETA**
+production web and Android apps, with the frozen highest-recall selection as the
+default, labeled **Maximum coverage · BETA**. Highest F1 is **Balanced · BETA**
 and the production ensemble is **Legacy model**. Each analysis runs only the
 selected rally variant. This is an application integration, not a published release or
 a new cross-platform accuracy study. The F104 profile below remains required for

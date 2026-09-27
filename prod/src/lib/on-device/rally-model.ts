@@ -10,7 +10,7 @@ export const RALLY_MODEL_OPTIONS = [
 ] as const;
 export type RallyModelSelection = typeof RALLY_MODEL_OPTIONS[number]["value"];
 export type NeuralRallySelection = Exclude<RallyModelSelection, "ensemble">;
-export const DEFAULT_RALLY_MODEL: RallyModelSelection = "high-f1";
+export const DEFAULT_RALLY_MODEL: RallyModelSelection = "high-recall";
 export function isRallyModelSelection(value: unknown): value is RallyModelSelection {
   return RALLY_MODEL_OPTIONS.some(option => option.value === value);
 }
@@ -32,7 +32,7 @@ export type NeuralManifest = {
 
 export function parseNeuralManifest(value: unknown): NeuralManifest {
   const manifest = value as NeuralManifest;
-  if (manifest?.schemaVersion !== 1 || manifest.defaultVariant !== "high-f1") {
+  if (manifest?.schemaVersion !== 1 || manifest.defaultVariant !== DEFAULT_RALLY_MODEL) {
     throw new Error("The rally model catalog is incompatible.");
   }
   for (const selection of ["high-recall", "high-f1"] as const) {

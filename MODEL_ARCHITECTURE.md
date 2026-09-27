@@ -11,8 +11,8 @@ export-encoding architecture.
 ## Distilled Large application path
 
 On this branch, normal web and Android projects default to the selected
-**Distilled MobileNetV3-Large + TCN, highest F1** model (**Balanced · BETA**).
-The highest-recall selection (**Maximum coverage · BETA**) and **Legacy model**
+**Distilled MobileNetV3-Large + TCN, highest recall** model (**Maximum coverage · BETA**).
+The highest-F1 selection (**Balanced · BETA**) and **Legacy model**
 (the production ensemble) remain explicit choices. Each analysis runs only the
 selected rally variant. The following
 new path supplements the deployed ensemble description below; no signed release

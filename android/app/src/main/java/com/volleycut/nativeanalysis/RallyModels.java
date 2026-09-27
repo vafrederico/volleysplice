@@ -4,7 +4,7 @@ package com.volleycut.nativeanalysis;
 final class RallyModels {
     static final String RECALL = "distilled-large-recall-v1";
     static final String F1 = "distilled-large-f1-v1";
-    static final String DEFAULT = F1;
+    static final String DEFAULT = RECALL;
     static final String[] OPTIONS = {F1, RECALL, FeatureSchema.MODEL_ID};
     private RallyModels() {}
 

@@ -6,8 +6,8 @@ responsive phone, tablet, and desktop-mode layouts.
 
 This folder contains the native Android analysis path plus a first-party cut editor and exporter. The analysis workflow is:
 
-The rally-model select box defaults to **Balanced · BETA** (highest F1), with
-**Maximum coverage · BETA** (highest recall) and **Legacy model** (the production
+The rally-model select box defaults to **Maximum coverage · BETA** (highest recall), with
+**Balanced · BETA** (highest F1) and **Legacy model** (the production
 ensemble) as alternatives. Explicit choices are remembered. Each analysis runs
 only the selected rally variant. The neural selections each
 load a matched FP32 encoder, TCN, scalar normalizer, and decoder. Both are bundled

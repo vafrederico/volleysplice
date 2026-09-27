@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "family": "distilled-mobilenet-v3-large-tcn",
   "precision": "fp32",
-  "defaultVariant": "high-f1",
+  "defaultVariant": "high-recall",
   "variants": {
     "high-recall": {
       "id": "distilled-large-recall-v1",

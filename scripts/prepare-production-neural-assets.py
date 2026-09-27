@@ -59,7 +59,7 @@ def prepare(source: Path, output: Path) -> dict:
     for platform in ("android", "web"):
         manifest_path = REPOSITORY / "models" / "distilled-large" / f"{platform}-manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest["schemaVersion"] != 1 or manifest["defaultVariant"] != "high-f1":
+        if manifest["schemaVersion"] != 1 or manifest["defaultVariant"] != "high-recall":
             raise ValueError("Unexpected release manifest contract")
         root = output / platform / "rally-models"
         count = total = 0

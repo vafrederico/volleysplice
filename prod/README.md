@@ -5,8 +5,8 @@ video loading, audiovisual feature extraction, rally inference, and the cut edit
 one UI. It has no API routes, server database, media catalog, mounted-media paths, or
 upload behavior.
 
-New projects default to **Balanced · BETA** (highest F1). The rally-model
-selector also offers **Maximum coverage · BETA** (highest recall) and **Legacy model**
+New projects default to **Maximum coverage · BETA** (highest recall). The rally-model
+selector also offers **Balanced · BETA** (highest F1) and **Legacy model**
 (the production ensemble). Each analysis runs only the selected rally variant.
 Each neural choice loads its matched encoder, temporal head, normalizer, and
 decoder; changing the choice creates separate model results rather than rewriting
