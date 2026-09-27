@@ -593,6 +593,14 @@ models; a one-model-only interval is insufficient. The gate does not alter inter
 retrain a serve head, or use the side score to decide whether a serve occurred. Side-score
 uncertainty and rally recovery are independent review reasons.
 
+For independently decoded neural rallies, Android and production web retain an
+unconfirmed start as a `review` serve with source/reason `neural-rally-recovery`.
+The side classifier still runs for every valid rally and keeps its near/far
+prediction. This extends marker visibility beyond the legacy gate; it does not
+invent a confirmed serve or move its anchor. Saved neural `not-serve` results can
+be recovered from their existing side predictions without extracting features
+again. Legacy ensemble gating and model weights remain unchanged.
+
 The selected development fit contains 1,027 correction-clean near/far rows across 28
 recordings and nine source groups. Development leave-one-source-group-out performance is
 94.12% source-group macro balanced accuracy and 94.05% pooled balanced accuracy. On the

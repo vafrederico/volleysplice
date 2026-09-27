@@ -48,7 +48,7 @@ internal fun projectCreationOverallProgress(
     if (includeServingSide) {
         return when (stage) {
             "opening" -> 0.02 * bounded
-            "video-preparing" -> 0.02
+            "video-preparing", "video-indexing" -> 0.02
             "video" -> 0.02 + 0.40 * bounded
             "audio" -> 0.42 + 0.16 * bounded
             "normalizing" -> 0.58 + 0.06 * bounded
@@ -62,7 +62,7 @@ internal fun projectCreationOverallProgress(
     }
     return when (stage) {
         "opening" -> 0.02 * bounded
-        "video-preparing" -> 0.02
+        "video-preparing", "video-indexing" -> 0.02
         "video" -> 0.02 + 0.63 * bounded
         "audio" -> 0.65 + 0.19 * bounded
         "normalizing" -> 0.84 + 0.07 * bounded
@@ -151,6 +151,7 @@ internal fun projectCreationNotificationStage(
     val stepCount = if (includeServingSide) 3 else 2
     return when (stage) {
         "opening", "video-preparing" -> ProjectNotificationStage("Preparing video", 1, stepCount, 0.0, true)
+        "video-indexing" -> ProjectNotificationStage("Reading video timestamps", 1, stepCount, bounded)
         "video" -> ProjectNotificationStage(
             "Video analysis", 1, stepCount, if (stage == "video") bounded else 0.0,
         )
@@ -346,7 +347,7 @@ class ProjectAnalysisService : Service() {
             includeServingSide = includeServingSide,
             includeSideSwitch = includeServingSide && project.sideSwitchEnabled,
         )
-        val openingDetail = "Loading analysis and checking the video. Frame scanning starts after setup."
+        val openingDetail = "Checking analysis files and opening the video. Reading frame timestamps comes next."
         broadcast(
             projectId,
             ProjectStatus.ANALYZING,

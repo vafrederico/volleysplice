@@ -13,6 +13,22 @@ import java.util.concurrent.TimeUnit
 
 class ServingSidePersistenceTest {
     @Test
+    fun savedNeuralNotServeIsRecoveredWithoutChangingFeaturesAndFeedbackKeepsItsProvenance() {
+        val original = requireNotNull(projectFixture().servingSide)
+        val old = original.copy(candidates = original.candidates.map { it.copy(
+            agreement = "neural", verdict = ServingSideVerdict.NOT_SERVE,
+            serveDecisionSource = ServingSideDecisionSource.NONE,
+        ) })
+        val restored = requireNotNull(ServingSideJson.decodeOutput(ServingSideJson.encodeOutput(old)))
+        assertArrayEquals(old.rawFeatures, restored.rawFeatures, 0.0)
+        assertEquals(ServingSideVerdict.REVIEW, restored.candidates.single().verdict)
+        assertEquals(ServingSideDecisionSource.NEURAL_RALLY_RECOVERY, restored.candidates.single().serveDecisionSource)
+        assertEquals(old.candidates.single().nearProbability, restored.candidates.single().nearProbability, 0.0)
+        assertEquals(restored.candidates,
+            requireNotNull(ServingSideJson.decodeOutput(ServingSideJson.encodeOutput(restored))).candidates)
+    }
+
+    @Test
     fun cacheIdentityInvalidatesEveryInferenceInputExceptEditorIgnoredRanges() {
         val project = projectFixture()
         val identity = ServingSideCache.identity(project)

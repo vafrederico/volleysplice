@@ -136,10 +136,12 @@ export type ServingSideVerdict = ServingSideSide | "review" | "not-serve";
 export type ServingSideDecisionSource =
   | "serve-head"
   | "production-rally-recovery"
+  | "neural-rally-recovery"
   | "none";
 export type ServingSideReviewReason =
   | "side-score"
-  | "production-rally-recovery";
+  | "production-rally-recovery"
+  | "neural-rally-recovery";
 
 export type ServingSideHeadEvidence = {
   modelId: string;

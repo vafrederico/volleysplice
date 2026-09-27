@@ -91,7 +91,7 @@ final class NativeVideoDecoder {
 
             progress.onProgress("video-preparing", 0, "Reading video timestamps before scanning frames");
             long operationStarted = System.nanoTime();
-            SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds());
+            SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds(), progress, cancelled);
             profiler.add("sample_plan_scan", System.nanoTime() - operationStarted);
             progress.onProgress("video-preparing", 0, "Starting the video decoder. Frame scanning starts next.");
             if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
@@ -222,7 +222,7 @@ final class NativeVideoDecoder {
             if (mime == null) throw new IOException("Video track has no MIME type");
             progress.onProgress("video-preparing", 0, "Reading video timestamps before scanning frames");
             long planStarted = System.nanoTime();
-            SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds());
+            SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds(), progress, cancelled);
             profiler.add("sample_plan_scan", System.nanoTime() - planStarted);
             progress.onProgress("video-preparing", 0, "Starting the video decoder. Frame scanning starts next.");
             if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
@@ -442,8 +442,10 @@ final class NativeVideoDecoder {
             MediaExtractor extractor,
             double[] times,
             int sourceFrameLimit,
-            double mediaDurationSeconds
-    ) {
+            double mediaDurationSeconds,
+            AnalysisTypes.ProgressListener progress,
+            BooleanSupplier cancelled
+    ) throws IOException {
         // Inventory actual PTS. A short CFR probe cannot establish timestamps for
         // the remainder of a file; synthetic PTS can discard selected frames when
         // decode-only flags are assigned. The scan is measured separately.
@@ -451,10 +453,13 @@ final class NativeVideoDecoder {
         int scanLimit = sourceFrameLimit > Integer.MAX_VALUE - SAMPLE_PLAN_REORDER_LOOKAHEAD
                 ? Integer.MAX_VALUE : sourceFrameLimit + SAMPLE_PLAN_REORDER_LOOKAHEAD;
         ArrayList<Long> presentationTimes = new ArrayList<>(Math.min(scanLimit, 65_536));
+        VideoPreparationProgress preparation = new VideoPreparationProgress(
+                mediaDurationSeconds, scanLimit, progress, cancelled);
         while (presentationTimes.size() < scanLimit) {
             long presentationUs = extractor.getSampleTime();
             if (presentationUs < 0) break;
             presentationTimes.add(presentationUs);
+            preparation.sample(presentationUs);
             if (!extractor.advance()) break;
         }
         ArrayList<Long> sorted = new ArrayList<>(presentationTimes);
@@ -485,6 +490,7 @@ final class NativeVideoDecoder {
                 ? Math.min(mediaDurationSeconds, (lastPresentationUs + frameDurationUs) / 1_000_000.0)
                 : mediaDurationSeconds;
         long[] selectedPresentationUs = NearestFrameSelection.select(sortedPresentationUs, times, windowEndSeconds);
+        preparation.complete();
         return new SamplePlan(selectedPresentationUs, sortedPresentationUs, inputFrameCount,
                 sourceFrameCount, sourceFrameLimitReached, lastPresentationUs, frameDurationUs);
     }

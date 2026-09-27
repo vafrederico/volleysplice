@@ -93,6 +93,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1920,6 +1921,20 @@ internal fun InferenceProgressMeasurementsPanel(
     compact: Boolean = false,
 ) {
     if (steps.isEmpty()) return
+    var sinceSnapshotMs by remember(steps) { mutableLongStateOf(0L) }
+    LaunchedEffect(steps) {
+        if (steps.none { it.status == InferenceStepStatus.RUNNING }) return@LaunchedEffect
+        val started = withFrameNanos { it }
+        while (true) {
+            delay(250)
+            withFrameNanos { sinceSnapshotMs = (it - started).coerceAtLeast(0L) / 1_000_000L }
+        }
+    }
+    val displayedSteps = steps.map { step ->
+        if (step.status == InferenceStepStatus.RUNNING)
+            step.copy(elapsedMilliseconds = step.elapsedMilliseconds + sinceSnapshotMs)
+        else step
+    }
     Surface(
         modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(8.dp)),
         color = Paper,
@@ -1929,11 +1944,12 @@ internal fun InferenceProgressMeasurementsPanel(
             Modifier.fillMaxWidth().padding(if (compact) 8.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
         ) {
-            steps.forEachIndexed { index, step ->
-                val percent = (step.fraction * 100).roundToInt()
+            displayedSteps.forEachIndexed { index, step ->
+                val displayedFraction = step.preparationFraction ?: step.fraction
+                val percent = (displayedFraction * 100).roundToInt()
                 val elapsedSeconds = step.elapsedMilliseconds / 1_000.0
                 val videoPerformance = performance?.takeIf {
-                    step.id == "video" && !step.indeterminate && it.framesPerSecond() > 0.0
+                    step.id == "video" && !step.indeterminate && step.preparationFraction == null && it.framesPerSecond() > 0.0
                 }
                 val etaSeconds = if (
                     step.status == InferenceStepStatus.RUNNING &&
@@ -1960,7 +1976,9 @@ internal fun InferenceProgressMeasurementsPanel(
                     else -> "Measuring…"
                 }
                 val metrics = when (step.status) {
-                    InferenceStepStatus.RUNNING -> if (step.indeterminate) {
+                    InferenceStepStatus.RUNNING -> if (step.preparationFraction != null) {
+                        "Timestamp scan: $percent% · ${measurementDuration(step.elapsedMilliseconds)} elapsed"
+                    } else if (step.indeterminate) {
                         "Preparing · ${measurementDuration(step.elapsedMilliseconds)} elapsed"
                     } else
                         "$percent% · $measuredRate · ${measurementDuration(step.elapsedMilliseconds)} elapsed · " +
@@ -2008,7 +2026,7 @@ internal fun InferenceProgressMeasurementsPanel(
                     if (step.indeterminate && step.status == InferenceStepStatus.RUNNING) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     } else LinearProgressIndicator(
-                        progress = { step.fraction.toFloat() },
+                        progress = { displayedFraction.toFloat() },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     metrics?.let {
@@ -2028,7 +2046,7 @@ internal fun InferenceProgressMeasurementsPanel(
                 if (index < steps.lastIndex) HorizontalDivider(color = Rail)
             }
             Text(
-                "Total elapsed · ${measurementDuration(steps.sumOf { it.elapsedMilliseconds })}",
+                "Total elapsed · ${measurementDuration(displayedSteps.sumOf { it.elapsedMilliseconds })}",
                 color = Muted,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,

@@ -2,6 +2,7 @@ import type {
   OnDeviceSideSwitchOutput,
   OnDeviceServingSideOutput,
 } from "./on-device/types.ts";
+import { retainNeuralServeCandidate } from "./on-device/serving-side-policy.ts";
 import {
   addServeMarker,
   addSideSwitchMarker,
@@ -23,7 +24,8 @@ export function scoreTrackingWithServingSideOutput(
       (marker) => marker.origin === "manual",
     ),
   };
-  for (const candidate of output.candidates) {
+  for (const storedCandidate of output.candidates) {
+    const candidate = retainNeuralServeCandidate(storedCandidate);
     const existing = existingByRally.get(candidate.id);
     const wasCorrected = Boolean(
       existing?.modelSide && existing.side !== existing.modelSide,

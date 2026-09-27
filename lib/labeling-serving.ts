@@ -50,6 +50,8 @@ export function servingDecisionExplanation(row: ServingPrediction): string {
     ? "The near/far score is in the model's review band."
     : reason === "production-rally-recovery"
       ? "Both rally models support this candidate, but neither serve head crossed its threshold."
+      : reason === "neural-rally-recovery"
+        ? "The neural model found this rally, but neither legacy serve head confirmed its start. Review the serve and predicted side."
       : reason.replaceAll("-", " "));
   if (row.verdict === "not-serve") return "Neither serve head passed, and this candidate lacks agreement from both rally models. The serve gate rejected it; this does not remove the rally.";
   if (row.serveDecisionSource === "serve-head") reasons.push("At least one production serve head crossed its threshold near the rally start.");

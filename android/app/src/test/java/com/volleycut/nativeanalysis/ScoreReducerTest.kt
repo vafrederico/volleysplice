@@ -323,6 +323,28 @@ class ScoreReducerTest {
     }
 
     private fun tracking(vararg serves: ServeMarker) = ScoreTracking(serveMarkers = serves.toList())
+
+    @Test
+    fun cachedNeuralNotServeGetsReviewMarkerWithoutRestoringRemovedOrCorrectedMarkers() {
+        val old = output(ServingSideVerdict.NOT_SERVE).let {
+            it.copy(candidates = it.candidates.map { candidate -> candidate.copy(
+                agreement = "neural", serveDecisionSource = ServingSideDecisionSource.NONE,
+            ) })
+        }
+        val seeded = ScoreReducer.seedModelMarkers(ScoreTracking(), old)
+        assertEquals(ServingSide.REVIEW, seeded.serveMarkers.single().side)
+        val corrected = seeded.copy(serveMarkers = seeded.serveMarkers.map {
+            it.copy(side = ServingSide.FAR, timestampMs = 1_500)
+        })
+        val retained = ScoreReducer.seedModelMarkers(corrected, old).serveMarkers.single()
+        assertEquals(ServingSide.FAR, retained.side)
+        assertEquals(1_500, retained.timestampMs)
+        val removed = seeded.copy(serveMarkers = emptyList(), removedModelMarkerIds = setOf("serve-R001"))
+        assertTrue(ScoreReducer.seedModelMarkers(removed, old).serveMarkers.isEmpty())
+        assertTrue(ScoreReducer.seedModelMarkers(ScoreTracking(), output(ServingSideVerdict.NOT_SERVE))
+            .serveMarkers.isEmpty())
+    }
+
     private fun serve(id: String, time: Long, side: ServingSide, rallyId: String? = null) =
         ServeMarker(id, time, side, ServeMarkerOrigin.MANUAL, rallyId = rallyId)
 

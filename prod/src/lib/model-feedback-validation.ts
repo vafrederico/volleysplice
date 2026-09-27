@@ -198,8 +198,8 @@ export type ParsedServingSideOutput = {
     nearProbability: number;
     side: "near" | "far";
     verdict: "near" | "far" | "review" | "not-serve";
-    serveDecisionSource: "serve-head" | "production-rally-recovery" | "none";
-    reviewReasons: Array<"side-score" | "production-rally-recovery">;
+    serveDecisionSource: "serve-head" | "production-rally-recovery" | "neural-rally-recovery" | "none";
+    reviewReasons: Array<"side-score" | "production-rally-recovery" | "neural-rally-recovery">;
     serveEvidence: {
       allLabelsV2: ParsedServingSideEvidence;
       previousProduction: ParsedServingSideEvidence;
@@ -657,13 +657,13 @@ function parseServingSideOutput(
       ),
       serveDecisionSource: choice(
         candidate.serveDecisionSource,
-        ["serve-head", "production-rally-recovery", "none"] as const,
+        ["serve-head", "production-rally-recovery", "neural-rally-recovery", "none"] as const,
         `${candidateField}.serveDecisionSource`,
       ),
       reviewReasons: candidate.reviewReasons.map((reason, reasonIndex) =>
         choice(
           reason,
-          ["side-score", "production-rally-recovery"] as const,
+          ["side-score", "production-rally-recovery", "neural-rally-recovery"] as const,
           `${candidateField}.reviewReasons[${reasonIndex}]`,
         ),
       ),

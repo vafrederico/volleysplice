@@ -4,6 +4,7 @@ import {
   createCutDraft,
   parseCutDraft,
 } from "./cut-draft.ts";
+import { retainNeuralServeCandidates } from "./on-device/serving-side-policy.ts";
 import {
   ModelFeedbackValidationError,
   type ParsedModelFeedback,
@@ -124,7 +125,7 @@ function servingSideOutput(
       "The serving-side feature contract is not supported by this VolleySplice version",
     );
   }
-  return {
+  return retainNeuralServeCandidates({
     ...output,
     featureVersion: SERVING_SIDE_FEATURE_VERSION,
     anchorContract: SERVING_SIDE_ANCHOR_CONTRACT,
@@ -167,7 +168,7 @@ function servingSideOutput(
         },
       };
     }),
-  };
+  });
 }
 
 function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {

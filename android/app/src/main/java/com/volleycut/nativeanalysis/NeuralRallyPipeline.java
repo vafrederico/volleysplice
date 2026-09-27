@@ -80,6 +80,10 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
         return (float)Math.max(-10,Math.min(10,(value-mean.getDouble(c))/std.getDouble(c)));
     }
     public List<AnalysisTypes.Interval> run(Uri uri,AnalysisTypes.Roi roi,double[] times,float[] contextual,double duration,Map<String,Double> profile) throws IOException {
+        return run(uri, roi, times, contextual, duration, profile, (stage, fraction, detail) -> {});
+    }
+    @Override public List<AnalysisTypes.Interval> run(Uri uri,AnalysisTypes.Roi roi,double[] times,float[] contextual,double duration,Map<String,Double> profile,
+            AnalysisTypes.ProgressListener progress) throws IOException {
         long start=System.nanoTime();
         try {
             checkCancelled();
@@ -113,14 +117,17 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
                     profile.put("neural/shared_queue_backpressure",video.getDouble("queueBackpressureMs"));
                     profile.put("neural/shared_video_span",video.getDouble("totalMs"));
                 } else {
+                    progress.onProgress("inference", .65, "Loading the selected image model; reusing cached motion and audio features");
                     try(OrtSession encoder=env.createSession(model("-encoder-fp32.onnx").toString(),options)) {
                         profile.put("neural/encoder_load",ms(stage));
-                        video=NeuralVideoEncoder.run(context,encoder,env,file("unused"),root,videoSpec,cancelled);
+                        video=NeuralVideoEncoder.run(context,encoder,env,file("unused"),root,videoSpec,cancelled,
+                                (fraction, detail) -> progress.onProgress("inference", .65 + .30 * fraction, detail));
                     }
                     profile.put("neural/embedding_video_pass",video.getDouble("totalMs"));
                 }
                 report.put("video",video);
                 report.put("sharedDecoding",shared!=null);
+                progress.onProgress("inference", .95, "Image features ready; finding rally boundaries");
                 stage=System.nanoTime();
                 FloatBuffer tokens;
                 // Map the saved embeddings rather than creating both a full
@@ -152,6 +159,8 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
                             FloatBuffer logits=((OnnxTensor)output.get(0)).getFloatBuffer();
                             for(int row=core;row<end;row++)for(int c=0;c<4;c++) probabilities[row*4+c]=(float)(1/(1+Math.exp(-logits.get((row-left)*4+c))));
                         }
+                        progress.onProgress("inference", .95 + .04 * end / n,
+                                "Finding rally boundaries: " + end + "/" + n + " analysis samples");
                     }
                 }
                 profile.put("neural/temporal_inference",ms(stage));stage=System.nanoTime();
@@ -163,6 +172,7 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
                     .put("precision","fp32").put("inputParity","Native pixel/PTS parity still requires qualification");
                 checkCancelled();
                 if(!diagnostics) scores=new NeuralRallyScores(spec.getString("id"),times.clone(),probabilities);
+                progress.onProgress("inference", 1, ranges.size() + " rallies ready");
                 return ranges;
             }
         }catch(Exception error){throw new IOException("Neural pipeline failed",error);}

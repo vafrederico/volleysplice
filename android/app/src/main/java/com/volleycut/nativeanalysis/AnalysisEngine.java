@@ -30,6 +30,11 @@ final class AnalysisEngine {
         }
         List<AnalysisTypes.Interval> run(Uri uri, AnalysisTypes.Roi roi, double[] times,
                 float[] contextual, double duration, Map<String, Double> profile) throws IOException;
+        default List<AnalysisTypes.Interval> run(Uri uri, AnalysisTypes.Roi roi, double[] times,
+                float[] contextual, double duration, Map<String, Double> profile,
+                AnalysisTypes.ProgressListener progress) throws IOException {
+            return run(uri, roi, times, contextual, duration, profile);
+        }
     }
     private final RallyOverride rallyOverride;
 
@@ -425,7 +430,7 @@ final class AnalysisEngine {
                 // Production signals remain available to the frozen score specialists.
                 // The override alone determines the selected rally boundaries.
                 progress.onProgress("inference", .65, "Running the selected neural rally model");
-                ranges = clipIntervals(rallyOverride.run(uri, roi, times, contextual, analyzedDurationSeconds, profile),
+                ranges = clipIntervals(rallyOverride.run(uri, roi, times, contextual, analyzedDurationSeconds, profile, progress),
                         analysisWindow.start(), analyzedDurationSeconds);
                 // The legacy cleanup suggestions address ensemble regions. They
                 // must never suppress a different model's independently decoded rallies.

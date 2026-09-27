@@ -307,6 +307,16 @@ The hybrid serving decision is evaluated after the side score:
    `production-rally-recovery` and require review.
 3. Otherwise emit `not-serve` with source `none`.
 
+The Android and production web neural paths add `neural-rally-recovery` after
+this legacy gate: every independently decoded neural rally receives a serve
+marker. When neither legacy serve head confirms its start, the marker requires
+review and retains the predicted near/far side and both heads' evidence. It is
+not a confirmed serve or a guaranteed accurate contact timestamp. Saved neural
+`not-serve` results are upgraded using their existing predictions without video
+reprocessing; manual corrections and removed markers remain respected. Legacy
+ensemble decisions and the frozen side classifier are unchanged. The historical
+metrics below describe the legacy gate, not this neural recovery policy.
+
 On the current corrected-label 1,114-row results universe, the hybrid gate has
 99.6324% serve precision and 98.0108% serve recall. It reduces missed serves from 56
 to 22, recovers 35 rows (34 true serves and one false serve), and the side model is

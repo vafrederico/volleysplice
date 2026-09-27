@@ -103,6 +103,8 @@ internal object ServingSideJson {
                         validEvidence(candidate.allLabelsV2Evidence) &&
                         validEvidence(candidate.previousProductionEvidence)
                 }
+        }?.let { output ->
+            output.copy(candidates = output.candidates.map { it.withNeuralRallyRecovery() })
         }
     }.getOrNull()
 

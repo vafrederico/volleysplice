@@ -7,6 +7,7 @@ import {
 import { isNeuralModelId, isRallyModelSelection, RALLY_MODEL_OPTIONS, type RallyModelSelection } from "./on-device/rally-model.ts";
 import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
 import { isReusableServingSideOutput } from "./on-device/serving-side-cache.ts";
+import { retainNeuralServeCandidates } from "./on-device/serving-side-policy.ts";
 import { isReusableSideSwitchOutput } from "./on-device/side-switch-model.ts";
 import {
   SUPPRESSION_ARTIFACT_SHA256,
@@ -561,6 +562,12 @@ function validProject(value: unknown): value is VolleySpliceProject {
 export function normalizeStoredProject(
   project: VolleySpliceProject,
 ): VolleySpliceProject {
+  if (project.analysis?.servingSide) {
+    const servingSide = retainNeuralServeCandidates(project.analysis.servingSide);
+    if (servingSide !== project.analysis.servingSide) {
+      project = { ...project, analysis: { ...project.analysis, servingSide } };
+    }
+  }
   const analysisWindow = normalizeAnalysisWindow(
     project.analysisWindow,
     project.info.duration,

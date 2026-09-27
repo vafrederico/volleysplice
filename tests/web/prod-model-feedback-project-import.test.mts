@@ -336,6 +336,27 @@ test("Android neural feedback preserves provenance, corrected cuts and serving s
   }
 });
 
+test("neural recovery provenance survives feedback and old hidden serves reuse saved side predictions", () => {
+  for (const oldGate of [false, true]) {
+    const bundle = JSON.parse(feedbackText());
+    bundle.initialInference.modelId = "distilled-large-f1-v1";
+    bundle.initialInference.ranges[0].agreement = "neural";
+    bundle.initialInference.suppression = null;
+    const candidate = bundle.initialInference.servingSide.candidates[0];
+    candidate.interval.agreement = "neural";
+    candidate.verdict = oldGate ? "not-serve" : "review";
+    candidate.serveDecisionSource = oldGate ? "none" : "neural-rally-recovery";
+    candidate.reviewReasons = oldGate ? [] : ["neural-rally-recovery"];
+    const { project } = importModelFeedbackProject(JSON.stringify(bundle));
+    const restored = project.analysis!.servingSide!.candidates[0];
+    assert.equal(restored.verdict, "review");
+    assert.equal(restored.serveDecisionSource, "neural-rally-recovery");
+    assert.equal(restored.side, candidate.side);
+    assert.equal(restored.nearProbability, candidate.nearProbability);
+    assert.deepEqual(restored.reviewReasons, ["neural-rally-recovery"]);
+  }
+});
+
 test("model selection and mixed probability sources survive project export, import and re-export", () => {
   for (const option of RALLY_MODEL_OPTIONS) for (const runtimeVariant of [analysis.runtimeVariant, "native-android-dsp-v1"]) {
     const neural = option.value !== "ensemble";

@@ -24,6 +24,11 @@ public class NeuralVideoEncoder {
     }
     public static JSONObject run(Context context, OrtSession session, OrtEnvironment env, File video, File root,
                           JSONObject spec, java.util.function.BooleanSupplier cancelled) throws Exception {
+        return run(context, session, env, video, root, spec, cancelled, (fraction, detail) -> {});
+    }
+    public static JSONObject run(Context context, OrtSession session, OrtEnvironment env, File video, File root,
+                          JSONObject spec, java.util.function.BooleanSupplier cancelled,
+                          java.util.function.BiConsumer<Double, String> progress) throws Exception {
         long started = SystemClock.elapsedRealtimeNanos();
         int size = spec.getInt("imageSize");
         double fps = spec.getDouble("sampleFps");
@@ -74,7 +79,8 @@ public class NeuralVideoEncoder {
             long planStarted = SystemClock.elapsedRealtimeNanos();
             // Scan real packet PTS before decoding. Keeping only a current image
             // cannot select an earlier (closer) frame once it has been released.
-            EmbeddingSamplePlan plan = buildSamplePlan(extractor, startSeconds, seconds, fps);
+            progress.accept(0.0, "Reading image timestamps for the selected model");
+            EmbeddingSamplePlan plan = buildSamplePlan(extractor, startSeconds, seconds, fps, cancelled, progress);
             samplePlanNs = SystemClock.elapsedRealtimeNanos() - planStarted;
             if (plan.selectedPresentationUs().length == 0) throw new IOException("No frames in sampling window");
             extractor.seekTo((long)(startSeconds*1e6), MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
@@ -86,6 +92,8 @@ public class NeuralVideoEncoder {
             report.put("pipeline","nearest actual PTS; sequential MediaCodec; bilinear YUV-to-RGB ROI letterbox; encoder; token readback");
             report.put("frameSelection", "nearest-media-pts-earlier-tie-v1");
             codec.configure(format,null,null,0); codec.start();
+            progress.accept(.05, "Reading images for the selected model: 0/" + plan.selectedPresentationUs().length);
+            long lastProgressNs = SystemClock.elapsedRealtimeNanos();
             boolean inputDone=false, outputDone=false;
             int queuedInputFrames = 0;
             MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();
@@ -158,6 +166,13 @@ public class NeuralVideoEncoder {
                                     }
                                 }
                                 inferenceNs+=SystemClock.elapsedRealtimeNanos()-t;
+                                long now = SystemClock.elapsedRealtimeNanos();
+                                if (now - lastProgressNs >= 250_000_000L || sampled == plan.selectedPresentationUs().length) {
+                                    progress.accept(.05 + .95 * sampled / plan.selectedPresentationUs().length,
+                                            "Reading images for the selected model: " + sampled + "/" + plan.selectedPresentationUs().length
+                                                    + " (" + Math.round(100.0 * sampled / plan.selectedPresentationUs().length) + "%)");
+                                    lastProgressNs = now;
+                                }
                             }
                         }
                         if(sampled == plan.selectedPresentationUs().length) outputDone=true;
@@ -186,13 +201,25 @@ public class NeuralVideoEncoder {
 
     private record EmbeddingSamplePlan(long[] selectedPresentationUs, double[] targetSeconds, int inputFrameCount) {}
 
-    private static EmbeddingSamplePlan buildSamplePlan(MediaExtractor extractor, double start, double end, double fps) {
+    private static EmbeddingSamplePlan buildSamplePlan(MediaExtractor extractor, double start, double end, double fps,
+            java.util.function.BooleanSupplier cancelled, java.util.function.BiConsumer<Double, String> progress) throws IOException {
         extractor.seekTo((long)(start*1e6), MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         ArrayList<Long> presentationUs = new ArrayList<>();
         int inputFrameCount = 0;
         int trailingPackets = 0;
+        long lastProgressNs = SystemClock.elapsedRealtimeNanos();
+        double furthestSeconds = start;
         while(extractor.getSampleTime() >= 0) {
+            if(cancelled.getAsBoolean() || Thread.currentThread().isInterrupted()) throw new IOException("Analysis cancelled");
             long pts = extractor.getSampleTime();
+            furthestSeconds = Math.max(furthestSeconds, Math.min(end, pts / 1e6));
+            long now = SystemClock.elapsedRealtimeNanos();
+            if (now - lastProgressNs >= 250_000_000L) {
+                double fraction = (furthestSeconds - start) / (end - start);
+                progress.accept(.05 * fraction,
+                        "Reading image timestamps for the selected model: " + Math.round(100 * fraction) + "%");
+                lastProgressNs = now;
+            }
             inputFrameCount++;
             if(pts < end*1e6) presentationUs.add(pts);
             // Decode-order packets may precede their B-frame display timestamps.

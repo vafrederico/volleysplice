@@ -32,13 +32,14 @@ class DistilledRallyIntegrationTest {
                               val scores: NeuralRallyScores)
 
     private fun run(file: File, model: String, shared: Boolean, window: AnalysisTypes.AnalysisWindow,
-                    cacheMode: NativeFeatureCache.Mode = NativeFeatureCache.Mode.BYPASS): Output {
+                    cacheMode: NativeFeatureCache.Mode = NativeFeatureCache.Mode.BYPASS,
+                    listener: AnalysisTypes.ProgressListener = progress): Output {
         val uri = Uri.fromFile(file)
         val media = AnalysisEngine(context).probe(uri)
         val cancelled = AtomicBoolean(false)
         return requireNotNull(DistilledRallyModels.open(context, model, media, roi, cancelled::get, shared)).use { neural ->
             val result = AnalysisEngine(context, neural).analyze(uri, true, Int.MAX_VALUE,
-                AnalysisTypes.VideoDecoderOptions.defaults(), cacheMode, window, cancelled, progress, false, false)
+                AnalysisTypes.VideoDecoderOptions.defaults(), cacheMode, window, cancelled, listener, false, false)
             assertNull("Ensemble cleanup must not suppress neural rallies", result.suppression())
             assertTrue(result.ranges().all { it.agreement() == "neural" && it.start() >= window.start() && it.end() <= window.end() })
             val tokenFile = context.cacheDir.resolve("neural-analysis").listFiles().orEmpty()
@@ -93,6 +94,21 @@ class DistilledRallyIntegrationTest {
             assertEquals(first.tokens, cached.tokens)
             assertEquals(first.metadata, cached.metadata)
             assertEquals(first.result.ranges(), cached.result.ranges())
+            val events = mutableListOf<Triple<String, Double, String>>()
+            val switched = run(fixture, RallyModels.F1, true, window, NativeFeatureCache.Mode.USE,
+                AnalysisTypes.ProgressListener { stage, fraction, detail -> events += Triple(stage, fraction, detail) })
+            assertTrue(events.any { it.first == "video" && it.third.contains("cached visual") })
+            val imageEvents = events.filter { it.third.startsWith("Reading images for the selected model:") }
+            assertTrue("Cached model switches must report image progress", imageEvents.size >= 2)
+            assertTrue(imageEvents.first().second < imageEvents.last().second)
+            assertTrue(events.any { it.third.startsWith("Finding rally boundaries:") })
+            val fractions = events.filter { it.first == "inference" }.map { it.second }
+            assertTrue(fractions.zipWithNext().all { (previous, next) -> next >= previous })
+            assertEquals(1.0, fractions.last(), 0.0)
+            val independentF1 = run(fixture, RallyModels.F1, false, window)
+            assertEquals(independentF1.tokens, switched.tokens)
+            assertEquals(independentF1.result.ranges(), switched.result.ranges())
+            assertArrayEquals(independentF1.scores.probabilities, switched.scores.probabilities, 1e-6f)
         } finally { fixture.delete() }
     }
 

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { retainNeuralServeCandidates } from "../../prod/src/lib/on-device/serving-side-policy.ts";
+import { scoreTrackingWithServingSideOutput } from "../../prod/src/lib/score-tracking-inference.ts";
+import { createCutDraft } from "../../prod/src/lib/cut-draft.ts";
 
 import {
   composeServingSideVerdict,
@@ -69,7 +72,7 @@ test("serve evidence includes the ±1 second boundary and keeps first peak tie",
   assert.deepEqual(evidence.nearestDetection, { time: 4.4, confidence: 0.91 });
 });
 
-test("hybrid gate recovers only both-model intervals and always requests review", () => {
+test("hybrid gate recovers both-model and neural intervals and always requests review", () => {
   const missed = [
     { modelId: "a", threshold: 0.85, peakProbability: 0.2, peakTime: 1, crossesThreshold: false, nearestDetection: null },
     { modelId: "b", threshold: 0.85, peakProbability: 0.3, peakTime: 1, crossesThreshold: false, nearestDetection: null },
@@ -84,9 +87,45 @@ test("hybrid gate recovers only both-model intervals and always requests review"
     reviewReasons: [],
     isServe: false,
   });
+  assert.deepEqual(evaluateHybridGate("neural", missed), {
+    source: "neural-rally-recovery", reviewReasons: ["neural-rally-recovery"], isServe: true,
+  });
+  assert.equal(evaluateHybridGate("neural", [
+    { ...missed[0], crossesThreshold: true }, missed[1],
+  ]).source, "serve-head");
   assert.equal(evaluateHybridGate(undefined, [
     { ...missed[0], crossesThreshold: true }, missed[1],
   ]).source, "serve-head");
+});
+
+test("neural serves remain reviewable and cached results preserve human corrections and removals", () => {
+  const interval = { id: "N001", start: 4, end: 9, confidence: .9, included: true, agreement: "neural" as const };
+  const head = { probabilities: new Float32Array([.2]), detections: [] };
+  const candidate = composeServingSideVerdict(interval, new Float64Array(237).fill(.5),
+    new Float64Array([4]), head, head, runtime);
+  assert.equal(candidate.verdict, "review");
+  assert.equal(candidate.side, "near");
+  assert.equal(candidate.serveDecisionSource, "neural-rally-recovery");
+  assert.equal(candidate.serveEvidence.allLabelsV2.crossesThreshold, false);
+  const old = {
+    modelId: runtime.modelId, modelFingerprint: runtime.fingerprint,
+    featureVersion: "SERVSIDE237-FLIGHT" as const, anchorContract: "merged-production-interval-start-v1" as const,
+    features: { rows: 1, columns: 237, values: new Float64Array(237) },
+    candidates: [{ ...candidate, verdict: "not-serve" as const, serveDecisionSource: "none" as const, reviewReasons: [] }],
+  };
+  const restored = retainNeuralServeCandidates(old);
+  assert.deepEqual(restored.candidates[0], candidate);
+  assert.equal(restored.features, old.features);
+  assert.equal(retainNeuralServeCandidates(restored), restored);
+  const empty = createCutDraft({ analysisId: "a", recordingId: "p", duration: 20, rallies: [interval], ignoredIntervals: [] }).scoreTracking;
+  const seeded = scoreTrackingWithServingSideOutput(empty, old);
+  assert.equal(seeded.serveMarkers.length, 1);
+  assert.equal(seeded.serveMarkers[0].side, "review");
+  const corrected = { ...seeded, serveMarkers: seeded.serveMarkers.map(marker => ({ ...marker, side: "far" as const, timestamp: 4.5 })) };
+  assert.equal(scoreTrackingWithServingSideOutput(corrected, old).serveMarkers[0].side, "far");
+  assert.equal(scoreTrackingWithServingSideOutput(corrected, old).serveMarkers[0].timestamp, 4.5);
+  const removed = { ...seeded, serveMarkers: [], removedModelMarkerIds: ["serve-N001"] };
+  assert.equal(scoreTrackingWithServingSideOutput(removed, old).serveMarkers.length, 0);
 });
 
 test("composed candidate uses merged interval start and keeps side under review", () => {
