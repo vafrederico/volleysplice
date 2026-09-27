@@ -23,6 +23,8 @@ import {
   normalizeAnalysisWindow,
 } from "@/lib/on-device/analysis-window";
 import { isIosBrowser, isUnsupportedSafariBrowser } from "@/lib/on-device/browser-support";
+import { DEFAULT_RALLY_MODEL, RALLY_MODEL_OPTIONS, isNeuralModelId, isRallyModelSelection, type RallyModelSelection } from "@/lib/on-device/rally-model";
+import { deleteNeuralEmbeddingsForSource } from "@/lib/on-device/neural-cache";
 import { deleteFeatureCachesForSource } from "@/lib/on-device/feature-cache";
 import { type OpenedMedia, openLocalMedia } from "@/lib/on-device/media";
 import {
@@ -251,6 +253,7 @@ export function App() {
     start: 0,
     end: 0,
   });
+  const [rallyModel, setRallyModel] = useState<RallyModelSelection>(DEFAULT_RALLY_MODEL);
   const [sideSwitchEnabled, setSideSwitchEnabled] = useState(false);
   const [candidateProgress, setCandidateProgress] =
     useState<AnalysisProgress | null>(null);
@@ -266,6 +269,7 @@ export function App() {
   const exportWorkerRunningRef = useRef(false);
   const exportTargetRequestsRef = useRef(new Set<string>());
   const activeJobRef = useRef<string | null>(null);
+  const activeAbortRef = useRef<AbortController | null>(null);
   const activeMediaRef = useRef<{
     projectId: string;
     media: OpenedMedia;
@@ -661,6 +665,7 @@ export function App() {
       !project?.analysis ||
       project.status !== "ready" ||
       project.importedFeedback ||
+      isNeuralModelId(project.analysis.modelId) ||
       (project.analysis.suppression &&
         project.analysis.productionServeOutputs &&
         project.analysis.productionStateOutputs) ||
@@ -703,6 +708,7 @@ export function App() {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      activeAbortRef.current?.abort();
       activeMediaRef.current?.media.input.dispose();
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       for (const url of videoUrlsRef.current.values()) URL.revokeObjectURL(url);
@@ -842,7 +848,7 @@ export function App() {
       return;
     }
     const source = projectSource(file);
-    const id = projectId(source, info, normalizedWindow);
+    const id = projectId(source, info, normalizedWindow, rallyModel);
     const existing = projectsRef.current.find((project) => project.id === id);
     linkSourceFile(id, file);
 
@@ -862,6 +868,7 @@ export function App() {
       roi,
       servingSideEnabled: true,
       sideSwitchEnabled,
+      rallyModel,
       status: "queued",
       analysis: null,
       error: null,
@@ -922,6 +929,8 @@ export function App() {
     try {
       opened = await openLocalMedia(sourceFile);
       activeMediaRef.current = { projectId: projectIdToRun, media: opened };
+      const abort = new AbortController();
+      activeAbortRef.current = abort;
       const result = await analyzeOpenedMedia(
         opened,
         running.roi,
@@ -949,6 +958,8 @@ export function App() {
         },
         {
           detailedProfiling: false,
+          rallyModel: running.rallyModel ?? "ensemble",
+          signal: abort.signal,
           decodeStrategy: DEFAULT_VIDEO_DECODE_STRATEGY,
           decoderAcceleration: VIDEO_DECODER_HARDWARE_ACCELERATION,
           reductionKernel: DEFAULT_FEATURE_REDUCTION_KERNEL,
@@ -1095,10 +1106,13 @@ export function App() {
       commitProject(failed);
     } finally {
       opened?.input.dispose();
-      if (activeMediaRef.current?.projectId === projectIdToRun)
+      if (activeMediaRef.current?.projectId === projectIdToRun) {
         activeMediaRef.current = null;
+        activeAbortRef.current = null;
+      }
       await releaseWakeLock();
       if (deletedProjectIdsRef.current.has(projectIdToRun)) {
+        await deleteNeuralEmbeddingsForSource(running.source).catch(() => undefined);
         await deleteFeatureCachesForSource(running.source).catch(
           () => undefined,
         );
@@ -1170,6 +1184,7 @@ export function App() {
 
     deletedProjectIdsRef.current.add(selectedProject.id);
     if (activeMediaRef.current?.projectId === selectedProject.id) {
+      activeAbortRef.current?.abort();
       activeMediaRef.current.media.input.dispose();
     }
     setQueueIds((current) => current.filter((id) => id !== selectedProject.id));
@@ -1205,6 +1220,7 @@ export function App() {
     await Promise.allSettled([
       deleteProject(selectedProject.id),
       deleteFeatureCachesForSource(selectedProject.source),
+      deleteNeuralEmbeddingsForSource(selectedProject.source),
     ]);
   }
 
@@ -1654,6 +1670,17 @@ export function App() {
                     ))}
                   </div>
                 </details>
+                <label className={styles.rallyModelChoice}>
+                  <strong>Rally detection</strong>
+                  <select aria-label="Rally detection model" value={rallyModel} disabled={busy}
+                    onChange={event => { if (isRallyModelSelection(event.target.value)) setRallyModel(event.target.value); }}>
+                    {RALLY_MODEL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <small>{rallyModel === "high-recall"
+                    ? "Prioritizes keeping play. Review extra footage in the editor."
+                    : rallyModel === "high-f1" ? "Balances retained play and extra footage."
+                    : "Uses the previous production detector."}</small>
+                </label>
                 <label
                   className={styles.sideSwitchToggle}
                   data-enabled={sideSwitchEnabled || undefined}

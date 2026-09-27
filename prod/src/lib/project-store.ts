@@ -4,6 +4,7 @@ import {
   isFullAnalysisWindow,
   normalizeAnalysisWindow,
 } from "./on-device/analysis-window.ts";
+import { isNeuralModelId, isRallyModelSelection, RALLY_MODEL_OPTIONS, type RallyModelSelection } from "./on-device/rally-model.ts";
 import { PRODUCTION_ENSEMBLE_MODEL_ID } from "./on-device/ensemble.ts";
 import { isReusableServingSideOutput } from "./on-device/serving-side-cache.ts";
 import { isReusableSideSwitchOutput } from "./on-device/side-switch-model.ts";
@@ -53,6 +54,8 @@ export type VolleySpliceProject = {
   servingSideEnabled?: boolean;
   /** Whether inference should generate team side-switch markers. */
   sideSwitchEnabled?: boolean;
+  /** Frozen matched encoder, temporal model, scaler and decoder choice. */
+  rallyModel?: RallyModelSelection;
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
   error: string | null;
@@ -167,6 +170,7 @@ export function projectId(
   source: ProjectSource,
   info: OnDeviceMediaInfo,
   requestedWindow: AnalysisWindow = fullAnalysisWindow(info.duration),
+  rallyModel: RallyModelSelection = "ensemble",
 ): string {
   const analysisWindow = normalizeAnalysisWindow(
     requestedWindow,
@@ -175,9 +179,20 @@ export function projectId(
   const windowIdentity = isFullAnalysisWindow(analysisWindow, info.duration)
     ? ""
     : `\u0000${analysisWindow.start}\u0000${analysisWindow.end}`;
+  const modelIdentity = rallyModel === "ensemble" ? "" : `\u0000${rallyModel}`;
   return `project-${hashText(
-    `${source.name}\u0000${source.size}\u0000${source.lastModified}\u0000${info.duration}${windowIdentity}`,
+    `${source.name}\u0000${source.size}\u0000${source.lastModified}\u0000${info.duration}${windowIdentity}${modelIdentity}`,
   )}`;
+}
+
+/** Display-only identity: never change filenames, source fingerprints or project IDs. */
+export function projectDisplayName(project: Pick<VolleySpliceProject, "source" | "analysis" | "rallyModel">): string {
+  const model = project.analysis
+    ? RALLY_MODEL_OPTIONS.find(option => option.id === project.analysis!.modelId)
+    : RALLY_MODEL_OPTIONS.find(option => option.value === (project.rallyModel ?? "ensemble"));
+  const label = model?.label ?? (project.analysis?.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
+    ? "Production ensemble" : "Saved model");
+  return `${project.source.name} - ${label}`;
 }
 
 export function projectAnalysisId(project: VolleySpliceProject): string | null {
@@ -411,7 +426,8 @@ function validAnalysis(
         (interval.agreement === undefined ||
           interval.agreement === "both-models" ||
           interval.agreement === "all-labels-v2-only" ||
-          interval.agreement === "previous-production-only"),
+          interval.agreement === "previous-production-only" ||
+          interval.agreement === "neural"),
     ) &&
     analysis.times instanceof Float64Array &&
     (featuresMissing || featuresValid) &&
@@ -518,6 +534,7 @@ function validProject(value: unknown): value is VolleySpliceProject {
     (project.analysisWindow === undefined ||
       validAnalysisWindow(project.analysisWindow, project.info.duration)) &&
     validRoi(project.roi) &&
+    (project.rallyModel === undefined || isRallyModelSelection(project.rallyModel)) &&
     (project.servingSideEnabled === undefined ||
       typeof project.servingSideEnabled === "boolean") &&
     (project.sideSwitchEnabled === undefined ||
@@ -586,6 +603,7 @@ export function normalizeStoredProject(
   if (
     normalizedProject.analysis &&
     !normalizedProject.importedFeedback &&
+    !isNeuralModelId(normalizedProject.analysis.modelId) &&
     (normalizedProject.analysis.modelId !== PRODUCTION_ENSEMBLE_MODEL_ID ||
       normalizedProject.analysis.intervals.some(
         (interval) => !interval.agreement,

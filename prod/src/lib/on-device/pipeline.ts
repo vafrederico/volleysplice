@@ -29,6 +29,7 @@ import {
 import { rollingMean } from "./feature-math";
 import { analysisTimestamps, type OpenedMedia } from "./media";
 import { runProductionInferenceFromFeatures } from "./production-inference";
+import { DEFAULT_RALLY_MODEL, type RallyModelSelection } from "./rally-model";
 import {
   DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
   type OnDeviceRuntimeVariant,
@@ -71,6 +72,8 @@ type ExtractedBrowserFeatures = BaseFeatureSequence & {
 };
 
 export type FeatureExtractionOptions = {
+  rallyModel?: RallyModelSelection;
+  signal?: AbortSignal;
   /** Corrected contract is opt-in until broader model/runtime qualification. */
   visualPreprocessing?: "canvas-preceding-v1" | "opencv-area-nearest-grid-v1";
   detailedProfiling?: boolean;
@@ -364,6 +367,7 @@ export async function extractBrowserFeatures(
       pendingRows = [];
     };
     const appendGeneratedFrame = async (timestamp: number, values: Float32Array) => {
+      options.signal?.throwIfAborted();
       if (timestamp <= resumeAfter + 1e-9) return;
       if (times.length && timestamp <= times[times.length - 1] + 1e-9) return;
       times.push(timestamp);
@@ -467,6 +471,7 @@ export async function extractBrowserFeatures(
         };
         try {
           while (true) {
+            options.signal?.throwIfAborted();
             const decoderStartedAt = detailedProfiling ? performance.now() : 0;
             const next = await sampleIterator.next();
             if (detailedProfiling) {
@@ -681,6 +686,11 @@ export async function analyzeOpenedMedia(
   cacheSource?: LocalFeatureSource,
   options: FeatureExtractionOptions = {},
 ): Promise<OnDeviceAnalysis> {
+  const rallyModel = options.rallyModel ?? DEFAULT_RALLY_MODEL;
+  if (rallyModel !== "ensemble") {
+    const { analyzeNeuralMedia } = await import("./neural-pipeline");
+    return analyzeNeuralMedia(media, roi, rallyModel, runtimeVariant, onProgress, cacheSource, options);
+  }
   const analysisWindow = normalizeAnalysisWindow(
     options.analysisWindow,
     media.info.duration,

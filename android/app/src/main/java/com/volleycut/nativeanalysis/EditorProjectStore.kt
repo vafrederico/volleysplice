@@ -53,6 +53,7 @@ internal object EditorProjectStore {
         put("gameEndMs", seed.gameEndMs)
         put("audioExtractorVersion", seed.audioExtractorVersion)
         put("visualExtractorVersion", seed.visualExtractorVersion)
+        put("rallyModelId", seed.rallyModelId)
         put("analysisRoi", seed.analysisRoi?.let { roi -> JSONObject().apply {
             put("x", roi.x())
             put("y", roi.y())
@@ -123,6 +124,7 @@ internal object EditorProjectStore {
             scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", false),
             audioExtractorVersion = json.optString("audioExtractorVersion", "legacy"),
             visualExtractorVersion = json.optString("visualExtractorVersion", "legacy"),
+            rallyModelId = json.optString("rallyModelId", FeatureSchema.MODEL_ID),
             analysisRoi = json.optJSONObject("analysisRoi")?.let { roi ->
                 runCatching { AnalysisTypes.Roi(
                     roi.getDouble("x"), roi.getDouble("y"),
@@ -140,7 +142,7 @@ internal object EditorProjectStore {
                 it.startMs >= seed.gameStartMs && it.endMs > it.startMs &&
                     it.endMs <= seed.gameEndMs &&
                     it.confidence in 0f..1f &&
-                    (it.agreement == null || ProductionEnsemble.isValidAgreement(it.agreement))
+                    (it.agreement == null || RallyModels.isValidAgreement(it.agreement))
             }
         }
     }

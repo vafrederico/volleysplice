@@ -23,7 +23,7 @@ class NativeProjectStoreTest {
         val normalized = NativeProjectStore.normalizeStored(old)
         val seed = requireNotNull(normalized.editorSeed())
         val recovered = NativeProjectStore.fromSeed(seed, old.source, old.media)
-        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi)
+        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId)
 
         assertEquals("legacy", normalized.visualExtractorVersion)
         assertEquals(saved.ranges, normalized.ranges)
@@ -64,7 +64,7 @@ class NativeProjectStoreTest {
         val normalized = NativeProjectStore.normalizeStored(old)
         assertEquals(saved.ranges, normalized.ranges)
         assertEquals(ProjectStatus.READY, normalized.status)
-        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi)
+        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId)
         assertFalse(NativeProjectStore.matchesAnalysis(normalized, fresh))
         val recovered = NativeProjectStore.fromSeed(requireNotNull(old.editorSeed()), old.source, old.media)
         assertNotEquals(fresh.id, recovered.id)
@@ -97,7 +97,7 @@ class NativeProjectStoreTest {
     fun newFullFrameAnalysisCannotReuseOrOverwriteAnOlderCroppedProject() {
         val saved = readyProject()
         val fullFrame = NativeProjectStore.newQueued(saved.source, saved.media)
-        val explicitCrop = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi)
+        val explicitCrop = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId)
 
         assertNotEquals(saved.id, fullFrame.id)
         assertNotEquals(explicitCrop.id, fullFrame.id)
@@ -155,7 +155,7 @@ class NativeProjectStoreTest {
         for (roi in listOf(saved.roi, AnalysisEngine.inferRoi(saved.source.name))) {
             val seed = requireNotNull(saved.copy(roi = roi).editorSeed())
             val recovered = NativeProjectStore.fromSeed(seed, saved.source, saved.media)
-            val candidate = NativeProjectStore.newQueued(saved.source, saved.media, roi)
+            val candidate = NativeProjectStore.newQueued(saved.source, saved.media, roi, rallyModelId = saved.modelId)
 
             assertTrue(recovered.analysisRoiKnown)
             assertEquals(roi, recovered.roi)
@@ -177,7 +177,7 @@ class NativeProjectStoreTest {
         assertTrue(restored.analysisRoiKnown)
         assertEquals(saved.roi, restored.roi)
         assertTrue(NativeProjectStore.matchesAnalysis(
-            restored, NativeProjectStore.newQueued(saved.source, saved.media, saved.roi),
+            restored, NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId),
         ))
     }
 
@@ -403,7 +403,7 @@ class NativeProjectStoreTest {
     }
 
     @Test
-    fun staleSingleModelInferenceIsQueuedWithoutDiscardingFeatureIdentity() {
+    fun unavailableSingleModelRequiresExplicitSelectionWithoutDiscardingFeatureIdentity() {
         val project = NativeProject(
             id = NativeProjectStore.projectId(source, 12.5),
             source = source,
@@ -418,9 +418,10 @@ class NativeProjectStoreTest {
 
         val normalized = NativeProjectStore.normalizeStored(project)
 
-        assertEquals(ProjectStatus.QUEUED, normalized.status)
-        assertEquals(FeatureSchema.MODEL_ID, normalized.modelId)
-        assertEquals(emptyList<SeedRange>(), normalized.ranges)
+        assertEquals(ProjectStatus.ERROR, normalized.status)
+        assertEquals(project.modelId, normalized.modelId)
+        assertEquals(project.ranges, normalized.ranges)
+        assertTrue(normalized.error.orEmpty().contains("unavailable"))
         assertEquals(project.id, normalized.id)
         assertEquals(project.source, normalized.source)
         assertEquals(project.roi, normalized.roi)

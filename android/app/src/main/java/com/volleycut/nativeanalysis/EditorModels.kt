@@ -69,6 +69,7 @@ internal data class EditorSeed(
     val analysisRoi: AnalysisTypes.Roi? = null,
     val audioExtractorVersion: String = "legacy",
     val visualExtractorVersion: String = "legacy",
+    val rallyModelId: String = FeatureSchema.MODEL_ID,
 ) {
     val sourceRevision: String by lazy {
         val canonical = buildString {
@@ -77,6 +78,7 @@ internal data class EditorSeed(
             if (gameStartMs != 0L || gameEndMs != durationMs) {
                 append("window=").append(gameStartMs).append(':').append(gameEndMs).append('|')
             }
+            if (rallyModelId != FeatureSchema.MODEL_ID) append("model=").append(rallyModelId).append('|')
             ranges.forEach {
                 append(it.startMs).append(':').append(it.endMs).append(':').append(it.confidence)
                     .append(':').append(it.agreement).append(';')

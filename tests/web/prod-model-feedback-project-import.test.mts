@@ -304,3 +304,33 @@ test("invalid model feedback does not create a project", () => {
     ModelFeedbackValidationError,
   );
 });
+
+
+test("Android neural feedback preserves provenance, corrected cuts and serving side through restore", () => {
+  for (const modelId of ["distilled-large-recall-v1", "distilled-large-f1-v1"]) {
+    const bundle = JSON.parse(feedbackText());
+    bundle.source.runtimeVariant = "native-android-distilled-large-v1";
+    bundle.initialInference.modelId = modelId;
+    bundle.initialInference.ranges[0].agreement = "neural";
+    bundle.initialInference.servingSide.candidates[0].interval.agreement = "neural";
+    bundle.initialInference.suppression = null;
+    const corrected = bundle.corrections.correctedRanges[0];
+    corrected.agreement = "neural";
+    corrected.coreStart = 5.5;
+    corrected.keepStart = 3.5;
+    bundle.corrections.scoreTracking.state.serveMarkers[0].timestamp = 5.5;
+    const { project } = importModelFeedbackProject(JSON.stringify(bundle));
+    assert.equal(project.analysis!.modelId, modelId);
+    assert.equal(project.analysis!.intervals[0].agreement, "neural");
+    assert.equal(project.analysis!.servingSide!.candidates[0].interval.agreement, "neural");
+    assert.equal(project.analysis!.servingSide!.candidates[0].side, "near");
+    const restored = normalizeStoredProject(project);
+    assert.equal(restored.status, "ready");
+    assert.equal(restored.analysis!.modelId, modelId);
+    const draft = restored.importedFeedback!.initialDraft;
+    assert.equal(draft.cuts[0].agreement, "neural");
+    assert.equal(draft.cuts[0].coreStart, 5.5);
+    assert.equal(draft.cuts[0].included, false);
+    assert.equal(draft.scoreTracking.serveMarkers[0].timestamp, 5.5);
+  }
+});

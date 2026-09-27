@@ -66,12 +66,13 @@ function agreement(
   if (
     value === "both-models" ||
     value === "all-labels-v2-only" ||
-    value === "previous-production-only"
+    value === "previous-production-only" ||
+    value === "neural"
   ) {
     return value;
   }
   throw new ModelFeedbackValidationError(
-    `${field} uses an unsupported production-model agreement`,
+    `${field} uses an unsupported rally-model provenance`,
   );
 }
 

@@ -1,3 +1,4 @@
+import { isNeuralModelId } from "@/lib/on-device/rally-model";
 import {
   useEffect,
   useMemo,
@@ -187,6 +188,7 @@ function isModelDisagreement(cut: EditableCut): boolean {
 }
 
 function modelAgreementLabel(cut: EditableCut): string {
+  if (cut.agreement === "neural") return "Found by neural model";
   if (cut.agreement === "both-models") return "Found automatically";
   if (cut.agreement === "all-labels-v2-only" || cut.agreement === "previous-production-only")
     return "Needs a quick check";
@@ -215,6 +217,7 @@ export function CutEditor({
   onServingSideAnalysis,
   onSideSwitchAnalysis,
 }: CutEditorProps) {
+  const neuralRallyModel = isNeuralModelId(initialAnalysis.modelId);
   const analysisStart = initialAnalysis.analysisWindow.start;
   const analysisEnd = initialAnalysis.analysisWindow.end;
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1992,9 +1995,9 @@ export function CutEditor({
                 <div className={styles.suppressionControls} data-tour="editor-suppression">
                   <div>
                     <span>AUTOMATIC CLEANUP</span>
-                    <strong>{cleanupLabel(draft.selectedSuppressionPolicy)}</strong>
+                    <strong>{!neuralRallyModel && initialAnalysis.suppression ? cleanupLabel(draft.selectedSuppressionPolicy) : "Not applied"}</strong>
                   </div>
-                  {initialAnalysis.suppression ? (
+                  {!neuralRallyModel && initialAnalysis.suppression ? (
                     <>
                       <label
                         className={styles.suppressionSelect}
@@ -2028,9 +2031,11 @@ export function CutEditor({
                   ) : (
                     <>
                       <small>
-                        Automatic cleanup is not available for this older project.
+                        {neuralRallyModel
+                          ? "Automatic cleanup is available with the Production ensemble. Review neural rallies directly in the timeline."
+                          : "Automatic cleanup is not available for this older project."}
                       </small>
-                      {sourceFile && (
+                      {sourceFile && !neuralRallyModel && (
                         <button type="button" onClick={onRequestSuppression}>
                           Add automatic cleanup
                         </button>

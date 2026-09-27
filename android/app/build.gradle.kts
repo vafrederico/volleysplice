@@ -1,4 +1,5 @@
 import java.security.MessageDigest
+import groovy.json.JsonSlurper
 
 plugins {
     id("com.android.application")
@@ -86,6 +87,7 @@ android {
     }
 
     sourceSets.getByName("main").java.srcDir("../video-common/src/main/java")
+    sourceSets.getByName("main").java.srcDir("../neural-runtime/src/main/java")
 
     buildFeatures {
         compose = true
@@ -102,10 +104,54 @@ if (providers.gradleProperty("pipelineBenchmark").isPresent) {
     android.sourceSets.getByName("debug").manifest.srcFile("src/pipelineBenchmark/AndroidManifest.xml")
     android.sourceSets.getByName("debug").java.srcDir("../neuralbenchmark/src/main/java")
     dependencies {
-        add("debugImplementation", "com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
         add("debugImplementation", "com.google.ai.edge.litert:litert:1.4.2")
         add("debugImplementation", "com.google.ai.edge.litert:litert-gpu:1.4.2")
         add("debugImplementation", "com.google.ai.edge.litert:litert-gpu-api:1.4.2")
+    }
+}
+
+val generatedNeuralAssets = layout.buildDirectory.dir("generated/neural-assets")
+android.sourceSets.getByName("main").assets.srcDir(generatedNeuralAssets.get().asFile)
+val prepareNeuralAssets by tasks.registering {
+    val manifest = rootProject.file("../models/distilled-large/android-manifest.json")
+    val bundleRoot = providers.environmentVariable("VOLLEYCUT_NEURAL_ASSETS_DIR")
+    inputs.file(manifest)
+    inputs.dir(rootProject.file("../models/distilled-large/licenses"))
+    inputs.property("bundleRoot", bundleRoot.orElse(""))
+    bundleRoot.orNull?.let { inputs.dir(file(it).resolve("android/rally-models")) }
+    outputs.dir(generatedNeuralAssets)
+    doLast {
+        val source = bundleRoot.orNull?.let { file(it).resolve("android/rally-models") }
+            ?: error("Set VOLLEYCUT_NEURAL_ASSETS_DIR to the prepared, verified neural bundle root")
+        val expected = JsonSlurper().parse(manifest) as Map<*, *>
+        val actual = JsonSlurper().parse(source.resolve("manifest.json")) as Map<*, *>
+        check(expected == actual) { "Neural bundle manifest does not match the pinned production manifest" }
+        val target = generatedNeuralAssets.get().asFile.resolve("rally-models")
+        target.mkdirs()
+        val variants = expected["variants"] as Map<*, *>
+        for (rawVariant in variants.values) {
+            val variant = rawVariant as Map<*, *>
+            val directory = variant["directory"] as String
+            check(directory.matches(Regex("[a-z0-9-]+"))) { "Invalid variant directory" }
+            for (rawFile in (variant["files"] as Map<*, *>).values) {
+                val metadata = rawFile as Map<*, *>
+                val name = metadata["name"] as String
+                check(name.matches(Regex("[a-z0-9.-]+"))) { "Invalid model filename" }
+                val input = source.resolve(directory).resolve(name)
+                val digest = MessageDigest.getInstance("SHA-256").digest(input.readBytes())
+                    .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                check(input.length() == (metadata["sizeBytes"] as Number).toLong() && digest == metadata["sha256"]) {
+                    "Neural asset integrity mismatch: $directory/$name"
+                }
+                val output = target.resolve(directory).resolve(name)
+                output.parentFile.mkdirs()
+                input.copyTo(output, overwrite = true)
+            }
+        }
+        manifest.copyTo(target.resolve("manifest.json"), overwrite = true)
+        rootProject.file("../models/distilled-large/licenses").copyRecursively(
+            target.resolve("licenses"), overwrite = true,
+        )
     }
 }
 
@@ -166,11 +212,12 @@ val verifySideSwitchAsset by tasks.registering {
 }
 
 tasks.named("preBuild").configure {
-    dependsOn(verifySuppressionAsset, verifyServingSideAsset, verifySideSwitchAsset)
+    dependsOn(verifySuppressionAsset, verifyServingSideAsset, verifySideSwitchAsset, prepareNeuralAssets)
 }
 
 dependencies {
     implementation("org.opencv:opencv:4.12.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)

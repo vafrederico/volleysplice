@@ -3,7 +3,7 @@ package com.volleycut.nativeanalysis;
 import ai.onnxruntime.*;
 import android.content.Context;
 import android.net.Uri;
-import com.volleycut.neuralbenchmark.VideoEncoderBenchmark;
+import com.volleycut.neural.NeuralVideoEncoder;
 import org.json.*;
 import java.io.*;
 import java.nio.*;
@@ -12,25 +12,60 @@ import java.nio.file.*;
 import java.util.*;
 
 /** Frozen FP32 neural input fusion, real-context chunks, and registered decoder. */
-final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
+final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeable {
     private final Context context;
     private final File root;
+    private final File modelRoot;
+    private final boolean diagnostics;
+    private final java.util.function.BooleanSupplier cancelled;
     private final JSONObject spec;
     final JSONObject report=new JSONObject();
     private SharedEmbeddingConsumer shared;
-    NeuralRallyPipeline(Context context,File root,JSONObject spec) {this.context=context;this.root=root;this.spec=spec;}
+    NeuralRallyPipeline(Context context,File root,JSONObject spec) {
+        this(context,root,spec,root,()->false,true);
+    }
+    NeuralRallyPipeline(Context context,File root,JSONObject spec,File modelRoot,
+            java.util.function.BooleanSupplier cancelled,boolean diagnostics) {
+        this.context=context;this.root=root;this.spec=spec;this.modelRoot=modelRoot;
+        this.cancelled=cancelled;this.diagnostics=diagnostics;
+    }
+    private void checkCancelled() throws IOException {
+        if(cancelled.getAsBoolean() || Thread.currentThread().isInterrupted()) throw new IOException("Analysis cancelled");
+    }
+    private File model(String suffix) throws IOException {
+        if(diagnostics) return file(spec.optString("family")+suffix);
+        String name=switch(suffix) {
+            case "-encoder-fp32.onnx" -> "encoder.onnx";
+            case "-tcn-dynamic-fp32.onnx" -> "temporal.onnx";
+            case "-pipeline.json" -> "pipeline.json";
+            default -> throw new IOException("Unknown neural asset");
+        };
+        return new File(modelRoot,name);
+    }
+    @Override public void close() throws IOException {
+        if(shared!=null) shared.close();
+        if(!diagnostics) {
+            File[] temporary=root.listFiles();
+            if(temporary!=null) for(File item:temporary) if(item.isFile()) Files.deleteIfExists(item.toPath());
+            Files.deleteIfExists(root.toPath());
+        }
+    }
+    @Override public boolean supportsEnsembleSuppression() { return diagnostics; }
     @Override public SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window, int sourceFrameLimit,
             java.util.function.BooleanSupplier cancelled) throws IOException {
         if(!spec.optBoolean("sharedDecoding",false)) return null;
         String family=spec.optString("family");
-        if(!(family.equals("mobile") || family.equals("mobile-large")) || media.rotation()!=0
-                || window.start()!=0 || sourceFrameLimit!=Integer.MAX_VALUE) {
+        if(!diagnostics && sourceFrameLimit!=Integer.MAX_VALUE) return null;
+        if(diagnostics && (!(family.equals("mobile") || family.equals("mobile-large")) || media.rotation()!=0
+                || window.start()!=0 || sourceFrameLimit!=Integer.MAX_VALUE)) {
             throw new IOException("Shared neural experiment requires MobileNet, unrotated input, zero start and full source frame limit");
         }
-        shared=new SharedEmbeddingConsumer(root,family,spec.optString("id"),window.end(),
-                new double[]{roi.x(),roi.y(),roi.width(),roi.height()},
-                spec.optBoolean("capturePixelHashes",false),cancelled);
+        double sampleStart=diagnostics?0:Math.floor(window.start()*2)/2;
+        shared=new SharedEmbeddingConsumer(root,family,spec.optString("id"),sampleStart,window.end(),
+                new double[]{roi.x(),roi.y(),roi.width(),roi.height()},media.rotation(),
+                spec.optBoolean("capturePixelHashes",false),cancelled,
+                model("-encoder-fp32.onnx"),file(family+"-encoder-pool_weights.f32"),!diagnostics);
         return shared;
     }
     private File file(String name) throws IOException {
@@ -45,13 +80,17 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
     public List<AnalysisTypes.Interval> run(Uri uri,AnalysisTypes.Roi roi,double[] times,float[] contextual,double duration,Map<String,Double> profile) throws IOException {
         long start=System.nanoTime();
         try {
+            checkCancelled();
             String family=spec.getString("family");
             boolean mobile=family.equals("mobile") || family.equals("mobile-large");
             String prefix=mobile?family:"dino";
-            JSONObject config=new JSONObject(Files.readString(file(prefix+"-pipeline.json").toPath()));
+            JSONObject config=new JSONObject(Files.readString(model("-pipeline.json").toPath()));
             JSONArray mean=config.getJSONArray("mean"),std=config.getJSONArray("scale");
             int tokenDim=family.equals("mobile-large")?3840:mobile?2304:3840;
             int dimension=104+tokenDim+(mobile?8:0),n=times.length;
+            if(n==0) return List.of();
+            if(mean.length()!=104+(mobile?8:0) || std.length()!=mean.length()) throw new IOException("Normalizer dimensions mismatch");
+            for(int c=0;c<mean.length();c++) if(!Double.isFinite(mean.getDouble(c)) || !Double.isFinite(std.getDouble(c)) || std.getDouble(c)<=0) throw new IOException("Invalid neural normalization");
             if(FeatureSchema.BASE.size()!=104 || contextual.length!=n*520)throw new IOException("AV schema mismatch");
             OrtEnvironment env=OrtEnvironment.getEnvironment();
             try(OrtSession.SessionOptions options=new OrtSession.SessionOptions()) {
@@ -59,7 +98,8 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
                 JSONObject videoSpec=new JSONObject().put("id",spec.getString("id")).put("videoUri",uri.toString())
                     .put("imageSize",mobile?224:336).put("sampleFps",mobile?2:4).put("seconds",duration)
                     .put("roi",new JSONArray(new double[]{roi.x(),roi.y(),roi.width(),roi.height()})).put("quality",mobile)
-                    .put("capturePixelHashes",spec.optBoolean("capturePixelHashes",false));
+                    .put("capturePixelHashes",spec.optBoolean("capturePixelHashes",false))
+                    .put("dynamicPoolWeights",!diagnostics).put("rotation",spec.optInt("rotation",0)).put("startSeconds",diagnostics?0:Math.floor(times[0]*2)/2);
                 if(mobile)videoSpec.put("poolWeights",prefix+"-encoder-pool_weights.f32");
                 long stage=System.nanoTime();
                 JSONObject video;
@@ -71,9 +111,9 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
                     profile.put("neural/shared_queue_backpressure",video.getDouble("queueBackpressureMs"));
                     profile.put("neural/shared_video_span",video.getDouble("totalMs"));
                 } else {
-                    try(OrtSession encoder=env.createSession(file(prefix+"-encoder-fp32.onnx").toString(),options)) {
+                    try(OrtSession encoder=env.createSession(model("-encoder-fp32.onnx").toString(),options)) {
                         profile.put("neural/encoder_load",ms(stage));
-                        video=VideoEncoderBenchmark.run(context,encoder,env,file("unused"),root,videoSpec);
+                        video=NeuralVideoEncoder.run(context,encoder,env,file("unused"),root,videoSpec,cancelled);
                     }
                     profile.put("neural/embedding_video_pass",video.getDouble("totalMs"));
                 }
@@ -87,32 +127,24 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
                 tokens=readFloats(file(video.getString("tokens")));
                 int samples=video.getInt("sampleCount");
                 if(tokens.remaining()!=samples*tokenDim)throw new IOException("Invalid token count");
-                float[] values=new float[n*dimension];
                 JSONArray quality=video.getJSONArray("quality");
-                for(int row=0;row<n;row++) {
-                    int dst=row*dimension;
-                    for(int c=0;c<104;c++)values[dst+c]=scale(contextual[row*520+208+c],mean,std,c);
-                    int sample=(int)Math.floor(times[row]*(mobile?2:4)+1e-8);
-                    if(sample<0 || sample>=samples)throw new IOException("Uncovered AV timestamp "+times[row]);
-                    for(int c=0;c<tokenDim;c++)values[dst+104+c]=tokens.get(sample*tokenDim+c);
-                    if(mobile) {
-                        JSONArray q=quality.getJSONArray(sample);
-                        for(int c=0;c<8;c++) {
-                            float v=c<6?(float)q.getDouble(c):c==6?(float)(times[row]-sample/2.0):1f;
-                            values[dst+104+tokenDim+c]=scale(v,mean,std,104+c);
-                        }
-                    }
-                }
-                writeFloats(file(spec.getString("id")+"-features.f32"),values);
+                double sampleStart=video.optDouble("startSeconds",0);
+                // Production fuses one bounded halo chunk at a time. Diagnostic runs
+                // retain the full tensor for strict numerical qualification only.
+                float[] values=diagnostics?fuse(times,contextual,tokens,quality,mean,std,
+                        0,n,tokenDim,mobile,samples,sampleStart):null;
+                if(diagnostics) writeFloats(file(spec.getString("id")+"-features.f32"),values);
                 report.put("featureRows",n).put("featureDimension",dimension);
                 profile.put("neural/fusion_normalization_and_save",ms(stage));
                 stage=System.nanoTime();
                 float[] probabilities=new float[n*4];
-                try(OrtSession temporal=env.createSession(file(prefix+"-tcn-dynamic-fp32.onnx").toString(),options)) {
+                try(OrtSession temporal=env.createSession(model("-tcn-dynamic-fp32.onnx").toString(),options)) {
                     profile.put("neural/temporal_load",ms(stage));stage=System.nanoTime();
                     for(int core=0;core<n;core+=128) {
                         int end=Math.min(n,core+128),left=Math.max(0,core-62),right=Math.min(n,end+62),count=right-left;
-                        FloatBuffer chunk=FloatBuffer.wrap(Arrays.copyOfRange(values,left*dimension,right*dimension));
+                        checkCancelled();
+                        FloatBuffer chunk=FloatBuffer.wrap(diagnostics?Arrays.copyOfRange(values,left*dimension,right*dimension):
+                                fuse(times,contextual,tokens,quality,mean,std,left,right,tokenDim,mobile,samples,sampleStart));
                         try(OnnxTensor input=OnnxTensor.createTensor(env,chunk,new long[]{1,count,dimension});
                             OrtSession.Result output=temporal.run(Map.of("features",input))) {
                             FloatBuffer logits=((OnnxTensor)output.get(0)).getFloatBuffer();
@@ -121,15 +153,37 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
                     }
                 }
                 profile.put("neural/temporal_inference",ms(stage));stage=System.nanoTime();
-                writeFloats(file(spec.getString("id")+"-probabilities.f32"),probabilities);
+                if(diagnostics) writeFloats(file(spec.getString("id")+"-probabilities.f32"),probabilities);
                 List<AnalysisTypes.Interval> ranges=decode(times,probabilities,duration,config.getJSONObject("decoder"));
                 profile.put("neural/decoder_and_save",ms(stage));
                 profile.put("neural/total",ms(start));
                 report.put("decoder",config.getJSONObject("decoder")).put("times",new JSONArray(times))
                     .put("precision","fp32").put("inputParity","Native pixel/PTS parity still requires qualification");
+                checkCancelled();
                 return ranges;
             }
         }catch(Exception error){throw new IOException("Neural pipeline failed",error);}
+    }
+    static float[] fuse(double[] times,float[] contextual,FloatBuffer tokens,JSONArray quality,
+            JSONArray mean,JSONArray std,int left,int right,int tokenDim,boolean mobile,int samples,
+            double sampleStart) throws IOException,JSONException {
+        int dimension=104+tokenDim+(mobile?8:0);
+        float[] values=new float[(right-left)*dimension];
+        for(int row=left;row<right;row++) {
+            int dst=(row-left)*dimension;
+            for(int c=0;c<104;c++) values[dst+c]=scale(contextual[row*520+208+c],mean,std,c);
+            int sample=(int)Math.floor((times[row]-sampleStart)*(mobile?2:4)+1e-8);
+            if(sample<0 || sample>=samples) throw new IOException("Uncovered AV timestamp");
+            for(int c=0;c<tokenDim;c++) values[dst+104+c]=tokens.get(sample*tokenDim+c);
+            if(mobile) {
+                JSONArray q=quality.getJSONArray(sample);
+                for(int c=0;c<8;c++) {
+                    float v=c<6?(float)q.getDouble(c):c==6?(float)(times[row]-(sampleStart+sample/2.0)):1f;
+                    values[dst+104+tokenDim+c]=scale(v,mean,std,104+c);
+                }
+            }
+        }
+        return values;
     }
     static FloatBuffer readFloats(File file)throws IOException {
         try(FileChannel channel=FileChannel.open(file.toPath(),StandardOpenOption.READ)) {

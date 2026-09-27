@@ -1,9 +1,24 @@
+import { verifyNeuralAssets } from "./prepare-neural-assets.mjs";
+import { verifyPublicSuppressionManifest } from "./public-suppression-manifest.mjs";
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+const buildDirectory = process.env.VOLLEYCUT_PROD_BUILD_DIR
+  ? resolve(process.env.VOLLEYCUT_PROD_BUILD_DIR) : resolve(appRoot, "dist");
+
+await verifyNeuralAssets(appRoot, resolve(buildDirectory, "runtime"));
+const suppressionManifest = JSON.parse(await readFile(
+  resolve(buildDirectory, "runtime/suppression-39eddf581639.manifest.json"), "utf8",
+));
+verifyPublicSuppressionManifest(suppressionManifest);
+const suppressionModelBytes = await readFile(resolve(buildDirectory, "runtime", suppressionManifest.emitted.filename));
+if (createHash("sha256").update(suppressionModelBytes).digest("hex") !== suppressionManifest.emitted.sha256) {
+  throw new Error("Public suppression manifest does not identify the bundled model.");
+}
 
 const expectedHashes = new Map([
   [
@@ -45,7 +60,7 @@ const canonicalLfAssets = new Set([
 ]);
 
 for (const [asset, expected] of expectedHashes) {
-  const bytes = await readFile(resolve(appRoot, "dist", asset));
+  const bytes = await readFile(resolve(buildDirectory, asset));
   const hashInput = canonicalLfAssets.has(asset)
     ? Buffer.from(bytes.toString("utf8").replaceAll("\r\n", "\n"), "utf8")
     : bytes;
@@ -77,17 +92,17 @@ for (const asset of [
   "licenses/libswresample-wrapper-source.c",
   "licenses/opencv-js.txt",
 ]) {
-  const metadata = await stat(resolve(appRoot, "dist", asset));
+  const metadata = await stat(resolve(buildDirectory, asset));
   if (!metadata.isFile() || metadata.size === 0) throw new Error(`${asset} is missing.`);
 }
 
-const index = await readFile(resolve(appRoot, "dist/index.html"), "utf8");
+const index = await readFile(resolve(buildDirectory, "index.html"), "utf8");
 if (!index.includes('src="./assets/') || !index.includes('href="./assets/')) {
   throw new Error("The static build does not use deployment-portable relative assets.");
 }
 
 // Fail locally before uploading an asset set that exceeds Workers Free limits.
-const distEntries = await readdir(resolve(appRoot, "dist"), {
+const distEntries = await readdir(resolve(buildDirectory), {
   recursive: true,
   withFileTypes: true,
 });

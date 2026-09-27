@@ -72,6 +72,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -574,6 +575,10 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     // optional scoreboard is ready when the user turns it on in the editor.
     var analyzeServingSide by remember { mutableStateOf(true) }
     var generateSideSwitchMarkers by remember { mutableStateOf(false) }
+    var rallyModelId by remember {
+        mutableStateOf(context.getSharedPreferences("analysis-preferences", Context.MODE_PRIVATE)
+            .getString("rally-model", RallyModels.DEFAULT)?.takeIf(RallyModels::isSupported) ?: RallyModels.DEFAULT)
+    }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
@@ -818,10 +823,11 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     analysisWindow,
                     analyzeServingSide,
                     generateSideSwitchMarkers,
+                    rallyModelId,
                 )
                 val existing = NativeProjectStore.findMatching(context, candidate)
                 val reusable = useCache && existing?.status == ProjectStatus.READY &&
-                    existing.modelId == FeatureSchema.MODEL_ID
+                    existing.modelId == candidate.modelId
                 if (reusable) {
                     var opened = NativeProjectStore.updateSideSwitchEnabled(
                         context,
@@ -1129,6 +1135,12 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 preparing = preparingSource,
                 state = inference,
                 generateSideSwitchMarkers = generateSideSwitchMarkers,
+                rallyModelId = rallyModelId,
+                onRallyModel = {
+                    rallyModelId = it
+                    context.getSharedPreferences("analysis-preferences", Context.MODE_PRIVATE)
+                        .edit().putString("rally-model", it).apply()
+                },
                 queueCount = queueCount,
                 gameStartMs = gameStartMs,
                 gameEndMs = gameEndMs,
@@ -1294,7 +1306,7 @@ private fun ProjectHeaderBar(
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             ) {
                                 Text(
-                                    if (creatingNew || selected == null) "＋ Start a new video…" else selected.source.name,
+                                    if (creatingNew || selected == null) "＋ Start a new video…" else "${RallyModels.shortLabel(selected.modelId)} - ${selected.source.name}",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     fontSize = 10.sp,
@@ -1312,7 +1324,7 @@ private fun ProjectHeaderBar(
                                         Column {
                                             Text(project.source.name, maxLines = 1)
                                             Text(
-                                                projectStatusLabel(project, exportStatuses[project.id]),
+                                                "${RallyModels.shortLabel(project.modelId)} - ${projectStatusLabel(project, exportStatuses[project.id])}",
                                                 color = Muted,
                                                 fontSize = 10.sp,
                                             )
@@ -1449,7 +1461,7 @@ private fun ProjectHeaderBar(
                         ) {
                             Text(
                                 if (creatingNew || selected == null) "＋ Start a new video…"
-                                else "${selected.source.name} · ${projectStatusLabel(selected, exportStatuses[selected.id])}",
+                                else "${RallyModels.shortLabel(selected.modelId)} - ${selected.source.name} - ${projectStatusLabel(selected, exportStatuses[selected.id])}",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -1466,7 +1478,7 @@ private fun ProjectHeaderBar(
                                     Column {
                                         Text(project.source.name, maxLines = 1)
                                         Text(
-                                            projectStatusLabel(project, exportStatuses[project.id]),
+                                            "${RallyModels.shortLabel(project.modelId)} - ${projectStatusLabel(project, exportStatuses[project.id])}",
                                             color = Muted,
                                             fontSize = 11.sp,
                                         )
@@ -1656,6 +1668,7 @@ private fun cleanupLabel(policy: SuppressionPolicyEngine.Policy): String = when 
 
 @Composable
 private fun EditorSettingsDialog(
+    cleanupSupported: Boolean,
     cleanupAvailable: Boolean,
     cleanupPreparing: Boolean,
     cleanupPolicy: SuppressionPolicyEngine.Policy,
@@ -1687,7 +1700,7 @@ private fun EditorSettingsDialog(
                 UiScaleControl()
                 HorizontalDivider(color = Rail)
                 Text("FINE-TUNE THE FINAL VIDEO", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (cleanupSupported) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Automatic cleanup", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                         Text(
@@ -2304,6 +2317,8 @@ private fun NewProjectCard(
     preparing: Boolean,
     state: InferenceUiState,
     generateSideSwitchMarkers: Boolean,
+    rallyModelId: String,
+    onRallyModel: (String) -> Unit,
     queueCount: Int,
     gameStartMs: Long,
     gameEndMs: Long,
@@ -2370,6 +2385,20 @@ private fun NewProjectCard(
                     onGameEnd = onGameEnd,
                     onFullVideo = onFullVideo,
                 )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Rally detection", fontWeight = FontWeight.SemiBold)
+                listOf(RallyModels.RECALL, RallyModels.F1, FeatureSchema.MODEL_ID).forEach { id ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = !preparing) { onRallyModel(id) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = rallyModelId == id, onClick = { onRallyModel(id) }, enabled = !preparing)
+                        Text(RallyModels.label(id), fontSize = 13.sp)
+                    }
+                }
+                Text("Highest recall keeps more possible play. Highest F1 makes tighter selections. Changing this creates a separate analysis.",
+                    fontSize = 12.sp, color = Muted)
             }
             Surface(
                 modifier = Modifier
@@ -2668,6 +2697,9 @@ private fun LegalFooter() {
                     Text("AndroidX and Jetpack Compose — Apache License 2.0")
                     Text("AndroidX Media3 1.10.1 — Apache License 2.0")
                     Text("OpenCV 4.12.0 — Apache License 2.0")
+                    Text("ONNX Runtime 1.30.0 - MIT License")
+                    Text("MobileNetV3 implementation: TorchVision - BSD-3-Clause. Pretrained weights and datasets retain their upstream terms.")
+                    Text("DINOv2 training teacher - Apache License 2.0; the teacher model is not included in the app.")
                     Text("Kotlin runtime — Apache License 2.0")
                     Text(
                         "The Android system, device codecs, and other platform components are " +
@@ -3363,6 +3395,7 @@ private fun EditorScreen(
 
     if (showEditorSettings) {
         EditorSettingsDialog(
+            cleanupSupported = !RallyModels.isNeural(seed.rallyModelId),
             cleanupAvailable = seed.suppression != null,
             cleanupPreparing = suppressionPreparing,
             cleanupPolicy = draft.selectedSuppressionPolicy,
@@ -4185,7 +4218,9 @@ private fun EditorScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "Use the Settings gear to fine-tune automatic cleanup, extra time around clips, short breaks, and how many clips are flagged.",
+                    if (RallyModels.isNeural(seed.rallyModelId))
+                        "Use the Settings gear to adjust extra time around clips, short breaks, and how many clips are flagged."
+                    else "Use the Settings gear to fine-tune automatic cleanup, extra time around clips, short breaks, and how many clips are flagged.",
                     color = Muted,
                     fontSize = 12.sp,
                 )

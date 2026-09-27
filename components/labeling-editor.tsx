@@ -247,7 +247,8 @@ function modelAgreementFromTags(tags: string[]): ModelAgreement | undefined {
     ?.slice("model-agreement:".length);
   return value === "both-models" ||
     value === "all-labels-v2-only" ||
-    value === "previous-production-only"
+    value === "previous-production-only" ||
+    value === "neural"
     ? value
     : undefined;
 }
@@ -3419,8 +3420,7 @@ export function LabelingEditor({ variant = "legacy" }: LabelingEditorProps = {})
                     start: row.start,
                     end: row.end,
                     title: `Rally ${index + 1}`,
-                    tone: modelAgreementFromTags(row.tags) &&
-                      modelAgreementFromTags(row.tags) !== "both-models"
+                    tone: isProductionModelDisagreement({ agreement: modelAgreementFromTags(row.tags) })
                       ? ("model-disagreement" as const)
                       : labels.prelabel?.candidateFile.startsWith("model-")
                         ? ("model" as const)

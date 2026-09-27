@@ -8,7 +8,7 @@ export type LabEvent = LabInterval & {
   id: string;
   parentId: string;
   confidence?: number;
-  agreement?: "both-models" | "all-labels-v2-only" | "previous-production-only";
+  agreement?: "both-models" | "all-labels-v2-only" | "previous-production-only" | "neural";
   serve?: LabServe;
 };
 export type LabBoundaryProposal = {
@@ -188,7 +188,7 @@ export function parseProductionEditorLabManifest(value: unknown, recording: Reco
     const parsed = list(values).map(value => {
       const row = object(value); const geometry = interval(row, duration); const id = text(row.id);
       const parentId = row.parentId === undefined ? id : text(row.parentId);
-      const agreement = ["both-models", "all-labels-v2-only", "previous-production-only"].includes(String(row.agreement))
+      const agreement = ["both-models", "all-labels-v2-only", "previous-production-only", "neural"].includes(String(row.agreement))
         ? row.agreement as LabEvent["agreement"] : undefined;
       if (predictions && !predictions.some(row => row.id === id && close(row.anchor, geometry.start))) throw new Error("Neural serving prediction does not match rally geometry");
       return { ...geometry, id, parentId, serve: serveFor(predictions ? id : parentId, geometry.start, predictions),

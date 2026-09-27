@@ -6,6 +6,14 @@ responsive phone, tablet, and desktop-mode layouts.
 
 This folder contains the native Android analysis path plus a first-party cut editor and exporter. The analysis workflow is:
 
+New projects default to **Distilled Large - highest recall**, with **highest F1**
+and **Production ensemble** as explicit alternatives. The neural selections each
+load a matched FP32 encoder, TCN, scalar normalizer, and decoder. Both are bundled
+for offline use; the DINO teacher is not included. Saved projects retain their
+own model identity, and switching models does not reuse incompatible embeddings
+or rewrite existing results. The original ensemble workflow below remains the
+reference for that explicit option and for the retained serve/state evidence.
+
 ```text
 video URI
   -> MediaExtractor presentation-order sample plan
@@ -23,6 +31,15 @@ video URI
 ```
 
 No media is uploaded. The app has no network permission. It does not use a WebView, WebCodecs, JavaScript, or WASM.
+
+The neural path adds 2 Hz, 224-pixel image embeddings to ranked AV104 and eight
+quality values, then runs the selected TCN and decoder. Fresh AV extraction
+shares its MediaCodec pass with image preparation; cached AV can use an
+independent image pass. A partial game window includes the immediately preceding
+2 Hz image only as context. Output intervals remain clipped to the game window.
+Serving-side and optional side-switch inference use the neural rally starts and
+retain the existing production serve/state evidence. Legacy ensemble suppression
+is not automatically applied to neural rallies.
 
 In the production project flow, choose a recording and use the local preview to mark the game start and game end before queueing inference. Only globally aligned 4 Hz samples inside that window generate visual, audio, or contextual features. The bounds are part of the project and feature-cache identity, and the editor overview, playback, padding, manual marks, edit list, and export are constrained to the same window. Existing full-video projects and caches keep their legacy identity.
 
@@ -67,6 +84,13 @@ that claims full device parity.
 API 37 does not make the analysis kernels faster by itself, but it is now the default so the app is tested against the Pixel 10 Pro's Android 17 target behavior. Builds package only `arm64-v8a` by default. For native x86 emulator measurements, pass `-Pvolleycut.abis=x86_64` to the Gradle wrapper; quote that argument in PowerShell. The override also supports a comma-separated list of the two supported ABIs. Compare builds using the same ABI: ARM translation and native x86 execution are different workloads.
 
 ## Build and install
+
+First prepare the pinned models as described in the
+[bundle contract](../models/distilled-large/README.md). Keep
+`VOLLEYCUT_NEURAL_ASSETS_DIR` configured when running Gradle. Builds verify both
+matched model sets against the checked-in manifest and fail if any file is
+missing or changed. The generated assets are approximately 24.2 MB uncompressed
+for both variants, excluding ONNX Runtime and license notices.
 
 Open `android/` as an Android Studio project, select the Pixel 10 Pro, and run the `app` configuration. From a terminal with `JAVA_HOME` and `ANDROID_HOME` configured:
 

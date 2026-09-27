@@ -17,6 +17,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     sourceSets.getByName("main").java.srcDir("../video-common/src/main/java")
+    sourceSets.getByName("main").java.srcDir("../neural-runtime/src/main/java")
 }
 providers.environmentVariable("VOLLEYCUT_BENCH_BUILD_DIR").orNull?.let {
     layout.buildDirectory.set(file(it))

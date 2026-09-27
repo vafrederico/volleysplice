@@ -286,3 +286,7 @@
   .projectPanel,
   .progressCard { width: calc(100% - 24px); margin-inline: 12px; }
 }
+
+.rallyModelChoice { display: grid; gap: .5rem; margin-block: 1rem; }
+.rallyModelChoice select { width: 100%; padding: .65rem; border: 1px solid var(--line, #cbd5d1); border-radius: .5rem; background: var(--paper, #fff); color: inherit; font: inherit; }
+.rallyModelChoice small { line-height: 1.45; }

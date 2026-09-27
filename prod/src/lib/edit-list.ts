@@ -7,7 +7,8 @@ export type Rally = {
   agreement?:
     | "both-models"
     | "all-labels-v2-only"
-    | "previous-production-only";
+    | "previous-production-only"
+    | "neural";
 };
 
 export const DEFAULT_JOIN_GAP_SECONDS = 3;

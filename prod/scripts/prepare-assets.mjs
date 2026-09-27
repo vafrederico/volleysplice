@@ -1,4 +1,6 @@
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { prepareNeuralAssets } from "./prepare-neural-assets.mjs";
+import { publicSuppressionManifest } from "./public-suppression-manifest.mjs";
+import { copyFile, mkdir, readFile, stat, writeFile, cp } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,13 +9,26 @@ const source = resolve(
   appRoot,
   "node_modules/@techstark/opencv-js/dist/opencv.js",
 );
-const runtimeDirectory = resolve(appRoot, "public/runtime");
-const licenseDirectory = resolve(appRoot, "public/licenses");
+const publicDirectory = process.env.VOLLEYCUT_PROD_PUBLIC_DIR
+  ? resolve(process.env.VOLLEYCUT_PROD_PUBLIC_DIR) : resolve(appRoot, "public");
+const runtimeDirectory = resolve(publicDirectory, "runtime");
+const licenseDirectory = resolve(publicDirectory, "licenses");
+if (publicDirectory !== resolve(appRoot, "public")) {
+  await mkdir(publicDirectory, { recursive: true });
+  const generated = ["runtime/opencv.js", "runtime/opencv-worker.js", "runtime/rally-models", "runtime/ort", "licenses"]
+    .map(path => resolve(appRoot, "public", path));
+  await cp(resolve(appRoot, "public"), publicDirectory, { recursive: true,
+    filter: path => !generated.some(ignored => path === ignored || path.startsWith(`${ignored}/`) || path.startsWith(`${ignored}\\`)),
+  });
+}
 
 await stat(source).catch(() => {
   throw new Error("OpenCV.js is unavailable. Run npm install in the prod directory.");
 });
 await mkdir(runtimeDirectory, { recursive: true });
+const suppressionManifestPath = resolve(runtimeDirectory, "suppression-39eddf581639.manifest.json");
+const suppressionManifest = JSON.parse(await readFile(suppressionManifestPath, "utf8"));
+await writeFile(suppressionManifestPath, `${JSON.stringify(publicSuppressionManifest(suppressionManifest), null, 2)}\n`);
 await copyFile(source, resolve(runtimeDirectory, "opencv.js"));
 
 const sourceText = await readFile(source, "utf8");
@@ -75,3 +90,5 @@ await Promise.all([
     resolve(licenseDirectory, "libswresample-wrapper-source.c"),
   ),
 ]);
+
+await prepareNeuralAssets(appRoot, publicDirectory);

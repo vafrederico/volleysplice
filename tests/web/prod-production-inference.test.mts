@@ -7,7 +7,7 @@ import {
   loadOnDeviceModelBundle,
   runOnDeviceModel,
 } from "../../prod/src/lib/on-device/model.ts";
-import { runProductionInferenceWithLoadedModels } from "../../prod/src/lib/on-device/production-inference.ts";
+import { augmentStoredAnalysisWithSuppression, runProductionInferenceWithLoadedModels } from "../../prod/src/lib/on-device/production-inference.ts";
 import { loadSuppressionModelBundle } from "../../prod/src/lib/on-device/suppression-model.ts";
 
 async function runtimeJson(fileName: string): Promise<unknown> {
@@ -100,4 +100,17 @@ test("production inference retains both component serve and rally-state outputs"
     analysis.productionStateOutputs.previousProduction.deadStateProbabilities,
     expectedPreviousProduction.probabilities.deadState,
   );
+});
+
+
+test("legacy suppression augmentation cannot replace saved neural rallies with ensemble cuts", async () => {
+  const analysis = {
+    modelId: "distilled-large-recall-v1", featurePath: "local-source" as const,
+    intervals: [{ id: "N001", start: 1, end: 3, included: true, confidence: .9 }],
+    times: new Float64Array([0, .25]), rallyProbabilities: new Float32Array([.1, .8]),
+    serveProbabilities: new Float32Array([.2, .2]), deadStateProbabilities: new Float32Array([.3, .3]),
+    featureNames: ["sample"], featureValues: new Float32Array([1, 2]),
+  };
+  assert.equal(await augmentStoredAnalysisWithSuppression(analysis, { start: 0, end: 5 }), null);
+  assert.deepEqual(analysis.intervals, [{ id: "N001", start: 1, end: 3, included: true, confidence: .9 }]);
 });

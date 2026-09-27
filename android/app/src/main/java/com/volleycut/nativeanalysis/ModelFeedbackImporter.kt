@@ -87,7 +87,7 @@ internal object ModelFeedbackImporter {
         ) { "Feedback ROI is invalid" }
         val durationMs = secondsToMs(duration)
         val inference = bundle.getJSONObject("initialInference")
-        require(inference.getString("modelId") == FeatureSchema.MODEL_ID &&
+        require(RallyModels.isSupported(inference.getString("modelId")) &&
             inference.getString("ensembleAlgorithmVersion") == FeatureSchema.ENSEMBLE_ALGORITHM_VERSION
         ) { "Feedback uses a different production ensemble" }
         val components = inference.getJSONArray("components")
@@ -112,7 +112,8 @@ internal object ModelFeedbackImporter {
             } else it.getString("agreement")
             require(start.isFinite() && end.isFinite() && start >= 0 && end > start &&
                 end <= duration && confidence in 0.0..1.0 &&
-                (agreement == null || ProductionEnsemble.isValidAgreement(agreement))
+                (agreement == null || if (RallyModels.isNeural(inference.getString("modelId"))) agreement == "neural"
+                else ProductionEnsemble.isValidAgreement(agreement))
             ) { "Feedback contains an invalid production range" }
             SeedRange(secondsToMs(start), secondsToMs(end), confidence.toFloat(), agreement)
         } }

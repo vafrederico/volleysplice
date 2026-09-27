@@ -14,6 +14,7 @@ const allowedHosts = (process.env.VOLLEYCUT_DEV_ORIGINS ?? "")
 export default defineConfig({
   // Relative output works at a domain root or subpath on a static host.
   base: "./",
+  publicDir: process.env.VOLLEYCUT_PROD_PUBLIC_DIR ?? "public",
   plugins: [react()],
   server: {
     allowedHosts,
@@ -32,6 +33,7 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: process.env.VOLLEYCUT_PROD_BUILD_DIR ?? "dist",
     target: "es2022",
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 700,

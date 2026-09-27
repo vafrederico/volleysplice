@@ -15,6 +15,7 @@ import {
   type CutDraft,
   type EditableCut,
 } from "@/lib/cut-draft";
+import { isNeuralModelId } from "@/lib/on-device/rally-model";
 import { GOOGLE_PLAY_URL } from "@/lib/android-app";
 import { timelinePercent } from "@/lib/edit-list";
 import {
@@ -165,6 +166,8 @@ function clipsFromReview(review: ReadyDesignReview): Clip[] {
     label:
       cut.origin === "manual"
         ? "Missed rally added by you"
+        : cut.agreement === "neural"
+          ? "Found by the neural rally model"
         : cut.agreement === "both-models"
           ? "Found by both rally models"
           : cut.agreement
@@ -263,6 +266,12 @@ function usePrototype(
   initialDark = false,
   followPlayhead = false,
 ) {
+  const neuralRallyModel = isNeuralModelId(review.productAnalysis?.modelId ?? "")
+    || review.draft.cuts.some(cut => cut.agreement === "neural");
+  const cleanupAvailable = !neuralRallyModel && Boolean(review.suppression);
+  const cleanupUnavailableReason = neuralRallyModel
+    ? "Automatic cleanup is available with the Production ensemble. Review neural rallies directly in the timeline."
+    : "Automatic cleanup is unavailable for this analysis.";
   const [baseDraft, setBaseDraft] = useState(review.draft);
   const initialClips = clipsFromReview(review);
   const firstClip =
@@ -287,15 +296,15 @@ function usePrototype(
   const [detectSwitches, setDetectSwitches] = useState(review.sideSwitchEnabled);
   const [analysisProgress, setAnalysisProgress] = useState(100);
   const [clips, setClips] = useState<Clip[]>(initialClips);
-  const cleanupSuggestions = useMemo(() => review.cleanupSuggestions.flatMap((suggestion) => {
+  const cleanupSuggestions = useMemo(() => cleanupAvailable ? review.cleanupSuggestions.flatMap((suggestion) => {
     const related = clips.filter((clip) => clip.start < suggestion.end && clip.end > suggestion.start);
     return related.map((clip) => ({ ...suggestion, cutId: clip.id }));
-  }), [clips, review.cleanupSuggestions]);
+  }) : [], [clips, review.cleanupSuggestions, cleanupAvailable]);
   const [manualStart, setManualStart] = useState<number | null>(review.draft.pendingManualStart);
   const [excludedStart, setExcludedStart] = useState<number | null>(review.draft.pendingIgnoreStart);
   const [excludedReason, setExcludedReason] = useState<ExcludedRange["reason"]>("camera-break");
   const [excludedRanges, setExcludedRanges] = useState<ExcludedRange[]>(() => excludedFromReview(review));
-  const [suppressionDecisions, setSuppressionDecisions] = useState<Record<string, SuppressionDecision>>(() => suppressionFromReview(review));
+  const [suppressionDecisions, setSuppressionDecisions] = useState<Record<string, SuppressionDecision>>(() => cleanupAvailable ? suppressionFromReview(review) : {});
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
   const [openedClipId, setOpenedClipId] = useState<string | null>(null);
   const initialPlayhead = firstClip?.start ?? review.gameStart;
@@ -308,7 +317,7 @@ function usePrototype(
   const [afterPadding, setAfterPadding] = useState(review.draft.afterPaddingSeconds);
   const [joinGap, setJoinGap] = useState(review.draft.joinGapSeconds);
   const [cleanup, setCleanup] = useState<CleanupStrength>(
-    cleanupStrengthForPolicy(review.draft.selectedSuppressionPolicy),
+    cleanupAvailable ? cleanupStrengthForPolicy(review.draft.selectedSuppressionPolicy) : "off",
   );
   const [reviewMessage, setReviewMessage] = useState(`${initialClips.filter((clip) => clip.included && !clip.reviewed && clipRequiresConfidenceReview(clip, review.draft.confidenceReviewThreshold)).length} clips remain to check in the current review.`);
   const [scoreEnabled, setScoreEnabled] = useState(review.draft.scoreTracking.enabled);
@@ -405,7 +414,7 @@ function usePrototype(
       playbackRate,
       renderScoreOverlay: scoreOverlay,
       fadeScoreOverlay,
-      selectedSuppressionPolicy: suppressionPolicyForCleanup(cleanup),
+      selectedSuppressionPolicy: cleanupAvailable ? suppressionPolicyForCleanup(cleanup) : "none",
       suppressionDecisionOverrides,
       reviewedCutIds: clips.filter((clip) => clip.reviewed && clip.origin === "model").map((clip) => clip.id),
       cuts: clips.map((clip) => {
@@ -474,6 +483,7 @@ function usePrototype(
     afterPadding,
     beforePadding,
     cleanup,
+    cleanupAvailable,
     clips,
     excludedRanges,
     excludedStart,
@@ -528,7 +538,7 @@ function usePrototype(
     setBeforePadding(draft.beforePaddingSeconds);
     setAfterPadding(draft.afterPaddingSeconds);
     setJoinGap(draft.joinGapSeconds);
-    setCleanup(cleanupStrengthForPolicy(draft.selectedSuppressionPolicy));
+    setCleanup(cleanupAvailable ? cleanupStrengthForPolicy(draft.selectedSuppressionPolicy) : "off");
     setScoreEnabled(draft.scoreTracking.enabled);
     setScoreOverlay(draft.renderScoreOverlay);
     setTeamOne(draft.scoreTracking.team1Name);
@@ -536,7 +546,7 @@ function usePrototype(
     setScoreMarkers(draft.scoreTracking.serveMarkers);
     setSideSwitchMarkers(draft.scoreTracking.sideSwitchMarkers);
     setRemovedModelMarkerIds(draft.scoreTracking.removedModelMarkerIds);
-    setSuppressionDecisions(cleanupReviewDecisions(draft, review.cleanupSuggestions));
+    setSuppressionDecisions(cleanupAvailable ? cleanupReviewDecisions(draft, review.cleanupSuggestions) : {});
   }
 
   function restoreHistory(direction: "undo" | "redo") {
@@ -1330,7 +1340,7 @@ function usePrototype(
     playing, setPlaying, finalPreview, setFinalPreview,
     playbackRate, setPlaybackRate,
     beforePadding, setBeforePadding,
-    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup,
+    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup, cleanupAvailable, cleanupUnavailableReason,
     restoreHistory, historyStorageFailed, resetProjectChanges,
     reviewMessage, scoreEnabled, setScoreEnabled, scoreOverlay, setScoreOverlay,
     fadeScoreOverlay, setFadeScoreOverlay,
@@ -2044,7 +2054,9 @@ function FineTune({ state, modal = false }: { state: Prototype; modal?: boolean 
         <label><span>Extra before <output>{state.beforePadding.toFixed(1)}s</output></span><input type="range" min="0" max="10" step="0.5" value={state.beforePadding} onChange={(event) => state.setBeforePadding(Number(event.currentTarget.value))} /></label>
         <label><span>Extra after <output>{state.afterPadding.toFixed(1)}s</output></span><input type="range" min="0" max="10" step="0.5" value={state.afterPadding} onChange={(event) => state.setAfterPadding(Number(event.currentTarget.value))} /></label>
         <label><span>Join gaps under <output>{state.joinGap.toFixed(1)}s</output></span><input type="range" min="0" max="10" step="0.5" value={state.joinGap} onChange={(event) => state.setJoinGap(Number(event.currentTarget.value))} /></label>
-        <label><span>Automatic cleanup</span><select value={state.cleanup} onChange={(event) => state.setCleanup(event.currentTarget.value as CleanupStrength)}><option value="off">Off</option><option value="light">Light</option><option value="standard">Standard</option><option value="strong">Strong</option></select></label>
+        {state.cleanupAvailable
+          ? <label><span>Automatic cleanup</span><select value={state.cleanup} onChange={(event) => state.setCleanup(event.currentTarget.value as CleanupStrength)}><option value="off">Off</option><option value="light">Light</option><option value="standard">Standard</option><option value="strong">Strong</option></select></label>
+          : <p className="td-status-message">{state.cleanupUnavailableReason}</p>}
       </div>
     </details>
   );
@@ -2111,7 +2123,7 @@ function ReviewSummary({
         <nav className="td-review-shortcuts" aria-label="Items needing review">
           {state.scoreEnabled && <button type="button" disabled={state.serveReview === 0} onClick={state.openServeReview}><strong>{state.serveReview}</strong><span>Review serves</span></button>}
           <button type="button" disabled={clipReviewCount === 0} onClick={state.openClipReview}><strong>{clipReviewCount}</strong><span>Review clips</span></button>
-          <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleaned up</span></button>
+          {state.cleanupAvailable && <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleaned up</span></button>}
         </nav>
       )}
       <div><strong>{state.included.length}</strong><span>clips included</span></div>
@@ -2165,7 +2177,7 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
               <li data-ready={!state.needsSource || undefined}><strong>Source video</strong><span>{state.needsSource ? "Reconnect for playback and MP4" : "Connected locally"}</span></li>
               <li data-ready={state.remaining === 0 || undefined}><strong>Suggested clips</strong><span>{state.remaining === 0 ? "All included clips checked" : `${state.remaining} still need review`}</span></li>
               <li data-ready={!state.scoreEnabled || state.serveReview === 0 || undefined}><strong>Score markers</strong><span>{!state.scoreEnabled ? "Score tracking is off" : state.serveReview === 0 ? "All serve sides checked" : `${state.serveReview} serve sides need review`}</span></li>
-              <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} excluded suggestion needs review`}</span></li>
+              {state.cleanupAvailable && <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} excluded suggestion needs review`}</span></li>}
               <li data-ready><strong>Final ranges</strong><span>{state.included.length} clips, {state.excludedRanges.length} excluded {state.excludedRanges.length === 1 ? "section" : "sections"}</span></li>
             </ul>
             {(state.remaining > 0 || state.serveReview > 0 || state.suppressionPending > 0 || state.needsSource) && <p>You can still prepare any available output. MP4 alone requires the matching source. Unresolved items remain in the saved review.</p>}
@@ -2280,6 +2292,7 @@ function StandardStage({ state }: { state: Prototype }) {
 
 function rallyAgreementLabel(clip: Clip): string {
   if (clip.origin === "manual") return "Added manually";
+  if (clip.agreement === "neural") return "Neural model";
   if (clip.agreement === "both-models") return "Both models";
   if (clip.agreement === "all-labels-v2-only") return "All-label model";
   if (clip.agreement === "previous-production-only") return "Previous model";
@@ -2687,7 +2700,7 @@ function RallyDeskSettingsModal({
           <div><p className="td-kicker">Final cut settings</p><h2 id="rd-settings-title">Fine-tune final cut</h2></div>
           <button type="button" onClick={onClose} aria-label="Close final cut settings">×</button>
         </header>
-        <p>Adjust the padding around every rally, short joined gaps, and automatic cleanup strength.</p>
+        <p>{state.cleanupAvailable ? "Adjust the padding around every rally, short joined gaps, and automatic cleanup strength." : "Adjust the padding around every rally and short joined gaps."}</p>
         <FineTune state={state} modal />
         <footer><button className="td-primary-button" type="button" onClick={onClose}>Done</button></footer>
       </section>

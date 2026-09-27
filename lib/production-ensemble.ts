@@ -80,6 +80,7 @@ export function isProductionModelDisagreement(
 export function productionModelAgreementLabel(
   agreement: ModelAgreement | undefined,
 ): string {
+  if (agreement === "neural") return "Neural model prediction";
   if (agreement === "both-models") return "Both production models agree";
   if (agreement === "all-labels-v2-only") return "Disagreement · all-labels v2 only";
   if (agreement === "previous-production-only") {

@@ -63,6 +63,52 @@ change even when the column names do not change.
 
 ## Production profile
 
+This branch adds the selectable **Distilled Large** rally pipeline to the normal
+production web and Android apps, with the frozen highest-recall selection as the
+new-project default. Highest F1 and the existing production ensemble remain
+explicit choices. This is an application integration, not a published release or
+a new cross-platform accuracy study. The F104 profile below remains required for
+both neural fusion and serve/state evidence used by the score specialists.
+
+The neural input is **104 AV values + 3,840 regional image values + eight
+quality/age/availability values** per nominal 4 Hz tick. Images are sampled at
+2 Hz from nearest actual presentation timestamps with earlier ties, prepared as
+224-pixel aspect-preserving letterboxes, ImageNet normalized, and pooled over
+four 960-channel regions. The selected bundle supplies normalization for the 104
+AV and eight quality columns; image tokens are not scaled. Content geometry,
+including display rotation and ROI, determines regional weights. A pool matrix
+derived from a particular research recording must not be shipped as a universal
+pool matrix.
+
+For a partial game window, the first AV tick is on the source-aligned 4 Hz grid
+at or after the window start. Neural image context begins on the 2 Hz grid at
+or immediately before that start, so a first quarter-second tick can use its
+causal preceding image. That single context sample can lie less than 0.5 s before
+the marked start; decoded rallies and exports remain clipped to the game window.
+Nominal sample times, selected-frame presentation times, and their quality offsets
+remain distinct. Shifting the neural sampling phase to each new window would
+change the feature contract.
+
+The web neural path uses `opencv-area-nearest-grid-v1` AV preparation and FP16
+embedding-cache rounding. The ensemble option retains `canvas-preceding-v1`.
+Native neural inference retains the repaired RGB-before-area AV path and FP32
+embeddings. Native shared decoding prepares AV and neural samples from one source
+pass when supported; cached AV can use the independent image path. Decode sharing
+does not change the separate pixel preparation of each feature family. These
+platform contracts remain distinct: matching model IDs does not assert
+byte-identical browser and MediaCodec pixels.
+
+Changing recall/F1 selection changes the complete matched encoder, TCN,
+normalizer, and decoder. Their embeddings are incompatible; cache identity must
+include the model and preprocessing contract as well as source, ROI, and game
+window. Serve-side and optional side-switch features are generated for the
+selected model's rally starts. Their additional decoding remains part of total
+analysis cost. Ensemble-derived suppression is reserved for the ensemble option.
+See the [bundle contract](models/distilled-large/README.md) for immutable hashes
+and reproducible build preparation, and the
+[normal-app integration checks](docs/research/distilled-large-production-integration.md)
+for browser and emulator validation.
+
 The current production profile is `audiovisual-noise-normalized-audio-v3` with audio
 profile `noise-normalized-bands-v3`:
 
@@ -113,7 +159,7 @@ Sparse selection scans packet metadata without materializing media payloads.
 Crop edges use Python-compatible ties-to-even rounding and clipping. Visual cache
 keys for this option include `opencv-area-nearest-grid-v1`, preventing reuse of the earlier
 canvas-resized, preceding-frame features. The worker-free fallback follows the
-same crop, resize and timing contract. The production default remains
+same crop, resize and timing contract. The ensemble option's default remains
 `canvas-preceding-v1`: the corrected option regressed full-video production F1
 and extraction latency on the measured recording. Score specialists retain their
 separate, frozen preceding-frame sampler. See the [browser validation report](docs/research/web-visual-preprocessing-validation.md)
@@ -616,7 +662,7 @@ required client parity is implemented.
 | Current frozen DINO tokens | Ten 384-value DINOv2 spatial tokens per 4 Hz frame; no percentile ranking or fold scaling of those tokens. The downstream model projects them alongside AV104. | Research input to DINO-TCN and DINO-transformer. FP32 and mixed dynamic-INT8 encoder outputs are distinct precision variants; INT8 browser numerical parity failed and neither precision is a deployed production rally model. See [`dino-precision-results-2026-09-23.md`](docs/research/dino-precision-results-2026-09-23.md). |
 | Regional MobileNetV3-Small tokens | One aspect-preserving 224-pixel ROI frame at 2 Hz, four fixed image-relative regional pools of 576 values each, and eight quality/age/availability scalars aligned to the 4 Hz AV104 stream | Research input to Mobile-TCN; the separately distilled encoder retains this inference contract. These regions are not detected court geometry. See [`neural-recognition-results-2026-09-22.md`](docs/research/neural-recognition-results-2026-09-22.md) and [`distilled-mobile-qualification-2026-09-23.md`](docs/research/distilled-mobile-qualification-2026-09-23.md). |
 | Frozen MobileNetV3-Large substitution | Registered 224-pixel, 2 Hz regional extraction with four 960-channel pools and eight aligned quality scalars; the encoder remains frozen. Combined with AV104 this gives 3,952 values per 4 Hz tick. | All 42 non-beach feature extractions and 24 TCN fits are complete, with calibration at only 98% and 99%. Two target-99% selections and their predictions/signals are available in the comparison UIs; frozen inference was also published for two beach recordings without retraining. Native two-minute and full-video complete-pipeline timings are measured; proven native input-contract differences still prevent feature/pixel/PTS qualification. Retained research, not production. Ledger `private-reference-0211` binds the study, `private-reference-0215` the beach evaluation, and `private-reference-0217` the native diagnostics; see [`experiment-mobile-large.py`](scripts/experiment-mobile-large.py) and the selected artifacts in [`MODELS.md`](MODELS.md). |
-| DINO-distilled MobileNetV3-Large tokens | Same 224-pixel, 2 Hz four-region 960-channel contract as frozen Large, plus the same eight aligned quality scalars and AV104. Source-local distillation changes encoder weights; the 960-to-384 DINO projection is training only. FP32 extraction stores cached embeddings as FP16, preserving the earlier feature-cache contract. | Completed 24 student/TCN fits; 15 reached strict 99% calibration. Distinct highest-F1 and highest-recall choices use expanded-large draws 20260918/3407 and TCN epochs 60/15. Predictions and four signals are published and browser-validated for all 44 videos, including two beach recordings; 36 have scoring labels and eight have counts only. DINO is unnecessary during student inference. Research only: beach recall remains poor. Native FP32 CPU runtime is measured for both selections, while feature accuracy remains unqualified; see the [native benchmark](docs/research/distilled-mobile-large-native-benchmark.md). Ledger `private-reference-0222` binds the recipe, source membership, feature/checkpoint identities and publication checks. See [`neural_mobile_large_distillation.py`](analysis/neural_mobile_large_distillation.py), the [experiment](docs/research/distilled-mobile-large-experiment.md) and [completed results](docs/research/distilled-mobile-large-results.md). |
+| DINO-distilled MobileNetV3-Large tokens | Same 224-pixel, 2 Hz four-region 960-channel contract as frozen Large, plus the same eight aligned quality scalars and AV104. Source-local distillation changes encoder weights; the 960-to-384 DINO projection is training only. FP32 extraction stores cached embeddings as FP16, preserving the earlier feature-cache contract. | Completed 24 student/TCN fits; 15 reached strict 99% calibration. Distinct highest-F1 and highest-recall choices use expanded-large draws 20260918/3407 and TCN epochs 60/15. Predictions and four signals are published and browser-validated for all 44 videos, including two beach recordings; 36 have scoring labels and eight have counts only. DINO is unnecessary during student inference. The two selected choices are integrated into the normal apps on this branch, as described in the production profile above. Beach recall remains poor. The initial [native benchmark](docs/research/distilled-mobile-large-native-benchmark.md) had unresolved input parity; subsequent audio/video repairs and shared-decoding qualification are recorded below. Integration is not a new released-device qualification. Ledger `private-reference-0222` binds the recipe, source membership, feature/checkpoint identities and publication checks. See [`neural_mobile_large_distillation.py`](analysis/neural_mobile_large_distillation.py), the [experiment](docs/research/distilled-mobile-large-experiment.md) and [completed results](docs/research/distilled-mobile-large-results.md). |
 | Ball presence/trajectory | Full-frame or tiled detector outputs and proposed trajectory/interactions | Rejected/skipped because the detector failed the precision/recall and environment gates. See [`minimum-ball-presence-pilot-2026-08-11.md`](docs/research/minimum-ball-presence-pilot-2026-08-11.md). |
 | Side-switch v1 appearance context | Seven marker-level appearance/detection-change values, before/after count/box/score/coverage summaries, gap duration, and paired missingness indicators | Rejected for automatic use; retained as a 36-input review-ranking baseline. This is a separate marker pipeline, not part of the 104 base columns. See [`side-switch-specialist-v1-2026-08-20.md`](docs/research/side-switch-specialist-v1-2026-08-20.md). |
 | Serving-side v1 existing bank | Nineteen rally-anchor scalars covering near/far whole-half and baseline-band motion/palette change, HOG occupancy/change, and signed margins; paired missingness yields 38 model inputs | Retained research baseline, not production. Strong raw-camera behavior did not hold on the protected indoor recording. This is a separate rally-candidate pipeline, not part of the 104 production base columns. See [`serving-side-specialist-v1-2026-08-20.md`](docs/research/serving-side-specialist-v1-2026-08-20.md). |
@@ -796,8 +842,9 @@ The harness compares shipped `canvas-preceding-v1` AV extraction with the opt-in
 `opencv-area-nearest-grid-v1` correction. Both use the existing browser audio
 pipeline. Serving-side and side-switch inference runs the production specialist
 entry point on each neural proposal set, including the additional video pass and
-required production serve/state evidence. This remains a research harness; no
-neural model assets or new default are added to the shipped browser app.
+required production serve/state evidence. That experiment itself did not change
+the production default. The subsequent normal-app integration is described in
+the production profile above; its runtime assets are separately hash-pinned.
 The [actual-video experiment](docs/research/distilled-large-browser-experiment.md)
 records complete readiness times, saved-human coverage, operator qualification,
 feature storage and the distinction between desktop measurements and mobile
@@ -808,7 +855,7 @@ core time and wholly misses zero saved rallies. Current AV is faster at 311.868s
 but its padded-export F1 is 90.81% versus 93.32% with the correction. This bundles
 AV pixels/frame selection and time-grid alignment; it is not an isolated resize
 effect. Production moves in the opposite direction (79.32% to 78.41% F1), so its
-shipped AV default remains unchanged. These are desktop-browser observations on
+ensemble AV default remains unchanged. These are desktop-browser observations on
 one known recording, not mobile latency or broad feature parity.
 Frozen-input replay further separates the effects: at most 16.7 ms of actual-PTS
 displacement causes 2,119 of 4,245 rows to hold an embedding from 0.5 seconds

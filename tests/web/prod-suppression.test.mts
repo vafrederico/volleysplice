@@ -83,6 +83,8 @@ function materializerDraft() {
   draft.beforePaddingSeconds = 1;
   draft.afterPaddingSeconds = 1;
   draft.joinGapSeconds = 0.5;
+  // These cases exercise region splitting; the product default is whole-rally.
+  draft.suppressionScopeOverrides["logical-suggestion"] = "veto-region";
   draft.cuts[0].keepStart = 4;
   draft.cuts[0].keepEnd = 16;
   return draft;
@@ -137,14 +139,14 @@ test("No suppression exactly preserves the prior final interval list", () => {
   );
 });
 
-test("suppression splits raw cores before padding and explicit decisions survive", () => {
+test("region suppression leaves vetoed time removed after padding and explicit decisions survive", () => {
   const draft = materializerDraft();
   draft.selectedSuppressionPolicy = "conservative";
   const suppression = { suggestions: [splitSuggestion] };
   assert.equal(suppressionSuggestionState(splitSuggestion, draft), "suppressed");
   assert.deepEqual(buildFinalCutIntervals(draft, suppression), [
-    { start: 4, end: 9, cutIds: ["R001"] },
-    { start: 11, end: 16, cutIds: ["R001"] },
+    { start: 4, end: 8, cutIds: ["R001"] },
+    { start: 12, end: 16, cutIds: ["R001"] },
   ]);
 
   draft.suppressionDecisionOverrides[splitSuggestion.logicalId] = "keep";

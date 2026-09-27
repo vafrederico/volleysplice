@@ -375,7 +375,8 @@ class ProjectAnalysisService : Service() {
             latestNotificationStage.title,
         )
         try {
-            val result = AnalysisEngine(this).analyze(
+            val neural = DistilledRallyModels.open(this, project.modelId, project.media, project.roi, cancelled::get)
+            val result = neural.use { AnalysisEngine(this, it).analyze(
                 Uri.parse(project.source.uri),
                 true,
                 FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
@@ -422,14 +423,14 @@ class ProjectAnalysisService : Service() {
                 },
                 includeServingSide,
                 project.sideSwitchEnabled,
-            )
+            ) }
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
                 NativeProjectStore.complete(this, projectId, result)
                 val disagreements = result.ranges().count {
                     ProductionEnsemble.isDisagreement(it.agreement())
                 }
                 val detail = "${result.ranges().size} merged ranges · $disagreements to validate · features cached"
-                Log.i(TAG, resultLog(projectId, project.analysisWindow, result).toString())
+                Log.i(TAG, resultLog(projectId, project.modelId, project.analysisWindow, result).toString())
                 if (result.servingSideError() != null) {
                     stepTracker.markError("serving-side", result.servingSideError())
                 }
@@ -655,13 +656,15 @@ class ProjectAnalysisService : Service() {
 
     private fun resultLog(
         projectId: String,
+        modelId: String,
         analysisWindow: AnalysisTypes.AnalysisWindow,
         result: AnalysisTypes.AnalysisResult,
     ) = JSONObject().apply {
         put("schemaVersion", 1)
-        put("method", "android-project-inference-ensemble-v2")
+        put("method", if (RallyModels.isNeural(modelId)) "android-project-inference-neural-v1"
+            else "android-project-inference-ensemble-v2")
         put("projectId", projectId)
-        put("modelId", FeatureSchema.MODEL_ID)
+        put("modelId", modelId)
         put("sourceName", result.displayName())
         put("analysisWindow", JSONArray(listOf(analysisWindow.start(), analysisWindow.end())))
         put("totalMilliseconds", result.totalMilliseconds())

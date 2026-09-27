@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class AnalysisEngine {
     private final Context context;
     interface RallyOverride {
+        default boolean supportsEnsembleSuppression() { return true; }
         default SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
                 AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window,
                 int sourceFrameLimit, java.util.function.BooleanSupplier cancelled) throws IOException {
@@ -423,7 +424,12 @@ final class AnalysisEngine {
             if (rallyOverride != null) {
                 // Production signals remain available to the frozen score specialists.
                 // The override alone determines the selected rally boundaries.
-                ranges = rallyOverride.run(uri, roi, times, contextual, analyzedDurationSeconds, profile);
+                progress.onProgress("inference", .65, "Running the selected neural rally model");
+                ranges = clipIntervals(rallyOverride.run(uri, roi, times, contextual, analyzedDurationSeconds, profile),
+                        analysisWindow.start(), analyzedDurationSeconds);
+                // The legacy cleanup suggestions address ensemble regions. They
+                // must never suppress a different model's independently decoded rallies.
+                if (!rallyOverride.supportsEnsembleSuppression()) suppression = null;
             }
             operation = System.nanoTime();
             if (includeServingSide) {

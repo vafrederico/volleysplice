@@ -5,6 +5,13 @@ video loading, audiovisual feature extraction, rally inference, and the cut edit
 one UI. It has no API routes, server database, media catalog, mounted-media paths, or
 upload behavior.
 
+New projects default to **Distilled Large - highest recall**. The rally-model
+selector also offers **Distilled Large - highest F1** and **Production ensemble**.
+Each neural choice loads its matched encoder, temporal head, normalizer, and
+decoder; changing the choice creates separate model results rather than rewriting
+an existing edit. Recall/F1 embeddings are not interchangeable. A neural load or
+inference error is shown explicitly; select the ensemble to use that alternative.
+
 Before queueing inference, the user can seek the local preview and mark the game start
 and end. The marked source-time window becomes part of the project and feature-cache
 identity. Video and audio decoding only generate features inside that window, inference
@@ -12,12 +19,18 @@ is clipped to it, editor padding cannot cross it, and the editor overview shows 
 window instead of unused pre-game or post-game footage. Existing saved projects without
 explicit bounds migrate to the full source duration.
 
+Neural analysis may also read the immediately preceding 2 Hz image as context
+for the first quarter-second feature tick. This does not add rallies or export
+footage outside the marked window.
+
 The selected video stays in the browser. Each inference request creates a durable local
 project, and the top-bar project selector returns to completed inputs without rerunning
 the model. Multiple projects can be queued: one generates features at a time while any
 completed project remains available in the editor. OpenCV runs in a dedicated worker,
 feature reductions and FFmpeg-compatible audio resampling run through bundled WebAssembly,
-and the model runs on CPU. Visual checkpoints, completed audio features, project metadata,
+and neural inference runs in a worker using the qualified portable ONNX graph,
+with WebGPU where available and a WASM fallback. The ensemble uses its existing
+CPU classifiers. Visual checkpoints, completed audio features, project metadata,
 and finalized inference results use local IndexedDB; edit drafts use local storage. Source
 video bytes are not copied into project storage, so a browser restart only requires
 reconnecting the exact local file for playback or export—not rerunning inference. Deleting
@@ -45,7 +58,7 @@ Both analysis and MP4 export show live elapsed-time and estimated-time-remaining
 while they run.
 
 For a new project, the browser runs serving-side extraction immediately after the
-two-model rally ensemble and before the ready editor is shown. It samples fixed windows
+selected rally model and before the ready editor is shown. It samples fixed windows
 around every included merged interval start, stores the raw 237-column
 `SERVSIDE237-FLIGHT` matrix and verdict evidence with the project, and does not rerun that
 work when ignored sections or rally inclusion change. A compatible older project can
@@ -76,6 +89,12 @@ frame through a reusable canvas.
 
 Requirements: Node.js 24 and a current Chrome or Edge browser, or Safari 26 on iOS/macOS.
 
+Prepare the pinned neural assets using the
+[bundle preparation instructions](../models/distilled-large/README.md), then keep
+`VOLLEYCUT_NEURAL_ASSETS_DIR` configured for development and builds. Missing or
+modified weights fail the build. Only model/runtime assets are served; no private
+ledger or research data enters the application.
+
 ```sh
 npm install
 npm run dev
@@ -95,6 +114,10 @@ npm run build
 
 Serve `dist/` from any static HTTPS host. The build uses relative asset URLs, so it
 works at a domain root or subpath without changing the config.
+For external build storage, set `VOLLEYCUT_PROD_PUBLIC_DIR` to a generated public
+staging directory and `VOLLEYCUT_PROD_BUILD_DIR` to the output directory. Asset
+preparation, Vite, and integrity verification honor the same locations. Keep both
+directories dedicated to this build; no private input files belong in them.
 Do not open `dist/index.html` directly through `file://`; WebCodecs and module workers
 need an HTTP origin.
 
@@ -150,8 +173,8 @@ Vite's fingerprinted `/assets/` files can be cached for one year. Cloudflare rea
 The redirects preserve legacy `/android/` links to the Google Play listing.
 
 `wrangler.jsonc` attaches `volleysplice.com` as the production Custom Domain and
-routes `*.volleysplice.com/*` to the same app. It also retains
-`https://volleysplice.vafrederico.workers.dev`. These URLs serve the same
+routes `*.volleysplice.com/*` to the same app. The account-specific `workers.dev`
+address is available in the deployment output. These URLs serve the same
 deployment; the `workers.dev` address is not a separate staging environment.
 Cloudflare manages the custom domain's DNS and HTTPS certificate. The domain must
 belong to an active Cloudflare zone in the deploying account. Keep the domain in
@@ -193,7 +216,8 @@ docker compose up -d --build
 ```
 
 The included Compose file joins the existing external `websecure` network and exposes
-the nginx service through Traefik at `https://volleycut.vafrederico.com`. The route is
+the nginx service through Traefik at the configured application hostname. Resolve
+that URL from the local deployment environment (`VOLLEYCUT_APP_BASE_URL`). The route is
 intentionally public: it has compression and Let's Encrypt labels, but no Authentik
 labels, callback router, ForwardAuth middleware, or published host port. TLS terminates
 at Traefik.
@@ -203,7 +227,7 @@ the resulting files on container port 8080. After deployment, verify that an
 unauthenticated request returns the app rather than redirecting to a login page:
 
 ```sh
-curl -I https://volleycut.vafrederico.com
+curl -I "$VOLLEYCUT_APP_BASE_URL"
 ```
 
 ## Runtime contents

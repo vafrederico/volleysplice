@@ -283,7 +283,8 @@ function validCut(
     (cut.agreement === undefined ||
       cut.agreement === "both-models" ||
       cut.agreement === "all-labels-v2-only" ||
-      cut.agreement === "previous-production-only") &&
+      cut.agreement === "previous-production-only" ||
+      cut.agreement === "neural") &&
     cut.keepStart >= minimum &&
     cut.keepStart <= cut.coreStart &&
     cut.coreStart < cut.coreEnd &&

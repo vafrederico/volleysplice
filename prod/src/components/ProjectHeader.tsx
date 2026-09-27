@@ -1,4 +1,4 @@
-import type { VolleySpliceProject } from "@/lib/project-store";
+import { projectDisplayName, type VolleySpliceProject } from "@/lib/project-store";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
 import type { DesignExportJob } from "@/designs/useDesignReview";
 
@@ -90,7 +90,7 @@ export function ProjectHeader({
             <option value="__new__">＋ Start a new video…</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
-                {project.source.name} · {projectStatus(
+                {projectDisplayName(project)} · {projectStatus(
                   project,
                   exportJobsByProject.get(project.id),
                 )}

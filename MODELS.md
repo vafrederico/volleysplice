@@ -76,7 +76,7 @@ a model study.
 | `NEURAL-AV104` | 104 per 4 Hz tick | Fold-standardized base audiovisual stream; no five-offset F104 production expansion |
 | `NEURAL-DINO` | 104 AV + 10×384 visual tokens per tick | Frozen DINOv2 representation plus learned temporal projection; encoder precision is part of the artifact identity |
 | `NEURAL-MOBILE` | 104 AV + 4×576 visual values + 8 quality values per tick | Frozen or distilled MobileNetV3-Small regional representation aligned from 2 Hz to 4 Hz |
-| `NEURAL-MOBILE-LARGE` | 104 AV + 4×960 visual values + 8 quality values per tick | Frozen or DINO-distilled MobileNetV3-Large regional representation aligned from 2 Hz to 4 Hz; encoder identity belongs to each artifact, not production |
+| `NEURAL-MOBILE-LARGE` | 104 AV + 4×960 visual values + 8 quality values per tick | Frozen or DINO-distilled MobileNetV3-Large regional representation aligned from 2 Hz to 4 Hz; encoder identity belongs to each matched artifact; selected distilled variants are integrated on this branch |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
 the authoritative signature.
@@ -87,6 +87,41 @@ copies that authoritative 34-name order and binds the source model/feature hashe
 an implementation specification, not a production model registration.
 
 ## Current production system
+
+### Distilled Large application integration on this branch
+
+The normal production web and Android apps now expose the two already-frozen
+Distilled Large selections. New projects default to `distilled-large-recall-v1`;
+`distilled-large-f1-v1` and the existing ensemble are explicit alternatives.
+Existing completed projects retain their model provenance. This registers
+application packaging of the existing fits, not a new fit, recalibration,
+selection, deployment, or physical-device qualification of the final app.
+
+| Runtime model | Original selection | Feature signature | Fit / selection sources | Change and disposition |
+| --- | --- | --- | --- | --- |
+| `distilled-large-recall-v1` | `expanded-large`, draw 3407, TCN epoch 15, target-99 calibration | `NEURAL-MOBILE-LARGE`, FP32 encoder/TCN; native FP32 tokens, browser FP16-rounded tokens | Unchanged indexed membership and label hashes from `distilled-mobile-large-v1`, ledger `private-reference-0222`; common exact-label panel selects recall | Promoted from lab/benchmark-only to normal-app default at user request; no new training or evaluation-based threshold change. |
+| `distilled-large-f1-v1` | `expanded-large`, draw 20260918, TCN epoch 60, target-99 calibration | Same dimensions, distinct encoder, temporal weights, normalizer, and decoder | Same study, with this draw's distinct indexed fit/calibration membership; common exact-label panel selects `F1_padP_coreR` | Alternate normal-app choice; switching invalidates incompatible embeddings and retains separate project results. |
+
+Exact graph/config hashes and byte counts are pinned in
+[Android](models/distilled-large/android-manifest.json) and
+[web](models/distilled-large/web-manifest.json) manifests. Web uses the independently
+qualified portable regional-pooling export; native preserves the original ONNX
+export. The [bundle contract](models/distilled-large/README.md) identifies every
+runtime component and generation rule. Existing serving-side and side-switch
+models retain their weights and run against the selected neural rally boundaries;
+the existing serve/state outputs still provide their evidence. The original
+ensemble remains selectable with its original suppression behavior.
+
+The reported selection-panel metrics below remain selection metrics. Known poor
+beach results and the distinction between retained-core recall and wholly missed
+events remain limitations; target 99% does not promise new-video recall. See the
+[latest physical-phone shared-decoding result](docs/research/pixel-shared-video-decoding.md)
+and [browser qualification](docs/research/distilled-large-browser-experiment.md)
+for the preceding benchmark evidence, rather than treating model packaging as a
+new performance result. The [integration report](docs/research/distilled-large-production-integration.md)
+records checks of the normal app pipelines and matched-model switching.
+
+### Existing ensemble and specialist artifacts
 
 Production browser assets are under `prod/public/runtime/`. The F104 rally and
 suppression artifacts have corresponding Android assets under
@@ -516,8 +551,9 @@ only. Exact labels, reviewed drafts and reviewed export coverage are reported
 separately, with production-training exclusions and all four padding cases.
 Beach remains unqualified: retained-core recall is 7.63% for the F1 choice and
 78.01% for the recall choice, with 62 versus 16 wholly missed rallies. DINO and
-the distillation projector are absent at inference. This remains research, not
-production or a validated native-phone deployment. See the
+the distillation projector are absent at inference. The original study was a
+research publication; the subsequent application integration is registered above.
+It does not qualify these beach results or a new released mobile deployment. See the
 [experiment](docs/research/distilled-mobile-large-experiment.md) and
 [completed results](docs/research/distilled-mobile-large-results.md).
 

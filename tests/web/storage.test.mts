@@ -21,19 +21,19 @@ test("storage defaults to the repository data directory", () => {
 
 test("storage honors the server-side configured media root", () => {
   const previous = process.env.VOLLEYCUT_DATA_ROOT;
-  process.env.VOLLEYCUT_DATA_ROOT = "/mnt/example/volleycut";
-  assert.equal(getDataRoot(), "/mnt/example/volleycut");
-  assert.equal(getAnalysesRoot(), "/mnt/example/volleycut/analyses");
+  process.env.VOLLEYCUT_DATA_ROOT = path.resolve("test-data", "volleycut");
+  assert.equal(getDataRoot(), path.resolve("test-data", "volleycut"));
+  assert.equal(getAnalysesRoot(), path.resolve("test-data", "volleycut", "analyses"));
   if (previous === undefined) delete process.env.VOLLEYCUT_DATA_ROOT;
   else process.env.VOLLEYCUT_DATA_ROOT = previous;
 });
 
 test("storage supports a separate no-beach analysis root", () => {
   const previous = process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT;
-  process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT = "/mnt/example/no-beach/analyses";
+  process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT = path.resolve("test-data", "no-beach", "analyses");
   assert.equal(
     getAnalysesRoot("without-beach"),
-    "/mnt/example/no-beach/analyses",
+    path.resolve("test-data", "no-beach", "analyses"),
   );
   if (previous === undefined) delete process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT;
   else process.env.VOLLEYCUT_NO_BEACH_ANALYSES_ROOT = previous;
@@ -41,9 +41,9 @@ test("storage supports a separate no-beach analysis root", () => {
 
 test("storage supports a supplemental intake workspace", () => {
   const previous = process.env.VOLLEYCUT_INTAKE_WORKSPACE;
-  process.env.VOLLEYCUT_INTAKE_WORKSPACE = "/mnt/example/intake";
-  assert.equal(getIntakeWorkspace(), "/mnt/example/intake");
-  assert.equal(getIntakeAnalysesRoot(), "/mnt/example/intake/analyses");
+  process.env.VOLLEYCUT_INTAKE_WORKSPACE = path.resolve("test-data", "intake");
+  assert.equal(getIntakeWorkspace(), path.resolve("test-data", "intake"));
+  assert.equal(getIntakeAnalysesRoot(), path.resolve("test-data", "intake", "analyses"));
   if (previous === undefined) delete process.env.VOLLEYCUT_INTAKE_WORKSPACE;
   else process.env.VOLLEYCUT_INTAKE_WORKSPACE = previous;
 });
@@ -65,11 +65,11 @@ test("storage uses a neutral intake directory by default", () => {
 test("model-feedback imports default under data and support a durable override", () => {
   const previousData = process.env.VOLLEYCUT_DATA_ROOT;
   const previousFeedback = process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT;
-  process.env.VOLLEYCUT_DATA_ROOT = "/mnt/example/volleycut";
+  process.env.VOLLEYCUT_DATA_ROOT = path.resolve("test-data", "volleycut");
   delete process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT;
-  assert.equal(getModelFeedbackRoot(), "/mnt/example/volleycut/model-feedback");
-  process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT = "/mnt/example/feedback";
-  assert.equal(getModelFeedbackRoot(), "/mnt/example/feedback");
+  assert.equal(getModelFeedbackRoot(), path.resolve("test-data", "volleycut", "model-feedback"));
+  process.env.VOLLEYCUT_MODEL_FEEDBACK_ROOT = path.resolve("test-data", "feedback");
+  assert.equal(getModelFeedbackRoot(), path.resolve("test-data", "feedback"));
   if (previousData === undefined) delete process.env.VOLLEYCUT_DATA_ROOT;
   else process.env.VOLLEYCUT_DATA_ROOT = previousData;
   if (previousFeedback === undefined)

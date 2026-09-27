@@ -2,7 +2,8 @@ package com.volleycut.nativeanalysis;
 
 import ai.onnxruntime.*;
 import android.media.Image;
-import com.volleycut.neuralbenchmark.VideoEncoderBenchmark;
+import com.volleycut.neural.NeuralVideoEncoder;
+import com.volleycut.neural.RegionalPoolWeights;
 import com.volleycut.video.EmbeddingFrameRequests;
 import com.volleycut.video.YuvColorConversion;
 import java.io.*;
@@ -16,9 +17,12 @@ import org.json.*;
 
 /** Original YUV -> exact existing neural pixels -> bounded encoder worker. */
 final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
-    private record Job(float[] pixels, float[] quality, long pts, int first, int end) {}
-    private static final Job END = new Job(null, null, 0, 0, 0);
-    private final File root;
+    private record Job(float[] pixels, float[] quality, long pts, int first, int end, float[] pooling) {}
+    private static final Job END = new Job(null, null, 0, 0, 0, null);
+    private final File root, encoderFile, poolFile;
+    private final double startSeconds;
+    private final int rotation;
+    private final boolean dynamicPoolWeights;
     private final String prefix, id;
     private final double seconds;
     private final double[] roi;
@@ -42,13 +46,21 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
 
     SharedEmbeddingConsumer(File root, String prefix, String id, double seconds,
             double[] roi, boolean captureHashes, BooleanSupplier cancelled) {
+        this(root, prefix, id, 0, seconds, roi, 0, captureHashes, cancelled,
+                new File(root,prefix+"-encoder-fp32.onnx"),new File(root,prefix+"-encoder-pool_weights.f32"),false);
+    }
+    SharedEmbeddingConsumer(File root, String prefix, String id, double startSeconds, double seconds,
+            double[] roi, int rotation, boolean captureHashes, BooleanSupplier cancelled,
+            File encoderFile, File poolFile, boolean dynamicPoolWeights) {
         this.root=root; this.prefix=prefix; this.id=id; this.seconds=seconds;
+        this.startSeconds=startSeconds; this.rotation=rotation;
+        this.encoderFile=encoderFile; this.poolFile=poolFile; this.dynamicPoolWeights=dynamicPoolWeights;
         this.roi=roi.clone(); this.captureHashes=captureHashes; this.cancelled=cancelled;
         for(int i=0;i<4;i++) free.add(new float[3*224*224]);
     }
     @Override public Set<Long> plan(long[] source, String decoderName, boolean hardware) throws IOException {
         if(worker!=null) throw new IOException("Shared encoder already planned");
-        sampling=EmbeddingFrameRequests.create(source, 0, seconds, 2);
+        sampling=EmbeddingFrameRequests.create(source, startSeconds, seconds, 2);
         if(sampling.selectedPresentationUs().length==0) throw new IOException("No shared encoder frames");
         Set<Long> selected=new HashSet<>();
         for(long pts:sampling.selectedPresentationUs()) selected.add(pts);
@@ -78,8 +90,8 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
             while(pixels==null) { check(); pixels=free.poll(20,TimeUnit.MILLISECONDS); }
             waitNs+=System.nanoTime()-start;
             start=System.nanoTime();
-            VideoEncoderBenchmark.prepare(image,pixels,224,roi,color.conversion());
-            float[] q=VideoEncoderBenchmark.quality(pixels,224,image.getCropRect(),roi);
+            NeuralVideoEncoder.prepare(image,pixels,224,roi,color.conversion(),rotation);
+            float[] q=NeuralVideoEncoder.quality(pixels,224,NeuralVideoEncoder.orientedBounds(image.getCropRect(),rotation),roi);
             int end=submitted+1;
             while(end<sampling.selectedPresentationUs().length && sampling.selectedPresentationUs()[end]==pts) end++;
             if(!color.equals(previousColor)) {
@@ -89,7 +101,8 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
                 previousColor=color;
             }
             prepareNs+=System.nanoTime()-start;
-            Job job=new Job(pixels,q,pts,submitted,end);
+            float[] pool=dynamicPoolWeights?RegionalPoolWeights.forGeometry(image.getCropRect().width(),image.getCropRect().height(),rotation,roi):null;
+            Job job=new Job(pixels,q,pts,submitted,end,pool);
             while(!jobs.offer(job,20,TimeUnit.MILLISECONDS)) check();
             pixels=null; submitted=end; uniqueImages++;
         } catch(InterruptedException error) { Thread.currentThread().interrupt(); throw new IOException(error); }
@@ -102,12 +115,12 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
             options.setIntraOpNumThreads(4); options.setInterOpNumThreads(1);
             OrtEnvironment env=OrtEnvironment.getEnvironment();
             long start=System.nanoTime();
-            try(OrtSession encoder=env.createSession(new File(root,prefix+"-encoder-fp32.onnx").toString(),options);
+            try(OrtSession encoder=env.createSession(encoderFile.toString(),options);
                 FileOutputStream tokens=new FileOutputStream(new File(root,id+"-tokens.f32"))) {
                 ByteBuffer rgb=ByteBuffer.allocateDirect(3*224*224*4).order(ByteOrder.LITTLE_ENDIAN);
                 FloatBuffer imageFloats=rgb.asFloatBuffer();
                 inputs.put("image",OnnxTensor.createTensor(env,rgb,new long[]{1,3,224,224},OnnxJavaType.FLOAT));
-                byte[] raw=Files.readAllBytes(new File(root,prefix+"-encoder-pool_weights.f32").toPath());
+                byte[] raw=Files.readAllBytes(poolFile.toPath());
                 if(raw.length!=196*4) throw new IOException("Unexpected pooling shape");
                 ByteBuffer weights=ByteBuffer.allocateDirect(raw.length).order(ByteOrder.LITTLE_ENDIAN);
                 weights.put(raw).rewind();
@@ -119,8 +132,9 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
                     if(job==END) break;
                     try {
                         imageFloats.rewind(); imageFloats.put(job.pixels());
+                        if(job.pooling()!=null) { weights.asFloatBuffer().put(job.pooling()); }
                         String hash=null;
-                        if(captureHashes) { start=System.nanoTime(); hash=VideoEncoderBenchmark.pixelHash(rgb); hashNs+=System.nanoTime()-start; }
+                        if(captureHashes) { start=System.nanoTime(); hash=NeuralVideoEncoder.pixelHash(rgb); hashNs+=System.nanoTime()-start; }
                         start=System.nanoTime();
                         try(OrtSession.Result result=encoder.run(inputs)) {
                             FloatBuffer values=((OnnxTensor)result.get(0)).getFloatBuffer();
@@ -153,7 +167,7 @@ final class SharedEmbeddingConsumer implements SharedVideoFrameConsumer {
             if(sampled!=sampling.selectedPresentationUs().length || submitted!=sampled) throw new IOException("Incomplete shared embeddings");
             report.put("sampleCount",sampled).put("sampleTimestamps",timestamps).put("quality",qualities)
                 .put("pixelHashes",hashes).put("decodedColorProfiles",colorProfiles)
-                .put("seconds",seconds).put("startSeconds",0).put("sampleFps",2)
+                .put("seconds",seconds).put("startSeconds",startSeconds).put("sampleFps",2)
                 .put("prepareMs",prepareNs/1e6).put("encoderAndReadbackMs",inferenceNs/1e6)
                 .put("encoderLoadMs",loadNs/1e6).put("queueBackpressureMs",waitNs/1e6)
                 .put("pixelHashMs",hashNs/1e6).put("samplePlanMs",0)

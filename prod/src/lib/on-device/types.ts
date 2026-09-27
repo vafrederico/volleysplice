@@ -103,7 +103,7 @@ export type OnDeviceInterval = {
   end: number;
   confidence: number;
   included: boolean;
-  agreement?: "both-models" | "all-labels-v2-only" | "previous-production-only";
+  agreement?: "both-models" | "all-labels-v2-only" | "previous-production-only" | "neural";
 };
 
 export type OnDeviceServeDetection = {

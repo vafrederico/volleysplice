@@ -33,6 +33,7 @@ import {
 import {
   normalizeStoredProject,
   projectAnalysisId,
+  projectDisplayName,
   projectId,
   sourceCanReconnectFile,
   sourceFileFingerprint,
@@ -329,4 +330,32 @@ test("a side-switch cache with changed model identity is discarded without inval
   assert.equal(normalized.status, "ready");
   assert.equal(normalized.analysis?.sideSwitch, undefined);
   assert.ok(normalized.analysis);
+});
+
+
+test("matched neural variants retain their own projects and survive restore without ensemble agreement", () => {
+  const recall = projectId(source, info, fullAnalysisWindow(info.duration), "high-recall");
+  const f1 = projectId(source, info, fullAnalysisWindow(info.duration), "high-f1");
+  assert.notEqual(recall, f1);
+  assert.notEqual(recall, projectId(source, info));
+  for (const modelId of ["distilled-large-recall-v1", "distilled-large-f1-v1"]) {
+    const saved = storedProject(cachedAnalysis(modelId));
+    const restored = normalizeStoredProject(saved);
+    assert.equal(restored.status, "ready");
+    assert.equal(restored.analysis, saved.analysis);
+  }
+});
+
+
+test("project picker distinguishes recall and F1 without changing source or saved identity", () => {
+  const recall = storedProject(cachedAnalysis("distilled-large-recall-v1"));
+  const f1 = storedProject(cachedAnalysis("distilled-large-f1-v1"));
+  const originalSource = { ...recall.source };
+  const originalId = recall.id;
+  assert.equal(projectDisplayName(recall), "match.mp4 - Distilled Large - highest recall");
+  assert.equal(projectDisplayName(f1), "match.mp4 - Distilled Large - highest F1");
+  assert.equal(projectDisplayName({ ...recall, analysis: null, rallyModel: "high-f1" }), "match.mp4 - Distilled Large - highest F1");
+  assert.equal(projectDisplayName(storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true))), "match.mp4 - Production ensemble");
+  assert.deepEqual(recall.source, originalSource);
+  assert.equal(recall.id, originalId);
 });

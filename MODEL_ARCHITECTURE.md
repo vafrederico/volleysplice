@@ -8,6 +8,52 @@ and predecessor changes are registered in [`MODELS.md`](MODELS.md). This documen
 not describe the broader editor, project-storage, playback, video-decoding, or
 export-encoding architecture.
 
+## Distilled Large application path
+
+On this branch, normal web and Android projects default to the selected
+**Distilled MobileNetV3-Large + TCN, highest recall** model. The highest-F1
+selection and legacy production ensemble remain explicit choices. The following
+new path supplements the deployed ensemble description below; no signed release
+or site deployment is implied by its implementation.
+
+```text
+Video -> 2 Hz 224-pixel image encoder -> four 960-value regional pools
+AV104 -> 4 Hz ranked AV values       -> 112-column frozen scalar normalization
+                 aligned tokens + eight quality/age/availability values
+                                      |
+                              3,952 values per tick
+                                      |
+                           FP32 four-head temporal CNN
+                                      |
+                         selected frozen rally decoder
+                                      |
+                       core rallies -> score specialists
+```
+
+TCN inference uses 128 core ticks with 62 ticks of context on each side. The
+four sigmoid outputs are live play, start/serve, end, and keep. The highest-recall
+decoder uses 0.5 s smoothing, entry 0.2, minimum 1 s, and boundary refinement.
+Highest F1 uses 1 s smoothing, entry 0.9, minimum 0.25 s, and no boundary refinement.
+These are the already-selected operating points; the apps do not optimize them
+against the user's video. Export padding and short-gap joining remain editor
+operations, separate from these core rally boundaries.
+
+Changing selection switches the matched encoder, temporal weights, scalar
+normalizer, and decoder atomically. The encoder weights differ, so embeddings
+cannot be reused across the choices. DINO and the training projector are absent
+at inference. See the [bundle manifests](models/distilled-large/README.md) and
+[feature contract](FEATURE_PIPELINE.md#production-profile).
+
+The neural model supplies rally intervals. Existing production serve/dead-state
+heads still provide evidence for serving-side and side-switch classification,
+which run on those neural intervals. The ensemble's learned suppression policy
+is not automatically applied to a neural proposal set: it was fitted around
+ensemble proposals and could remove recovered rallies. Selecting the legacy
+ensemble retains its existing suppression choices. A neural-runtime failure is
+reported explicitly; it must not silently relabel ensemble output as neural.
+
+## Deployed ensemble reference
+
 VolleySplice's production architecture is a lightweight, on-device audiovisual signal-
 processing system. It does not explicitly detect the volleyball, players, net, score,
 or named volleyball actions. Instead, it learns statistical patterns that distinguish

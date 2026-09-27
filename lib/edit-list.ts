@@ -1,7 +1,8 @@
 export type ModelAgreement =
   | "both-models"
   | "all-labels-v2-only"
-  | "previous-production-only";
+  | "previous-production-only"
+  | "neural";
 
 export type Rally = {
   id: string;

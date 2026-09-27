@@ -83,7 +83,6 @@ def main() -> None:
     manifest = {
         "schemaVersion": 1,
         "source": {
-            "modelDirectory": str(model_dir),
             "artifactSha256": EXPECTED_ARTIFACT_SHA256,
             "metadataSha256": sha256(model_dir / "model.json"),
             "weightsSha256": EXPECTED_WEIGHTS_SHA256,

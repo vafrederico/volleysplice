@@ -4,3 +4,6 @@ android/*.sh text eol=lf
 ios/scripts/build-device.sh text eol=lf
 prod/public/runtime/serving-side-85bc3325fbd4.json text eol=lf
 android/app/src/main/assets/serving-side-85bc3325fbd4.json text eol=lf
+models/distilled-large/*.json text eol=lf
+models/distilled-large/licenses/* text eol=lf
+models/distilled-large/licenses/*.txt text eol=lf whitespace=-blank-at-eol

@@ -170,6 +170,8 @@ function clipsFromReview(review: ReadyDesignReview): Clip[] {
       review.labMode && cut.id.startsWith("candidate:") ? "Compact boundary proposal" :
       cut.origin === "manual"
         ? "Missed rally added by you"
+        : cut.agreement === "neural"
+          ? "Found by the neural rally model"
         : cut.agreement === "both-models"
           ? "Found by both rally models"
           : cut.agreement
@@ -2396,6 +2398,7 @@ function rallyAgreementLabel(clip: Clip, labMode = false): string {
   if (labMode && clip.id.startsWith("human:")) return "Human export";
   if (labMode && clip.id.startsWith("candidate:")) return "Compact boundary proposal";
   if (clip.origin === "manual") return "Added manually";
+  if (clip.agreement === "neural") return "Neural model";
   if (clip.agreement === "both-models") return "Both models";
   if (clip.agreement === "all-labels-v2-only") return "All-label model";
   if (clip.agreement === "previous-production-only") return "Previous model";

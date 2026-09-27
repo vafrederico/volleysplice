@@ -105,6 +105,7 @@ internal data class NativeProject(
             analysisRoi = roi.takeIf { analysisRoiKnown },
             audioExtractorVersion = audioExtractorVersion,
             visualExtractorVersion = visualExtractorVersion,
+            rallyModelId = modelId,
         )
     } else null
 }
@@ -276,7 +277,7 @@ internal object NativeProjectStore {
             servingSideError = result.servingSideError(),
             sideSwitchError = result.sideSwitchError(),
             suppression = result.suppression(),
-            modelId = FeatureSchema.MODEL_ID,
+            modelId = current.modelId,
             cacheMode = NativeFeatureCache.Mode.USE.wireName(),
             analysisMeasurements = replaceAnalysisMeasurement(
                 current.analysisMeasurements,
@@ -459,16 +460,19 @@ internal object NativeProjectStore {
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
         analyzeServingSide: Boolean = true,
         sideSwitchEnabled: Boolean = false,
+        rallyModelId: String = RallyModels.DEFAULT,
     ): NativeProject {
+        require(RallyModels.isSupported(rallyModelId)) { "Unknown rally model" }
         val now = System.currentTimeMillis()
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, media.durationSeconds())
         return NativeProject(
-            id = projectId(source, media.durationSeconds(), analysisWindow, roi),
+            id = projectId(source, media.durationSeconds(), analysisWindow, roi, rallyModelId = rallyModelId),
             source = source,
             media = media,
             analysisWindow = analysisWindow,
             roi = roi,
             status = ProjectStatus.QUEUED,
+            modelId = rallyModelId,
             servingSideStatus = if (analyzeServingSide) {
                 ServingSideAnalysisStatus.QUEUED
             } else ServingSideAnalysisStatus.DISABLED,
@@ -483,7 +487,8 @@ internal object NativeProjectStore {
             ?: list(context).firstOrNull { matchesAnalysis(it, candidate) }
 
     internal fun matchesAnalysis(existing: NativeProject, candidate: NativeProject): Boolean =
-        existing.analysisRoiKnown && candidate.analysisRoiKnown &&
+        existing.modelId == candidate.modelId &&
+            existing.analysisRoiKnown && candidate.analysisRoiKnown &&
             existing.audioExtractorVersion == candidate.audioExtractorVersion &&
             existing.visualExtractorVersion == candidate.visualExtractorVersion &&
             sameRoi(existing.roi, candidate.roi) &&
@@ -565,7 +570,7 @@ internal object NativeProjectStore {
         )
         return NativeProject(
             id = projectId(source, media.durationSeconds(), analysisWindow, seed.analysisRoi,
-                seed.audioExtractorVersion, seed.visualExtractorVersion),
+                seed.audioExtractorVersion, seed.visualExtractorVersion, seed.rallyModelId),
             source = source,
             media = media,
             analysisWindow = analysisWindow,
@@ -595,6 +600,7 @@ internal object NativeProjectStore {
             servingSideError = seed.servingSideError,
             sideSwitchError = seed.sideSwitchError,
             suppression = seed.suppression,
+            modelId = seed.rallyModelId,
             createdAtMs = now,
             updatedAtMs = now,
         ).withServingSideCacheIdentity()
@@ -617,6 +623,7 @@ internal object NativeProjectStore {
         roi: AnalysisTypes.Roi? = null,
         audioExtractorVersion: String = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
         visualExtractorVersion: String = NativeFeatureCache.VISUAL_EXTRACTOR_VERSION,
+        rallyModelId: String = FeatureSchema.MODEL_ID,
     ): String {
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, durationSeconds)
         val sourceIdentity = listOf(
@@ -634,8 +641,9 @@ internal object NativeProjectStore {
                 "\u0000audio=$audioExtractorVersion" +
                 if (visualExtractorVersion == "legacy") "" else "\u0000visual=$visualExtractorVersion"
         }
+        val modelIdentity = identity + if (rallyModelId == FeatureSchema.MODEL_ID) "" else "\u0000rally=$rallyModelId"
         var hash = 0x811c9dc5u
-        identity.forEach { character ->
+        modelIdentity.forEach { character ->
             hash = (hash xor character.code.toUInt()) * 0x01000193u
         }
         return "project-${hash.toString(36)}"
@@ -815,7 +823,7 @@ internal object NativeProjectStore {
                     range.startMs >= 0 && range.endMs > range.startMs &&
                         range.endMs <= (it.media.durationSeconds() * 1_000.0).toLong() &&
                         range.confidence in 0f..1f &&
-                        (range.agreement == null || ProductionEnsemble.isValidAgreement(range.agreement))
+                        (range.agreement == null || RallyModels.isValidAgreement(range.agreement))
                 }
         }
     }
@@ -827,13 +835,17 @@ internal object NativeProjectStore {
         )
         val normalized = if (analysisWindow == project.analysisWindow) project
             else project.copy(analysisWindow = analysisWindow)
+        if (!RallyModels.isSupported(normalized.modelId)) return normalized.copy(
+            status = ProjectStatus.ERROR,
+            error = "This saved rally model is unavailable. Start a new analysis and choose a supported model.",
+        )
         // Recovery-only output must remain editable even if its old model provenance is absent.
         // It cannot satisfy a new analysis request; matchesAnalysis enforces that distinction.
         if (!normalized.analysisRoiKnown && normalized.status == ProjectStatus.READY) return normalized
-        val staleInference = normalized.modelId != FeatureSchema.MODEL_ID ||
-            (normalized.status == ProjectStatus.READY && normalized.ranges.any {
-                !ProductionEnsemble.isValidAgreement(it.agreement)
-            })
+        val staleInference = normalized.status == ProjectStatus.READY && normalized.ranges.any {
+                if (RallyModels.isNeural(normalized.modelId)) it.agreement != "neural"
+                else !ProductionEnsemble.isValidAgreement(it.agreement)
+            }
         if (!staleInference) {
             if (normalized.servingSide == null) {
                 return normalized.copy(
@@ -870,8 +882,9 @@ internal object NativeProjectStore {
             servingSideStatus = if (normalized.servingSideStatus == ServingSideAnalysisStatus.DISABLED) {
                 ServingSideAnalysisStatus.DISABLED
             } else ServingSideAnalysisStatus.QUEUED,
-            modelId = FeatureSchema.MODEL_ID,
-            error = "Production model ensemble changed; cached features will be reused.",
+            servingSideCacheIdentity = null,
+            modelId = normalized.modelId,
+            error = "Rally provenance is incomplete; the selected model will reuse compatible cached features.",
             updatedAtMs = System.currentTimeMillis(),
         )
     }

@@ -40,7 +40,8 @@ test("production score specialists share one sequential video decode", async () 
     app,
     /const \[sideSwitchEnabled, setSideSwitchEnabled\] = useState\(false\)/,
   );
-  assert.match(app, /servingSideEnabled: false/);
+  // New projects always generate serve markers; the legacy preference is retained only for storage compatibility.
+  assert.match(app, /servingSideEnabled:\s*true/);
   assert.match(app, /const shouldInferServing = Boolean\(result\.productionServeOutputs\)/);
   assert.match(editor, /VolleySplice builds the score from serve markers/);
   assert.match(editor, />\s*Save project\s*</);
