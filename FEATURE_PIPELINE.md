@@ -104,6 +104,22 @@ universe for percentile normalization and context clamping. The ROI is a normali
 resized with OpenCV `INTER_AREA`. Browser and Android decoders must preserve source-time
 timestamps and display orientation before feature generation.
 
+The opt-in browser AV contract `opencv-area-nearest-grid-v1` draws the display-oriented crop at source resolution
+before OpenCV area reduction; canvas minification is not the feature resize. Both
+sequential and sparse decoding select the nearest actual presentation timestamp,
+with earlier ties, while feature rows retain their nominal 4 Hz source-time grid.
+Repeated source frames and the final partial grid tick remain distinct rows.
+Sparse selection scans packet metadata without materializing media payloads.
+Crop edges use Python-compatible ties-to-even rounding and clipping. Visual cache
+keys for this option include `opencv-area-nearest-grid-v1`, preventing reuse of the earlier
+canvas-resized, preceding-frame features. The worker-free fallback follows the
+same crop, resize and timing contract. The production default remains
+`canvas-preceding-v1`: the corrected option regressed full-video production F1
+and extraction latency on the measured recording. Score specialists retain their
+separate, frozen preceding-frame sampler. See the [browser validation report](docs/research/web-visual-preprocessing-validation.md)
+for measured runtime and frozen-model effects; this does not qualify mobile-browser
+neural image encoding or eliminate platform color-conversion differences.
+
 ## Notation and shared reductions
 
 For one 192×108 analysis image:
@@ -373,9 +389,9 @@ using this corrected full-frame pipeline. Distillation preserves the four-region
 the phone. On the full benchmark source, each run saves 32,609,280 bytes of image
 tokens, 67,104,960 bytes of fused 3,952-column inputs and 67,920 bytes of four-head
 probabilities. These diagnostic files duplicate information and do not measure
-minimum cache size or peak memory. Saved-input temporal and decoder parity passes,
-but native extraction still loses recall relative to desktop. Fixed-checkpoint
-counterfactuals recover most of the highest-F1 choice's loss by replacing native
+minimum cache size or peak memory. In those initial runs, saved-input temporal
+and decoder parity passed, but native extraction lost recall relative to desktop.
+Fixed-checkpoint counterfactuals recovered most of the highest-F1 choice's loss by replacing native
 audio/AV104 with desktop values; replacing embeddings alone does not. Native linear
 audio resampling differs from desktop FFmpeg, but controlled same-PCM tests show
 that it is secondary here. The [audio root-cause investigation](docs/research/android-audio-timeline-root-cause.md)
@@ -390,6 +406,13 @@ Android and both web implementations also correct integer startup noise quantile
 the web path does not have the packet-spacing defect. See the
 [repair and validation report](docs/research/android-web-audio-fix.md) for device
 evidence and remaining qualification limits.
+The subsequent [visual repair](docs/research/android-visual-feature-repair.md)
+restored the expected one/zero wholly missed counts for highest F1/highest recall.
+The exact [native area optimization](docs/research/android-native-area-optimization.md)
+then reduced preprocessing cost without changing its outputs; the
+[full emulator validation](docs/research/android-native-area-full-video.md) checks
+sustained behavior. These later results supersede the initial missing-rally counts,
+while complete cross-platform pixel equivalence remains unqualified.
 The [distilled Large native benchmark](docs/research/distilled-mobile-large-native-benchmark.md)
 binds timing, tensor identities and accuracy evidence through ledger
 `private-reference-0223`.
@@ -648,6 +671,152 @@ boundary discrepancies; replacing embeddings alone does not resolve them. Native
 features are unchanged by the color/ROI correction. Do not treat these single-recording
 results as cross-platform parity or a newly selected model. Keep runtime qualification
 separate from the shipped feature contract until its acceptance gates are satisfied.
+
+The subsequent native visual repair uses `opencv-v3-area-nearest-frame` for new
+analysis caches and saved-project provenance. Shared Android AV conversion averages
+the converted, clipped RGB source pixels over each 192x108 output footprint, matching
+the area-resize operation rather than point sampling. Both decoder paths select actual
+nearest presentation timestamps, with earlier ties and repeated/terminal targets
+bound to the selected image. The neural encoder prototype uses the same timestamp
+selection policy and records the actual selected-frame offset. Its bilinear letterbox
+operation remains separate from AV area downsampling. Explicit-size serving-side and
+side-switch samplers retain their existing pixel and frame-selection contracts.
+
+Old reviewed projects remain editable; new analyses cannot reuse their old visual
+features. This changes feature generation, not feature order, learned weights, or
+decoder thresholds. The [remaining-miss diagnosis](docs/research/distilled-mobile-large-remaining-miss.md)
+records why focus/blur and frame-time inputs require this repair. Complete native
+pixel/feature equivalence still requires device qualification; different decoders,
+color conversion, audio resampling and numerical reductions can leave residual drift.
+The [visual repair receipt](docs/research/android-visual-feature-repair.md) records
+completed app/unit/device operator tests and full-video highest-F1 confirmation:
+the extra native-only wholly missed rally is recovered. Highest-recall also passed
+full-video replay with zero wholly missed saved rallies. Its single fresh run took
+24m57s, exposing a substantial preprocessing regression that still needs optimization;
+the interrupted highest-F1 run is not a valid speed measurement.
+The [emulator comparison](docs/research/android-emulator-visual-regression.md)
+reproduces the area-conversion cost and added embedding timestamp scan on the
+same two-minute input. Repaired all-results latency increased from 276s to 352s;
+embedding image preparation did not slow down there. These x86 emulator timings
+support preprocessing optimization but do not predict physical Pixel latency.
+The [controlled Pixel retest](docs/research/pixel-visual-pipeline-retest.md) confirms
+the same regression on the physical phone: median all-results time rose from
+64.847s to 122.325s for the two-minute excerpt. Video feature generation accounts
+for 94.6% of the increase; embedding image preparation remained about 5.17s in
+both versions. All six temporal/boundary replays passed. These short-clip repeats
+do not establish a new full-video processing time.
+
+The [native area optimization](docs/research/android-native-area-optimization.md)
+then moved the exact shared RGB-before-area operation to C++ JNI, retaining Java
+as the portable reference/fallback. Four emulator runs produced identical pixels,
+features, embeddings, probabilities, rallies and score outputs. Median AV
+resize/color time fell from 63.05s to 4.17s, and all-results time from 339.33s to
+278.93s for the two-minute excerpt. The pixel contract and visual cache version
+remain unchanged. ARM64 app debug/unsigned-release builds and x86 instrumentation
+passed; the optimized physical-phone runtime has not yet been measured.
+
+The [optimized full-video emulator run](docs/research/android-native-area-full-video.md)
+then completed all 4,245 AV rows and 2,123 embedding samples. Rallies were ready
+in 2,100.003s and both score specialists in 2,458.964s total, with zero wholly
+missed saved human rallies. The area/color kernel took 38.085s over the full
+source; video decoding and repeated video passes now dominate this emulator
+measurement. Its total time per video minute is 0.997 times the short-run rate.
+This checks sustained behavior, not a full-video Java/native speedup or physical
+Pixel performance. Frozen temporal replay and independent interval metrics pass.
+
+The separate [full-video production-only comparison](docs/research/production-emulator-full-comparison.md)
+measured original point sampling, repaired Java area and optimized native area
+sequentially on the same emulator: 1,510.506s, 2,083.872s and 1,572.423s for all
+features and both score specialists. Native area saves 24.54% versus Java;
+video AV finishes 1.10% above original point sampling. Java/native rally boundaries
+and score outputs are exact matches. These are single full-video observations;
+corrected audio, full-frame input and packaged model assets stay fixed.
+
+The opt-in shared-decoder experiment routes both AV and MobileNet image requests
+through the actual app's `NativeVideoDecoder`: one real-PTS inventory, the union
+of selected presentation timestamps, and one asynchronous decode-only pass.
+The AV area-resize and MobileNet bilinear-letterbox inputs are prepared separately
+from the original borrowed YUV image. A four-buffer encoder worker queue retains
+only prepared pixels, never decoder images; repeated neural rows reuse the selected image
+and embedding while retaining each nominal timestamp's quality offset. Neural
+sampling keeps its exclusive window-end rule independently of AV sampling.
+Shared work is nested inside the AV wall-time stage, not an additional embedding
+pass. The initial qualification is restricted to fresh, unrotated, zero-start
+MobileNet input; cached AV falls back to independent neural extraction. Score
+specialists retain their later shared pass because they depend on rally proposals.
+See [`SharedVideoFrameConsumer`](android/app/src/main/java/com/volleycut/nativeanalysis/SharedVideoFrameConsumer.java),
+the [experimental runner](scripts/benchmark-shared-video-decoding.py), and its
+[exact tensor/output gate](scripts/validate-shared-video-decoding.py).
+This changes scheduling and resource ownership, not feature semantics or caches.
+The [completed emulator experiment](docs/research/android-shared-video-decoding.md)
+preserves all saved full-video tensors and decisions exactly. Full all-results
+time falls from 2,458.964s to 1,448.682s; rallies-ready time falls from 2,100.003s
+to 1,096.375s. The short same-APK pixel-hash comparison also passes. Full timings
+use the earlier independent-decoder reference; this is not physical-phone timing.
+
+The [physical Pixel qualification](docs/research/pixel-shared-video-decoding.md)
+then measured the same optimized highest-recall Distilled Large pipeline: 62.119s
+for the two-minute excerpt and 643.055s for the full recording, including both
+score specialists. Full rallies are ready at 449.292s. Same-phone embeddings,
+fused features, probabilities, rallies and specialist outputs match the earlier
+corrected pipeline exactly; all 240 short-run prepared-pixel hashes also match
+the emulator. The phone was wirelessly charging with light thermal status, awake,
+unlocked and foreground during the full run. Encoder/readback takes 38.578s
+inside the shared AV stage, while the TCN takes 0.551s. These are FP32 CPU-model
+observations with MediaCodec decoding, not a new GPU-delegate experiment.
+
+### Distilled Large browser input qualification
+
+The research-only [browser harness](scripts/benchmark-distilled-large-browser.mjs)
+generates Distilled MobileNetV3-Large features from actual browser-decoded video.
+It uses source-resolution, display-oriented RGB, Python-compatible ROI rounding,
+uint8 OpenCV `INTER_LINEAR` aspect-preserving 224-pixel letterboxing, ImageNet
+normalization, and the four fixed 960-channel regional pools. The 2 Hz samples
+select nearest actual presentation timestamps with earlier ties. Raw FP32 tokens
+are rounded through FP16 before causal alignment to the 4 Hz AV stream, matching
+the training cache. This is FP32 inference with a cache-rounding contract, not
+an FP16 inference model. AV104 and eight quality/age/availability inputs use the
+frozen selection's scaler; the 3,840 embedding values remain unscaled.
+
+The highest-F1 and highest-recall selections have different distilled encoder
+weights. Their image embeddings cannot be shared. Browser snapshots are checked
+against Python image preparation and the original CPU encoder, and actual fused
+rows are replayed through the original CPU temporal head and Python decoder.
+These checks validate the operations on browser-decoded pixels; they do not
+establish equality between browser and desktop video decoding.
+
+The pinned ONNX Runtime Web 1.22.0 WebGPU implementation miscomputes the original
+`bchw,brhw->brc` regional-pooling Einsum. A separately registered, mathematically
+equivalent Reshape/Transpose/MatMul export preserves every learned initializer,
+TCN, scaler and decoder. Canonical models remain unchanged. Both the derivative
+graph and its numerical qualification must accompany a WebGPU experiment; a
+successful session creation alone does not qualify the original graph.
+
+The harness compares shipped `canvas-preceding-v1` AV extraction with the opt-in
+`opencv-area-nearest-grid-v1` correction. Both use the existing browser audio
+pipeline. Serving-side and side-switch inference runs the production specialist
+entry point on each neural proposal set, including the additional video pass and
+required production serve/state evidence. This remains a research harness; no
+neural model assets or new default are added to the shipped browser app.
+The [actual-video experiment](docs/research/distilled-large-browser-experiment.md)
+records complete readiness times, saved-human coverage, operator qualification,
+feature storage and the distinction between desktop measurements and mobile
+deployment qualification.
+On recording-044, the full highest-recall File-input run takes 325.909s including
+both score specialists with the opt-in AV correction. It retains 99.26% of human
+core time and wholly misses zero saved rallies. Current AV is faster at 311.868s,
+but its padded-export F1 is 90.81% versus 93.32% with the correction. This bundles
+AV pixels/frame selection and time-grid alignment; it is not an isolated resize
+effect. Production moves in the opposite direction (79.32% to 78.41% F1), so its
+shipped AV default remains unchanged. These are desktop-browser observations on
+one known recording, not mobile latency or broad feature parity.
+Frozen-input replay further separates the effects: at most 16.7 ms of actual-PTS
+displacement causes 2,119 of 4,245 rows to hold an embedding from 0.5 seconds
+earlier. Correcting the fusion/decode grid while retaining current AV values
+recovers F1 to 93.11%. Keep nominal analysis time distinct from the selected
+image's PTS/offset when building neural inputs. The highest-F1 selection retains
+its expected one wholly missed rally in both AV modes; the correction does not
+improve every checkpoint or the production baseline.
 
 Existing DINO artifacts remain reproducible research, but further DINO work was
 stopped at the user's request after the full native timing result. This changes no

@@ -4,6 +4,28 @@ import type { LabConfiguration, LabEvent, LabInterval, ProductionEditorLabTask }
 export type LabDecision = { action: string; signature: string };
 export type LabDraft = CutDraft & { labDecisions?: Record<string, LabDecision> };
 
+/** Refresh untouched model predictions and fill missing anchors without replacing edits. */
+export function addMissingLabServeMarkers(saved: LabDraft, model: LabDraft): LabDraft {
+  const existing = saved.scoreTracking.serveMarkers.flatMap(marker => {
+    const cut = saved.cuts.find(row => row.id === marker.rallyId);
+    const source = model.cuts.find(row => row.id === marker.rallyId);
+    if (marker.origin !== "model" || marker.side !== marker.modelSide || !cut || !source
+      || saved.userTouchedCutIds.includes(cut.id) || saved.reviewedCutIds.includes(cut.id) || cut.coreStart !== source.coreStart
+      || marker.timestamp !== source.coreStart) return [marker];
+    // A fresh gate rejection removes an untouched old prediction, never the cut.
+    return model.scoreTracking.serveMarkers.filter(row => row.rallyId === marker.rallyId);
+  });
+  const markers = model.scoreTracking.serveMarkers.filter(marker => {
+    const cut = saved.cuts.find(row => row.id === marker.rallyId);
+    return cut && cut.coreStart === marker.timestamp
+      && !saved.userTouchedCutIds.includes(cut.id)
+      && !saved.scoreTracking.removedModelMarkerIds.includes(marker.id)
+      && !existing.some(row => row.rallyId === marker.rallyId || Math.abs(row.timestamp - marker.timestamp) < 1e-6);
+  });
+  return { ...saved, scoreTracking: { ...saved.scoreTracking,
+    serveMarkers: [...existing, ...markers].sort((a, b) => a.timestamp - b.timestamp) } };
+}
+
 export function labStorageKey(task: ProductionEditorLabTask, configuration: LabConfiguration): string {
   return `volleycut:production-lab:trial:v1:${task.id}:${configuration.humanReference?.revision ?? configuration.sourceRevision ?? task.sourceRevision}:${configuration.id}`;
 }

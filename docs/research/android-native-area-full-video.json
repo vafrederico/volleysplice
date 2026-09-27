@@ -1,0 +1,1521 @@
+{
+  "schema": "android-native-area-full-video-v1",
+  "status": "complete",
+  "recordingIndex": "recording-044",
+  "artifactIndex": "private-reference-0223",
+  "seconds": 1061.016489,
+  "sourceSha256": "b92371af35a49a93726ad36de32382f0ac46c42bf9e4ed1260242ca82e7031af",
+  "sourceBytes": 4373996025,
+  "apkSha256": "994fbc229b577adb8f10486ccac68501bf422478792d117f4f32adf2862c4395",
+  "goldSha256": "97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c",
+  "targetPaddingSeconds": 2,
+  "joinGapSeconds": 3,
+  "cacheMode": "bypass",
+  "visualExtractorVersion": "opencv-v3-area-nearest-frame",
+  "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+  "environment": {
+    "systemImage": "Google APIs",
+    "systemImageRevision": 6,
+    "androidApi": 37,
+    "buildType": "userdebug",
+    "selinux": "Permissive",
+    "abi": "x86_64",
+    "configuredStorageGB": 24,
+    "guestMemory": [
+      "MemTotal:        4008504 kB",
+      "MemFree:         1922948 kB",
+      "MemAvailable:    3031168 kB"
+    ],
+    "emulatorVersion": "37.1.11.0",
+    "acceleration": "Windows Hypervisor Platform",
+    "graphicsMode": "host",
+    "scope": "Isolated debug-image comparison; original Play Store image failed MediaCodec shared-buffer permissions"
+  },
+  "protocol": "One fresh-process full-video run, feature caches bypassed, no warmup discarded; transfers and collection excluded.",
+  "modelIdentity": {
+    "modelId": "neural-distilled-mobile-large-tcn-fp32-high-recall",
+    "selection": "recall",
+    "recallCalibrationTargetPercent": 99,
+    "draw": 3407,
+    "epoch": 15,
+    "encoderWeightsSha256": "0be04fbf8e5633241a473f49176d9d27184f45ea94f90dd454d73fd4109d7bc6",
+    "temporalWeightsSha256": "e79a626bb8a01a0de060d759721340b06f1bae2c90033ed8647448e4a9af5488",
+    "decoder": {
+      "smoothing": 0.5,
+      "enter": 0.2,
+      "minimum": 1.0,
+      "boundary": true
+    },
+    "graphFiles": [
+      {
+        "component": "mobile-large-encoder-fp32.onnx",
+        "sha256": "d6fa70ab57c446794655ebce061bebe95d26aed43643ccbb4e4398d9567ce783",
+        "bytes": 11877358
+      },
+      {
+        "component": "mobile-large-tcn-dynamic-fp32.onnx",
+        "sha256": "696f7571c3bd618b4c1b4ecfcba1104415ec0a806ba7b0a15b57b8e8e0526874",
+        "bytes": 217502
+      },
+      {
+        "component": "mobile-large-pipeline.json",
+        "sha256": "7733b5dd3bd29d262169b06fc5ce459acaf8dbcc7a7a490d98a7fec3f85aef54",
+        "bytes": 8277
+      },
+      {
+        "component": "mobile-large-encoder-pool_weights.f32",
+        "sha256": "ac0af3a32532146b396d6dbb9dcbcc3e18196e00c55dcf37d0d30f9f5d81c0be",
+        "bytes": 784
+      }
+    ],
+    "inputContractSha256": "c67c93baae425e383cfc31f4bc0db651c59ba394ddaec625ff6457da3f0fe294",
+    "qualificationSha256": "873907dc51352cc38d422325d18b0cb3f67a44f91061cbd9dba5682504d4dc4f"
+  },
+  "timingsMs": {
+    "all_ready_ms": 2458964,
+    "rallies_ready_ms": 2100003,
+    "open_ms": 859,
+    "av_video_ms": 1003360,
+    "audio_ms": 75457,
+    "context_ms": 222,
+    "rally_stage_ms": 1020102,
+    "score_specialists_ms": 358961,
+    "top_level_unattributed_ms": 3,
+    "av_timestamp_plan_ms": 85588.3132,
+    "av_yuv_resize_color_ms": 38084.9135,
+    "av_opencv_calls_ms": 289102.2219,
+    "av_callback_cpu_ms": 208215.537262,
+    "av_callback_wall_ms": 840951.2259,
+    "av_feature_worker_cpu_ms": 210764.559364,
+    "av_total_thread_cpu_ms": 461418.93830299994,
+    "av_demux_read_ms": 28184.8487,
+    "av_demux_advance_ms": 138075.4585,
+    "av_input_queue_ms": 536416.2907,
+    "av_queue_backpressure_ms": 1572.3321,
+    "audio_thread_cpu_ms": 31584.804135,
+    "embedding_total_ms": 1018398.7965,
+    "embedding_timestamp_plan_ms": 81782.9037,
+    "embedding_prepare_ms": 27410.2232,
+    "embedding_encoder_readback_ms": 22752.4649,
+    "embedding_decode_other_excluding_plan_ms": 886453.2047,
+    "tcn_inference_ms": 294.507,
+    "fusion_normalization_save_ms": 914.4668,
+    "score_decode_ms": 338539.7276,
+    "score_serving_evaluation_ms": 5935.4487,
+    "score_switch_evaluation_ms": 14284.6679,
+    "av_output_image_acquire_ms": 4490.2992,
+    "av_codec_output_release_ms": 6386.3274,
+    "av_codec_output_callback_ms": 54669.2607
+  },
+  "timings": {
+    "allReadySeconds": 2458.964,
+    "ralliesReadySeconds": 2100.003,
+    "videoAvSeconds": 1003.36,
+    "audioSeconds": 75.457,
+    "contextSeconds": 0.222,
+    "embeddingVideoPassSeconds": 1018.3987965,
+    "embeddingDecodeOtherSeconds": 968.2361084,
+    "embeddingPreparationSeconds": 27.4102232,
+    "embeddingEncoderSeconds": 22.7524649,
+    "temporalSeconds": 0.294507,
+    "fusionAndSaveSeconds": 0.9144668,
+    "scoreSeconds": 358.961,
+    "scoreDecodeSeconds": 338.5397276,
+    "servingEvaluationSeconds": 5.9354487,
+    "sideSwitchEvaluationSeconds": 14.2846679
+  },
+  "storage": {
+    "av104Float32BytesCalculated": 1765920,
+    "contextual520Float32BytesCalculated": 8829600,
+    "savedDiagnosticFiles": [
+      {
+        "kind": "tokens",
+        "bytes": 32609280,
+        "expectedFloat32BytesCalculated": 32609280,
+        "sha256": "9046438f13bab19e3b8a05faa2710bcd5c0e2da972041a3f57b07ae7fb9f9f88"
+      },
+      {
+        "kind": "features",
+        "bytes": 67104960,
+        "expectedFloat32BytesCalculated": 67104960,
+        "sha256": "d6ba4b24fc494123fd354526dfd18e72d62447d77bdab7666beccd11cdce32a3"
+      },
+      {
+        "kind": "probabilities",
+        "bytes": 67920,
+        "expectedFloat32BytesCalculated": 67920,
+        "sha256": "eb0a706ea949afa81f0b2a51e0a1483bc4155dfe0a97a72746fbe95aa93c8610"
+      }
+    ],
+    "specialistFeatures": {
+      "servingSide": {
+        "rows": 37,
+        "columns": 237,
+        "decodedPayloadBytes": 70152,
+        "persistedBase64Bytes": 93536,
+        "publishedPredictions": 37
+      },
+      "sideSwitch": {
+        "rows": 38,
+        "columns": 34,
+        "decodedPayloadBytes": 10336,
+        "persistedBase64Bytes": 13784,
+        "publishedPredictions": 0
+      }
+    }
+  },
+  "temporalReplay": {
+    "passed": true,
+    "scope": "Real device fused tensors: native temporal inference and rally decoder vs desktop. Pixel/PTS/AV extraction parity is separate.",
+    "checks": [
+      {
+        "id": "mobile-large-fp32-full-run0",
+        "rows": 4245,
+        "rallies": 37,
+        "maxProbabilityError": 4.172325134277344e-07,
+        "decoderParity": true
+      }
+    ]
+  },
+  "observations": {
+    "samples": 164,
+    "errors": 0,
+    "allObservedAwake": true,
+    "minimumHostAvailableMemoryMB": 9757.16015625
+  },
+  "comparisons": [
+    {
+      "name": "Optimized Android emulator",
+      "rallyCount": 37,
+      "evaluation": {
+        "primary": {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8789928759556145,
+          "R_core": 0.9925754128204921,
+          "F1_padP_coreR": 0.9323375715971941,
+          "paddedModelExportSeconds": 506.875,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 36.23030222221894,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        "padding": [
+          {
+            "paddingSecondsBeforeAndAfter": 0.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8199521494239739,
+            "R_core": 0.9264944093059869,
+            "F1_padP_coreR": 0.8699734653114026,
+            "paddedModelExportSeconds": 362.875,
+            "paddedHumanExportSeconds": 321.1461755555591,
+            "exportDurationDifferenceSeconds": 41.728824444440875,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 1.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8589583535498755,
+            "R_core": 0.9808431299394641,
+            "F1_padP_coreR": 0.9158633771570066,
+            "paddedModelExportSeconds": 434.875,
+            "paddedHumanExportSeconds": 397.1455533333367,
+            "exportDurationDifferenceSeconds": 37.72944666666331,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 2.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8789928759556145,
+            "R_core": 0.9925754128204921,
+            "F1_padP_coreR": 0.9323375715971941,
+            "paddedModelExportSeconds": 506.875,
+            "paddedHumanExportSeconds": 470.64469777778106,
+            "exportDurationDifferenceSeconds": 36.23030222221894,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 3.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8927032497868747,
+            "R_core": 0.9956892596482493,
+            "F1_padP_coreR": 0.9413880148590117,
+            "paddedModelExportSeconds": 586.5,
+            "paddedHumanExportSeconds": 544.6438533333364,
+            "exportDurationDifferenceSeconds": 41.85614666666356,
+            "coreHumanSeconds": 321.1461755555591
+          }
+        ],
+        "humanRallies": 37,
+        "whollyMissedSavedHumanRallies": 0,
+        "whollyMissedHumanRallyRanges": [],
+        "rallies": [
+          {
+            "start": 159.75,
+            "end": 173.375
+          },
+          {
+            "start": 183.0,
+            "end": 202.25
+          },
+          {
+            "start": 214.75,
+            "end": 223.125
+          },
+          {
+            "start": 235.5,
+            "end": 246.625
+          },
+          {
+            "start": 256.625,
+            "end": 267.625
+          },
+          {
+            "start": 277.75,
+            "end": 279.75
+          },
+          {
+            "start": 293.5,
+            "end": 312.5
+          },
+          {
+            "start": 327.625,
+            "end": 358.375
+          },
+          {
+            "start": 384.625,
+            "end": 394.125
+          },
+          {
+            "start": 406.75,
+            "end": 413.375
+          },
+          {
+            "start": 428.875,
+            "end": 430.125
+          },
+          {
+            "start": 438.125,
+            "end": 448.875
+          },
+          {
+            "start": 469.125,
+            "end": 480.375
+          },
+          {
+            "start": 492.75,
+            "end": 504.125
+          },
+          {
+            "start": 524.75,
+            "end": 529.625
+          },
+          {
+            "start": 545.0,
+            "end": 549.375
+          },
+          {
+            "start": 562.125,
+            "end": 568.375
+          },
+          {
+            "start": 575.875,
+            "end": 585.125
+          },
+          {
+            "start": 600.5,
+            "end": 606.875
+          },
+          {
+            "start": 618.75,
+            "end": 628.5
+          },
+          {
+            "start": 641.75,
+            "end": 656.875
+          },
+          {
+            "start": 668.5,
+            "end": 671.75
+          },
+          {
+            "start": 708.5,
+            "end": 715.625
+          },
+          {
+            "start": 726.25,
+            "end": 735.75
+          },
+          {
+            "start": 751.25,
+            "end": 760.625
+          },
+          {
+            "start": 769.5,
+            "end": 785.625
+          },
+          {
+            "start": 787.25,
+            "end": 792.625
+          },
+          {
+            "start": 805.25,
+            "end": 816.125
+          },
+          {
+            "start": 827.75,
+            "end": 833.5
+          },
+          {
+            "start": 848.5,
+            "end": 855.625
+          },
+          {
+            "start": 868.875,
+            "end": 880.125
+          },
+          {
+            "start": 897.625,
+            "end": 905.75
+          },
+          {
+            "start": 924.375,
+            "end": 936.125
+          },
+          {
+            "start": 943.375,
+            "end": 955.625
+          },
+          {
+            "start": 972.75,
+            "end": 977.125
+          },
+          {
+            "start": 990.0,
+            "end": 998.125
+          },
+          {
+            "start": 1031.625,
+            "end": 1040.625
+          }
+        ],
+        "event": {
+          "trueRallies": 37,
+          "predictedRallies": 37,
+          "matchedRallies": 31,
+          "eventPrecision": 0.8378378378378378,
+          "eventRecall": 0.8378378378378378,
+          "eventF1": 0.8378378378378378
+        }
+      }
+    },
+    {
+      "name": "Production ensemble from same emulator AV pass",
+      "rallyCount": 63,
+      "evaluation": {
+        "primary": {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.6632802811925428,
+          "R_core": 0.9901184561998588,
+          "F1_padP_coreR": 0.7943952456113528,
+          "paddedModelExportSeconds": 694.8914890000001,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 224.24679122221903,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        "padding": [
+          {
+            "paddingSecondsBeforeAndAfter": 0.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.610198940377007,
+            "R_core": 0.9671649418988322,
+            "F1_padP_coreR": 0.7482902700484847,
+            "paddedModelExportSeconds": 509.0164890000001,
+            "paddedHumanExportSeconds": 321.1461755555591,
+            "exportDurationDifferenceSeconds": 187.87031344444097,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 1.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.6360307729081622,
+            "R_core": 0.9877967028084866,
+            "F1_padP_coreR": 0.773812624504509,
+            "paddedModelExportSeconds": 607.0164890000001,
+            "paddedHumanExportSeconds": 397.1455533333367,
+            "exportDurationDifferenceSeconds": 209.8709356666634,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 2.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.6632802811925428,
+            "R_core": 0.9901184561998588,
+            "F1_padP_coreR": 0.7943952456113528,
+            "paddedModelExportSeconds": 694.8914890000001,
+            "paddedHumanExportSeconds": 470.64469777778106,
+            "exportDurationDifferenceSeconds": 224.24679122221903,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 3.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.7090025322061226,
+            "R_core": 0.9901184561998588,
+            "F1_padP_coreR": 0.8263054807983862,
+            "paddedModelExportSeconds": 757.5164890000001,
+            "paddedHumanExportSeconds": 544.6438533333364,
+            "exportDurationDifferenceSeconds": 212.87263566666365,
+            "coreHumanSeconds": 321.1461755555591
+          }
+        ],
+        "humanRallies": 37,
+        "whollyMissedSavedHumanRallies": 1,
+        "whollyMissedHumanRallyRanges": [
+          {
+            "humanRallyNumber": 22,
+            "start": 668.253836,
+            "end": 671.427256,
+            "evaluableCoreSeconds": 3.1734200000000783
+          }
+        ],
+        "rallies": [
+          {
+            "start": 3.25,
+            "end": 5.75
+          },
+          {
+            "start": 20.375,
+            "end": 24.875
+          },
+          {
+            "start": 51.5,
+            "end": 54.0
+          },
+          {
+            "start": 76.0,
+            "end": 78.5
+          },
+          {
+            "start": 95.0,
+            "end": 97.5
+          },
+          {
+            "start": 102.5,
+            "end": 105.0
+          },
+          {
+            "start": 110.5,
+            "end": 113.0
+          },
+          {
+            "start": 124.25,
+            "end": 126.75
+          },
+          {
+            "start": 140.0,
+            "end": 142.5
+          },
+          {
+            "start": 159.625,
+            "end": 171.125
+          },
+          {
+            "start": 183.0,
+            "end": 202.375
+          },
+          {
+            "start": 207.25,
+            "end": 210.0
+          },
+          {
+            "start": 214.75,
+            "end": 224.5
+          },
+          {
+            "start": 227.375,
+            "end": 231.375
+          },
+          {
+            "start": 235.125,
+            "end": 245.375
+          },
+          {
+            "start": 255.875,
+            "end": 268.125
+          },
+          {
+            "start": 273.375,
+            "end": 280.375
+          },
+          {
+            "start": 283.875,
+            "end": 313.75
+          },
+          {
+            "start": 319.0,
+            "end": 325.125
+          },
+          {
+            "start": 327.125,
+            "end": 356.625
+          },
+          {
+            "start": 366.625,
+            "end": 376.625
+          },
+          {
+            "start": 385.0,
+            "end": 393.375
+          },
+          {
+            "start": 396.125,
+            "end": 403.375
+          },
+          {
+            "start": 405.125,
+            "end": 413.0
+          },
+          {
+            "start": 419.125,
+            "end": 446.5
+          },
+          {
+            "start": 451.75,
+            "end": 454.25
+          },
+          {
+            "start": 455.125,
+            "end": 464.875
+          },
+          {
+            "start": 466.0,
+            "end": 479.875
+          },
+          {
+            "start": 492.375,
+            "end": 502.875
+          },
+          {
+            "start": 508.875,
+            "end": 512.875
+          },
+          {
+            "start": 525.0,
+            "end": 527.625
+          },
+          {
+            "start": 544.375,
+            "end": 548.25
+          },
+          {
+            "start": 559.0,
+            "end": 561.75
+          },
+          {
+            "start": 564.625,
+            "end": 567.875
+          },
+          {
+            "start": 573.5,
+            "end": 576.5
+          },
+          {
+            "start": 578.125,
+            "end": 584.0
+          },
+          {
+            "start": 600.5,
+            "end": 606.375
+          },
+          {
+            "start": 618.75,
+            "end": 628.125
+          },
+          {
+            "start": 641.75,
+            "end": 645.375
+          },
+          {
+            "start": 649.125,
+            "end": 654.375
+          },
+          {
+            "start": 661.75,
+            "end": 664.25
+          },
+          {
+            "start": 675.5,
+            "end": 678.0
+          },
+          {
+            "start": 688.5,
+            "end": 691.0
+          },
+          {
+            "start": 708.0,
+            "end": 714.75
+          },
+          {
+            "start": 725.625,
+            "end": 736.375
+          },
+          {
+            "start": 742.375,
+            "end": 747.375
+          },
+          {
+            "start": 750.75,
+            "end": 793.125
+          },
+          {
+            "start": 804.875,
+            "end": 813.875
+          },
+          {
+            "start": 828.125,
+            "end": 833.625
+          },
+          {
+            "start": 848.5,
+            "end": 854.375
+          },
+          {
+            "start": 863.25,
+            "end": 865.75
+          },
+          {
+            "start": 866.875,
+            "end": 876.125
+          },
+          {
+            "start": 883.0,
+            "end": 904.875
+          },
+          {
+            "start": 923.375,
+            "end": 933.875
+          },
+          {
+            "start": 941.125,
+            "end": 954.625
+          },
+          {
+            "start": 961.125,
+            "end": 964.625
+          },
+          {
+            "start": 972.375,
+            "end": 976.625
+          },
+          {
+            "start": 988.875,
+            "end": 998.625
+          },
+          {
+            "start": 1000.625,
+            "end": 1009.125
+          },
+          {
+            "start": 1012.125,
+            "end": 1016.125
+          },
+          {
+            "start": 1026.0,
+            "end": 1030.125
+          },
+          {
+            "start": 1032.875,
+            "end": 1040.375
+          },
+          {
+            "start": 1055.125,
+            "end": 1061.016489
+          }
+        ],
+        "event": {
+          "trueRallies": 37,
+          "predictedRallies": 54,
+          "matchedRallies": 30,
+          "eventPrecision": 0.5555555555555556,
+          "eventRecall": 0.8108108108108109,
+          "eventF1": 0.6593406593406594
+        }
+      }
+    },
+    {
+      "name": "Saved repaired Pixel, Java area",
+      "rallyCount": 37,
+      "evaluation": {
+        "primary": {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8789928759556145,
+          "R_core": 0.9925754128204921,
+          "F1_padP_coreR": 0.9323375715971941,
+          "paddedModelExportSeconds": 506.875,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 36.23030222221894,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        "padding": [
+          {
+            "paddingSecondsBeforeAndAfter": 0.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8199521494239739,
+            "R_core": 0.9264944093059869,
+            "F1_padP_coreR": 0.8699734653114026,
+            "paddedModelExportSeconds": 362.875,
+            "paddedHumanExportSeconds": 321.1461755555591,
+            "exportDurationDifferenceSeconds": 41.728824444440875,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 1.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8589583535498755,
+            "R_core": 0.9808431299394641,
+            "F1_padP_coreR": 0.9158633771570066,
+            "paddedModelExportSeconds": 434.875,
+            "paddedHumanExportSeconds": 397.1455533333367,
+            "exportDurationDifferenceSeconds": 37.72944666666331,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 2.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8789928759556145,
+            "R_core": 0.9925754128204921,
+            "F1_padP_coreR": 0.9323375715971941,
+            "paddedModelExportSeconds": 506.875,
+            "paddedHumanExportSeconds": 470.64469777778106,
+            "exportDurationDifferenceSeconds": 36.23030222221894,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 3.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8927032497868747,
+            "R_core": 0.9956892596482493,
+            "F1_padP_coreR": 0.9413880148590117,
+            "paddedModelExportSeconds": 586.5,
+            "paddedHumanExportSeconds": 544.6438533333364,
+            "exportDurationDifferenceSeconds": 41.85614666666356,
+            "coreHumanSeconds": 321.1461755555591
+          }
+        ],
+        "humanRallies": 37,
+        "whollyMissedSavedHumanRallies": 0,
+        "whollyMissedHumanRallyRanges": [],
+        "rallies": [
+          {
+            "start": 159.75,
+            "end": 173.375
+          },
+          {
+            "start": 183.0,
+            "end": 202.25
+          },
+          {
+            "start": 214.75,
+            "end": 223.125
+          },
+          {
+            "start": 235.5,
+            "end": 246.625
+          },
+          {
+            "start": 256.625,
+            "end": 267.625
+          },
+          {
+            "start": 277.75,
+            "end": 279.75
+          },
+          {
+            "start": 293.5,
+            "end": 312.5
+          },
+          {
+            "start": 327.625,
+            "end": 358.375
+          },
+          {
+            "start": 384.625,
+            "end": 394.125
+          },
+          {
+            "start": 406.75,
+            "end": 413.375
+          },
+          {
+            "start": 428.875,
+            "end": 430.125
+          },
+          {
+            "start": 438.125,
+            "end": 448.875
+          },
+          {
+            "start": 469.125,
+            "end": 480.375
+          },
+          {
+            "start": 492.75,
+            "end": 504.125
+          },
+          {
+            "start": 524.75,
+            "end": 529.625
+          },
+          {
+            "start": 545.0,
+            "end": 549.375
+          },
+          {
+            "start": 562.125,
+            "end": 568.375
+          },
+          {
+            "start": 575.875,
+            "end": 585.125
+          },
+          {
+            "start": 600.5,
+            "end": 606.875
+          },
+          {
+            "start": 618.75,
+            "end": 628.5
+          },
+          {
+            "start": 641.75,
+            "end": 656.875
+          },
+          {
+            "start": 668.5,
+            "end": 671.75
+          },
+          {
+            "start": 708.5,
+            "end": 715.625
+          },
+          {
+            "start": 726.25,
+            "end": 735.75
+          },
+          {
+            "start": 751.25,
+            "end": 760.625
+          },
+          {
+            "start": 769.5,
+            "end": 785.625
+          },
+          {
+            "start": 787.25,
+            "end": 792.625
+          },
+          {
+            "start": 805.25,
+            "end": 816.125
+          },
+          {
+            "start": 827.75,
+            "end": 833.5
+          },
+          {
+            "start": 848.5,
+            "end": 855.625
+          },
+          {
+            "start": 868.875,
+            "end": 880.125
+          },
+          {
+            "start": 897.625,
+            "end": 905.75
+          },
+          {
+            "start": 924.375,
+            "end": 936.125
+          },
+          {
+            "start": 943.375,
+            "end": 955.625
+          },
+          {
+            "start": 972.75,
+            "end": 977.125
+          },
+          {
+            "start": 990.0,
+            "end": 998.125
+          },
+          {
+            "start": 1031.625,
+            "end": 1040.625
+          }
+        ],
+        "event": {
+          "trueRallies": 37,
+          "predictedRallies": 37,
+          "matchedRallies": 31,
+          "eventPrecision": 0.8378378378378378,
+          "eventRecall": 0.8378378378378378,
+          "eventF1": 0.8378378378378378
+        }
+      }
+    },
+    {
+      "name": "Saved desktop",
+      "rallyCount": 37,
+      "evaluation": {
+        "primary": {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8811953232996174,
+          "R_core": 0.9925754128204921,
+          "F1_padP_coreR": 0.9335750579718085,
+          "paddedModelExportSeconds": 506.625,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 35.98030222221894,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        "padding": [
+          {
+            "paddingSecondsBeforeAndAfter": 0.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8229884946953219,
+            "R_core": 0.9292846236534456,
+            "F1_padP_coreR": 0.8729124992623851,
+            "paddedModelExportSeconds": 362.625,
+            "paddedHumanExportSeconds": 321.1461755555591,
+            "exportDurationDifferenceSeconds": 41.478824444440875,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 1.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8615141344070605,
+            "R_core": 0.9824209853236849,
+            "F1_padP_coreR": 0.9180036279346468,
+            "paddedModelExportSeconds": 434.625,
+            "paddedHumanExportSeconds": 397.1455533333367,
+            "exportDurationDifferenceSeconds": 37.47944666666331,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 2.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8811953232996174,
+            "R_core": 0.9925754128204921,
+            "F1_padP_coreR": 0.9335750579718085,
+            "paddedModelExportSeconds": 506.625,
+            "paddedHumanExportSeconds": 470.64469777778106,
+            "exportDurationDifferenceSeconds": 35.98030222221894,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 3.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8946124054015668,
+            "R_core": 0.9956892596482493,
+            "F1_padP_coreR": 0.9424484780136412,
+            "paddedModelExportSeconds": 586.25,
+            "paddedHumanExportSeconds": 544.6438533333364,
+            "exportDurationDifferenceSeconds": 41.60614666666356,
+            "coreHumanSeconds": 321.1461755555591
+          }
+        ],
+        "humanRallies": 37,
+        "whollyMissedSavedHumanRallies": 0,
+        "whollyMissedHumanRallyRanges": [],
+        "rallies": [
+          {
+            "start": 159.75,
+            "end": 173.375
+          },
+          {
+            "start": 183.0,
+            "end": 202.25
+          },
+          {
+            "start": 214.75,
+            "end": 223.375
+          },
+          {
+            "start": 235.25,
+            "end": 246.625
+          },
+          {
+            "start": 256.375,
+            "end": 267.625
+          },
+          {
+            "start": 277.75,
+            "end": 279.75
+          },
+          {
+            "start": 293.5,
+            "end": 312.5
+          },
+          {
+            "start": 327.625,
+            "end": 358.125
+          },
+          {
+            "start": 384.625,
+            "end": 394.125
+          },
+          {
+            "start": 406.5,
+            "end": 412.5
+          },
+          {
+            "start": 428.875,
+            "end": 430.125
+          },
+          {
+            "start": 438.125,
+            "end": 448.875
+          },
+          {
+            "start": 469.125,
+            "end": 479.875
+          },
+          {
+            "start": 492.0,
+            "end": 504.375
+          },
+          {
+            "start": 525.0,
+            "end": 529.625
+          },
+          {
+            "start": 545.0,
+            "end": 549.375
+          },
+          {
+            "start": 561.625,
+            "end": 568.625
+          },
+          {
+            "start": 575.875,
+            "end": 585.125
+          },
+          {
+            "start": 600.5,
+            "end": 606.875
+          },
+          {
+            "start": 618.75,
+            "end": 628.5
+          },
+          {
+            "start": 641.75,
+            "end": 656.875
+          },
+          {
+            "start": 668.5,
+            "end": 671.75
+          },
+          {
+            "start": 708.5,
+            "end": 715.625
+          },
+          {
+            "start": 726.25,
+            "end": 735.75
+          },
+          {
+            "start": 751.25,
+            "end": 760.625
+          },
+          {
+            "start": 769.5,
+            "end": 785.625
+          },
+          {
+            "start": 786.375,
+            "end": 792.125
+          },
+          {
+            "start": 805.25,
+            "end": 816.125
+          },
+          {
+            "start": 827.75,
+            "end": 833.5
+          },
+          {
+            "start": 848.5,
+            "end": 855.625
+          },
+          {
+            "start": 868.875,
+            "end": 880.125
+          },
+          {
+            "start": 897.125,
+            "end": 905.75
+          },
+          {
+            "start": 924.125,
+            "end": 936.125
+          },
+          {
+            "start": 943.625,
+            "end": 955.375
+          },
+          {
+            "start": 972.75,
+            "end": 977.125
+          },
+          {
+            "start": 990.0,
+            "end": 998.125
+          },
+          {
+            "start": 1031.625,
+            "end": 1039.75
+          }
+        ],
+        "event": {
+          "trueRallies": 37,
+          "predictedRallies": 37,
+          "matchedRallies": 31,
+          "eventPrecision": 0.8378378378378378,
+          "eventRecall": 0.8378378378378378,
+          "eventF1": 0.8378378378378378
+        }
+      }
+    }
+  ],
+  "normalizedDurationScaling": [
+    {
+      "metric": "all_ready_ms",
+      "twoMinuteMedianMs": 278926.5,
+      "fullVideoMs": 2458964,
+      "twoMinuteMsPerVideoMinute": 139463.25,
+      "fullMsPerVideoMinute": 139053.2960887849,
+      "normalizedFullOverPilotRatio": 0.9970604878975996
+    },
+    {
+      "metric": "rallies_ready_ms",
+      "twoMinuteMedianMs": 223943.0,
+      "fullVideoMs": 2100003,
+      "twoMinuteMsPerVideoMinute": 111971.5,
+      "fullMsPerVideoMinute": 118754.21476131272,
+      "normalizedFullOverPilotRatio": 1.0605753674936276
+    },
+    {
+      "metric": "open_ms",
+      "twoMinuteMedianMs": 138.0,
+      "fullVideoMs": 859,
+      "twoMinuteMsPerVideoMinute": 69.0,
+      "fullMsPerVideoMinute": 48.576059405614004,
+      "normalizedFullOverPilotRatio": 0.7040008609509276
+    },
+    {
+      "metric": "av_video_ms",
+      "twoMinuteMedianMs": 107341.0,
+      "fullVideoMs": 1003360,
+      "twoMinuteMsPerVideoMinute": 53670.5,
+      "fullMsPerVideoMinute": 56739.55176393116,
+      "normalizedFullOverPilotRatio": 1.0571832154336396
+    },
+    {
+      "metric": "audio_ms",
+      "twoMinuteMedianMs": 6810.5,
+      "fullVideoMs": 75457,
+      "twoMinuteMsPerVideoMinute": 3405.25,
+      "fullMsPerVideoMinute": 4267.059039079646,
+      "normalizedFullOverPilotRatio": 1.2530824576990371
+    },
+    {
+      "metric": "context_ms",
+      "twoMinuteMedianMs": 55.0,
+      "fullVideoMs": 222,
+      "twoMinuteMsPerVideoMinute": 27.5,
+      "fullMsPerVideoMinute": 12.553999054768694,
+      "normalizedFullOverPilotRatio": 0.45650905653704343
+    },
+    {
+      "metric": "rally_stage_ms",
+      "twoMinuteMedianMs": 109579.5,
+      "fullVideoMs": 1020102,
+      "twoMinuteMsPerVideoMinute": 54789.75,
+      "fullMsPerVideoMinute": 57686.30425120565,
+      "normalizedFullOverPilotRatio": 1.052866717793121
+    },
+    {
+      "metric": "score_specialists_ms",
+      "twoMinuteMedianMs": 54983.5,
+      "fullVideoMs": 358961,
+      "twoMinuteMsPerVideoMinute": 27491.75,
+      "fullMsPerVideoMinute": 20299.081327472188,
+      "normalizedFullOverPilotRatio": 0.7383699228849451
+    },
+    {
+      "metric": "top_level_unattributed_ms",
+      "twoMinuteMedianMs": 19.0,
+      "fullVideoMs": 3,
+      "twoMinuteMsPerVideoMinute": 9.5,
+      "fullMsPerVideoMinute": 0.16964863587525264,
+      "normalizedFullOverPilotRatio": 0.017857751144763435
+    },
+    {
+      "metric": "av_timestamp_plan_ms",
+      "twoMinuteMedianMs": 6558.19275,
+      "fullVideoMs": 85588.3132,
+      "twoMinuteMsPerVideoMinute": 3279.096375,
+      "fullMsPerVideoMinute": 4839.98019374796,
+      "normalizedFullOverPilotRatio": 1.4760103517079335
+    },
+    {
+      "metric": "av_yuv_resize_color_ms",
+      "twoMinuteMedianMs": 4167.65055,
+      "fullVideoMs": 38084.9135,
+      "twoMinuteMsPerVideoMinute": 2083.825275,
+      "fullMsPerVideoMinute": 2153.6845409006646,
+      "normalizedFullOverPilotRatio": 1.0335245314176662
+    },
+    {
+      "metric": "av_opencv_calls_ms",
+      "twoMinuteMedianMs": 33310.744099999996,
+      "fullVideoMs": 289102.2219,
+      "twoMinuteMsPerVideoMinute": 16655.372049999998,
+      "fullMsPerVideoMinute": 16348.599191279862,
+      "normalizedFullOverPilotRatio": 0.9815811464433701
+    },
+    {
+      "metric": "av_callback_cpu_ms",
+      "twoMinuteMedianMs": 23854.6523605,
+      "fullVideoMs": 208215.537262,
+      "twoMinuteMsPerVideoMinute": 11927.32618025,
+      "fullMsPerVideoMinute": 11774.49395484371,
+      "normalizedFullOverPilotRatio": 0.9871863799902313
+    },
+    {
+      "metric": "av_callback_wall_ms",
+      "twoMinuteMedianMs": 90906.08515,
+      "fullVideoMs": 840951.2259,
+      "twoMinuteMsPerVideoMinute": 45453.042575,
+      "fullMsPerVideoMinute": 47555.40943718547,
+      "normalizedFullOverPilotRatio": 1.0462536002670548
+    },
+    {
+      "metric": "av_feature_worker_cpu_ms",
+      "twoMinuteMedianMs": 24574.197383500003,
+      "fullVideoMs": 210764.559364,
+      "twoMinuteMsPerVideoMinute": 12287.098691750001,
+      "fullMsPerVideoMinute": 11918.639995650434,
+      "normalizedFullOverPilotRatio": 0.9700125550104872
+    },
+    {
+      "metric": "av_total_thread_cpu_ms",
+      "twoMinuteMedianMs": 51555.76634,
+      "fullVideoMs": 461418.93830299994,
+      "twoMinuteMsPerVideoMinute": 25777.88317,
+      "fullMsPerVideoMinute": 26093.031150037095,
+      "normalizedFullOverPilotRatio": 1.0122255182071684
+    },
+    {
+      "metric": "av_demux_read_ms",
+      "twoMinuteMedianMs": 3322.6109,
+      "fullVideoMs": 28184.8487,
+      "twoMinuteMsPerVideoMinute": 1661.30545,
+      "fullMsPerVideoMinute": 1593.8403781017957,
+      "normalizedFullOverPilotRatio": 0.9593903265060593
+    },
+    {
+      "metric": "av_demux_advance_ms",
+      "twoMinuteMedianMs": 13224.699799999999,
+      "fullVideoMs": 138075.4585,
+      "twoMinuteMsPerVideoMinute": 6612.349899999999,
+      "fullMsPerVideoMinute": 7808.104394125019,
+      "normalizedFullOverPilotRatio": 1.1808365425618237
+    },
+    {
+      "metric": "av_input_queue_ms",
+      "twoMinuteMedianMs": 58055.16945,
+      "fullVideoMs": 536416.2907,
+      "twoMinuteMsPerVideoMinute": 29027.584725,
+      "fullMsPerVideoMinute": 30334.097326172654,
+      "normalizedFullOverPilotRatio": 1.045009345887721
+    },
+    {
+      "metric": "av_queue_backpressure_ms",
+      "twoMinuteMedianMs": 178.4514,
+      "fullVideoMs": 1572.3321,
+      "twoMinuteMsPerVideoMinute": 89.2257,
+      "fullMsPerVideoMinute": 88.91466530262377,
+      "normalizedFullOverPilotRatio": 0.996514068285525
+    },
+    {
+      "metric": "audio_thread_cpu_ms",
+      "twoMinuteMedianMs": 3289.544947,
+      "fullVideoMs": 31584.804135,
+      "twoMinuteMsPerVideoMinute": 1644.7724735,
+      "fullMsPerVideoMinute": 1786.106311963263,
+      "normalizedFullOverPilotRatio": 1.0859291122270007
+    },
+    {
+      "metric": "embedding_total_ms",
+      "twoMinuteMedianMs": 109133.25695000001,
+      "fullVideoMs": 1018398.7965,
+      "twoMinuteMsPerVideoMinute": 54566.628475000005,
+      "fullMsPerVideoMinute": 57589.98886774134,
+      "normalizedFullOverPilotRatio": 1.0554067655861588
+    },
+    {
+      "metric": "embedding_timestamp_plan_ms",
+      "twoMinuteMedianMs": 6556.98705,
+      "fullVideoMs": 81782.9037,
+      "twoMinuteMsPerVideoMinute": 3278.493525,
+      "fullMsPerVideoMinute": 4624.78601687405,
+      "normalizedFullOverPilotRatio": 1.4106436330003276
+    },
+    {
+      "metric": "embedding_prepare_ms",
+      "twoMinuteMedianMs": 3589.1938,
+      "fullVideoMs": 27410.2232,
+      "twoMinuteMsPerVideoMinute": 1794.5969,
+      "fullMsPerVideoMinute": 1550.0356583054006,
+      "normalizedFullOverPilotRatio": 0.8637235795433507
+    },
+    {
+      "metric": "embedding_encoder_readback_ms",
+      "twoMinuteMedianMs": 2689.17875,
+      "fullVideoMs": 22752.4649,
+      "twoMinuteMsPerVideoMinute": 1344.589375,
+      "fullMsPerVideoMinute": 1286.641544361522,
+      "normalizedFullOverPilotRatio": 0.9569029536333514
+    },
+    {
+      "metric": "embedding_decode_other_excluding_plan_ms",
+      "twoMinuteMedianMs": 96297.89735,
+      "fullVideoMs": 886453.2047,
+      "twoMinuteMsPerVideoMinute": 48148.948675,
+      "fullMsPerVideoMinute": 50128.52564820036,
+      "normalizedFullOverPilotRatio": 1.0411136074135758
+    },
+    {
+      "metric": "tcn_inference_ms",
+      "twoMinuteMedianMs": 45.0487,
+      "fullVideoMs": 294.507,
+      "twoMinuteMsPerVideoMinute": 22.52435,
+      "fullMsPerVideoMinute": 16.654236935237677,
+      "normalizedFullOverPilotRatio": 0.7393881259720115
+    },
+    {
+      "metric": "fusion_normalization_save_ms",
+      "twoMinuteMedianMs": 131.36525,
+      "fullVideoMs": 914.4668,
+      "twoMinuteMsPerVideoMinute": 65.682625,
+      "fullMsPerVideoMinute": 51.71268172440249,
+      "normalizedFullOverPilotRatio": 0.7873114347120337
+    },
+    {
+      "metric": "score_decode_ms",
+      "twoMinuteMedianMs": 51325.47615,
+      "fullVideoMs": 338539.7276,
+      "twoMinuteMsPerVideoMinute": 25662.738075,
+      "fullMsPerVideoMinute": 19144.267658973204,
+      "normalizedFullOverPilotRatio": 0.7459947415986399
+    },
+    {
+      "metric": "score_serving_evaluation_ms",
+      "twoMinuteMedianMs": 1231.80495,
+      "fullVideoMs": 5935.4487,
+      "twoMinuteMsPerVideoMinute": 615.902475,
+      "fullMsPerVideoMinute": 335.64692508751386,
+      "normalizedFullOverPilotRatio": 0.5449676510676692
+    },
+    {
+      "metric": "score_switch_evaluation_ms",
+      "twoMinuteMedianMs": 2333.9907000000003,
+      "fullVideoMs": 14284.6679,
+      "twoMinuteMsPerVideoMinute": 1166.9953500000001,
+      "fullMsPerVideoMinute": 807.7914743886699,
+      "normalizedFullOverPilotRatio": 0.6921976804694807
+    }
+  ],
+  "savedPixelTensorComparison": {
+    "features": {
+      "shapeElements": 16776240,
+      "exactValueFraction": 0.05015462344363218,
+      "maxAbsoluteDifference": 0.05543631315231323,
+      "meanAbsoluteDifference": 1.358530994366447e-06,
+      "scope": "Cross-platform x86 emulator vs ARM64 physical Pixel, both repaired contracts; not an isolated optimization A/B."
+    },
+    "tokens": {
+      "shapeElements": 8152320,
+      "exactValueFraction": 0.023205541490029832,
+      "maxAbsoluteDifference": 1.811981201171875e-05,
+      "meanAbsoluteDifference": 6.744481879650266e-07,
+      "scope": "Cross-platform x86 emulator vs ARM64 physical Pixel, both repaired contracts; not an isolated optimization A/B."
+    },
+    "probabilities": {
+      "shapeElements": 16980,
+      "exactValueFraction": 0.00712603062426384,
+      "maxAbsoluteDifference": 0.002207845449447632,
+      "meanAbsoluteDifference": 7.458022537321085e-06,
+      "scope": "Cross-platform x86 emulator vs ARM64 physical Pixel, both repaired contracts; not an isolated optimization A/B."
+    }
+  },
+  "thermalStart": 0,
+  "thermalEnd": 0,
+  "sampleRows": 4245,
+  "embeddingSamples": 2123,
+  "decodeObservations": {
+    "embeddingDecodedFrames": 63670,
+    "embeddingSelectedSamples": 2123,
+    "avSelectedRows": 4245,
+    "avDecodedSourceFrameCount": null,
+    "avDecodedCountNote": "Not persisted by the current AV instrumentation; callback wall time is not a count.",
+    "decodedColorProfiles": [
+      {
+        "firstSampleSeconds": 0,
+        "standard": 1,
+        "range": 1,
+        "standardSource": "decoder-output",
+        "rangeSource": "decoder-output"
+      }
+    ],
+    "guestHardwareFlagNote": "MediaCodec hardwareDecoder is a guest-reported classification, not proof of physical Pixel GPU/NPU throughput."
+  },
+  "embeddingDecoder": "c2.goldfish.h264.decoder",
+  "embeddingHardwareDecoder": true,
+  "limitations": [
+    "One full-video optimized emulator observation; no same-scope Java full-video timing was collected.",
+    "Emulator CPU/codec speed cannot forecast physical Pixel latency; previous Pixel timings are not an optimization A/B.",
+    "Short/full normalized timing differs in content, file size, score workload and JIT/cache state.",
+    "Cross-platform saved-tensor comparison includes codec and floating-point differences; exact Java/native pixel identity was established separately by the prior same-emulator two-minute controlled experiment.",
+    "Single previously studied recording, frozen manually reviewed export-derived labels with later edits; not independently exact endpoint gold or a new generalization test.",
+    "Nested timers overlap and must not be summed."
+  ],
+  "independentMetricVerification": {
+    "passed": true,
+    "recordingIndex": "recording-044",
+    "goldSha256": "97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c",
+    "checks": 16,
+    "maximumAbsoluteError": 0,
+    "implementation": "Independent interval unions/subtractions/two-pointer overlap; no shared metric helpers imported."
+  },
+  "postTestState": {
+    "restoredSelinuxBeforeShutdown": "Enforcing",
+    "adbUidBeforeShutdown": 2000,
+    "emulatorShutdownRequested": true,
+    "physicalDeviceUsed": false,
+    "shutdownRequestedUnixSeconds": 1790389467.9530015,
+    "emulatorProcessExitConfirmed": true,
+    "processExitConfirmedUnixSeconds": 1790389512
+  },
+  "savedPixelBoundaryComparison": {
+    "sameNeuralIntervalCount": true,
+    "allNeuralBoundariesExactlyEqual": true,
+    "scope": "Frozen repaired ARM64 Pixel output reference versus optimized x86_64 emulator; no full-duration same-emulator Java control."
+  }
+}

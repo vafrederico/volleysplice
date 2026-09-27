@@ -68,6 +68,7 @@ internal data class EditorSeed(
     /** Null for legacy recovery records that did not retain extraction geometry. */
     val analysisRoi: AnalysisTypes.Roi? = null,
     val audioExtractorVersion: String = "legacy",
+    val visualExtractorVersion: String = "legacy",
 ) {
     val sourceRevision: String by lazy {
         val canonical = buildString {

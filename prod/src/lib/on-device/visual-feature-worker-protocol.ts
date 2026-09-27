@@ -12,6 +12,7 @@ export type VisualFeatureWorkerRequest =
   | {
       type: "initialize";
       detailedProfiling: boolean;
+      areaResize: boolean;
       reductionKernel: FeatureReductionKernel;
       openCvUrl: string;
       reductionWasmUrl: string;

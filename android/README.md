@@ -62,8 +62,9 @@ that claims full device parity.
 - Gradle: 9.3.1
 - Java: 17 bytecode
 - OpenCV Android AAR: 4.12.0
+- Android NDK: 29.0.14206865 (shared AV area-resampling kernel)
 
-API 37 does not make the analysis kernels faster by itself, but it is now the default so the app is tested against the Pixel 10 Pro's Android 17 target behavior. The project intentionally packages only `arm64-v8a`, since its immediate purpose is the Pixel 10 Pro rather than an x86 emulator.
+API 37 does not make the analysis kernels faster by itself, but it is now the default so the app is tested against the Pixel 10 Pro's Android 17 target behavior. Builds package only `arm64-v8a` by default. For native x86 emulator measurements, pass `-Pvolleycut.abis=x86_64` to the Gradle wrapper; quote that argument in PowerShell. The override also supports a comma-separated list of the two supported ABIs. Compare builds using the same ABI: ARM translation and native x86 execution are different workloads.
 
 ## Build and install
 
@@ -76,6 +77,20 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
 SDK 37 is the default, so no Gradle property overrides are needed. Install the Android 17 SDK Platform 37.0 and Build-Tools 37.0.0 before building from the command line.
+
+The app builds `libvolleycut_yuv` with ndk-build for the selected ABI. Its AV
+resampler consumes direct decoder planes and averages the same clipped RGB pixels
+as the Java reference, including fractional areas, crop/rotation and round-to-even
+output. It retains only the small output image; it does not allocate a full-size
+RGB frame. The Java path remains available for heap buffers and JVM tests.
+`NativeYuvAreaInstrumentedTest` requires the native backend and checks exact Java
+equivalence; `YuvAreaResamplerInstrumentedTest` independently checks OpenCV area
+resizing. The shared code is used by the production app and pipeline benchmark.
+
+`VOLLEYCUT_BENCH_BUILD_DIR` also redirects native staging and generated release
+ProGuard inputs. On Windows, ndk-build's temporary executable launcher scripts
+require an executable local `TEMP`/`TMP` directory when a network share denies
+execution; compiled outputs and Gradle caches can remain on the configured share.
 
 To create and sign the release APK and Android App Bundle, build the unsigned artifacts and then have the key owner run the Bash signing helper locally:
 
@@ -201,8 +216,9 @@ The JVM golden test reads the repository's frozen 3,474 x 104 Y9 base-feature fi
 
 The media front end is deliberately a native-distribution experiment, not a claim of feature parity:
 
-- Android supplies decoder YUV planes; the app converts those directly into the 192x108 analysis image. That color conversion and resize are not byte-identical to browser canvas or FFmpeg/OpenCV `INTER_AREA`.
-- Video is decoded in one pass and the first presentation-order frame at or after each 4 Hz target is sampled. Web and offline frame-selection boundaries can differ by one source frame.
+- Android supplies decoder YUV planes. New AV extraction averages converted/clipped RGB source pixels over each 192x108 output footprint, following the desktop area-downsampling operation. It avoids a full-resolution RGB allocation. Decoder/color differences still require separate feature parity qualification; explicit-size score-specialist samplers retain their existing behavior.
+- AV video and neural encoder sampling use actual nearest presentation timestamps, preferring the earlier frame on ties. Repeated or terminal grid targets reuse the selected image; embedding quality offsets describe that actual image. Actual timestamp planning replaces the short CFR extrapolation described in the historical timings above, and its scan cost is included in profiling.
+- `opencv-v3-area-nearest-frame` invalidates old visual caches for fresh analyses. Saved reviewed projects remain editable with their original extraction provenance and cannot silently satisfy a new analysis request.
 - Audio uses Android's decoded PCM and the existing linear 16 kHz resampling/DSP math. It does not embed FFmpeg `libswresample`.
 - Batched audio uses supported AAC-LC codec framing, with synchronous AUTO fallback for unknown or inconsistent layouts. It no longer infers PCM size from packet spacing. Startup noise-floor interpolation is also corrected; cache and project provenance prevent reuse of old extracted inputs on new analyses. See the [repair and device validation](../docs/research/android-web-audio-fix.md) and [original root cause](../docs/research/android-audio-timeline-root-cause.md). Linear resampling remains a separate desktop-parity difference.
 - Native OpenCV implements phase correlation and Farneback flow. The algorithm settings and 73-channel schema match the web path, but native SIMD and float reductions can produce small numerical differences.

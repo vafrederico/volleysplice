@@ -23,6 +23,13 @@ const info: OnDeviceMediaInfo = {
 const roi = { x: 0.04, y: 0.14, width: 0.92, height: 0.84 };
 
 test("visual feature checkpoints are stable for the exact same video and crop", () => {
+  const legacy = visualFeatureCacheKey(source, info, roi);
+  const corrected = visualFeatureCacheKey(source, info, roi, {
+    decodeStrategy: "sequential", decoderAcceleration: "prefer-hardware", areaNearest: true,
+  });
+  assert.equal(JSON.parse(corrected).visualExtractor, "opencv-area-nearest-grid-v1");
+  assert.equal(JSON.parse(legacy).visualExtractor, undefined);
+  assert.notEqual(legacy, corrected);
   assert.equal(
     visualFeatureCacheKey(source, info, roi),
     visualFeatureCacheKey({ ...source }, { ...info }, { ...roi }),

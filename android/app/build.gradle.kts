@@ -5,9 +5,35 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val targetAbis = providers.gradleProperty("volleycut.abis")
+    .orElse("arm64-v8a")
+    .get()
+    .split(',')
+    .map(String::trim)
+    .distinct()
+check(targetAbis.isNotEmpty() && targetAbis.all { it in setOf("arm64-v8a", "x86_64") }) {
+    "volleycut.abis must be a comma-separated list containing only arm64-v8a or x86_64"
+}
+
+// Resolve generated ProGuard inputs against the redirected directory too.
+// getDefaultProguardFile captures this location while configuring android below.
+providers.environmentVariable("VOLLEYCUT_BENCH_BUILD_DIR").orNull?.let {
+    layout.buildDirectory.set(file(it).resolveSibling("pipeline-build"))
+}
+
 android {
     namespace = "com.volleycut.nativeanalysis"
     compileSdk = providers.gradleProperty("volleycut.compileSdk").orElse("37").get().toInt()
+    ndkVersion = "29.0.14206865"
+
+    externalNativeBuild {
+        ndkBuild {
+            path = file("src/main/jni/Android.mk")
+            providers.environmentVariable("VOLLEYCUT_BENCH_BUILD_DIR").orNull?.let {
+                buildStagingDirectory = file(it).resolveSibling("native-staging")
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.volleycut.nativeanalysis"
@@ -22,10 +48,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // The benchmark target is a Pixel 10 Pro. Keeping only arm64 avoids a
-        // very large APK containing OpenCV binaries for emulator architectures.
+        // Keep phone builds compact by default. Emulator measurements explicitly
+        // opt in with -Pvolleycut.abis=x86_64.
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += targetAbis
         }
     }
 
@@ -69,10 +95,6 @@ android {
     packaging {
         jniLibs.useLegacyPackaging = false
     }
-}
-
-providers.environmentVariable("VOLLEYCUT_BENCH_BUILD_DIR").orNull?.let {
-    layout.buildDirectory.set(file(it).resolveSibling("pipeline-build"))
 }
 
 if (providers.gradleProperty("pipelineBenchmark").isPresent) {

@@ -4,12 +4,14 @@ import { humanExportConfiguration, loadProductionEditorLab } from "@/lib/server/
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const prepared = await getPreparedLabelingTask(id);
     // Model configurations remain label blind. Human labels are a separate editable reference.
-    const task = await loadProductionEditorLab(prepared.document.recording);
+    // Offline regeneration must be able to read new rally geometry even when
+    // older serving receipts are stale. Ordinary editor loads validate them.
+    const task = await loadProductionEditorLab(prepared.document.recording, new URL(request.url).searchParams.get("serving") !== "omit");
     if (!task) return Response.json({ error: "No editor lab model predictions are prepared for this recording." },
       { status: 404, headers: { "Cache-Control": "no-store" } });
     const saved = await getSavedLabelingDocument(prepared);

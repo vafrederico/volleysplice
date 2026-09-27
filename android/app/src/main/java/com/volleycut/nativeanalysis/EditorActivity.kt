@@ -298,6 +298,7 @@ private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorS
     suppression = result.suppression(),
     analysisRoi = result.roi(),
     audioExtractorVersion = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
+    visualExtractorVersion = NativeFeatureCache.VISUAL_EXTRACTOR_VERSION,
 )
 
 private val Paper = Color(0xFFF8F7EE)

@@ -14,6 +14,7 @@ public final class YuvColorConversion {
     };
     private final int[] luma = new int[256], redV = new int[256], greenU = new int[256],
             greenV = new int[256], blueU = new int[256];
+    private final int[] nativeTables = new int[5 * 256];
 
     private YuvColorConversion(double kr, double kb, boolean full) {
         double kg = 1 - kr - kb;
@@ -28,7 +29,15 @@ public final class YuvColorConversion {
             greenU[i] = fixed(-2 * kb * (1 - kb) / kg * chroma);
             greenV[i] = fixed(-2 * kr * (1 - kr) / kg * chroma);
         }
+        System.arraycopy(luma, 0, nativeTables, 0, 256);
+        System.arraycopy(redV, 0, nativeTables, 256, 256);
+        System.arraycopy(greenU, 0, nativeTables, 512, 256);
+        System.arraycopy(greenV, 0, nativeTables, 768, 256);
+        System.arraycopy(blueU, 0, nativeTables, 1024, 256);
     }
+
+    // The native kernel uses these exact rounded coefficients, not another matrix.
+    int[] nativeTables() { return nativeTables; }
 
     public static YuvColorConversion of(int standard, int range) {
         int matrix = switch (standard) {

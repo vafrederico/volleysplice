@@ -1,0 +1,1126 @@
+{
+  "schema": "pixel-shared-video-decoding-v1",
+  "status": "complete",
+  "recordingIndex": "recording-044",
+  "artifactIndex": "private-reference-0223",
+  "model": "Frozen highest-recall Distilled MobileNetV3-Large + TCN FP32",
+  "device": "Physical Pixel 10 Pro",
+  "transport": "Tailscale ADB",
+  "execution": "Native Android; existing ORT CPU execution, four intra-op threads and one inter-op thread; MediaCodec video decoding",
+  "targetPaddingSeconds": 2,
+  "joinGapSeconds": 3,
+  "goldSha256": "97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c",
+  "apkSha256": "4adc893267aedef9ebdefcad513b1ee7e52891e2c2d0715a02dbd37b07da6674",
+  "sourceFingerprints": {
+    "android/app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/SharedEmbeddingConsumer.java": "c92be46cb7d4604f802889390d4039c8e5b6b2e1dbc1d5fefdb8cc438a48dc12",
+    "android/app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/NeuralRallyPipeline.java": "8cfba8f74d1b797ab1df6526d6cbc3f692ae8cf6e706a68a2170ab2739fe2392",
+    "android/video-common/src/main/java/com/volleycut/video/EmbeddingFrameRequests.java": "050be7b462069bb3275ac5b68d9306563c0b0a95da6bca8d268277ba4360f17d",
+    "android/app/src/main/java/com/volleycut/nativeanalysis/AnalysisEngine.java": "30938f1705dac92b1b360efccff669c6dba374f4f01bb055135952cfe750022d",
+    "android/app/src/main/java/com/volleycut/nativeanalysis/SharedVideoFrameConsumer.java": "69010af1648481eba49e9ca63ad9347e956ffb4dd94e2e002a72b59b13fa2a62",
+    "android/neuralbenchmark/src/main/java/com/volleycut/neuralbenchmark/VideoEncoderBenchmark.java": "e4543a667a6eec044e17d0c59ae84dce67b606d0401e93dde90b6eccf408cc8a",
+    "android/app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java": "95e14a12747f8445d08202ade4fce453843cee04676dc910bf383638138682ed"
+  },
+  "runs": [
+    {
+      "phase": "short",
+      "seconds": 120,
+      "sourceSha256": "06535d4955cf2a7bffcc2c804065b62b972d4ffd499b7d194b05edac6c66a4d8",
+      "sourceBytes": 492230456,
+      "timings": {
+        "allReadySeconds": 62.119,
+        "ralliesReadySeconds": 38.559,
+        "videoAvSeconds": 33.996,
+        "audioSeconds": 3.926,
+        "contextSeconds": 0.072,
+        "embeddingVideoPassSeconds": 0.0,
+        "embeddingDecodeOtherSeconds": 0.0,
+        "embeddingPreparationSeconds": 5.627474329,
+        "embeddingEncoderSeconds": 3.4271097420000003,
+        "temporalSeconds": 0.040182005,
+        "fusionAndSaveSeconds": 0.248375,
+        "scoreSeconds": 23.56,
+        "scoreDecodeSeconds": 15.699721886999999,
+        "servingEvaluationSeconds": 1.834023022,
+        "sideSwitchEvaluationSeconds": 5.999599275,
+        "areaConversionSeconds": 6.22925273,
+        "inventoryScanSeconds": 4.967760811,
+        "encoderQueueBackpressureSeconds": 0.005017845,
+        "encoderLoadSeconds": 0.08236929600000001,
+        "sharedSpanSeconds": 33.971135782
+      },
+      "observations": {
+        "samples": 6,
+        "errors": 0,
+        "allAwake": true,
+        "allUnlocked": true,
+        "foregroundObservations": 0,
+        "allObservedForeground": null,
+        "thermalStatuses": [
+          1
+        ],
+        "batteryTemperatureC": [
+          38.6,
+          39.2
+        ],
+        "batteryPercent": [
+          17,
+          18
+        ],
+        "chargingStates": [
+          "AC powered: false",
+          "Dock powered: false",
+          "USB powered: false",
+          "Wireless powered: true"
+        ]
+      },
+      "evaluation": {
+        "primary": {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.989922335987865,
+          "R_core": 0.9227995370530004,
+          "F1_padP_coreR": 0.9551831724658796,
+          "paddedModelExportSeconds": 73.25,
+          "paddedHumanExportSeconds": 89.87583333333359,
+          "exportDurationDifferenceSeconds": -16.62583333333359,
+          "coreHumanSeconds": 66.37668888888922
+        },
+        "padding": [
+          {
+            "paddingSecondsBeforeAndAfter": 0.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.9855610975278458,
+            "R_core": 0.7591040161020348,
+            "F1_padP_coreR": 0.8576355214563324,
+            "paddedModelExportSeconds": 51.125,
+            "paddedHumanExportSeconds": 66.37668888888922,
+            "exportDurationDifferenceSeconds": -15.25168888888922,
+            "coreHumanSeconds": 66.37668888888922
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 1.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.9881415439535922,
+            "R_core": 0.8644790289495855,
+            "F1_padP_coreR": 0.922183046950747,
+            "paddedModelExportSeconds": 62.25,
+            "paddedHumanExportSeconds": 77.37668888888922,
+            "exportDurationDifferenceSeconds": -15.12668888888922,
+            "coreHumanSeconds": 66.37668888888922
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 2.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.989922335987865,
+            "R_core": 0.9227995370530004,
+            "F1_padP_coreR": 0.9551831724658796,
+            "paddedModelExportSeconds": 73.25,
+            "paddedHumanExportSeconds": 89.87583333333359,
+            "exportDurationDifferenceSeconds": -16.62583333333359,
+            "coreHumanSeconds": 66.37668888888922
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 3.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.9912381140784702,
+            "R_core": 0.960334970342666,
+            "F1_padP_coreR": 0.9755418666971633,
+            "paddedModelExportSeconds": 84.25,
+            "paddedHumanExportSeconds": 98.87583333333359,
+            "exportDurationDifferenceSeconds": -14.625833333333588,
+            "coreHumanSeconds": 66.37668888888922
+          }
+        ],
+        "humanRallies": 6,
+        "whollyMissedSavedHumanRallies": 0,
+        "whollyMissedHumanRallyRanges": [],
+        "rallies": [
+          {
+            "start": 3.0,
+            "end": 22.125
+          },
+          {
+            "start": 34.75,
+            "end": 40.625
+          },
+          {
+            "start": 55.5,
+            "end": 65.25
+          },
+          {
+            "start": 77.125,
+            "end": 85.375
+          },
+          {
+            "start": 98.0,
+            "end": 99.75
+          },
+          {
+            "start": 113.5,
+            "end": 119.875
+          }
+        ],
+        "event": {
+          "trueRallies": 6,
+          "predictedRallies": 6,
+          "matchedRallies": 5,
+          "eventPrecision": 0.8333333333333334,
+          "eventRecall": 0.8333333333333334,
+          "eventF1": 0.8333333333333334
+        }
+      },
+      "storage": {
+        "av104Float32BytesCalculated": 199680,
+        "contextual520Float32BytesCalculated": 998400,
+        "savedDiagnosticFiles": [
+          {
+            "kind": "tokens",
+            "bytes": 3686400,
+            "expectedFloat32BytesCalculated": 3686400,
+            "sha256": "0b01818e4109cf995708938f3b86b6e61268459fc4cfde2ad3178153fa8467b0"
+          },
+          {
+            "kind": "features",
+            "bytes": 7587840,
+            "expectedFloat32BytesCalculated": 7587840,
+            "sha256": "362b72ec157f87736f001202521081fa3fd34ea18814942321949400d561841e"
+          },
+          {
+            "kind": "probabilities",
+            "bytes": 7680,
+            "expectedFloat32BytesCalculated": 7680,
+            "sha256": "61bbf60e3b99f729f4bbaf8b15e3a59f3bc0fc1a909c69e56e04cf1b0e701828"
+          }
+        ],
+        "specialistFeatures": {
+          "servingSide": {
+            "rows": 6,
+            "columns": 237,
+            "decodedPayloadBytes": 11376,
+            "persistedBase64Bytes": 15168,
+            "publishedPredictions": 6
+          },
+          "sideSwitch": {
+            "rows": 5,
+            "columns": 34,
+            "decodedPayloadBytes": 1360,
+            "persistedBase64Bytes": 1816,
+            "publishedPredictions": 0
+          }
+        }
+      },
+      "parity": {
+        "schema": "shared-video-parity-v1",
+        "exact": true,
+        "checks": {
+          "visualExtractorVersion": true,
+          "audioExtractorVersion": true,
+          "cacheMode": true,
+          "frozenGraphHashes": true,
+          "roi": true,
+          "sampleRows": true,
+          "rallyCount": true,
+          "rallies": true,
+          "productionRallies": true,
+          "servingSideReady": true,
+          "sideSwitchReady": true,
+          "neural/times": true,
+          "neural/decoder": true,
+          "neural/featureRows": true,
+          "neural/featureDimension": true,
+          "neural/precision": true,
+          "video/sampleCount": true,
+          "video/sampleTimestamps": true,
+          "video/quality": true,
+          "video/decodedColorProfiles": true,
+          "video/frameSelection": true,
+          "video/seconds": true,
+          "video/startSeconds": true,
+          "video/sampleFps": true,
+          "video/decoder": true,
+          "video/hardwareDecoder": true,
+          "servingSide": true,
+          "sideSwitch": true,
+          "tensor/tokens": true,
+          "tensor/features": true,
+          "tensor/probabilities": true
+        },
+        "tensors": {
+          "tokens": {
+            "bytes": [
+              3686400,
+              3686400
+            ],
+            "sha256": [
+              "0b01818e4109cf995708938f3b86b6e61268459fc4cfde2ad3178153fa8467b0",
+              "0b01818e4109cf995708938f3b86b6e61268459fc4cfde2ad3178153fa8467b0"
+            ],
+            "exact": true,
+            "maxAbsoluteError": 0.0,
+            "finite": true
+          },
+          "features": {
+            "bytes": [
+              7587840,
+              7587840
+            ],
+            "sha256": [
+              "362b72ec157f87736f001202521081fa3fd34ea18814942321949400d561841e",
+              "362b72ec157f87736f001202521081fa3fd34ea18814942321949400d561841e"
+            ],
+            "exact": true,
+            "maxAbsoluteError": 0.0,
+            "finite": true
+          },
+          "probabilities": {
+            "bytes": [
+              7680,
+              7680
+            ],
+            "sha256": [
+              "61bbf60e3b99f729f4bbaf8b15e3a59f3bc0fc1a909c69e56e04cf1b0e701828",
+              "61bbf60e3b99f729f4bbaf8b15e3a59f3bc0fc1a909c69e56e04cf1b0e701828"
+            ],
+            "exact": true,
+            "maxAbsoluteError": 0.0,
+            "finite": true
+          }
+        },
+        "pixelsRequired": false
+      },
+      "temporalReplay": {
+        "passed": true,
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 480,
+            "rallies": 6,
+            "maxProbabilityError": 3.5762786865234375e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "resultSha256": "75cac87f6f2075c061083e5eb82324c81935911ac2cc5bd75e49f531d6f40a92",
+      "avRows": 480,
+      "embeddingRows": 240,
+      "decoder": "c2.google.avc.decoder",
+      "hardwareDecoder": true,
+      "preparedBufferBytes": 2408448,
+      "historicalPixelReference": {
+        "timings": {
+          "allReadySeconds": 122.946,
+          "ralliesReadySeconds": 105.078,
+          "videoAvSeconds": 74.758,
+          "audioSeconds": 3.318,
+          "contextSeconds": 0.042,
+          "embeddingVideoPassSeconds": 26.585323144999997,
+          "embeddingDecodeOtherSeconds": 18.610330158999997,
+          "embeddingPreparationSeconds": 5.14479913,
+          "embeddingEncoderSeconds": 2.8301938559999997,
+          "temporalSeconds": 0.033478021,
+          "fusionAndSaveSeconds": 0.140761172,
+          "scoreSeconds": 17.868,
+          "scoreDecodeSeconds": 14.499857275,
+          "servingEvaluationSeconds": 0.7557208080000001,
+          "sideSwitchEvaluationSeconds": 2.59389857
+        },
+        "thermalStart": 0,
+        "thermalEnd": 0,
+        "resultSha256": "bdb8a5be27f3a1c2b7bd2fef42d5b0cfd551073c25f11f17a8abdf7251663e31",
+        "scope": "Earlier corrected Java area plus independent embedding decode; conditions are not matched and both optimizations differ"
+      }
+    },
+    {
+      "phase": "full",
+      "seconds": 1061.016489,
+      "sourceSha256": "b92371af35a49a93726ad36de32382f0ac46c42bf9e4ed1260242ca82e7031af",
+      "sourceBytes": 4373996025,
+      "timings": {
+        "allReadySeconds": 643.055,
+        "ralliesReadySeconds": 449.292,
+        "videoAvSeconds": 363.558,
+        "audioSeconds": 81.332,
+        "contextSeconds": 0.435,
+        "embeddingVideoPassSeconds": 0.0,
+        "embeddingDecodeOtherSeconds": 0.0,
+        "embeddingPreparationSeconds": 52.612372285,
+        "embeddingEncoderSeconds": 38.577838478,
+        "temporalSeconds": 0.550638647,
+        "fusionAndSaveSeconds": 2.5565059139999997,
+        "scoreSeconds": 193.763,
+        "scoreDecodeSeconds": 133.27513952500001,
+        "servingEvaluationSeconds": 12.038923108,
+        "sideSwitchEvaluationSeconds": 48.170345193,
+        "areaConversionSeconds": 64.22110855,
+        "inventoryScanSeconds": 69.800685939,
+        "encoderQueueBackpressureSeconds": 0.025817409000000003,
+        "encoderLoadSeconds": 0.098113047,
+        "sharedSpanSeconds": 363.520460824
+      },
+      "observations": {
+        "samples": 43,
+        "errors": 0,
+        "allAwake": true,
+        "allUnlocked": true,
+        "foregroundObservations": 43,
+        "allObservedForeground": true,
+        "thermalStatuses": [
+          1
+        ],
+        "batteryTemperatureC": [
+          39.2,
+          41.5
+        ],
+        "batteryPercent": [
+          18,
+          21
+        ],
+        "chargingStates": [
+          "AC powered: false",
+          "Dock powered: false",
+          "USB powered: false",
+          "Wireless powered: true"
+        ]
+      },
+      "evaluation": {
+        "primary": {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8789928759556145,
+          "R_core": 0.9925754128204921,
+          "F1_padP_coreR": 0.9323375715971941,
+          "paddedModelExportSeconds": 506.875,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 36.23030222221894,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        "padding": [
+          {
+            "paddingSecondsBeforeAndAfter": 0.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8199521494239739,
+            "R_core": 0.9264944093059869,
+            "F1_padP_coreR": 0.8699734653114026,
+            "paddedModelExportSeconds": 362.875,
+            "paddedHumanExportSeconds": 321.1461755555591,
+            "exportDurationDifferenceSeconds": 41.728824444440875,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 1.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8589583535498755,
+            "R_core": 0.9808431299394641,
+            "F1_padP_coreR": 0.9158633771570066,
+            "paddedModelExportSeconds": 434.875,
+            "paddedHumanExportSeconds": 397.1455533333367,
+            "exportDurationDifferenceSeconds": 37.72944666666331,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 2.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8789928759556145,
+            "R_core": 0.9925754128204921,
+            "F1_padP_coreR": 0.9323375715971941,
+            "paddedModelExportSeconds": 506.875,
+            "paddedHumanExportSeconds": 470.64469777778106,
+            "exportDurationDifferenceSeconds": 36.23030222221894,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 3.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.8927032497868747,
+            "R_core": 0.9956892596482493,
+            "F1_padP_coreR": 0.9413880148590117,
+            "paddedModelExportSeconds": 586.5,
+            "paddedHumanExportSeconds": 544.6438533333364,
+            "exportDurationDifferenceSeconds": 41.85614666666356,
+            "coreHumanSeconds": 321.1461755555591
+          }
+        ],
+        "humanRallies": 37,
+        "whollyMissedSavedHumanRallies": 0,
+        "whollyMissedHumanRallyRanges": [],
+        "rallies": [
+          {
+            "start": 159.75,
+            "end": 173.375
+          },
+          {
+            "start": 183.0,
+            "end": 202.25
+          },
+          {
+            "start": 214.75,
+            "end": 223.125
+          },
+          {
+            "start": 235.5,
+            "end": 246.625
+          },
+          {
+            "start": 256.625,
+            "end": 267.625
+          },
+          {
+            "start": 277.75,
+            "end": 279.75
+          },
+          {
+            "start": 293.5,
+            "end": 312.5
+          },
+          {
+            "start": 327.625,
+            "end": 358.375
+          },
+          {
+            "start": 384.625,
+            "end": 394.125
+          },
+          {
+            "start": 406.75,
+            "end": 413.375
+          },
+          {
+            "start": 428.875,
+            "end": 430.125
+          },
+          {
+            "start": 438.125,
+            "end": 448.875
+          },
+          {
+            "start": 469.125,
+            "end": 480.375
+          },
+          {
+            "start": 492.75,
+            "end": 504.125
+          },
+          {
+            "start": 524.75,
+            "end": 529.625
+          },
+          {
+            "start": 545.0,
+            "end": 549.375
+          },
+          {
+            "start": 562.125,
+            "end": 568.375
+          },
+          {
+            "start": 575.875,
+            "end": 585.125
+          },
+          {
+            "start": 600.5,
+            "end": 606.875
+          },
+          {
+            "start": 618.75,
+            "end": 628.5
+          },
+          {
+            "start": 641.75,
+            "end": 656.875
+          },
+          {
+            "start": 668.5,
+            "end": 671.75
+          },
+          {
+            "start": 708.5,
+            "end": 715.625
+          },
+          {
+            "start": 726.25,
+            "end": 735.75
+          },
+          {
+            "start": 751.25,
+            "end": 760.625
+          },
+          {
+            "start": 769.5,
+            "end": 785.625
+          },
+          {
+            "start": 787.25,
+            "end": 792.625
+          },
+          {
+            "start": 805.25,
+            "end": 816.125
+          },
+          {
+            "start": 827.75,
+            "end": 833.5
+          },
+          {
+            "start": 848.5,
+            "end": 855.625
+          },
+          {
+            "start": 868.875,
+            "end": 880.125
+          },
+          {
+            "start": 897.625,
+            "end": 905.75
+          },
+          {
+            "start": 924.375,
+            "end": 936.125
+          },
+          {
+            "start": 943.375,
+            "end": 955.625
+          },
+          {
+            "start": 972.75,
+            "end": 977.125
+          },
+          {
+            "start": 990.0,
+            "end": 998.125
+          },
+          {
+            "start": 1031.625,
+            "end": 1040.625
+          }
+        ],
+        "event": {
+          "trueRallies": 37,
+          "predictedRallies": 37,
+          "matchedRallies": 31,
+          "eventPrecision": 0.8378378378378378,
+          "eventRecall": 0.8378378378378378,
+          "eventF1": 0.8378378378378378
+        }
+      },
+      "storage": {
+        "av104Float32BytesCalculated": 1765920,
+        "contextual520Float32BytesCalculated": 8829600,
+        "savedDiagnosticFiles": [
+          {
+            "kind": "tokens",
+            "bytes": 32609280,
+            "expectedFloat32BytesCalculated": 32609280,
+            "sha256": "9b6aabe7ceb67aaaaf8864fbf0ab2e0bcae796f3c048ebc2a999038c3293947e"
+          },
+          {
+            "kind": "features",
+            "bytes": 67104960,
+            "expectedFloat32BytesCalculated": 67104960,
+            "sha256": "7ddabb0c5f91ed1132989feebaf5759697876593be827dbaeebbe600c796ab7b"
+          },
+          {
+            "kind": "probabilities",
+            "bytes": 67920,
+            "expectedFloat32BytesCalculated": 67920,
+            "sha256": "86379dcb4b2300a0e79545209c7dc3984c0bd53e4d6d589c557b966ca17edc01"
+          }
+        ],
+        "specialistFeatures": {
+          "servingSide": {
+            "rows": 37,
+            "columns": 237,
+            "decodedPayloadBytes": 70152,
+            "persistedBase64Bytes": 93536,
+            "publishedPredictions": 37
+          },
+          "sideSwitch": {
+            "rows": 38,
+            "columns": 34,
+            "decodedPayloadBytes": 10336,
+            "persistedBase64Bytes": 13784,
+            "publishedPredictions": 0
+          }
+        }
+      },
+      "parity": {
+        "schema": "shared-video-parity-v1",
+        "exact": true,
+        "checks": {
+          "visualExtractorVersion": true,
+          "audioExtractorVersion": true,
+          "cacheMode": true,
+          "frozenGraphHashes": true,
+          "roi": true,
+          "sampleRows": true,
+          "rallyCount": true,
+          "rallies": true,
+          "productionRallies": true,
+          "servingSideReady": true,
+          "sideSwitchReady": true,
+          "neural/times": true,
+          "neural/decoder": true,
+          "neural/featureRows": true,
+          "neural/featureDimension": true,
+          "neural/precision": true,
+          "video/sampleCount": true,
+          "video/sampleTimestamps": true,
+          "video/quality": true,
+          "video/decodedColorProfiles": true,
+          "video/frameSelection": true,
+          "video/seconds": true,
+          "video/startSeconds": true,
+          "video/sampleFps": true,
+          "video/decoder": true,
+          "video/hardwareDecoder": true,
+          "servingSide": true,
+          "sideSwitch": true,
+          "tensor/tokens": true,
+          "tensor/features": true,
+          "tensor/probabilities": true
+        },
+        "tensors": {
+          "tokens": {
+            "bytes": [
+              32609280,
+              32609280
+            ],
+            "sha256": [
+              "9b6aabe7ceb67aaaaf8864fbf0ab2e0bcae796f3c048ebc2a999038c3293947e",
+              "9b6aabe7ceb67aaaaf8864fbf0ab2e0bcae796f3c048ebc2a999038c3293947e"
+            ],
+            "exact": true,
+            "maxAbsoluteError": 0.0,
+            "finite": true
+          },
+          "features": {
+            "bytes": [
+              67104960,
+              67104960
+            ],
+            "sha256": [
+              "7ddabb0c5f91ed1132989feebaf5759697876593be827dbaeebbe600c796ab7b",
+              "7ddabb0c5f91ed1132989feebaf5759697876593be827dbaeebbe600c796ab7b"
+            ],
+            "exact": true,
+            "maxAbsoluteError": 0.0,
+            "finite": true
+          },
+          "probabilities": {
+            "bytes": [
+              67920,
+              67920
+            ],
+            "sha256": [
+              "86379dcb4b2300a0e79545209c7dc3984c0bd53e4d6d589c557b966ca17edc01",
+              "86379dcb4b2300a0e79545209c7dc3984c0bd53e4d6d589c557b966ca17edc01"
+            ],
+            "exact": true,
+            "maxAbsoluteError": 0.0,
+            "finite": true
+          }
+        },
+        "pixelsRequired": false
+      },
+      "temporalReplay": {
+        "passed": true,
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 4245,
+            "rallies": 37,
+            "maxProbabilityError": 4.76837158203125e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "resultSha256": "b5cec0b8371640b93ca28da80d93ac61943d3b21fc7b8e8bce089a7200ff13a5",
+      "avRows": 4245,
+      "embeddingRows": 2123,
+      "decoder": "c2.google.avc.decoder",
+      "hardwareDecoder": true,
+      "preparedBufferBytes": 2408448,
+      "historicalPixelReference": {
+        "timings": {
+          "allReadySeconds": 1497.437,
+          "ralliesReadySeconds": 1362.619,
+          "videoAvSeconds": 805.417,
+          "audioSeconds": 82.948,
+          "contextSeconds": 0.138,
+          "embeddingVideoPassSeconds": 471.93656773000004,
+          "embeddingDecodeOtherSeconds": 262.58613751400003,
+          "embeddingPreparationSeconds": 165.78091293,
+          "embeddingEncoderSeconds": 43.569517286,
+          "temporalSeconds": 0.21794898399999998,
+          "fusionAndSaveSeconds": 1.177189246,
+          "scoreSeconds": 134.818,
+          "scoreDecodeSeconds": 112.227349251,
+          "servingEvaluationSeconds": 3.994487634,
+          "sideSwitchEvaluationSeconds": 18.396680118
+        },
+        "thermalStart": 0,
+        "thermalEnd": 0,
+        "resultSha256": "dc8aa40c9952ac65a21f44183246254e13414cf7151c37e6c2db68ad60338955",
+        "scope": "Earlier corrected Java area plus independent embedding decode; conditions are not matched and both optimizations differ"
+      },
+      "independentMetricCheck": {
+        "passed": true,
+        "paddingCases": 4,
+        "maximumAbsoluteError": 0
+      },
+      "productionFromSameAv": {
+        "primary": {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.6632802811925428,
+          "R_core": 0.9901184561998588,
+          "F1_padP_coreR": 0.7943952456113528,
+          "paddedModelExportSeconds": 694.8914890000001,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 224.24679122221903,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        "padding": [
+          {
+            "paddingSecondsBeforeAndAfter": 0.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.610198940377007,
+            "R_core": 0.9671649418988322,
+            "F1_padP_coreR": 0.7482902700484847,
+            "paddedModelExportSeconds": 509.0164890000001,
+            "paddedHumanExportSeconds": 321.1461755555591,
+            "exportDurationDifferenceSeconds": 187.87031344444097,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 1.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.6360307729081622,
+            "R_core": 0.9877967028084866,
+            "F1_padP_coreR": 0.773812624504509,
+            "paddedModelExportSeconds": 607.0164890000001,
+            "paddedHumanExportSeconds": 397.1455533333367,
+            "exportDurationDifferenceSeconds": 209.8709356666634,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 2.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.6632802811925428,
+            "R_core": 0.9901184561998588,
+            "F1_padP_coreR": 0.7943952456113528,
+            "paddedModelExportSeconds": 694.8914890000001,
+            "paddedHumanExportSeconds": 470.64469777778106,
+            "exportDurationDifferenceSeconds": 224.24679122221903,
+            "coreHumanSeconds": 321.1461755555591
+          },
+          {
+            "paddingSecondsBeforeAndAfter": 3.0,
+            "joinGapSeconds": 3.0,
+            "P_pad": 0.7090025322061226,
+            "R_core": 0.9901184561998588,
+            "F1_padP_coreR": 0.8263054807983862,
+            "paddedModelExportSeconds": 757.5164890000001,
+            "paddedHumanExportSeconds": 544.6438533333364,
+            "exportDurationDifferenceSeconds": 212.87263566666365,
+            "coreHumanSeconds": 321.1461755555591
+          }
+        ],
+        "humanRallies": 37,
+        "whollyMissedSavedHumanRallies": 1,
+        "whollyMissedHumanRallyRanges": [
+          {
+            "humanRallyNumber": 22,
+            "start": 668.253836,
+            "end": 671.427256,
+            "evaluableCoreSeconds": 3.1734200000000783
+          }
+        ],
+        "rallies": [
+          {
+            "start": 3.25,
+            "end": 5.75
+          },
+          {
+            "start": 20.375,
+            "end": 24.875
+          },
+          {
+            "start": 51.5,
+            "end": 54.0
+          },
+          {
+            "start": 76.0,
+            "end": 78.5
+          },
+          {
+            "start": 95.0,
+            "end": 97.5
+          },
+          {
+            "start": 102.5,
+            "end": 105.0
+          },
+          {
+            "start": 110.5,
+            "end": 113.0
+          },
+          {
+            "start": 124.25,
+            "end": 126.75
+          },
+          {
+            "start": 140.0,
+            "end": 142.5
+          },
+          {
+            "start": 159.625,
+            "end": 171.125
+          },
+          {
+            "start": 183.0,
+            "end": 202.375
+          },
+          {
+            "start": 207.25,
+            "end": 210.0
+          },
+          {
+            "start": 214.75,
+            "end": 224.5
+          },
+          {
+            "start": 227.375,
+            "end": 231.375
+          },
+          {
+            "start": 235.125,
+            "end": 245.375
+          },
+          {
+            "start": 255.875,
+            "end": 268.125
+          },
+          {
+            "start": 273.375,
+            "end": 280.375
+          },
+          {
+            "start": 283.875,
+            "end": 313.75
+          },
+          {
+            "start": 319.0,
+            "end": 325.125
+          },
+          {
+            "start": 327.125,
+            "end": 356.625
+          },
+          {
+            "start": 366.625,
+            "end": 376.625
+          },
+          {
+            "start": 385.0,
+            "end": 393.375
+          },
+          {
+            "start": 396.125,
+            "end": 403.375
+          },
+          {
+            "start": 405.125,
+            "end": 413.0
+          },
+          {
+            "start": 419.125,
+            "end": 446.5
+          },
+          {
+            "start": 451.75,
+            "end": 454.25
+          },
+          {
+            "start": 455.125,
+            "end": 464.875
+          },
+          {
+            "start": 466.0,
+            "end": 479.875
+          },
+          {
+            "start": 492.375,
+            "end": 502.875
+          },
+          {
+            "start": 508.875,
+            "end": 512.875
+          },
+          {
+            "start": 525.0,
+            "end": 527.625
+          },
+          {
+            "start": 544.375,
+            "end": 548.25
+          },
+          {
+            "start": 559.0,
+            "end": 561.75
+          },
+          {
+            "start": 564.625,
+            "end": 567.875
+          },
+          {
+            "start": 573.5,
+            "end": 576.5
+          },
+          {
+            "start": 578.125,
+            "end": 584.0
+          },
+          {
+            "start": 600.5,
+            "end": 606.375
+          },
+          {
+            "start": 618.75,
+            "end": 628.125
+          },
+          {
+            "start": 641.75,
+            "end": 645.375
+          },
+          {
+            "start": 649.125,
+            "end": 654.375
+          },
+          {
+            "start": 661.75,
+            "end": 664.25
+          },
+          {
+            "start": 675.5,
+            "end": 678.0
+          },
+          {
+            "start": 688.5,
+            "end": 691.0
+          },
+          {
+            "start": 708.0,
+            "end": 714.75
+          },
+          {
+            "start": 725.625,
+            "end": 736.375
+          },
+          {
+            "start": 742.375,
+            "end": 747.375
+          },
+          {
+            "start": 750.75,
+            "end": 793.125
+          },
+          {
+            "start": 804.875,
+            "end": 813.875
+          },
+          {
+            "start": 828.125,
+            "end": 833.625
+          },
+          {
+            "start": 848.5,
+            "end": 854.375
+          },
+          {
+            "start": 863.25,
+            "end": 865.75
+          },
+          {
+            "start": 866.875,
+            "end": 876.125
+          },
+          {
+            "start": 883.0,
+            "end": 904.875
+          },
+          {
+            "start": 923.375,
+            "end": 933.875
+          },
+          {
+            "start": 941.125,
+            "end": 954.625
+          },
+          {
+            "start": 961.125,
+            "end": 964.625
+          },
+          {
+            "start": 972.375,
+            "end": 976.625
+          },
+          {
+            "start": 988.875,
+            "end": 998.625
+          },
+          {
+            "start": 1000.625,
+            "end": 1009.125
+          },
+          {
+            "start": 1012.125,
+            "end": 1016.125
+          },
+          {
+            "start": 1026.0,
+            "end": 1030.125
+          },
+          {
+            "start": 1032.875,
+            "end": 1040.375
+          },
+          {
+            "start": 1055.125,
+            "end": 1061.016489
+          }
+        ],
+        "event": {
+          "trueRallies": 37,
+          "predictedRallies": 54,
+          "matchedRallies": 30,
+          "eventPrecision": 0.5555555555555556,
+          "eventRecall": 0.8108108108108109,
+          "eventF1": 0.6593406593406594
+        }
+      }
+    }
+  ],
+  "shortPreparedPixelsVersusEmulator": {
+    "scope": "Short prepared neural FP32 pixels: validated emulator versus physical Pixel",
+    "exact": true,
+    "samples": 240,
+    "matchingPixelHashes": 240
+  },
+  "frozenGraphs": {
+    "mobile-large-encoder-fp32.onnx": "d6fa70ab57c446794655ebce061bebe95d26aed43643ccbb4e4398d9567ce783",
+    "mobile-large-tcn-dynamic-fp32.onnx": "696f7571c3bd618b4c1b4ecfcba1104415ec0a806ba7b0a15b57b8e8e0526874",
+    "mobile-large-pipeline.json": "7733b5dd3bd29d262169b06fc5ce459acaf8dbcc7a7a490d98a7fec3f85aef54",
+    "mobile-large-encoder-pool_weights.f32": "ac0af3a32532146b396d6dbb9dcbcc3e18196e00c55dcf37d0d30f9f5d81c0be"
+  },
+  "limitations": [
+    "One fresh-process observation per duration; caches bypassed, no discarded warmup. Transfers and source hashing are excluded from device timing.",
+    "Device-condition observations cover host orchestration, including transfer intervals; the measured stage and total times come from the app's internal clock.",
+    "The phone was wirelessly charging. Thermal status and battery-temperature observations are recorded; this is not a controlled cool-device comparison.",
+    "Historical Pixel reference times combine a different preprocessing implementation and separate decode passes, with unmatched device conditions; do not attribute their entire timing difference to shared decoding alone.",
+    "This tests the existing FP32 CPU neural path in the native app harness, not a newly introduced GPU or NNAPI delegate.",
+    "The exact comparison is against corrected same-phone outputs. Older Pixel references did not capture prepared-pixel hashes; the new short run does, but no same-phone historical pixel-hash equality is claimed.",
+    "Fixed, repeatedly investigated recording with manually reviewed export-derived labels; this is runtime/output qualification, not model selection or a new generalization result.",
+    "Short excerpt labels use a nominal 180-second offset for a stream-copy excerpt; full-video metrics are the headline accuracy evidence.",
+    "Embedding preparation/inference overlap the AV stage. Their diagnostic timings must not be added again to AV wall time. Score specialists retain their later shared pass."
+  ]
+}

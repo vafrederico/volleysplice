@@ -7,9 +7,11 @@ import styles from "./labeling-serving-panel.module.css";
 
 const verdictLabel = { near: "Near serve", far: "Far serve", review: "Needs review", "not-serve": "Rejected by serve gate" };
 
-export function LabelingServingPanel({ predictions, modelLabel, ignoredIntervals, onSeek }: {
+export function LabelingServingPanel({ predictions, modelLabel, ignoredIntervals, onSeek, anchorLabel = "production rally starts", heading = "Production serve predictions" }: {
   predictions: ServingPrediction[];
   modelLabel: string;
+  anchorLabel?: string;
+  heading?: string;
   ignoredIntervals: IgnoredInterval[];
   onSeek: (time: number) => void;
 }) {
@@ -18,10 +20,10 @@ export function LabelingServingPanel({ predictions, modelLabel, ignoredIntervals
   const rows = predictions.filter(row => showIgnored || !isIgnored(row));
   const count = (verdict: ServingPrediction["verdict"]) => rows.filter(row => row.verdict === verdict).length;
   const ignoredCount = predictions.filter(isIgnored).length;
-  return <section className={styles.panel} aria-label="Production serve predictions">
-    <h3>Production serve predictions</h3>
+  return <section className={styles.panel} aria-label={heading}>
+    <h3>{heading}</h3>
     <p>{modelLabel} · {count("near")} near · {count("far")} far · {count("review")} need review · {count("not-serve")} rejected by serve gate</p>
-    <p>These predictions use production rally starts as anchors, not confirmed serve-contact times. “Needs review” preserves the predicted side as a suggestion. Rejected candidates do not become serve markers or remove rallies. Scores are model outputs, not calibrated confidence.</p>
+    <p>These predictions use {anchorLabel} as anchors, not confirmed serve-contact times. “Needs review” preserves the predicted side as a suggestion. Rejected candidates do not become serve markers or remove rallies. Scores are model outputs, not calibrated confidence.</p>
     {ignoredCount > 0 && <label className={styles.toggle}><input type="checkbox" checked={showIgnored} onChange={event => setShowIgnored(event.target.checked)} /> Include {ignoredCount} candidates in ignored footage</label>}
     <div className={styles.scroll}>
       <table><thead><tr><th>Candidate / anchor</th><th>Decision</th><th>Side scores</th><th>Why / serve evidence</th></tr></thead>

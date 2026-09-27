@@ -5,6 +5,7 @@ import type { LabelDocument } from "../annotations.ts";
 import { parseProductionEditorLabManifest, type LabConfiguration, type ProductionEditorLabTask } from "../production-editor-lab.ts";
 import { loadNeuralComparison } from "./neural-comparison.ts";
 import { loadEditorSuppression } from "./editor-lab-suppression.ts";
+import { loadEditorLabServing } from "./editor-lab-serving.ts";
 
 /** Human reference is appended after inference loading; never an input to model configurations. */
 export function humanExportConfiguration(document: LabelDocument, source: "draft" | "completed" | "imported"): LabConfiguration {
@@ -31,7 +32,7 @@ export function humanExportConfiguration(document: LabelDocument, source: "draft
     events, ignoredIntervals, humanReference: { revision, source, scoreTracking }, proposals: [], removals: [], splits: [] };
 }
 
-export async function loadProductionEditorLab(recording: LabelDocument["recording"]): Promise<ProductionEditorLabTask | null> {
+export async function loadProductionEditorLab(recording: LabelDocument["recording"], includeServingResults = true): Promise<ProductionEditorLabTask | null> {
   const configured = process.env.VOLLEYCUT_EDITOR_LAB_MANIFEST_PATH?.trim();
   let task: ProductionEditorLabTask | null = null;
   if (configured) {
@@ -40,7 +41,7 @@ export async function loadProductionEditorLab(recording: LabelDocument["recordin
     task = parseProductionEditorLabManifest(JSON.parse(raw), recording, createHash("sha256").update(raw).digest("hex"));
   }
   const comparison = await loadNeuralComparison(recording);
-  if (!comparison) return task;
+  if (!comparison) return task && includeServingResults ? loadEditorLabServing(task, recording) : task;
   const configurations: LabConfiguration[] = comparison.references.map(reference => ({
     id: reference.modelId, label: reference.modelLabel, description: reference.description,
     sourcePolicy: "frozen-recall-sweep", sourceRevision: /^[a-f0-9]{64}$/.test(String(reference.research?.provenance?.uiDraftRevision))
@@ -72,5 +73,5 @@ export async function loadProductionEditorLab(recording: LabelDocument["recordin
         description: "Frozen production ensemble on the comparison study's cached features. This is the production agreement reference used for neural suppression combinations. The older Production ensemble mode and its saved edits remain separate." });
     }
   }
-  return task;
+  return includeServingResults ? loadEditorLabServing(task, recording) : task;
 }

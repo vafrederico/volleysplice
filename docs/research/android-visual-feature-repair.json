@@ -1,0 +1,78 @@
+﻿{
+    "schema":  "android-visual-feature-repair-v1",
+    "artifactIndex":  "private-reference-0223",
+    "recordingIndex":  "recording-044",
+    "visualExtractorVersion":  "opencv-v3-area-nearest-frame",
+    "audioExtractorVersion":  "native-dsp-v2-codec-framing-percentile",
+    "status":  "full-video-repair-verified-both-selections-performance-regression-measured",
+    "sourceHashes":  {
+                         "android/video-common/src/main/java/com/volleycut/video/YuvAreaResampler.java":  "e444849e54726b7b47d90d42957011ae07181c59f1a336ec0dde7663468ec72b",
+                         "android/video-common/src/main/java/com/volleycut/video/NearestFrameSelection.java":  "1c617555bdbc8843603faaea0565cb1a148a2f876b60847729c2bc6bbd2a047b",
+                         "android/app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java":  "8bf83d0d64989dc2cfa660df18dff339c175d545c36a7da78a5bbb5200955fe8",
+                         "android/neuralbenchmark/src/main/java/com/volleycut/neuralbenchmark/VideoEncoderBenchmark.java":  "cf2dfacf0defd55628aa80c5be7eb40003111b354d85d72cff042925138e4f79",
+                         "android/app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java":  "78be8d0f48ebad379a6289ee9b45935c3fbd6a2c3eea7b0e2a25e515a3fc1cb0",
+                         "android/app/src/main/java/com/volleycut/nativeanalysis/NativeProjectStore.kt":  "1decd9d7b442cc7f22e29d1ab65c6904bdbed00dd17bee7785f1b50987586747",
+                         "android/app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/PipelineBenchmarkActivity.java":  "2ef23abca60b62a710efedf5df1591dc1c76abffdd08e7c8cfd3cb008c64b78b"
+                     },
+    "benchmarkApkSha256":  "0def04700bdd295aba13164c55d392df746bb4d34018dd22ba3c23570ea6b1f8",
+    "verification":  {
+                         "instrumentationFailures":  0,
+                         "areaColorRotationCases":  24,
+                         "normalDebugBuild":  true,
+                         "benchmarkDebugBuild":  true,
+                         "unitTests":  194,
+                         "unitFailures":  0,
+                         "asyncSynchronousFixtureMaximumFeatureErrorAllowed":  1E-05,
+                         "instrumentationTests":  4,
+                         "maximumAreaChannelErrorAllowed":  1
+                     },
+    "fullVideoInference":  {
+                               "status":  "complete",
+                               "models":  [
+                                              "highest-f1",
+                                              "highest-recall"
+                                          ],
+                               "weightsChanged":  false,
+                               "thresholdsChanged":  false,
+                               "interruption":  {
+                                                    "timingValid":  false,
+                                                    "lastObservedEmbeddingCount":  1925,
+                                                    "expectedEmbeddingCount":  2123,
+                                                    "reason":  "Device locked during embeddings; ADB disconnected before output retrieval"
+                                                },
+                               "highestF1Validation":  {
+                                                           "probabilityReplayMaxAbsoluteError":  1.1324882507324219E-06,
+                                                           "savedBoundariesReproduced":  true,
+                                                           "target16Recovered":  true,
+                                                           "commonDesktopMiss6Remains":  true,
+                                                           "whollyMissedSetEqualsDesktop":  true,
+                                                           "unexpectedWholeMissesRelativeToDesktop":  [
+
+                                                                                                      ]
+                                                       },
+                               "evaluationArtifact":  "android-visual-feature-repair-evaluation.json",
+                               "highestRecallValidation":  {
+                                                               "probabilityReplayMaxAbsoluteError":  4.76837158203125E-07,
+                                                               "savedBoundariesReproduced":  true,
+                                                               "target16Recovered":  true,
+                                                               "commonDesktopMiss6Remains":  false,
+                                                               "whollyMissedSetEqualsDesktop":  true,
+                                                               "unexpectedWholeMissesRelativeToDesktop":  [
+
+                                                                                                          ]
+                                                           },
+                               "highestRecallTotalMs":  1497437,
+                               "independentMetricChecks":  32
+                           },
+    "pilotInference":  {
+                           "status":  "complete",
+                           "variant":  "highest-f1",
+                           "durationSeconds":  120,
+                           "totalMs":  139857,
+                           "rallies":  7,
+                           "hostDecoderParity":  true,
+                           "maximumTemporalProbabilityError":  7.4505805969238281E-07,
+                           "scope":  "Saved native fused tensor replay; extraction parity not established",
+                           "timingRuns":  1
+                       }
+}

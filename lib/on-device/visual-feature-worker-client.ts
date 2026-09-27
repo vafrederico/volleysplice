@@ -35,6 +35,7 @@ export class VisualFeatureWorkerClient {
   static async create(
     detailedProfiling: boolean,
     reductionKernel: FeatureReductionKernel,
+    areaResize = false,
   ): Promise<VisualFeatureWorkerClient> {
     if (!("Worker" in globalThis) || !("OffscreenCanvas" in globalThis)) {
       throw new Error("Dedicated extraction workers are unavailable.");
@@ -70,6 +71,7 @@ export class VisualFeatureWorkerClient {
           type: "initialize",
           detailedProfiling,
           reductionKernel,
+          areaResize,
         };
         worker.postMessage(request);
       });

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { RallyTimeline, type TimelineTrack } from "@/components/rally-timeline";
+import { RallyTimeline, type TimelineTrack, type TimelineMarker } from "@/components/rally-timeline";
+import { LabelingServingPanel } from "@/components/labeling-serving-panel";
 import { compareLabDraft, labPaddingSensitivity } from "@/lib/production-editor-lab-comparison";
 import type { LabConfiguration, ProductionEditorLabTask } from "@/lib/production-editor-lab";
 import type { RallyDeskLabTools } from "./editor/designs/taste";
@@ -22,7 +23,13 @@ export function ComparisonRail({ task, configuration, tools }: { task: Productio
     draft.joinGapSeconds = tools.draft.joinGapSeconds;
     return compareLabDraft(task, base, draft);
   }, [task, configuration.suppressionBaseId, tools.draft.beforePaddingSeconds, tools.draft.afterPaddingSeconds, tools.draft.joinGapSeconds]);
-  if (!comparison) return <p className={styles.notice}>Save human labels to enable the comparison rail.</p>;
+  const servingResults = !!configuration.servingPredictions?.length && <details><summary>Serving-side results for this model’s rallies</summary>
+    <p>Predictions use the original model boundaries. Moving a rally start does not rerun serving-side inference.</p>
+    <LabelingServingPanel predictions={configuration.servingPredictions} modelLabel={configuration.label} heading="Serving-side predictions"
+      anchorLabel="this rally model's own starts" ignoredIntervals={(comparison?.ignored ?? task.ignoredIntervals).map(range => ({ ...range, reason: "Ignored footage" }))}
+      onSeek={timestamp => tools.seek(timestamp)} />
+  </details>;
+  if (!comparison) return <section className={styles.comparison}><p className={styles.notice}>Save human labels to enable the comparison rail.</p>{servingResults}</section>;
   const rows = (ranges: { start: number; end: number }[], prefix: string, tone?: "gold" | "ignored") => ranges.map((row, index) => ({ ...row, id: `${prefix}-${index}`, tone,
     title: `${prefix} · ${time(row.start)}–${time(row.end)}` }));
   const tracks: TimelineTrack[] = [
@@ -35,6 +42,20 @@ export function ComparisonRail({ task, configuration, tools }: { task: Productio
       missingHumanIntervals: rows(comparison.missing, "Missed human core") },
     ...(comparison.ignored.length ? [{ id: "human-ignored", label: "Ignored", detail: "Outside evaluation", intervals: rows(comparison.ignored, "Ignored", "ignored") }] : []),
   ];
+  const human = task.configurations.find(row => row.humanReference);
+  const markers: TimelineMarker[] = [
+    ...(human?.humanReference?.scoreTracking.serveMarkers ?? []).map(marker => ({
+      id: `saved:${marker.id}`, trackId: "saved-human", time: marker.timestamp,
+      tone: `serve-${marker.side}` as const, label: marker.side === "near" ? "N" : marker.side === "far" ? "F" : "?",
+      title: `Saved human serve · ${marker.side} · ${time(marker.timestamp)}`,
+    })),
+    ...tools.draft.scoreTracking.serveMarkers.filter(marker => (!marker.rallyId || tools.draft.cuts.some(cut => cut.id === marker.rallyId && cut.included))
+      && comparison.model.some(range => marker.timestamp >= range.start && marker.timestamp < range.end)).map(marker => ({
+      id: `current:${marker.id}`, trackId: "current-edit", time: marker.timestamp,
+      tone: `serve-${marker.side}` as const, label: marker.side === "near" ? "N" : marker.side === "far" ? "F" : "?",
+      title: `Current edit serve · ${marker.side} · ${time(marker.timestamp)}`,
+    })),
+  ].filter(marker => !comparison.ignored.some(range => marker.time >= range.start && marker.time < range.end));
   return <section className={styles.comparison} aria-label="Performance against saved human labels">
     <h3>Compared with human labels</h3>
     <p>Live export coverage · {comparison.before}s before / {comparison.after}s after · joins under {comparison.joinGapSeconds}s. Click the rail to seek.</p>
@@ -59,9 +80,11 @@ export function ComparisonRail({ task, configuration, tools }: { task: Productio
       <p>{time(baseline.exportSeconds - comparison.exportSeconds)} less export · {time(baseline.extraSeconds - comparison.extraSeconds)} less extra footage · {time(comparison.missedSeconds - baseline.missedSeconds)} additional missed human play. Negative values indicate the opposite change.</p>
     </div>}
     <div className={styles.comparisonLegend}><span>Green: matching export</span><span className={styles.extraFootageLegend}>Purple: extra footage vs human labels</span><span>Red marks: missed human core</span><span>Gold: joined gap</span></div>
-    <div className={styles.comparisonRail}><RallyTimeline duration={task.durationSeconds} currentTime={tools.currentTime} tracks={tracks} ariaLabel="Human comparison rail"
+    <p>Serve markers: N = near side · F = far side · ? = needs review. Saved human markers remain fixed.</p>
+    <div className={styles.comparisonRail}><RallyTimeline duration={task.durationSeconds} currentTime={tools.currentTime} tracks={tracks} markers={markers} ariaLabel="Human comparison rail"
       onSeek={time => tools.seek(time)} /></div>
     <p>Precision uses padded human export; recall measures retained human core time. This is not rally-event recall. Saved human labels stay fixed while you edit.</p>
+    {servingResults}
     <details><summary>Padding sensitivity: 0, 1, 2 and 3 seconds</summary>
       <div className={styles.comparisonTable}><table><thead><tr><th>Before / after</th><th>P_pad</th><th>R_core</th><th>F1_padP_coreR</th><th>Export</th><th>Human export</th><th>Difference</th></tr></thead>
         <tbody>{sensitivity.map(({ padding, comparison: row }) => row && <tr key={padding}><td>{padding}s / {padding}s</td>

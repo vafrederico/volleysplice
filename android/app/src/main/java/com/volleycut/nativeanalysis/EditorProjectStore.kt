@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 
 /** Stores only enough metadata to reopen the most recent editor after process death. */
 internal object EditorProjectStore {
-    private const val VERSION = 6
+    private const val VERSION = 7
     private const val TAG = "VolleySpliceEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
@@ -52,6 +52,7 @@ internal object EditorProjectStore {
         put("gameStartMs", seed.gameStartMs)
         put("gameEndMs", seed.gameEndMs)
         put("audioExtractorVersion", seed.audioExtractorVersion)
+        put("visualExtractorVersion", seed.visualExtractorVersion)
         put("analysisRoi", seed.analysisRoi?.let { roi -> JSONObject().apply {
             put("x", roi.x())
             put("y", roi.y())
@@ -121,6 +122,7 @@ internal object EditorProjectStore {
             } else json.optJSONObject("sideSwitch") != null,
             scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", false),
             audioExtractorVersion = json.optString("audioExtractorVersion", "legacy"),
+            visualExtractorVersion = json.optString("visualExtractorVersion", "legacy"),
             analysisRoi = json.optJSONObject("analysisRoi")?.let { roi ->
                 runCatching { AnalysisTypes.Roi(
                     roi.getDouble("x"), roi.getDouble("y"),

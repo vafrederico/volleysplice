@@ -17,7 +17,22 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
     private final File root;
     private final JSONObject spec;
     final JSONObject report=new JSONObject();
+    private SharedEmbeddingConsumer shared;
     NeuralRallyPipeline(Context context,File root,JSONObject spec) {this.context=context;this.root=root;this.spec=spec;}
+    @Override public SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
+            AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window, int sourceFrameLimit,
+            java.util.function.BooleanSupplier cancelled) throws IOException {
+        if(!spec.optBoolean("sharedDecoding",false)) return null;
+        String family=spec.optString("family");
+        if(!(family.equals("mobile") || family.equals("mobile-large")) || media.rotation()!=0
+                || window.start()!=0 || sourceFrameLimit!=Integer.MAX_VALUE) {
+            throw new IOException("Shared neural experiment requires MobileNet, unrotated input, zero start and full source frame limit");
+        }
+        shared=new SharedEmbeddingConsumer(root,family,spec.optString("id"),window.end(),
+                new double[]{roi.x(),roi.y(),roi.width(),roi.height()},
+                spec.optBoolean("capturePixelHashes",false),cancelled);
+        return shared;
+    }
     private File file(String name) throws IOException {
         File result=new File(root,name).getCanonicalFile();
         if(!result.toPath().startsWith(root.getCanonicalFile().toPath()))throw new IOException("Path escape");
@@ -43,16 +58,27 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride {
                 options.setIntraOpNumThreads(4);options.setInterOpNumThreads(1);
                 JSONObject videoSpec=new JSONObject().put("id",spec.getString("id")).put("videoUri",uri.toString())
                     .put("imageSize",mobile?224:336).put("sampleFps",mobile?2:4).put("seconds",duration)
-                    .put("roi",new JSONArray(new double[]{roi.x(),roi.y(),roi.width(),roi.height()})).put("quality",mobile);
+                    .put("roi",new JSONArray(new double[]{roi.x(),roi.y(),roi.width(),roi.height()})).put("quality",mobile)
+                    .put("capturePixelHashes",spec.optBoolean("capturePixelHashes",false));
                 if(mobile)videoSpec.put("poolWeights",prefix+"-encoder-pool_weights.f32");
                 long stage=System.nanoTime();
                 JSONObject video;
-                try(OrtSession encoder=env.createSession(file(prefix+"-encoder-fp32.onnx").toString(),options)) {
-                    profile.put("neural/encoder_load",ms(stage));
-                    video=VideoEncoderBenchmark.run(context,encoder,env,file("unused"),root,videoSpec);
+                if(shared!=null) {
+                    video=shared.report();
+                    profile.put("neural/shared_embedding_prepare",video.getDouble("prepareMs"));
+                    profile.put("neural/shared_encoder_inference_readback",video.getDouble("encoderAndReadbackMs"));
+                    profile.put("neural/shared_encoder_load",video.getDouble("encoderLoadMs"));
+                    profile.put("neural/shared_queue_backpressure",video.getDouble("queueBackpressureMs"));
+                    profile.put("neural/shared_video_span",video.getDouble("totalMs"));
+                } else {
+                    try(OrtSession encoder=env.createSession(file(prefix+"-encoder-fp32.onnx").toString(),options)) {
+                        profile.put("neural/encoder_load",ms(stage));
+                        video=VideoEncoderBenchmark.run(context,encoder,env,file("unused"),root,videoSpec);
+                    }
+                    profile.put("neural/embedding_video_pass",video.getDouble("totalMs"));
                 }
                 report.put("video",video);
-                profile.put("neural/embedding_video_pass",video.getDouble("totalMs"));
+                report.put("sharedDecoding",shared!=null);
                 stage=System.nanoTime();
                 FloatBuffer tokens;
                 // Map the saved embeddings rather than creating both a full

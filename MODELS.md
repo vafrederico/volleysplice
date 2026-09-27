@@ -521,16 +521,16 @@ production or a validated native-phone deployment. See the
 [experiment](docs/research/distilled-mobile-large-experiment.md) and
 [completed results](docs/research/distilled-mobile-large-results.md).
 
-The two selected distilled Large models now have native FP32 CPU measurements on
-the Pixel 10 Pro, bound by ledger `private-reference-0223`. For the same two-minute
+The two selected distilled Large models' initial native FP32 CPU measurements were
+made on the Pixel 10 Pro, bound by ledger `private-reference-0223`. For the same two-minute
 excerpt, median all-analysis time is 67.272s for highest F1 and 69.669s for highest
 recall, versus 70.431s for frozen Large and 43.142s for production. Single full-video
 observations are 604.768s / 602.463s until rallies are ready and 712.924s / 734.295s
 including serving-side and side-switch features and predictions. The encoder
 architecture is unchanged by distillation; differing rally boundaries affect
 specialist work, so lower total time does not establish a faster encoder.
-Both ONNX exports and all saved native temporal/decoder replays pass. Native input
-parity remains unresolved: on the same 37-rally gold snapshot, the two native
+Both ONNX exports and all saved native temporal/decoder replays passed. In that
+initial pipeline, native input parity was unresolved: on the same 37-rally gold snapshot, the two native
 choices wholly miss six / two rallies, versus one / zero using desktop features.
 Their native `P_pad / R_core / F1_padP_coreR` values are 90.69% / 86.35% / 88.46%
 and 87.66% / 93.84% / 90.65%. Frozen-input substitutions isolate most of the F1
@@ -557,6 +557,72 @@ to address this defect. The [shared app repair](docs/research/android-web-audio-
 corrects framing and startup noise-floor features and invalidates affected caches.
 The report distinguishes corrected audio validation from the historical complete
 pipeline benchmarks and remaining production accuracy/timing qualification.
+
+The subsequent [visual repair](docs/research/android-visual-feature-repair.md)
+restored the expected wholly missed counts on the same full recording: one for
+highest F1 and zero for highest recall. The frozen native temporal/decoder replay
+passes; this does not establish pixel-for-pixel desktop equivalence. The exact
+area-resize repair also caused a measured preprocessing regression. The shared
+app/benchmark [native area kernel](docs/research/android-native-area-optimization.md)
+preserves its pixels and inference outputs while reducing two-minute emulator
+all-results latency from 339.33s to 278.93s. Those are controlled emulator results;
+the optimized physical-phone runtime has not been measured. Model weights,
+selected seeds, calibration targets and decoders are unchanged.
+
+The [full optimized emulator validation](docs/research/android-native-area-full-video.md)
+completed recording-044 in 2,458.964s including both score specialists, with
+rallies ready at 2,100.003s. The unchanged highest-recall model produced 37
+intervals and wholly missed zero of the 37 saved human rallies. Its
+`P_pad / R_core / F1_padP_coreR` is 87.90% / 99.26% / 93.23%, with the same
+boundaries as the saved repaired Pixel output. This is a runtime validation on
+the fixed gold snapshot, not a new model-selection or generalization result.
+
+A separate [production-only full-video emulator comparison](docs/research/production-emulator-full-comparison.md)
+runs no neural encoder or TCN. All-ready time is 1,510.506s with original point
+sampling, 2,083.872s with repaired Java area, and 1,572.423s with optimized native
+area. Java/native production rallies and both score outputs match exactly;
+packaged model assets are identical across the three controls. This isolates a
+preprocessing implementation comparison with corrected audio held fixed, not
+a model or calibration change. Each version has one full-video timing observation.
+
+The opt-in shared AV/MobileNet decoder experiment uses the same frozen
+highest-recall Distilled Large selection, regional pooling, FP32 tensors,
+normalization and rally decoder. Its two-minute same-APK comparison preserves
+prepared pixel hashes, embeddings, fused features, probabilities, rally
+boundaries/confidences, production proposals and both score-specialist outputs
+exactly. It changes video scheduling rather than model calibration or training;
+the encoder/TCN remain in the experimental pipeline source set. The app decoder's
+shared-consumer hook introduces no neural weights into the normal production app.
+See the [experiment runner](scripts/benchmark-shared-video-decoding.py) and
+[strict output comparison](scripts/validate-shared-video-decoding.py).
+Its [completed full-video qualification](docs/research/android-shared-video-decoding.md)
+retains 37 predicted rallies, zero wholly missed saved human rallies, and unchanged
+87.90% / 99.26% / 93.23% `P_pad / R_core / F1_padP_coreR` at 2s padding. All saved
+embeddings, fused features, probabilities and specialist outputs are exact matches;
+the emulator's all-results time is 1,448.682s versus the earlier 2,458.964s reference.
+
+The [optimized physical Pixel run](docs/research/pixel-shared-video-decoding.md)
+qualifies this same highest-recall FP32 checkpoint without changing weights or
+calibration. Two-minute and full-video all-results times are 62.119s and 643.055s;
+the full recording has rallies ready at 449.292s, 37 predicted rallies and zero
+wholly missed saved human rallies. All saved tensors and decisions match the
+earlier corrected Pixel output exactly; independent temporal replay passes.
+The phone was wirelessly charging under light thermal status. Earlier Pixel
+timings use different preprocessing/scheduling and unmatched device conditions;
+their entire difference cannot be attributed to decode sharing alone.
+
+The [actual-video browser experiment](docs/research/distilled-large-browser-experiment.md)
+uses the same two frozen FP32 selections, with real image encoding, AV/audio
+features, temporal decoding and both production score specialists. The pinned
+ONNX Runtime Web 1.22.0 WebGPU implementation fails the original regional-pooling
+Einsum contract. A separately qualified Reshape/Transpose/MatMul export changes
+only that operation and preserves every trained initializer, temporal head,
+scaler and decoder. This is an export portability repair, not a new checkpoint
+or precision. Original WASM graphs remain valid. Browser preprocessing follows
+training's uint8 letterbox and FP16 token-cache rounding; the two selected
+distilled encoders have different weights and cannot share image embeddings.
+The experiment remains outside the shipped browser upload flow and does not
+establish physical mobile-browser speed or peak-memory suitability.
 
 The comparison UIs select one runnable draw per family/precision on the
 `common-unseen / exact-rallies / all` development panel at the declared symmetric

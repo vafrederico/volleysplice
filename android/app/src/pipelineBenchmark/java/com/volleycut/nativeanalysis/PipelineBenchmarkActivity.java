@@ -36,6 +36,8 @@ public final class PipelineBenchmarkActivity extends Activity {
             JSONObject plan=new JSONObject(Files.readString(new File(root,filename).toPath()));
             report.put("runId",plan.getString("runId")).put("status","running")
                 .put("device",android.os.Build.MODEL).put("cacheMode","bypass")
+                .put("visualExtractorVersion",NativeFeatureCache.VISUAL_EXTRACTOR_VERSION)
+                .put("audioExtractorVersion",NativeFeatureCache.AUDIO_EXTRACTOR_VERSION)
                 .put("scope","fresh video through selected rallies and both score specialists; no export rendering");
             JSONArray rows=new JSONArray();report.put("results",rows);save(report);
             JSONArray cases=plan.getJSONArray("cases");
@@ -109,6 +111,12 @@ public final class PipelineBenchmarkActivity extends Activity {
                         .put("thermalStart",result.thermalStatusStart()).put("thermalEnd",result.thermalStatusEnd())
                         .put("servingSideReady",result.servingSide()!=null).put("sideSwitchReady",result.sideSwitch()!=null)
                         .put("status","complete");
+                    // AnalysisEngine already evaluates these frozen heads for the
+                    // specialists. Preserve their independent rally output so an
+                    // extractor repair can also be checked against production.
+                    row.put("productionRallies",intervals(ProductionEnsemble.merge(
+                        result.productionComponents().allLabelsV2(),
+                        result.productionComponents().previousProduction())));
                     if(result.servingSide()!=null)row.put("servingSide",ServingSideJson.INSTANCE.encodeOutput(result.servingSide()));
                     if(result.sideSwitch()!=null)row.put("sideSwitch",SideSwitchJson.INSTANCE.encodeOutput(result.sideSwitch()));
                     if(neural!=null) row.put("neural",neural.report);

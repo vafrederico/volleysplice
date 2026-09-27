@@ -1,0 +1,1364 @@
+{
+  "schema": "android-emulator-visual-regression-v1",
+  "artifactIndex": "private-reference-0223",
+  "recordingIndex": "recording-044",
+  "modelIdentity": "dino-distilled-mobilenet-v3-large-tcn",
+  "selectionMode": "recall",
+  "precision": "fp32",
+  "seconds": 120,
+  "scope": "Same real two-minute excerpt; native x86_64 execution in the named Pixel 10 Pro emulator. Controlled visual-source regression comparison; no training, calibration, accuracy ranking or extrapolated physical-phone speed.",
+  "status": "complete",
+  "pipelineEnvironment": {
+    "systemImage": "Google APIs",
+    "systemImageRevision": 6,
+    "androidApi": 37,
+    "buildType": "userdebug",
+    "selinux": "Permissive",
+    "abi": "x86_64",
+    "configuredStorageGB": 24,
+    "guestMemory": [
+      "MemTotal:        4008504 kB",
+      "MemFree:         1922948 kB",
+      "MemAvailable:    3031168 kB"
+    ],
+    "emulatorVersion": "37.1.11.0",
+    "acceleration": "Windows Hypervisor Platform",
+    "graphicsMode": "host",
+    "scope": "Isolated debug-image comparison; original Play Store image failed MediaCodec shared-buffer permissions"
+  },
+  "operatorMicrobenchmark": {
+    "benchmark": "yuv-point-versus-area-conversion",
+    "fixture": "deterministic-synthetic-yuv420-strided-v1",
+    "sourceWidth": 1920,
+    "sourceHeight": 1080,
+    "outputWidth": 192,
+    "outputHeight": 108,
+    "rotationDegrees": 0,
+    "fullFrame": true,
+    "colorStandard": "BT709",
+    "colorRange": "limited",
+    "warmupFramesPerCase": 3,
+    "repetitions": 3,
+    "executionOrder": [
+      "point,area",
+      "area,point",
+      "point,area"
+    ],
+    "point": {
+      "samples": [
+        {
+          "repetition": 0,
+          "frames": 558,
+          "wallNanos": 750224900,
+          "threadCpuNanos": 752498275,
+          "wallMsPerFrame": 1.3444890681003585,
+          "threadCpuMsPerFrame": 1.348563216845878
+        },
+        {
+          "repetition": 1,
+          "frames": 524,
+          "wallNanos": 751126300,
+          "threadCpuNanos": 738909669,
+          "wallMsPerFrame": 1.43344713740458,
+          "threadCpuMsPerFrame": 1.4101329561068703
+        },
+        {
+          "repetition": 2,
+          "frames": 495,
+          "wallNanos": 751115700,
+          "threadCpuNanos": 751781780,
+          "wallMsPerFrame": 1.5174054545454545,
+          "threadCpuMsPerFrame": 1.5187510707070706
+        }
+      ],
+      "medianWallMsPerFrame": 1.43344713740458,
+      "medianThreadCpuMsPerFrame": 1.4101329561068703,
+      "outputChecksum": "ff2e6ff27eb2450f"
+    },
+    "area": {
+      "samples": [
+        {
+          "repetition": 0,
+          "frames": 6,
+          "wallNanos": 856014600,
+          "threadCpuNanos": 848734822,
+          "wallMsPerFrame": 142.6691,
+          "threadCpuMsPerFrame": 141.45580366666667
+        },
+        {
+          "repetition": 1,
+          "frames": 6,
+          "wallNanos": 851755700,
+          "threadCpuNanos": 847745522,
+          "wallMsPerFrame": 141.95928333333333,
+          "threadCpuMsPerFrame": 141.29092033333333
+        },
+        {
+          "repetition": 2,
+          "frames": 6,
+          "wallNanos": 901873300,
+          "threadCpuNanos": 889447035,
+          "wallMsPerFrame": 150.31221666666667,
+          "threadCpuMsPerFrame": 148.2411725
+        }
+      ],
+      "medianWallMsPerFrame": 142.6691,
+      "medianThreadCpuMsPerFrame": 141.45580366666667,
+      "outputChecksum": "8552a2ab38f635e"
+    },
+    "areaOverPointMedianWallRatio": 99.52867899845872,
+    "areaOverPointMedianThreadCpuRatio": 100.31380591033155,
+    "measurementScope": "Repeated conversion to reused RGBA byte arrays; includes the same small volatile output consumption for both cases. Excludes fixture/plan allocation, MediaCodec, RGB Mat allocation/copy, OpenCV features, audio, embeddings, model inference and file output. The cached synthetic fixture and emulator CPU do not predict phone latency.",
+    "legacyPointImplementation": "Preserved precomputed-offset loop from NativeVideoDecoder.YuvCropSampler, full-frame rotation-zero case",
+    "environment": {
+      "systemImage": "Google Play Store",
+      "androidApi": 37,
+      "buildType": "user",
+      "selinux": "Enforcing",
+      "abi": "x86_64",
+      "evidence": "Operator test ran on the original image before switching the end-to-end pipeline test to the debug system image."
+    },
+    "instrumentationFourTestsPassed": true
+  },
+  "identity": {
+    "abi": "x86_64",
+    "guestMemory": [
+      "MemTotal:        4008504 kB",
+      "MemFree:          124504 kB",
+      "MemAvailable:    1979712 kB"
+    ],
+    "sourceSha256": "06535d4955cf2a7bffcc2c804065b62b972d4ffd499b7d194b05edac6c66a4d8",
+    "sourceBytes": 492230456,
+    "sourceWidth": 1920,
+    "sourceHeight": 1080,
+    "sourceDurationSeconds": 120.063854,
+    "mediaEvidence": "Same MediaStore URI in every private plan; source receipt records SHA256 read inside emulator after transfer and dimensions checked through MediaStore.",
+    "graphHashes": {
+      "mobile-large-encoder-fp32.onnx": "d6fa70ab57c446794655ebce061bebe95d26aed43643ccbb4e4398d9567ce783",
+      "mobile-large-tcn-dynamic-fp32.onnx": "696f7571c3bd618b4c1b4ecfcba1104415ec0a806ba7b0a15b57b8e8e0526874",
+      "mobile-large-pipeline.json": "7733b5dd3bd29d262169b06fc5ce459acaf8dbcc7a7a490d98a7fec3f85aef54",
+      "mobile-large-encoder-pool_weights.f32": "ac0af3a32532146b396d6dbb9dcbcc3e18196e00c55dcf37d0d30f9f5d81c0be"
+    },
+    "nativeLibrariesIdentical": true,
+    "apks": {
+      "baseline": {
+        "sha256": "8cb485347a0696ce0843edde4c41a414c46c2fd531e0255dce7d63c400d921df",
+        "bytes": 146290337,
+        "abis": [
+          "x86_64"
+        ],
+        "nativeLibraryHashes": {
+          "lib/x86_64/libandroidx.graphics.path.so": "4e56c996f13670e70082658de7880c4020eabf4f25e43387f88ed78a713fc9f0",
+          "lib/x86_64/libc++_shared.so": "db9609240e60ca18b816a5e95a6bbc784e799261efbd5b30c8e2e03b540b3fa8",
+          "lib/x86_64/libonnxruntime.so": "f59d4d59d4c71532028d56ab6ca1dae62c3838c7982adfdad7f2560048b89ed9",
+          "lib/x86_64/libonnxruntime4j_jni.so": "fba30194109597cca36512e86c8f30d18951a0bdaa177ea680b562f9d8ea77a2",
+          "lib/x86_64/libopencv_java4.so": "373e5a25a92bf6a683fecf4d9c73adaf478c04efad10171d865dcf78b242709a",
+          "lib/x86_64/libtensorflowlite_gpu_jni.so": "e1fe41724462238665423b07b1152349a275672c393e04a8f699eb6e91995b46",
+          "lib/x86_64/libtensorflowlite_jni.so": "59fb31cc5aae55fd764ef74b0855db7549e981427e7debe31ef3a3f2792dc0d5"
+        }
+      },
+      "repaired": {
+        "sha256": "31b79e79b010db3142f5546f6e6bf1ad3c2ed6d58fed4df10ae5f99669ede9b4",
+        "bytes": 146290337,
+        "abis": [
+          "x86_64"
+        ],
+        "nativeLibraryHashes": {
+          "lib/x86_64/libandroidx.graphics.path.so": "4e56c996f13670e70082658de7880c4020eabf4f25e43387f88ed78a713fc9f0",
+          "lib/x86_64/libc++_shared.so": "db9609240e60ca18b816a5e95a6bbc784e799261efbd5b30c8e2e03b540b3fa8",
+          "lib/x86_64/libonnxruntime.so": "f59d4d59d4c71532028d56ab6ca1dae62c3838c7982adfdad7f2560048b89ed9",
+          "lib/x86_64/libonnxruntime4j_jni.so": "fba30194109597cca36512e86c8f30d18951a0bdaa177ea680b562f9d8ea77a2",
+          "lib/x86_64/libopencv_java4.so": "373e5a25a92bf6a683fecf4d9c73adaf478c04efad10171d865dcf78b242709a",
+          "lib/x86_64/libtensorflowlite_gpu_jni.so": "e1fe41724462238665423b07b1152349a275672c393e04a8f699eb6e91995b46",
+          "lib/x86_64/libtensorflowlite_jni.so": "59fb31cc5aae55fd764ef74b0855db7549e981427e7debe31ef3a3f2792dc0d5"
+        }
+      }
+    },
+    "sharedSourceHashes": {
+      "app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java": "764102c2e9287d26e5649646b70ea7fec217f14be2689bba53847ef0ff2ef2f8",
+      "app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java": "308f0c52013a7012186ebedb9e42c9170cca646e0ec570e66d92e23ece9d7d55",
+      "app/src/main/java/com/volleycut/nativeanalysis/FeatureSchema.java": "f31370050a1492d08429d8a97e9e0f78766cb85577036c8af43136e5068b258c",
+      "app/src/main/java/com/volleycut/nativeanalysis/AnalysisEngine.java": "c57f33fcb9c44c74ac7b985432122f33deb6a8fa24dafa62c620bb8235171cd2",
+      "app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/NeuralRallyPipeline.java": "5c3fe5d6ae100a1f6d7a455cded669fa819c5c63723d3ef71d240c0f97bd1e61",
+      "app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/PipelineBenchmarkActivity.java": "2ef23abca60b62a710efedf5df1591dc1c76abffdd08e7c8cfd3cb008c64b78b"
+    },
+    "baselineSourceCommit": "fad3b3b9f5735257fd3640392acd71c360d2b3f4",
+    "baselineReplacedSourceHashes": {
+      "app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java": "b958ff0036d411464485aa46b4d65539b193e65e1dcf72b29c094c5ed4778e5f",
+      "neuralbenchmark/src/main/java/com/volleycut/neuralbenchmark/VideoEncoderBenchmark.java": "7cb72afd96598265a89027b8b6506a67060e2adaa339f6ad01f5283f7545ae75"
+    },
+    "normalizedAudioBlockComparison": [
+      {
+        "run": "baseline-warmup",
+        "maxAbsoluteDifference": 0.0,
+        "exactValueFraction": 1.0
+      },
+      {
+        "run": "repaired-warmup",
+        "maxAbsoluteDifference": 0.0,
+        "exactValueFraction": 1.0
+      },
+      {
+        "run": "baseline-1",
+        "maxAbsoluteDifference": 0.0,
+        "exactValueFraction": 1.0
+      },
+      {
+        "run": "repaired-1",
+        "maxAbsoluteDifference": 0.0,
+        "exactValueFraction": 1.0
+      },
+      {
+        "run": "repaired-2",
+        "maxAbsoluteDifference": 0.0,
+        "exactValueFraction": 1.0
+      },
+      {
+        "run": "baseline-2",
+        "maxAbsoluteDifference": 0.0,
+        "exactValueFraction": 1.0
+      }
+    ],
+    "allRunMediaUriIdentical": true,
+    "allSharedAudioValuesExactlyEqual": true
+  },
+  "executionOrder": [
+    "baseline-warmup",
+    "repaired-warmup",
+    "baseline-1",
+    "repaired-1",
+    "repaired-2",
+    "baseline-2"
+  ],
+  "runs": [
+    {
+      "key": "baseline-warmup",
+      "variant": "baseline",
+      "warmup": true,
+      "timingsMs": {
+        "all_ready_ms": 291939,
+        "rallies_ready_ms": 238848,
+        "open_ms": 191,
+        "av_video_ms": 123384,
+        "audio_ms": 7435,
+        "context_ms": 49,
+        "rally_stage_ms": 107788,
+        "score_specialists_ms": 53091,
+        "top_level_unattributed_ms": 1,
+        "av_timestamp_plan_ms": 12164.7151,
+        "av_yuv_resize_color_ms": 2217.1553,
+        "av_opencv_calls_ms": 37289.3423,
+        "av_callback_cpu_ms": 25721.417041,
+        "av_callback_wall_ms": 98609.5983,
+        "av_feature_worker_cpu_ms": 24345.655893,
+        "av_total_thread_cpu_ms": 54103.093244,
+        "av_demux_read_ms": 3860.921,
+        "av_demux_advance_ms": 14710.8878,
+        "av_input_queue_ms": 64066.1137,
+        "av_queue_backpressure_ms": 102.2591,
+        "audio_thread_cpu_ms": 3540.068134,
+        "embedding_total_ms": 107341.6124,
+        "embedding_timestamp_plan_ms": 0,
+        "embedding_prepare_ms": 3774.9434,
+        "embedding_encoder_readback_ms": 2579.5407,
+        "embedding_decode_other_excluding_plan_ms": 100987.1283,
+        "tcn_inference_ms": 45.3845,
+        "fusion_normalization_save_ms": 115.3478,
+        "score_decode_ms": 49350.652,
+        "score_serving_evaluation_ms": 1239.4064,
+        "score_switch_evaluation_ms": 2387.4567
+      },
+      "neuralRallies": 6,
+      "productionRallies": 6,
+      "sampleRows": 480,
+      "embeddingSamples": 240,
+      "visualExtractorVersion": "benchmark-legacy-point-visual-v1",
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "embeddingDecoder": "c2.goldfish.h264.decoder",
+      "embeddingHardwareDecoder": true,
+      "decodedEmbeddingFrames": 7202,
+      "observations": {
+        "sampleCount": 20,
+        "monitorErrorCount": 0,
+        "namedWakefulnessCounts": {
+          "Awake": 20
+        },
+        "numericWakefulnessValues": [
+          "1"
+        ],
+        "allObservedAwake": true,
+        "hostAvailableMemoryMB": {
+          "median": 4122.041015625,
+          "min": 3791.984375,
+          "max": 4223.9296875,
+          "count": 22
+        },
+        "scope": "Wake and host available memory sampled approximately every 15 seconds; does not prove absence of shorter interruptions or host CPU contention."
+      },
+      "thermalStart": 0,
+      "thermalEnd": 0,
+      "tensorArtifacts": {
+        "tokens.f32": {
+          "sha256": "e3bfadee523aa249168cd94987818a5561fbac76c1d183f335301641df4dbb7e",
+          "bytes": 3686400
+        },
+        "features.f32": {
+          "sha256": "eac95fff39fc9fc4e8803f71785cbe1d9c53bbfa0ae202930549ec5467519625",
+          "bytes": 7587840
+        },
+        "probabilities.f32": {
+          "sha256": "a86491366b3b76f73bb5d78b77c66174ea44fe8aa1b83bba10c6ad1a7d955abb",
+          "bytes": 7680
+        }
+      },
+      "temporalDecoderParity": {
+        "passed": true,
+        "decoderParity": true,
+        "rows": 480,
+        "rallies": 6,
+        "maxProbabilityError": 2.980232238769531e-07,
+        "recomputedByThisInvocation": true
+      }
+    },
+    {
+      "key": "repaired-warmup",
+      "variant": "repaired",
+      "warmup": true,
+      "timingsMs": {
+        "all_ready_ms": 358277,
+        "rallies_ready_ms": 300675,
+        "open_ms": 84,
+        "av_video_ms": 177036,
+        "audio_ms": 7207,
+        "context_ms": 46,
+        "rally_stage_ms": 116298,
+        "score_specialists_ms": 57602,
+        "top_level_unattributed_ms": 4,
+        "av_timestamp_plan_ms": 6399.7848,
+        "av_yuv_resize_color_ms": 68592.6078,
+        "av_opencv_calls_ms": 33603.4429,
+        "av_callback_cpu_ms": 88697.248847,
+        "av_callback_wall_ms": 160832.14020000002,
+        "av_feature_worker_cpu_ms": 24568.55939,
+        "av_total_thread_cpu_ms": 116715.750003,
+        "av_demux_read_ms": 3183.7342,
+        "av_demux_advance_ms": 13567.2468,
+        "av_input_queue_ms": 62742.8452,
+        "av_queue_backpressure_ms": 241.8727,
+        "audio_thread_cpu_ms": 3407.760962,
+        "embedding_total_ms": 115875.3772,
+        "embedding_timestamp_plan_ms": 6774.9204,
+        "embedding_prepare_ms": 3768.7046,
+        "embedding_encoder_readback_ms": 2717.5389,
+        "embedding_decode_other_excluding_plan_ms": 102614.2133,
+        "tcn_inference_ms": 28.4941,
+        "fusion_normalization_save_ms": 126.4561,
+        "score_decode_ms": 53859.6095,
+        "score_serving_evaluation_ms": 1202.3998,
+        "score_switch_evaluation_ms": 2445.7131
+      },
+      "neuralRallies": 6,
+      "productionRallies": 8,
+      "sampleRows": 480,
+      "embeddingSamples": 240,
+      "visualExtractorVersion": "opencv-v3-area-nearest-frame",
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "embeddingDecoder": "c2.goldfish.h264.decoder",
+      "embeddingHardwareDecoder": true,
+      "decodedEmbeddingFrames": 7171,
+      "observations": {
+        "sampleCount": 24,
+        "monitorErrorCount": 0,
+        "namedWakefulnessCounts": {
+          "Awake": 24
+        },
+        "numericWakefulnessValues": [
+          "1"
+        ],
+        "allObservedAwake": true,
+        "hostAvailableMemoryMB": {
+          "median": 4068.369140625,
+          "min": 4015.41796875,
+          "max": 4203.09765625,
+          "count": 26
+        },
+        "scope": "Wake and host available memory sampled approximately every 15 seconds; does not prove absence of shorter interruptions or host CPU contention."
+      },
+      "thermalStart": 0,
+      "thermalEnd": 0,
+      "tensorArtifacts": {
+        "tokens.f32": {
+          "sha256": "6b56a60c41faf9322cee93c76b8cfe22f76423394381e1755ce442773cb44508",
+          "bytes": 3686400
+        },
+        "features.f32": {
+          "sha256": "6e1e9647ea3d57cd01c10a6131a20d34d89983cc5d3febe8125429e6dc885f04",
+          "bytes": 7587840
+        },
+        "probabilities.f32": {
+          "sha256": "ec227f97f98eadd88a47ab019b1b45dc7465fd76ee11d15d2ecec11302a7f4c8",
+          "bytes": 7680
+        }
+      },
+      "temporalDecoderParity": {
+        "passed": true,
+        "decoderParity": true,
+        "rows": 480,
+        "rallies": 6,
+        "maxProbabilityError": 4.76837158203125e-07,
+        "recomputedByThisInvocation": true
+      }
+    },
+    {
+      "key": "baseline-1",
+      "variant": "baseline",
+      "warmup": false,
+      "timingsMs": {
+        "all_ready_ms": 275804,
+        "rallies_ready_ms": 223269,
+        "open_ms": 142,
+        "av_video_ms": 108703,
+        "audio_ms": 6262,
+        "context_ms": 55,
+        "rally_stage_ms": 108105,
+        "score_specialists_ms": 52535,
+        "top_level_unattributed_ms": 2,
+        "av_timestamp_plan_ms": 6950.9963,
+        "av_yuv_resize_color_ms": 1932.3895,
+        "av_opencv_calls_ms": 34698.7233,
+        "av_callback_cpu_ms": 22683.767801,
+        "av_callback_wall_ms": 91863.837,
+        "av_feature_worker_cpu_ms": 25495.773758,
+        "av_total_thread_cpu_ms": 51442.724245000005,
+        "av_demux_read_ms": 3041.631,
+        "av_demux_advance_ms": 12697.7062,
+        "av_input_queue_ms": 61158.797,
+        "av_queue_backpressure_ms": 85.4178,
+        "audio_thread_cpu_ms": 3151.173938,
+        "embedding_total_ms": 107644.6978,
+        "embedding_timestamp_plan_ms": 0,
+        "embedding_prepare_ms": 3708.3075,
+        "embedding_encoder_readback_ms": 2702.7533,
+        "embedding_decode_other_excluding_plan_ms": 101233.637,
+        "tcn_inference_ms": 36.5653,
+        "fusion_normalization_save_ms": 148.7102,
+        "score_decode_ms": 48728.2642,
+        "score_serving_evaluation_ms": 1222.196,
+        "score_switch_evaluation_ms": 2468.6326
+      },
+      "neuralRallies": 6,
+      "productionRallies": 6,
+      "sampleRows": 480,
+      "embeddingSamples": 240,
+      "visualExtractorVersion": "benchmark-legacy-point-visual-v1",
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "embeddingDecoder": "c2.goldfish.h264.decoder",
+      "embeddingHardwareDecoder": true,
+      "decodedEmbeddingFrames": 7202,
+      "observations": {
+        "sampleCount": 19,
+        "monitorErrorCount": 0,
+        "namedWakefulnessCounts": {
+          "Awake": 19
+        },
+        "numericWakefulnessValues": [
+          "1"
+        ],
+        "allObservedAwake": true,
+        "hostAvailableMemoryMB": {
+          "median": 4051.94140625,
+          "min": 3863.6328125,
+          "max": 4147.87890625,
+          "count": 21
+        },
+        "scope": "Wake and host available memory sampled approximately every 15 seconds; does not prove absence of shorter interruptions or host CPU contention."
+      },
+      "thermalStart": 0,
+      "thermalEnd": 0,
+      "tensorArtifacts": {
+        "tokens.f32": {
+          "sha256": "e3bfadee523aa249168cd94987818a5561fbac76c1d183f335301641df4dbb7e",
+          "bytes": 3686400
+        },
+        "features.f32": {
+          "sha256": "eac95fff39fc9fc4e8803f71785cbe1d9c53bbfa0ae202930549ec5467519625",
+          "bytes": 7587840
+        },
+        "probabilities.f32": {
+          "sha256": "a86491366b3b76f73bb5d78b77c66174ea44fe8aa1b83bba10c6ad1a7d955abb",
+          "bytes": 7680
+        }
+      },
+      "temporalDecoderParity": {
+        "passed": true,
+        "decoderParity": true,
+        "rows": 480,
+        "rallies": 6,
+        "maxProbabilityError": 2.980232238769531e-07,
+        "recomputedByThisInvocation": true
+      }
+    },
+    {
+      "key": "repaired-1",
+      "variant": "repaired",
+      "warmup": false,
+      "timingsMs": {
+        "all_ready_ms": 353829,
+        "rallies_ready_ms": 296537,
+        "open_ms": 62,
+        "av_video_ms": 176640,
+        "audio_ms": 6793,
+        "context_ms": 60,
+        "rally_stage_ms": 112975,
+        "score_specialists_ms": 57292,
+        "top_level_unattributed_ms": 7,
+        "av_timestamp_plan_ms": 7689.6012,
+        "av_yuv_resize_color_ms": 68713.9251,
+        "av_opencv_calls_ms": 34629.1724,
+        "av_callback_cpu_ms": 88281.043573,
+        "av_callback_wall_ms": 158488.4387,
+        "av_feature_worker_cpu_ms": 25797.847535,
+        "av_total_thread_cpu_ms": 118161.69532299999,
+        "av_demux_read_ms": 3325.5782,
+        "av_demux_advance_ms": 12627.944,
+        "av_input_queue_ms": 61604.5871,
+        "av_queue_backpressure_ms": 173.4429,
+        "audio_thread_cpu_ms": 3375.753596,
+        "embedding_total_ms": 112528.0526,
+        "embedding_timestamp_plan_ms": 7132.8284,
+        "embedding_prepare_ms": 3694.4507,
+        "embedding_encoder_readback_ms": 2441.7723,
+        "embedding_decode_other_excluding_plan_ms": 99259.0012,
+        "tcn_inference_ms": 31.0566,
+        "fusion_normalization_save_ms": 112.6186,
+        "score_decode_ms": 53504.5182,
+        "score_serving_evaluation_ms": 1172.4952,
+        "score_switch_evaluation_ms": 2516.8335
+      },
+      "neuralRallies": 6,
+      "productionRallies": 8,
+      "sampleRows": 480,
+      "embeddingSamples": 240,
+      "visualExtractorVersion": "opencv-v3-area-nearest-frame",
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "embeddingDecoder": "c2.goldfish.h264.decoder",
+      "embeddingHardwareDecoder": true,
+      "decodedEmbeddingFrames": 7171,
+      "observations": {
+        "sampleCount": 24,
+        "monitorErrorCount": 0,
+        "namedWakefulnessCounts": {
+          "Awake": 24
+        },
+        "numericWakefulnessValues": [
+          "1"
+        ],
+        "allObservedAwake": true,
+        "hostAvailableMemoryMB": {
+          "median": 3926.326171875,
+          "min": 3848.8046875,
+          "max": 4136.60546875,
+          "count": 26
+        },
+        "scope": "Wake and host available memory sampled approximately every 15 seconds; does not prove absence of shorter interruptions or host CPU contention."
+      },
+      "thermalStart": 0,
+      "thermalEnd": 0,
+      "tensorArtifacts": {
+        "tokens.f32": {
+          "sha256": "6b56a60c41faf9322cee93c76b8cfe22f76423394381e1755ce442773cb44508",
+          "bytes": 3686400
+        },
+        "features.f32": {
+          "sha256": "6e1e9647ea3d57cd01c10a6131a20d34d89983cc5d3febe8125429e6dc885f04",
+          "bytes": 7587840
+        },
+        "probabilities.f32": {
+          "sha256": "ec227f97f98eadd88a47ab019b1b45dc7465fd76ee11d15d2ecec11302a7f4c8",
+          "bytes": 7680
+        }
+      },
+      "temporalDecoderParity": {
+        "passed": true,
+        "decoderParity": true,
+        "rows": 480,
+        "rallies": 6,
+        "maxProbabilityError": 4.76837158203125e-07,
+        "recomputedByThisInvocation": true
+      }
+    },
+    {
+      "key": "repaired-2",
+      "variant": "repaired",
+      "warmup": false,
+      "timingsMs": {
+        "all_ready_ms": 350840,
+        "rallies_ready_ms": 293962,
+        "open_ms": 174,
+        "av_video_ms": 174390,
+        "audio_ms": 6585,
+        "context_ms": 47,
+        "rally_stage_ms": 112761,
+        "score_specialists_ms": 56878,
+        "top_level_unattributed_ms": 5,
+        "av_timestamp_plan_ms": 7007.2268,
+        "av_yuv_resize_color_ms": 67292.9626,
+        "av_opencv_calls_ms": 33948.6983,
+        "av_callback_cpu_ms": 85928.919687,
+        "av_callback_wall_ms": 157487.23690000002,
+        "av_feature_worker_cpu_ms": 24816.881465,
+        "av_total_thread_cpu_ms": 114433.735012,
+        "av_demux_read_ms": 3584.5051,
+        "av_demux_advance_ms": 11752.8033,
+        "av_input_queue_ms": 62539.673,
+        "av_queue_backpressure_ms": 210.9868,
+        "audio_thread_cpu_ms": 3216.765997,
+        "embedding_total_ms": 112317.75,
+        "embedding_timestamp_plan_ms": 6055.3527,
+        "embedding_prepare_ms": 3730.195,
+        "embedding_encoder_readback_ms": 2540.5071,
+        "embedding_decode_other_excluding_plan_ms": 99991.69519999999,
+        "tcn_inference_ms": 36.3934,
+        "fusion_normalization_save_ms": 116.8934,
+        "score_decode_ms": 53085.1957,
+        "score_serving_evaluation_ms": 1228.3533,
+        "score_switch_evaluation_ms": 2469.6846
+      },
+      "neuralRallies": 6,
+      "productionRallies": 8,
+      "sampleRows": 480,
+      "embeddingSamples": 240,
+      "visualExtractorVersion": "opencv-v3-area-nearest-frame",
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "embeddingDecoder": "c2.goldfish.h264.decoder",
+      "embeddingHardwareDecoder": true,
+      "decodedEmbeddingFrames": 7171,
+      "observations": {
+        "sampleCount": 24,
+        "monitorErrorCount": 0,
+        "namedWakefulnessCounts": {
+          "Awake": 24
+        },
+        "numericWakefulnessValues": [
+          "1"
+        ],
+        "allObservedAwake": true,
+        "hostAvailableMemoryMB": {
+          "median": 3877.205078125,
+          "min": 3726.76953125,
+          "max": 4002.1640625,
+          "count": 26
+        },
+        "scope": "Wake and host available memory sampled approximately every 15 seconds; does not prove absence of shorter interruptions or host CPU contention."
+      },
+      "thermalStart": 0,
+      "thermalEnd": 0,
+      "tensorArtifacts": {
+        "tokens.f32": {
+          "sha256": "6b56a60c41faf9322cee93c76b8cfe22f76423394381e1755ce442773cb44508",
+          "bytes": 3686400
+        },
+        "features.f32": {
+          "sha256": "6e1e9647ea3d57cd01c10a6131a20d34d89983cc5d3febe8125429e6dc885f04",
+          "bytes": 7587840
+        },
+        "probabilities.f32": {
+          "sha256": "ec227f97f98eadd88a47ab019b1b45dc7465fd76ee11d15d2ecec11302a7f4c8",
+          "bytes": 7680
+        }
+      },
+      "temporalDecoderParity": {
+        "passed": true,
+        "decoderParity": true,
+        "rows": 480,
+        "rallies": 6,
+        "maxProbabilityError": 4.76837158203125e-07,
+        "recomputedByThisInvocation": true
+      }
+    },
+    {
+      "key": "baseline-2",
+      "variant": "baseline",
+      "warmup": false,
+      "timingsMs": {
+        "all_ready_ms": 276354,
+        "rallies_ready_ms": 224276,
+        "open_ms": 143,
+        "av_video_ms": 109191,
+        "audio_ms": 7048,
+        "context_ms": 66,
+        "rally_stage_ms": 107826,
+        "score_specialists_ms": 52078,
+        "top_level_unattributed_ms": 2,
+        "av_timestamp_plan_ms": 7863.8202,
+        "av_yuv_resize_color_ms": 1937.4278,
+        "av_opencv_calls_ms": 35046.2687,
+        "av_callback_cpu_ms": 23145.20132,
+        "av_callback_wall_ms": 91857.7396,
+        "av_feature_worker_cpu_ms": 25814.924955,
+        "av_total_thread_cpu_ms": 52589.948689,
+        "av_demux_read_ms": 3119.7684,
+        "av_demux_advance_ms": 12775.7497,
+        "av_input_queue_ms": 61623.912,
+        "av_queue_backpressure_ms": 94.0682,
+        "audio_thread_cpu_ms": 3462.683601,
+        "embedding_total_ms": 107379.4723,
+        "embedding_timestamp_plan_ms": 0,
+        "embedding_prepare_ms": 3801.1945,
+        "embedding_encoder_readback_ms": 2356.899,
+        "embedding_decode_other_excluding_plan_ms": 101221.37879999999,
+        "tcn_inference_ms": 34.6155,
+        "fusion_normalization_save_ms": 110.3231,
+        "score_decode_ms": 48312.705,
+        "score_serving_evaluation_ms": 1217.0434,
+        "score_switch_evaluation_ms": 2446.9276
+      },
+      "neuralRallies": 6,
+      "productionRallies": 6,
+      "sampleRows": 480,
+      "embeddingSamples": 240,
+      "visualExtractorVersion": "benchmark-legacy-point-visual-v1",
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "embeddingDecoder": "c2.goldfish.h264.decoder",
+      "embeddingHardwareDecoder": true,
+      "decodedEmbeddingFrames": 7202,
+      "observations": {
+        "sampleCount": 19,
+        "monitorErrorCount": 0,
+        "namedWakefulnessCounts": {
+          "Awake": 19
+        },
+        "numericWakefulnessValues": [
+          "1"
+        ],
+        "allObservedAwake": true,
+        "hostAvailableMemoryMB": {
+          "median": 3930.78515625,
+          "min": 3806.7265625,
+          "max": 4035.203125,
+          "count": 21
+        },
+        "scope": "Wake and host available memory sampled approximately every 15 seconds; does not prove absence of shorter interruptions or host CPU contention."
+      },
+      "thermalStart": 0,
+      "thermalEnd": 0,
+      "tensorArtifacts": {
+        "tokens.f32": {
+          "sha256": "e3bfadee523aa249168cd94987818a5561fbac76c1d183f335301641df4dbb7e",
+          "bytes": 3686400
+        },
+        "features.f32": {
+          "sha256": "eac95fff39fc9fc4e8803f71785cbe1d9c53bbfa0ae202930549ec5467519625",
+          "bytes": 7587840
+        },
+        "probabilities.f32": {
+          "sha256": "a86491366b3b76f73bb5d78b77c66174ea44fe8aa1b83bba10c6ad1a7d955abb",
+          "bytes": 7680
+        }
+      },
+      "temporalDecoderParity": {
+        "passed": true,
+        "decoderParity": true,
+        "rows": 480,
+        "rallies": 6,
+        "maxProbabilityError": 2.980232238769531e-07,
+        "recomputedByThisInvocation": true
+      }
+    }
+  ],
+  "comparison": {
+    "all_ready_ms": {
+      "baseline": {
+        "median": 276079.0,
+        "min": 275804,
+        "max": 276354,
+        "count": 2
+      },
+      "repaired": {
+        "median": 352334.5,
+        "min": 350840,
+        "max": 353829,
+        "count": 2
+      },
+      "medianDelta": 76255.5,
+      "medianRatio": 1.276208983660474
+    },
+    "rallies_ready_ms": {
+      "baseline": {
+        "median": 223772.5,
+        "min": 223269,
+        "max": 224276,
+        "count": 2
+      },
+      "repaired": {
+        "median": 295249.5,
+        "min": 293962,
+        "max": 296537,
+        "count": 2
+      },
+      "medianDelta": 71477.0,
+      "medianRatio": 1.3194181590678031
+    },
+    "open_ms": {
+      "baseline": {
+        "median": 142.5,
+        "min": 142,
+        "max": 143,
+        "count": 2
+      },
+      "repaired": {
+        "median": 118.0,
+        "min": 62,
+        "max": 174,
+        "count": 2
+      },
+      "medianDelta": -24.5,
+      "medianRatio": 0.8280701754385965
+    },
+    "av_video_ms": {
+      "baseline": {
+        "median": 108947.0,
+        "min": 108703,
+        "max": 109191,
+        "count": 2
+      },
+      "repaired": {
+        "median": 175515.0,
+        "min": 174390,
+        "max": 176640,
+        "count": 2
+      },
+      "medianDelta": 66568.0,
+      "medianRatio": 1.611012694245826
+    },
+    "audio_ms": {
+      "baseline": {
+        "median": 6655.0,
+        "min": 6262,
+        "max": 7048,
+        "count": 2
+      },
+      "repaired": {
+        "median": 6689.0,
+        "min": 6585,
+        "max": 6793,
+        "count": 2
+      },
+      "medianDelta": 34.0,
+      "medianRatio": 1.0051089406461307
+    },
+    "context_ms": {
+      "baseline": {
+        "median": 60.5,
+        "min": 55,
+        "max": 66,
+        "count": 2
+      },
+      "repaired": {
+        "median": 53.5,
+        "min": 47,
+        "max": 60,
+        "count": 2
+      },
+      "medianDelta": -7.0,
+      "medianRatio": 0.8842975206611571
+    },
+    "rally_stage_ms": {
+      "baseline": {
+        "median": 107965.5,
+        "min": 107826,
+        "max": 108105,
+        "count": 2
+      },
+      "repaired": {
+        "median": 112868.0,
+        "min": 112761,
+        "max": 112975,
+        "count": 2
+      },
+      "medianDelta": 4902.5,
+      "medianRatio": 1.0454080238594736
+    },
+    "score_specialists_ms": {
+      "baseline": {
+        "median": 52306.5,
+        "min": 52078,
+        "max": 52535,
+        "count": 2
+      },
+      "repaired": {
+        "median": 57085.0,
+        "min": 56878,
+        "max": 57292,
+        "count": 2
+      },
+      "medianDelta": 4778.5,
+      "medianRatio": 1.091355758844503
+    },
+    "top_level_unattributed_ms": {
+      "baseline": {
+        "median": 2.0,
+        "min": 2,
+        "max": 2,
+        "count": 2
+      },
+      "repaired": {
+        "median": 6.0,
+        "min": 5,
+        "max": 7,
+        "count": 2
+      },
+      "medianDelta": 4.0,
+      "medianRatio": 3.0
+    },
+    "av_timestamp_plan_ms": {
+      "baseline": {
+        "median": 7407.40825,
+        "min": 6950.9963,
+        "max": 7863.8202,
+        "count": 2
+      },
+      "repaired": {
+        "median": 7348.414000000001,
+        "min": 7007.2268,
+        "max": 7689.6012,
+        "count": 2
+      },
+      "medianDelta": -58.99424999999974,
+      "medianRatio": 0.9920357771559304
+    },
+    "av_yuv_resize_color_ms": {
+      "baseline": {
+        "median": 1934.9086499999999,
+        "min": 1932.3895,
+        "max": 1937.4278,
+        "count": 2
+      },
+      "repaired": {
+        "median": 68003.44385,
+        "min": 67292.9626,
+        "max": 68713.9251,
+        "count": 2
+      },
+      "medianDelta": 66068.5352,
+      "medianRatio": 35.14555782775585
+    },
+    "av_opencv_calls_ms": {
+      "baseline": {
+        "median": 34872.496,
+        "min": 34698.7233,
+        "max": 35046.2687,
+        "count": 2
+      },
+      "repaired": {
+        "median": 34288.93535,
+        "min": 33948.6983,
+        "max": 34629.1724,
+        "count": 2
+      },
+      "medianDelta": -583.5606499999994,
+      "medianRatio": 0.9832658766381391
+    },
+    "av_callback_cpu_ms": {
+      "baseline": {
+        "median": 22914.4845605,
+        "min": 22683.767801,
+        "max": 23145.20132,
+        "count": 2
+      },
+      "repaired": {
+        "median": 87104.98163,
+        "min": 85928.919687,
+        "max": 88281.043573,
+        "count": 2
+      },
+      "medianDelta": 64190.497069499994,
+      "medianRatio": 3.801306610236898
+    },
+    "av_callback_wall_ms": {
+      "baseline": {
+        "median": 91860.7883,
+        "min": 91857.7396,
+        "max": 91863.837,
+        "count": 2
+      },
+      "repaired": {
+        "median": 157987.8378,
+        "min": 157487.23690000002,
+        "max": 158488.4387,
+        "count": 2
+      },
+      "medianDelta": 66127.04950000001,
+      "medianRatio": 1.7198615505458275
+    },
+    "av_feature_worker_cpu_ms": {
+      "baseline": {
+        "median": 25655.3493565,
+        "min": 25495.773758,
+        "max": 25814.924955,
+        "count": 2
+      },
+      "repaired": {
+        "median": 25307.3645,
+        "min": 24816.881465,
+        "max": 25797.847535,
+        "count": 2
+      },
+      "medianDelta": -347.9848564999993,
+      "medianRatio": 0.9864361676910147
+    },
+    "av_total_thread_cpu_ms": {
+      "baseline": {
+        "median": 52016.336467,
+        "min": 51442.724245000005,
+        "max": 52589.948689,
+        "count": 2
+      },
+      "repaired": {
+        "median": 116297.71516749999,
+        "min": 114433.735012,
+        "max": 118161.69532299999,
+        "count": 2
+      },
+      "medianDelta": 64281.37870049999,
+      "medianRatio": 2.2357921196791923
+    },
+    "av_demux_read_ms": {
+      "baseline": {
+        "median": 3080.6997,
+        "min": 3041.631,
+        "max": 3119.7684,
+        "count": 2
+      },
+      "repaired": {
+        "median": 3455.04165,
+        "min": 3325.5782,
+        "max": 3584.5051,
+        "count": 2
+      },
+      "medianDelta": 374.34195,
+      "medianRatio": 1.121511989630148
+    },
+    "av_demux_advance_ms": {
+      "baseline": {
+        "median": 12736.72795,
+        "min": 12697.7062,
+        "max": 12775.7497,
+        "count": 2
+      },
+      "repaired": {
+        "median": 12190.37365,
+        "min": 11752.8033,
+        "max": 12627.944,
+        "count": 2
+      },
+      "medianDelta": -546.3543000000009,
+      "medianRatio": 0.9571040300032474
+    },
+    "av_input_queue_ms": {
+      "baseline": {
+        "median": 61391.3545,
+        "min": 61158.797,
+        "max": 61623.912,
+        "count": 2
+      },
+      "repaired": {
+        "median": 62072.13005,
+        "min": 61604.5871,
+        "max": 62539.673,
+        "count": 2
+      },
+      "medianDelta": 680.7755499999985,
+      "medianRatio": 1.0110891110897382
+    },
+    "av_queue_backpressure_ms": {
+      "baseline": {
+        "median": 89.743,
+        "min": 85.4178,
+        "max": 94.0682,
+        "count": 2
+      },
+      "repaired": {
+        "median": 192.21485,
+        "min": 173.4429,
+        "max": 210.9868,
+        "count": 2
+      },
+      "medianDelta": 102.47185000000002,
+      "medianRatio": 2.1418366892125293
+    },
+    "audio_thread_cpu_ms": {
+      "baseline": {
+        "median": 3306.9287695000003,
+        "min": 3151.173938,
+        "max": 3462.683601,
+        "count": 2
+      },
+      "repaired": {
+        "median": 3296.2597965,
+        "min": 3216.765997,
+        "max": 3375.753596,
+        "count": 2
+      },
+      "medianDelta": -10.668973000000278,
+      "medianRatio": 0.9967737517970146
+    },
+    "embedding_total_ms": {
+      "baseline": {
+        "median": 107512.08505,
+        "min": 107379.4723,
+        "max": 107644.6978,
+        "count": 2
+      },
+      "repaired": {
+        "median": 112422.9013,
+        "min": 112317.75,
+        "max": 112528.0526,
+        "count": 2
+      },
+      "medianDelta": 4910.8162500000035,
+      "medianRatio": 1.0456768766759212
+    },
+    "embedding_timestamp_plan_ms": {
+      "baseline": {
+        "median": 0.0,
+        "min": 0,
+        "max": 0,
+        "count": 2
+      },
+      "repaired": {
+        "median": 6594.090550000001,
+        "min": 6055.3527,
+        "max": 7132.8284,
+        "count": 2
+      },
+      "medianDelta": 6594.090550000001,
+      "medianRatio": null
+    },
+    "embedding_prepare_ms": {
+      "baseline": {
+        "median": 3754.751,
+        "min": 3708.3075,
+        "max": 3801.1945,
+        "count": 2
+      },
+      "repaired": {
+        "median": 3712.32285,
+        "min": 3694.4507,
+        "max": 3730.195,
+        "count": 2
+      },
+      "medianDelta": -42.42815000000019,
+      "medianRatio": 0.9887001428323742
+    },
+    "embedding_encoder_readback_ms": {
+      "baseline": {
+        "median": 2529.82615,
+        "min": 2356.899,
+        "max": 2702.7533,
+        "count": 2
+      },
+      "repaired": {
+        "median": 2491.1396999999997,
+        "min": 2441.7723,
+        "max": 2540.5071,
+        "count": 2
+      },
+      "medianDelta": -38.68645000000015,
+      "medianRatio": 0.9847078622378853
+    },
+    "embedding_decode_other_excluding_plan_ms": {
+      "baseline": {
+        "median": 101227.5079,
+        "min": 101221.37879999999,
+        "max": 101233.637,
+        "count": 2
+      },
+      "repaired": {
+        "median": 99625.3482,
+        "min": 99259.0012,
+        "max": 99991.69519999999,
+        "count": 2
+      },
+      "medianDelta": -1602.1597000000038,
+      "medianRatio": 0.9841726845475368
+    },
+    "tcn_inference_ms": {
+      "baseline": {
+        "median": 35.5904,
+        "min": 34.6155,
+        "max": 36.5653,
+        "count": 2
+      },
+      "repaired": {
+        "median": 33.725,
+        "min": 31.0566,
+        "max": 36.3934,
+        "count": 2
+      },
+      "medianDelta": -1.865400000000001,
+      "medianRatio": 0.947586989750045
+    },
+    "fusion_normalization_save_ms": {
+      "baseline": {
+        "median": 129.51665,
+        "min": 110.3231,
+        "max": 148.7102,
+        "count": 2
+      },
+      "repaired": {
+        "median": 114.756,
+        "min": 112.6186,
+        "max": 116.8934,
+        "count": 2
+      },
+      "medianDelta": -14.760649999999998,
+      "medianRatio": 0.8860327996439068
+    },
+    "score_decode_ms": {
+      "baseline": {
+        "median": 48520.484599999996,
+        "min": 48312.705,
+        "max": 48728.2642,
+        "count": 2
+      },
+      "repaired": {
+        "median": 53294.85695,
+        "min": 53085.1957,
+        "max": 53504.5182,
+        "count": 2
+      },
+      "medianDelta": 4774.372350000005,
+      "medianRatio": 1.0983991068794892
+    },
+    "score_serving_evaluation_ms": {
+      "baseline": {
+        "median": 1219.6197,
+        "min": 1217.0434,
+        "max": 1222.196,
+        "count": 2
+      },
+      "repaired": {
+        "median": 1200.42425,
+        "min": 1172.4952,
+        "max": 1228.3533,
+        "count": 2
+      },
+      "medianDelta": -19.195449999999937,
+      "medianRatio": 0.9842611184453646
+    },
+    "score_switch_evaluation_ms": {
+      "baseline": {
+        "median": 2457.7801,
+        "min": 2446.9276,
+        "max": 2468.6326,
+        "count": 2
+      },
+      "repaired": {
+        "median": 2493.25905,
+        "min": 2469.6846,
+        "max": 2516.8335,
+        "count": 2
+      },
+      "medianDelta": 35.47895000000017,
+      "medianRatio": 1.0144353638472376
+    }
+  },
+  "metricDefinitions": {
+    "topLevel": "Open, AV, audio, context, rally and score are disjoint stage wall timings; rounding/setup residual shown separately.",
+    "detail": "AV profile timers overlap one another and asynchronous work; never sum them into pipeline time. Callback CPU and callback elapsed time are separate measurements.",
+    "embedding": "Timestamp planning, preparation, encoder/readback, and decode/other excluding planning are disjoint within embedding wall time.",
+    "rallyCounts": "Decoded interval count only; no gold comparison because pilot excerpt alignment is limited.",
+    "cpuUnits": "CPU milliseconds can exceed wall milliseconds when concurrent threads are aggregated."
+  },
+  "limitations": [
+    "Emulator CPU, GPU and codec behavior differ from the physical Pixel. Absolute latency or speedup does not forecast phone latency.",
+    "The original Google Play Store image failed MediaCodec shared-buffer permission checks before producing pipeline timing. Completed pipeline measurements use the separate Google APIs userdebug image with SELinux Permissive; this is an altered debug environment, not normal enforced Android behavior.",
+    "The operator benchmark ran separately on the original enforcing Play Store image with a cached synthetic fixture. Its area/point ratio is an operator-only comparison and must not be presented as an end-to-end or physical-phone speed ratio.",
+    "App feature cache is bypassed. Host/guest filesystem and JIT caches are not reset; explicit warmups precede measured runs.",
+    "Host CPU contention is not captured by the available-memory and wake sampler.",
+    "Two measured repetitions per implementation provide a regression screen, not a stable distribution estimate.",
+    "Only visual decoder and encoder source differ; this baseline uses corrected current audio, so it is not an exact historical APK reproduction."
+  ],
+  "repeatability": {
+    "baseline": {
+      "fusedTensorHashesIdentical": true,
+      "embeddingTensorHashesIdentical": true,
+      "neuralIntervalCounts": [
+        6,
+        6
+      ],
+      "productionIntervalCounts": [
+        6,
+        6
+      ]
+    },
+    "repaired": {
+      "fusedTensorHashesIdentical": true,
+      "embeddingTensorHashesIdentical": true,
+      "neuralIntervalCounts": [
+        6,
+        6
+      ],
+      "productionIntervalCounts": [
+        8,
+        8
+      ]
+    }
+  },
+  "timingScreen": {
+    "measuredRuns": 4,
+    "allMeasuredObservedAwake": true,
+    "allMeasuredMonitorErrorsZero": true
+  },
+  "independentAudit": {
+    "independentRawMedianChecks": 8,
+    "wakeParserRegressionCasesPassed": 4,
+    "wakeObservations": 130,
+    "wakeValues": {
+      "mWakefulness=Awake": 130,
+      "mWakefulness=1": 130
+    },
+    "hostAvailableMemoryMinimumMB": 3726.76953125,
+    "maximumReplayProbabilityError": 4.76837158203125e-07,
+    "allSixReplayPassed": true,
+    "nativeLibrariesIdentical": true,
+    "nativeLibraryCount": 7,
+    "audioValuesExactlyEqual": true,
+    "repeatability": {
+      "baseline": {
+        "fusedTensorHashesIdentical": true,
+        "embeddingTensorHashesIdentical": true,
+        "neuralIntervalCounts": [
+          6,
+          6
+        ],
+        "productionIntervalCounts": [
+          6,
+          6
+        ]
+      },
+      "repaired": {
+        "fusedTensorHashesIdentical": true,
+        "embeddingTensorHashesIdentical": true,
+        "neuralIntervalCounts": [
+          6,
+          6
+        ],
+        "productionIntervalCounts": [
+          8,
+          8
+        ]
+      }
+    },
+    "publicationPatternChecksPassed": true,
+    "auditedSourceSummarySha256": "5037bf98d226153b1c19d052450eab47894a93a115a00fd8b6be5f82634fb4e2"
+  },
+  "postTestState": {
+    "selinuxRestored": "Enforcing",
+    "adbRootDisabled": true,
+    "installedBenchmark": "repaired",
+    "timedRunsComplete": true,
+    "artifactIndex": "private-reference-0223"
+  }
+}

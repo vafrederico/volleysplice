@@ -56,6 +56,8 @@ def main():
     p.add_argument('--seconds',type=float,default=120)
     p.add_argument('--runs',type=int,default=4);p.add_argument('--families',default='production,mobile,dino')
     p.add_argument('--transfer-models',action='store_true')
+    p.add_argument('--shared-decoding',action='store_true',help='Experimental shared AV/MobileNet decoder; fresh-input mobile families only')
+    p.add_argument('--capture-pixel-hashes',action='store_true',help='Capture prepared neural input hashes for decoder parity; adds diagnostic work')
     p.add_argument('--adb-transfer-timeout',type=float,default=600,help='Seconds allowed for each model or tensor transfer, outside measured inference time')
     p.add_argument('--full-frame',action='store_true',default=True,help='Compatibility flag: new runs always use the full frame; pooling weights must match its letterbox geometry')
     a=p.parse_args()
@@ -105,6 +107,11 @@ def main():
         for family in ('mobile','mobile-large'):
             if family in families:transfer(a.graphs/(family+'-encoder-pool_weights.f32'))
     cases=[{'id':f'{family}-fp32-full-run{run}','family':family,'seconds':a.seconds,'fullFrame':a.full_frame,'warmup':run==0 and a.runs>1} for run in range(a.runs) for family in families]
+    if a.shared_decoding:
+        if not set(families)<=set(('mobile','mobile-large')):raise ValueError('Shared experiment requires mobile families')
+        for case in cases:case['sharedDecoding']=True
+    if a.capture_pixel_hashes:
+        for case in cases:case['capturePixelHashes']=True
     plan={'runId':uuid.uuid4().hex,'sourceUri':source_uri,'cases':cases}
     plan_path=a.output/'pipeline-plan.json';plan_path.write_text(json.dumps(plan,indent=2));transfer(plan_path)
     for kind in ('battery','thermalservice'):

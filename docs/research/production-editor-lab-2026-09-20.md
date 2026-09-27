@@ -103,6 +103,48 @@ Inference scripts: `scripts/prepare-editor-lab-neural-serves.mjs`, `scripts/edit
 
 ## Boundaries and export behavior
 
+### Serving-side results for comparison variants
+
+The comparison catalog now supports serving-side inference at each variant's own
+rally starts, including production replay, neural precision/recall choices and
+their suppression combinations. The frozen production `SERVSIDE237-FLIGHT`
+classifier extracts court-flow and flight features from full-frame video. Its
+within-recording percentile ranks are computed separately for each complete
+variant population; only identical-anchor raw features are shared. Human labels
+never enter this inference. Suppression preserves the original population's
+predictions so restoring a removed rally restores its serve result.
+
+External inference receipts are stored beside the configured comparison index,
+under `serving-v1`. The loader verifies recording content identity, model
+fingerprint, complete event identity and exact start/end geometry before using
+results. Resolve the catalog through `VOLLEYCUT_NEURAL_COMPARISON_INDEX_PATH` or
+ledger index `private-reference-0216`; media is streamed through the existing lab
+API. Preparation, bundling, inference and browser verification are implemented in
+`scripts/prepare-editor-lab-serving.py`, `scripts/build-editor-lab-serving.mjs`,
+`scripts/run-editor-lab-serving.mjs` and
+`scripts/test-editor-lab-serving-browser.mjs`. Pass external work/output locations
+and the browser executable through their CLI arguments.
+The inference runner requests `serving=omit` when reading rally geometry, so
+stale serving receipts cannot prevent their own regeneration. Normal editor
+requests continue to validate receipts before displaying them.
+
+The human comparison rail displays the labeling UI's N/F/? serving-side markers
+on both Saved human and Current edit. Clicking a marker seeks the source video.
+An expandable serving-side table includes near/far scores, review reasons and
+both production serve-head gates, including rejected candidates. Rejection does
+not remove a rally. Saved human markers remain fixed; current markers reflect
+edits and export visibility. Newly available predictions update untouched model
+markers while preserving manual corrections, changed boundaries and explicitly
+removed markers, including saved undo/redo history. Manually moved or created
+starts are not silently rescored.
+
+Validation covered all 44 catalog recordings and 648 recording/configuration
+pairs through the editor API. All 38 focused tests and TypeScript checks passed.
+Desktop/mobile Chrome checks verified human marker seeking, model switching,
+reloads, and preservation of manual corrections, boundary edits and undo history.
+The external browser receipt is `serving-v1/work/ui-check/serving-browser-checks.json`
+relative to the comparison catalog directory. Generated results remain on the NAS.
+
 The **Compared with human labels** rail below the editor timeline reuses the labeling tool's `RallyTimeline`. It compares the current editable draft with the saved human reference, updates with edits/restoration/undo and tracks the playhead. Clicking a segment seeks the source video. Matching padded export, extra exported footage, joined gaps, missed human core and ignored time remain separately visible; phones scroll the rail horizontally inside its panel.
 
 Live metrics are `P_pad`, `R_core`, `F1_padP_coreR`, actual export duration, its difference from padded human duration, extra exported footage and omitted human core. These are time-coverage diagnostics, not event recall. The actual production materializer supplies model exports, preserving manual keep edges, suppression overrides and barriers. Only saved human ignored intervals define the scoring universe: manually excluding wanted footage still lowers recall. Human labels remain fixed even while editing the Human export mode. An expandable sensitivity table reports precision, recall, F1, model/human durations and their difference for each symmetric 0/1/2/3-second padding case at the same gap threshold. The primary live case is the editor's current padding (initially 2/2 seconds).
@@ -136,6 +178,6 @@ The harness uses an existing Playwright installation and a fresh browser context
 
 The human label file was unchanged: SHA-256 `97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c`.
 
-This first UX prototype uses frozen predictions for this recording-044 recording. The editor does not rerun inference during editing, render an MP4, or save a production project archive. Those unavailable export actions are explicitly disabled; lab JSON and YouTube chapter downloads are available. Browser drafts are local to the browser and origin.
+The editor uses frozen predictions from the configured comparison catalog. It does not rerun inference during editing, render an MP4, or save a production project archive. Those unavailable export actions are explicitly disabled; lab JSON and YouTube chapter downloads are available. Browser drafts are local to the browser and origin.
 
 The initial production-site build attempt was blocked by disk exhaustion while installing dependencies. After the user freed space, C: had about 9.5 GiB available. Retrying `npm ci --no-audit --no-fund` and `npm run build` in `prod/` succeeded, including TypeScript, Vite, and postbuild checks for portable assets, integrity hashes, relative paths and Cloudflare asset limits. No production source or lockfile changed. The earlier disk-space blocker is resolved.

@@ -92,6 +92,7 @@ export function visualFeatureCacheKey(
     decodeStrategy: VideoDecodeStrategy;
     decoderAcceleration: VideoDecoderAcceleration;
     reductionKernel?: FeatureReductionKernel;
+    areaNearest?: boolean;
   },
 ): string {
   let featureSignature = 0x811c9dc5;
@@ -102,6 +103,7 @@ export function visualFeatureCacheKey(
   return JSON.stringify({
     schema: 1,
     featureSchema: featureSignature.toString(16),
+    ...(experiment?.areaNearest ? { visualExtractor: "opencv-area-nearest-grid-v1" } : {}),
     analysisFps: ANALYSIS_FPS,
     source: [source.name, source.size, source.lastModified],
     media: [info.duration, info.width, info.height, info.rotation, info.videoCodecString],

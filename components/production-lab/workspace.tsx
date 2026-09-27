@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabConfiguration, ProductionEditorLabTask } from "@/lib/production-editor-lab";
-import { hasVisibleTime, initialLabDraft, labSeed, labStorageKey, type LabDraft } from "@/lib/production-editor-lab-draft";
+import { addMissingLabServeMarkers, hasVisibleTime, initialLabDraft, labSeed, labStorageKey, type LabDraft } from "@/lib/production-editor-lab-draft";
 import { RallyDesk } from "./editor/designs/taste";
+import { editHistoryKey, readEditHistory, writeEditHistory } from "./editor/designs/taste/edit-history";
 import { parseCutDraft, type CutDraft } from "./editor/lib/cut-draft";
 import type { ReadyDesignReview } from "./editor/designs/useDesignReview";
 import type { OnDeviceSuppression } from "./editor/lib/on-device/types";
@@ -23,7 +24,25 @@ function Trial({ task, configuration, reportSave }: { task: ProductionEditorLabT
   const seed = useMemo(() => labSeed(task, configuration), [task, configuration]);
   const modelDraft = useMemo(() => initialLabDraft(task, configuration), [task, configuration]);
   const [initial] = useState<LabDraft>(() => {
-    try { const raw = localStorage.getItem(storageKey); return (raw && parseCutDraft(raw, seed)) || modelDraft; }
+    try { const raw = localStorage.getItem(storageKey); const saved = raw && parseCutDraft(raw, seed);
+      if (!saved) return modelDraft;
+      const merged = addMissingLabServeMarkers(saved, modelDraft);
+      if (JSON.stringify(saved.scoreTracking.serveMarkers) !== JSON.stringify(merged.scoreTracking.serveMarkers)) {
+        try {
+          const key = editHistoryKey(storageKey);
+          const rawHistory = localStorage.getItem(key);
+          // React may repeat initialization before the draft is persisted. Do
+          // not replace an already migrated history with a fresh empty one.
+          const migrated = readEditHistory(rawHistory, merged, seed);
+          if (!migrated.past.length && !migrated.future.length) {
+            const history = readEditHistory(rawHistory, saved, seed);
+            const refresh = (draft: CutDraft) => addMissingLabServeMarkers(draft, modelDraft);
+            writeEditHistory(localStorage, key, { past: history.past.map(refresh), present: merged, future: history.future.map(refresh) });
+          }
+        }
+        catch { /* The current draft remains usable if browser storage is full. */ }
+      }
+      return merged; }
     catch { return modelDraft; }
   });
   const latest = useRef<CutDraft>(initial);

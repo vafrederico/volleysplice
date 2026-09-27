@@ -9,6 +9,54 @@ import org.junit.Test
 
 class NativeProjectStoreTest {
     @Test
+    fun oldVisualOutputRemainsEditableButCannotSatisfyNewAnalysis() {
+        val saved = readyProject()
+        val oldJson = NativeProjectStore.encode(saved).apply {
+            put("version", 10)
+            put("id", NativeProjectStore.projectId(
+                saved.source, saved.media.durationSeconds(), saved.analysisWindow, saved.roi,
+                visualExtractorVersion = "legacy",
+            ))
+            remove("visualExtractorVersion")
+        }
+        val old = requireNotNull(NativeProjectStore.decode(oldJson))
+        val normalized = NativeProjectStore.normalizeStored(old)
+        val seed = requireNotNull(normalized.editorSeed())
+        val recovered = NativeProjectStore.fromSeed(seed, old.source, old.media)
+        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi)
+
+        assertEquals("legacy", normalized.visualExtractorVersion)
+        assertEquals(saved.ranges, normalized.ranges)
+        assertEquals(ProjectStatus.READY, normalized.status)
+        assertEquals(old.id, recovered.id)
+        assertEquals(seed.sourceRevision, recovered.editorSeed()?.sourceRevision)
+        assertNotEquals(fresh.id, recovered.id)
+        assertFalse(NativeProjectStore.matchesAnalysis(normalized, fresh))
+        assertFalse(NativeProjectStore.matchesAnalysis(recovered, fresh))
+    }
+
+    @Test
+    fun currentVisualProvenanceSurvivesProjectAndRecoveryRoundTrips() {
+        val queued = NativeProjectStore.newQueued(source,
+            AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"))
+        val saved = queued.copy(status = ProjectStatus.READY, ranges = readyProject().ranges)
+        val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(saved)))
+        val seed = requireNotNull(EditorProjectStore.decode(
+            EditorProjectStore.encode(requireNotNull(restored.editorSeed())),
+        ))
+        val recovered = NativeProjectStore.fromSeed(seed, saved.source, saved.media)
+
+        assertEquals(NativeFeatureCache.VISUAL_EXTRACTOR_VERSION, restored.visualExtractorVersion)
+        assertEquals(NativeFeatureCache.VISUAL_EXTRACTOR_VERSION, seed.visualExtractorVersion)
+        assertEquals(saved.id, recovered.id)
+        assertEquals(saved.ranges, recovered.ranges)
+        assertTrue(NativeProjectStore.matchesAnalysis(recovered, queued))
+        assertFalse(NativeProjectStore.matchesAnalysis(
+            recovered.copy(visualExtractorVersion = "older-visual-version"), queued,
+        ))
+    }
+
+    @Test
     fun oldAudioOutputRemainsEditableButCannotSatisfyNewAnalysis() {
         val saved = readyProject()
         val oldJson = NativeProjectStore.encode(saved).apply { remove("audioExtractorVersion") }

@@ -22,6 +22,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class AnalysisEngine {
     private final Context context;
     interface RallyOverride {
+        default SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
+                AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window,
+                int sourceFrameLimit, java.util.function.BooleanSupplier cancelled) throws IOException {
+            return null;
+        }
         List<AnalysisTypes.Interval> run(Uri uri, AnalysisTypes.Roi roi, double[] times,
                 float[] contextual, double duration, Map<String, Double> profile) throws IOException;
     }
@@ -228,10 +233,12 @@ final class AnalysisEngine {
                         cachedVisual.rows()
                 ));
             }
-            try {
+            try (SharedVideoFrameConsumer shared = rallyOverride != null && cachedVisual.rows() == 0
+                    ? rallyOverride.prepareSharedVideo(media, roi, analysisWindow,
+                            sourceFrameLimit, cancelled::get) : null) {
                 video = new NativeVideoDecoder(context).decode(
                         uri, media, roi, requestedTimes, sourceFrameLimit, decoderOptions,
-                        cachedVisual, visualWriter, progress, cancelled::get
+                        cachedVisual, visualWriter, progress, cancelled::get, shared
                 );
                 visualWriter.finish(video);
             } catch (IOException | RuntimeException error) {

@@ -1,0 +1,1105 @@
+{
+  "schema": "pixel-visual-pipeline-retest-v1",
+  "status": "complete",
+  "artifactIndex": "private-reference-0223",
+  "recordingIndex": "recording-044",
+  "modelIdentity": "distilled-mobilenetv3-large-tcn",
+  "selectionMode": "highest-recall",
+  "precision": "fp32",
+  "source": {
+    "recordingIndex": "recording-044",
+    "artifactIndex": "private-reference-0223",
+    "sha256": "06535d4955cf2a7bffcc2c804065b62b972d4ffd499b7d194b05edac6c66a4d8",
+    "phoneSourceVerified": true,
+    "metadata": "Row: 0 width=1920, height=1080, duration=120064, _size=492230456",
+    "model": "Pixel 10 Pro",
+    "abi": "arm64-v8a",
+    "androidApi": 37,
+    "selinux": "Enforcing"
+  },
+  "builds": {
+    "artifactIndex": "private-reference-0223",
+    "abi": "arm64-v8a",
+    "variants": {
+      "baseline": {
+        "apkBytes": 105662686,
+        "apkSha256": "4be4838a483e8273fce2e162b36ece453025816ddac5f9b0972f4196f379e04d",
+        "sourceHashes": {
+          "app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java": "b958ff0036d411464485aa46b4d65539b193e65e1dcf72b29c094c5ed4778e5f",
+          "neuralbenchmark/src/main/java/com/volleycut/neuralbenchmark/VideoEncoderBenchmark.java": "7cb72afd96598265a89027b8b6506a67060e2adaa339f6ad01f5283f7545ae75",
+          "app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/PipelineBenchmarkActivity.java": "2ef23abca60b62a710efedf5df1591dc1c76abffdd08e7c8cfd3cb008c64b78b",
+          "app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java": "2c7dc9a6f34f33bfb3f890790d75ec656cf2709997b1e9d588f9d2c2ac3bd54d"
+        },
+        "nativeLibraries": {
+          "lib/arm64-v8a/libandroidx.graphics.path.so": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6",
+          "lib/arm64-v8a/libc++_shared.so": "4397241b4bd20a8e579bfb41d21107857e12985f6a01ca0c2a5f83380d1270b4",
+          "lib/arm64-v8a/libonnxruntime.so": "df5d25c72a868dca773597c71e2000756d43fe4d70ade516d3693c54e12e0ada",
+          "lib/arm64-v8a/libonnxruntime4j_jni.so": "0695257178815f8c58c1719ba07d6d5d91a2b339634328cca2a0a98aa7ff2952",
+          "lib/arm64-v8a/libopencv_java4.so": "144bbc9ad0b0bac4ba58f7d53198aead64379e5314f68200968c703d2c1c14ab",
+          "lib/arm64-v8a/libtensorflowlite_gpu_jni.so": "228bde7ace97fd32efc8905990617c65d4382aed9ab0648035741fe52d46886b",
+          "lib/arm64-v8a/libtensorflowlite_jni.so": "e2328caf39606382a13dc08f06ed03eb0119a490208d375e3f42b80e4dabc465"
+        }
+      },
+      "repaired": {
+        "apkBytes": 105662686,
+        "apkSha256": "0def04700bdd295aba13164c55d392df746bb4d34018dd22ba3c23570ea6b1f8",
+        "sourceHashes": {
+          "app/src/main/java/com/volleycut/nativeanalysis/NativeVideoDecoder.java": "8bf83d0d64989dc2cfa660df18dff339c175d545c36a7da78a5bbb5200955fe8",
+          "neuralbenchmark/src/main/java/com/volleycut/neuralbenchmark/VideoEncoderBenchmark.java": "cf2dfacf0defd55628aa80c5be7eb40003111b354d85d72cff042925138e4f79",
+          "app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/PipelineBenchmarkActivity.java": "2ef23abca60b62a710efedf5df1591dc1c76abffdd08e7c8cfd3cb008c64b78b",
+          "app/src/main/java/com/volleycut/nativeanalysis/NativeFeatureCache.java": "78be8d0f48ebad379a6289ee9b45935c3fbd6a2c3eea7b0e2a25e515a3fc1cb0"
+        },
+        "nativeLibraries": {
+          "lib/arm64-v8a/libandroidx.graphics.path.so": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6",
+          "lib/arm64-v8a/libc++_shared.so": "4397241b4bd20a8e579bfb41d21107857e12985f6a01ca0c2a5f83380d1270b4",
+          "lib/arm64-v8a/libonnxruntime.so": "df5d25c72a868dca773597c71e2000756d43fe4d70ade516d3693c54e12e0ada",
+          "lib/arm64-v8a/libonnxruntime4j_jni.so": "0695257178815f8c58c1719ba07d6d5d91a2b339634328cca2a0a98aa7ff2952",
+          "lib/arm64-v8a/libopencv_java4.so": "144bbc9ad0b0bac4ba58f7d53198aead64379e5314f68200968c703d2c1c14ab",
+          "lib/arm64-v8a/libtensorflowlite_gpu_jni.so": "228bde7ace97fd32efc8905990617c65d4382aed9ab0648035741fe52d46886b",
+          "lib/arm64-v8a/libtensorflowlite_jni.so": "e2328caf39606382a13dc08f06ed03eb0119a490208d375e3f42b80e4dabc465"
+        }
+      }
+    },
+    "sharedSourceHashes": {
+      "app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java": "764102c2e9287d26e5649646b70ea7fec217f14be2689bba53847ef0ff2ef2f8",
+      "app/src/pipelineBenchmark/java/com/volleycut/nativeanalysis/PipelineBenchmarkActivity.java": "2ef23abca60b62a710efedf5df1591dc1c76abffdd08e7c8cfd3cb008c64b78b"
+    },
+    "bundledAssetsIdentical": true,
+    "bundledAssetCount": 5
+  },
+  "frozenGraphHashes": {
+    "mobile-large-encoder-fp32.onnx": "d6fa70ab57c446794655ebce061bebe95d26aed43643ccbb4e4398d9567ce783",
+    "mobile-large-tcn-dynamic-fp32.onnx": "696f7571c3bd618b4c1b4ecfcba1104415ec0a806ba7b0a15b57b8e8e0526874",
+    "mobile-large-pipeline.json": "7733b5dd3bd29d262169b06fc5ce459acaf8dbcc7a7a490d98a7fec3f85aef54",
+    "mobile-large-encoder-pool_weights.f32": "ac0af3a32532146b396d6dbb9dcbcc3e18196e00c55dcf37d0d30f9f5d81c0be"
+  },
+  "executionOrder": [
+    "baseline-warmup",
+    "repaired-warmup",
+    "baseline-1",
+    "repaired-1",
+    "repaired-2",
+    "baseline-2"
+  ],
+  "runs": [
+    {
+      "variant": "baseline",
+      "run": "warmup",
+      "warmup": true,
+      "metricsMs": {
+        "all_ready_ms": 65682,
+        "rallies_ready_ms": 49114,
+        "open_ms": 36,
+        "av_video_ms": 20652,
+        "audio_ms": 3429,
+        "context_ms": 35,
+        "rally_stage_ms": 24960,
+        "score_specialists_ms": 16568,
+        "top_level_unattributed_ms": 2,
+        "av_timestamp_plan_ms": 2292.081903,
+        "av_yuv_resize_color_ms": 2481.247577,
+        "av_opencv_calls_ms": 10459.21025,
+        "av_callback_cpu_ms": 6432.284049,
+        "av_callback_wall_ms": 14206.658452,
+        "av_feature_worker_cpu_ms": 10311.145373,
+        "av_total_thread_cpu_ms": 17795.164933,
+        "av_demux_read_ms": 463.12822,
+        "av_demux_advance_ms": 3464.010869,
+        "av_input_queue_ms": 6387.398466,
+        "av_queue_backpressure_ms": 49.488698,
+        "audio_thread_cpu_ms": 2105.699767,
+        "embedding_total_ms": 24591.615748,
+        "embedding_timestamp_plan_ms": 0,
+        "embedding_prepare_ms": 5159.228652,
+        "embedding_encoder_readback_ms": 2888.018591,
+        "embedding_decode_other_excluding_plan_ms": 16544.368505,
+        "tcn_inference_ms": 32.922292,
+        "fusion_normalization_save_ms": 156.140781,
+        "score_decode_ms": 13201.119202,
+        "score_serving_evaluation_ms": 758.426798,
+        "score_switch_evaluation_ms": 2595.591122
+      },
+      "neuralIntervalCount": 6,
+      "productionIntervalCount": 6,
+      "featureRows": 480,
+      "embeddingSamples": 240,
+      "featureDimension": 3952,
+      "tensorBytes": {
+        "features": 7587840,
+        "tokens": 3686400,
+        "probabilities": 7680
+      },
+      "tensorSha256": {
+        "features": "1e55640ff930c62bc1f5f5a4e41ecd402869d872c662af2a96e8789165f30393",
+        "tokens": "0f694c018585a7cf3730a31b8a69b0cc56200962593eb3a1b23d78c13a691ec2",
+        "probabilities": "3472dc6ccd5c5bd89cdde0213f9cf30f4bfd9b5f3969de8a223ed678dd3885cb"
+      },
+      "temporalReplay": {
+        "passed": true,
+        "scope": "Real device fused tensors: native temporal inference and rally decoder vs desktop. Pixel/PTS/AV extraction parity is separate.",
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 480,
+            "rallies": 6,
+            "maxProbabilityError": 4.76837158203125e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "observations": {
+        "count": 6,
+        "errors": 0,
+        "allObservedAwakeUnlocked": true,
+        "foregroundObservations": 5,
+        "observedProcessingWindowCount": 4,
+        "processingWindowAllBenchmarkForeground": true,
+        "processingWindowScope": "Plan save through final result save; excludes later output transfers, includes setup and polling margin",
+        "maximumThermalStatus": 0,
+        "batteryTemperatureC": {
+          "min": 31.2,
+          "max": 31.3
+        }
+      },
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "visualExtractorVersion": "benchmark-legacy-point-visual-v1"
+    },
+    {
+      "variant": "repaired",
+      "run": "warmup",
+      "warmup": true,
+      "metricsMs": {
+        "all_ready_ms": 120519,
+        "rallies_ready_ms": 102593,
+        "open_ms": 27,
+        "av_video_ms": 72567,
+        "audio_ms": 3534,
+        "context_ms": 32,
+        "rally_stage_ms": 26432,
+        "score_specialists_ms": 17926,
+        "top_level_unattributed_ms": 1,
+        "av_timestamp_plan_ms": 1443.985314,
+        "av_yuv_resize_color_ms": 53540.198518,
+        "av_opencv_calls_ms": 13795.270891,
+        "av_callback_cpu_ms": 56005.368341,
+        "av_callback_wall_ms": 65391.637628000004,
+        "av_feature_worker_cpu_ms": 13607.995966,
+        "av_total_thread_cpu_ms": 70662.22082,
+        "av_demux_read_ms": 277.607675,
+        "av_demux_advance_ms": 3669.209978,
+        "av_input_queue_ms": 6713.072509,
+        "av_queue_backpressure_ms": 20.712474,
+        "audio_thread_cpu_ms": 2158.375283,
+        "embedding_total_ms": 26090.55429,
+        "embedding_timestamp_plan_ms": 2155.93909,
+        "embedding_prepare_ms": 5081.948083,
+        "embedding_encoder_readback_ms": 2867.386334,
+        "embedding_decode_other_excluding_plan_ms": 15985.280783000002,
+        "tcn_inference_ms": 34.598645,
+        "fusion_normalization_save_ms": 135.870182,
+        "score_decode_ms": 14661.563241,
+        "score_serving_evaluation_ms": 743.483516,
+        "score_switch_evaluation_ms": 2509.047944
+      },
+      "neuralIntervalCount": 6,
+      "productionIntervalCount": 8,
+      "featureRows": 480,
+      "embeddingSamples": 240,
+      "featureDimension": 3952,
+      "tensorBytes": {
+        "features": 7587840,
+        "tokens": 3686400,
+        "probabilities": 7680
+      },
+      "tensorSha256": {
+        "features": "362b72ec157f87736f001202521081fa3fd34ea18814942321949400d561841e",
+        "tokens": "0b01818e4109cf995708938f3b86b6e61268459fc4cfde2ad3178153fa8467b0",
+        "probabilities": "61bbf60e3b99f729f4bbaf8b15e3a59f3bc0fc1a909c69e56e04cf1b0e701828"
+      },
+      "temporalReplay": {
+        "passed": true,
+        "scope": "Real device fused tensors: native temporal inference and rally decoder vs desktop. Pixel/PTS/AV extraction parity is separate.",
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 480,
+            "rallies": 6,
+            "maxProbabilityError": 3.5762786865234375e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "observations": {
+        "count": 9,
+        "errors": 0,
+        "allObservedAwakeUnlocked": true,
+        "foregroundObservations": 9,
+        "observedProcessingWindowCount": 7,
+        "processingWindowAllBenchmarkForeground": true,
+        "processingWindowScope": "Plan save through final result save; excludes later output transfers, includes setup and polling margin",
+        "maximumThermalStatus": 0,
+        "batteryTemperatureC": {
+          "min": 30.9,
+          "max": 31.8
+        }
+      },
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "visualExtractorVersion": "opencv-v3-area-nearest-frame"
+    },
+    {
+      "variant": "baseline",
+      "run": "1",
+      "warmup": false,
+      "metricsMs": {
+        "all_ready_ms": 64943,
+        "rallies_ready_ms": 48612,
+        "open_ms": 34,
+        "av_video_ms": 20098,
+        "audio_ms": 3565,
+        "context_ms": 35,
+        "rally_stage_ms": 24878,
+        "score_specialists_ms": 16331,
+        "top_level_unattributed_ms": 2,
+        "av_timestamp_plan_ms": 1901.084246,
+        "av_yuv_resize_color_ms": 2526.986047,
+        "av_opencv_calls_ms": 10358.076432,
+        "av_callback_cpu_ms": 6474.189939,
+        "av_callback_wall_ms": 14304.080171,
+        "av_feature_worker_cpu_ms": 10211.288903,
+        "av_total_thread_cpu_ms": 17591.205171,
+        "av_demux_read_ms": 472.3361,
+        "av_demux_advance_ms": 3439.51381,
+        "av_input_queue_ms": 6405.329257,
+        "av_queue_backpressure_ms": 51.176177,
+        "audio_thread_cpu_ms": 2267.353924,
+        "embedding_total_ms": 24529.838117,
+        "embedding_timestamp_plan_ms": 0,
+        "embedding_prepare_ms": 5143.401952,
+        "embedding_encoder_readback_ms": 2870.375405,
+        "embedding_decode_other_excluding_plan_ms": 16516.06076,
+        "tcn_inference_ms": 34.607005,
+        "fusion_normalization_save_ms": 141.791511,
+        "score_decode_ms": 12928.688239,
+        "score_serving_evaluation_ms": 753.5981,
+        "score_switch_evaluation_ms": 2635.79508
+      },
+      "neuralIntervalCount": 6,
+      "productionIntervalCount": 6,
+      "featureRows": 480,
+      "embeddingSamples": 240,
+      "featureDimension": 3952,
+      "tensorBytes": {
+        "features": 7587840,
+        "tokens": 3686400,
+        "probabilities": 7680
+      },
+      "tensorSha256": {
+        "features": "1e55640ff930c62bc1f5f5a4e41ecd402869d872c662af2a96e8789165f30393",
+        "tokens": "0f694c018585a7cf3730a31b8a69b0cc56200962593eb3a1b23d78c13a691ec2",
+        "probabilities": "3472dc6ccd5c5bd89cdde0213f9cf30f4bfd9b5f3969de8a223ed678dd3885cb"
+      },
+      "temporalReplay": {
+        "passed": true,
+        "scope": "Real device fused tensors: native temporal inference and rally decoder vs desktop. Pixel/PTS/AV extraction parity is separate.",
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 480,
+            "rallies": 6,
+            "maxProbabilityError": 4.76837158203125e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "observations": {
+        "count": 6,
+        "errors": 0,
+        "allObservedAwakeUnlocked": true,
+        "foregroundObservations": 5,
+        "observedProcessingWindowCount": 4,
+        "processingWindowAllBenchmarkForeground": true,
+        "processingWindowScope": "Plan save through final result save; excludes later output transfers, includes setup and polling margin",
+        "maximumThermalStatus": 0,
+        "batteryTemperatureC": {
+          "min": 31.3,
+          "max": 31.3
+        }
+      },
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "visualExtractorVersion": "benchmark-legacy-point-visual-v1"
+    },
+    {
+      "variant": "repaired",
+      "run": "1",
+      "warmup": false,
+      "metricsMs": {
+        "all_ready_ms": 122946,
+        "rallies_ready_ms": 105078,
+        "open_ms": 27,
+        "av_video_ms": 74758,
+        "audio_ms": 3318,
+        "context_ms": 42,
+        "rally_stage_ms": 26932,
+        "score_specialists_ms": 17868,
+        "top_level_unattributed_ms": 1,
+        "av_timestamp_plan_ms": 1699.967944,
+        "av_yuv_resize_color_ms": 54461.398246,
+        "av_opencv_calls_ms": 14282.592381,
+        "av_callback_cpu_ms": 57058.379345,
+        "av_callback_wall_ms": 66648.595575,
+        "av_feature_worker_cpu_ms": 14164.082819,
+        "av_total_thread_cpu_ms": 72306.267278,
+        "av_demux_read_ms": 281.461882,
+        "av_demux_advance_ms": 3767.539174,
+        "av_input_queue_ms": 6905.529118,
+        "av_queue_backpressure_ms": 19.756852,
+        "audio_thread_cpu_ms": 2073.303776,
+        "embedding_total_ms": 26585.323145,
+        "embedding_timestamp_plan_ms": 2404.267867,
+        "embedding_prepare_ms": 5144.79913,
+        "embedding_encoder_readback_ms": 2830.193856,
+        "embedding_decode_other_excluding_plan_ms": 16206.062291999997,
+        "tcn_inference_ms": 33.478021,
+        "fusion_normalization_save_ms": 140.761172,
+        "score_decode_ms": 14499.857275,
+        "score_serving_evaluation_ms": 755.720808,
+        "score_switch_evaluation_ms": 2593.89857
+      },
+      "neuralIntervalCount": 6,
+      "productionIntervalCount": 8,
+      "featureRows": 480,
+      "embeddingSamples": 240,
+      "featureDimension": 3952,
+      "tensorBytes": {
+        "features": 7587840,
+        "tokens": 3686400,
+        "probabilities": 7680
+      },
+      "tensorSha256": {
+        "features": "362b72ec157f87736f001202521081fa3fd34ea18814942321949400d561841e",
+        "tokens": "0b01818e4109cf995708938f3b86b6e61268459fc4cfde2ad3178153fa8467b0",
+        "probabilities": "61bbf60e3b99f729f4bbaf8b15e3a59f3bc0fc1a909c69e56e04cf1b0e701828"
+      },
+      "temporalReplay": {
+        "passed": true,
+        "scope": "Real device fused tensors: native temporal inference and rally decoder vs desktop. Pixel/PTS/AV extraction parity is separate.",
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 480,
+            "rallies": 6,
+            "maxProbabilityError": 3.5762786865234375e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "observations": {
+        "count": 9,
+        "errors": 0,
+        "allObservedAwakeUnlocked": true,
+        "foregroundObservations": 8,
+        "observedProcessingWindowCount": 8,
+        "processingWindowAllBenchmarkForeground": true,
+        "processingWindowScope": "Plan save through final result save; excludes later output transfers, includes setup and polling margin",
+        "maximumThermalStatus": 0,
+        "batteryTemperatureC": {
+          "min": 31.5,
+          "max": 32.3
+        }
+      },
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "visualExtractorVersion": "opencv-v3-area-nearest-frame"
+    },
+    {
+      "variant": "repaired",
+      "run": "2",
+      "warmup": false,
+      "metricsMs": {
+        "all_ready_ms": 121703,
+        "rallies_ready_ms": 103967,
+        "open_ms": 23,
+        "av_video_ms": 73598,
+        "audio_ms": 3583,
+        "context_ms": 35,
+        "rally_stage_ms": 26725,
+        "score_specialists_ms": 17736,
+        "top_level_unattributed_ms": 3,
+        "av_timestamp_plan_ms": 1311.618048,
+        "av_yuv_resize_color_ms": 54017.725171,
+        "av_opencv_calls_ms": 14302.114909,
+        "av_callback_cpu_ms": 56571.526688,
+        "av_callback_wall_ms": 66291.92409700001,
+        "av_feature_worker_cpu_ms": 14193.859528,
+        "av_total_thread_cpu_ms": 71732.43976899999,
+        "av_demux_read_ms": 283.371517,
+        "av_demux_advance_ms": 3808.141429,
+        "av_input_queue_ms": 6960.357255,
+        "av_queue_backpressure_ms": 21.520989,
+        "audio_thread_cpu_ms": 2234.717867,
+        "embedding_total_ms": 26383.245931,
+        "embedding_timestamp_plan_ms": 1797.420652,
+        "embedding_prepare_ms": 5207.275219,
+        "embedding_encoder_readback_ms": 2897.385245,
+        "embedding_decode_other_excluding_plan_ms": 16481.164815,
+        "tcn_inference_ms": 37.050807,
+        "fusion_normalization_save_ms": 141.946172,
+        "score_decode_ms": 14556.869048,
+        "score_serving_evaluation_ms": 765.874428,
+        "score_switch_evaluation_ms": 2397.675054
+      },
+      "neuralIntervalCount": 6,
+      "productionIntervalCount": 8,
+      "featureRows": 480,
+      "embeddingSamples": 240,
+      "featureDimension": 3952,
+      "tensorBytes": {
+        "features": 7587840,
+        "tokens": 3686400,
+        "probabilities": 7680
+      },
+      "tensorSha256": {
+        "features": "362b72ec157f87736f001202521081fa3fd34ea18814942321949400d561841e",
+        "tokens": "0b01818e4109cf995708938f3b86b6e61268459fc4cfde2ad3178153fa8467b0",
+        "probabilities": "61bbf60e3b99f729f4bbaf8b15e3a59f3bc0fc1a909c69e56e04cf1b0e701828"
+      },
+      "temporalReplay": {
+        "passed": true,
+        "scope": "Real device fused tensors: native temporal inference and rally decoder vs desktop. Pixel/PTS/AV extraction parity is separate.",
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 480,
+            "rallies": 6,
+            "maxProbabilityError": 3.5762786865234375e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "observations": {
+        "count": 9,
+        "errors": 0,
+        "allObservedAwakeUnlocked": true,
+        "foregroundObservations": 9,
+        "observedProcessingWindowCount": 7,
+        "processingWindowAllBenchmarkForeground": true,
+        "processingWindowScope": "Plan save through final result save; excludes later output transfers, includes setup and polling margin",
+        "maximumThermalStatus": 0,
+        "batteryTemperatureC": {
+          "min": 31.8,
+          "max": 32.3
+        }
+      },
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "visualExtractorVersion": "opencv-v3-area-nearest-frame"
+    },
+    {
+      "variant": "baseline",
+      "run": "2",
+      "warmup": false,
+      "metricsMs": {
+        "all_ready_ms": 64750,
+        "rallies_ready_ms": 48128,
+        "open_ms": 24,
+        "av_video_ms": 19461,
+        "audio_ms": 3454,
+        "context_ms": 37,
+        "rally_stage_ms": 25150,
+        "score_specialists_ms": 16622,
+        "top_level_unattributed_ms": 2,
+        "av_timestamp_plan_ms": 1362.704714,
+        "av_yuv_resize_color_ms": 2461.486503,
+        "av_opencv_calls_ms": 10416.740769,
+        "av_callback_cpu_ms": 6467.177979,
+        "av_callback_wall_ms": 14154.304069,
+        "av_feature_worker_cpu_ms": 10301.071223,
+        "av_total_thread_cpu_ms": 17501.221622,
+        "av_demux_read_ms": 461.154931,
+        "av_demux_advance_ms": 3439.030474,
+        "av_input_queue_ms": 6355.964613,
+        "av_queue_backpressure_ms": 54.662205,
+        "audio_thread_cpu_ms": 2173.524916,
+        "embedding_total_ms": 24800.876555,
+        "embedding_timestamp_plan_ms": 0,
+        "embedding_prepare_ms": 5186.586854,
+        "embedding_encoder_readback_ms": 2843.273982,
+        "embedding_decode_other_excluding_plan_ms": 16771.015719,
+        "tcn_inference_ms": 32.35349,
+        "fusion_normalization_save_ms": 145.69125,
+        "score_decode_ms": 13395.817485,
+        "score_serving_evaluation_ms": 752.036433,
+        "score_switch_evaluation_ms": 2461.060783
+      },
+      "neuralIntervalCount": 6,
+      "productionIntervalCount": 6,
+      "featureRows": 480,
+      "embeddingSamples": 240,
+      "featureDimension": 3952,
+      "tensorBytes": {
+        "features": 7587840,
+        "tokens": 3686400,
+        "probabilities": 7680
+      },
+      "tensorSha256": {
+        "features": "1e55640ff930c62bc1f5f5a4e41ecd402869d872c662af2a96e8789165f30393",
+        "tokens": "0f694c018585a7cf3730a31b8a69b0cc56200962593eb3a1b23d78c13a691ec2",
+        "probabilities": "3472dc6ccd5c5bd89cdde0213f9cf30f4bfd9b5f3969de8a223ed678dd3885cb"
+      },
+      "temporalReplay": {
+        "passed": true,
+        "scope": "Real device fused tensors: native temporal inference and rally decoder vs desktop. Pixel/PTS/AV extraction parity is separate.",
+        "checks": [
+          {
+            "id": "mobile-large-fp32-full-run0",
+            "rows": 480,
+            "rallies": 6,
+            "maxProbabilityError": 4.76837158203125e-07,
+            "decoderParity": true
+          }
+        ]
+      },
+      "observations": {
+        "count": 5,
+        "errors": 0,
+        "allObservedAwakeUnlocked": true,
+        "foregroundObservations": 5,
+        "observedProcessingWindowCount": 4,
+        "processingWindowAllBenchmarkForeground": true,
+        "processingWindowScope": "Plan save through final result save; excludes later output transfers, includes setup and polling margin",
+        "maximumThermalStatus": 0,
+        "batteryTemperatureC": {
+          "min": 31.8,
+          "max": 31.9
+        }
+      },
+      "audioExtractorVersion": "native-dsp-v2-codec-framing-percentile",
+      "visualExtractorVersion": "benchmark-legacy-point-visual-v1"
+    }
+  ],
+  "comparison": {
+    "all_ready_ms": {
+      "baseline": {
+        "median": 64846.5,
+        "min": 64750,
+        "max": 64943,
+        "count": 2
+      },
+      "repaired": {
+        "median": 122324.5,
+        "min": 121703,
+        "max": 122946,
+        "count": 2
+      },
+      "changeMs": 57478.0,
+      "changePercent": 88.63701202069502
+    },
+    "rallies_ready_ms": {
+      "baseline": {
+        "median": 48370.0,
+        "min": 48128,
+        "max": 48612,
+        "count": 2
+      },
+      "repaired": {
+        "median": 104522.5,
+        "min": 103967,
+        "max": 105078,
+        "count": 2
+      },
+      "changeMs": 56152.5,
+      "changePercent": 116.08951829646475
+    },
+    "open_ms": {
+      "baseline": {
+        "median": 29.0,
+        "min": 24,
+        "max": 34,
+        "count": 2
+      },
+      "repaired": {
+        "median": 25.0,
+        "min": 23,
+        "max": 27,
+        "count": 2
+      },
+      "changeMs": -4.0,
+      "changePercent": -13.793103448275861
+    },
+    "av_video_ms": {
+      "baseline": {
+        "median": 19779.5,
+        "min": 19461,
+        "max": 20098,
+        "count": 2
+      },
+      "repaired": {
+        "median": 74178.0,
+        "min": 73598,
+        "max": 74758,
+        "count": 2
+      },
+      "changeMs": 54398.5,
+      "changePercent": 275.02464673020046
+    },
+    "audio_ms": {
+      "baseline": {
+        "median": 3509.5,
+        "min": 3454,
+        "max": 3565,
+        "count": 2
+      },
+      "repaired": {
+        "median": 3450.5,
+        "min": 3318,
+        "max": 3583,
+        "count": 2
+      },
+      "changeMs": -59.0,
+      "changePercent": -1.6811511611340646
+    },
+    "context_ms": {
+      "baseline": {
+        "median": 36.0,
+        "min": 35,
+        "max": 37,
+        "count": 2
+      },
+      "repaired": {
+        "median": 38.5,
+        "min": 35,
+        "max": 42,
+        "count": 2
+      },
+      "changeMs": 2.5,
+      "changePercent": 6.944444444444445
+    },
+    "rally_stage_ms": {
+      "baseline": {
+        "median": 25014.0,
+        "min": 24878,
+        "max": 25150,
+        "count": 2
+      },
+      "repaired": {
+        "median": 26828.5,
+        "min": 26725,
+        "max": 26932,
+        "count": 2
+      },
+      "changeMs": 1814.5,
+      "changePercent": 7.253937794834893
+    },
+    "score_specialists_ms": {
+      "baseline": {
+        "median": 16476.5,
+        "min": 16331,
+        "max": 16622,
+        "count": 2
+      },
+      "repaired": {
+        "median": 17802.0,
+        "min": 17736,
+        "max": 17868,
+        "count": 2
+      },
+      "changeMs": 1325.5,
+      "changePercent": 8.044791066063787
+    },
+    "top_level_unattributed_ms": {
+      "baseline": {
+        "median": 2.0,
+        "min": 2,
+        "max": 2,
+        "count": 2
+      },
+      "repaired": {
+        "median": 2.0,
+        "min": 1,
+        "max": 3,
+        "count": 2
+      },
+      "changeMs": 0.0,
+      "changePercent": 0.0
+    },
+    "av_timestamp_plan_ms": {
+      "baseline": {
+        "median": 1631.89448,
+        "min": 1362.704714,
+        "max": 1901.084246,
+        "count": 2
+      },
+      "repaired": {
+        "median": 1505.7929960000001,
+        "min": 1311.618048,
+        "max": 1699.967944,
+        "count": 2
+      },
+      "changeMs": -126.1014839999998,
+      "changePercent": -7.727306241026063
+    },
+    "av_yuv_resize_color_ms": {
+      "baseline": {
+        "median": 2494.236275,
+        "min": 2461.486503,
+        "max": 2526.986047,
+        "count": 2
+      },
+      "repaired": {
+        "median": 54239.5617085,
+        "min": 54017.725171,
+        "max": 54461.398246,
+        "count": 2
+      },
+      "changeMs": 51745.325433499995,
+      "changePercent": 2074.595977620444
+    },
+    "av_opencv_calls_ms": {
+      "baseline": {
+        "median": 10387.408600499999,
+        "min": 10358.076432,
+        "max": 10416.740769,
+        "count": 2
+      },
+      "repaired": {
+        "median": 14292.353645,
+        "min": 14282.592381,
+        "max": 14302.114909,
+        "count": 2
+      },
+      "changeMs": 3904.9450445,
+      "changePercent": 37.59306285796859
+    },
+    "av_callback_cpu_ms": {
+      "baseline": {
+        "median": 6470.683959,
+        "min": 6467.177979,
+        "max": 6474.189939,
+        "count": 2
+      },
+      "repaired": {
+        "median": 56814.9530165,
+        "min": 56571.526688,
+        "max": 57058.379345,
+        "count": 2
+      },
+      "changeMs": 50344.2690575,
+      "changePercent": 778.03628451791
+    },
+    "av_callback_wall_ms": {
+      "baseline": {
+        "median": 14229.19212,
+        "min": 14154.304069,
+        "max": 14304.080171,
+        "count": 2
+      },
+      "repaired": {
+        "median": 66470.25983600001,
+        "min": 66291.92409700001,
+        "max": 66648.595575,
+        "count": 2
+      },
+      "changeMs": 52241.06771600001,
+      "changePercent": 367.1400826936056
+    },
+    "av_feature_worker_cpu_ms": {
+      "baseline": {
+        "median": 10256.180063,
+        "min": 10211.288903,
+        "max": 10301.071223,
+        "count": 2
+      },
+      "repaired": {
+        "median": 14178.9711735,
+        "min": 14164.082819,
+        "max": 14193.859528,
+        "count": 2
+      },
+      "changeMs": 3922.7911105000003,
+      "changePercent": 38.24807176164727
+    },
+    "av_total_thread_cpu_ms": {
+      "baseline": {
+        "median": 17546.213396500003,
+        "min": 17501.221622,
+        "max": 17591.205171,
+        "count": 2
+      },
+      "repaired": {
+        "median": 72019.3535235,
+        "min": 71732.43976899999,
+        "max": 72306.267278,
+        "count": 2
+      },
+      "changeMs": 54473.140127,
+      "changePercent": 310.4552469301777
+    },
+    "av_demux_read_ms": {
+      "baseline": {
+        "median": 466.7455155,
+        "min": 461.154931,
+        "max": 472.3361,
+        "count": 2
+      },
+      "repaired": {
+        "median": 282.4166995,
+        "min": 281.461882,
+        "max": 283.371517,
+        "count": 2
+      },
+      "changeMs": -184.32881600000002,
+      "changePercent": -39.492359300450524
+    },
+    "av_demux_advance_ms": {
+      "baseline": {
+        "median": 3439.272142,
+        "min": 3439.030474,
+        "max": 3439.51381,
+        "count": 2
+      },
+      "repaired": {
+        "median": 3787.8403015,
+        "min": 3767.539174,
+        "max": 3808.141429,
+        "count": 2
+      },
+      "changeMs": 348.5681595000001,
+      "changePercent": 10.134939752028501
+    },
+    "av_input_queue_ms": {
+      "baseline": {
+        "median": 6380.646935000001,
+        "min": 6355.964613,
+        "max": 6405.329257,
+        "count": 2
+      },
+      "repaired": {
+        "median": 6932.943186500001,
+        "min": 6905.529118,
+        "max": 6960.357255,
+        "count": 2
+      },
+      "changeMs": 552.2962514999999,
+      "changePercent": 8.655803355463357
+    },
+    "av_queue_backpressure_ms": {
+      "baseline": {
+        "median": 52.919191,
+        "min": 51.176177,
+        "max": 54.662205,
+        "count": 2
+      },
+      "repaired": {
+        "median": 20.638920499999998,
+        "min": 19.756852,
+        "max": 21.520989,
+        "count": 2
+      },
+      "changeMs": -32.2802705,
+      "changePercent": -60.99917608339856
+    },
+    "audio_thread_cpu_ms": {
+      "baseline": {
+        "median": 2220.4394199999997,
+        "min": 2173.524916,
+        "max": 2267.353924,
+        "count": 2
+      },
+      "repaired": {
+        "median": 2154.0108215,
+        "min": 2073.303776,
+        "max": 2234.717867,
+        "count": 2
+      },
+      "changeMs": -66.42859849999968,
+      "changePercent": -2.991687046341471
+    },
+    "embedding_total_ms": {
+      "baseline": {
+        "median": 24665.357336,
+        "min": 24529.838117,
+        "max": 24800.876555,
+        "count": 2
+      },
+      "repaired": {
+        "median": 26484.284538,
+        "min": 26383.245931,
+        "max": 26585.323145,
+        "count": 2
+      },
+      "changeMs": 1818.927201999999,
+      "changePercent": 7.374420638719908
+    },
+    "embedding_timestamp_plan_ms": {
+      "baseline": {
+        "median": 0.0,
+        "min": 0,
+        "max": 0,
+        "count": 2
+      },
+      "repaired": {
+        "median": 2100.8442595,
+        "min": 1797.420652,
+        "max": 2404.267867,
+        "count": 2
+      },
+      "changeMs": 2100.8442595,
+      "changePercent": null
+    },
+    "embedding_prepare_ms": {
+      "baseline": {
+        "median": 5164.994403000001,
+        "min": 5143.401952,
+        "max": 5186.586854,
+        "count": 2
+      },
+      "repaired": {
+        "median": 5176.0371745,
+        "min": 5144.79913,
+        "max": 5207.275219,
+        "count": 2
+      },
+      "changeMs": 11.042771499999617,
+      "changePercent": 0.21380026072410857
+    },
+    "embedding_encoder_readback_ms": {
+      "baseline": {
+        "median": 2856.8246934999997,
+        "min": 2843.273982,
+        "max": 2870.375405,
+        "count": 2
+      },
+      "repaired": {
+        "median": 2863.7895504999997,
+        "min": 2830.193856,
+        "max": 2897.385245,
+        "count": 2
+      },
+      "changeMs": 6.964856999999938,
+      "changePercent": 0.24379714358556032
+    },
+    "embedding_decode_other_excluding_plan_ms": {
+      "baseline": {
+        "median": 16643.538239499998,
+        "min": 16516.06076,
+        "max": 16771.015719,
+        "count": 2
+      },
+      "repaired": {
+        "median": 16343.6135535,
+        "min": 16206.062291999997,
+        "max": 16481.164815,
+        "count": 2
+      },
+      "changeMs": -299.9246859999985,
+      "changePercent": -1.8020488293059538
+    },
+    "tcn_inference_ms": {
+      "baseline": {
+        "median": 33.480247500000004,
+        "min": 32.35349,
+        "max": 34.607005,
+        "count": 2
+      },
+      "repaired": {
+        "median": 35.264414,
+        "min": 33.478021,
+        "max": 37.050807,
+        "count": 2
+      },
+      "changeMs": 1.7841664999999978,
+      "changePercent": 5.329012278060363
+    },
+    "fusion_normalization_save_ms": {
+      "baseline": {
+        "median": 143.7413805,
+        "min": 141.791511,
+        "max": 145.69125,
+        "count": 2
+      },
+      "repaired": {
+        "median": 141.353672,
+        "min": 140.761172,
+        "max": 141.946172,
+        "count": 2
+      },
+      "changeMs": -2.3877085000000022,
+      "changePercent": -1.6611142119926992
+    },
+    "score_decode_ms": {
+      "baseline": {
+        "median": 13162.252862,
+        "min": 12928.688239,
+        "max": 13395.817485,
+        "count": 2
+      },
+      "repaired": {
+        "median": 14528.363161500001,
+        "min": 14499.857275,
+        "max": 14556.869048,
+        "count": 2
+      },
+      "changeMs": 1366.110299500002,
+      "changePercent": 10.379000569454355
+    },
+    "score_serving_evaluation_ms": {
+      "baseline": {
+        "median": 752.8172665,
+        "min": 752.036433,
+        "max": 753.5981,
+        "count": 2
+      },
+      "repaired": {
+        "median": 760.797618,
+        "min": 755.720808,
+        "max": 765.874428,
+        "count": 2
+      },
+      "changeMs": 7.980351500000097,
+      "changePercent": 1.060064886277432
+    },
+    "score_switch_evaluation_ms": {
+      "baseline": {
+        "median": 2548.4279315,
+        "min": 2461.060783,
+        "max": 2635.79508,
+        "count": 2
+      },
+      "repaired": {
+        "median": 2495.786812,
+        "min": 2397.675054,
+        "max": 2593.89857,
+        "count": 2
+      },
+      "changeMs": -52.64111950000006,
+      "changePercent": -2.0656310837487797
+    }
+  },
+  "audioValuesExactlyEqual": true,
+  "maximumAudioDifference": 0.0,
+  "decoderUnchanged": true,
+  "repairedBenchmarkRestored": true,
+  "limitations": [
+    "Two measured repetitions per visual pipeline; warmups excluded.",
+    "Two-minute excerpt, not a new full-video measurement or human-label accuracy evaluation.",
+    "Nested profile counters overlap and must not be added to stage totals.",
+    "Encoder/readback timer bookkeeping differs between visual versions.",
+    "Periodic device-state observations cannot exclude shorter interruptions.",
+    "APK and model transfers over Tailscale are outside on-device measured totals."
+  ],
+  "summaryAudit": {
+    "rawMedianChecks": 12,
+    "passed": true,
+    "auditedSourceSummarySha256": "df2a982ade32e86def3acbfd9ba8b656c2e350496cb6f085205807fbf563d5cc"
+  },
+  "repeatability": {
+    "baseline": {
+      "features": true,
+      "tokens": true,
+      "probabilities": true
+    },
+    "repaired": {
+      "features": true,
+      "tokens": true,
+      "probabilities": true
+    }
+  }
+}

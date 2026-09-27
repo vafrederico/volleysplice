@@ -55,6 +55,7 @@ internal data class NativeProject(
     /** False only when recovering saved output without its original input geometry. */
     val analysisRoiKnown: Boolean = true,
     val audioExtractorVersion: String = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
+    val visualExtractorVersion: String = NativeFeatureCache.VISUAL_EXTRACTOR_VERSION,
     val status: ProjectStatus,
     val ranges: List<SeedRange> = emptyList(),
     val productionComponents: AnalysisTypes.ProductionComponents =
@@ -103,13 +104,14 @@ internal data class NativeProject(
             suppression = suppression,
             analysisRoi = roi.takeIf { analysisRoiKnown },
             audioExtractorVersion = audioExtractorVersion,
+            visualExtractorVersion = visualExtractorVersion,
         )
     } else null
 }
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
-    private const val VERSION = 10
+    private const val VERSION = 11
     private const val TAG = "VolleySpliceProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -245,6 +247,7 @@ internal object NativeProjectStore {
             roi = result.roi(),
             analysisRoiKnown = true,
             audioExtractorVersion = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
+            visualExtractorVersion = NativeFeatureCache.VISUAL_EXTRACTOR_VERSION,
             status = ProjectStatus.READY,
             ranges = result.ranges().map {
                 SeedRange(
@@ -482,6 +485,7 @@ internal object NativeProjectStore {
     internal fun matchesAnalysis(existing: NativeProject, candidate: NativeProject): Boolean =
         existing.analysisRoiKnown && candidate.analysisRoiKnown &&
             existing.audioExtractorVersion == candidate.audioExtractorVersion &&
+            existing.visualExtractorVersion == candidate.visualExtractorVersion &&
             sameRoi(existing.roi, candidate.roi) &&
             sameWindow(existing.analysisWindow, candidate.analysisWindow) && (
                 existing.source.uri == candidate.source.uri || (
@@ -561,7 +565,7 @@ internal object NativeProjectStore {
         )
         return NativeProject(
             id = projectId(source, media.durationSeconds(), analysisWindow, seed.analysisRoi,
-                seed.audioExtractorVersion),
+                seed.audioExtractorVersion, seed.visualExtractorVersion),
             source = source,
             media = media,
             analysisWindow = analysisWindow,
@@ -570,6 +574,7 @@ internal object NativeProjectStore {
             roi = seed.analysisRoi ?: AnalysisEngine.inferRoi(seed.displayName),
             analysisRoiKnown = seed.analysisRoi != null,
             audioExtractorVersion = seed.audioExtractorVersion,
+            visualExtractorVersion = seed.visualExtractorVersion,
             status = ProjectStatus.READY,
             ranges = seed.ranges,
             productionComponents = seed.productionComponents,
@@ -611,6 +616,7 @@ internal object NativeProjectStore {
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(durationSeconds),
         roi: AnalysisTypes.Roi? = null,
         audioExtractorVersion: String = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
+        visualExtractorVersion: String = NativeFeatureCache.VISUAL_EXTRACTOR_VERSION,
     ): String {
         val analysisWindow = AnalysisTypes.AnalysisWindow.normalize(requestedWindow, durationSeconds)
         val sourceIdentity = listOf(
@@ -621,11 +627,12 @@ internal object NativeProjectStore {
         ).joinToString("\u0000") + if (analysisWindow.isFull(durationSeconds)) "" else {
             "\u0000${analysisWindow.start()}\u0000${analysisWindow.end()}"
         }
-        // Keep legacy project IDs readable, but never overwrite an older cropped
-        // project's reviewed edits when the same source is analyzed full-frame.
+        // Keep recovered legacy identities stable, but never overwrite reviewed projects
+        // when the same source is analyzed with different geometry or feature extraction.
         val identity = sourceIdentity + if (roi == null) "" else {
             "\u0000roi=${roi.x()},${roi.y()},${roi.width()},${roi.height()}" +
-                "\u0000audio=$audioExtractorVersion"
+                "\u0000audio=$audioExtractorVersion" +
+                if (visualExtractorVersion == "legacy") "" else "\u0000visual=$visualExtractorVersion"
         }
         var hash = 0x811c9dc5u
         identity.forEach { character ->
@@ -667,6 +674,7 @@ internal object NativeProjectStore {
         })
         put("analysisRoiKnown", project.analysisRoiKnown)
         put("audioExtractorVersion", project.audioExtractorVersion)
+        put("visualExtractorVersion", project.visualExtractorVersion)
         put("status", project.status.wireName)
         put("modelId", project.modelId)
         put("cacheMode", project.cacheMode)
@@ -742,6 +750,7 @@ internal object NativeProjectStore {
             ),
             analysisRoiKnown = json.optBoolean("analysisRoiKnown", true),
             audioExtractorVersion = json.optString("audioExtractorVersion", "legacy"),
+            visualExtractorVersion = json.optString("visualExtractorVersion", "legacy"),
             status = ProjectStatus.fromWireName(json.getString("status")) ?: return null,
             ranges = buildList {
                 for (index in 0 until rangesJson.length()) {
