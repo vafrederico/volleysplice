@@ -1,0 +1,22 @@
+# Exact containment proof for floating recall overshoots
+
+This additive amendment repairs a selection validation failure without changing training, decoded intervals, valid metrics, ranking order, or the strict 90–100% recall floors. It applies uniformly to the 162 new deployment tasks, including tasks requiring no correction. The separate historical nested sweeps remain unchanged. Existing registered scientific sources and artifacts retain their bytes.
+
+The first randomized AV-TCN calibration task produced four raw recall values of `1.0000000000000002`. Its retained-core numerator was `582.9369999999998` seconds and core denominator `582.9369999999997` seconds. Independent endpoint subtraction found no omitted core intervals on either calibration video, and exact rational arithmetic over their represented IEEE-754 endpoints proved equal numerator and denominator. Python 3.12's built-in sum and the metric's explicit intersection accumulation produced different rounding on identical segment lengths. The complete diagnosis is retained under `selection-queue-v1/failure-investigation-v2.json`; the earlier failed attempt wrote no selection artifact.
+
+The new selector first runs the unchanged 192-candidate builder. It preserves all raw candidate fields in `rawCandidates`. Only a recall strictly above one and at most `1 + 4 * ulp(1)` may be replaced by exactly one in the selection copy. Each replacement requires an exactly empty core-minus-retained interval difference after the registered ±2-second padding, positive gaps strictly below three seconds, and ignored-time subtraction. Exact rational endpoint measures must agree. A positive omitted span of any size fails; there is no epsilon for missing time. Below-one and other already-valid values remain unchanged. Any invalid F1 fails closed. The unchanged strict selector then performs all 11 floor decisions with the original F1 values and stable candidate order.
+
+Each task requires both the ordinary frozen selection audit and a new independent companion audit. The latter reconstructs all raw candidates and independently sweeps interval endpoints, checks exact rational measures, verifies every unchanged field, and validates the correction inventory. Zero-correction cases receive the same gate. Tests include a one-ULP positive omitted span, an overshoot outside the fixed envelope, invalid F1, unchanged below-one values, raw-candidate preservation, stable ties, and rejection of publication using only the old final audit.
+
+The immutable NAS amendment plan binds this document, diagnosis, all three registrations, implementation, companion audit, tests, and the frozen delegated sources. The NAS-only incremental coordinator v2 also binds the plan and requires completed fit-numerical and applicable reuse gates before selection. It retains the same CPU-only resource limits and source order. The stopped coordinator v1 and its failed log remain intact.
+
+Required entry points are in `scripts/generalization-selection-containment.py`:
+
+- `select --plan PLAN --task TASK --fit FIT --output SELECTION [--historical DIRECTORY]` creates the candidate/proof artifact.
+- The unchanged `audit-neural-generalization-selection.py` creates the ordinary gate; `audit-neural-generalization-selection-correction.py --selection SELECTION --selection-audit GATE --output COMPANION` creates the companion gate.
+- `evaluate` requires `--correction-audit` in addition to the original evaluation arguments. It delegates all metrics to the unchanged evaluator, retains that base artifact, and binds the companion gate in the published result.
+- `bind-index --index ORIGINAL_INDEX --plan PLAN --output INDEX` adds the correction-plan reference and explanatory metadata to the unchanged complete result matrix, retaining the original index.
+- `audit-results --index INDEX --report CANDIDATE --output AUDIT` verifies every companion gate, delegates the complete numerical/report audit unchanged, and publishes a joint audit.
+- `report --index INDEX --audit JOINT_AUDIT --output REPORT` requires the joint audit before calling the unchanged report builder. The existing renderer consumes this audited report.
+
+The original evaluation/publication entry points do not know about this amendment; they must not be used alone for final publication. Raw inference may still use the frozen runner after the explicit companion preflight. No external evaluation outcomes informed this correction, and no training is repeated.

@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="VolleySplice Neural Benchmark" android:allowBackup="false"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <activity android:name=".BenchmarkActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

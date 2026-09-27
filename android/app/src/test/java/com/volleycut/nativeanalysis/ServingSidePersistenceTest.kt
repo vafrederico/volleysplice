@@ -13,6 +13,22 @@ import java.util.concurrent.TimeUnit
 
 class ServingSidePersistenceTest {
     @Test
+    fun savedNeuralNotServeIsRecoveredWithoutChangingFeaturesAndFeedbackKeepsItsProvenance() {
+        val original = requireNotNull(projectFixture().servingSide)
+        val old = original.copy(candidates = original.candidates.map { it.copy(
+            agreement = "neural", verdict = ServingSideVerdict.NOT_SERVE,
+            serveDecisionSource = ServingSideDecisionSource.NONE,
+        ) })
+        val restored = requireNotNull(ServingSideJson.decodeOutput(ServingSideJson.encodeOutput(old)))
+        assertArrayEquals(old.rawFeatures, restored.rawFeatures, 0.0)
+        assertEquals(ServingSideVerdict.REVIEW, restored.candidates.single().verdict)
+        assertEquals(ServingSideDecisionSource.NEURAL_RALLY_RECOVERY, restored.candidates.single().serveDecisionSource)
+        assertEquals(old.candidates.single().nearProbability, restored.candidates.single().nearProbability, 0.0)
+        assertEquals(restored.candidates,
+            requireNotNull(ServingSideJson.decodeOutput(ServingSideJson.encodeOutput(restored))).candidates)
+    }
+
+    @Test
     fun cacheIdentityInvalidatesEveryInferenceInputExceptEditorIgnoredRanges() {
         val project = projectFixture()
         val identity = ServingSideCache.identity(project)
@@ -32,6 +48,10 @@ class ServingSidePersistenceTest {
         ), output))
         assertFalse(ServingSideCache.isReusable(identity, project, output.copy(modelId = "changed")))
         assertFalse(ServingSideCache.isReusable(identity, project, output.copy(featureVersion = "changed")))
+        // Old shared YUV conversion assumed limited-range BT.601 for every input.
+        assertFalse(ServingSideCache.isReusable(identity.copy(
+            decodeVariant = "shared-gap5-mediacodec-yuv-gray-bgr-v2",
+        ), project, output))
         assertEquals(identity, requireNotNull(project.servingSideCacheIdentity))
         val decoded = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(project)))
         assertEquals(identity, decoded.servingSideCacheIdentity)

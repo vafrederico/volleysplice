@@ -6,6 +6,22 @@ responsive phone, tablet, and desktop-mode layouts.
 
 This folder contains the native Android analysis path plus a first-party cut editor and exporter. The analysis workflow is:
 
+The rally-model select box defaults to **Balanced · BETA** (highest F1), with
+**Maximum coverage · BETA** (highest recall) and **Legacy model** (the production
+ensemble) as alternatives. Explicit choices are remembered. Each analysis runs
+only the selected rally variant. The neural selections each
+load a matched FP32 encoder, TCN, scalar normalizer, and decoder. Both are bundled
+for offline use; the DINO teacher is not included. Saved projects retain their
+own model identity, and switching models does not reuse incompatible embeddings
+or rewrite existing results. The original ensemble workflow below remains the
+reference for that explicit option and for the retained serve/state evidence.
+
+Project exports include the selected model's identity and all four neural probability
+heads from new analyses, alongside the existing AV features and score corrections.
+Embeddings remain temporary and are not exported. Import restores saved results
+without rerunning video inference; older projects without retained neural scores
+remain usable and export an explicit warning about that missing payload.
+
 ```text
 video URI
   -> MediaExtractor presentation-order sample plan
@@ -23,6 +39,15 @@ video URI
 ```
 
 No media is uploaded. The app has no network permission. It does not use a WebView, WebCodecs, JavaScript, or WASM.
+
+The neural path adds 2 Hz, 224-pixel image embeddings to ranked AV104 and eight
+quality values, then runs the selected TCN and decoder. Fresh AV extraction
+shares its MediaCodec pass with image preparation; cached AV can use an
+independent image pass. A partial game window includes the immediately preceding
+2 Hz image only as context. Output intervals remain clipped to the game window.
+Serving-side and optional side-switch inference use the neural rally starts and
+retain the existing production serve/state evidence. Legacy ensemble suppression
+is not automatically applied to neural rallies.
 
 In the production project flow, choose a recording and use the local preview to mark the game start and game end before queueing inference. Only globally aligned 4 Hz samples inside that window generate visual, audio, or contextual features. The bounds are part of the project and feature-cache identity, and the editor overview, playback, padding, manual marks, edit list, and export are constrained to the same window. Existing full-video projects and caches keep their legacy identity.
 
@@ -62,10 +87,18 @@ that claims full device parity.
 - Gradle: 9.3.1
 - Java: 17 bytecode
 - OpenCV Android AAR: 4.12.0
+- Android NDK: 29.0.14206865 (shared AV area-resampling kernel)
 
-API 37 does not make the analysis kernels faster by itself, but it is now the default so the app is tested against the Pixel 10 Pro's Android 17 target behavior. The project intentionally packages only `arm64-v8a`, since its immediate purpose is the Pixel 10 Pro rather than an x86 emulator.
+API 37 does not make the analysis kernels faster by itself, but it is now the default so the app is tested against the Pixel 10 Pro's Android 17 target behavior. Builds package only `arm64-v8a` by default. For native x86 emulator measurements, pass `-Pvolleycut.abis=x86_64` to the Gradle wrapper; quote that argument in PowerShell. The override also supports a comma-separated list of the two supported ABIs. Compare builds using the same ABI: ARM translation and native x86 execution are different workloads.
 
 ## Build and install
+
+First prepare the pinned models as described in the
+[bundle contract](../models/distilled-large/README.md). Keep
+`VOLLEYCUT_NEURAL_ASSETS_DIR` configured when running Gradle. Builds verify both
+matched model sets against the checked-in manifest and fail if any file is
+missing or changed. The generated assets are approximately 24.2 MB uncompressed
+for both variants, excluding ONNX Runtime and license notices.
 
 Open `android/` as an Android Studio project, select the Pixel 10 Pro, and run the `app` configuration. From a terminal with `JAVA_HOME` and `ANDROID_HOME` configured:
 
@@ -76,6 +109,20 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
 SDK 37 is the default, so no Gradle property overrides are needed. Install the Android 17 SDK Platform 37.0 and Build-Tools 37.0.0 before building from the command line.
+
+The app builds `libvolleycut_yuv` with ndk-build for the selected ABI. Its AV
+resampler consumes direct decoder planes and averages the same clipped RGB pixels
+as the Java reference, including fractional areas, crop/rotation and round-to-even
+output. It retains only the small output image; it does not allocate a full-size
+RGB frame. The Java path remains available for heap buffers and JVM tests.
+`NativeYuvAreaInstrumentedTest` requires the native backend and checks exact Java
+equivalence; `YuvAreaResamplerInstrumentedTest` independently checks OpenCV area
+resizing. The shared code is used by the production app and pipeline benchmark.
+
+`VOLLEYCUT_BENCH_BUILD_DIR` also redirects native staging and generated release
+ProGuard inputs. On Windows, ndk-build's temporary executable launcher scripts
+require an executable local `TEMP`/`TMP` directory when a network share denies
+execution; compiled outputs and Gradle caches can remain on the configured share.
 
 To create and sign the release APK and Android App Bundle, build the unsigned artifacts and then have the key owner run the Bash signing helper locally:
 
@@ -159,7 +206,7 @@ Use `-SkipBuild` or `-SkipInstall` while iterating, and `-SummaryOnly` to suppre
 The 240 FPS operating-rate request was retained after a 5,000-frame 1080p60 A/B reduced median video-stage time from 29,102.5 ms to 19,749.0 ms (32.1%) with identical sampled timestamps and candidate ranges. Android uses this value for codec resource planning; it does not change source timestamps or the 4 Hz sampling schedule.
 
 The audio-only stage selector exposed a similar codec scheduling opportunity. On the Pixel 10 Pro,
-five fresh 60-second runs of `PXL_20260816_160023210.mp4` improved from a 6,276 ms baseline median
+five fresh 60-second runs of `recording-026` improved from a 6,276 ms baseline median
 to 5,277 ms (15.9%) after requesting a 4x-source-rate audio operating rate with real-time codec
 priority. An 8x request regressed to 6,354 ms, while 4x with best-effort priority measured 5,877 ms.
 The retained request is reported in benchmark JSON. It affects scheduling only; decoded timestamps,
@@ -201,9 +248,11 @@ The JVM golden test reads the repository's frozen 3,474 x 104 Y9 base-feature fi
 
 The media front end is deliberately a native-distribution experiment, not a claim of feature parity:
 
-- Android supplies decoder YUV planes; the app converts those directly into the 192x108 analysis image. That color conversion and resize are not byte-identical to browser canvas or FFmpeg/OpenCV `INTER_AREA`.
-- Video is decoded in one pass and the first presentation-order frame at or after each 4 Hz target is sampled. Web and offline frame-selection boundaries can differ by one source frame.
+- Android supplies decoder YUV planes. New AV extraction averages converted/clipped RGB source pixels over each 192x108 output footprint, following the desktop area-downsampling operation. It avoids a full-resolution RGB allocation. Decoder/color differences still require separate feature parity qualification; explicit-size score-specialist samplers retain their existing behavior.
+- AV video and neural encoder sampling use actual nearest presentation timestamps, preferring the earlier frame on ties. Repeated or terminal grid targets reuse the selected image; embedding quality offsets describe that actual image. Actual timestamp planning replaces the short CFR extrapolation described in the historical timings above, and its scan cost is included in profiling.
+- `opencv-v3-area-nearest-frame` invalidates old visual caches for fresh analyses. Saved reviewed projects remain editable with their original extraction provenance and cannot silently satisfy a new analysis request.
 - Audio uses Android's decoded PCM and the existing linear 16 kHz resampling/DSP math. It does not embed FFmpeg `libswresample`.
+- Batched audio uses supported AAC-LC codec framing, with synchronous AUTO fallback for unknown or inconsistent layouts. It no longer infers PCM size from packet spacing. Startup noise-floor interpolation is also corrected; cache and project provenance prevent reuse of old extracted inputs on new analyses. See the [repair and device validation](../docs/research/android-web-audio-fix.md) and [original root cause](../docs/research/android-audio-timeline-root-cause.md). Linear resampling remains a separate desktop-parity difference.
 - Native OpenCV implements phase correlation and Farneback flow. The algorithm settings and 73-channel schema match the web path, but native SIMD and float reductions can produce small numerical differences.
 
 Those differences are why the app reports both performance and final ranges. If the native path is materially faster, the next step is to capture its base features for channel-by-channel comparison and then calibrate/retrain against the Android feature distribution rather than assuming browser/offline thresholds transfer perfectly.

@@ -97,12 +97,14 @@ internal object ServingSideJson {
                         candidate.intervalEnd > candidate.intervalStart &&
                         candidate.nearProbability.isFinite() && candidate.nearProbability in 0.0..1.0 &&
                         candidate.side != ServingSide.REVIEW &&
-                        (candidate.agreement == null || ProductionEnsemble.isValidAgreement(candidate.agreement)) &&
+                        (candidate.agreement == null || RallyModels.isValidAgreement(candidate.agreement)) &&
                         candidate.allLabelsV2Evidence.modelId == FeatureSchema.ALL_LABELS_V2_MODEL_ID &&
                         candidate.previousProductionEvidence.modelId == FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID &&
                         validEvidence(candidate.allLabelsV2Evidence) &&
                         validEvidence(candidate.previousProductionEvidence)
                 }
+        }?.let { output ->
+            output.copy(candidates = output.candidates.map { it.withNeuralRallyRecovery() })
         }
     }.getOrNull()
 

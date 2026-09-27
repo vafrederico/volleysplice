@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "family": "distilled-mobilenet-v3-large-tcn",
+  "precision": "fp32",
+  "defaultVariant": "high-f1",
+  "variants": {
+    "high-recall": {
+      "id": "distilled-large-recall-v1",
+      "label": "Maximum coverage \u00b7 BETA",
+      "directory": "recall",
+      "encoderWeightsSha256": "0be04fbf8e5633241a473f49176d9d27184f45ea94f90dd454d73fd4109d7bc6",
+      "temporalWeightsSha256": "e79a626bb8a01a0de060d759721340b06f1bae2c90033ed8647448e4a9af5488",
+      "embeddingPrecision": "fp16-rounded",
+      "files": {
+        "encoder": {
+          "name": "encoder.onnx",
+          "sha256": "458925439a9448854fd0119b8b365cf6c761f73b9048732d7e75828e110e8ba0",
+          "sizeBytes": 11877869
+        },
+        "temporal": {
+          "name": "temporal.onnx",
+          "sha256": "696f7571c3bd618b4c1b4ecfcba1104415ec0a806ba7b0a15b57b8e8e0526874",
+          "sizeBytes": 217502
+        },
+        "pipeline": {
+          "name": "pipeline.json",
+          "sha256": "bf5d1a32925e4d208ecc7d8c3858bf0e700254f404362e030b96a07696f135a3",
+          "sizeBytes": 6154
+        }
+      }
+    },
+    "high-f1": {
+      "id": "distilled-large-f1-v1",
+      "label": "Balanced \u00b7 BETA",
+      "directory": "f1",
+      "encoderWeightsSha256": "25d6bbd2e2a133cd1a9d6427b9cd9b4619d1efd554356c0bf4a9e15894f45a66",
+      "temporalWeightsSha256": "1d73c21e9ecd9c0cf7b454c5860f00a6db317f41cf0286a95c4770948b1d5c1c",
+      "embeddingPrecision": "fp16-rounded",
+      "files": {
+        "encoder": {
+          "name": "encoder.onnx",
+          "sha256": "1f7a81e6e62f7aedf533a1b367fdbf3a9dada2368a0e6ec09d2837d68f394c37",
+          "sizeBytes": 11877865
+        },
+        "temporal": {
+          "name": "temporal.onnx",
+          "sha256": "9e1b7fb3ea21c83dd920f268c6d5e58113e2b503573083dea99cb7b2812640cb",
+          "sizeBytes": 217498
+        },
+        "pipeline": {
+          "name": "pipeline.json",
+          "sha256": "50d270289be1b4bb134b618dacfd44c29723e61c5134ece1349805dbaebe122b",
+          "sizeBytes": 6165
+        }
+      }
+    }
+  }
+}

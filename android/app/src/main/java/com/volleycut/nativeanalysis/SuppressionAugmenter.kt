@@ -6,6 +6,7 @@ import android.net.Uri
 /** Adds suppression analysis to a ready legacy project using only its contextual feature cache. */
 internal object SuppressionAugmenter {
     fun augment(context: Context, project: NativeProject): NativeProject {
+        if (RallyModels.isNeural(project.modelId)) return project
         project.suppression?.let { return project }
         val requestedTimes = AnalysisEngine.analysisTimes(
             project.media.durationSeconds(),

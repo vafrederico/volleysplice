@@ -1,3 +1,4 @@
+import { projectDisplayName } from "@/lib/project-store";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -143,7 +144,7 @@ function projectOptions(
   );
   return projects.map((project) => ({
     id: project.id,
-    name: project.source.name,
+    name: projectDisplayName(project),
     status: project.status,
     lastExportedAt: project.lastExportedAt,
     exportJob: jobsByProject.get(project.id) ?? null,

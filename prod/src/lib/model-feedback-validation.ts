@@ -1,3 +1,5 @@
+import type { NeuralRallyScores } from "./on-device/types";
+
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
 export const MODEL_FEEDBACK_SCHEMA_VERSION = 3 as const;
 export const SUPPORTED_MODEL_FEEDBACK_SCHEMA_VERSIONS = [1, 2, 3] as const;
@@ -90,6 +92,8 @@ export type ParsedModelFeedback = {
     ensembleAlgorithmVersion: string;
     ranges: FeedbackRange[];
     probabilityModelId: string;
+    probabilityModelIds?: { rally: string; serve: string; deadState: string };
+    neuralScores?: NeuralRallyScores;
     timestamps: Float64Array;
     rallyProbabilities: Float32Array;
     serveProbabilities: Float32Array;
@@ -194,8 +198,8 @@ export type ParsedServingSideOutput = {
     nearProbability: number;
     side: "near" | "far";
     verdict: "near" | "far" | "review" | "not-serve";
-    serveDecisionSource: "serve-head" | "production-rally-recovery" | "none";
-    reviewReasons: Array<"side-score" | "production-rally-recovery">;
+    serveDecisionSource: "serve-head" | "production-rally-recovery" | "neural-rally-recovery" | "none";
+    reviewReasons: Array<"side-score" | "production-rally-recovery" | "neural-rally-recovery">;
     serveEvidence: {
       allLabelsV2: ParsedServingSideEvidence;
       previousProduction: ParsedServingSideEvidence;
@@ -653,13 +657,13 @@ function parseServingSideOutput(
       ),
       serveDecisionSource: choice(
         candidate.serveDecisionSource,
-        ["serve-head", "production-rally-recovery", "none"] as const,
+        ["serve-head", "production-rally-recovery", "neural-rally-recovery", "none"] as const,
         `${candidateField}.serveDecisionSource`,
       ),
       reviewReasons: candidate.reviewReasons.map((reason, reasonIndex) =>
         choice(
           reason,
-          ["side-score", "production-rally-recovery"] as const,
+          ["side-score", "production-rally-recovery", "neural-rally-recovery"] as const,
           `${candidateField}.reviewReasons[${reasonIndex}]`,
         ),
       ),
@@ -990,6 +994,39 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   }
 
   const inference = object(root.initialInference, "bundle.initialInference");
+  const neuralScores = (() : NeuralRallyScores | undefined => {
+    if (inference.neuralScores == null) return undefined;
+    const field = "bundle.initialInference.neuralScores";
+    const value = object(inference.neuralScores, field);
+    const modelId = string(value.modelId, `${field}.modelId`);
+    if (modelId !== inference.modelId) fail(`${field}.modelId`, "must match the selected rally model");
+    const heads = ["live", "serve", "end", "keep"] as const;
+    if (!Array.isArray(value.heads) || value.heads.length !== 4 || value.heads.some((head, i) => head !== heads[i])) {
+      fail(`${field}.heads`, "must be live, serve, end, keep in that order");
+    }
+    const payload = object(value.timestamps, `${field}.timestamps`);
+    if (!Array.isArray(payload.shape) || payload.shape.length !== 1) fail(`${field}.timestamps.shape`, "must have one dimension");
+    const rows = integer(payload.shape[0], `${field}.timestamps.shape[0]`);
+    if (!rows) fail(`${field}.timestamps`, "must contain at least one sample");
+    const timestamps = decodeNumericArray(value.timestamps, `${field}.timestamps`, "float64", [rows]) as Float64Array;
+    const scores = decodeNumericArray(value.probabilities, `${field}.probabilities`, "float32", [rows, 4]) as Float32Array;
+    validateTimestamps(timestamps, duration, `${field}.timestamps`);
+    if (timestamps.some(time => time < windowStart || time >= windowEnd)) {
+      fail(`${field}.timestamps`, "must be inside the analyzed game window");
+    }
+    validateProbabilities(scores, `${field}.probabilities`);
+    return { modelId, heads, timestamps, probabilities: scores };
+  })();
+  const probabilitySources = inference.probabilityModelIds == null ? null
+    : object(inference.probabilityModelIds, "bundle.initialInference.probabilityModelIds");
+  const probabilityModelIds = probabilitySources ? {
+    rally: string(probabilitySources.rally, "bundle.initialInference.probabilityModelIds.rally"),
+    serve: string(probabilitySources.serve, "bundle.initialInference.probabilityModelIds.serve"),
+    deadState: string(probabilitySources.deadState, "bundle.initialInference.probabilityModelIds.deadState"),
+  } : undefined;
+  if (probabilityModelIds && probabilityModelIds.rally !== inference.probabilityModelId) {
+    fail("bundle.initialInference.probabilityModelId", "must identify the rally probability source");
+  }
   const inferenceTimesPayload = object(
     inference.timestamps,
     "bundle.initialInference.timestamps",
@@ -1468,6 +1505,8 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
         inference.probabilityModelId,
         "bundle.initialInference.probabilityModelId",
       ),
+      probabilityModelIds,
+      neuralScores,
       timestamps: inferenceTimestamps,
       rallyProbabilities,
       serveProbabilities,

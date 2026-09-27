@@ -9,7 +9,9 @@ export const runtime = "nodejs";
 
 function isModelSeeded(
   saved: Awaited<ReturnType<typeof getSavedLabelingDocument>>,
+  humanReviewedImport = false,
 ): boolean {
+  if (humanReviewedImport && saved.source === "task") return false;
   return (
     ["production-model", "prelabel"].includes(saved.source) ||
     saved.document.rallies.some((rally) => rally.tags.includes("ai-prelabel")) ||
@@ -38,7 +40,7 @@ export async function GET() {
             }).length,
             prelabeled: batchTasks.filter((task) => {
               const index = catalog.tasks.indexOf(task);
-              return isModelSeeded(savedDocuments[index]);
+              return isModelSeeded(savedDocuments[index], task.corpusRecord?.humanReviewedImport);
             }).length,
           },
         ];
@@ -60,7 +62,8 @@ export async function GET() {
           savedAt: savedDocuments[index].savedAt,
           annotationStatus: savedDocuments[index].document.annotation.status,
           rallyCount: savedDocuments[index].document.rallies.length,
-          modelSeeded: isModelSeeded(savedDocuments[index]),
+          modelSeeded: isModelSeeded(savedDocuments[index], task.corpusRecord?.humanReviewedImport),
+          humanReviewedImport: task.corpusRecord?.humanReviewedImport === true,
           sourceType:
             typeof task.document.recording.capture.sourceType === "string"
               ? task.document.recording.capture.sourceType

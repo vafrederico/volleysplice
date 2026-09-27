@@ -135,6 +135,24 @@ class SideSwitchModelsTest {
         ))
     }
 
+    @Test
+    fun terminalFrameRetainsFormatsForTheNextRequestBeforeEmptyEos() {
+        // Last image satisfies request 0; request 1 is 6.6ms beyond the last
+        // real PTS. Its different pixel format must be prepared before release.
+        assertEquals(2, SpecialistFrameDecoder.terminalConversionEnd(
+            1, 2, 1_060_999_856, 1_061_006_489, 1_061_016_489,
+        ))
+        assertEquals(1, SpecialistFrameDecoder.terminalConversionEnd(
+            1, 2, 10_000_000, 10_010_000, 60_000_000,
+        ))
+        assertEquals(1, SpecialistFrameDecoder.terminalConversionEnd(
+            1, 2, 58_000_000, 59_990_000, 60_000_000,
+        ))
+        assertEquals(2, SpecialistFrameDecoder.terminalConversionEnd(
+            2, 2, 59_999_000, 59_990_000, 60_000_000,
+        ))
+    }
+
     private fun input(times: DoubleArray, dead: FloatArray): SideSwitchAnalysisInput {
         val ranges = listOf(
             AnalysisTypes.Interval(0.0, 10.0, .9f, ProductionEnsemble.BOTH_MODELS),

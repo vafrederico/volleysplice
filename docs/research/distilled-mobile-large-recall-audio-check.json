@@ -1,0 +1,1019 @@
+{
+  "recordingIndex": "recording-044",
+  "labelSha256": "97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c",
+  "modelIdentity": "dino-distilled-mobilenet-v3-large-tcn",
+  "selectionMode": "recall",
+  "weightsSha256": "e79a626bb8a01a0de060d759721340b06f1bae2c90033ed8647448e4a9af5488",
+  "encoderWeightsSha256": "0be04fbf8e5633241a473f49176d9d27184f45ea94f90dd454d73fd4109d7bc6",
+  "decoder": {
+    "smoothing": 0.5,
+    "enter": 0.2,
+    "minimum": 1.0,
+    "boundary": true
+  },
+  "scope": "Offline frozen checkpoint and decoder, one recording, one block substitution at a time. No device access, image extraction, training, calibration or selection. Counterfactuals are diagnostic and are not deployed results.",
+  "targetPaddingSeconds": 2,
+  "joinGapSeconds": 3,
+  "featureDifferences": {
+    "av104": {
+      "meanAbsoluteDifference": 0.6507514715194702,
+      "maxAbsoluteDifference": 5.392385005950928
+    },
+    "embeddings": {
+      "meanAbsoluteDifference": 0.01700185239315033,
+      "maxAbsoluteDifference": 0.44324803352355957
+    },
+    "quality": {
+      "meanAbsoluteDifference": 1.3038887977600098,
+      "maxAbsoluteDifference": 20.0
+    }
+  },
+  "audioDifferences": [
+    {
+      "feature": "audio_band_80_250_snr_flux",
+      "nativeStandardizedMean": -0.001619135495275259,
+      "desktopStandardizedMean": -0.0016191282775253057,
+      "standardizedMeanAbsoluteDifference": 1.1605857610702515
+    },
+    {
+      "feature": "audio_peak_to_rms",
+      "nativeStandardizedMean": 0.0035708227660506964,
+      "desktopStandardizedMean": 0.003570819040760398,
+      "standardizedMeanAbsoluteDifference": 1.158129334449768
+    },
+    {
+      "feature": "audio_band_80_250_snr",
+      "nativeStandardizedMean": -0.0037113327998667955,
+      "desktopStandardizedMean": -0.003711347235366702,
+      "standardizedMeanAbsoluteDifference": 1.1517807245254517
+    },
+    {
+      "feature": "audio_band_4000_7800_snr_flux",
+      "nativeStandardizedMean": -0.001358294626697898,
+      "desktopStandardizedMean": -0.0013583090621978045,
+      "standardizedMeanAbsoluteDifference": 1.150336742401123
+    },
+    {
+      "feature": "audio_cadence_collapse",
+      "nativeStandardizedMean": 0.00035173934884369373,
+      "desktopStandardizedMean": 0.0003517510194797069,
+      "standardizedMeanAbsoluteDifference": 1.146487832069397
+    },
+    {
+      "feature": "audio_band_2000_4000_snr",
+      "nativeStandardizedMean": -0.002474547829478979,
+      "desktopStandardizedMean": -0.002474551321938634,
+      "standardizedMeanAbsoluteDifference": 1.142281413078308
+    },
+    {
+      "feature": "audio_band_2000_4000_snr_flux",
+      "nativeStandardizedMean": 0.00026396088651381433,
+      "desktopStandardizedMean": 0.0002639518934302032,
+      "standardizedMeanAbsoluteDifference": 1.142101764678955
+    },
+    {
+      "feature": "audio_onset_strength",
+      "nativeStandardizedMean": -0.008782312273979187,
+      "desktopStandardizedMean": -0.008782301098108292,
+      "standardizedMeanAbsoluteDifference": 1.1412585973739624
+    },
+    {
+      "feature": "audio_spectral_flux",
+      "nativeStandardizedMean": -0.0056938971392810345,
+      "desktopStandardizedMean": -0.005693904124200344,
+      "standardizedMeanAbsoluteDifference": 1.140236496925354
+    },
+    {
+      "feature": "audio_rms_novelty",
+      "nativeStandardizedMean": -0.008256640285253525,
+      "desktopStandardizedMean": -0.008256630040705204,
+      "standardizedMeanAbsoluteDifference": 1.1376099586486816
+    },
+    {
+      "feature": "audio_band_1000_2000_snr",
+      "nativeStandardizedMean": -0.0020194081589579582,
+      "desktopStandardizedMean": -0.0020194081589579582,
+      "standardizedMeanAbsoluteDifference": 1.1372426748275757
+    },
+    {
+      "feature": "audio_band_1000_2000_snr_flux",
+      "nativeStandardizedMean": -0.00022618233924731612,
+      "desktopStandardizedMean": -0.00022619492665398866,
+      "standardizedMeanAbsoluteDifference": 1.132163166999817
+    },
+    {
+      "feature": "audio_snr",
+      "nativeStandardizedMean": -0.003510348265990615,
+      "desktopStandardizedMean": -0.0035103627014905214,
+      "standardizedMeanAbsoluteDifference": 1.1230415105819702
+    },
+    {
+      "feature": "audio_band_4000_7800_snr",
+      "nativeStandardizedMean": -0.0032687955535948277,
+      "desktopStandardizedMean": -0.003268792061135173,
+      "standardizedMeanAbsoluteDifference": 1.120882511138916
+    },
+    {
+      "feature": "audio_noise_normalized_flux",
+      "nativeStandardizedMean": -0.0022311476059257984,
+      "desktopStandardizedMean": -0.002231162041425705,
+      "standardizedMeanAbsoluteDifference": 1.118552327156067
+    },
+    {
+      "feature": "audio_band_500_1000_snr",
+      "nativeStandardizedMean": -0.0026426496915519238,
+      "desktopStandardizedMean": -0.0026426282711327076,
+      "standardizedMeanAbsoluteDifference": 1.113306999206543
+    },
+    {
+      "feature": "audio_contact_like_transient",
+      "nativeStandardizedMean": -0.01005377434194088,
+      "desktopStandardizedMean": -0.010053764097392559,
+      "standardizedMeanAbsoluteDifference": 1.1070847511291504
+    },
+    {
+      "feature": "audio_noise_removed_broadband",
+      "nativeStandardizedMean": -0.004093597177416086,
+      "desktopStandardizedMean": -0.00409358274191618,
+      "standardizedMeanAbsoluteDifference": 1.1023228168487549
+    },
+    {
+      "feature": "audio_band_500_1000_snr_flux",
+      "nativeStandardizedMean": -0.0020485741551965475,
+      "desktopStandardizedMean": -0.0020485669374465942,
+      "standardizedMeanAbsoluteDifference": 1.098580002784729
+    },
+    {
+      "feature": "audio_seconds_since_transient",
+      "nativeStandardizedMean": 0.01360542606562376,
+      "desktopStandardizedMean": 0.013605447486042976,
+      "standardizedMeanAbsoluteDifference": 1.0960191488265991
+    },
+    {
+      "feature": "audio_peak",
+      "nativeStandardizedMean": -0.00963233970105648,
+      "desktopStandardizedMean": -0.009632343426346779,
+      "standardizedMeanAbsoluteDifference": 1.0810190439224243
+    },
+    {
+      "feature": "audio_band_250_500_snr_flux",
+      "nativeStandardizedMean": -0.003026898019015789,
+      "desktopStandardizedMean": -0.003026926890015602,
+      "standardizedMeanAbsoluteDifference": 1.052492380142212
+    },
+    {
+      "feature": "audio_rms",
+      "nativeStandardizedMean": -0.010977169498801231,
+      "desktopStandardizedMean": -0.010977162048220634,
+      "standardizedMeanAbsoluteDifference": 1.027756690979004
+    },
+    {
+      "feature": "audio_band_250_500_snr",
+      "nativeStandardizedMean": -0.003770592389628291,
+      "desktopStandardizedMean": -0.0037705779541283846,
+      "standardizedMeanAbsoluteDifference": 1.022095799446106
+    },
+    {
+      "feature": "audio_onset_cadence",
+      "nativeStandardizedMean": -0.012452250346541405,
+      "desktopStandardizedMean": -0.012452257797122002,
+      "standardizedMeanAbsoluteDifference": 0.954276978969574
+    },
+    {
+      "feature": "audio_noise_floor",
+      "nativeStandardizedMean": -0.010390613228082657,
+      "desktopStandardizedMean": -0.01039062812924385,
+      "standardizedMeanAbsoluteDifference": 0.7888920903205872
+    },
+    {
+      "feature": "audio_available",
+      "nativeStandardizedMean": 0.0,
+      "desktopStandardizedMean": 0.0,
+      "standardizedMeanAbsoluteDifference": 0.0
+    }
+  ],
+  "qualityDifferences": [
+    {
+      "feature": "content_fraction",
+      "nativeStandardizedMean": 1.0994950532913208,
+      "desktopStandardizedMean": 1.0994950532913208,
+      "standardizedMeanAbsoluteDifference": 0.0
+    },
+    {
+      "feature": "luminance_mean",
+      "nativeStandardizedMean": -0.9240401387214661,
+      "desktopStandardizedMean": -0.7068482637405396,
+      "standardizedMeanAbsoluteDifference": 0.2172049582004547
+    },
+    {
+      "feature": "luminance_std",
+      "nativeStandardizedMean": -0.7465645670890808,
+      "desktopStandardizedMean": -0.4557642638683319,
+      "standardizedMeanAbsoluteDifference": 0.2908003032207489
+    },
+    {
+      "feature": "laplacian_variance",
+      "nativeStandardizedMean": 1.9366575479507446,
+      "desktopStandardizedMean": 1.9982985258102417,
+      "standardizedMeanAbsoluteDifference": 0.06179467961192131
+    },
+    {
+      "feature": "clipped_pixel_fraction",
+      "nativeStandardizedMean": -0.7982423305511475,
+      "desktopStandardizedMean": -0.8636311888694763,
+      "standardizedMeanAbsoluteDifference": 0.09221359342336655
+    },
+    {
+      "feature": "selected_pts_offset_seconds",
+      "nativeStandardizedMean": 9.687965393066406,
+      "desktopStandardizedMean": -0.08059156686067581,
+      "standardizedMeanAbsoluteDifference": 9.769096374511719
+    },
+    {
+      "feature": "age",
+      "nativeStandardizedMean": 0.071345753967762,
+      "desktopStandardizedMean": 0.071345753967762,
+      "standardizedMeanAbsoluteDifference": 0.0
+    },
+    {
+      "feature": "available",
+      "nativeStandardizedMean": 0.0,
+      "desktopStandardizedMean": 0.0,
+      "standardizedMeanAbsoluteDifference": 0.0
+    }
+  ],
+  "complete": true,
+  "audioFeatureIndices": [
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103
+  ],
+  "audioFeatureNames": [
+    "audio_available",
+    "audio_rms",
+    "audio_peak",
+    "audio_peak_to_rms",
+    "audio_noise_floor",
+    "audio_snr",
+    "audio_spectral_flux",
+    "audio_rms_novelty",
+    "audio_onset_strength",
+    "audio_contact_like_transient",
+    "audio_onset_cadence",
+    "audio_cadence_collapse",
+    "audio_seconds_since_transient",
+    "audio_noise_removed_broadband",
+    "audio_noise_normalized_flux",
+    "audio_band_80_250_snr",
+    "audio_band_80_250_snr_flux",
+    "audio_band_250_500_snr",
+    "audio_band_250_500_snr_flux",
+    "audio_band_500_1000_snr",
+    "audio_band_500_1000_snr_flux",
+    "audio_band_1000_2000_snr",
+    "audio_band_1000_2000_snr_flux",
+    "audio_band_2000_4000_snr",
+    "audio_band_2000_4000_snr_flux",
+    "audio_band_4000_7800_snr",
+    "audio_band_4000_7800_snr_flux"
+  ],
+  "unchangedNonAudioExact": true,
+  "schema": "frozen-native-input-substitution-v1",
+  "cases": [
+    {
+      "name": "native",
+      "kind": "observed",
+      "rallyCount": 35,
+      "whollyMissedSavedHumanRallies": 2,
+      "whollyMissedHumanRallyNumbers": [
+        16,
+        37
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.8766038593948007,
+        "R_core": 0.9384090439010119,
+        "F1_padP_coreR": 0.9064541503598794,
+        "paddedModelExportSeconds": 471.375,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": 0.7303022222189384,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.80503798583999,
+          "R_core": 0.850733364555296,
+          "F1_padP_coreR": 0.8272551329324211,
+          "paddedModelExportSeconds": 339.375,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": 18.228824444440875,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8515797575633035,
+          "R_core": 0.913802907293603,
+          "F1_padP_coreR": 0.8815947655369138,
+          "paddedModelExportSeconds": 405.375,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": 8.229446666663307,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8766038593948007,
+          "R_core": 0.9384090439010119,
+          "F1_padP_coreR": 0.9064541503598794,
+          "paddedModelExportSeconds": 471.375,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 0.7303022222189384,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8893589332519369,
+          "R_core": 0.9535972123846761,
+          "F1_padP_coreR": 0.9203585246088427,
+          "paddedModelExportSeconds": 546.0,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": 1.3561466666635624,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "savedProbabilitiesMaxAbsoluteError": 5.662441253662109e-07,
+      "rallies": [
+        {
+          "start": 160.0,
+          "end": 173.625
+        },
+        {
+          "start": 182.625,
+          "end": 203.125
+        },
+        {
+          "start": 210.875,
+          "end": 221.625
+        },
+        {
+          "start": 224.125,
+          "end": 226.625
+        },
+        {
+          "start": 235.5,
+          "end": 246.125
+        },
+        {
+          "start": 256.125,
+          "end": 265.625
+        },
+        {
+          "start": 277.375,
+          "end": 280.375
+        },
+        {
+          "start": 289.125,
+          "end": 316.625
+        },
+        {
+          "start": 323.875,
+          "end": 357.875
+        },
+        {
+          "start": 387.625,
+          "end": 396.625
+        },
+        {
+          "start": 406.75,
+          "end": 413.0
+        },
+        {
+          "start": 438.25,
+          "end": 447.375
+        },
+        {
+          "start": 469.625,
+          "end": 478.125
+        },
+        {
+          "start": 492.875,
+          "end": 504.125
+        },
+        {
+          "start": 524.75,
+          "end": 529.875
+        },
+        {
+          "start": 545.0,
+          "end": 547.875
+        },
+        {
+          "start": 578.625,
+          "end": 584.125
+        },
+        {
+          "start": 600.5,
+          "end": 607.125
+        },
+        {
+          "start": 618.75,
+          "end": 628.875
+        },
+        {
+          "start": 642.125,
+          "end": 656.0
+        },
+        {
+          "start": 668.25,
+          "end": 670.875
+        },
+        {
+          "start": 708.5,
+          "end": 715.625
+        },
+        {
+          "start": 726.875,
+          "end": 735.875
+        },
+        {
+          "start": 750.75,
+          "end": 760.625
+        },
+        {
+          "start": 769.75,
+          "end": 784.625
+        },
+        {
+          "start": 786.375,
+          "end": 791.25
+        },
+        {
+          "start": 805.25,
+          "end": 814.125
+        },
+        {
+          "start": 827.75,
+          "end": 835.625
+        },
+        {
+          "start": 849.0,
+          "end": 855.375
+        },
+        {
+          "start": 869.625,
+          "end": 879.625
+        },
+        {
+          "start": 898.125,
+          "end": 904.375
+        },
+        {
+          "start": 926.125,
+          "end": 935.125
+        },
+        {
+          "start": 945.5,
+          "end": 955.125
+        },
+        {
+          "start": 973.25,
+          "end": 976.875
+        },
+        {
+          "start": 990.25,
+          "end": 995.125
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 28,
+        "eventPrecision": 0.8,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7777777777777778,
+        "startBoundaryMaeSeconds": 1.0486667857143084,
+        "endBoundaryMaeSeconds": 1.387091087301552
+      }
+    },
+    {
+      "name": "desktop",
+      "kind": "observed",
+      "rallyCount": 37,
+      "whollyMissedSavedHumanRallies": 0,
+      "whollyMissedHumanRallyNumbers": [],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.8811953232996174,
+        "R_core": 0.9925754128204921,
+        "F1_padP_coreR": 0.9335750579718085,
+        "paddedModelExportSeconds": 506.625,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": 35.98030222221894,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8229884946953219,
+          "R_core": 0.9292846236534456,
+          "F1_padP_coreR": 0.8729124992623851,
+          "paddedModelExportSeconds": 362.625,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": 41.478824444440875,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8615141344070605,
+          "R_core": 0.9824209853236849,
+          "F1_padP_coreR": 0.9180036279346468,
+          "paddedModelExportSeconds": 434.625,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": 37.47944666666331,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8811953232996174,
+          "R_core": 0.9925754128204921,
+          "F1_padP_coreR": 0.9335750579718085,
+          "paddedModelExportSeconds": 506.625,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 35.98030222221894,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8946124054015668,
+          "R_core": 0.9956892596482493,
+          "F1_padP_coreR": 0.9424484780136412,
+          "paddedModelExportSeconds": 586.25,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": 41.60614666666356,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "savedProbabilitiesMaxAbsoluteError": 5.960464477539062e-07,
+      "rallies": [
+        {
+          "start": 159.75,
+          "end": 173.375
+        },
+        {
+          "start": 183.0,
+          "end": 202.25
+        },
+        {
+          "start": 214.75,
+          "end": 223.375
+        },
+        {
+          "start": 235.25,
+          "end": 246.625
+        },
+        {
+          "start": 256.375,
+          "end": 267.625
+        },
+        {
+          "start": 277.75,
+          "end": 279.75
+        },
+        {
+          "start": 293.5,
+          "end": 312.5
+        },
+        {
+          "start": 327.625,
+          "end": 358.125
+        },
+        {
+          "start": 384.625,
+          "end": 394.125
+        },
+        {
+          "start": 406.5,
+          "end": 412.5
+        },
+        {
+          "start": 428.875,
+          "end": 430.125
+        },
+        {
+          "start": 438.125,
+          "end": 448.875
+        },
+        {
+          "start": 469.125,
+          "end": 479.875
+        },
+        {
+          "start": 492.0,
+          "end": 504.375
+        },
+        {
+          "start": 525.0,
+          "end": 529.625
+        },
+        {
+          "start": 545.0,
+          "end": 549.375
+        },
+        {
+          "start": 561.625,
+          "end": 568.625
+        },
+        {
+          "start": 575.875,
+          "end": 585.125
+        },
+        {
+          "start": 600.5,
+          "end": 606.875
+        },
+        {
+          "start": 618.75,
+          "end": 628.5
+        },
+        {
+          "start": 641.75,
+          "end": 656.875
+        },
+        {
+          "start": 668.5,
+          "end": 671.75
+        },
+        {
+          "start": 708.5,
+          "end": 715.625
+        },
+        {
+          "start": 726.25,
+          "end": 735.75
+        },
+        {
+          "start": 751.25,
+          "end": 760.625
+        },
+        {
+          "start": 769.5,
+          "end": 785.625
+        },
+        {
+          "start": 786.375,
+          "end": 792.125
+        },
+        {
+          "start": 805.25,
+          "end": 816.125
+        },
+        {
+          "start": 827.75,
+          "end": 833.5
+        },
+        {
+          "start": 848.5,
+          "end": 855.625
+        },
+        {
+          "start": 868.875,
+          "end": 880.125
+        },
+        {
+          "start": 897.125,
+          "end": 905.75
+        },
+        {
+          "start": 924.125,
+          "end": 936.125
+        },
+        {
+          "start": 943.625,
+          "end": 955.375
+        },
+        {
+          "start": 972.75,
+          "end": 977.125
+        },
+        {
+          "start": 990.0,
+          "end": 998.125
+        },
+        {
+          "start": 1031.625,
+          "end": 1039.75
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 37,
+        "matchedRallies": 31,
+        "eventPrecision": 0.8378378378378378,
+        "eventRecall": 0.8378378378378378,
+        "eventF1": 0.8378378378378378,
+        "startBoundaryMaeSeconds": 0.6885866738351495,
+        "endBoundaryMaeSeconds": 1.2072524946236254
+      }
+    },
+    {
+      "name": "av_audio",
+      "kind": "counterfactuals",
+      "rallyCount": 39,
+      "whollyMissedSavedHumanRallies": 0,
+      "whollyMissedHumanRallyNumbers": [],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9228659631095893,
+        "R_core": 0.9875286628735539,
+        "F1_padP_coreR": 0.954102967173201,
+        "paddedModelExportSeconds": 473.625,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": 2.9803022222189384,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.8751299119878655,
+          "R_core": 0.8978942548550308,
+          "F1_padP_coreR": 0.8863659446051068,
+          "paddedModelExportSeconds": 329.5,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": 8.353824444440875,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9045336433020236,
+          "R_core": 0.9707385931884971,
+          "F1_padP_coreR": 0.9364674624884638,
+          "paddedModelExportSeconds": 403.625,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": 6.479446666663307,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9228659631095893,
+          "R_core": 0.9875286628735539,
+          "F1_padP_coreR": 0.954102967173201,
+          "paddedModelExportSeconds": 473.625,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": 2.9803022222189384,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9411002940139521,
+          "R_core": 0.9937563565290681,
+          "F1_padP_coreR": 0.9667118223412239,
+          "paddedModelExportSeconds": 543.625,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -1.0188533333364376,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "savedProbabilitiesMaxAbsoluteError": null,
+      "rallies": [
+        {
+          "start": 76.375,
+          "end": 78.125
+        },
+        {
+          "start": 124.125,
+          "end": 125.625
+        },
+        {
+          "start": 159.75,
+          "end": 173.875
+        },
+        {
+          "start": 183.0,
+          "end": 202.875
+        },
+        {
+          "start": 212.125,
+          "end": 223.625
+        },
+        {
+          "start": 234.75,
+          "end": 246.375
+        },
+        {
+          "start": 256.625,
+          "end": 267.625
+        },
+        {
+          "start": 277.75,
+          "end": 279.75
+        },
+        {
+          "start": 293.5,
+          "end": 313.875
+        },
+        {
+          "start": 327.625,
+          "end": 356.5
+        },
+        {
+          "start": 385.125,
+          "end": 394.625
+        },
+        {
+          "start": 406.75,
+          "end": 412.25
+        },
+        {
+          "start": 438.375,
+          "end": 447.625
+        },
+        {
+          "start": 469.125,
+          "end": 479.625
+        },
+        {
+          "start": 491.75,
+          "end": 503.125
+        },
+        {
+          "start": 525.0,
+          "end": 529.375
+        },
+        {
+          "start": 545.0,
+          "end": 547.5
+        },
+        {
+          "start": 562.875,
+          "end": 565.125
+        },
+        {
+          "start": 576.125,
+          "end": 584.125
+        },
+        {
+          "start": 600.5,
+          "end": 605.5
+        },
+        {
+          "start": 618.75,
+          "end": 628.25
+        },
+        {
+          "start": 641.75,
+          "end": 656.125
+        },
+        {
+          "start": 668.5,
+          "end": 671.75
+        },
+        {
+          "start": 708.25,
+          "end": 715.625
+        },
+        {
+          "start": 726.25,
+          "end": 735.75
+        },
+        {
+          "start": 751.5,
+          "end": 758.375
+        },
+        {
+          "start": 769.75,
+          "end": 780.125
+        },
+        {
+          "start": 781.875,
+          "end": 783.375
+        },
+        {
+          "start": 787.5,
+          "end": 791.875
+        },
+        {
+          "start": 805.25,
+          "end": 814.125
+        },
+        {
+          "start": 827.75,
+          "end": 833.5
+        },
+        {
+          "start": 849.0,
+          "end": 854.125
+        },
+        {
+          "start": 871.625,
+          "end": 879.0
+        },
+        {
+          "start": 897.125,
+          "end": 905.75
+        },
+        {
+          "start": 924.125,
+          "end": 934.625
+        },
+        {
+          "start": 943.625,
+          "end": 954.875
+        },
+        {
+          "start": 973.0,
+          "end": 975.5
+        },
+        {
+          "start": 990.25,
+          "end": 996.375
+        },
+        {
+          "start": 1032.125,
+          "end": 1039.0
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 37,
+        "matchedRallies": 32,
+        "eventPrecision": 0.8648648648648649,
+        "eventRecall": 0.8648648648648649,
+        "eventF1": 0.8648648648648649,
+        "startBoundaryMaeSeconds": 0.8573393263889031,
+        "endBoundaryMaeSeconds": 0.7851484236111075
+      }
+    }
+  ],
+  "inputHashes": {
+    "nativeFeatures": "28d7111bd6ad030443ffec56b18ff929756ec13ece4b31f3b3c6b2d1d07b8eb3",
+    "nativeProbabilities": "cd41952012ea4d6a3fe959b12020711ffb92505508a80df7d54c0993dd573b1f",
+    "desktopSavedProbabilities": "25f0fb61612f88d8c19eb1edbb02091112c92b13baa4a5135da14e888432c8d4",
+    "onnxGraph": "696f7571c3bd618b4c1b4ecfcba1104415ec0a806ba7b0a15b57b8e8e0526874"
+  },
+  "artifactIndex": "private-reference-0223",
+  "diagnosticCodeSha256": "a2476a9865c442922cef9091c6be780916fede2a283983c058afb43cb14c91d9",
+  "phoneRerun": false,
+  "recoveredRanges": [
+    {
+      "humanRallyNumber": 16,
+      "start": 562.4958444444444,
+      "end": 568.7457444444444,
+      "evaluableCoreSeconds": 6.249900000000025,
+      "retainedCoreSeconds": 4.629155555555599,
+      "coverage": 0.7406767397167283,
+      "fullyCovered": false,
+      "completelyLost": false
+    },
+    {
+      "humanRallyNumber": 37,
+      "start": 1033.6126333333334,
+      "end": 1040.3617111111112,
+      "evaluableCoreSeconds": 6.749077777777757,
+      "retainedCoreSeconds": 6.749077777777757,
+      "coverage": 1.0,
+      "fullyCovered": true,
+      "completelyLost": false
+    }
+  ],
+  "independentReviewSha256": "adf829bd5fd72208412ddb4c14a469a607b7f72fd2a32466bfcddafa1042fb4a",
+  "independentIntervalMetricChecksPassed": 12
+}

@@ -48,6 +48,7 @@ internal fun projectCreationOverallProgress(
     if (includeServingSide) {
         return when (stage) {
             "opening" -> 0.02 * bounded
+            "video-preparing", "video-indexing" -> 0.02
             "video" -> 0.02 + 0.40 * bounded
             "audio" -> 0.42 + 0.16 * bounded
             "normalizing" -> 0.58 + 0.06 * bounded
@@ -61,6 +62,7 @@ internal fun projectCreationOverallProgress(
     }
     return when (stage) {
         "opening" -> 0.02 * bounded
+        "video-preparing", "video-indexing" -> 0.02
         "video" -> 0.02 + 0.63 * bounded
         "audio" -> 0.65 + 0.19 * bounded
         "normalizing" -> 0.84 + 0.07 * bounded
@@ -76,6 +78,7 @@ internal data class ProjectNotificationStage(
     val step: Int,
     val stepCount: Int,
     val progress: Double,
+    val indeterminate: Boolean = false,
 ) {
     val title: String get() = "$label ($step/$stepCount)"
     val progressPercent: Int get() = (progress.coerceIn(0.0, 1.0) * 100).toInt()
@@ -147,7 +150,9 @@ internal fun projectCreationNotificationStage(
     val bounded = fraction.coerceIn(0.0, 1.0)
     val stepCount = if (includeServingSide) 3 else 2
     return when (stage) {
-        "opening", "video" -> ProjectNotificationStage(
+        "opening", "video-preparing" -> ProjectNotificationStage("Preparing video", 1, stepCount, 0.0, true)
+        "video-indexing" -> ProjectNotificationStage("Reading video timestamps", 1, stepCount, bounded)
+        "video" -> ProjectNotificationStage(
             "Video analysis", 1, stepCount, if (stage == "video") bounded else 0.0,
         )
         "audio" -> ProjectNotificationStage("Audio analysis", 2, stepCount, bounded * 0.80)
@@ -342,7 +347,7 @@ class ProjectAnalysisService : Service() {
             includeServingSide = includeServingSide,
             includeSideSwitch = includeServingSide && project.sideSwitchEnabled,
         )
-        val openingDetail = "Preparing game-window video + audio inference"
+        val openingDetail = "Checking analysis files and opening the video. Reading frame timestamps comes next."
         broadcast(
             projectId,
             ProjectStatus.ANALYZING,
@@ -358,6 +363,7 @@ class ProjectAnalysisService : Service() {
         val performanceUpdates = CallbackEmissionThrottle(1_000_000_000L)
         fun notificationDetail(): String {
             val stage = latestNotificationStage
+            if (stage.indeterminate) return "${project.source.name} · Preparing video before frame scanning"
             return if (stage.step == 1 && latestPerformance != null) {
                 projectInferenceNotificationDetail(
                     project.source.name, latestPerformance, stage.progressPercent,
@@ -371,13 +377,14 @@ class ProjectAnalysisService : Service() {
         updateNotification(
             latestNotificationStage.progressPercent,
             notificationDetail(),
-            false,
+            latestNotificationStage.indeterminate,
             latestNotificationStage.title,
         )
         try {
-            val result = AnalysisEngine(this).analyze(
+            val neural = DistilledRallyModels.open(this, project.modelId, project.media, project.roi, cancelled::get)
+            val result = neural.use { AnalysisEngine(this, it).analyze(
                 Uri.parse(project.source.uri),
-                false,
+                true,
                 FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
                 AnalysisTypes.VideoDecoderOptions.defaults(),
                 NativeFeatureCache.Mode.fromWireName(project.cacheMode),
@@ -398,7 +405,7 @@ class ProjectAnalysisService : Service() {
                         updateNotification(
                             latestNotificationStage.progressPercent,
                             notificationDetail(),
-                            false,
+                            latestNotificationStage.indeterminate,
                             latestNotificationStage.title,
                         )
                         broadcast(
@@ -422,14 +429,14 @@ class ProjectAnalysisService : Service() {
                 },
                 includeServingSide,
                 project.sideSwitchEnabled,
-            )
+            ) }
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
-                NativeProjectStore.complete(this, projectId, result)
+                NativeProjectStore.complete(this, projectId, result, neural?.scores())
                 val disagreements = result.ranges().count {
                     ProductionEnsemble.isDisagreement(it.agreement())
                 }
                 val detail = "${result.ranges().size} merged ranges · $disagreements to validate · features cached"
-                Log.i(TAG, resultLog(projectId, project.analysisWindow, result).toString())
+                Log.i(TAG, resultLog(projectId, project.modelId, project.analysisWindow, result).toString())
                 if (result.servingSideError() != null) {
                     stepTracker.markError("serving-side", result.servingSideError())
                 }
@@ -655,13 +662,15 @@ class ProjectAnalysisService : Service() {
 
     private fun resultLog(
         projectId: String,
+        modelId: String,
         analysisWindow: AnalysisTypes.AnalysisWindow,
         result: AnalysisTypes.AnalysisResult,
     ) = JSONObject().apply {
         put("schemaVersion", 1)
-        put("method", "android-project-inference-ensemble-v2")
+        put("method", if (RallyModels.isNeural(modelId)) "android-project-inference-neural-v1"
+            else "android-project-inference-ensemble-v2")
         put("projectId", projectId)
-        put("modelId", FeatureSchema.MODEL_ID)
+        put("modelId", modelId)
         put("sourceName", result.displayName())
         put("analysisWindow", JSONArray(listOf(analysisWindow.start(), analysisWindow.end())))
         put("totalMilliseconds", result.totalMilliseconds())

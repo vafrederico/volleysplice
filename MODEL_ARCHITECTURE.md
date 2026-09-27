@@ -8,6 +8,54 @@ and predecessor changes are registered in [`MODELS.md`](MODELS.md). This documen
 not describe the broader editor, project-storage, playback, video-decoding, or
 export-encoding architecture.
 
+## Distilled Large application path
+
+On this branch, normal web and Android projects default to the selected
+**Distilled MobileNetV3-Large + TCN, highest F1** model (**Balanced · BETA**).
+The highest-recall selection (**Maximum coverage · BETA**) and **Legacy model**
+(the production ensemble) remain explicit choices. Each analysis runs only the
+selected rally variant. The following
+new path supplements the deployed ensemble description below; no signed release
+or site deployment is implied by its implementation.
+
+```text
+Video -> 2 Hz 224-pixel image encoder -> four 960-value regional pools
+AV104 -> 4 Hz ranked AV values       -> 112-column frozen scalar normalization
+                 aligned tokens + eight quality/age/availability values
+                                      |
+                              3,952 values per tick
+                                      |
+                           FP32 four-head temporal CNN
+                                      |
+                         selected frozen rally decoder
+                                      |
+                       core rallies -> score specialists
+```
+
+TCN inference uses 128 core ticks with 62 ticks of context on each side. The
+four sigmoid outputs are live play, start/serve, end, and keep. The highest-recall
+decoder uses 0.5 s smoothing, entry 0.2, minimum 1 s, and boundary refinement.
+Highest F1 uses 1 s smoothing, entry 0.9, minimum 0.25 s, and no boundary refinement.
+These are the already-selected operating points; the apps do not optimize them
+against the user's video. Export padding and short-gap joining remain editor
+operations, separate from these core rally boundaries.
+
+Changing selection switches the matched encoder, temporal weights, scalar
+normalizer, and decoder atomically. The encoder weights differ, so embeddings
+cannot be reused across the choices. DINO and the training projector are absent
+at inference. See the [bundle manifests](models/distilled-large/README.md) and
+[feature contract](FEATURE_PIPELINE.md#production-profile).
+
+The neural model supplies rally intervals. Existing production serve/dead-state
+heads still provide evidence for serving-side and side-switch classification,
+which run on those neural intervals. The ensemble's learned suppression policy
+is not automatically applied to a neural proposal set: it was fitted around
+ensemble proposals and could remove recovered rallies. Selecting the legacy
+ensemble retains its existing suppression choices. A neural-runtime failure is
+reported explicitly; it must not silently relabel ensemble output as neural.
+
+## Deployed ensemble reference
+
 VolleySplice's production architecture is a lightweight, on-device audiovisual signal-
 processing system. It does not explicitly detect the volleyball, players, net, score,
 or named volleyball actions. Instead, it learns statistical patterns that distinguish
@@ -544,6 +592,14 @@ The production rally intervals are the same overlap-connected union already deco
 models; a one-model-only interval is insufficient. The gate does not alter intervals,
 retrain a serve head, or use the side score to decide whether a serve occurred. Side-score
 uncertainty and rally recovery are independent review reasons.
+
+For independently decoded neural rallies, Android and production web retain an
+unconfirmed start as a `review` serve with source/reason `neural-rally-recovery`.
+The side classifier still runs for every valid rally and keeps its near/far
+prediction. This extends marker visibility beyond the legacy gate; it does not
+invent a confirmed serve or move its anchor. Saved neural `not-serve` results can
+be recovered from their existing side predictions without extracting features
+again. Legacy ensemble gating and model weights remain unchanged.
 
 The selected development fit contains 1,027 correction-clean near/far rows across 28
 recordings and nine source groups. Development leave-one-source-group-out performance is

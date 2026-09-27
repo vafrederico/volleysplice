@@ -17,6 +17,7 @@ vendored components known to be distributed by the current project.
 | React | 19.2.8 | MIT | <https://github.com/facebook/react> |
 | ReactDOM | 19.2.8 | MIT | <https://github.com/facebook/react> |
 | fft.js | 4.0.4 | MIT | <https://github.com/indutny/fft.js> |
+| ONNX Runtime Web | 1.22.0 | MIT, with bundled third-party notices | <https://github.com/microsoft/onnxruntime/tree/v1.22.0> |
 | Next.js (lab application) | 16.3.5 | MIT | <https://github.com/vercel/next.js> |
 
 The production build copies the available license texts for bundled browser
@@ -48,6 +49,30 @@ configuration and the release-runtime dependency report.
 
 The settings vector is derived from the Google Material settings icon and is
 used under Apache-2.0.
+
+The neural rally pipeline also packages ONNX Runtime Android 1.30.0 under MIT,
+with the upstream third-party notices. Native model execution is FP32 CPU; the
+browser separately uses ONNX Runtime Web 1.22.0 with its qualified WebGPU graph
+and WASM fallback. Pinned license texts and their source/hash inventory are under
+[`models/distilled-large/licenses/`](models/distilled-large/licenses/sources.json)
+and are included in the application build inputs.
+
+## Distilled MobileNetV3-Large model provenance
+
+The app's two distilled students start from TorchVision
+`MobileNet_V3_Large_Weights.IMAGENET1K_V1`, then learn from project training frames
+with a frozen DINOv2 ViT-S/14 teacher. The temporal heads are project-trained
+models. The teacher and its training-only projection are not runtime app assets.
+
+TorchVision 0.26.0 source is BSD-3-Clause. Its upstream
+[pretrained model notice](https://github.com/pytorch/vision#pre-trained-model-license)
+distinguishes the terms applicable to model weights and training datasets from
+the code license; the project MIT license does not replace those terms. The
+original DINOv2 code and models are distributed under Apache-2.0, as described in
+its [model card](https://github.com/facebookresearch/dinov2/blob/main/MODEL_CARD.md).
+The exact teacher commit's Apache license and TorchVision's license are preserved
+with the pinned runtime notices above. Model identities, graph hashes, and
+selection provenance are in the [bundle contract](models/distilled-large/README.md).
 
 ## iOS application
 

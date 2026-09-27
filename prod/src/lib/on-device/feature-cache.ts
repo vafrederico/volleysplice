@@ -120,7 +120,7 @@ export function audioFeatureCacheKey(
   times: Float64Array,
 ): string {
   return JSON.stringify({
-    schema: 1,
+    schema: 2,
     columns: AUDIO_FEATURE_NAMES,
     source: [source.name, source.size, source.lastModified],
     media: [info.duration, info.hasAudio, info.audioCodec, info.sampleRate, info.channels],
@@ -142,6 +142,7 @@ export function visualFeatureCacheKey(
     decodeStrategy: VideoDecodeStrategy;
     decoderAcceleration: VideoDecoderAcceleration;
     reductionKernel?: FeatureReductionKernel;
+    areaNearest?: boolean;
   },
   requestedWindow?: AnalysisWindow,
 ): string {
@@ -154,6 +155,7 @@ export function visualFeatureCacheKey(
   return JSON.stringify({
     schema: 1,
     featureSchema: featureSignature.toString(16),
+    ...(experiment?.areaNearest ? { visualExtractor: "opencv-area-nearest-grid-v1" } : {}),
     analysisFps: ANALYSIS_FPS,
     source: [source.name, source.size, source.lastModified],
     media: [info.duration, info.width, info.height, info.rotation, info.videoCodecString],

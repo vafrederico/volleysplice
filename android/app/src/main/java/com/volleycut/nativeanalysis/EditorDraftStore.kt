@@ -214,7 +214,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
                     cut.coreStartMs < cut.coreEndMs &&
                     cut.coreEndMs <= cut.keepEndMs &&
                     cut.keepEndMs <= seed.gameEndMs &&
-                    (cut.agreement == null || ProductionEnsemble.isValidAgreement(cut.agreement))
+                    (cut.agreement == null || RallyModels.isValidAgreement(cut.agreement))
             } &&
             draft.ignoredIntervals.all { it.startMs in 0 until it.endMs && it.endMs <= seed.durationMs }
 

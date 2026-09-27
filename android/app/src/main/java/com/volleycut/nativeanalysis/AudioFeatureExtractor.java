@@ -41,6 +41,7 @@ final class AudioFeatureExtractor {
     private final float[] outputFrame = new float[FRAME_SAMPLES];
     private int outputFrameLength;
     private long resampledOutputSamples;
+    private long overlapTrimmedSamples;
 
     AudioFeatureExtractor() {
         for (int i = 0; i < FRAME_SAMPLES; i++) {
@@ -71,6 +72,7 @@ final class AudioFeatureExtractor {
         long presentedStart = startFrame + primingFrames;
         long gapFrames = Math.max(0, presentedStart - nextSourceFrame);
         int overlapFrames = (int) Math.min(presentedFrames, Math.max(0, nextSourceFrame - presentedStart));
+        overlapTrimmedSamples += overlapFrames;
         int trimFrames = primingFrames + overlapFrames;
         if (gapFrames > 0) appendSilence(gapFrames);
         if (trimFrames < mono.length) appendSource(Arrays.copyOfRange(mono, trimFrames, mono.length));
@@ -229,6 +231,8 @@ final class AudioFeatureExtractor {
         return resampledOutputSamples;
     }
 
+    long overlapTrimmedSamples() { return overlapTrimmedSamples; }
+
     private Map<String, float[]> buildFrameFeatureSources() {
         float[] rmsValues = toArray(rms);
         float[] peakValues = toArray(peak);
@@ -312,7 +316,7 @@ final class AudioFeatureExtractor {
         return sources;
     }
 
-    private static float[] rollingPercentile(float[] values, int window, double percentile) {
+    static float[] rollingPercentile(float[] values, int window, double percentile) {
         float[] output = new float[values.length];
         ArrayList<Float> sorted = new ArrayList<>();
         for (int i = 0; i < values.length; i++) {
@@ -326,7 +330,8 @@ final class AudioFeatureExtractor {
             double position = (sorted.size() - 1) * percentile;
             int lower = (int) Math.floor(position);
             int upper = (int) Math.ceil(position);
-            output[i] = (float) (sorted.get(lower) * (upper - position) + sorted.get(upper) * (position - lower));
+            double fraction = position - lower;
+            output[i] = (float) (sorted.get(lower) * (1 - fraction) + sorted.get(upper) * fraction);
         }
         return output;
     }

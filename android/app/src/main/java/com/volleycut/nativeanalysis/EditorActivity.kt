@@ -93,6 +93,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -296,6 +297,9 @@ private fun editorSeedFromResult(result: AnalysisTypes.AnalysisResult) = EditorS
     sideSwitch = result.sideSwitch(),
     sideSwitchError = result.sideSwitchError(),
     suppression = result.suppression(),
+    analysisRoi = result.roi(),
+    audioExtractorVersion = NativeFeatureCache.AUDIO_EXTRACTOR_VERSION,
+    visualExtractorVersion = NativeFeatureCache.VISUAL_EXTRACTOR_VERSION,
 )
 
 private val Paper = Color(0xFFF8F7EE)
@@ -571,6 +575,10 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     // optional scoreboard is ready when the user turns it on in the editor.
     var analyzeServingSide by remember { mutableStateOf(true) }
     var generateSideSwitchMarkers by remember { mutableStateOf(false) }
+    var rallyModelId by remember {
+        mutableStateOf(context.getSharedPreferences("analysis-preferences", Context.MODE_PRIVATE)
+            .getString("rally-model", RallyModels.DEFAULT)?.takeIf(RallyModels::isSupported) ?: RallyModels.DEFAULT)
+    }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
@@ -815,10 +823,11 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     analysisWindow,
                     analyzeServingSide,
                     generateSideSwitchMarkers,
+                    rallyModelId,
                 )
                 val existing = NativeProjectStore.findMatching(context, candidate)
                 val reusable = useCache && existing?.status == ProjectStatus.READY &&
-                    existing.modelId == FeatureSchema.MODEL_ID
+                    existing.modelId == candidate.modelId
                 if (reusable) {
                     var opened = NativeProjectStore.updateSideSwitchEnabled(
                         context,
@@ -1126,6 +1135,12 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 preparing = preparingSource,
                 state = inference,
                 generateSideSwitchMarkers = generateSideSwitchMarkers,
+                rallyModelId = rallyModelId,
+                onRallyModel = {
+                    rallyModelId = it
+                    context.getSharedPreferences("analysis-preferences", Context.MODE_PRIVATE)
+                        .edit().putString("rally-model", it).apply()
+                },
                 queueCount = queueCount,
                 gameStartMs = gameStartMs,
                 gameEndMs = gameEndMs,
@@ -1309,7 +1324,7 @@ private fun ProjectHeaderBar(
                                         Column {
                                             Text(project.source.name, maxLines = 1)
                                             Text(
-                                                projectStatusLabel(project, exportStatuses[project.id]),
+                                                "${RallyModels.shortLabel(project.modelId)} - ${projectStatusLabel(project, exportStatuses[project.id])}",
                                                 color = Muted,
                                                 fontSize = 10.sp,
                                             )
@@ -1446,7 +1461,7 @@ private fun ProjectHeaderBar(
                         ) {
                             Text(
                                 if (creatingNew || selected == null) "＋ Start a new video…"
-                                else "${selected.source.name} · ${projectStatusLabel(selected, exportStatuses[selected.id])}",
+                                else "${selected.source.name} - ${projectStatusLabel(selected, exportStatuses[selected.id])}",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -1463,7 +1478,7 @@ private fun ProjectHeaderBar(
                                     Column {
                                         Text(project.source.name, maxLines = 1)
                                         Text(
-                                            projectStatusLabel(project, exportStatuses[project.id]),
+                                            "${RallyModels.shortLabel(project.modelId)} - ${projectStatusLabel(project, exportStatuses[project.id])}",
                                             color = Muted,
                                             fontSize = 11.sp,
                                         )
@@ -1596,7 +1611,7 @@ private fun HeaderReviewQueue(
 }
 
 @Composable
-private fun AppSettingsDialog(
+internal fun AppSettingsDialog(
     displayAnalysisMeasurements: Boolean,
     onDisplayAnalysisMeasurements: (Boolean) -> Unit,
     onDismiss: () -> Unit,
@@ -1607,7 +1622,10 @@ private fun AppSettingsDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text("DISPLAY", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 UiScaleControl()
                 HorizontalDivider(color = Rail)
@@ -1653,6 +1671,7 @@ private fun cleanupLabel(policy: SuppressionPolicyEngine.Policy): String = when 
 
 @Composable
 private fun EditorSettingsDialog(
+    cleanupSupported: Boolean,
     cleanupAvailable: Boolean,
     cleanupPreparing: Boolean,
     cleanupPolicy: SuppressionPolicyEngine.Policy,
@@ -1684,7 +1703,7 @@ private fun EditorSettingsDialog(
                 UiScaleControl()
                 HorizontalDivider(color = Rail)
                 Text("FINE-TUNE THE FINAL VIDEO", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (cleanupSupported) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Automatic cleanup", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                         Text(
@@ -1808,7 +1827,8 @@ private fun AnalysisMeasurementsSetting(
         Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange,
+            modifier = Modifier.semantics { contentDescription = "Show analysis measurements" })
         Column(Modifier.weight(1f)) {
             Text("Show analysis measurements", fontWeight = FontWeight.SemiBold)
             Text("Show developer timing details in the editor.", color = Muted, fontSize = 11.sp)
@@ -1838,7 +1858,10 @@ private fun ProjectInferenceCard(
         )
         if (project.status == ProjectStatus.ANALYZING || state.progress > 0f) {
             if (state.stepMeasurements.isEmpty()) {
-                LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+                if (state.stage == "opening" || state.stage == "video-preparing" || state.stage.isBlank()) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(state.detail.ifBlank { "Preparing video before frame scanning begins" }, color = Muted, fontSize = 12.sp)
+                } else LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
             }
         }
         val detail = state.detail.ifBlank { project.error.orEmpty() }
@@ -1892,12 +1915,26 @@ private fun ProjectInferenceCard(
 }
 
 @Composable
-private fun InferenceProgressMeasurementsPanel(
+internal fun InferenceProgressMeasurementsPanel(
     steps: List<InferenceStepMeasurement>,
     performance: AnalysisTypes.PerformanceStats? = null,
     compact: Boolean = false,
 ) {
     if (steps.isEmpty()) return
+    var sinceSnapshotMs by remember(steps) { mutableLongStateOf(0L) }
+    LaunchedEffect(steps) {
+        if (steps.none { it.status == InferenceStepStatus.RUNNING }) return@LaunchedEffect
+        val started = withFrameNanos { it }
+        while (true) {
+            delay(250)
+            withFrameNanos { sinceSnapshotMs = (it - started).coerceAtLeast(0L) / 1_000_000L }
+        }
+    }
+    val displayedSteps = steps.map { step ->
+        if (step.status == InferenceStepStatus.RUNNING)
+            step.copy(elapsedMilliseconds = step.elapsedMilliseconds + sinceSnapshotMs)
+        else step
+    }
     Surface(
         modifier = Modifier.fillMaxWidth().border(1.dp, Rail, RoundedCornerShape(8.dp)),
         color = Paper,
@@ -1907,11 +1944,12 @@ private fun InferenceProgressMeasurementsPanel(
             Modifier.fillMaxWidth().padding(if (compact) 8.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
         ) {
-            steps.forEachIndexed { index, step ->
-                val percent = (step.fraction * 100).roundToInt()
+            displayedSteps.forEachIndexed { index, step ->
+                val displayedFraction = step.preparationFraction ?: step.fraction
+                val percent = (displayedFraction * 100).roundToInt()
                 val elapsedSeconds = step.elapsedMilliseconds / 1_000.0
                 val videoPerformance = performance?.takeIf {
-                    step.id == "video" && it.framesPerSecond() > 0.0
+                    step.id == "video" && !step.indeterminate && step.preparationFraction == null && it.framesPerSecond() > 0.0
                 }
                 val etaSeconds = if (
                     step.status == InferenceStepStatus.RUNNING &&
@@ -1938,7 +1976,11 @@ private fun InferenceProgressMeasurementsPanel(
                     else -> "Measuring…"
                 }
                 val metrics = when (step.status) {
-                    InferenceStepStatus.RUNNING ->
+                    InferenceStepStatus.RUNNING -> if (step.preparationFraction != null) {
+                        "Timestamp scan: $percent% · ${measurementDuration(step.elapsedMilliseconds)} elapsed"
+                    } else if (step.indeterminate) {
+                        "Preparing · ${measurementDuration(step.elapsedMilliseconds)} elapsed"
+                    } else
                         "$percent% · $measuredRate · ${measurementDuration(step.elapsedMilliseconds)} elapsed · " +
                             if (etaSeconds != null) "ETA ${secondsLabel(etaSeconds)}" else "estimating ETA"
                     InferenceStepStatus.COMPLETE -> buildList {
@@ -1981,8 +2023,10 @@ private fun InferenceProgressMeasurementsPanel(
                             fontWeight = FontWeight.Bold,
                         )
                     }
-                    LinearProgressIndicator(
-                        progress = { step.fraction.toFloat() },
+                    if (step.indeterminate && step.status == InferenceStepStatus.RUNNING) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else LinearProgressIndicator(
+                        progress = { displayedFraction.toFloat() },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     metrics?.let {
@@ -2002,7 +2046,7 @@ private fun InferenceProgressMeasurementsPanel(
                 if (index < steps.lastIndex) HorizontalDivider(color = Rail)
             }
             Text(
-                "Total elapsed · ${measurementDuration(steps.sumOf { it.elapsedMilliseconds })}",
+                "Total elapsed · ${measurementDuration(displayedSteps.sumOf { it.elapsedMilliseconds })}",
                 color = Muted,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,
@@ -2301,6 +2345,8 @@ private fun NewProjectCard(
     preparing: Boolean,
     state: InferenceUiState,
     generateSideSwitchMarkers: Boolean,
+    rallyModelId: String,
+    onRallyModel: (String) -> Unit,
     queueCount: Int,
     gameStartMs: Long,
     gameEndMs: Long,
@@ -2367,6 +2413,33 @@ private fun NewProjectCard(
                     onGameEnd = onGameEnd,
                     onFullVideo = onFullVideo,
                 )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Rally detection", fontWeight = FontWeight.SemiBold)
+                var modelMenuExpanded by remember { mutableStateOf(false) }
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { modelMenuExpanded = true },
+                        enabled = !preparing,
+                        modifier = Modifier.fillMaxWidth().semantics {
+                            contentDescription = "Rally detection model: ${RallyModels.label(rallyModelId)}"
+                        },
+                    ) {
+                        Text(RallyModels.label(rallyModelId), modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+                        Text("▾")
+                    }
+                    DropdownMenu(expanded = modelMenuExpanded && !preparing,
+                        onDismissRequest = { modelMenuExpanded = false }) {
+                        RallyModels.OPTIONS.forEach { id ->
+                            DropdownMenuItem(
+                                text = { Text(RallyModels.label(id)) },
+                                onClick = { modelMenuExpanded = false; onRallyModel(id) },
+                            )
+                        }
+                    }
+                }
+                Text(RallyModels.description(rallyModelId),
+                    fontSize = 12.sp, color = Muted)
             }
             Surface(
                 modifier = Modifier
@@ -2665,6 +2738,9 @@ private fun LegalFooter() {
                     Text("AndroidX and Jetpack Compose — Apache License 2.0")
                     Text("AndroidX Media3 1.10.1 — Apache License 2.0")
                     Text("OpenCV 4.12.0 — Apache License 2.0")
+                    Text("ONNX Runtime 1.30.0 - MIT License")
+                    Text("MobileNetV3 implementation: TorchVision - BSD-3-Clause. Pretrained weights and datasets retain their upstream terms.")
+                    Text("DINOv2 training teacher - Apache License 2.0; the teacher model is not included in the app.")
                     Text("Kotlin runtime — Apache License 2.0")
                     Text(
                         "The Android system, device codecs, and other platform components are " +
@@ -3360,6 +3436,7 @@ private fun EditorScreen(
 
     if (showEditorSettings) {
         EditorSettingsDialog(
+            cleanupSupported = !RallyModels.isNeural(seed.rallyModelId),
             cleanupAvailable = seed.suppression != null,
             cleanupPreparing = suppressionPreparing,
             cleanupPolicy = draft.selectedSuppressionPolicy,
@@ -4182,7 +4259,9 @@ private fun EditorScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "Use the Settings gear to fine-tune automatic cleanup, extra time around clips, short breaks, and how many clips are flagged.",
+                    if (RallyModels.isNeural(seed.rallyModelId))
+                        "Use the Settings gear to adjust extra time around clips, short breaks, and how many clips are flagged."
+                    else "Use the Settings gear to fine-tune automatic cleanup, extra time around clips, short breaks, and how many clips are flagged.",
                     color = Muted,
                     fontSize = 12.sp,
                 )
@@ -7030,6 +7109,8 @@ internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<
     JSONObject().apply {
         put("schemaVersion", 2)
         put("method", "android-editor-v3-suppression")
+        put("modelId", seed.rallyModelId)
+        put("modelLabel", RallyModels.label(seed.rallyModelId))
         put("sourceName", seed.displayName)
         put("sourceUri", seed.sourceUri)
         put("sourceDuration", seed.durationMs / 1_000.0)

@@ -1,0 +1,433 @@
+{
+  "schema": "paired-neural-variants-v1",
+  "recordingIndex": "recording-044",
+  "artifactIndex": "private-reference-0223",
+  "platform": "API 37 x86_64 Android emulator",
+  "physicalPhoneTested": false,
+  "apkSha256": "c54e88a3e3d6f2e4f9b252711ce3cbd0d9690d0680a824ba716d83764f9b5c4d",
+  "qualification": {
+    "passed": true,
+    "checks": {
+      "distilled-large-recall-v1": {
+        "ralliesAndConfidence": true,
+        "embeddings": true,
+        "quality": true,
+        "selectedPresentationTimes": true,
+        "audio": true,
+        "servingSideFeaturesAndDecisions": true,
+        "sideSwitchFeaturesAndDecisions": true,
+        "noSuppression": true
+      },
+      "distilled-large-f1-v1": {
+        "ralliesAndConfidence": true,
+        "embeddings": true,
+        "quality": true,
+        "selectedPresentationTimes": true,
+        "audio": true,
+        "servingSideFeaturesAndDecisions": true,
+        "sideSwitchFeaturesAndDecisions": true,
+        "noSuppression": true
+      }
+    },
+    "cachedSwitchReusedAv": true
+  },
+  "runs": {
+    "short-recall-refresh": {
+      "seconds": 120,
+      "allReadySeconds": 177.2576451,
+      "sharedVideoAvEmbeddingsSeconds": 115.397,
+      "audioSeconds": 8.176,
+      "contextualizeSeconds": 0.059,
+      "rallyStageSeconds": 0.411,
+      "primaryScoresSeconds": 53.082,
+      "alternateScoresSeconds": 0.0,
+      "independentEmbeddingPassSeconds": 0.0,
+      "imagePreparationSeconds": 4.9834536,
+      "primaryEncoderAndReadbackSeconds": 3.3612132000000003,
+      "encoderProfilesMilliseconds": {
+        "distilled-large-recall-v1": {
+          "encoderLoadMs": 158.9435,
+          "encoderRunMs": 2796.3616,
+          "tokenReadbackMs": 515.3074,
+          "tokenWriteMs": 49.5442,
+          "encoderAndReadbackMs": 3361.2132
+        }
+      },
+      "videoProfileMilliseconds": {
+        "video/sample_plan_scan": 6844.9222,
+        "video/setup": 7064.5202,
+        "video/demux_read": 2919.2752,
+        "video/codec_input_queue": 60511.514,
+        "video/demux_advance": 12627.9532,
+        "video/codec_input_callback": 85974.0369,
+        "video/codec_callback_thread_cpu": 27123.351614,
+        "video/output_image_acquire": 542.0283,
+        "video/shared_consumer_prepare_submit": 5251.8295,
+        "video/yuv_sampler_setup": 1.5435,
+        "video/yuv_crop_scale_color": 5205.8621,
+        "video/feature_queue_backpressure": 284.1524,
+        "video/sampled_frame_total": 12085.7521,
+        "video/codec_output_release": 1044.6045,
+        "video/codec_output_callback": 13257.9705,
+        "video/feature_worker_finish_wait": 0.2624,
+        "video/opencv_feature_call": 35676.9221,
+        "video/feature_matrix_copy": 45.1752,
+        "video/opencv/opencv_filters": 1318.7268,
+        "video/opencv/mat_readback": 7518.2408,
+        "video/opencv/static_diff_quality_reductions": 6399.5394,
+        "video/opencv/phase_correlation": 590.9327,
+        "video/opencv/farneback_optical_flow": 6996.0808,
+        "video/opencv/flow_and_residual_reductions": 11552.6621,
+        "video/opencv/frame_state_and_result_copy": 146.6281,
+        "video/opencv/mat_cleanup": 31.8818,
+        "video/opencv/opencv_feature_total": 35614.2798,
+        "video/feature_worker_thread_cpu": 25911.851148,
+        "video/feature_worker_wall": 108329.9472,
+        "video/shared_consumer_finish_wait": 3.5938,
+        "video/video_pipeline_wall": 115374.5322,
+        "video/thread_cpu": 56466.883913,
+        "video/mean_sample_timestamp_error": 3.7258729166665066,
+        "video/max_sample_timestamp_error": 18
+      },
+      "primaryScoreProfileMilliseconds": {
+        "score/planning": 86.7651,
+        "score/decode_setup": 568.4758,
+        "score/requested_frame_conversion": 909.1464,
+        "score/shared_decode_wall": 49078.7157,
+        "score/serving_side_evaluation": 1288.0352,
+        "score/side_switch_evaluation": 2616.8211
+      },
+      "alternateScoreProfileMilliseconds": {},
+      "queueBackpressureSeconds": 0.0070621,
+      "uniquePreparedImages": 240,
+      "preparedBufferBytes": 2408448,
+      "sharedImagePreparation": false,
+      "encoderScheduling": "sequential-per-image",
+      "embeddingBytes": 3686400,
+      "av104PayloadBytes": 199680,
+      "contextual520PayloadBytes": 998400,
+      "savedResultLoadMedianMs": null,
+      "savedResultLoadMaxMs": null,
+      "persistBothMs": null,
+      "cache": {
+        "visualHit": false,
+        "audioHit": false,
+        "contextHit": false
+      },
+      "rallies": {
+        "distilled-large-recall-v1": 6
+      },
+      "temporalMilliseconds": {
+        "distilled-large-recall-v1": 203.7463
+      },
+      "memoryAtPrimaryCompletion": {
+        "pssKilobytes": 132634,
+        "javaHeapUsedBytes": 14748192
+      }
+    },
+    "short-f1-cached": {
+      "seconds": 120,
+      "allReadySeconds": 157.9728566,
+      "sharedVideoAvEmbeddingsSeconds": 0.004,
+      "audioSeconds": 0.009,
+      "contextualizeSeconds": 0.019,
+      "rallyStageSeconds": 111.237,
+      "primaryScoresSeconds": 46.569,
+      "alternateScoresSeconds": 0.0,
+      "independentEmbeddingPassSeconds": 110.6107532,
+      "imagePreparationSeconds": 5.0069246000000005,
+      "primaryEncoderAndReadbackSeconds": 2.656743,
+      "encoderProfilesMilliseconds": {},
+      "videoProfileMilliseconds": {
+        "video/feature_cache_hit": 1,
+        "video/thread_cpu": 0,
+        "video/mean_sample_timestamp_error": 0,
+        "video/max_sample_timestamp_error": 0
+      },
+      "primaryScoreProfileMilliseconds": {
+        "score/planning": 90.938,
+        "score/decode_setup": 495.9382,
+        "score/requested_frame_conversion": 879.5604,
+        "score/shared_decode_wall": 42112.4419,
+        "score/serving_side_evaluation": 1419.7097,
+        "score/side_switch_evaluation": 2936.32
+      },
+      "alternateScoreProfileMilliseconds": {},
+      "queueBackpressureSeconds": 0.0,
+      "uniquePreparedImages": 240,
+      "preparedBufferBytes": null,
+      "sharedImagePreparation": false,
+      "encoderScheduling": "independent",
+      "embeddingBytes": 3686400,
+      "av104PayloadBytes": 199680,
+      "contextual520PayloadBytes": 998400,
+      "savedResultLoadMedianMs": null,
+      "savedResultLoadMaxMs": null,
+      "persistBothMs": null,
+      "cache": {
+        "visualHit": true,
+        "audioHit": true,
+        "contextHit": true
+      },
+      "rallies": {
+        "distilled-large-f1-v1": 7
+      },
+      "temporalMilliseconds": {
+        "distilled-large-f1-v1": 195.2654
+      },
+      "memoryAtPrimaryCompletion": {
+        "pssKilobytes": 134132,
+        "javaHeapUsedBytes": 20025008
+      }
+    },
+    "short-paired-refresh": {
+      "seconds": 120,
+      "allReadySeconds": 226.1803306,
+      "sharedVideoAvEmbeddingsSeconds": 117.85,
+      "audioSeconds": 7.826,
+      "contextualizeSeconds": 0.062,
+      "rallyStageSeconds": 0.571,
+      "primaryScoresSeconds": 53.286,
+      "alternateScoresSeconds": 46.421,
+      "independentEmbeddingPassSeconds": 0.0,
+      "imagePreparationSeconds": 4.694848299999999,
+      "primaryEncoderAndReadbackSeconds": 3.1449559,
+      "encoderProfilesMilliseconds": {
+        "distilled-large-recall-v1": {
+          "encoderLoadMs": 75.8607,
+          "encoderRunMs": 2798.6115,
+          "tokenReadbackMs": 312.3063,
+          "tokenWriteMs": 34.0381,
+          "encoderAndReadbackMs": 3144.9559
+        },
+        "distilled-large-f1-v1": {
+          "encoderLoadMs": 36.1712,
+          "encoderRunMs": 4833.9017,
+          "tokenReadbackMs": 438.8161,
+          "tokenWriteMs": 98.879,
+          "encoderAndReadbackMs": 5371.5968
+        }
+      },
+      "videoProfileMilliseconds": {
+        "video/sample_plan_scan": 6305.8503,
+        "video/setup": 6442.5734,
+        "video/demux_read": 2700.663,
+        "video/codec_input_queue": 61924.9786,
+        "video/demux_advance": 13342.0447,
+        "video/codec_input_callback": 87503.6284,
+        "video/codec_callback_thread_cpu": 26074.152126,
+        "video/output_image_acquire": 531.1855,
+        "video/shared_consumer_prepare_submit": 5166.2566,
+        "video/yuv_sampler_setup": 10.4987,
+        "video/yuv_crop_scale_color": 6030.2317,
+        "video/feature_queue_backpressure": 236.8109,
+        "video/sampled_frame_total": 12802.0755,
+        "video/codec_output_release": 1850.9135,
+        "video/codec_output_callback": 14807.2075,
+        "video/feature_worker_finish_wait": 0.3884,
+        "video/opencv_feature_call": 36966.9813,
+        "video/feature_matrix_copy": 25.9312,
+        "video/opencv/opencv_filters": 1438.0797,
+        "video/opencv/mat_readback": 8855.5182,
+        "video/opencv/static_diff_quality_reductions": 6364.1987,
+        "video/opencv/phase_correlation": 638.2468,
+        "video/opencv/farneback_optical_flow": 7406.4241,
+        "video/opencv/flow_and_residual_reductions": 11125.001,
+        "video/opencv/frame_state_and_result_copy": 89.3414,
+        "video/opencv/mat_cleanup": 17.927,
+        "video/opencv/opencv_feature_total": 36928.9671,
+        "video/feature_worker_thread_cpu": 26402.950502,
+        "video/feature_worker_wall": 111400.7674,
+        "video/shared_consumer_finish_wait": 7.1041,
+        "video/video_pipeline_wall": 117831.0376,
+        "video/thread_cpu": 55651.901863,
+        "video/mean_sample_timestamp_error": 3.7258729166665066,
+        "video/max_sample_timestamp_error": 18
+      },
+      "primaryScoreProfileMilliseconds": {
+        "score/planning": 51.9332,
+        "score/decode_setup": 589.4122,
+        "score/requested_frame_conversion": 822.3446,
+        "score/shared_decode_wall": 49289.0463,
+        "score/serving_side_evaluation": 1314.5684,
+        "score/side_switch_evaluation": 2622.3404
+      },
+      "alternateScoreProfileMilliseconds": {
+        "score/planning": 4.9104,
+        "score/decode_setup": 524.3962,
+        "score/requested_frame_conversion": 724.3994,
+        "score/shared_decode_wall": 42428.9516,
+        "score/serving_side_evaluation": 1323.8453,
+        "score/side_switch_evaluation": 2660.5011
+      },
+      "queueBackpressureSeconds": 0.022947,
+      "uniquePreparedImages": 240,
+      "preparedBufferBytes": 2408448,
+      "sharedImagePreparation": true,
+      "encoderScheduling": "sequential-per-image",
+      "embeddingBytes": 7372800,
+      "av104PayloadBytes": 199680,
+      "contextual520PayloadBytes": 998400,
+      "savedResultLoadMedianMs": 5.7527,
+      "savedResultLoadMaxMs": 12.3857,
+      "persistBothMs": 34.3516,
+      "cache": {
+        "visualHit": false,
+        "audioHit": false,
+        "contextHit": false
+      },
+      "rallies": {
+        "distilled-large-recall-v1": 6,
+        "distilled-large-f1-v1": 7
+      },
+      "temporalMilliseconds": {
+        "distilled-large-recall-v1": 195.0185,
+        "distilled-large-f1-v1": 150.1906
+      },
+      "memoryAtPrimaryCompletion": {
+        "pssKilobytes": 136436,
+        "javaHeapUsedBytes": 20200704
+      }
+    },
+    "full-paired-refresh": {
+      "seconds": 1061.016489,
+      "allReadySeconds": 1777.9404786,
+      "sharedVideoAvEmbeddingsSeconds": 1072.663,
+      "audioSeconds": 54.597,
+      "contextualizeSeconds": 0.257,
+      "rallyStageSeconds": 3.643,
+      "primaryScoresSeconds": 355.9,
+      "alternateScoresSeconds": 290.604,
+      "independentEmbeddingPassSeconds": 0.0,
+      "imagePreparationSeconds": 38.706522400000004,
+      "primaryEncoderAndReadbackSeconds": 33.1943808,
+      "encoderProfilesMilliseconds": {
+        "distilled-large-recall-v1": {
+          "encoderLoadMs": 132.5682,
+          "encoderRunMs": 28582.4558,
+          "tokenReadbackMs": 4191.1411,
+          "tokenWriteMs": 420.7839,
+          "encoderAndReadbackMs": 33194.3808
+        },
+        "distilled-large-f1-v1": {
+          "encoderLoadMs": 72.3598,
+          "encoderRunMs": 44021.1568,
+          "tokenReadbackMs": 4026.3676,
+          "tokenWriteMs": 484.7819,
+          "encoderAndReadbackMs": 48532.3063
+        }
+      },
+      "videoProfileMilliseconds": {
+        "video/sample_plan_scan": 78170.2981,
+        "video/setup": 78462.1815,
+        "video/demux_read": 28758.7505,
+        "video/codec_input_queue": 532337.1328,
+        "video/demux_advance": 137407.471,
+        "video/codec_input_callback": 783927.5325,
+        "video/codec_callback_thread_cpu": 249834.766696,
+        "video/output_image_acquire": 4827.1617,
+        "video/shared_consumer_prepare_submit": 42522.3235,
+        "video/yuv_sampler_setup": 2.0055,
+        "video/yuv_crop_scale_color": 51738.7416,
+        "video/feature_queue_backpressure": 2746.9087,
+        "video/sampled_frame_total": 109169.5171,
+        "video/codec_output_release": 15039.5223,
+        "video/codec_output_callback": 125596.1804,
+        "video/feature_worker_finish_wait": 26.5223,
+        "video/opencv_feature_call": 317900.7245,
+        "video/feature_matrix_copy": 224.1143,
+        "video/opencv/opencv_filters": 13230.0906,
+        "video/opencv/mat_readback": 77926.9917,
+        "video/opencv/static_diff_quality_reductions": 55192.5894,
+        "video/opencv/phase_correlation": 6080.0272,
+        "video/opencv/farneback_optical_flow": 58292.8403,
+        "video/opencv/flow_and_residual_reductions": 95485.2136,
+        "video/opencv/frame_state_and_result_copy": 1264.6679,
+        "video/opencv/mat_cleanup": 369.3891,
+        "video/opencv/opencv_feature_total": 317313.852,
+        "video/feature_worker_thread_cpu": 221312.298985,
+        "video/feature_worker_wall": 994159.8731,
+        "video/shared_consumer_finish_wait": 6.7374,
+        "video/video_pipeline_wall": 1072616.9485,
+        "video/thread_cpu": 509491.036133,
+        "video/mean_sample_timestamp_error": 4.177572673733437,
+        "video/max_sample_timestamp_error": 8.389000000002852
+      },
+      "primaryScoreProfileMilliseconds": {
+        "score/planning": 143.019,
+        "score/decode_setup": 6807.4506,
+        "score/requested_frame_conversion": 3331.6748,
+        "score/shared_decode_wall": 333009.4693,
+        "score/serving_side_evaluation": 6484.7474,
+        "score/side_switch_evaluation": 16250.458
+      },
+      "alternateScoreProfileMilliseconds": {
+        "score/planning": 16.5668,
+        "score/decode_setup": 5669.7506,
+        "score/requested_frame_conversion": 2822.4375,
+        "score/shared_decode_wall": 270915.4807,
+        "score/serving_side_evaluation": 5663.2467,
+        "score/side_switch_evaluation": 14001.0145
+      },
+      "queueBackpressureSeconds": 0.2019183,
+      "uniquePreparedImages": 2123,
+      "preparedBufferBytes": 2408448,
+      "sharedImagePreparation": true,
+      "encoderScheduling": "sequential-per-image",
+      "embeddingBytes": 65218560,
+      "av104PayloadBytes": 1765920,
+      "contextual520PayloadBytes": 8829600,
+      "savedResultLoadMedianMs": 43.1543,
+      "savedResultLoadMaxMs": 48.7318,
+      "persistBothMs": 104.6132,
+      "cache": {
+        "visualHit": false,
+        "audioHit": false,
+        "contextHit": false
+      },
+      "rallies": {
+        "distilled-large-recall-v1": 37,
+        "distilled-large-f1-v1": 34
+      },
+      "temporalMilliseconds": {
+        "distilled-large-recall-v1": 1647.5322,
+        "distilled-large-f1-v1": 1536.4661
+      },
+      "memoryAtPrimaryCompletion": {
+        "pssKilobytes": 192983,
+        "javaHeapUsedBytes": 78159120
+      }
+    }
+  },
+  "fullReferenceComparison": {
+    "checks": {
+      "distilled-large-recall-v1": {
+        "rallies": 37,
+        "referenceRallies": 37,
+        "boundariesExact": true,
+        "maximumConfidenceDifference": 0.0,
+        "selectedPresentationTimesExact": true
+      },
+      "distilled-large-f1-v1": {
+        "rallies": 34,
+        "referenceRallies": 34,
+        "boundariesExact": true,
+        "maximumConfidenceDifference": 5.996227264404297e-05,
+        "selectedPresentationTimesExact": true
+      }
+    },
+    "scope": "Boundary and timestamp regression check against earlier frozen outputs. Not a same-session full single-variant performance control; the F1 reference is from a different device."
+  },
+  "timingNotes": [
+    "Sequential fresh-process observations; one sample per configuration, no discarded warmup.",
+    "Decode/AV/preparation and encoder work overlap; their nested counters must not be added to stage wall time.",
+    "Saved-result loading measures local deserialization and editor-seed construction, not tap-to-first-paint.",
+    "Source bytes and emulator virtual storage are NAS-backed. These are not phone latency measurements.",
+    "Full paired timing is directly measured; no same-session full single-variant control is implied."
+  ],
+  "shortComparison": {
+    "sequentialCachedSwitchTotalSeconds": 335.23050170000005,
+    "pairedTotalSeconds": 226.1803306,
+    "additionalVersusRecallSeconds": 48.92268549999999
+  }
+}

@@ -4,6 +4,7 @@ import {
   createCutDraft,
   parseCutDraft,
 } from "./cut-draft.ts";
+import { retainNeuralServeCandidates } from "./on-device/serving-side-policy.ts";
 import {
   ModelFeedbackValidationError,
   type ParsedModelFeedback,
@@ -66,12 +67,13 @@ function agreement(
   if (
     value === "both-models" ||
     value === "all-labels-v2-only" ||
-    value === "previous-production-only"
+    value === "previous-production-only" ||
+    value === "neural"
   ) {
     return value;
   }
   throw new ModelFeedbackValidationError(
-    `${field} uses an unsupported production-model agreement`,
+    `${field} uses an unsupported rally-model provenance`,
   );
 }
 
@@ -123,7 +125,7 @@ function servingSideOutput(
       "The serving-side feature contract is not supported by this VolleySplice version",
     );
   }
-  return {
+  return retainNeuralServeCandidates({
     ...output,
     featureVersion: SERVING_SIDE_FEATURE_VERSION,
     anchorContract: SERVING_SIDE_ANCHOR_CONTRACT,
@@ -166,7 +168,7 @@ function servingSideOutput(
         },
       };
     }),
-  };
+  });
 }
 
 function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {
@@ -188,6 +190,8 @@ function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {
   const suppression = feedback.initialInference.suppression;
   return {
     modelId: feedback.initialInference.modelId,
+    probabilityModelIds: feedback.initialInference.probabilityModelIds,
+    neuralScores: feedback.initialInference.neuralScores,
     featurePath: "local-source",
     intervals: feedback.initialInference.ranges.map((range, index) =>
       interval(range, `bundle.initialInference.ranges[${index}].agreement`),

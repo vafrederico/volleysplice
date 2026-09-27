@@ -103,7 +103,9 @@ internal object ScoreReducer {
         var tracking = if (output != null) current.copy(
             serveMarkers = current.serveMarkers.filter { it.origin == ServeMarkerOrigin.MANUAL },
         ) else current
-        output?.candidates?.forEach { candidate ->
+        output?.candidates?.forEach { storedCandidate ->
+            // Also repairs cached results from before neural rally recovery existed.
+            val candidate = storedCandidate.withNeuralRallyRecovery()
             val id = "serve-${candidate.id}"
             val existing = existingByRally[candidate.id]
             val wasCorrected = existing?.modelSide != null && existing.side != existing.modelSide
@@ -121,7 +123,7 @@ internal object ScoreReducer {
             if (used) return@forEach
             tracking = tracking.copy(serveMarkers = (tracking.serveMarkers + ServeMarker(
                 id = id,
-                timestampMs = secondsToMs(candidate.anchor),
+                timestampMs = existing?.timestampMs ?: secondsToMs(candidate.anchor),
                 side = if (wasCorrected) checkNotNull(existing).side else modelSide,
                 origin = ServeMarkerOrigin.MODEL,
                 modelSide = modelSide,

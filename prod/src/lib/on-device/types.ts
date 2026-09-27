@@ -103,7 +103,7 @@ export type OnDeviceInterval = {
   end: number;
   confidence: number;
   included: boolean;
-  agreement?: "both-models" | "all-labels-v2-only" | "previous-production-only";
+  agreement?: "both-models" | "all-labels-v2-only" | "previous-production-only" | "neural";
 };
 
 export type OnDeviceServeDetection = {
@@ -136,10 +136,12 @@ export type ServingSideVerdict = ServingSideSide | "review" | "not-serve";
 export type ServingSideDecisionSource =
   | "serve-head"
   | "production-rally-recovery"
+  | "neural-rally-recovery"
   | "none";
 export type ServingSideReviewReason =
   | "side-score"
-  | "production-rally-recovery";
+  | "production-rally-recovery"
+  | "neural-rally-recovery";
 
 export type ServingSideHeadEvidence = {
   modelId: string;
@@ -218,8 +220,18 @@ export type OnDeviceSuppression = {
   identicalPolicyResults: boolean;
 };
 
+export type NeuralRallyScores = {
+  modelId: string;
+  heads: readonly ["live", "serve", "end", "keep"];
+  timestamps: Float64Array;
+  /** Row-major sigmoid probabilities, before smoothing and boundary decoding. */
+  probabilities: Float32Array;
+};
+
 export type OnDeviceAnalysis = {
   modelId: string;
+  neuralScores?: NeuralRallyScores;
+  probabilityModelIds?: { rally: string; serve: string; deadState: string };
   featurePath: "local-source";
   intervals: OnDeviceInterval[];
   times: Float64Array;

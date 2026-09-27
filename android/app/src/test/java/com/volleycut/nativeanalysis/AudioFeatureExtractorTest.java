@@ -10,6 +10,17 @@ import java.util.List;
 
 public final class AudioFeatureExtractorTest {
     @Test
+    public void rollingNoiseFloorPreservesIntegerQuantilesDuringStartup() {
+        float[] values = new float[210];
+        for (int i = 0; i < values.length; i++) values[i] = i + 1;
+        float[] floors = AudioFeatureExtractor.rollingPercentile(values, 200, 0.2);
+        for (int i = 0; i < values.length; i++) {
+            double expected = Math.max(0, i - 199) + 1 + .2 * (Math.min(i + 1, 200) - 1);
+            assertEquals(expected, floors[i], 1e-5);
+        }
+    }
+
+    @Test
     public void resamplesChunked48KhzPcmWithoutCrossingTheSourceBuffer() {
         AudioFeatureExtractor extractor = new AudioFeatureExtractor();
         int sampleRate = 48_000;

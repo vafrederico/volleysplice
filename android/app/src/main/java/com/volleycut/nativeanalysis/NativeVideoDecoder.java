@@ -16,6 +16,11 @@ import android.os.HandlerThread;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 
+import com.volleycut.video.DecodedVideoColor;
+import com.volleycut.video.NearestFrameSelection;
+import com.volleycut.video.YuvColorConversion;
+import com.volleycut.video.YuvAreaResampler;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -53,6 +58,20 @@ final class NativeVideoDecoder {
             AnalysisTypes.ProgressListener progress,
             BooleanSupplier cancelled
     ) throws IOException {
+        return decode(uri, media, roi, times, sourceFrameLimit, decoderOptions,
+                cached, cacheWriter, progress, cancelled, null);
+    }
+
+    AnalysisTypes.VideoFeatures decode(
+            Uri uri, AnalysisTypes.MediaInfo media, AnalysisTypes.Roi roi, double[] times,
+            int sourceFrameLimit, AnalysisTypes.VideoDecoderOptions decoderOptions,
+            NativeFeatureCache.LoadedVisual cached, NativeFeatureCache.VisualWriter cacheWriter,
+            AnalysisTypes.ProgressListener progress, BooleanSupplier cancelled,
+            SharedVideoFrameConsumer shared
+    ) throws IOException {
+        if (shared != null && cached.rows() != 0) {
+            throw new IOException("Shared video requires a fresh visual stream");
+        }
         long pipelineStartedNanos = System.nanoTime();
         long threadCpuStartedNanos = Debug.threadCpuTimeNanos();
         NanoProfiler profiler = new NanoProfiler();
@@ -70,12 +89,11 @@ final class NativeVideoDecoder {
             String mime = format.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Video track has no MIME type");
 
+            progress.onProgress("video-preparing", 0, "Reading video timestamps before scanning frames");
             long operationStarted = System.nanoTime();
-            SamplePlan samplePlan = buildSamplePlan(extractor, format, times, sourceFrameLimit);
-            profiler.add(
-                    samplePlan.cfrFastPath() ? "sample_plan_cfr_probe" : "sample_plan_scan",
-                    System.nanoTime() - operationStarted
-            );
+            SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds(), progress, cancelled);
+            profiler.add("sample_plan_scan", System.nanoTime() - operationStarted);
+            progress.onProgress("video-preparing", 0, "Starting the video decoder. Frame scanning starts next.");
             if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
                 throw new IOException("Video has no decodable frames in the benchmark window");
             }
@@ -100,16 +118,19 @@ final class NativeVideoDecoder {
                 System.arraycopy(cached.values(), 0, output, 0, cached.values().length);
             }
             int resumeStartRow = cached.rows() == 0 ? 0 : cached.rows() - 1;
-            Set<Long> materializedPresentationUs = activeSamplePresentationUs(
-                    samplePlan.sortedPresentationUs(), times, resumeStartRow
-            );
+            Set<Long> materializedPresentationUs = new HashSet<>(NearestFrameSelection.materializedTimestamps(
+                    samplePlan.selectedPresentationUs(), resumeStartRow));
+            if (shared != null) {
+                materializedPresentationUs.addAll(shared.plan(
+                        samplePlan.sortedPresentationUs().clone(), decoderName, hardware));
+            }
             featureWorker = new FeatureWorker(output, times, cacheWriter);
             codecThread = new HandlerThread("VolleySplice-MediaCodec");
             codecThread.start();
             AsyncDecodeState state = new AsyncDecodeState(
-                    extractor, samplePlan, media, roi, times,
+                    extractor, format, samplePlan, media, roi, times,
                     progress, cancelled, profiler, featureWorker, decoderName,
-                    System.nanoTime(), resumeStartRow, cached.rows(), materializedPresentationUs
+                    System.nanoTime(), resumeStartRow, cached.rows(), materializedPresentationUs, shared
             );
             codec.setCallback(state, new Handler(codecThread.getLooper()));
             codec.configure(format, null, null, 0);
@@ -121,6 +142,11 @@ final class NativeVideoDecoder {
             featureWorker.finish(cancelled);
             profiler.add("feature_worker_finish_wait", System.nanoTime() - operationStarted);
             profiler.appendMilliseconds("", featureWorker.performanceMilliseconds());
+            if (shared != null) {
+                operationStarted = System.nanoTime();
+                shared.finish();
+                profiler.add("shared_consumer_finish_wait", System.nanoTime() - operationStarted);
+            }
             int target = state.targetCount();
             if (target != samplePlan.sampleCount()) {
                 throw new IOException("Video produced " + target + " of "
@@ -169,8 +195,7 @@ final class NativeVideoDecoder {
     }
 
     // Retained as an in-tree control implementation for direct synchronous/async A/B work.
-    @SuppressWarnings("unused")
-    private AnalysisTypes.VideoFeatures decodeSynchronous(
+    AnalysisTypes.VideoFeatures decodeSynchronous(
             Uri uri,
             AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi,
@@ -195,6 +220,15 @@ final class NativeVideoDecoder {
             MediaFormat format = extractor.getTrackFormat(trackIndex);
             String mime = format.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Video track has no MIME type");
+            progress.onProgress("video-preparing", 0, "Reading video timestamps before scanning frames");
+            long planStarted = System.nanoTime();
+            SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds(), progress, cancelled);
+            profiler.add("sample_plan_scan", System.nanoTime() - planStarted);
+            progress.onProgress("video-preparing", 0, "Starting the video decoder. Frame scanning starts next.");
+            if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
+                throw new IOException("Video has no decodable frames in the analysis window");
+            }
+            extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
             if (decoderOptions.operatingRate() > 0) {
@@ -219,13 +253,11 @@ final class NativeVideoDecoder {
             boolean outputEnded = false;
             int target = 0;
             int decodedSourceFrames = 0;
-            long previousPresentationUs = -1;
-            long lastPresentationUs = -1;
+            int queuedSourceFrames = 0;
             double sampleTimestampErrorTotalMs = 0;
             double sampleTimestampErrorMaxMs = 0;
             while (!outputEnded
-                    && target < times.length
-                    && decodedSourceFrames < sourceFrameLimit) {
+                    && target < samplePlan.sampleCount()) {
                 if (cancelled.getAsBoolean()) throw new InterruptedExceptionAsIo();
                 featureWorker.throwIfFailed();
                 if (!inputEnded) {
@@ -236,7 +268,8 @@ final class NativeVideoDecoder {
                         ByteBuffer input = codec.getInputBuffer(inputIndex);
                         if (input == null) throw new IOException("Video decoder returned no input buffer");
                         operationStarted = System.nanoTime();
-                        int sampleSize = extractor.readSampleData(input, 0);
+                        int sampleSize = queuedSourceFrames >= samplePlan.inputFrameCount()
+                                ? -1 : extractor.readSampleData(input, 0);
                         long sampleTime = sampleSize < 0 ? 0 : extractor.getSampleTime();
                         int sampleFlags = sampleSize < 0 ? 0 : extractor.getSampleFlags();
                         profiler.add("demux_read", System.nanoTime() - operationStarted);
@@ -249,6 +282,7 @@ final class NativeVideoDecoder {
                                     inputIndex, 0, sampleSize, sampleTime,
                                     codecInputFlags(sampleFlags)
                             );
+                            queuedSourceFrames++;
                             profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
                             operationStarted = System.nanoTime();
                             extractor.advance();
@@ -269,12 +303,10 @@ final class NativeVideoDecoder {
                 long presentationUs = info.presentationTimeUs;
                 if (info.size > 0) {
                     decodedSourceFrames++;
-                    previousPresentationUs = lastPresentationUs;
-                    lastPresentationUs = presentationUs;
                 }
                 boolean sampleThisFrame = info.size > 0
-                        && target < times.length
-                        && presentationUs + 1_000 >= Math.round(times[target] * 1_000_000);
+                        && target < samplePlan.sampleCount()
+                        && presentationUs == samplePlan.selectedPresentationUs()[target];
                 if (sampleThisFrame) {
                     long sampleStarted = System.nanoTime();
                     operationStarted = System.nanoTime();
@@ -289,25 +321,33 @@ final class NativeVideoDecoder {
                     }
                     try {
                         operationStarted = System.nanoTime();
-                        Mat rgba = imageToAnalysisRgba(image, roi, media.rotation());
+                        Mat rgba = imageToAnalysisRgba(image, roi, media.rotation(),
+                                DecodedVideoColor.resolve(codec.getOutputFormat(outputIndex), format).conversion());
                         profiler.add("yuv_crop_scale_color", System.nanoTime() - operationStarted);
                         try {
-                            operationStarted = System.nanoTime();
-                            featureWorker.submit(target, rgba, cancelled);
-                            profiler.add("feature_queue_backpressure", System.nanoTime() - operationStarted);
-                            rgba = null;
+                            while (target < samplePlan.sampleCount()
+                                    && samplePlan.selectedPresentationUs()[target] == presentationUs) {
+                                Mat submitted = rgba.clone();
+                                try {
+                                    operationStarted = System.nanoTime();
+                                    featureWorker.submit(target, submitted, cancelled);
+                                    profiler.add("feature_queue_backpressure", System.nanoTime() - operationStarted);
+                                    submitted = null;
+                                } finally {
+                                    if (submitted != null) submitted.release();
+                                }
+                                double timestampErrorMs = Math.abs(
+                                        presentationUs / 1000.0 - times[target] * 1000.0);
+                                sampleTimestampErrorTotalMs += timestampErrorMs;
+                                sampleTimestampErrorMaxMs = Math.max(sampleTimestampErrorMaxMs, timestampErrorMs);
+                                target++;
+                            }
                         } finally {
-                            if (rgba != null) rgba.release();
+                            rgba.release();
                         }
                     } finally {
                         image.close();
                     }
-                    double timestampErrorMs = Math.abs(
-                            presentationUs / 1000.0 - times[target] * 1000.0
-                    );
-                    sampleTimestampErrorTotalMs += timestampErrorMs;
-                    sampleTimestampErrorMaxMs = Math.max(sampleTimestampErrorMaxMs, timestampErrorMs);
-                    target++;
                     long now = System.nanoTime();
                     if (now - lastProgressNanos >= 250_000_000L || target == times.length) {
                         lastProgressNanos = now;
@@ -355,19 +395,16 @@ final class NativeVideoDecoder {
             featureWorker.finish(cancelled);
             profiler.add("feature_worker_finish_wait", System.nanoTime() - operationStarted);
             profiler.appendMilliseconds("", featureWorker.performanceMilliseconds());
-            boolean sourceFrameLimitReached = decodedSourceFrames
-                    >= sourceFrameLimit;
-            if (target == 0) {
-                throw new IOException("Video ended after " + target + " of " + times.length + " analysis frames");
+            boolean sourceFrameLimitReached = samplePlan.sourceFrameLimitReached();
+            if (target != samplePlan.sampleCount()) {
+                throw new IOException("Video ended after " + target + " of "
+                        + samplePlan.sampleCount() + " planned analysis frames");
             }
             double analyzedDurationSeconds;
-            if (sourceFrameLimitReached && lastPresentationUs >= 0) {
-                long frameDurationUs = previousPresentationUs >= 0
-                        ? Math.max(1, lastPresentationUs - previousPresentationUs)
-                        : Math.round(1_000_000.0 / 30);
+            if (sourceFrameLimitReached) {
                 analyzedDurationSeconds = Math.min(
                         media.durationSeconds(),
-                        (lastPresentationUs + frameDurationUs) / 1_000_000.0
+                        (samplePlan.lastPresentationUs() + samplePlan.frameDurationUs()) / 1_000_000.0
                 );
             } else {
                 analyzedDurationSeconds = media.durationSeconds();
@@ -382,7 +419,7 @@ final class NativeVideoDecoder {
                     sourceFrameLimitReached,
                     decoderName,
                     hardware,
-                    decodedSourceFrames,
+                    samplePlan.sourceFrameCount(),
                     0,
                     decodedSourceFrames,
                     (Debug.threadCpuTimeNanos() - threadCpuStartedNanos) / 1_000_000.0
@@ -403,22 +440,26 @@ final class NativeVideoDecoder {
 
     private static SamplePlan buildSamplePlan(
             MediaExtractor extractor,
-            MediaFormat format,
             double[] times,
-            int sourceFrameLimit
-    ) {
-        SamplePlan cfrPlan = buildCfrSamplePlan(extractor, format, times, sourceFrameLimit);
-        if (cfrPlan != null) return cfrPlan;
+            int sourceFrameLimit,
+            double mediaDurationSeconds,
+            AnalysisTypes.ProgressListener progress,
+            BooleanSupplier cancelled
+    ) throws IOException {
+        // Inventory actual PTS. A short CFR probe cannot establish timestamps for
+        // the remainder of a file; synthetic PTS can discard selected frames when
+        // decode-only flags are assigned. The scan is measured separately.
         extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         int scanLimit = sourceFrameLimit > Integer.MAX_VALUE - SAMPLE_PLAN_REORDER_LOOKAHEAD
                 ? Integer.MAX_VALUE : sourceFrameLimit + SAMPLE_PLAN_REORDER_LOOKAHEAD;
-        // Full-file mode uses Integer.MAX_VALUE as its logical limit. Do not use
-        // that sentinel as an eager ArrayList allocation for variable-frame-rate media.
         ArrayList<Long> presentationTimes = new ArrayList<>(Math.min(scanLimit, 65_536));
+        VideoPreparationProgress preparation = new VideoPreparationProgress(
+                mediaDurationSeconds, scanLimit, progress, cancelled);
         while (presentationTimes.size() < scanLimit) {
             long presentationUs = extractor.getSampleTime();
             if (presentationUs < 0) break;
             presentationTimes.add(presentationUs);
+            preparation.sample(presentationUs);
             if (!extractor.advance()) break;
         }
         ArrayList<Long> sorted = new ArrayList<>(presentationTimes);
@@ -436,156 +477,35 @@ final class NativeVideoDecoder {
                 inputFrameCount = index + 1;
             }
         }
-        HashSet<Long> sampledPresentationUs = new HashSet<>();
-        int target = 0;
-        for (long presentationUs : sortedPresentationUs) {
-            if (target >= times.length) break;
-            if (presentationUs + 1_000 >= Math.round(times[target] * 1_000_000)) {
-                sampledPresentationUs.add(presentationUs);
-                target++;
+        long lastPresentationUs = sourceFrameCount == 0 ? -1 : sortedPresentationUs[sourceFrameCount - 1];
+        long frameDurationUs = Math.round(1_000_000.0 / 30);
+        for (int index = sourceFrameCount - 2; index >= 0; index--) {
+            if (sortedPresentationUs[index] < lastPresentationUs) {
+                frameDurationUs = lastPresentationUs - sortedPresentationUs[index];
+                break;
             }
         }
-        long lastPresentationUs = sortedPresentationUs.length == 0
-                ? -1 : sortedPresentationUs[sortedPresentationUs.length - 1];
-        long frameDurationUs = sortedPresentationUs.length >= 2
-                ? Math.max(1, lastPresentationUs - sortedPresentationUs[sortedPresentationUs.length - 2])
-                : Math.round(1_000_000.0 / 30);
-        return new SamplePlan(
-                Set.copyOf(sampledPresentationUs),
-                sortedPresentationUs,
-                inputFrameCount,
-                sourceFrameCount,
-                presentationTimes.size() >= sourceFrameLimit,
-                target,
-                lastPresentationUs,
-                frameDurationUs,
-                false
-        );
-    }
-
-    private static Set<Long> activeSamplePresentationUs(
-            long[] sortedPresentationUs,
-            double[] times,
-            int firstTarget
-    ) {
-        HashSet<Long> active = new HashSet<>();
-        int target = 0;
-        for (long presentationUs : sortedPresentationUs) {
-            if (target >= times.length) break;
-            if (presentationUs + 1_000 >= Math.round(times[target] * 1_000_000)) {
-                if (target >= firstTarget) active.add(presentationUs);
-                target++;
-            }
-        }
-        return Set.copyOf(active);
-    }
-
-    private static SamplePlan buildCfrSamplePlan(
-            MediaExtractor extractor,
-            MediaFormat format,
-            double[] times,
-            int sourceFrameLimit
-    ) {
-        // Avoid a full presentation-timestamp scan only after the declared rate exactly
-        // predicts a reordered two-second probe. VFR inputs retain the scan-based path.
-        if (!format.containsKey(MediaFormat.KEY_FRAME_RATE)
-                || !format.containsKey(MediaFormat.KEY_DURATION)) return null;
-        double frameRate;
-        int totalFrameCount;
-        try {
-            Number frameRateValue = format.getNumber(MediaFormat.KEY_FRAME_RATE);
-            if (frameRateValue == null) return null;
-            frameRate = frameRateValue.doubleValue();
-            long durationUs = format.getLong(MediaFormat.KEY_DURATION);
-            totalFrameCount = (int) Math.min(
-                    Integer.MAX_VALUE,
-                    Math.round(durationUs / 1_000_000.0 * frameRate)
-            );
-        } catch (ClassCastException | NullPointerException ignored) {
-            return null;
-        }
-        if (frameRate <= 0 || totalFrameCount <= 0) return null;
-
-        int validationCount = Math.min(SAMPLE_PLAN_REORDER_LOOKAHEAD, totalFrameCount);
-        int probeCount = Math.min(
-                totalFrameCount,
-                validationCount + SAMPLE_PLAN_REORDER_LOOKAHEAD
-        );
-        long[] probePresentationUs = new long[probeCount];
-        int readCount = 0;
-        while (readCount < probeCount) {
-            long presentationUs = extractor.getSampleTime();
-            if (presentationUs < 0) break;
-            probePresentationUs[readCount++] = presentationUs;
-            if (!extractor.advance()) break;
-        }
-        if (readCount != probeCount) return null;
-        long[] sortedProbePresentationUs = probePresentationUs.clone();
-        Arrays.sort(sortedProbePresentationUs);
-        long firstPresentationUs = sortedProbePresentationUs[0];
-        if (Math.abs(firstPresentationUs) > 1_000) return null;
-        double frameDurationExactUs = 1_000_000.0 / frameRate;
-        for (int index = 0; index < validationCount; index++) {
-            long expectedUs = firstPresentationUs + (long) Math.floor(index * frameDurationExactUs);
-            if (Math.abs(sortedProbePresentationUs[index] - expectedUs) > 2) return null;
-        }
-        long validationLastPresentationUs = sortedProbePresentationUs[validationCount - 1];
-        int validationInputExtent = 0;
-        for (int index = 0; index < probePresentationUs.length; index++) {
-            if (probePresentationUs[index] <= validationLastPresentationUs) {
-                validationInputExtent = index + 1;
-            }
-        }
-        int observedReorderGuard = Math.max(2, validationInputExtent - validationCount);
-
-        int sourceFrameCount = Math.min(sourceFrameLimit, totalFrameCount);
-        long[] sortedPresentationUs = new long[sourceFrameCount];
-        HashSet<Long> sampledPresentationUs = new HashSet<>();
-        int target = 0;
-        for (int index = 0; index < sourceFrameCount; index++) {
-            long presentationUs = firstPresentationUs
-                    + (long) Math.floor(index * frameDurationExactUs);
-            sortedPresentationUs[index] = presentationUs;
-            if (target < times.length
-                    && presentationUs + 1_000 >= Math.round(times[target] * 1_000_000)) {
-                sampledPresentationUs.add(presentationUs);
-                target++;
-            }
-        }
-        int inputFrameCount = Math.min(
-                totalFrameCount,
-                sourceFrameCount + observedReorderGuard
-        );
-        long lastPresentationUs = sortedPresentationUs.length == 0
-                ? -1 : sortedPresentationUs[sortedPresentationUs.length - 1];
-        long frameDurationUs = sortedPresentationUs.length >= 2
-                ? Math.max(1, lastPresentationUs
-                        - sortedPresentationUs[sortedPresentationUs.length - 2])
-                : Math.max(1, Math.round(frameDurationExactUs));
-        return new SamplePlan(
-                Set.copyOf(sampledPresentationUs),
-                sortedPresentationUs,
-                inputFrameCount,
-                sourceFrameCount,
-                totalFrameCount >= sourceFrameLimit,
-                target,
-                lastPresentationUs,
-                frameDurationUs,
-                true
-        );
+        boolean sourceFrameLimitReached = presentationTimes.size() >= sourceFrameLimit;
+        double windowEndSeconds = sourceFrameLimitReached
+                ? Math.min(mediaDurationSeconds, (lastPresentationUs + frameDurationUs) / 1_000_000.0)
+                : mediaDurationSeconds;
+        long[] selectedPresentationUs = NearestFrameSelection.select(sortedPresentationUs, times, windowEndSeconds);
+        preparation.complete();
+        return new SamplePlan(selectedPresentationUs, sortedPresentationUs, inputFrameCount,
+                sourceFrameCount, sourceFrameLimitReached, lastPresentationUs, frameDurationUs);
     }
 
     private record SamplePlan(
-            Set<Long> sampledPresentationUs,
+            long[] selectedPresentationUs,
             long[] sortedPresentationUs,
             int inputFrameCount,
             int sourceFrameCount,
             boolean sourceFrameLimitReached,
-            int sampleCount,
             long lastPresentationUs,
-            long frameDurationUs,
-            boolean cfrFastPath
+            long frameDurationUs
     ) {
+        int sampleCount() { return selectedPresentationUs.length; }
+
         int sourceFramesAtOrBefore(long presentationUs) {
             int index = Arrays.binarySearch(sortedPresentationUs, presentationUs);
             if (index < 0) return -index - 1;
@@ -597,6 +517,7 @@ final class NativeVideoDecoder {
 
     private static final class AsyncDecodeState extends MediaCodec.Callback {
         private final MediaExtractor extractor;
+        private final MediaFormat trackFormat;
         private final SamplePlan samplePlan;
         private final AnalysisTypes.MediaInfo media;
         private final AnalysisTypes.Roi roi;
@@ -609,6 +530,7 @@ final class NativeVideoDecoder {
         private final long videoStartedNanos;
         private final int resumedRows;
         private final Set<Long> materializedPresentationUs;
+        private final SharedVideoFrameConsumer shared;
         private final CountDownLatch completion = new CountDownLatch(1);
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
 
@@ -624,6 +546,7 @@ final class NativeVideoDecoder {
 
         AsyncDecodeState(
                 MediaExtractor extractor,
+                MediaFormat trackFormat,
                 SamplePlan samplePlan,
                 AnalysisTypes.MediaInfo media,
                 AnalysisTypes.Roi roi,
@@ -636,9 +559,11 @@ final class NativeVideoDecoder {
                 long videoStartedNanos,
                 int firstTarget,
                 int resumedRows,
-                Set<Long> materializedPresentationUs
+                Set<Long> materializedPresentationUs,
+                SharedVideoFrameConsumer shared
         ) {
             this.extractor = extractor;
+            this.trackFormat = trackFormat;
             this.samplePlan = samplePlan;
             this.media = media;
             this.roi = roi;
@@ -652,6 +577,7 @@ final class NativeVideoDecoder {
             this.target = firstTarget;
             this.resumedRows = resumedRows;
             this.materializedPresentationUs = materializedPresentationUs;
+            this.shared = shared;
         }
 
         @Override
@@ -720,8 +646,10 @@ final class NativeVideoDecoder {
                 long presentationUs = info.presentationTimeUs;
                 boolean sampleThisFrame = info.size > 0
                         && target < samplePlan.sampleCount()
-                        && presentationUs + 1_000 >= Math.round(times[target] * 1_000_000);
-                if (sampleThisFrame) processSample(codec, outputIndex, presentationUs);
+                        && presentationUs == samplePlan.selectedPresentationUs()[target];
+                if (sampleThisFrame || (info.size > 0 && shared != null && shared.wants(presentationUs))) {
+                    processSample(codec, outputIndex, presentationUs);
+                }
             } catch (Throwable error) {
                 fail(error);
             } finally {
@@ -758,31 +686,49 @@ final class NativeVideoDecoder {
                 );
             }
             try {
+                YuvColorConversion.Profile color = DecodedVideoColor.resolve(
+                        codec.getOutputFormat(outputIndex), trackFormat);
+                if (shared != null && shared.wants(presentationUs)) {
+                    operationStarted = System.nanoTime();
+                    shared.accept(image, presentationUs, color);
+                    profiler.add("shared_consumer_prepare_submit", System.nanoTime() - operationStarted);
+                }
+                // A second consumer may request a frame that AV does not select.
+                if (target >= samplePlan.sampleCount()
+                        || samplePlan.selectedPresentationUs()[target] != presentationUs) return;
                 operationStarted = System.nanoTime();
                 if (yuvCropSampler == null || !yuvCropSampler.matches(image)) {
                     yuvCropSampler = new YuvCropSampler(image, roi, media.rotation());
                     profiler.add("yuv_sampler_setup", System.nanoTime() - operationStarted);
                     operationStarted = System.nanoTime();
                 }
-                Mat rgba = yuvCropSampler.convert(image);
+                Mat rgba = yuvCropSampler.convert(image, color.conversion());
                 profiler.add("yuv_crop_scale_color", System.nanoTime() - operationStarted);
                 try {
-                    operationStarted = System.nanoTime();
-                    featureWorker.submit(target, rgba, target >= resumedRows, cancelled);
-                    profiler.add("feature_queue_backpressure", System.nanoTime() - operationStarted);
-                    rgba = null;
+                    // Repeated target rows must reuse this selected image, not consume
+                    // successive decoder outputs with unrelated timestamps.
+                    while (target < samplePlan.sampleCount()
+                            && samplePlan.selectedPresentationUs()[target] == presentationUs) {
+                        Mat submitted = rgba.clone();
+                        try {
+                            operationStarted = System.nanoTime();
+                            featureWorker.submit(target, submitted, target >= resumedRows, cancelled);
+                            profiler.add("feature_queue_backpressure", System.nanoTime() - operationStarted);
+                            submitted = null;
+                        } finally {
+                            if (submitted != null) submitted.release();
+                        }
+                        double timestampErrorMs = Math.abs(presentationUs / 1000.0 - times[target] * 1000.0);
+                        sampleTimestampErrorTotalMs += timestampErrorMs;
+                        sampleTimestampErrorMaxMs = Math.max(sampleTimestampErrorMaxMs, timestampErrorMs);
+                        target++;
+                    }
                 } finally {
-                    if (rgba != null) rgba.release();
+                    rgba.release();
                 }
             } finally {
                 image.close();
             }
-            double timestampErrorMs = Math.abs(
-                    presentationUs / 1000.0 - times[target] * 1000.0
-            );
-            sampleTimestampErrorTotalMs += timestampErrorMs;
-            sampleTimestampErrorMaxMs = Math.max(sampleTimestampErrorMaxMs, timestampErrorMs);
-            target++;
             updateProgress(presentationUs);
             profiler.add("sampled_frame_total", System.nanoTime() - sampleStarted);
         }
@@ -879,11 +825,9 @@ final class NativeVideoDecoder {
         }
     }
 
-    static Mat imageToAnalysisRgba(Image image, AnalysisTypes.Roi roi, int rotation) {
-        return imageToRgba(
-                image, roi, rotation,
-                FeatureSchema.ANALYSIS_WIDTH, FeatureSchema.ANALYSIS_HEIGHT
-        );
+    static Mat imageToAnalysisRgba(Image image, AnalysisTypes.Roi roi, int rotation,
+            YuvColorConversion color) {
+        return new YuvCropSampler(image, roi, rotation).convert(image, color);
     }
 
     static Mat imageToRgba(
@@ -891,7 +835,8 @@ final class NativeVideoDecoder {
             AnalysisTypes.Roi roi,
             int rotation,
             int outputWidth,
-            int outputHeight
+            int outputHeight,
+            YuvColorConversion color
     ) {
         if (outputWidth <= 0 || outputHeight <= 0) {
             throw new IllegalArgumentException("Output dimensions must be positive");
@@ -931,15 +876,10 @@ final class NativeVideoDecoder {
                 int uValue = uBuffer.get(chromaY * uRowStride + chromaX * uPixelStride) & 0xff;
                 int vValue = vBuffer.get(chromaY * vRowStride + chromaX * vPixelStride) & 0xff;
 
-                int c = Math.max(0, yValue - 16);
-                int d = uValue - 128;
-                int e = vValue - 128;
-                int red = clamp((298 * c + 409 * e + 128) >> 8, 0, 255);
-                int green = clamp((298 * c - 100 * d - 208 * e + 128) >> 8, 0, 255);
-                int blue = clamp((298 * c + 516 * d + 128) >> 8, 0, 255);
-                rgba[outputIndex++] = (byte) red;
-                rgba[outputIndex++] = (byte) green;
-                rgba[outputIndex++] = (byte) blue;
+                int rgb = color.rgb(yValue, uValue, vValue);
+                rgba[outputIndex++] = (byte) (rgb >> 16);
+                rgba[outputIndex++] = (byte) (rgb >> 8);
+                rgba[outputIndex++] = (byte) rgb;
                 rgba[outputIndex++] = (byte) 255;
             }
         }
@@ -949,23 +889,6 @@ final class NativeVideoDecoder {
     }
 
     static final class YuvCropSampler {
-        private static final int[] Y_COMPONENT = new int[256];
-        private static final int[] RED_FROM_V = new int[256];
-        private static final int[] GREEN_FROM_U = new int[256];
-        private static final int[] GREEN_FROM_V = new int[256];
-        private static final int[] BLUE_FROM_U = new int[256];
-
-        static {
-            for (int value = 0; value < 256; value++) {
-                Y_COMPONENT[value] = 298 * Math.max(0, value - 16);
-                int chroma = value - 128;
-                RED_FROM_V[value] = 409 * chroma;
-                GREEN_FROM_U[value] = -100 * chroma;
-                GREEN_FROM_V[value] = -208 * chroma;
-                BLUE_FROM_U[value] = 516 * chroma;
-            }
-        }
-
         private final Rect crop;
         private final int yRowStride;
         private final int yPixelStride;
@@ -980,11 +903,12 @@ final class NativeVideoDecoder {
         private final int[] uOffsets;
         private final int[] vOffsets;
         private final byte[] rgba;
+        private final YuvAreaResampler areaResampler;
 
         YuvCropSampler(Image image, AnalysisTypes.Roi roi, int rotation) {
             this(
                     image, roi, rotation,
-                    FeatureSchema.ANALYSIS_WIDTH, FeatureSchema.ANALYSIS_HEIGHT
+                    FeatureSchema.ANALYSIS_WIDTH, FeatureSchema.ANALYSIS_HEIGHT, true
             );
         }
 
@@ -995,6 +919,12 @@ final class NativeVideoDecoder {
                 int outputWidth,
                 int outputHeight
         ) {
+            // Specialist serving-side/switch models retain their existing sampler.
+            this(image, roi, rotation, outputWidth, outputHeight, false);
+        }
+
+        private YuvCropSampler(Image image, AnalysisTypes.Roi roi, int rotation,
+                int outputWidth, int outputHeight, boolean area) {
             if (outputWidth <= 0 || outputHeight <= 0) {
                 throw new IllegalArgumentException("Output dimensions must be positive");
             }
@@ -1005,10 +935,10 @@ final class NativeVideoDecoder {
             this.outputWidth = outputWidth;
             this.outputHeight = outputHeight;
             pixelCount = outputWidth * outputHeight;
-            yOffsets = new int[pixelCount];
-            uOffsets = new int[pixelCount];
-            vOffsets = new int[pixelCount];
-            rgba = new byte[pixelCount * 4];
+            yOffsets = area ? null : new int[pixelCount];
+            uOffsets = area ? null : new int[pixelCount];
+            vOffsets = area ? null : new int[pixelCount];
+            rgba = area ? null : new byte[pixelCount * 4];
             crop = new Rect(image.getCropRect());
             yRowStride = planes[0].getRowStride();
             yPixelStride = planes[0].getPixelStride();
@@ -1016,6 +946,11 @@ final class NativeVideoDecoder {
             uPixelStride = planes[1].getPixelStride();
             vRowStride = planes[2].getRowStride();
             vPixelStride = planes[2].getPixelStride();
+            areaResampler = area ? new YuvAreaResampler(
+                    crop.left, crop.top, crop.width(), crop.height(), rotation,
+                    roi.x(), roi.y(), roi.width(), roi.height(), outputWidth, outputHeight
+            ) : null;
+            if (area) return;
 
             int index = 0;
             for (int y = 0; y < outputHeight; y++) {
@@ -1061,24 +996,30 @@ final class NativeVideoDecoder {
                     && vPixelStride == planes[2].getPixelStride();
         }
 
-        Mat convert(Image image) {
+        Mat convert(Image image, YuvColorConversion color) {
             Image.Plane[] planes = image.getPlanes();
             ByteBuffer yBuffer = planes[0].getBuffer().duplicate();
             ByteBuffer uBuffer = planes[1].getBuffer().duplicate();
             ByteBuffer vBuffer = planes[2].getBuffer().duplicate();
+            if (areaResampler != null) {
+                byte[] downsampled = areaResampler.convert(
+                        yBuffer, yRowStride, yPixelStride,
+                        uBuffer, uRowStride, uPixelStride,
+                        vBuffer, vRowStride, vPixelStride, color
+                );
+                Mat result = new Mat(outputHeight, outputWidth, CvType.CV_8UC4);
+                result.put(0, 0, downsampled);
+                return result;
+            }
             int outputIndex = 0;
             for (int index = 0; index < pixelCount; index++) {
                 int yValue = yBuffer.get(yOffsets[index]) & 0xff;
                 int uValue = uBuffer.get(uOffsets[index]) & 0xff;
                 int vValue = vBuffer.get(vOffsets[index]) & 0xff;
-                int yComponent = Y_COMPONENT[yValue];
-                int red = clamp((yComponent + RED_FROM_V[vValue] + 128) >> 8, 0, 255);
-                int green = clamp((yComponent + GREEN_FROM_U[uValue]
-                        + GREEN_FROM_V[vValue] + 128) >> 8, 0, 255);
-                int blue = clamp((yComponent + BLUE_FROM_U[uValue] + 128) >> 8, 0, 255);
-                rgba[outputIndex++] = (byte) red;
-                rgba[outputIndex++] = (byte) green;
-                rgba[outputIndex++] = (byte) blue;
+                int rgb = color.rgb(yValue, uValue, vValue);
+                rgba[outputIndex++] = (byte) (rgb >> 16);
+                rgba[outputIndex++] = (byte) (rgb >> 8);
+                rgba[outputIndex++] = (byte) rgb;
                 rgba[outputIndex++] = (byte) 255;
             }
             Mat result = new Mat(

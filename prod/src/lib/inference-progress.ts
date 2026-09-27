@@ -214,7 +214,8 @@ export function updatePipelineInferenceSteps(
   }
   if (progress.stage === "inference") {
     return updateRunningStep(steps, "rally", {
-      fraction: 0.42,
+      // Reserve completion for the final result, after decoding and support heads.
+      fraction: 0.12 + 0.83 * clampFraction(fraction),
       detail: progress.detail,
       phase: "models",
       completed: 0,

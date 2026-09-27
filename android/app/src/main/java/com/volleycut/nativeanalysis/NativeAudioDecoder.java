@@ -65,6 +65,22 @@ final class NativeAudioDecoder {
             AnalysisTypes.ProgressListener progress,
             BooleanSupplier cancelled
     ) throws IOException {
+        try {
+            return decodeAttempt(uri, analysisWindow, analysisTimes, decoderMode, progress, cancelled);
+        } catch (BatchFramingException error) {
+            if (decoderMode != AnalysisTypes.AudioDecoderMode.AUTO || cancelled.getAsBoolean()) throw error;
+            // decodeAttempt has released its codec/extractor before restarting.
+            progress.onProgress("audio", 0, "Restarting audio with verified single-unit timing");
+            return decodeAttempt(uri, analysisWindow, analysisTimes,
+                    AnalysisTypes.AudioDecoderMode.SINGLE_ACCESS_UNIT, progress, cancelled);
+        }
+    }
+
+    private Result decodeAttempt(
+            Uri uri, AnalysisTypes.AnalysisWindow analysisWindow, double[] analysisTimes,
+            AnalysisTypes.AudioDecoderMode decoderMode, AnalysisTypes.ProgressListener progress,
+            BooleanSupplier cancelled
+    ) throws IOException {
         long pipelineStartedNanos = System.nanoTime();
         long threadCpuStartedNanos = Debug.threadCpuTimeNanos();
         NanoProfiler profiler = new NanoProfiler();
@@ -102,6 +118,9 @@ final class NativeAudioDecoder {
                     .getCapabilitiesForType(mime)
                     .isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_MultipleFrames);
             boolean batchingAvailable = Build.VERSION.SDK_INT >= 35 && multipleFramesSupported;
+            AacLcFrameLayout framing = "audio/mp4a-latm".equals(mime)
+                    ? AacLcFrameLayout.parse(inputFormat.getByteBuffer("csd-0"), sampleRate,
+                            inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)) : null;
             if (decoderMode == AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS
                     && !batchingAvailable) {
                 throw new IOException(Build.VERSION.SDK_INT < 35
@@ -109,14 +128,18 @@ final class NativeAudioDecoder {
                         : "The selected audio decoder does not support multiple frames");
             }
             if (Build.VERSION.SDK_INT >= 35
+                    && framing != null
                     && (decoderMode == AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS
                     || decoderMode == AnalysisTypes.AudioDecoderMode.AUTO && batchingAvailable)) {
                 return decodeBatched(
                         extractor, codec, inputFormat, analysisWindow, analysisTimes,
                         startUs, endUs, analysisDuration, sampleRate, codecOperatingRate,
                         decoderName, multipleFramesSupported, setupStarted, pipelineStartedNanos,
-                        threadCpuStartedNanos, profiler, progress, cancelled
+                        threadCpuStartedNanos, profiler, progress, cancelled, framing
                 );
+            }
+            if (decoderMode == AnalysisTypes.AudioDecoderMode.BATCHED_ACCESS_UNITS) {
+                throw new IOException("Batched audio requires a supported AAC-LC frame configuration");
             }
             codec.configure(inputFormat, null, null, 0);
             codec.start();
@@ -287,7 +310,8 @@ final class NativeAudioDecoder {
             long threadCpuStartedNanos,
             NanoProfiler profiler,
             AnalysisTypes.ProgressListener progress,
-            BooleanSupplier cancelled
+            BooleanSupplier cancelled,
+            AacLcFrameLayout framing
     ) throws IOException {
         int initialChannels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
         int oneSecondPcmBytes = Math.min(
@@ -306,7 +330,7 @@ final class NativeAudioDecoder {
         AudioFeatureExtractor accumulator = new AudioFeatureExtractor();
         BatchedDecodeState state = new BatchedDecodeState(
                 extractor, analysisWindow, startUs, endUs, analysisDuration,
-                initialSampleRate, initialChannels, accumulator, profiler, progress, cancelled
+                initialSampleRate, initialChannels, accumulator, profiler, progress, cancelled, framing
         );
         try {
             codec.setCallback(state, codecHandler);
@@ -328,6 +352,11 @@ final class NativeAudioDecoder {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new IOException("Interrupted while draining audio codec callbacks", error);
+            }
+
+            state.pcmAssembler.verifyComplete();
+            if (accumulator.overlapTrimmedSamples() > 2L * framing.framesPerUnit()) {
+                throw new BatchFramingException("Batched audio discarded unexplained overlapping PCM");
             }
 
             long finishStarted = System.nanoTime();
@@ -385,6 +414,10 @@ final class NativeAudioDecoder {
         }
     }
 
+    static final class BatchFramingException extends IllegalStateException {
+        BatchFramingException(String message) { super(message); }
+    }
+
     static final class DecodedAccessUnitAssembler {
         @FunctionalInterface
         interface Consumer {
@@ -406,7 +439,10 @@ final class NativeAudioDecoder {
         }
 
         void setFramesPerUnit(int framesPerUnit) {
-            if (framesPerUnit <= 0 || this.framesPerUnit != 0) return;
+            if (framesPerUnit <= 0 || (this.framesPerUnit != 0 && this.framesPerUnit != framesPerUnit)) {
+                throw new BatchFramingException("Invalid or changing decoded audio frame size");
+            }
+            if (this.framesPerUnit == framesPerUnit) return;
             this.framesPerUnit = framesPerUnit;
             pendingFrames = new float[framesPerUnit];
         }
@@ -424,8 +460,7 @@ final class NativeAudioDecoder {
         ) {
             if (frames.length == 0) return 0;
             if (framesPerUnit == 0) {
-                consumer.accept(frames, takeTime(fallbackTimeUs));
-                return 1;
+                throw new BatchFramingException("Decoded audio frame size was not established");
             }
             if (!gaplessStartApplied) {
                 int delayedUnits = (encoderDelayFrames + framesPerUnit - 1) / framesPerUnit;
@@ -476,9 +511,18 @@ final class NativeAudioDecoder {
             return inputTimes.size();
         }
 
+        void verifyComplete() {
+            if (framesPerUnit <= 0) throw new BatchFramingException("Missing AAC frame configuration");
+            int allowedTrailingUnits = (encoderPaddingFrames + framesPerUnit - 1) / framesPerUnit + 1;
+            if (pendingLength != 0 || inputTimes.size() > allowedTrailingUnits) {
+                throw new BatchFramingException("Batched audio left unexplained input timestamps");
+            }
+        }
+
         private long takeTime(long fallbackTimeUs) {
             Long inputTimeUs = inputTimes.poll();
-            return inputTimeUs == null ? fallbackTimeUs : inputTimeUs;
+            if (inputTimeUs == null) throw new BatchFramingException("Decoded PCM has no input timestamp");
+            return inputTimeUs;
         }
     }
 
@@ -498,6 +542,7 @@ final class NativeAudioDecoder {
         private final AtomicBoolean terminal = new AtomicBoolean();
         private final DecodedAccessUnitAssembler pcmAssembler =
                 new DecodedAccessUnitAssembler();
+        private final AacLcFrameLayout framing;
         private int sampleRate;
         private int channels;
         private int encoding = AudioFormat.ENCODING_PCM_16BIT;
@@ -521,7 +566,8 @@ final class NativeAudioDecoder {
                 AudioFeatureExtractor accumulator,
                 NanoProfiler profiler,
                 AnalysisTypes.ProgressListener progress,
-                BooleanSupplier cancelled
+                BooleanSupplier cancelled,
+                AacLcFrameLayout framing
         ) {
             this.extractor = extractor;
             this.analysisWindow = analysisWindow;
@@ -534,6 +580,8 @@ final class NativeAudioDecoder {
             this.profiler = profiler;
             this.progress = progress;
             this.cancelled = cancelled;
+            this.framing = framing;
+            pcmAssembler.setFramesPerUnit(framing.framesPerUnit());
         }
 
         @Override
@@ -611,11 +659,6 @@ final class NativeAudioDecoder {
                 codec.queueInputBuffers(index, infos);
                 profiler.add("codec_input_queue", System.nanoTime() - operationStarted);
                 pcmAssembler.addInputTimes(batchTimes);
-                if (batchTimes.length >= 2) {
-                    pcmAssembler.setFramesPerUnit((int) Math.max(1, Math.round(
-                            (batchTimes[1] - batchTimes[0]) * sampleRate / 1_000_000.0
-                    )));
-                }
                 inputAccessUnits += infos.size();
                 inputBatches++;
             } catch (Throwable error) {
@@ -737,6 +780,9 @@ final class NativeAudioDecoder {
             try {
                 sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
                 channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+                if (sampleRate != framing.sampleRate() || channels != framing.channels()) {
+                    throw new BatchFramingException("Decoded audio format differs from AAC framing");
+                }
                 pcmAssembler.setGaplessTrimming(
                         format.containsKey(MediaFormat.KEY_ENCODER_DELAY)
                                 ? format.getInteger(MediaFormat.KEY_ENCODER_DELAY)

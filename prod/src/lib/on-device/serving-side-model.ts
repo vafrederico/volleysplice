@@ -410,6 +410,13 @@ export function evaluateHybridGate(
       isServe: true,
     };
   }
+  if (agreement === "neural") {
+    return {
+      source: "neural-rally-recovery",
+      reviewReasons: ["neural-rally-recovery"],
+      isServe: true,
+    };
+  }
   return { source: "none", reviewReasons: [], isServe: false };
 }
 

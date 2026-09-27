@@ -1,0 +1,8 @@
+# Install torch/torchvision from https://download.pytorch.org/whl/cu128 first.
+# Research-only environment; production CPU dependencies are unchanged.
+torch==2.11.0
+torchvision==0.26.0
+numpy==2.2.4
+opencv-python-headless==4.12.0.88
+onnx==1.19.0
+onnxruntime==1.22.1

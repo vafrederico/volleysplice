@@ -1,0 +1,2290 @@
+{
+  "schema": "android-audio-root-cause-v1",
+  "status": "diagnosis-complete-repair-pending",
+  "recordingIndex": "recording-044",
+  "artifactIndex": "private-reference-0223",
+  "newDeviceRun": false,
+  "modelOrDecoderTuning": false,
+  "evidence": {
+    "assembler": {
+      "schemaVersion": 1,
+      "recordingIndex": "recording-044",
+      "artifactIndex": "private-reference-0223",
+      "finding": "Batched audio reconstruction treats first compressed-packet timestamp spacing as the fixed decoded PCM frame size, then silently trims overlapping reassigned audio.",
+      "confidence": "Code defect and exact Java synthetic reproduction confirmed. Saved-phone time-warp/tail evidence independently corroborates. Direct Android MediaExtractor or decoded-PCM trace was not captured.",
+      "sourceAudio": {
+        "sampleRateHz": 48000,
+        "channels": 2,
+        "codec": "aac",
+        "firstPtsDeltaRoundedSamples": 1106,
+        "inspectedDecodedPcmSamplesPerPacket": [
+          1024,
+          1024,
+          1024,
+          1024,
+          1024
+        ],
+        "firstPacketPtsSeconds": [
+          0,
+          0.023042,
+          0.044375,
+          0.065708,
+          0.087042
+        ],
+        "regularPtsDeltaRoundedSamples": 1024,
+        "packetCount": 49734
+      },
+      "executionPath": {
+        "batchedCondition": "API >=35 and decoder FEATURE_MultipleFrames; explicit BATCHED also selects it",
+        "fallback": "The single-access-unit path uses each decoded output timestamp and sample count directly and avoids this assembler estimate.",
+        "benchmarkEvidence": "Saved profiles contain batched codec_input_queue/codec_output_release with no synchronous codec_output_dequeue_wait; normal app AUTO shares decoder",
+        "nativeMode": "AUTO"
+      },
+      "sourceAnchors": {
+        "tailNearestPool": "android/app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java:124",
+        "regroupAndAssignPts": "android/app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java:443",
+        "overlapTrim": "android/app/src/main/java/com/volleycut/nativeanalysis/AudioFeatureExtractor.java:73",
+        "firstDeltaEstimate": "android/app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java:614",
+        "estimateLatched": "android/app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java:408",
+        "autoSelection": "android/app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java:111"
+      },
+      "diagnostic": {
+        "limits": "Synthetic source packet spacing after first packet is regular, based on inspected metadata. This test proves code mechanism, not actual MediaCodec sample-by-sample identity.",
+        "sourceSha256": "6cd78c15d757c67b908ecd02bbadc6adbd1a62baa19b1b219f0f7ae465829dab",
+        "extractedClassUtf8Sha256": "05e05d8956232b09ba9b1e40a1bba970af3de8aaf3c958eb0eefb5113ff37a0e",
+        "method": "Exact production DecodedAccessUnitAssembler class extracted into a package-identical plain-JVM enclosing stub. Synthetic continuous PCM encodes original sample time. 49734 units of1024 PCM samples follow real initial82sample timestamp offset then regular1024 cadence; consumer mirrors production gap/overlap arithmetic. Secondary setFramesPerUnit(1024) call proves first estimate is latched.",
+        "sourcePath": "android/app/src/main/java/com/volleycut/nativeanalysis/NativeAudioDecoder.java",
+        "accounting": [
+          {
+            "guessedFrames": 1106,
+            "actualFrames": 1024,
+            "inputPackets": 49734,
+            "inputPcmSeconds": 1060.992,
+            "outputUnits": 46047,
+            "pendingInputTimes": 3687,
+            "assembledTimelineSeconds": 982.331791667,
+            "trimmedOverlapSeconds": 78.660208333,
+            "insertedGapSeconds": 0.0,
+            "keptPcmSeconds": 982.331791667,
+            "lastUnitPtsSeconds": 982.316375,
+            "lastUnitSamples": 740,
+            "probeAssignedSeconds": 600.001708,
+            "probeActualContentSeconds": 648.046875
+          },
+          {
+            "guessedFrames": 1024,
+            "actualFrames": 1024,
+            "inputPackets": 49734,
+            "inputPcmSeconds": 1060.992,
+            "outputUnits": 49734,
+            "pendingInputTimes": 0,
+            "assembledTimelineSeconds": 1060.993708333,
+            "trimmedOverlapSeconds": 0.0,
+            "insertedGapSeconds": 0.001708333,
+            "keptPcmSeconds": 1060.992,
+            "lastUnitPtsSeconds": 1060.972375,
+            "lastUnitSamples": 1024,
+            "probeAssignedSeconds": 600.001708,
+            "probeActualContentSeconds": 600.0
+          }
+        ],
+        "enclosingStubSha256": "f5d67f8e373463f2fe808fe77d11b295850e9db5f201704614aa4810ce452c29",
+        "harnessSha256": "5c41f44d53fc8fc42c2731e0f66d318243120ad07587955da0da152dd19cedb1"
+      },
+      "oldCoverageGap": [
+        "Existing NativeAudioDecoderTest directly calls setFramesPerUnit(4) or(1024), so it never tests first-spacing estimation.",
+        "Existing tests exercise carryover, clipping and gapless offsets, not irregular first packet duration versus decoded sample count.",
+        "Earlier batch qualification matched synchronous audio feature SHA on another recording, whose packet timing did not expose this source-specific first-packet irregularity.",
+        "AudioFeatureExtractorTest checks output size and availability for a440Hz tone; it does not compare feature numbers to canonical desktop extraction."
+      ],
+      "fixPlan": [
+        "Stop deriving permanent PCM unit length from a single container timestamp gap. Container duration and decoded sample count are different quantities.",
+        "Prefer preserving each actual decoded output unit sample count and timestamp. Where Android batches obscure unit boundaries, derive validated codec framing or measure it with a single-unit decode preflight; fall back to the single-access-unit path when framing cannot be established. Do not hardcode1024 for all AAC profiles/codecs.",
+        "Add invariants for consumed input timestamps, total decoded versus placed PCM samples, unexplained overlap/gaps, and audio span versus source span. Fail or fall back rather than silently dropping minutes.",
+        "Regression cases: unusual first timestamp delta, ordinary1024 and960 framing where supported, AAC delay/padding, real source start windows and irregular packet timing. Compare batch to single PCM/features for recording-044 before performance retiming.",
+        "After timeline repair, qualify filtered16k resampling against desktop and separately repair startup rolling-percentile integer-index bug. Neither secondary mismatch explains an80second time warp."
+      ],
+      "secondaryIssues": {
+        "unfilteredResampling": "AudioFeatureExtractor.java:145\u2013160 performs linear interpolation without anti-aliasing;48k->16k is every third sample. Desktop analysis/features.py:634\u2013650 delegates to FFmpeg filtered resampling.",
+        "rollingPercentile": "AudioFeatureExtractor.java:326\u2013329 uses weights upper-position and position-lower; both are0 for integer quantile positions. Startup count1,6,...196 yields false0 noise floors; fixed200sample window is unaffected."
+      },
+      "productionImpact": "Same NativeAudioDecoder and AudioFeatureExtractor are used by the production ensemble and neural pipelines. Production is subject to audio input drift for affected source timing; this is not a distilled model architecture issue."
+    },
+    "savedFeatureAlignment": {
+      "audioSchemaOrderIdentical": true,
+      "audioColumns": 27,
+      "desktopFeatureOrigin": "opencv-media-pts-av104",
+      "cacheDuration": 1061.016489,
+      "cacheAssociationVerifiedByInputLoader": true,
+      "nativeVariantRankMaxDifference": 3.434020356962719e-08,
+      "secondaryConfirmedCodeIssue": "AudioFeatureExtractor.rollingPercentile multiplies equal floor/ceil endpoint by zero weights when quantile position is integral; happens at startup window sizes1,6,...196 and does not explain later-recording timing compression.",
+      "schema": "native-audio-contract-audit-v1",
+      "recordingIndex": "recording-044",
+      "artifactIndex": "private-reference-0223",
+      "method": "Read-only frozen saved tensors and source code. No retraining, recalibration, new model selection, device invocation, or video extraction.",
+      "mainEvidence": {
+        "scale": 1.080078125,
+        "columns": [
+          {
+            "feature": "audio_rms",
+            "sameTimeCorrelation": 0.17777831742657016,
+            "fixedRateWarpCorrelation": 0.9456884454306811,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_peak",
+            "sameTimeCorrelation": 0.08915979659854914,
+            "fixedRateWarpCorrelation": 0.8896446812576965,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_peak_to_rms",
+            "sameTimeCorrelation": -0.008604405740670082,
+            "fixedRateWarpCorrelation": 0.6307054866744336,
+            "constantTailStartsSeconds": 982.25,
+            "constantTailDuration": 78.75
+          },
+          {
+            "feature": "audio_noise_floor",
+            "sameTimeCorrelation": 0.4741328957211737,
+            "fixedRateWarpCorrelation": 0.9947447609895711,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_snr",
+            "sameTimeCorrelation": 0.03848093171232519,
+            "fixedRateWarpCorrelation": 0.9340329801914877,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_spectral_flux",
+            "sameTimeCorrelation": 0.0156874795197775,
+            "fixedRateWarpCorrelation": 0.49070769481181364,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_rms_novelty",
+            "sameTimeCorrelation": 0.01202644843059534,
+            "fixedRateWarpCorrelation": 0.7501448283820796,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_onset_strength",
+            "sameTimeCorrelation": 0.014379247584272378,
+            "fixedRateWarpCorrelation": 0.6358573441793015,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_contact_like_transient",
+            "sameTimeCorrelation": 0.058714425310745624,
+            "fixedRateWarpCorrelation": 0.7798901742819724,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_onset_cadence",
+            "sameTimeCorrelation": 0.27469416522974044,
+            "fixedRateWarpCorrelation": 0.9826176307735135,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_cadence_collapse",
+            "sameTimeCorrelation": 0.001027639883343747,
+            "fixedRateWarpCorrelation": 0.8903123231515033,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_seconds_since_transient",
+            "sameTimeCorrelation": 0.07722297776958575,
+            "fixedRateWarpCorrelation": 0.7583440520533348,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_noise_removed_broadband",
+            "sameTimeCorrelation": 0.07400468156694147,
+            "fixedRateWarpCorrelation": 0.7795938601387618,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_noise_normalized_flux",
+            "sameTimeCorrelation": 0.05026220598828574,
+            "fixedRateWarpCorrelation": 0.6113556836223065,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_80_250_snr",
+            "sameTimeCorrelation": 0.0015510764360013615,
+            "fixedRateWarpCorrelation": 0.7133469661010915,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_80_250_snr_flux",
+            "sameTimeCorrelation": -0.015569618621236936,
+            "fixedRateWarpCorrelation": 0.5629061461148553,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_250_500_snr",
+            "sameTimeCorrelation": 0.18245393549636585,
+            "fixedRateWarpCorrelation": 0.7592208787720537,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_250_500_snr_flux",
+            "sameTimeCorrelation": 0.15217136726215696,
+            "fixedRateWarpCorrelation": 0.5431541869921787,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_500_1000_snr",
+            "sameTimeCorrelation": 0.04917101018576243,
+            "fixedRateWarpCorrelation": 0.8712775185960094,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_500_1000_snr_flux",
+            "sameTimeCorrelation": 0.08759755485495228,
+            "fixedRateWarpCorrelation": 0.6816399034949377,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_1000_2000_snr",
+            "sameTimeCorrelation": 0.026146384258195557,
+            "fixedRateWarpCorrelation": 0.8480816509599661,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_1000_2000_snr_flux",
+            "sameTimeCorrelation": 0.0423917345771362,
+            "fixedRateWarpCorrelation": 0.7041887155340161,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_2000_4000_snr",
+            "sameTimeCorrelation": 0.03244523231749789,
+            "fixedRateWarpCorrelation": 0.8074657336905121,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_2000_4000_snr_flux",
+            "sameTimeCorrelation": 0.03099148229278267,
+            "fixedRateWarpCorrelation": 0.6071009047885549,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_4000_7800_snr",
+            "sameTimeCorrelation": 0.06266940009019717,
+            "fixedRateWarpCorrelation": 0.6061667442155394,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          },
+          {
+            "feature": "audio_band_4000_7800_snr_flux",
+            "sameTimeCorrelation": 0.003056608000304464,
+            "fixedRateWarpCorrelation": 0.44560346797837835,
+            "constantTailStartsSeconds": 982.5,
+            "constantTailDuration": 78.5
+          }
+        ]
+      },
+      "warp": {
+        "source": "Code-derived1106/1024 packet/frame ratio; no fitted slope oroffset",
+        "orientation": "Desktop time corresponding to native feature time t is t*1106/1024. To compare a native feature at t, interpolate desktop feature at t*1106/1024. Only compare where that desktop timestamp is within the recorded duration.",
+        "nativeFeatureSeconds": 600,
+        "correspondingDesktopAudioSeconds": 648.046875,
+        "audioAheadSecondsAtNative600": 48.046875,
+        "interpretation": "The feature assigned to10:00 contains sound from approximately10:48. By native16:22.5 the audio is exhausted; remaining78.5s repeat the last feature values."
+      },
+      "identities": {
+        "sourceContentSha256": "b92371af35a49a93726ad36de32382f0ac46c42bf9e4ed1260242ca82e7031af",
+        "desktopAvCacheSha256": "9a7b004b220be57ef69d85ac3fd3f07a91b725a7958e1cb739284271886ca201",
+        "nativeF1FeaturesSha256": "9899998c15b7d42441b7f0e06e10de64fa6fb36d9cb17cf75d82cb9ce2512638",
+        "nativeRecallFeaturesSha256": "28d7111bd6ad030443ffec56b18ff929756ec13ece4b31f3b3c6b2d1d07b8eb3",
+        "f1TcnCheckpointSha256": "1d73c21e9ecd9c0cf7b454c5860f00a6db317f41cf0286a95c4770948b1d5c1c",
+        "recallTcnCheckpointSha256": "e79a626bb8a01a0de060d759721340b06f1bae2c90033ed8647448e4a9af5488",
+        "f1InputContractSha256": "d0a0cac601116a5c2ee7b8b1496292dd5da65982d8b62c52155214b6428bf7f8",
+        "recallInputContractSha256": "c67c93baae425e383cfc31f4bc0db651c59ba394ddaec625ff6457da3f0fe294"
+      },
+      "scope": "A fixed time warp demonstrates the timeline defect; it does not create a corrected native extractor or qualify complete feature parity. Residual resampling/DSP differences remain."
+    },
+    "samePcmReplay": {
+      "recordingIndex": "recording-044",
+      "sourceStartSeconds": 60,
+      "sourceDurationSeconds": 60,
+      "scope": "Offline 60-second excerpt. Same FFmpeg-decoded mono48k source PCM for all arms. Same16k PCM Java/Python isolates DSP; mono48k Java versus samePCM FFmpeg16k includes resampling difference. No phone, training, app change or deployment claim.",
+      "javaSourceFiles": [
+        "AudioFeatureExtractor.java",
+        "Radix2Fft.java",
+        "NanoProfiler.java",
+        "FeatureSchema.java",
+        "FeatureMath.java"
+      ],
+      "javaStubsRequired": false,
+      "tests": {
+        "java16_vs_python16": {
+          "all": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.999999999999973,
+              "meanAbsoluteDifference": 5.471520125865936e-10,
+              "maxAbsoluteDifference": 3.725290298461914e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.4103378494225777e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.868842498056946,
+              "meanAbsoluteDifference": 0.0002976164493399362,
+              "maxAbsoluteDifference": 0.004925509914755821,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.23015865168624441,
+              "rankMeanAbsoluteDifference": 0.12862621247768402
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.48437380673495845,
+              "meanAbsoluteDifference": 0.13104367333071423,
+              "maxAbsoluteDifference": 1.6674566753208637,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.6715750072150609,
+              "rankMeanAbsoluteDifference": 0.15617156028747559
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9999999999999236,
+              "meanAbsoluteDifference": 8.878608544667562e-09,
+              "maxAbsoluteDifference": 4.470348358154297e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.752700176317249e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 0.9999999999999991,
+              "meanAbsoluteDifference": 3.104408582051595e-11,
+              "maxAbsoluteDifference": 7.450580596923828e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.6613365426834373e-09,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 0.9999999999999998,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.9999999999999686,
+              "meanAbsoluteDifference": 1.0927518208821614e-08,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.540116781722233e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.9999999999999987,
+              "meanAbsoluteDifference": 6.829698880513509e-10,
+              "maxAbsoluteDifference": 1.4901161193847656e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.4392261464260952e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 9.73232090473175e-09,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.4593874028738855e-08,
+              "rankMeanAbsoluteDifference": 0.0021792189218103886
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.10337675013240903,
+              "meanAbsoluteDifference": 3.223573503270745,
+              "maxAbsoluteDifference": 21.351787567138672,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.226912761279547,
+              "rankMeanAbsoluteDifference": 0.1414923369884491
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.04303242157589529,
+              "meanAbsoluteDifference": 6.459863014270862,
+              "maxAbsoluteDifference": 42.67453408241272,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.316188166356045,
+              "rankMeanAbsoluteDifference": 0.14435146749019623
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.13099268852701215,
+              "meanAbsoluteDifference": 3.0836539966675143,
+              "maxAbsoluteDifference": 19.993862867355347,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.5074001103582635,
+              "rankMeanAbsoluteDifference": 0.14517086744308472
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.11884331571234294,
+              "meanAbsoluteDifference": 2.9530195319714645,
+              "maxAbsoluteDifference": 19.993862867355347,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.5994575497348817,
+              "rankMeanAbsoluteDifference": 0.1484309583902359
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.099438086447752,
+              "meanAbsoluteDifference": 2.9005396318932375,
+              "maxAbsoluteDifference": 20.612518906593323,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.965979916820186,
+              "rankMeanAbsoluteDifference": 0.14696651697158813
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.12447103163312327,
+              "meanAbsoluteDifference": 2.7128874050763745,
+              "maxAbsoluteDifference": 19.032310485839844,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.9582472029437685,
+              "rankMeanAbsoluteDifference": 0.14030681550502777
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.1141278461925993,
+              "meanAbsoluteDifference": 2.8802831943612546,
+              "maxAbsoluteDifference": 18.98954701423645,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.372025413916937,
+              "rankMeanAbsoluteDifference": 0.15324267745018005
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.027384283798010136,
+              "meanAbsoluteDifference": 2.7958548419953635,
+              "maxAbsoluteDifference": 18.989547729492188,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.3472343364757586,
+              "rankMeanAbsoluteDifference": 0.15594491362571716
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.1542032254126775,
+              "meanAbsoluteDifference": 2.9392527523450553,
+              "maxAbsoluteDifference": 19.85121262073517,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.9684811356907868,
+              "rankMeanAbsoluteDifference": 0.13129359483718872
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.08499539080821307,
+              "meanAbsoluteDifference": 2.8441221822984515,
+              "maxAbsoluteDifference": 19.82282257080078,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.9113806970252707,
+              "rankMeanAbsoluteDifference": 0.13812761008739471
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.1959516341859568,
+              "meanAbsoluteDifference": 2.527994901780039,
+              "maxAbsoluteDifference": 17.917991913855076,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.9472595975902443,
+              "rankMeanAbsoluteDifference": 0.1398535519838333
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.13587472912122434,
+              "meanAbsoluteDifference": 2.4274954445039234,
+              "maxAbsoluteDifference": 16.26597034931183,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.6300523884452063,
+              "rankMeanAbsoluteDifference": 0.13610528409481049
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.18374819593378422,
+              "meanAbsoluteDifference": 2.106247849374389,
+              "maxAbsoluteDifference": 13.90091347694397,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.3882378699852143,
+              "rankMeanAbsoluteDifference": 0.16424338519573212
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.18723675264221562,
+              "meanAbsoluteDifference": 1.988923004999136,
+              "maxAbsoluteDifference": 13.90091335773468,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.4984167644646516,
+              "rankMeanAbsoluteDifference": 0.14789050817489624
+            }
+          ],
+          "steadyAfter10s": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999999999999732,
+              "meanAbsoluteDifference": 5.587935447692871e-10,
+              "maxAbsoluteDifference": 3.725290298461914e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.3925391852428894e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.9999999999998991,
+              "meanAbsoluteDifference": 3.8649886846542357e-10,
+              "maxAbsoluteDifference": 1.862645149230957e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.86336913929159e-07,
+              "rankMeanAbsoluteDifference": 2.5125593310804106e-05
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.9999999999999905,
+              "meanAbsoluteDifference": 1.51956919580698e-08,
+              "maxAbsoluteDifference": 1.1920928955078125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 7.708594151367959e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9999999999999162,
+              "meanAbsoluteDifference": 9.518116712570191e-09,
+              "maxAbsoluteDifference": 4.470348358154297e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.933268068705408e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 0.9999999999999981,
+              "meanAbsoluteDifference": 3.725290298461914e-11,
+              "maxAbsoluteDifference": 7.450580596923828e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.059111715832188e-09,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 0.9999999999999999,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.999999999999969,
+              "meanAbsoluteDifference": 1.0877847671508789e-08,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.450707475619866e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.9999999999999997,
+              "meanAbsoluteDifference": 4.656612873077393e-10,
+              "maxAbsoluteDifference": 1.4901161193847656e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.137815612043452e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 0.9999999999999944,
+              "meanAbsoluteDifference": 1.0076910257339478e-08,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.781215168549177e-08,
+              "rankMeanAbsoluteDifference": 0.002462312113493681
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.9999999999999902,
+              "meanAbsoluteDifference": 8.150935173034668e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 8.170787614005988e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.9999999999999941,
+              "meanAbsoluteDifference": 1.004338264465332e-07,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.5041980074441e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999999999999936,
+              "meanAbsoluteDifference": 9.10833477973938e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 7.595597986821192e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.9999999999999906,
+              "meanAbsoluteDifference": 9.763985872268677e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 8.806486222512033e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.999999999999989,
+              "meanAbsoluteDifference": 9.000301361083984e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 9.076816093003793e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.9999999999999867,
+              "meanAbsoluteDifference": 9.98377799987793e-08,
+              "maxAbsoluteDifference": 7.152557373046875e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.1083678843720589e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.9999999999999948,
+              "meanAbsoluteDifference": 7.877126336097717e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.364931847856569e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.9999999999999887,
+              "meanAbsoluteDifference": 9.303912520408631e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.0939490713529777e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.9999999999999957,
+              "meanAbsoluteDifference": 5.479902029037476e-08,
+              "maxAbsoluteDifference": 2.384185791015625e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 5.391485672262448e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.999999999999991,
+              "meanAbsoluteDifference": 6.165355443954468e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 8.30485348890295e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.9999999999999968,
+              "meanAbsoluteDifference": 6.757676601409912e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 5.140834903602061e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.9999999999999907,
+              "meanAbsoluteDifference": 9.413808584213257e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.0009019058466881e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9999999999999969,
+              "meanAbsoluteDifference": 6.919726729393005e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.297687035156995e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.9999999999999951,
+              "meanAbsoluteDifference": 9.035691618919372e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.458463022828374e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            }
+          ]
+        },
+        "java48_vs_pythonLinear": {
+          "all": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999999999999747,
+              "meanAbsoluteDifference": 4.811833302179973e-10,
+              "maxAbsoluteDifference": 3.725290298461914e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.2404793106241284e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.8685407382496638,
+              "meanAbsoluteDifference": 0.0002978438298062732,
+              "maxAbsoluteDifference": 0.004927213303744793,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.23030411594771905,
+              "rankMeanAbsoluteDifference": 0.12894003093242645
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.48362591715971665,
+              "meanAbsoluteDifference": 0.13106535129797217,
+              "maxAbsoluteDifference": 1.6675711087882519,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.6719288508014376,
+              "rankMeanAbsoluteDifference": 0.15645049512386322
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9999999999999273,
+              "meanAbsoluteDifference": 9.080395102500916e-09,
+              "maxAbsoluteDifference": 4.470348358154297e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.823142299461412e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.9999999997200342,
+              "meanAbsoluteDifference": 4.839772979418436e-07,
+              "maxAbsoluteDifference": 7.420778274536133e-06,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.813793551077947e-06,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.9999999994587505,
+              "meanAbsoluteDifference": 3.8275817739001163e-07,
+              "maxAbsoluteDifference": 9.100884199142456e-06,
+              "meanAbsoluteDifferenceOverReferenceStd": 8.043335108089897e-06,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 9.73232090473175e-09,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.4593874028738855e-08,
+              "rankMeanAbsoluteDifference": 0.0021792189218103886
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.10263545251071635,
+              "meanAbsoluteDifference": 3.2238653775304558,
+              "maxAbsoluteDifference": 21.353496193885803,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.228582303193313,
+              "rankMeanAbsoluteDifference": 0.14166666567325592
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.046060748860088915,
+              "meanAbsoluteDifference": 6.481424942115942,
+              "maxAbsoluteDifference": 42.68478441238403,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.280771324900779,
+              "rankMeanAbsoluteDifference": 0.14478731155395508
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.13099267734133355,
+              "meanAbsoluteDifference": 3.0836424003044764,
+              "maxAbsoluteDifference": 19.992549896240234,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.5073749678721424,
+              "rankMeanAbsoluteDifference": 0.1449965089559555
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.1187853059379765,
+              "meanAbsoluteDifference": 2.9531020497282348,
+              "maxAbsoluteDifference": 19.992549896240234,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.5996342527533254,
+              "rankMeanAbsoluteDifference": 0.14857043325901031
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.09928250178970081,
+              "meanAbsoluteDifference": 2.9006514633695284,
+              "maxAbsoluteDifference": 20.615032732486725,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.9652745090144244,
+              "rankMeanAbsoluteDifference": 0.14714087545871735
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.12472176207236552,
+              "meanAbsoluteDifference": 2.712923842171828,
+              "maxAbsoluteDifference": 19.03915023803711,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.958254798267239,
+              "rankMeanAbsoluteDifference": 0.14044629037380219
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.11402628653097555,
+              "meanAbsoluteDifference": 2.8803458684473298,
+              "maxAbsoluteDifference": 18.99297285079956,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.3693271538007594,
+              "rankMeanAbsoluteDifference": 0.15338213741779327
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.027756778111454834,
+              "meanAbsoluteDifference": 2.7958989673332932,
+              "maxAbsoluteDifference": 18.992972254753113,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.3400552599560935,
+              "rankMeanAbsoluteDifference": 0.15601465106010437
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.1536146267084682,
+              "meanAbsoluteDifference": 2.9398627830358843,
+              "maxAbsoluteDifference": 19.854697108268738,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.9664208492221706,
+              "rankMeanAbsoluteDifference": 0.13129357993602753
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.08410762722558161,
+              "meanAbsoluteDifference": 2.8449000658933072,
+              "maxAbsoluteDifference": 19.822216033935547,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.9077740021389076,
+              "rankMeanAbsoluteDifference": 0.13858088850975037
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.19458355597326193,
+              "meanAbsoluteDifference": 2.530473139230162,
+              "maxAbsoluteDifference": 17.932921275496483,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.9479811839444738,
+              "rankMeanAbsoluteDifference": 0.13999302685260773
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.13553472600994265,
+              "meanAbsoluteDifference": 2.4297497150953857,
+              "maxAbsoluteDifference": 16.266234517097473,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.6299604577363285,
+              "rankMeanAbsoluteDifference": 0.13614016771316528
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.18545694522778883,
+              "meanAbsoluteDifference": 2.1591114323275784,
+              "maxAbsoluteDifference": 14.159896492958069,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.4511155045705142,
+              "rankMeanAbsoluteDifference": 0.1580195277929306
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.18213569991163073,
+              "meanAbsoluteDifference": 2.047757718944922,
+              "maxAbsoluteDifference": 14.159896969795227,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.5728247732744751,
+              "rankMeanAbsoluteDifference": 0.14637377858161926
+            }
+          ],
+          "steadyAfter10s": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999999999999769,
+              "meanAbsoluteDifference": 4.796311259269714e-10,
+              "maxAbsoluteDifference": 3.725290298461914e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.1954447544071326e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.9999999999999072,
+              "meanAbsoluteDifference": 3.771856427192688e-10,
+              "maxAbsoluteDifference": 9.313225746154785e-10,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.7943928048723426e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.9999999999999937,
+              "meanAbsoluteDifference": 1.3103708624839783e-08,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.649726107310768e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9999999999999195,
+              "meanAbsoluteDifference": 9.816139936447143e-09,
+              "maxAbsoluteDifference": 4.470348358154297e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.0368269052485967e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 0.9999999999999999,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.9999999997023932,
+              "meanAbsoluteDifference": 5.785375833511353e-07,
+              "maxAbsoluteDifference": 7.420778274536133e-06,
+              "meanAbsoluteDifferenceOverReferenceStd": 7.70726938881907e-06,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.9999999991287751,
+              "meanAbsoluteDifference": 4.59011789644137e-07,
+              "maxAbsoluteDifference": 9.100884199142456e-06,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.1179249481441835e-05,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 0.9999999999999944,
+              "meanAbsoluteDifference": 1.0076910257339478e-08,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.781215168549177e-08,
+              "rankMeanAbsoluteDifference": 0.002462312113493681
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.9999999999999913,
+              "meanAbsoluteDifference": 8.031725883483886e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 8.055970349858193e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.99999999999999,
+              "meanAbsoluteDifference": 1.329183578491211e-07,
+              "maxAbsoluteDifference": 9.5367431640625e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 8.519245855391055e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999999999999939,
+              "meanAbsoluteDifference": 8.091330528259277e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.74791173938991e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.9999999999999915,
+              "meanAbsoluteDifference": 1.0877847671508789e-07,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 9.811233497898777e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.9999999999999879,
+              "meanAbsoluteDifference": 1.0192394256591797e-07,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.0275681638662082e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.9999999999999838,
+              "meanAbsoluteDifference": 1.1309981346130371e-07,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.2554744527486392e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.9999999999999925,
+              "meanAbsoluteDifference": 9.641516953706742e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 7.781068435710413e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.9999999999999866,
+              "meanAbsoluteDifference": 9.403098374605179e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.1029480592497605e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.9999999999999954,
+              "meanAbsoluteDifference": 6.202608346939086e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.096647624281075e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.9999999999999925,
+              "meanAbsoluteDifference": 5.8058649301528934e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 7.809287785856267e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.9999999999999949,
+              "meanAbsoluteDifference": 8.13603401184082e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.187237350444126e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.9999999999999872,
+              "meanAbsoluteDifference": 9.43988561630249e-08,
+              "maxAbsoluteDifference": 9.5367431640625e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.0027354915166247e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9999999999999979,
+              "meanAbsoluteDifference": 5.591660737991333e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.52941754699803e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.9999999999999954,
+              "meanAbsoluteDifference": 7.217749953269958e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 5.238512320304238e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            }
+          ]
+        },
+        "pythonLinear_vs_python16": {
+          "all": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999972867436097,
+              "meanAbsoluteDifference": 2.5375164113938807e-06,
+              "maxAbsoluteDifference": 9.838305413722992e-05,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006540696837797631,
+              "rankMeanAbsoluteDifference": 0.0001394699647789821
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 0.9991383957158976,
+              "meanAbsoluteDifference": 0.00039965311686197916,
+              "maxAbsoluteDifference": 0.019744873046875,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.00952949876544401,
+              "rankMeanAbsoluteDifference": 0.00397489732131362
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 0.9954000227834915,
+              "meanAbsoluteDifference": 0.02089219292004903,
+              "maxAbsoluteDifference": 1.40303373336792,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.019243234358081156,
+              "rankMeanAbsoluteDifference": 0.008995816111564636
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.9999960213516672,
+              "meanAbsoluteDifference": 2.2637386185427505e-06,
+              "maxAbsoluteDifference": 2.2540800273418427e-05,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.00175063921826033,
+              "rankMeanAbsoluteDifference": 0.0008368217968381941
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.9999933770159367,
+              "meanAbsoluteDifference": 0.00023910773161333053,
+              "maxAbsoluteDifference": 0.008590976940467954,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0012253836641021767,
+              "rankMeanAbsoluteDifference": 0.0008019530796445906
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9997910583227677,
+              "meanAbsoluteDifference": 0.0006062104211499293,
+              "maxAbsoluteDifference": 0.004922255873680115,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.018794786646911973,
+              "rankMeanAbsoluteDifference": 0.004497907590121031
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 0.9999952632999198,
+              "meanAbsoluteDifference": 8.380271416778366e-06,
+              "maxAbsoluteDifference": 0.0004991237074136734,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0007184209800225034,
+              "rankMeanAbsoluteDifference": 0.00031380783184431493
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 0.9998707874176845,
+              "meanAbsoluteDifference": 0.0012965654333432516,
+              "maxAbsoluteDifference": 0.018849045038223267,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.008317167917687026,
+              "rankMeanAbsoluteDifference": 0.003521618200466037
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 0.9999415653714683,
+              "meanAbsoluteDifference": 0.0015093361648420493,
+              "maxAbsoluteDifference": 0.017042160034179688,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0068269781024028,
+              "rankMeanAbsoluteDifference": 0.0027545318007469177
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.999877968683226,
+              "meanAbsoluteDifference": 0.0007079925388097763,
+              "maxAbsoluteDifference": 0.0042927563190460205,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.009978397377318577,
+              "rankMeanAbsoluteDifference": 0.004497907590121031
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.9998320325641875,
+              "meanAbsoluteDifference": 0.0004070745215358329,
+              "maxAbsoluteDifference": 0.00739721953868866,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.008578303453610138,
+              "rankMeanAbsoluteDifference": 0.004358436446636915
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.9999653714323852,
+              "meanAbsoluteDifference": 0.0015733099232117336,
+              "maxAbsoluteDifference": 0.10653269290924072,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0015749396945682983,
+              "rankMeanAbsoluteDifference": 0.0006624814122915268
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.9970697197954499,
+              "meanAbsoluteDifference": 0.06478256061673164,
+              "maxAbsoluteDifference": 0.567375898361206,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.04328477568370555,
+              "rankMeanAbsoluteDifference": 0.020327752456068993
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999994408677433,
+              "meanAbsoluteDifference": 0.0008568704128265381,
+              "maxAbsoluteDifference": 0.0060623884201049805,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006967438532357655,
+              "rankMeanAbsoluteDifference": 0.0002789402788039297
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.9999990344369604,
+              "meanAbsoluteDifference": 0.00101912555595239,
+              "maxAbsoluteDifference": 0.008549690246582031,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.00089710670446517,
+              "rankMeanAbsoluteDifference": 0.0004532787133939564
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.9999957351671775,
+              "meanAbsoluteDifference": 0.0019433448712031047,
+              "maxAbsoluteDifference": 0.018253326416015625,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0019871894857308664,
+              "rankMeanAbsoluteDifference": 0.0012552289990708232
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.9999947679952955,
+              "meanAbsoluteDifference": 0.002021978267778953,
+              "maxAbsoluteDifference": 0.018253326416015625,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.002204850648750673,
+              "rankMeanAbsoluteDifference": 0.0011157599510625005
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.9999475129745035,
+              "meanAbsoluteDifference": 0.0038776958167242507,
+              "maxAbsoluteDifference": 0.18219733238220215,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0031934335633094254,
+              "rankMeanAbsoluteDifference": 0.001255231793038547
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.9998723270433871,
+              "meanAbsoluteDifference": 0.004477058548945934,
+              "maxAbsoluteDifference": 0.18817830085754395,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.00535999361495786,
+              "rankMeanAbsoluteDifference": 0.0025104619562625885
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.9999910185470732,
+              "meanAbsoluteDifference": 0.0028297853423282504,
+              "maxAbsoluteDifference": 0.041977882385253906,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.002857925164841205,
+              "rankMeanAbsoluteDifference": 0.001569038606248796
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.9999806406189414,
+              "meanAbsoluteDifference": 0.002826168364845216,
+              "maxAbsoluteDifference": 0.04168581962585449,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0038866896990570506,
+              "rankMeanAbsoluteDifference": 0.001882844720967114
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.9999377667602222,
+              "meanAbsoluteDifference": 0.008821543585509063,
+              "maxAbsoluteDifference": 0.1003798246383667,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.006795043534442152,
+              "rankMeanAbsoluteDifference": 0.0023709905799478292
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.9998856327301416,
+              "meanAbsoluteDifference": 0.008741068219145139,
+              "maxAbsoluteDifference": 0.10193192958831787,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.00947044716371166,
+              "rankMeanAbsoluteDifference": 0.003940029535442591
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9931810712056438,
+              "meanAbsoluteDifference": 0.16473423498682677,
+              "maxAbsoluteDifference": 0.7508838176727295,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.10857710955511869,
+              "rankMeanAbsoluteDifference": 0.028399581089615822
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.9885788007982471,
+              "meanAbsoluteDifference": 0.17074990790958205,
+              "maxAbsoluteDifference": 0.7013390064239502,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.12863973311155116,
+              "rankMeanAbsoluteDifference": 0.04014992713928223
+            }
+          ],
+          "steadyAfter10s": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999970159890179,
+              "meanAbsoluteDifference": 2.4095503613352777e-06,
+              "maxAbsoluteDifference": 9.838305413722992e-05,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006004710198219812,
+              "rankMeanAbsoluteDifference": 0.00020100500842090696
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 0.9992426238772645,
+              "meanAbsoluteDifference": 0.000388336181640625,
+              "maxAbsoluteDifference": 0.019744873046875,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.008662134548277465,
+              "rankMeanAbsoluteDifference": 0.002688441891223192
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 0.9963788186249536,
+              "meanAbsoluteDifference": 0.018149683475494383,
+              "maxAbsoluteDifference": 1.40303373336792,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.015531911636220135,
+              "rankMeanAbsoluteDifference": 0.007336683105677366
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.9999991453430407,
+              "meanAbsoluteDifference": 1.2692948803305626e-06,
+              "maxAbsoluteDifference": 8.425675332546234e-06,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0009403545742397136,
+              "rankMeanAbsoluteDifference": 0.0004271359648555517
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.9999931373393922,
+              "meanAbsoluteDifference": 0.00019951850699726493,
+              "maxAbsoluteDifference": 0.008590976940467954,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0010121337023497714,
+              "rankMeanAbsoluteDifference": 0.000753768312279135
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9997957874680913,
+              "meanAbsoluteDifference": 0.0005688345618546009,
+              "maxAbsoluteDifference": 0.004922255873680115,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.017530193283515356,
+              "rankMeanAbsoluteDifference": 0.00407035369426012
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 0.9999949966646835,
+              "meanAbsoluteDifference": 7.945627439767122e-06,
+              "maxAbsoluteDifference": 0.0004991237074136734,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006524743051746848,
+              "rankMeanAbsoluteDifference": 0.00010050207492895424
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 0.999905886212297,
+              "meanAbsoluteDifference": 0.0011253125965595245,
+              "maxAbsoluteDifference": 0.01747286319732666,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.007453068053489642,
+              "rankMeanAbsoluteDifference": 0.0035175883676856756
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 0.9999445864449715,
+              "meanAbsoluteDifference": 0.001446426622569561,
+              "maxAbsoluteDifference": 0.017042160034179688,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.006630807797664667,
+              "rankMeanAbsoluteDifference": 0.0027638180181384087
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.9999275086160389,
+              "meanAbsoluteDifference": 0.0005857510864734649,
+              "maxAbsoluteDifference": 0.0042927563190460205,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.007811779551070428,
+              "rankMeanAbsoluteDifference": 0.002964826300740242
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.999755580402132,
+              "meanAbsoluteDifference": 0.0004023262796545168,
+              "maxAbsoluteDifference": 0.00739721953868866,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0098306029426007,
+              "rankMeanAbsoluteDifference": 0.005201005842536688
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.9999588691940424,
+              "meanAbsoluteDifference": 0.0015655730664730072,
+              "maxAbsoluteDifference": 0.10653269290924072,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0015693861807020671,
+              "rankMeanAbsoluteDifference": 0.000603014777880162
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.9972030503025937,
+              "meanAbsoluteDifference": 0.0643597874045372,
+              "maxAbsoluteDifference": 0.567375898361206,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.04168006097218318,
+              "rankMeanAbsoluteDifference": 0.019849246367812157
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999997422038914,
+              "meanAbsoluteDifference": 0.0006259918212890625,
+              "maxAbsoluteDifference": 0.004542350769042969,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0005220254121671387,
+              "rankMeanAbsoluteDifference": 0.00015075423289090395
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.9999994913203822,
+              "meanAbsoluteDifference": 0.0007664893567562104,
+              "maxAbsoluteDifference": 0.00630950927734375,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006913240195427779,
+              "rankMeanAbsoluteDifference": 0.00040200992953032255
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.9999967805063864,
+              "meanAbsoluteDifference": 0.0015940579771995544,
+              "maxAbsoluteDifference": 0.018253326416015625,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0016076096255162912,
+              "rankMeanAbsoluteDifference": 0.0012060301378369331
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.9999955123963533,
+              "meanAbsoluteDifference": 0.0017432557046413422,
+              "maxAbsoluteDifference": 0.018253326416015625,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0019353080940866989,
+              "rankMeanAbsoluteDifference": 0.001155778649263084
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.999940630814431,
+              "meanAbsoluteDifference": 0.003942307136021554,
+              "maxAbsoluteDifference": 0.18219733238220215,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0031854911516534723,
+              "rankMeanAbsoluteDifference": 0.0014572858344763517
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.9998563824980956,
+              "meanAbsoluteDifference": 0.0045707914372906085,
+              "maxAbsoluteDifference": 0.18817830085754395,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.005374312190923945,
+              "rankMeanAbsoluteDifference": 0.0025125634856522083
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.999991496101885,
+              "meanAbsoluteDifference": 0.0026282170508056877,
+              "maxAbsoluteDifference": 0.041977882385253906,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.002585811661947474,
+              "rankMeanAbsoluteDifference": 0.0014070348115637898
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.9999821106212893,
+              "meanAbsoluteDifference": 0.002650350863113999,
+              "maxAbsoluteDifference": 0.04168581962585449,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.003570074071549636,
+              "rankMeanAbsoluteDifference": 0.0017587932525202632
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.9999579957807198,
+              "meanAbsoluteDifference": 0.007263409607112407,
+              "maxAbsoluteDifference": 0.1003798246383667,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.005525566230797643,
+              "rankMeanAbsoluteDifference": 0.0018090450903400779
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.9998897096033532,
+              "meanAbsoluteDifference": 0.008398400023579597,
+              "maxAbsoluteDifference": 0.10193192958831787,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.008929408872579285,
+              "rankMeanAbsoluteDifference": 0.003969849087297916
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9941987883534651,
+              "meanAbsoluteDifference": 0.1664471232332289,
+              "maxAbsoluteDifference": 0.7508838176727295,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.10337657418176334,
+              "rankMeanAbsoluteDifference": 0.024824120104312897
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.9907269870533669,
+              "meanAbsoluteDifference": 0.16408426251262426,
+              "maxAbsoluteDifference": 0.7013390064239502,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.11728290282139875,
+              "rankMeanAbsoluteDifference": 0.03668341785669327
+            }
+          ]
+        },
+        "java48_vs_python16": {
+          "all": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999972867120334,
+              "meanAbsoluteDifference": 2.537539694458246e-06,
+              "maxAbsoluteDifference": 9.838305413722992e-05,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006540756852174203,
+              "rankMeanAbsoluteDifference": 0.0001394699647789821
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 0.9991383957158976,
+              "meanAbsoluteDifference": 0.00039965311686197916,
+              "maxAbsoluteDifference": 0.019744873046875,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.00952949876544401,
+              "rankMeanAbsoluteDifference": 0.00397489732131362
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 0.9954000227834915,
+              "meanAbsoluteDifference": 0.02089219292004903,
+              "maxAbsoluteDifference": 1.40303373336792,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.019243234358081156,
+              "rankMeanAbsoluteDifference": 0.008995816111564636
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.8693683625713244,
+              "meanAbsoluteDifference": 0.00029773743008263407,
+              "maxAbsoluteDifference": 0.004926352761685848,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.2302522109121578,
+              "rankMeanAbsoluteDifference": 0.1284867376089096
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.48433657676255587,
+              "meanAbsoluteDifference": 0.13116968517836844,
+              "maxAbsoluteDifference": 1.6675885207951069,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.6722207950302727,
+              "rankMeanAbsoluteDifference": 0.1563110202550888
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9997910579388329,
+              "meanAbsoluteDifference": 0.0006062114611268043,
+              "maxAbsoluteDifference": 0.004922270774841309,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.018794818890078373,
+              "rankMeanAbsoluteDifference": 0.004497907590121031
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 0.9999952632999198,
+              "meanAbsoluteDifference": 8.380271416778366e-06,
+              "maxAbsoluteDifference": 0.0004991237074136734,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0007184209800225034,
+              "rankMeanAbsoluteDifference": 0.00031380783184431493
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 0.9998707874176845,
+              "meanAbsoluteDifference": 0.0012965654333432516,
+              "maxAbsoluteDifference": 0.018849045038223267,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.008317167917687026,
+              "rankMeanAbsoluteDifference": 0.003521618200466037
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 0.9999415653714683,
+              "meanAbsoluteDifference": 0.0015093361648420493,
+              "maxAbsoluteDifference": 0.017042160034179688,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0068269781024028,
+              "rankMeanAbsoluteDifference": 0.0027545318007469177
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.9998779642622515,
+              "meanAbsoluteDifference": 0.0007078357661763827,
+              "maxAbsoluteDifference": 0.004292786121368408,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.009976187834776619,
+              "rankMeanAbsoluteDifference": 0.004497907590121031
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.9998320899196933,
+              "meanAbsoluteDifference": 0.0004070969456734019,
+              "maxAbsoluteDifference": 0.00739721953868866,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.008578775998676399,
+              "rankMeanAbsoluteDifference": 0.004358436446636915
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 1.0,
+              "meanAbsoluteDifference": 9.73232090473175e-09,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.4593874028738855e-08,
+              "rankMeanAbsoluteDifference": 0.0021792189218103886
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.10330987644345618,
+              "meanAbsoluteDifference": 3.2249946797887485,
+              "maxAbsoluteDifference": 21.35266876220703,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.2283354099758843,
+              "rankMeanAbsoluteDifference": 0.1415272057056427
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.043446709380829215,
+              "meanAbsoluteDifference": 6.529889844109615,
+              "maxAbsoluteDifference": 42.6849901676178,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.362976925438047,
+              "rankMeanAbsoluteDifference": 0.14447350800037384
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.13099748259533844,
+              "meanAbsoluteDifference": 3.0841572187840938,
+              "maxAbsoluteDifference": 19.99491435289383,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.507809293487113,
+              "rankMeanAbsoluteDifference": 0.14517085254192352
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.1188493047413906,
+              "meanAbsoluteDifference": 2.953681997085611,
+              "maxAbsoluteDifference": 19.993923902511597,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.6000406985843085,
+              "rankMeanAbsoluteDifference": 0.1484309583902359
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.09946717962538583,
+              "meanAbsoluteDifference": 2.9018864383300147,
+              "maxAbsoluteDifference": 20.612873673439026,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.9673571091189572,
+              "rankMeanAbsoluteDifference": 0.14696653187274933
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.12446542852612116,
+              "meanAbsoluteDifference": 2.714489775368323,
+              "maxAbsoluteDifference": 19.043397903442383,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.9599944953029595,
+              "rankMeanAbsoluteDifference": 0.14030684530735016
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.11430766195457417,
+              "meanAbsoluteDifference": 2.883423936041072,
+              "maxAbsoluteDifference": 18.989720582962036,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.3746119370399614,
+              "rankMeanAbsoluteDifference": 0.15331242978572845
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.027637827177179813,
+              "meanAbsoluteDifference": 2.7997563420950127,
+              "maxAbsoluteDifference": 18.992277145385742,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.3519052639148916,
+              "rankMeanAbsoluteDifference": 0.15594491362571716
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.15429011928910058,
+              "meanAbsoluteDifference": 2.94161053893622,
+              "maxAbsoluteDifference": 19.85285484790802,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.970862368475981,
+              "rankMeanAbsoluteDifference": 0.13132844865322113
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.08507245132099309,
+              "meanAbsoluteDifference": 2.846796162480799,
+              "maxAbsoluteDifference": 19.822216033935547,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.9150580898372103,
+              "rankMeanAbsoluteDifference": 0.13816247880458832
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.19583726941819213,
+              "meanAbsoluteDifference": 2.535446680461367,
+              "maxAbsoluteDifference": 17.919740952551365,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.952999540952518,
+              "rankMeanAbsoluteDifference": 0.1398535519838333
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.1358722041677844,
+              "meanAbsoluteDifference": 2.436623417508478,
+              "maxAbsoluteDifference": 16.277013897895813,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.6399420248013303,
+              "rankMeanAbsoluteDifference": 0.13614016771316528
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.1689286984427323,
+              "meanAbsoluteDifference": 2.2942968745250254,
+              "maxAbsoluteDifference": 14.434476256370544,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.5121818674617964,
+              "rankMeanAbsoluteDifference": 0.1692294329404831
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.1742217175243644,
+              "meanAbsoluteDifference": 2.172353215438003,
+              "maxAbsoluteDifference": 14.230362892150879,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.6366095963339762,
+              "rankMeanAbsoluteDifference": 0.1544804871082306
+            }
+          ],
+          "steadyAfter10s": [
+            {
+              "feature": "audio_available",
+              "correlation": null,
+              "meanAbsoluteDifference": 0.0,
+              "maxAbsoluteDifference": 0.0,
+              "meanAbsoluteDifferenceOverReferenceStd": null,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999970159542826,
+              "meanAbsoluteDifference": 2.409564331173897e-06,
+              "maxAbsoluteDifference": 9.838305413722992e-05,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006004745011699442,
+              "rankMeanAbsoluteDifference": 0.00020100500842090696
+            },
+            {
+              "feature": "audio_peak",
+              "correlation": 0.9992426238772645,
+              "meanAbsoluteDifference": 0.000388336181640625,
+              "maxAbsoluteDifference": 0.019744873046875,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.008662134548277465,
+              "rankMeanAbsoluteDifference": 0.002688441891223192
+            },
+            {
+              "feature": "audio_peak_to_rms",
+              "correlation": 0.9963788186249536,
+              "meanAbsoluteDifference": 0.018149683475494383,
+              "maxAbsoluteDifference": 1.40303373336792,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.015531911636220135,
+              "rankMeanAbsoluteDifference": 0.007336683105677366
+            },
+            {
+              "feature": "audio_noise_floor",
+              "correlation": 0.9999991453664551,
+              "meanAbsoluteDifference": 1.2693461030721665e-06,
+              "maxAbsoluteDifference": 8.424744009971619e-06,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0009403925225054152,
+              "rankMeanAbsoluteDifference": 0.0004271359648555517
+            },
+            {
+              "feature": "audio_snr",
+              "correlation": 0.999993137349146,
+              "meanAbsoluteDifference": 0.00019951602967921645,
+              "maxAbsoluteDifference": 0.008590976009145379,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.001012121135209379,
+              "rankMeanAbsoluteDifference": 0.000753768312279135
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9997957872388354,
+              "meanAbsoluteDifference": 0.000568835623562336,
+              "maxAbsoluteDifference": 0.004922270774841309,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.017530226002943912,
+              "rankMeanAbsoluteDifference": 0.00407035369426012
+            },
+            {
+              "feature": "audio_rms_novelty",
+              "correlation": 0.9999949966646835,
+              "meanAbsoluteDifference": 7.945627439767122e-06,
+              "maxAbsoluteDifference": 0.0004991237074136734,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006524743051746848,
+              "rankMeanAbsoluteDifference": 0.00010050207492895424
+            },
+            {
+              "feature": "audio_onset_strength",
+              "correlation": 0.999905886212297,
+              "meanAbsoluteDifference": 0.0011253125965595245,
+              "maxAbsoluteDifference": 0.01747286319732666,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.007453068053489642,
+              "rankMeanAbsoluteDifference": 0.0035175883676856756
+            },
+            {
+              "feature": "audio_contact_like_transient",
+              "correlation": 0.9999445864449715,
+              "meanAbsoluteDifference": 0.001446426622569561,
+              "maxAbsoluteDifference": 0.017042160034179688,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.006630807797664667,
+              "rankMeanAbsoluteDifference": 0.0027638180181384087
+            },
+            {
+              "feature": "audio_onset_cadence",
+              "correlation": 0.9999275031888387,
+              "meanAbsoluteDifference": 0.0005855634063482285,
+              "maxAbsoluteDifference": 0.004292786121368408,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.007809276583857356,
+              "rankMeanAbsoluteDifference": 0.002964826300740242
+            },
+            {
+              "feature": "audio_cadence_collapse",
+              "correlation": 0.9997556744865452,
+              "meanAbsoluteDifference": 0.0004023534866428236,
+              "maxAbsoluteDifference": 0.00739721953868866,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.009831267729150406,
+              "rankMeanAbsoluteDifference": 0.005201005842536688
+            },
+            {
+              "feature": "audio_seconds_since_transient",
+              "correlation": 0.9999999999999944,
+              "meanAbsoluteDifference": 1.0076910257339478e-08,
+              "maxAbsoluteDifference": 5.960464477539063e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.781215168549177e-08,
+              "rankMeanAbsoluteDifference": 0.002462312113493681
+            },
+            {
+              "feature": "audio_noise_removed_broadband",
+              "correlation": 0.9999588692343763,
+              "meanAbsoluteDifference": 0.0015655702352523804,
+              "maxAbsoluteDifference": 0.1065327525138855,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0015693833425857113,
+              "rankMeanAbsoluteDifference": 0.000603014777880162
+            },
+            {
+              "feature": "audio_noise_normalized_flux",
+              "correlation": 0.9972030518487179,
+              "meanAbsoluteDifference": 0.06435979515314103,
+              "maxAbsoluteDifference": 0.567375898361206,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0416800659902588,
+              "rankMeanAbsoluteDifference": 0.019849246367812157
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999997422008055,
+              "meanAbsoluteDifference": 0.0006259874999523162,
+              "maxAbsoluteDifference": 0.004542827606201172,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.000522021808529648,
+              "rankMeanAbsoluteDifference": 0.00015075423289090395
+            },
+            {
+              "feature": "audio_band_80_250_snr_flux",
+              "correlation": 0.9999994913031297,
+              "meanAbsoluteDifference": 0.0007664932310581207,
+              "maxAbsoluteDifference": 0.006309628486633301,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006913275139135032,
+              "rankMeanAbsoluteDifference": 0.00040200992953032255
+            },
+            {
+              "feature": "audio_band_250_500_snr",
+              "correlation": 0.9999967805573449,
+              "meanAbsoluteDifference": 0.0015940561890602112,
+              "maxAbsoluteDifference": 0.018253207206726074,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0016076078221753456,
+              "rankMeanAbsoluteDifference": 0.0012060301378369331
+            },
+            {
+              "feature": "audio_band_250_500_snr_flux",
+              "correlation": 0.9999955124187919,
+              "meanAbsoluteDifference": 0.0017432484030723572,
+              "maxAbsoluteDifference": 0.018253207206726074,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.001935299988112619,
+              "rankMeanAbsoluteDifference": 0.001155778649263084
+            },
+            {
+              "feature": "audio_band_500_1000_snr",
+              "correlation": 0.9999406309583495,
+              "meanAbsoluteDifference": 0.003942299094051123,
+              "maxAbsoluteDifference": 0.18219709396362305,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0031854846535231216,
+              "rankMeanAbsoluteDifference": 0.0014572858344763517
+            },
+            {
+              "feature": "audio_band_500_1000_snr_flux",
+              "correlation": 0.999856382675851,
+              "meanAbsoluteDifference": 0.0045708039589226245,
+              "maxAbsoluteDifference": 0.18817806243896484,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.005374326913792077,
+              "rankMeanAbsoluteDifference": 0.0025125634856522083
+            },
+            {
+              "feature": "audio_band_1000_2000_snr",
+              "correlation": 0.9999914960914419,
+              "meanAbsoluteDifference": 0.0026282211113721134,
+              "maxAbsoluteDifference": 0.041977882385253906,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0025858156569980406,
+              "rankMeanAbsoluteDifference": 0.0014070348115637898
+            },
+            {
+              "feature": "audio_band_1000_2000_snr_flux",
+              "correlation": 0.9999821105678717,
+              "meanAbsoluteDifference": 0.0026503566559404135,
+              "maxAbsoluteDifference": 0.04168581962585449,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.003570081874599289,
+              "rankMeanAbsoluteDifference": 0.0017587932525202632
+            },
+            {
+              "feature": "audio_band_2000_4000_snr",
+              "correlation": 0.9999579957588812,
+              "meanAbsoluteDifference": 0.007263434790074825,
+              "maxAbsoluteDifference": 0.1003798246383667,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.005525585388484494,
+              "rankMeanAbsoluteDifference": 0.0018090450903400779
+            },
+            {
+              "feature": "audio_band_2000_4000_snr_flux",
+              "correlation": 0.9998897097906078,
+              "meanAbsoluteDifference": 0.008398384973406791,
+              "maxAbsoluteDifference": 0.10193192958831787,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.00892939287082345,
+              "rankMeanAbsoluteDifference": 0.003969849087297916
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9941987885828211,
+              "meanAbsoluteDifference": 0.16644713027402758,
+              "maxAbsoluteDifference": 0.7508838176727295,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.10337657855464544,
+              "rankMeanAbsoluteDifference": 0.024824120104312897
+            },
+            {
+              "feature": "audio_band_4000_7800_snr_flux",
+              "correlation": 0.990726987259124,
+              "meanAbsoluteDifference": 0.16408427534624934,
+              "maxAbsoluteDifference": 0.7013390064239502,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.1172829119945198,
+              "rankMeanAbsoluteDifference": 0.03668341785669327
+            }
+          ]
+        }
+      },
+      "sourceHashes": {
+        "AudioPcmReplay.java": "235ea4cfdb9b8a39c7ab090b1fbb55578169cac139121fec9495ef070d7976e3",
+        "Radix2Fft.java": "74491cde847a7fab860fae4230f362f7662167fc1b514d879f0506550aec2fdc",
+        "FeatureSchema.java": "d9fe7e780e5399a14f03a8e93046b73c3c19aaa8c8bbb74e6afb327e8f88a941",
+        "AudioFeatureExtractor.java": "c137377a745f25f8191839b9d574dce90c17145ff4a823f3758237b9c5ca6863",
+        "FeatureMath.java": "9413bf80a874c4138ffac23ef1b71423a5d2679dab70bff6e32421da1c0a9875",
+        "NanoProfiler.java": "06e7aff9dd2edca60bb95f86df78c5955653159fa53c3164fd185573bd99dca4"
+      },
+      "pcmHashes": {
+        "mono48.f32": "dada83be1654cdb37677d8d26519529547aa2d41da36ff68950ead0f923f6572",
+        "mono16.f32": "54b7c005b2a245da1b247a421b0ae6bec602ddc2ae19e3515ceadef3d22af646",
+        "linear16.f32": "d47cf9881838f2548c55fe860c77297957b5d0d242370f14aee995eca1d7c144"
+      },
+      "complete": true,
+      "sourceContentSha256": "b92371af35a49a93726ad36de32382f0ac46c42bf9e4ed1260242ca82e7031af",
+      "bundledJdkVersion": "OpenJDK21.0.5; runtime21.0.5+-12932927-b750.29",
+      "javaExactSourceSnapshotsVerified": true,
+      "pcmLengths": {
+        "mono48Samples": 2879963,
+        "mono16Samples": 959988,
+        "mono48Seconds": 59.999229166666666,
+        "mono16Seconds": 59.99925
+      },
+      "interpretation": [
+        "Same16k PCM fed to Java and Python gives essentially identical steady-state DSP outputs after the first10seconds. Across all nonconstant audio columns, the minimum Pearson correlation is recorded in summary.",
+        "Known integer-percentile startup defect causes large transient noise-floor/SNR deviations during the first10seconds. These disappear in steady state. Ranking ties may amplify tiny floating-point differences in a small number of columns.",
+        "Using identical mono48k source PCM, native linear resampling versus FFmpeg filtered resampling retains near-unity RMS and low-band correlations on this excerpt; highest-band SNR differs more. This secondary mismatch cannot explain the very weak full-phone RMS and low-band correlations observed previously.",
+        "This test bypasses Android MediaCodec and its batched access-unit assembly. It isolates downstream DSP/resampling and supports investigating the independently identified access-unit timeline defect as the dominant cause. It is not a proof of repaired device inference or general audio-decoder parity.",
+        "One60second source excerpt; no full-media PCM decode, phone run, model inference, fitting, calibration or app mutation was performed in this replay."
+      ],
+      "summary": {
+        "java16_vs_python16": {
+          "minimumNonconstantCorrelation": 0.9999999999998991,
+          "maximumRankMeanAbsoluteDifference": 0.002462312113493681,
+          "selectedFeatures": [
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999999999999732,
+              "meanAbsoluteDifference": 5.587935447692871e-10,
+              "maxAbsoluteDifference": 3.725290298461914e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.3925391852428894e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9999999999999162,
+              "meanAbsoluteDifference": 9.518116712570191e-09,
+              "maxAbsoluteDifference": 4.470348358154297e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 2.933268068705408e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999999999999936,
+              "meanAbsoluteDifference": 9.10833477973938e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 7.595597986821192e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9999999999999969,
+              "meanAbsoluteDifference": 6.919726729393005e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 4.297687035156995e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            }
+          ]
+        },
+        "java48_vs_pythonLinear": {
+          "minimumNonconstantCorrelation": 0.9999999991287751,
+          "maximumRankMeanAbsoluteDifference": 0.002462312113493681,
+          "selectedFeatures": [
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999999999999769,
+              "meanAbsoluteDifference": 4.796311259269714e-10,
+              "maxAbsoluteDifference": 3.725290298461914e-09,
+              "meanAbsoluteDifferenceOverReferenceStd": 1.1954447544071326e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9999999999999195,
+              "meanAbsoluteDifference": 9.816139936447143e-09,
+              "maxAbsoluteDifference": 4.470348358154297e-08,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.0368269052485967e-07,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999999999999939,
+              "meanAbsoluteDifference": 8.091330528259277e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 6.74791173938991e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9999999999999979,
+              "meanAbsoluteDifference": 5.591660737991333e-08,
+              "maxAbsoluteDifference": 4.76837158203125e-07,
+              "meanAbsoluteDifferenceOverReferenceStd": 3.52941754699803e-08,
+              "rankMeanAbsoluteDifference": 0.0
+            }
+          ]
+        },
+        "pythonLinear_vs_python16": {
+          "minimumNonconstantCorrelation": 0.9907269870533669,
+          "maximumRankMeanAbsoluteDifference": 0.03668341785669327,
+          "selectedFeatures": [
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999970159890179,
+              "meanAbsoluteDifference": 2.4095503613352777e-06,
+              "maxAbsoluteDifference": 9.838305413722992e-05,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006004710198219812,
+              "rankMeanAbsoluteDifference": 0.00020100500842090696
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9997957874680913,
+              "meanAbsoluteDifference": 0.0005688345618546009,
+              "maxAbsoluteDifference": 0.004922255873680115,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.017530193283515356,
+              "rankMeanAbsoluteDifference": 0.00407035369426012
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999997422038914,
+              "meanAbsoluteDifference": 0.0006259918212890625,
+              "maxAbsoluteDifference": 0.004542350769042969,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0005220254121671387,
+              "rankMeanAbsoluteDifference": 0.00015075423289090395
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9941987883534651,
+              "meanAbsoluteDifference": 0.1664471232332289,
+              "maxAbsoluteDifference": 0.7508838176727295,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.10337657418176334,
+              "rankMeanAbsoluteDifference": 0.024824120104312897
+            }
+          ]
+        },
+        "java48_vs_python16": {
+          "minimumNonconstantCorrelation": 0.990726987259124,
+          "maximumRankMeanAbsoluteDifference": 0.03668341785669327,
+          "selectedFeatures": [
+            {
+              "feature": "audio_rms",
+              "correlation": 0.9999970159542826,
+              "meanAbsoluteDifference": 2.409564331173897e-06,
+              "maxAbsoluteDifference": 9.838305413722992e-05,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.0006004745011699442,
+              "rankMeanAbsoluteDifference": 0.00020100500842090696
+            },
+            {
+              "feature": "audio_spectral_flux",
+              "correlation": 0.9997957872388354,
+              "meanAbsoluteDifference": 0.000568835623562336,
+              "maxAbsoluteDifference": 0.004922270774841309,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.017530226002943912,
+              "rankMeanAbsoluteDifference": 0.00407035369426012
+            },
+            {
+              "feature": "audio_band_80_250_snr",
+              "correlation": 0.9999997422008055,
+              "meanAbsoluteDifference": 0.0006259874999523162,
+              "maxAbsoluteDifference": 0.004542827606201172,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.000522021808529648,
+              "rankMeanAbsoluteDifference": 0.00015075423289090395
+            },
+            {
+              "feature": "audio_band_4000_7800_snr",
+              "correlation": 0.9941987885828211,
+              "meanAbsoluteDifference": 0.16644713027402758,
+              "maxAbsoluteDifference": 0.7508838176727295,
+              "meanAbsoluteDifferenceOverReferenceStd": 0.10337657855464544,
+              "rankMeanAbsoluteDifference": 0.024824120104312897
+            }
+          ]
+        }
+      }
+    }
+  },
+  "evidenceHashes": {
+    "assembler": "deead2cd7dfad18826fa6c4254e0e28c33d5ca038016c85f7abc129ae83a9701",
+    "savedFeatureAlignment": "de3f7c1193d16e094146d18ca091bc11ad4681e63281c73858dd6a5c398889d2",
+    "samePcmReplay": "544d99cbbf166f0c9b83c459501b639b092e1ac0458635464caeb4b1c307be2c"
+  }
+}

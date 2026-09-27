@@ -1,0 +1,183 @@
+# Production editor model lab
+
+## Suppression combinations (September 24)
+
+The top **Suppression combination** selector now applies the frozen production
+suppression head to each standalone neural option, including Compact, both
+Small/Large Mobile-TCN selections, distilled Mobile-TCN, DINO-TCN and the two
+DINO-transformer precisions. Off preserves the original model and its saved draft.
+Each combination has independent persistence and a shareable `suppression` query
+parameter. Saved human export and existing boundary-review modes retain their
+original behavior; suppression is not applied twice.
+
+Conservative, balanced and aggressive use the production one-model-only agreement
+gate. Those votes come from production, not from the selected neural model. The
+separate **Head only · neural experiment** applies decoded suppression without
+that gate, only to neural models. Any eligible core overlap suppresses the whole
+rally by default. This experiment can remove real play and is not a recommendation
+to ship ungated suppression. Every removal has a restore/keep decision and undo;
+ignored-only evidence cannot trigger it. Unchanged rallies retain their boundaries,
+identities and any existing serve markers.
+
+The human comparison rail now shows the unedited original model alongside the
+current combination, including subsequent review edits, at identical current
+padding/join settings. It reports padded precision, retained-core recall,
+`F1_padP_coreR`, export time, extra footage and missed core time. The existing
+0/1/2/3-second sensitivity table remains available; default target padding is
+2 seconds each side with strictly-less-than-3-second joining. Suppression barriers
+still apply to the actual export. These are time metrics, not rally-event recall.
+
+Existing label-blind cached predictions support 42 non-beach videos. The two beach
+videos remain usable but explicitly show suppression unavailable. All 44 task
+responses load; 38 currently include a saved human comparison. No training,
+feature extraction, threshold selection or mobile inference ran for this addition.
+
+The historical production editor example uses an older feature replay than the
+comparison study. Its original production gate and drafts remain paired. When
+geometries differ, **Production ensemble · comparison replay** exposes the precise
+production reference used to guard neural combinations, without replacing the
+historical baseline or resetting its drafts.
+
+Prepare evidence with `scripts/prepare-editor-lab-suppression.py`, passing private
+locations through `--comparison-index`, `--production-replay` and `--output` from
+the ledger/ignored environment. Configure the resulting index using server-only
+`VOLLEYCUT_EDITOR_LAB_SUPPRESSION_INDEX_PATH`. The publisher verifies source
+receipts and probability hashes. The API validates recording identity, duration,
+scores and geometry, and strips private provenance fields before sending data to
+the browser. Missing evidence never becomes a fabricated no-op model result.
+
+Browser validation covered all 13 standalone neural options, restore/undo with
+live metric changes, separate drafts, reload, production gating and human-reference
+protection. Focused tests cover ignored spans, exact whole-rally behavior, storage
+isolation, replay pairing and malformed/stale source rejection. Two preexisting
+`prod-suppression.test.mts` assertions still expect veto-region behavior despite
+the current whole-rally default; production code and those tests were unchanged.
+
+Purpose: try the production Rally Desk review experience with frozen production and compact model configurations on NAS footage.
+
+## Work checklist
+
+- [x] Inspect the production editor, lab routes and existing model artifacts.
+- [x] Copy the production Rally Desk into a lab-owned workspace with isolated persistence.
+- [x] Prepare label-independent model configurations, boundary proposals and removal review queues.
+- [x] Add a configuration switch and actionable review flows with seek, apply, restore, adjustment and undo.
+- [x] Verify model counts, edit isolation, review behavior, desktop/mobile rendering, lab build and production-site static build.
+- [x] Record the usable lab URL and implementation limitations.
+
+The first prepared recording is `recording-044`. Human answers never seed a model configuration. A separately requested **Human export** reference loads the saved human label document into its own editable lab draft.
+
+## Try it
+
+Open the editor lab (resolve the recording index through the private ledger), or use **Editor lab** in this recording's labeling header. The existing lab server serves the NAS video; no production application server is needed.
+
+| Configuration | Starting rallies outside ignored footage | Review behavior |
+| --- | ---: | --- |
+| Production ensemble | 52 | Original ensemble and production serve predictions; suppression off. |
+| Suppression · conservative | 46 | Native production suppression; six removed parents can be restored. Balanced is identical here and shares this choice. |
+| Suppression · aggressive | 40 | Native production suppression; twelve removed parents can be restored. |
+| Compact review | 40 | Aggressive production cores initially; nine recommended parent proposals, with all 27 flagged parents available. Apply a proposal or keep the original boundaries. |
+| Boundary edits + removal review | 42 | All frozen compact boundary edits already applied; review 60 removed core fragments and two explicit split decisions. Restore footage or undo a split when it is harmful. |
+| Compact standalone | 34 | Compact's own events, with fresh serving-side inference at their starts. |
+| Human export | 37 | Saved human regions and 36 saved serve markers, preserving their original timestamps and manual/model provenance. Lab edits never write back to the labels. |
+
+The copied production controls support boundary adjustment, manual rallies, serves and sides, score tracking, padding, final-cut preview, and undo/redo. Review decisions participate in the same undo history as geometry. **Play with context** plays original source footage, including removed sections, then stops at the context end. Choosing a queue region seeks its source context. Four compact signals can be expanded and clicked to seek.
+
+The review-region bar and expanded signal graph both show a red video playhead and current source timestamp. Both follow playback and seeking; signal percentages follow the nearest native sample. When playback leaves the displayed region, the position label says so and the marker is hidden instead of being pinned to a misleading edge.
+
+Each configuration has its own browser-local draft, keyed by recording, frozen source revision, and configuration. Switching modes or reloading preserves edits without applying them to another mode. **Download lab edits** saves the current editable draft and review decisions as JSON. The labeling tool's human labels are never written by this route.
+
+The human reference uses the saved draft when present, otherwise completed labels; unsaved labeling-UI edits are not included. A model/prelabel fallback is never called a human export. Its own label revision and ignored intervals are used without resetting model drafts. Human coverage regions are shown as human regions, without invented model-confidence percentages. These imported human endpoints have not been independently relabeled as exact serve/dead-ball gold.
+
+## Serving-side inference at neural starts
+
+The frozen production `serving-side-fixed-flight-v3` model was run on the neural events themselves: all 46 boundary-edited events and all 34 compact standalone events. Its production browser sequential decoder sampled 1,248 native timestamps from the original 4,373,996,025-byte video, using the original full-frame ROI. Production OpenCV feature extraction computes 237 features per event. Each complete candidate population is ranked separately, including ignored candidates before display exclusion. The original two production serve-head outputs provide the gate evidence at each new start. Boundary events retain their production-parent agreement lineage; compact standalone events do not invent that agreement.
+
+| Mode, outside ignored footage | Near | Far | Model requests review | Serve gate rejected |
+| --- | ---: | ---: | ---: | ---: |
+| Boundary edits + removal review | 20 | 17 | 4 | 1 |
+| Compact standalone | 15 | 17 | 0 | 2 |
+
+Rejected serves create no score marker and do not remove the rally. Review decisions remain when the frozen model requests them; unresolved starts are not arbitrarily assigned a side. Compact guidance retains production serve predictions before applying a proposal, then uses the corresponding frozen boundary-population prediction at the proposed start. Manually creating or moving a start later still requires review; inference is not rerun automatically after every edit.
+
+Inference scripts: `scripts/prepare-editor-lab-neural-serves.mjs`, `scripts/editor-lab-neural-serves-browser.ts`, and `scripts/run-editor-lab-neural-serves.mjs`. The last script launches an isolated Chrome context and temporary inference harness, not the production application. Model features and verdicts are preserved in `production-editor-lab-v1/neural-serving-results.json` on the NAS. No human labels or correction fields were used for inference, and no training was performed.
+
+## Boundaries and export behavior
+
+### Serving-side results for comparison variants
+
+The comparison catalog now supports serving-side inference at each variant's own
+rally starts, including production replay, neural precision/recall choices and
+their suppression combinations. The frozen production `SERVSIDE237-FLIGHT`
+classifier extracts court-flow and flight features from full-frame video. Its
+within-recording percentile ranks are computed separately for each complete
+variant population; only identical-anchor raw features are shared. Human labels
+never enter this inference. Suppression preserves the original population's
+predictions so restoring a removed rally restores its serve result.
+
+External inference receipts are stored beside the configured comparison index,
+under `serving-v1`. The loader verifies recording content identity, model
+fingerprint, complete event identity and exact start/end geometry before using
+results. Resolve the catalog through `VOLLEYCUT_NEURAL_COMPARISON_INDEX_PATH` or
+ledger index `private-reference-0216`; media is streamed through the existing lab
+API. Preparation, bundling, inference and browser verification are implemented in
+`scripts/prepare-editor-lab-serving.py`, `scripts/build-editor-lab-serving.mjs`,
+`scripts/run-editor-lab-serving.mjs` and
+`scripts/test-editor-lab-serving-browser.mjs`. Pass external work/output locations
+and the browser executable through their CLI arguments.
+The inference runner requests `serving=omit` when reading rally geometry, so
+stale serving receipts cannot prevent their own regeneration. Normal editor
+requests continue to validate receipts before displaying them.
+
+The human comparison rail displays the labeling UI's N/F/? serving-side markers
+on both Saved human and Current edit. Clicking a marker seeks the source video.
+An expandable serving-side table includes near/far scores, review reasons and
+both production serve-head gates, including rejected candidates. Rejection does
+not remove a rally. Saved human markers remain fixed; current markers reflect
+edits and export visibility. Newly available predictions update untouched model
+markers while preserving manual corrections, changed boundaries and explicitly
+removed markers, including saved undo/redo history. Manually moved or created
+starts are not silently rescored.
+
+Validation covered all 44 catalog recordings and 648 recording/configuration
+pairs through the editor API. All 38 focused tests and TypeScript checks passed.
+Desktop/mobile Chrome checks verified human marker seeking, model switching,
+reloads, and preservation of manual corrections, boundary edits and undo history.
+The external browser receipt is `serving-v1/work/ui-check/serving-browser-checks.json`
+relative to the comparison catalog directory. Generated results remain on the NAS.
+
+The **Compared with human labels** rail below the editor timeline reuses the labeling tool's `RallyTimeline`. It compares the current editable draft with the saved human reference, updates with edits/restoration/undo and tracks the playhead. Clicking a segment seeks the source video. Matching padded export, extra exported footage, joined gaps, missed human core and ignored time remain separately visible; phones scroll the rail horizontally inside its panel.
+
+Live metrics are `P_pad`, `R_core`, `F1_padP_coreR`, actual export duration, its difference from padded human duration, extra exported footage and omitted human core. These are time-coverage diagnostics, not event recall. The actual production materializer supplies model exports, preserving manual keep edges, suppression overrides and barriers. Only saved human ignored intervals define the scoring universe: manually excluding wanted footage still lowers recall. Human labels remain fixed even while editing the Human export mode. An expandable sensitivity table reports precision, recall, F1, model/human durations and their difference for each symmetric 0/1/2/3-second padding case at the same gap threshold. The primary live case is the editor's current padding (initially 2/2 seconds).
+
+The default product padding is two seconds before and after. The copied production materializer retains its strict less-than-three-second gap joining, ignored-interval handling and native suppression barriers. Exact exports for production, conservative and aggressive suppression match the frozen production replay at all four symmetric padding cases: zero, one, two and three seconds.
+
+The removal queue compares **raw rally cores**, before padding or joining. A trimmed start/end or internal gap remains reviewable even if padding preserves its footage in the final cut. The two split decisions remain separate from keep/remove decisions, so export joining does not conceal event identity or the need for a new serve. A restored gap can merge linked child events; obsolete linked serve markers are removed. Moving a start or creating a new rally does not inherit a serving-side answer from a different anchor.
+
+## Implementation and source identity
+
+- Lab-owned editor snapshot: `components/production-lab/editor/`, copied from the actual production Rally Desk in `prod/src/designs/taste/index.tsx`. Regenerate with `node scripts/snapshot-production-lab-editor.mjs`; the generator includes the lab adapters. Production source files are unchanged.
+- Route and wrapper: `app/editor-lab/`, `components/production-lab/`.
+- Validated model API and geometry: `app/api/editor-lab/tasks/[id]/route.ts`, `lib/production-editor-lab.ts`, `lib/production-editor-lab-draft.ts`, `lib/server/production-editor-lab.ts`.
+- Manifest preparation: `scripts/prepare-production-editor-lab.py`; copies only model outputs, existing ignored spans, serving predictions and native signal timestamps. No simulated human decisions are imported.
+- Active manifest: `private-reference-0195`.
+- Manifest SHA-256: `d525bbdb967662cc878ee3dcd5da1244d1f532e9f65d521cf6cd1af1a2b744de`.
+- Previous geometry manifest `manifest-guidance-v3.json` is preserved. Its revision remains the storage identity for unchanged production/suppression modes; neural modes get a new revision for the fresh serving predictions.
+- Server environment: `VOLLEYCUT_EDITOR_LAB_MANIFEST_PATH`, configured outside Git in the root `.env.local` using the WSL NAS path.
+
+## Validation and limitations
+
+All 31 focused tests passed, including frozen NAS fixtures, suppression export parity, stale-edit guards, ignored spans, manual-rally identity, native split serving markers, human-reference preservation, neural serving-anchor validation, live comparison exclusions/strict gap joining and isolated persistence. Full root TypeScript validation passed. The lab's Next.js production build and the separate production-site static build passed. `git diff --check` passed.
+
+Real Chrome interaction checks passed for NAS playback, separate mode drafts, reload persistence, proposal application, removal restoration, native suppression overrides, split undo, source-context stopping, keyboard undo, desktop/mobile layout and no browser page errors. Reproduce with:
+
+```powershell
+node scripts/test-production-editor-lab-browser.mjs --harness private-reference-0109 --output artifacts/private-media/editor-lab
+```
+
+The harness uses an existing Playwright installation and a fresh browser context. Its verification receipt and desktop/mobile screenshots are ignored local artifacts in `artifacts/private-media/editor-lab/`.
+
+The human label file was unchanged: SHA-256 `97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c`.
+
+The editor uses frozen predictions from the configured comparison catalog. It does not rerun inference during editing, render an MP4, or save a production project archive. Those unavailable export actions are explicitly disabled; lab JSON and YouTube chapter downloads are available. Browser drafts are local to the browser and origin.
+
+The initial production-site build attempt was blocked by disk exhaustion while installing dependencies. After the user freed space, C: had about 9.5 GiB available. Retrying `npm ci --no-audit --no-fund` and `npm run build` in `prod/` succeeded, including TypeScript, Vite, and postbuild checks for portable assets, integrity hashes, relative paths and Cloudflare asset limits. No production source or lockfile changed. The earlier disk-space blocker is resolved.

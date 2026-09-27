@@ -109,6 +109,35 @@ class ServingSideModelsTest {
     }
 
     @Test
+    fun everyNeuralRallyReceivesSideInferenceAndUnconfirmedServesStayReviewable() {
+        val runtime = ServingSideRuntimeParser.parse(runtimeJson())
+        val ranges = listOf(
+            AnalysisTypes.Interval(1.0, 3.0, .9f, "neural"),
+            AnalysisTypes.Interval(4.0, 8.0, .8f, "neural"),
+        )
+        val plan = ServingSideInference.framePlan(ranges, 10.0)
+        assertEquals(listOf(1.0, 4.0), plan.candidates.map { it.start })
+        val head = AnalysisTypes.ProductionServeOutput(
+            "model", doubleArrayOf(1.0, 4.0), floatArrayOf(.2f, .95f), emptyList(),
+        )
+        val verdicts = plan.candidates.map {
+            ServingSideModelRunner.verdict(it, DoubleArray(237) { .5 }, head, head, runtime)
+        }
+        assertEquals(ServingSideVerdict.REVIEW, verdicts[0].verdict)
+        assertEquals(ServingSide.NEAR, verdicts[0].side)
+        assertEquals(ServingSideDecisionSource.NEURAL_RALLY_RECOVERY, verdicts[0].serveDecisionSource)
+        assertFalse(verdicts[0].allLabelsV2Evidence.crossesThreshold)
+        assertEquals(listOf(ServingSideReviewReason.NEURAL_RALLY_RECOVERY), verdicts[0].reviewReasons)
+        assertEquals(ServingSideVerdict.NEAR, verdicts[1].verdict)
+        assertEquals(ServingSideDecisionSource.SERVE_HEAD, verdicts[1].serveDecisionSource)
+        val seeded = ScoreReducer.seedModelMarkers(ScoreTracking(), ServingSideOutput(
+            rows = verdicts.size, rawFeatures = DoubleArray(verdicts.size * 237), candidates = verdicts,
+        ))
+        assertEquals(listOf("R001", "R002"), seeded.serveMarkers.map { it.rallyId })
+        assertEquals(listOf(ServingSide.REVIEW, ServingSide.NEAR), seeded.serveMarkers.map { it.side })
+    }
+
+    @Test
     fun framePlanClampsSourceStartAndEndAndDeduplicatesSharedSamples() {
         val candidates = listOf(
             ServingSideModelRunner.CandidateInterval("R001", .1, 1.0, null),

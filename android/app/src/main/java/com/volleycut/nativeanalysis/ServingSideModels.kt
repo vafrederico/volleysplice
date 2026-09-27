@@ -48,7 +48,8 @@ internal enum class ServingSideVerdict(val wireName: String) {
 }
 
 internal enum class ServingSideDecisionSource(val wireName: String) {
-    SERVE_HEAD("serve-head"), PRODUCTION_RALLY_RECOVERY("production-rally-recovery"), NONE("none");
+    SERVE_HEAD("serve-head"), PRODUCTION_RALLY_RECOVERY("production-rally-recovery"),
+    NEURAL_RALLY_RECOVERY("neural-rally-recovery"), NONE("none");
 
     companion object {
         fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
@@ -56,7 +57,8 @@ internal enum class ServingSideDecisionSource(val wireName: String) {
 }
 
 internal enum class ServingSideReviewReason(val wireName: String) {
-    SIDE_SCORE("side-score"), PRODUCTION_RALLY_RECOVERY("production-rally-recovery");
+    SIDE_SCORE("side-score"), PRODUCTION_RALLY_RECOVERY("production-rally-recovery"),
+    NEURAL_RALLY_RECOVERY("neural-rally-recovery");
 
     companion object {
         fun fromWireName(value: String) = entries.firstOrNull { it.wireName == value }
@@ -85,7 +87,15 @@ internal data class ServingSideCandidate(
     val reviewReasons: List<ServingSideReviewReason>,
     val allLabelsV2Evidence: ServingSideHeadEvidence,
     val previousProductionEvidence: ServingSideHeadEvidence,
-)
+) {
+    /** Keep an independently detected rally visible when legacy serve heads miss its start. */
+    fun withNeuralRallyRecovery(): ServingSideCandidate =
+        if (agreement == "neural" && verdict == ServingSideVerdict.NOT_SERVE) copy(
+            verdict = ServingSideVerdict.REVIEW,
+            serveDecisionSource = ServingSideDecisionSource.NEURAL_RALLY_RECOVERY,
+            reviewReasons = (reviewReasons + ServingSideReviewReason.NEURAL_RALLY_RECOVERY).distinct(),
+        ) else this
+}
 
 internal data class ServingSideOutput(
     val modelId: String = SERVING_SIDE_MODEL_ID,
@@ -392,6 +402,6 @@ internal object ServingSideModelRunner {
         return ServingSideCandidate(
             candidate.id, candidate.start, candidate.start, candidate.end, candidate.agreement,
             probability, side, verdict, decisionSource, reasons.toList(), allEvidence, previousEvidence,
-        )
+        ).withNeuralRallyRecovery()
     }
 }

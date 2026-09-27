@@ -1,11 +1,76 @@
 package com.volleycut.nativeanalysis
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeProjectStoreTest {
+    @Test
+    fun oldVisualOutputRemainsEditableButCannotSatisfyNewAnalysis() {
+        val saved = readyProject()
+        val oldJson = NativeProjectStore.encode(saved).apply {
+            put("version", 10)
+            put("id", NativeProjectStore.projectId(
+                saved.source, saved.media.durationSeconds(), saved.analysisWindow, saved.roi,
+                visualExtractorVersion = "legacy",
+            ))
+            remove("visualExtractorVersion")
+        }
+        val old = requireNotNull(NativeProjectStore.decode(oldJson))
+        val normalized = NativeProjectStore.normalizeStored(old)
+        val seed = requireNotNull(normalized.editorSeed())
+        val recovered = NativeProjectStore.fromSeed(seed, old.source, old.media)
+        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId)
+
+        assertEquals("legacy", normalized.visualExtractorVersion)
+        assertEquals(saved.ranges, normalized.ranges)
+        assertEquals(ProjectStatus.READY, normalized.status)
+        assertEquals(old.id, recovered.id)
+        assertEquals(seed.sourceRevision, recovered.editorSeed()?.sourceRevision)
+        assertNotEquals(fresh.id, recovered.id)
+        assertFalse(NativeProjectStore.matchesAnalysis(normalized, fresh))
+        assertFalse(NativeProjectStore.matchesAnalysis(recovered, fresh))
+    }
+
+    @Test
+    fun currentVisualProvenanceSurvivesProjectAndRecoveryRoundTrips() {
+        val queued = NativeProjectStore.newQueued(source,
+            AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm"))
+        val saved = queued.copy(status = ProjectStatus.READY, ranges = readyProject().ranges)
+        val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(saved)))
+        val seed = requireNotNull(EditorProjectStore.decode(
+            EditorProjectStore.encode(requireNotNull(restored.editorSeed())),
+        ))
+        val recovered = NativeProjectStore.fromSeed(seed, saved.source, saved.media)
+
+        assertEquals(NativeFeatureCache.VISUAL_EXTRACTOR_VERSION, restored.visualExtractorVersion)
+        assertEquals(NativeFeatureCache.VISUAL_EXTRACTOR_VERSION, seed.visualExtractorVersion)
+        assertEquals(saved.id, recovered.id)
+        assertEquals(saved.ranges, recovered.ranges)
+        assertTrue(NativeProjectStore.matchesAnalysis(recovered, queued))
+        assertFalse(NativeProjectStore.matchesAnalysis(
+            recovered.copy(visualExtractorVersion = "older-visual-version"), queued,
+        ))
+    }
+
+    @Test
+    fun oldAudioOutputRemainsEditableButCannotSatisfyNewAnalysis() {
+        val saved = readyProject()
+        val oldJson = NativeProjectStore.encode(saved).apply { remove("audioExtractorVersion") }
+        val old = requireNotNull(NativeProjectStore.decode(oldJson))
+        val normalized = NativeProjectStore.normalizeStored(old)
+        assertEquals(saved.ranges, normalized.ranges)
+        assertEquals(ProjectStatus.READY, normalized.status)
+        val fresh = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId)
+        assertFalse(NativeProjectStore.matchesAnalysis(normalized, fresh))
+        val recovered = NativeProjectStore.fromSeed(requireNotNull(old.editorSeed()), old.source, old.media)
+        assertNotEquals(fresh.id, recovered.id)
+        assertFalse(NativeProjectStore.matchesAnalysis(recovered, fresh))
+    }
+
     private val source = ProjectSource(
         uri = "content://recordings/match.mp4",
         name = "match.mp4",
@@ -13,6 +78,108 @@ class NativeProjectStoreTest {
         lastModified = 1_700_000_000,
         mimeType = "video/mp4",
     )
+
+    @Test
+    fun newAnalysisUsesFullFrameForArbitraryAndFormerCameraProfileNames() {
+        val media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", "audio/mp4a-latm")
+        for (filename in listOf(
+            "match.mp4", "recording-044.mp4", "beach-source-01.mp4",
+            "beach-source-02.mp4", "indoor-source-07.mp4", "",
+        )) {
+            val inferred = AnalysisEngine.inferRoi(filename)
+            val project = NativeProjectStore.newQueued(source.copy(name = filename), media)
+            assertEquals(AnalysisTypes.Roi(0.0, 0.0, 1.0, 1.0, "Full frame"), inferred)
+            assertEquals(inferred, project.roi)
+        }
+    }
+
+    @Test
+    fun newFullFrameAnalysisCannotReuseOrOverwriteAnOlderCroppedProject() {
+        val saved = readyProject()
+        val fullFrame = NativeProjectStore.newQueued(saved.source, saved.media)
+        val explicitCrop = NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId)
+
+        assertNotEquals(saved.id, fullFrame.id)
+        assertNotEquals(explicitCrop.id, fullFrame.id)
+        assertFalse(NativeProjectStore.matchesAnalysis(saved, fullFrame))
+        assertTrue(NativeProjectStore.matchesAnalysis(saved, explicitCrop))
+        assertTrue(NativeProjectStore.matchesAnalysis(
+            fullFrame.copy(roi = AnalysisTypes.Roi(0.0, 0.0, 1.0, 1.0, "Imported full frame")),
+            fullFrame,
+        ))
+
+        val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(saved)))
+        assertEquals(saved.id, restored.id)
+        assertEquals(saved.roi, restored.roi)
+        assertEquals(saved.ranges, restored.ranges)
+        assertEquals(saved.roi, NativeProjectStore.normalizeStored(restored).roi)
+    }
+
+    @Test
+    fun analysisMatchingStillSeparatesWindowsWithTheSameFullFrameRoi() {
+        val media = AnalysisTypes.MediaInfo(120.0, 1920, 1080, 0, "video/avc", "audio/mp4a-latm")
+        val whole = NativeProjectStore.newQueued(source, media)
+        val window = NativeProjectStore.newQueued(
+            source, media, requestedWindow = AnalysisTypes.AnalysisWindow(10.0, 100.0),
+        )
+
+        assertNotEquals(whole.id, window.id)
+        assertFalse(NativeProjectStore.matchesAnalysis(whole, window))
+    }
+
+    @Test
+    fun legacyRecoveryRetainsReviewedOutputWithoutClaimingCurrentAnalysisGeometry() {
+        val saved = readyProject()
+        val seed = requireNotNull(saved.editorSeed()).copy(
+            analysisRoi = null,
+            ranges = saved.ranges.map { it.copy(agreement = null) },
+        )
+        val recovered = NativeProjectStore.fromSeed(seed, saved.source, saved.media)
+        val fresh = NativeProjectStore.newQueued(saved.source, saved.media)
+        val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(recovered)))
+        val normalized = NativeProjectStore.normalizeStored(restored)
+
+        assertFalse(normalized.analysisRoiKnown)
+        assertEquals(ProjectStatus.READY, normalized.status)
+        assertEquals(seed.ranges, normalized.ranges)
+        assertEquals(seed.sourceRevision, normalized.editorSeed()?.sourceRevision)
+        assertEquals(null, normalized.editorSeed()?.analysisRoi)
+        assertNotEquals(fresh.id, normalized.id)
+        assertFalse(NativeProjectStore.matchesAnalysis(normalized, fresh))
+        assertFalse(NativeProjectStore.matchesAnalysis(fresh, normalized))
+    }
+
+    @Test
+    fun newRecoverySeedsPreserveCroppedAndFullFrameGeometry() {
+        val saved = readyProject()
+        for (roi in listOf(saved.roi, AnalysisEngine.inferRoi(saved.source.name))) {
+            val seed = requireNotNull(saved.copy(roi = roi).editorSeed())
+            val recovered = NativeProjectStore.fromSeed(seed, saved.source, saved.media)
+            val candidate = NativeProjectStore.newQueued(saved.source, saved.media, roi, rallyModelId = saved.modelId)
+
+            assertTrue(recovered.analysisRoiKnown)
+            assertEquals(roi, recovered.roi)
+            assertEquals(candidate.id, recovered.id)
+            assertTrue(NativeProjectStore.matchesAnalysis(recovered, candidate))
+            assertEquals(seed.ranges, recovered.ranges)
+        }
+    }
+
+    @Test
+    fun existingNativeProjectGeometryRemainsKnownWithoutTheNewProvenanceField() {
+        val saved = readyProject()
+        val legacy = NativeProjectStore.encode(saved).apply {
+            put("version", 8)
+            remove("analysisRoiKnown")
+        }
+        val restored = requireNotNull(NativeProjectStore.decode(legacy))
+
+        assertTrue(restored.analysisRoiKnown)
+        assertEquals(saved.roi, restored.roi)
+        assertTrue(NativeProjectStore.matchesAnalysis(
+            restored, NativeProjectStore.newQueued(saved.source, saved.media, saved.roi, rallyModelId = saved.modelId),
+        ))
+    }
 
     @Test
     fun teamSwitchInferenceIsOptInAndRoundTripsWhenEnabled() {
@@ -236,7 +403,7 @@ class NativeProjectStoreTest {
     }
 
     @Test
-    fun staleSingleModelInferenceIsQueuedWithoutDiscardingFeatureIdentity() {
+    fun unavailableSingleModelRequiresExplicitSelectionWithoutDiscardingFeatureIdentity() {
         val project = NativeProject(
             id = NativeProjectStore.projectId(source, 12.5),
             source = source,
@@ -251,9 +418,10 @@ class NativeProjectStoreTest {
 
         val normalized = NativeProjectStore.normalizeStored(project)
 
-        assertEquals(ProjectStatus.QUEUED, normalized.status)
-        assertEquals(FeatureSchema.MODEL_ID, normalized.modelId)
-        assertEquals(emptyList<SeedRange>(), normalized.ranges)
+        assertEquals(ProjectStatus.ERROR, normalized.status)
+        assertEquals(project.modelId, normalized.modelId)
+        assertEquals(project.ranges, normalized.ranges)
+        assertTrue(normalized.error.orEmpty().contains("unavailable"))
         assertEquals(project.id, normalized.id)
         assertEquals(project.source, normalized.source)
         assertEquals(project.roi, normalized.roi)

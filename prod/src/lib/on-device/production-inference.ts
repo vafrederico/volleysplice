@@ -1,3 +1,4 @@
+import { isNeuralModelId } from "./rally-model.ts";
 import { runtimeAssetUrl } from "../runtime-assets.ts";
 import type { AnalysisWindow } from "./analysis-window.ts";
 import {
@@ -229,6 +230,7 @@ export async function augmentStoredAnalysisWithSuppression(
   analysis: OnDeviceAnalysis,
   analysisWindow: AnalysisWindow,
 ): Promise<OnDeviceAnalysis | null> {
+  if (isNeuralModelId(analysis.modelId)) return null;
   if (
     analysis.productionComponents &&
     analysis.productionServeOutputs &&

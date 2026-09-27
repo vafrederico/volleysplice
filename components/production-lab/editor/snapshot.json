@@ -1,0 +1,297 @@
+{
+  "schemaVersion": 1,
+  "hashEncoding": "UTF-8 with LF-normalized line endings",
+  "sourceEntry": "prod/src/designs/taste/index.tsx",
+  "productionEntry": "prod/src/App.tsx:ReadyProjectEditor",
+  "adaptations": [
+    "relative imports",
+    "lab-only storage keys",
+    "type-only project and review adapter contracts",
+    "Next-compatible lab asset URLs",
+    "labTools review extension",
+    "bounded source review playback",
+    "preserve serve identities across native splits",
+    "readable rally and serve presentation labels",
+    "adjacent review and video on mobile",
+    "lab persistence copy",
+    "explicit unavailable export actions",
+    "lab-owned cleanup configuration",
+    "hide production project setup and automatic tour in lab mode"
+  ],
+  "generatedHelpers": [
+    {
+      "file": "components/production-lab/editor/lib/lab-split-markers.ts",
+      "sha256": "731838ca27cd05051ef230509e6b725aa31733a15fe96112a01d8f1d08eab98a"
+    },
+    {
+      "file": "components/production-lab/editor/lib/lab-display-labels.ts",
+      "sha256": "a17ac7f03f3ef6cdf441acfc928aa208cecce06ea6456203d705ac1e2b2960b0"
+    }
+  ],
+  "files": [
+    {
+      "source": "prod/src/components/GuidedTour.module.css",
+      "destination": "components/production-lab/editor/components/GuidedTour.module.css",
+      "sourceSha256": "b6bb126d2c749236722ae0bf4697b5e57747ccc0639b032c7c279dc0e546dcb0",
+      "snapshotSha256": "b6bb126d2c749236722ae0bf4697b5e57747ccc0639b032c7c279dc0e546dcb0"
+    },
+    {
+      "source": "prod/src/components/GuidedTour.tsx",
+      "destination": "components/production-lab/editor/components/GuidedTour.tsx",
+      "sourceSha256": "d9ae39c2144370bdfb78cb137d25c41aaf11642c0385b025d0acdcd94b8dddf6",
+      "snapshotSha256": "798dcaf8c7cdb5268c96be4e26d3dac144c40cc55007ff92d738922475f479b2"
+    },
+    {
+      "source": "prod/src/components/ScoreOverlay.module.css",
+      "destination": "components/production-lab/editor/components/ScoreOverlay.module.css",
+      "sourceSha256": "cf37b62f1085191f457dcb9ef40071475c85aa4ba3978edf74c841bfb761fe10",
+      "snapshotSha256": "cf37b62f1085191f457dcb9ef40071475c85aa4ba3978edf74c841bfb761fe10"
+    },
+    {
+      "source": "prod/src/components/ScoreOverlay.tsx",
+      "destination": "components/production-lab/editor/components/ScoreOverlay.tsx",
+      "sourceSha256": "31e21142c7eda98f0cb655ebd9267628c9a28e8c844666304b5cee561aff96d8",
+      "snapshotSha256": "5a986bcee37f253dbcfb088839a732229e2dd8c6689b733d6ab23cd9f53c6776"
+    },
+    {
+      "source": "prod/src/components/ScoreVisibilitySelect.module.css",
+      "destination": "components/production-lab/editor/components/ScoreVisibilitySelect.module.css",
+      "sourceSha256": "2a7db8b1056f3709f0f1ea550c3194cfba5f02f025eabeaab06eb7dcfdf032c3",
+      "snapshotSha256": "2a7db8b1056f3709f0f1ea550c3194cfba5f02f025eabeaab06eb7dcfdf032c3"
+    },
+    {
+      "source": "prod/src/components/ScoreVisibilitySelect.tsx",
+      "destination": "components/production-lab/editor/components/ScoreVisibilitySelect.tsx",
+      "sourceSha256": "2f6afca33e3f1a5ca716badd7b9a376b84536f509a91b4beaa1c84bca61e50dc",
+      "snapshotSha256": "2f6afca33e3f1a5ca716badd7b9a376b84536f509a91b4beaa1c84bca61e50dc"
+    },
+    {
+      "source": "prod/src/designs/taste/AppMenu.tsx",
+      "destination": "components/production-lab/editor/designs/taste/AppMenu.tsx",
+      "sourceSha256": "0d9ca6b164ad136bc311a9f8d4b7fb96004255373d68132e8abd862e4ce974d0",
+      "snapshotSha256": "9a315bc89a69069ecaab8f08fe947f56193bf752afe5bfa72849bf9ea819538a"
+    },
+    {
+      "source": "prod/src/designs/taste/cleanup-decisions.ts",
+      "destination": "components/production-lab/editor/designs/taste/cleanup-decisions.ts",
+      "sourceSha256": "c8744373630bfa7649019ed5077dc8503678b79dbe364c9151e1ad952ec73516",
+      "snapshotSha256": "c8744373630bfa7649019ed5077dc8503678b79dbe364c9151e1ad952ec73516"
+    },
+    {
+      "source": "prod/src/designs/taste/edit-history.ts",
+      "destination": "components/production-lab/editor/designs/taste/edit-history.ts",
+      "sourceSha256": "9251f47cef73c42c066671ac12d649a5f3e557a68bbe5cdf76bf3c61df57b6a4",
+      "snapshotSha256": "4900eb891af422ef6dabb087ed0d47c934775b603ccb136ed48c951294e6ef11"
+    },
+    {
+      "source": "prod/src/designs/taste/index.tsx",
+      "destination": "components/production-lab/editor/designs/taste/index.tsx",
+      "sourceSha256": "890b1fa1257b401686409dfffe0c9e0dcf51ee9204f5be250cb8ce7526aa3000",
+      "snapshotSha256": "0881d8d70226f1585095da67afd02cd9b0641495fbd382fa463b96f1bfd796dc"
+    },
+    {
+      "source": "prod/src/designs/taste/keyboard-shortcuts.ts",
+      "destination": "components/production-lab/editor/designs/taste/keyboard-shortcuts.ts",
+      "sourceSha256": "bbca6b171b6515a317479b52816a22b997550c2e798cd054421688407b604aed",
+      "snapshotSha256": "bbca6b171b6515a317479b52816a22b997550c2e798cd054421688407b604aed"
+    },
+    {
+      "source": "prod/src/designs/taste/ResizableWorkspace.tsx",
+      "destination": "components/production-lab/editor/designs/taste/ResizableWorkspace.tsx",
+      "sourceSha256": "fd0b603976690ac01f88b4e20e2e4d6c6aba95f90b5b1816b37f2a2ebd1fefbf",
+      "snapshotSha256": "b9875f043c952af68439c24fabe56bd3963771293cf3e11ab0d17c263cc46267"
+    },
+    {
+      "source": "prod/src/designs/taste/taste-designs.css",
+      "destination": "components/production-lab/editor/designs/taste/taste-designs.css",
+      "sourceSha256": "2866d2893c7d69a3701e6b316f9b80a8a1a998403d0bec658602cb66c8375203",
+      "snapshotSha256": "2866d2893c7d69a3701e6b316f9b80a8a1a998403d0bec658602cb66c8375203"
+    },
+    {
+      "source": "prod/src/designs/taste/workspace-layout.ts",
+      "destination": "components/production-lab/editor/designs/taste/workspace-layout.ts",
+      "sourceSha256": "acf53ea5972cc457201857c3bcf1a5d7f669bc9d6bd27c4ba6d46d43a9d30824",
+      "snapshotSha256": "acf53ea5972cc457201857c3bcf1a5d7f669bc9d6bd27c4ba6d46d43a9d30824"
+    },
+    {
+      "source": "prod/src/designs/useDesignReview.ts",
+      "destination": "components/production-lab/editor/designs/useDesignReview.ts",
+      "sourceSha256": "dd5dc8902de8dfbbdb8b11d11a413f32ff4ca45840c03a077f1bbcec7dd50230",
+      "snapshotSha256": "2cb43dec187d9d6076eae0f62966d089c42e0fc91111719e5361c18aed62a25a"
+    },
+    {
+      "source": "prod/src/lib/android-app.ts",
+      "destination": "components/production-lab/editor/lib/android-app.ts",
+      "sourceSha256": "1e81c23492071eee7513b14ac58a8eba47de685caf0ceac6123c3dad919546eb",
+      "snapshotSha256": "1e81c23492071eee7513b14ac58a8eba47de685caf0ceac6123c3dad919546eb"
+    },
+    {
+      "source": "prod/src/lib/cut-draft.ts",
+      "destination": "components/production-lab/editor/lib/cut-draft.ts",
+      "sourceSha256": "619a2640d78b0134169190110b6baae46be7c8ebc83e4a0a35b031a3bfc91881",
+      "snapshotSha256": "a9d1d9f684140824901fe5890cd5b64c913338a448507c4b3134cae72cb9c42b"
+    },
+    {
+      "source": "prod/src/lib/edit-list.ts",
+      "destination": "components/production-lab/editor/lib/edit-list.ts",
+      "sourceSha256": "379613bad4cfb6534766bfe4dafe76bd8da1e2cea535ccf4e1c9a0ea41e206c4",
+      "snapshotSha256": "379613bad4cfb6534766bfe4dafe76bd8da1e2cea535ccf4e1c9a0ea41e206c4"
+    },
+    {
+      "source": "prod/src/lib/model-feedback.ts",
+      "destination": "components/production-lab/editor/lib/model-feedback.ts",
+      "sourceSha256": "512e92e8a5853d1e7bb8c71e8acdd4ecb9dfd213a81c3aa79044b503418791e8",
+      "snapshotSha256": "512e92e8a5853d1e7bb8c71e8acdd4ecb9dfd213a81c3aa79044b503418791e8"
+    },
+    {
+      "source": "prod/src/lib/model-review-draft.ts",
+      "destination": "components/production-lab/editor/lib/model-review-draft.ts",
+      "sourceSha256": "98368990ab3a5ebb14f45a13f16d541476fb95bc305511e1b47ddf0b5a20aa23",
+      "snapshotSha256": "98368990ab3a5ebb14f45a13f16d541476fb95bc305511e1b47ddf0b5a20aa23"
+    },
+    {
+      "source": "prod/src/lib/on-device/analysis-window.ts",
+      "destination": "components/production-lab/editor/lib/on-device/analysis-window.ts",
+      "sourceSha256": "dcd80b652e3882d8afd9b5a30477ea19255295e251e7cb350f9ecea962693732",
+      "snapshotSha256": "dcd80b652e3882d8afd9b5a30477ea19255295e251e7cb350f9ecea962693732"
+    },
+    {
+      "source": "prod/src/lib/on-device/ensemble.ts",
+      "destination": "components/production-lab/editor/lib/on-device/ensemble.ts",
+      "sourceSha256": "5102ca73862550d56c7ac42412a25b2418521d5fa1dca31655521d93de1fb5fc",
+      "snapshotSha256": "5102ca73862550d56c7ac42412a25b2418521d5fa1dca31655521d93de1fb5fc"
+    },
+    {
+      "source": "prod/src/lib/on-device/export-delivery.ts",
+      "destination": "components/production-lab/editor/lib/on-device/export-delivery.ts",
+      "sourceSha256": "862e757dd91e78d184893d0ac767e7302c41ff01db615fe19a14eed657fe21f0",
+      "snapshotSha256": "862e757dd91e78d184893d0ac767e7302c41ff01db615fe19a14eed657fe21f0"
+    },
+    {
+      "source": "prod/src/lib/on-device/export-math.ts",
+      "destination": "components/production-lab/editor/lib/on-device/export-math.ts",
+      "sourceSha256": "273272d62352a48c8f97d6ce5ec8bdeedca882a52c998d87f1140fc2f4cfda0a",
+      "snapshotSha256": "273272d62352a48c8f97d6ce5ec8bdeedca882a52c998d87f1140fc2f4cfda0a"
+    },
+    {
+      "source": "prod/src/lib/on-device/export.ts",
+      "destination": "components/production-lab/editor/lib/on-device/export.ts",
+      "sourceSha256": "3a5b47a8bf5325734b1bbffac0df43666a4d46a9c2f57ba628989d6b466615f5",
+      "snapshotSha256": "3a5b47a8bf5325734b1bbffac0df43666a4d46a9c2f57ba628989d6b466615f5"
+    },
+    {
+      "source": "prod/src/lib/on-device/feature-schema.ts",
+      "destination": "components/production-lab/editor/lib/on-device/feature-schema.ts",
+      "sourceSha256": "865329a26bad4dc433a78fb29473b57a0f86360a5126d55044f6928daad6d056",
+      "snapshotSha256": "865329a26bad4dc433a78fb29473b57a0f86360a5126d55044f6928daad6d056"
+    },
+    {
+      "source": "prod/src/lib/on-device/media.ts",
+      "destination": "components/production-lab/editor/lib/on-device/media.ts",
+      "sourceSha256": "f532b89f5cb374039295eeeca4c427b791b262b4ba51aea064fb12dd283f6e53",
+      "snapshotSha256": "f532b89f5cb374039295eeeca4c427b791b262b4ba51aea064fb12dd283f6e53"
+    },
+    {
+      "source": "prod/src/lib/on-device/model.ts",
+      "destination": "components/production-lab/editor/lib/on-device/model.ts",
+      "sourceSha256": "53c5eec543613986c6550695b3d30cc743f3f4f97665e0175f9e721b028212ef",
+      "snapshotSha256": "53c5eec543613986c6550695b3d30cc743f3f4f97665e0175f9e721b028212ef"
+    },
+    {
+      "source": "prod/src/lib/on-device/serving-side-cache.ts",
+      "destination": "components/production-lab/editor/lib/on-device/serving-side-cache.ts",
+      "sourceSha256": "0729657db6b7b2ede8662b71949f31f1a5c676cad2c96de9069fe561f84423d1",
+      "snapshotSha256": "0729657db6b7b2ede8662b71949f31f1a5c676cad2c96de9069fe561f84423d1"
+    },
+    {
+      "source": "prod/src/lib/on-device/side-switch-model.ts",
+      "destination": "components/production-lab/editor/lib/on-device/side-switch-model.ts",
+      "sourceSha256": "ebd3283a9292d95821f60bca52afd783f0cae960187b9f72a7e50ed3d61fe6b8",
+      "snapshotSha256": "ebd3283a9292d95821f60bca52afd783f0cae960187b9f72a7e50ed3d61fe6b8"
+    },
+    {
+      "source": "prod/src/lib/on-device/stream-download.ts",
+      "destination": "components/production-lab/editor/lib/on-device/stream-download.ts",
+      "sourceSha256": "63cb8d800bda3e4e2a724a143b004b127ec83cf120cf859da579e53170a4d48b",
+      "snapshotSha256": "63cb8d800bda3e4e2a724a143b004b127ec83cf120cf859da579e53170a4d48b"
+    },
+    {
+      "source": "prod/src/lib/on-device/suppression-model.ts",
+      "destination": "components/production-lab/editor/lib/on-device/suppression-model.ts",
+      "sourceSha256": "4d632c382a89f3916eb9588f4616e13b5fefae7bec21332627e3ae9b68c2cebf",
+      "snapshotSha256": "4d632c382a89f3916eb9588f4616e13b5fefae7bec21332627e3ae9b68c2cebf"
+    },
+    {
+      "source": "prod/src/lib/on-device/suppression-policy.ts",
+      "destination": "components/production-lab/editor/lib/on-device/suppression-policy.ts",
+      "sourceSha256": "7bb296428a589a945e19c56c2fa62fbac195aabbf7e799574670a72704e4404b",
+      "snapshotSha256": "7bb296428a589a945e19c56c2fa62fbac195aabbf7e799574670a72704e4404b"
+    },
+    {
+      "source": "prod/src/lib/on-device/types.ts",
+      "destination": "components/production-lab/editor/lib/on-device/types.ts",
+      "sourceSha256": "16a8ae7c1515c54e9cb782b6587d60e8beabfae9896380c155c8e4d57593f66f",
+      "snapshotSha256": "16a8ae7c1515c54e9cb782b6587d60e8beabfae9896380c155c8e4d57593f66f"
+    },
+    {
+      "source": "prod/src/lib/on-device/wake-lock.ts",
+      "destination": "components/production-lab/editor/lib/on-device/wake-lock.ts",
+      "sourceSha256": "fc9fe7fe4ce80b72a200e702dab30ab7a1ffe3d55ed86db44519a745fb5671a7",
+      "snapshotSha256": "fc9fe7fe4ce80b72a200e702dab30ab7a1ffe3d55ed86db44519a745fb5671a7"
+    },
+    {
+      "source": "prod/src/lib/product-analysis.ts",
+      "destination": "components/production-lab/editor/lib/product-analysis.ts",
+      "sourceSha256": "e6251f235510a85b82bd1ca749069a535f9d05728aa151a9843b424eae1d6f4b",
+      "snapshotSha256": "e6251f235510a85b82bd1ca749069a535f9d05728aa151a9843b424eae1d6f4b"
+    },
+    {
+      "source": "prod/src/lib/project-store.ts",
+      "destination": "components/production-lab/editor/lib/project-store.ts",
+      "sourceSha256": "70cf0a7b443e940b375af306579efa34881de3da0928af8b010b658450b310d9",
+      "snapshotSha256": "a459e37f54d7ef01b23476aa7ac16f6219361fe422a2b4f2989d2c3028069edb"
+    },
+    {
+      "source": "prod/src/lib/runtime-assets.ts",
+      "destination": "components/production-lab/editor/lib/runtime-assets.ts",
+      "sourceSha256": "1af991c39c1ff9decd499b8abcbac430c5aac6afaed78b9b4dbccac60380b2c9",
+      "snapshotSha256": "32ebf2c47e82830cf7ae026d61fbf5c9a1d9006361be8773ff4cd120ef85d85b"
+    },
+    {
+      "source": "prod/src/lib/score-overlay.ts",
+      "destination": "components/production-lab/editor/lib/score-overlay.ts",
+      "sourceSha256": "89fac8cb19fb7a1977f02bcbc0f69832d76f9e92916a4dc125b17c7ecfc26481",
+      "snapshotSha256": "89fac8cb19fb7a1977f02bcbc0f69832d76f9e92916a4dc125b17c7ecfc26481"
+    },
+    {
+      "source": "prod/src/lib/score-tracking-inference.ts",
+      "destination": "components/production-lab/editor/lib/score-tracking-inference.ts",
+      "sourceSha256": "e09cc10b222949f44397e4c224829f36fcc900f713669829d279015dc2e54389",
+      "snapshotSha256": "e09cc10b222949f44397e4c224829f36fcc900f713669829d279015dc2e54389"
+    },
+    {
+      "source": "prod/src/lib/score-tracking.ts",
+      "destination": "components/production-lab/editor/lib/score-tracking.ts",
+      "sourceSha256": "725146ef15649d8b9e195458a0ef06eac3e9a3533add81019ff7d6ffbfbf4c9b",
+      "snapshotSha256": "725146ef15649d8b9e195458a0ef06eac3e9a3533add81019ff7d6ffbfbf4c9b"
+    },
+    {
+      "source": "prod/src/lib/score-visibility-preference.ts",
+      "destination": "components/production-lab/editor/lib/score-visibility-preference.ts",
+      "sourceSha256": "ab2f03269ed921b7905de9cae41d578014d3f9690611b63c0f51b457737e35b8",
+      "snapshotSha256": "ba3ab47ec97ea2349c9bbfc808385b6839f9d65b2eda28067d38f8da72a63d70"
+    },
+    {
+      "source": "prod/src/lib/scroll-container.ts",
+      "destination": "components/production-lab/editor/lib/scroll-container.ts",
+      "sourceSha256": "1f946be44ef627bdca45d40fc0e9dd22679ce2ddef152057a70f4a049e449698",
+      "snapshotSha256": "1f946be44ef627bdca45d40fc0e9dd22679ce2ddef152057a70f4a049e449698"
+    },
+    {
+      "source": "prod/src/lib/youtube-chapters.ts",
+      "destination": "components/production-lab/editor/lib/youtube-chapters.ts",
+      "sourceSha256": "c0d980acbdefa9098f038768e2a91aefc66aa3bc929fdf0acd33e3dcd8274b42",
+      "snapshotSha256": "c0d980acbdefa9098f038768e2a91aefc66aa3bc929fdf0acd33e3dcd8274b42"
+    }
+  ]
+}

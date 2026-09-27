@@ -21,9 +21,30 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 final class AnalysisEngine {
     private final Context context;
+    interface RallyOverride {
+        default boolean supportsEnsembleSuppression() { return true; }
+        default SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
+                AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window,
+                int sourceFrameLimit, java.util.function.BooleanSupplier cancelled) throws IOException {
+            return null;
+        }
+        List<AnalysisTypes.Interval> run(Uri uri, AnalysisTypes.Roi roi, double[] times,
+                float[] contextual, double duration, Map<String, Double> profile) throws IOException;
+        default List<AnalysisTypes.Interval> run(Uri uri, AnalysisTypes.Roi roi, double[] times,
+                float[] contextual, double duration, Map<String, Double> profile,
+                AnalysisTypes.ProgressListener progress) throws IOException {
+            return run(uri, roi, times, contextual, duration, profile);
+        }
+    }
+    private final RallyOverride rallyOverride;
 
     AnalysisEngine(Context context) {
+        this(context, null);
+    }
+
+    AnalysisEngine(Context context, RallyOverride rallyOverride) {
         this.context = context.getApplicationContext();
+        this.rallyOverride = rallyOverride;
     }
 
     AnalysisTypes.AnalysisResult analyze(
@@ -157,6 +178,7 @@ final class AnalysisEngine {
         LinkedHashMap<String, Double> profile = new LinkedHashMap<>();
 
         long stage = System.nanoTime();
+        progress.onProgress("opening", 0, "Opening the video and checking saved analysis");
         String displayName = displayName(uri);
         AnalysisTypes.MediaInfo media = probe(uri);
         AnalysisTypes.Roi roi = fullFrame
@@ -177,10 +199,7 @@ final class AnalysisEngine {
                 requestedTimes.length, analysisWindow, cacheMode
         );
         timings.put("open", elapsedMs(stage));
-        progress.onProgress("opening", 1, String.format(Locale.US,
-                "%s · %dx%d · %.1f min · %s",
-                media.videoMime(), media.width(), media.height(), media.durationSeconds() / 60, roi.label()
-        ));
+        progress.onProgress("opening", 1, "Checking saved video features before scanning frames");
 
         stage = System.nanoTime();
         long cacheReadStarted = System.nanoTime();
@@ -218,10 +237,14 @@ final class AnalysisEngine {
                         cachedVisual.rows()
                 ));
             }
-            try {
+            progress.onProgress("video-preparing", 0,
+                    "Preparing image analysis. Frame scanning starts after setup.");
+            try (SharedVideoFrameConsumer shared = rallyOverride != null && cachedVisual.rows() == 0
+                    ? rallyOverride.prepareSharedVideo(media, roi, analysisWindow,
+                            sourceFrameLimit, cancelled::get) : null) {
                 video = new NativeVideoDecoder(context).decode(
                         uri, media, roi, requestedTimes, sourceFrameLimit, decoderOptions,
-                        cachedVisual, visualWriter, progress, cancelled::get
+                        cachedVisual, visualWriter, progress, cancelled::get, shared
                 );
                 visualWriter.finish(video);
             } catch (IOException | RuntimeException error) {
@@ -403,6 +426,16 @@ final class AnalysisEngine {
                     allLabelsRaw, previousRaw
             );
             profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
+            if (rallyOverride != null) {
+                // Production signals remain available to the frozen score specialists.
+                // The override alone determines the selected rally boundaries.
+                progress.onProgress("inference", .65, "Running the selected neural rally model");
+                ranges = clipIntervals(rallyOverride.run(uri, roi, times, contextual, analyzedDurationSeconds, profile, progress),
+                        analysisWindow.start(), analyzedDurationSeconds);
+                // The legacy cleanup suggestions address ensemble regions. They
+                // must never suppress a different model's independently decoded rallies.
+                if (!rallyOverride.supportsEnsembleSuppression()) suppression = null;
+            }
             operation = System.nanoTime();
             if (includeServingSide) {
                 try {
@@ -660,25 +693,9 @@ final class AnalysisEngine {
     }
 
     static AnalysisTypes.Roi inferRoi(String filename) {
-        record Known(String needle, double x, double y, double width, double height, String label) {}
-        List<Known> profiles = List.of(
-                new Known("beach-source-02", .02, .12, .96, .86, "Known beach camera"),
-                new Known("beach-source-01", .02, .12, .96, .86, "Known beach camera"),
-                new Known("Dm", .02, .22, .96, .76, "Known grass camera"),
-                new Known("GYU", .02, .18, .96, .80, "Known grass camera"),
-                new Known("qpd", .02, .18, .96, .80, "Known grass camera"),
-                new Known("rSs", .02, .22, .96, .76, "Known grass camera"),
-                new Known("9lc", .04, .14, .92, .84, "Known indoor camera"),
-                new Known("indoor-source-07", .04, .14, .92, .84, "Known indoor camera"),
-                new Known("tds", .03, .12, .94, .86, "Known indoor camera")
-        );
-        for (Known profile : profiles) {
-            if (filename.contains(profile.needle)) {
-                return new AnalysisTypes.Roi(profile.x, profile.y, profile.width, profile.height,
-                        profile.label + " · " + profile.needle);
-            }
-        }
-        return new AnalysisTypes.Roi(.03, .12, .94, .86, "Indoor camera default");
+        // New analysis uses the same full-frame input as the production web app.
+        // A recording's name must never change which players or ball pixels we retain.
+        return new AnalysisTypes.Roi(0, 0, 1, 1, "Full frame");
     }
 
     private static long elapsedMs(long startedNanos) {

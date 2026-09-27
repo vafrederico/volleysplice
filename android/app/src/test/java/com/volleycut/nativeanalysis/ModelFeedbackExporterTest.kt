@@ -1,6 +1,7 @@
 package com.volleycut.nativeanalysis
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -11,6 +12,59 @@ import java.time.Instant
 import java.util.Base64
 
 class ModelFeedbackExporterTest {
+    @Test
+    fun eachRallyModelKeepsItsIdentityThroughExportAndImport() {
+        for (model in RallyModels.OPTIONS) {
+            val original = project().let { value -> value.copy(
+                modelId = model,
+                neuralScores = if (RallyModels.isNeural(model)) NeuralRallyScores(model,
+                    doubleArrayOf(2.0, 2.25), floatArrayOf(.1f, .2f, .3f, .4f, .5f, .6f, .7f, .8f)) else null,
+                ranges = value.ranges.map { it.copy(agreement = if (RallyModels.isNeural(model)) "neural" else it.agreement) },
+            ) }
+            val draft = EditorDraft(sourceRevision = "fixture", updatedAtMs = original.updatedAtMs, cuts = emptyList())
+            val bundle = ModelFeedbackExporter.createBundle(original, draft, emptyList(), null, null)
+            val inference = bundle.getJSONObject("initialInference")
+            assertEquals(model, inference.getString("modelId"))
+            assertEquals(RallyModels.label(model), inference.getString("modelLabel"))
+            assertEquals(if (RallyModels.isNeural(model)) "score-support" else "rally-and-score",
+                inference.getString("componentsRole"))
+            assertEquals(FeatureSchema.ALL_LABELS_V2_MODEL_ID,
+                inference.getJSONObject("probabilityModelIds").getString("rally"))
+            val imported = ModelFeedbackImporter.parse(bundle.toString(), 1_786_752_001_000)
+            assertEquals(model, imported.project.modelId)
+            assertEquals(ProjectStatus.READY, imported.project.status)
+            assertEquals(original.ranges, imported.project.ranges)
+            if (original.neuralScores != null) {
+                // Preserve the four original heads even without an AV cache or source video.
+                val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(imported.project)))
+                val scores = requireNotNull(restored.neuralScores)
+                assertArrayEquals(original.neuralScores.timestamps, scores.timestamps, 0.0)
+                assertArrayEquals(original.neuralScores.probabilities, scores.probabilities, 0f)
+                val again = ModelFeedbackExporter.createBundle(restored, draft, emptyList(), null, null)
+                assertEquals(inference.getJSONObject("neuralScores").toString(),
+                    again.getJSONObject("initialInference").getJSONObject("neuralScores").toString())
+                assertFalse(again.toString().contains("embeddings"))
+            } else assertTrue(inference.isNull("neuralScores"))
+        }
+    }
+
+    @Test
+    fun neuralScoreImportRejectsWrongIdentityShapeTimelineAndProbability() {
+        val scores = NeuralRallyScores(RallyModels.F1, doubleArrayOf(2.0, 2.25),
+            floatArrayOf(.1f, .2f, .3f, .4f, .5f, .6f, .7f, .8f))
+        val invalid = listOf(
+            scores.encode().put("modelId", RallyModels.RECALL),
+            scores.encode().apply { getJSONObject("probabilities").put("shape", org.json.JSONArray(listOf(4, 2))) },
+            scores.encode().put("timestamps", ModelFeedbackExporter.encode(doubleArrayOf(2.25, 2.0), intArrayOf(2))),
+            scores.encode().put("probabilities", ModelFeedbackExporter.encode(FloatArray(8) { 1.1f }, intArrayOf(2, 4))),
+        )
+        for (json in invalid) {
+            org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                NeuralRallyScores.decode(json, RallyModels.F1, 2.0, 28.0)
+            }
+        }
+    }
+
     @Test
     fun bundlePreservesInferenceAndClassifiesCorrectionsWithoutVideo() {
         val project = project()

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "file": "TorchVision-0.26.0-BSD-3-Clause.txt",
+      "source": "https://raw.githubusercontent.com/pytorch/vision/v0.26.0/LICENSE",
+      "sizeBytes": 1517,
+      "sha256": "6502f676851cfe25f8af75531dfb32375b7325b73c37e7b43741fa422893e71d"
+    },
+    {
+      "file": "DINOv2-Apache-2.0.txt",
+      "source": "https://raw.githubusercontent.com/facebookresearch/dinov2/7764ea0f912e53c92e82eb78a2a1631e92725fc8/LICENSE",
+      "sizeBytes": 11359,
+      "sha256": "600cc67cc4cb2f5ea317dcfc687ad1c74dc4bec8782bbe9db0afd83513b935b7"
+    },
+    {
+      "file": "ONNX-Runtime-1.22.0-MIT.txt",
+      "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.22.0/LICENSE",
+      "sizeBytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "file": "ONNX-Runtime-1.30.0-MIT.txt",
+      "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.30.0/LICENSE",
+      "sizeBytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "file": "ONNX-Runtime-1.22.0-ThirdPartyNotices.txt",
+      "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.22.0/ThirdPartyNotices.txt",
+      "sizeBytes": 326866,
+      "sha256": "e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc"
+    },
+    {
+      "file": "ONNX-Runtime-1.30.0-ThirdPartyNotices.txt",
+      "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.30.0/ThirdPartyNotices.txt",
+      "sizeBytes": 338088,
+      "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ research status live in [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md); inference 
 decoders, and ensemble behavior live in
 [`MODEL_ARCHITECTURE.md`](MODEL_ARCHITECTURE.md).
 
-This inventory was reconstructed from the checked-in production bundles, named NAS
+This inventory was reconstructed from the checked-in production bundles, private
 artifacts, artifact metadata, manifests, and research reports. A field marked “not
 recorded” is deliberately unknown; do not infer missing lineage from a version number.
 
@@ -73,6 +73,10 @@ a model study.
 | `V5-RALLY-PARITY2` | 2 | Diagnostic per-rally V5 orientation coordinate and quality; no learned head, production feature signature, or promotion |
 | `CONTINUITY1` | 1 | Recording-robust-normalized V5 `playerSwapMargin`; strong same-side tail veto over current-winner proposals |
 | `RAW-VLM` | n/a | Raw video windows and text targets; no handcrafted feature matrix |
+| `NEURAL-AV104` | 104 per 4 Hz tick | Fold-standardized base audiovisual stream; no five-offset F104 production expansion |
+| `NEURAL-DINO` | 104 AV + 10×384 visual tokens per tick | Frozen DINOv2 representation plus learned temporal projection; encoder precision is part of the artifact identity |
+| `NEURAL-MOBILE` | 104 AV + 4×576 visual values + 8 quality values per tick | Frozen or distilled MobileNetV3-Small regional representation aligned from 2 Hz to 4 Hz |
+| `NEURAL-MOBILE-LARGE` | 104 AV + 4×960 visual values + 8 quality values per tick | Frozen or DINO-distilled MobileNetV3-Large regional representation aligned from 2 Hz to 4 Hz; encoder identity belongs to each matched artifact; selected distilled variants are integrated on this branch |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
 the authoritative signature.
@@ -83,6 +87,43 @@ copies that authoritative 34-name order and binds the source model/feature hashe
 an implementation specification, not a production model registration.
 
 ## Current production system
+
+### Distilled Large application integration on this branch
+
+The normal production web and Android apps now expose the two already-frozen
+Distilled Large selections. The default is `distilled-large-f1-v1`, labeled
+**Balanced · BETA**. `distilled-large-recall-v1` is **Maximum coverage · BETA**,
+and the existing ensemble is **Legacy model**. Each analysis runs only the
+selected variant; the paired execution experiment has been retired.
+Existing completed projects retain their model provenance. This registers
+application packaging of the existing fits, not a new fit, recalibration,
+selection, deployment, or physical-device qualification of the final app.
+
+| Runtime model | Original selection | Feature signature | Fit / selection sources | Change and disposition |
+| --- | --- | --- | --- | --- |
+| `distilled-large-recall-v1` | `expanded-large`, draw 3407, TCN epoch 15, target-99 calibration | `NEURAL-MOBILE-LARGE`, FP32 encoder/TCN; native FP32 tokens, browser FP16-rounded tokens | Unchanged indexed membership and label hashes from `distilled-mobile-large-v1`, ledger `private-reference-0222`; common exact-label panel selects recall | Explicit Maximum coverage choice; previously the normal-app default. No new training or evaluation-based threshold change. |
+| `distilled-large-f1-v1` | `expanded-large`, draw 20260918, TCN epoch 60, target-99 calibration | Same dimensions, distinct encoder, temporal weights, normalizer, and decoder | Same study, with this draw's distinct indexed fit/calibration membership; common exact-label panel selects `F1_padP_coreR` | Default Balanced choice at user request; switching invalidates incompatible embeddings and retains separate project results. No new fit or calibration. |
+
+Exact graph/config hashes and byte counts are pinned in
+[Android](models/distilled-large/android-manifest.json) and
+[web](models/distilled-large/web-manifest.json) manifests. Web uses the independently
+qualified portable regional-pooling export; native preserves the original ONNX
+export. The [bundle contract](models/distilled-large/README.md) identifies every
+runtime component and generation rule. Existing serving-side and side-switch
+models retain their weights and run against the selected neural rally boundaries;
+the existing serve/state outputs still provide their evidence. The original
+ensemble remains selectable with its original suppression behavior.
+
+The reported selection-panel metrics below remain selection metrics. Known poor
+beach results and the distinction between retained-core recall and wholly missed
+events remain limitations; target 99% does not promise new-video recall. See the
+[latest physical-phone shared-decoding result](docs/research/pixel-shared-video-decoding.md)
+and [browser qualification](docs/research/distilled-large-browser-experiment.md)
+for the preceding benchmark evidence, rather than treating model packaging as a
+new performance result. The [integration report](docs/research/distilled-large-production-integration.md)
+records checks of the normal app pipelines and matched-model switching.
+
+### Existing ensemble and specialist artifacts
 
 Production browser assets are under `prod/public/runtime/`. The F104 rally and
 suppression artifacts have corresponding Android assets under
@@ -101,9 +142,9 @@ Android production feature until the remaining physical-device parity gates pass
 
 ### Earliest excerpt models
 
-Artifact roots are `/mnt/freenas/volleycut/v0-2026-08-09/models/` and the corresponding
-no-beach sensitivity root
-`/mnt/freenas/volleycut/v0-2026-08-09-no-beach-2026-08-12/models/`.
+The early excerpt artifacts and their no-beach sensitivity refits are separate
+private runs under ledger root `private-reference-0105`. The artifact name and
+fit set distinguish them.
 
 | Artifact | Target/features | Fit; selection | Compared with and change | Disposition |
 | --- | --- | --- | --- | --- |
@@ -115,7 +156,7 @@ no-beach sensitivity root
 ### Full-gold artifact family
 
 Unless a row overrides it, these artifacts live under
-`/mnt/freenas/volleycut/labeling-v1-2026-08-09/models/`, fit on `GOLD-T6`, and use
+`private-reference-0102`, fit on `GOLD-T6`, and use
 `GOLD-V2` only for development selection. “Same learned weights” means a separately
 named artifact was metadata/re-export/finalization, not another fit.
 
@@ -266,6 +307,16 @@ The hybrid serving decision is evaluated after the side score:
    `production-rally-recovery` and require review.
 3. Otherwise emit `not-serve` with source `none`.
 
+The Android and production web neural paths add `neural-rally-recovery` after
+this legacy gate: every independently decoded neural rally receives a serve
+marker. When neither legacy serve head confirms its start, the marker requires
+review and retains the predicted near/far side and both heads' evidence. It is
+not a confirmed serve or a guaranteed accurate contact timestamp. Saved neural
+`not-serve` results are upgraded using their existing predictions without video
+reprocessing; manual corrections and removed markers remain respected. Legacy
+ensemble decisions and the frozen side classifier are unchanged. The historical
+metrics below describe the legacy gate, not this neural recovery policy.
+
 On the current corrected-label 1,114-row results universe, the hybrid gate has
 99.6324% serve precision and 98.0108% serve recall. It reduces missed serves from 56
 to 22, recovers 35 rows (34 true serves and one false serve), and the side model is
@@ -273,17 +324,18 @@ correct on 30/34 recovered true serves. These are post-hoc assisted all-video re
 including a historically opened protected recording; they establish the selected
 product behavior but are not clean held-out evidence for future model selection.
 
-Authoritative artifacts are immutable NAS JSON documents:
+Authoritative artifacts are immutable private JSON documents. The ledger root below,
+role, and SHA-256 identify each artifact without publishing its filename:
 
-| Role | Path | SHA-256 |
+| Role | Ledger root | SHA-256 |
 | --- | --- | --- |
-| Development feature bank | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v3/development.json` | `c4ddf9f94bec00ba0fa62f8267dc166fdeeb6f9419180acad2e7eadf4910af7d` |
-| Fitted model, 237 names/parameters, selection, and development predictions | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-development.json` | `c867e8a2a141a5231fb1ceb5a0ba289457ac353fab6a9115dc672b84046f2414` |
-| Frozen calibration/review policy | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-calibration-abstention-development.json` | `68e6429e104f1cd76464eb2c786ceebc88406301b6743d6e1236d26227393c77` |
-| All-video development/unprotected features | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v4/all-reviewed-inference.json` | `8bdf003a2fbb1295609e6051e14767614c4915006fcb2cfcac764d25bfdcb895` |
-| Post-selection protected features | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-flight-v4/protected-test.json` | `58fdb6b0aa7c57fc77ec4393334daf1637f5175b8d11b86e5b6c7e417308ce2e` |
-| Hybrid gate evidence | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/features/serving-side-serve-gate-v2/all-reviewed.json` | `9ac4071f125030b0a8f1de037e48aa48b73f30f71fa6df8a302b70ed2db5344f` |
-| Composed all-video inference consumed by the UI | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/serving-side/serving-side-flight-v3-hybrid-serve-gate-all-video-inference-v2.json` | `a7135cd509df3b0063e4634c99d314afb06d1df5552e292b5c17339a1671e722` |
+| Development feature bank | `private-reference-0102` | `c4ddf9f94bec00ba0fa62f8267dc166fdeeb6f9419180acad2e7eadf4910af7d` |
+| Fitted model, 237 names/parameters, selection, and development predictions | `private-reference-0102` | `c867e8a2a141a5231fb1ceb5a0ba289457ac353fab6a9115dc672b84046f2414` |
+| Frozen calibration/review policy | `private-reference-0102` | `68e6429e104f1cd76464eb2c786ceebc88406301b6743d6e1236d26227393c77` |
+| All-video development/unprotected features | `private-reference-0102` | `8bdf003a2fbb1295609e6051e14767614c4915006fcb2cfcac764d25bfdcb895` |
+| Post-selection protected features | `private-reference-0102` | `58fdb6b0aa7c57fc77ec4393334daf1637f5175b8d11b86e5b6c7e417308ce2e` |
+| Hybrid gate evidence | `private-reference-0102` | `9ac4071f125030b0a8f1de037e48aa48b73f30f71fa6df8a302b70ed2db5344f` |
+| Composed all-video inference consumed by the UI | `private-reference-0102` | `a7135cd509df3b0063e4634c99d314afb06d1df5552e292b5c17339a1671e722` |
 
 The hybrid gate fingerprint is
 `21395cc10390eefd14e120b3d7078191ddc9bb7ba1b6852fa4471658a7ff7af0`.
@@ -302,7 +354,7 @@ its stable deployable fingerprint is
 and its feature artifact SHA-256 is
 `8cad75f8800ca84544751980420ccd6bdf7ddac0ab61f0450eb6c5dcf1a6f321`.
 The immutable provenance artifact at
-`/mnt/freenas/volleycut/labeling-v1-2026-08-09/reports/side-switch/side-switch-v2-provenance.json`
+`private-reference-0102`
 has SHA-256
 `3b97b66745b9cddf236448022dc49f33565809fb28a53af6d1cc3452b712caa4`
 and records every source video's full-file SHA-256, sampled fingerprint, feedback hash,
@@ -418,8 +470,7 @@ decision does not authorize production promotion. See
 
 ### No-beach full-gold refits
 
-The no-beach root is
-`/mnt/freenas/volleycut/labeling-v1-2026-08-09-no-beach-2026-08-12/models/`.
+The no-beach artifacts are under private ledger root `private-reference-0102`.
 Every artifact below is a distinct fresh refit, not a pointer to the same-named
 full-gold weights. The common change was to compare with the corresponding full-gold
 artifact after removing both beach sources from fitting: fit `GOLD-NB-T4`, selection
@@ -436,7 +487,7 @@ full-gold table, except that even same-named final exports belong to this no-bea
 
 ### Environment-specialist refits
 
-These bundles are under `/mnt/freenas/volleycut/intake-2026-08-13/experiments/`.
+These bundles are under `private-reference-0105`.
 Each bundle contains separately fitted rally, serve, and dead-state heads using F104.
 
 | Bundle/head set | Fit sources | Compared with and change | Disposition |
@@ -470,6 +521,247 @@ corrected labels, not development-only metrics.
 | `qwen3vl2b-unsloth-wsl-v1/seed-1729` | Qwen3-VL-2B LoRA adapter over 32-second raw-video windows; fit `GOLD-T6`, select/validate `GOLD-V2`; dataset also contains evaluation-only `GOLD-TEST1` | First recorded raw-video VLM training run in this family; no handcrafted F42/F90/F104 inputs. | Research only; checkpoint/adapter retained, not production. |
 | `qwen3vl2b-unsloth-wsl-v1/seed-3407` | Same data, split roles, and RAW-VLM input contract | Matched second-seed comparison with seed 1729; changed random seed only. | Research reproducibility run; not production. |
 
+### Current neural rally research and editor-lab selection
+
+The following are research model families and study-level registrations. Fold-local
+checkpoints, exact split roles, label revisions, seed/epoch/decoder selections, source
+and artifact hashes, and immutable audit results are bound by the linked study records
+and indexed private artifacts. Resolve private locations through the external ledger
+described in [`private-research-ledger.md`](docs/research/private-research-ledger.md).
+None of these options replaces the shipped F104 production rally bundles.
+
+| Family | Inputs and learned model | Compared with; result and disposition |
+| --- | --- | --- |
+| DINO-TCN | `NEURAL-DINO`; frozen DINOv2 ViT-S/14 image encoder and learned temporal projection/TCN | Compared with AV104 TCN in source-held development. Later recall operating points and expanded-corpus draws are research and editor-lab options, not production promotion. See [development](docs/research/neural-development-execution-2026-09-18.md), [strict-99 selection](docs/research/neural-recall-operating-point-results-2026-09-23.md), and [UI choices](docs/research/neural-comparison-ui-2026-09-24.md). |
+| Mobile-TCN | `NEURAL-MOBILE`; frozen ImageNet MobileNetV3-Small encoder and learned regional projection/TCN | Compared with the matched AV104 TCN. The original recognition study improved precision but reduced retained play; later expanded-corpus draws are separate editor-lab choices. See [recognition results](docs/research/neural-recognition-results-2026-09-22.md) and [UI choices](docs/research/neural-comparison-ui-2026-09-24.md). |
+| Distilled Mobile-TCN | Same `NEURAL-MOBILE` inference signature; fit the MobileNetV3-Small feature trunk with a frozen DINO teacher, then fit a temporal head | Compared with frozen Mobile-TCN. The only complete strict-99 matched seed gained retained core time but exported substantially more incorrect footage and lowered primary F1. Retained for research and UI comparison; no replacement claim. See [results](docs/research/distilled-mobile-results-2026-09-23.md) and [qualification](docs/research/distilled-mobile-qualification-2026-09-23.md). |
+| DINO-transformer FP32 / mixed INT8 | `NEURAL-DINO`; learned local-attention temporal head, with separately registered encoder precisions | Compared with matched DINO-TCN. The original attention recipe regressed; later expanded-corpus FP32 and mixed-INT8 choices remain editor-lab experiments. Mixed INT8 changes encoder embeddings while the temporal head stays FP32; the tested INT8 graph failed desktop browser numerical parity. See [recognition results](docs/research/neural-recognition-results-2026-09-22.md), [precision results](docs/research/dino-precision-results-2026-09-23.md), and [UI choices](docs/research/neural-comparison-ui-2026-09-24.md). |
+| Frozen MobileNetV3-Large substitution | `NEURAL-MOBILE-LARGE`; learned FP32 TCN on frozen `MobileNet_V3_Large_Weights.IMAGENET1K_V1` features | Completed 24 matched randomized/export-proxy split fits and calibration at only 98% and 99%, compared with Small under the same selection policy. Both selected target-99% options use `original-medium`: F1 draw 20260918 / epoch 30 and recall draw 3407 / epoch 15; both have training seed 3407. Predictions and signals for both options are published for all 42 recordings in the comparison UIs. Retained research, not production. Ledger `private-reference-0211` binds the plan, split/label/artifact hashes, evaluation, selection report, and publication receipt. See [`experiment-mobile-large.py`](scripts/experiment-mobile-large.py) and [`report-mobile-large.py`](scripts/report-mobile-large.py). |
+
+The DINO-distilled Large study is registered as `distilled-mobile-large-v1` in
+ledger `private-reference-0222`. It compares a learned Large encoder with the
+frozen Large study above using the same 24 split configurations, including export
+proxies. The training-only DINO projection has 384 outputs; inference keeps the
+`NEURAL-MOBILE-LARGE` signature and the FP32 four-head TCN. Each student's frames,
+TCN labels and scaler are confined to its registered training sources. Separate
+calibration sources select checkpoints/decoders; the common exact-label panel
+selects the two UI choices. Beach is inference/evaluation only. The immutable
+plan binds ordered inputs, source/label/code hashes, split draws, training seed
+3407 and eight student epochs. All 24 fits are complete, with 15 feasible at the
+strict 99% calibration bar. Both distinct selected models use `expanded-large`:
+the F1 choice is draw 20260918 / epoch 60, and the recall choice is draw 3407 /
+epoch 15. On the one-recording common exact-label selection panel, their
+`P_pad / R_core / F1_padP_coreR` values are respectively
+97.76% / 97.68% / 97.72% and 70.88% / 100.00% / 82.96%, with one versus zero
+wholly missed human rallies. These selected-panel results are not an independent
+test; the two choices use different decoders as well as different weights.
+
+Both options and their four signals are published and browser-validated in
+labelv2 and editor lab for all 44 videos, including two beach recordings.
+Thirty-six videos have eligible scoring labels; eight have predictions/counts
+only. Exact labels, reviewed drafts and reviewed export coverage are reported
+separately, with production-training exclusions and all four padding cases.
+Beach remains unqualified: retained-core recall is 7.63% for the F1 choice and
+78.01% for the recall choice, with 62 versus 16 wholly missed rallies. DINO and
+the distillation projector are absent at inference. The original study was a
+research publication; the subsequent application integration is registered above.
+It does not qualify these beach results or a new released mobile deployment. See the
+[experiment](docs/research/distilled-mobile-large-experiment.md) and
+[completed results](docs/research/distilled-mobile-large-results.md).
+
+The two selected distilled Large models' initial native FP32 CPU measurements were
+made on the Pixel 10 Pro, bound by ledger `private-reference-0223`. For the same two-minute
+excerpt, median all-analysis time is 67.272s for highest F1 and 69.669s for highest
+recall, versus 70.431s for frozen Large and 43.142s for production. Single full-video
+observations are 604.768s / 602.463s until rallies are ready and 712.924s / 734.295s
+including serving-side and side-switch features and predictions. The encoder
+architecture is unchanged by distillation; differing rally boundaries affect
+specialist work, so lower total time does not establish a faster encoder.
+Both ONNX exports and all saved native temporal/decoder replays passed. In that
+initial pipeline, native input parity was unresolved: on the same 37-rally gold snapshot, the two native
+choices wholly miss six / two rallies, versus one / zero using desktop features.
+Their native `P_pad / R_core / F1_padP_coreR` values are 90.69% / 86.35% / 88.46%
+and 87.66% / 93.84% / 90.65%. Frozen-input substitutions isolate most of the F1
+choice's loss to AV104, especially audio; this is diagnostic evidence, not a
+deployed fix. The [native benchmark](docs/research/distilled-mobile-large-native-benchmark.md)
+records graph/checkpoint identities, all four padding cases, storage and timing
+breakdowns, exposure checks and limitations. This does not qualify a production
+native release.
+
+The [highest-recall audio-only follow-up](docs/research/distilled-mobile-large-recall-audio-check.md)
+also reduces wholly missed rallies from two to zero by substituting desktop audio
+values while preserving every other native input and the frozen model/decoder.
+Its `P_pad / R_core / F1_padP_coreR` is 92.29% / 98.75% / 95.41%; one recovered
+rally still loses its last 1.62s. This saved-input diagnostic strengthens the audio
+parity finding without qualifying a deployed fix or complete desktop equivalence.
+
+The [audio root-cause investigation](docs/research/android-audio-timeline-root-cause.md)
+subsequently localizes the dominant mismatch to shared Android batched decoding:
+an irregular first packet timestamp gap is latched as the permanent PCM unit
+size, compressing the audio timeline and discarding overlaps. Exact Java
+reproduction and saved-phone timing signatures agree. This affects production
+and neural inputs on the affected decode path. The model weights need no change
+to address this defect. The [shared app repair](docs/research/android-web-audio-fix.md)
+corrects framing and startup noise-floor features and invalidates affected caches.
+The report distinguishes corrected audio validation from the historical complete
+pipeline benchmarks and remaining production accuracy/timing qualification.
+
+The subsequent [visual repair](docs/research/android-visual-feature-repair.md)
+restored the expected wholly missed counts on the same full recording: one for
+highest F1 and zero for highest recall. The frozen native temporal/decoder replay
+passes; this does not establish pixel-for-pixel desktop equivalence. The exact
+area-resize repair also caused a measured preprocessing regression. The shared
+app/benchmark [native area kernel](docs/research/android-native-area-optimization.md)
+preserves its pixels and inference outputs while reducing two-minute emulator
+all-results latency from 339.33s to 278.93s. Those are controlled emulator results;
+the optimized physical-phone runtime has not been measured. Model weights,
+selected seeds, calibration targets and decoders are unchanged.
+
+The [full optimized emulator validation](docs/research/android-native-area-full-video.md)
+completed recording-044 in 2,458.964s including both score specialists, with
+rallies ready at 2,100.003s. The unchanged highest-recall model produced 37
+intervals and wholly missed zero of the 37 saved human rallies. Its
+`P_pad / R_core / F1_padP_coreR` is 87.90% / 99.26% / 93.23%, with the same
+boundaries as the saved repaired Pixel output. This is a runtime validation on
+the fixed gold snapshot, not a new model-selection or generalization result.
+
+A separate [production-only full-video emulator comparison](docs/research/production-emulator-full-comparison.md)
+runs no neural encoder or TCN. All-ready time is 1,510.506s with original point
+sampling, 2,083.872s with repaired Java area, and 1,572.423s with optimized native
+area. Java/native production rallies and both score outputs match exactly;
+packaged model assets are identical across the three controls. This isolates a
+preprocessing implementation comparison with corrected audio held fixed, not
+a model or calibration change. Each version has one full-video timing observation.
+
+The opt-in shared AV/MobileNet decoder experiment uses the same frozen
+highest-recall Distilled Large selection, regional pooling, FP32 tensors,
+normalization and rally decoder. Its two-minute same-APK comparison preserves
+prepared pixel hashes, embeddings, fused features, probabilities, rally
+boundaries/confidences, production proposals and both score-specialist outputs
+exactly. It changes video scheduling rather than model calibration or training;
+the encoder/TCN remain in the experimental pipeline source set. The app decoder's
+shared-consumer hook introduces no neural weights into the normal production app.
+See the [experiment runner](scripts/benchmark-shared-video-decoding.py) and
+[strict output comparison](scripts/validate-shared-video-decoding.py).
+Its [completed full-video qualification](docs/research/android-shared-video-decoding.md)
+retains 37 predicted rallies, zero wholly missed saved human rallies, and unchanged
+87.90% / 99.26% / 93.23% `P_pad / R_core / F1_padP_coreR` at 2s padding. All saved
+embeddings, fused features, probabilities and specialist outputs are exact matches;
+the emulator's all-results time is 1,448.682s versus the earlier 2,458.964s reference.
+
+The [optimized physical Pixel run](docs/research/pixel-shared-video-decoding.md)
+qualifies this same highest-recall FP32 checkpoint without changing weights or
+calibration. Two-minute and full-video all-results times are 62.119s and 643.055s;
+the full recording has rallies ready at 449.292s, 37 predicted rallies and zero
+wholly missed saved human rallies. All saved tensors and decisions match the
+earlier corrected Pixel output exactly; independent temporal replay passes.
+The phone was wirelessly charging under light thermal status. Earlier Pixel
+timings use different preprocessing/scheduling and unmatched device conditions;
+their entire difference cannot be attributed to decode sharing alone.
+
+The [actual-video browser experiment](docs/research/distilled-large-browser-experiment.md)
+uses the same two frozen FP32 selections, with real image encoding, AV/audio
+features, temporal decoding and both production score specialists. The pinned
+ONNX Runtime Web 1.22.0 WebGPU implementation fails the original regional-pooling
+Einsum contract. A separately qualified Reshape/Transpose/MatMul export changes
+only that operation and preserves every trained initializer, temporal head,
+scaler and decoder. This is an export portability repair, not a new checkpoint
+or precision. Original WASM graphs remain valid. Browser preprocessing follows
+training's uint8 letterbox and FP16 token-cache rounding; the two selected
+distilled encoders have different weights and cannot share image embeddings.
+The experiment remains outside the shipped browser upload flow and does not
+establish physical mobile-browser speed or peak-memory suitability.
+
+The comparison UIs select one runnable draw per family/precision on the
+`common-unseen / exact-rallies / all` development panel at the declared symmetric
+two-second padding. They require a 99% inner calibration target, falling back to
+98% only when no draw qualifies. The new distilled Large study is strict-99 only
+and does not use this fallback. The F1 choice maximizes `F1_padP_coreR`; the recall
+choice keeps that variant fixed and maximizes eligible draw recall, breaking ties by
+F1. These are calibration targets and selected-panel results, not measured recall
+guarantees on new recordings. The panel now serves selection and cannot be treated
+as an independent test of those selected checkpoints. Exact selections and metrics
+are in [`neural-comparison-ui-2026-09-24.md`](docs/research/neural-comparison-ui-2026-09-24.md).
+
+Large's additional selection record is ledger `private-reference-0211`. Its exact-label
+common-unseen panel contains only one recording from one source group. This is now
+development selection data, not independent confirmation of an improvement over Small.
+The report contains every feasible fit at both targets and all four required padding
+cases; the 99% target is inner calibration, not a guarantee of 99% recall on that panel.
+
+Both frozen Large selections were subsequently run on two beach recordings from one
+source group, with no beach fitting, calibration, or model selection. At the declared
+2s padding and strictly-under-3s gap joining, the F1 selection achieved pooled
+`P_pad=99.80%`, `R_core=15.42%`, `F1_padP_coreR=26.71%`; the recall selection achieved
+`P_pad=99.21%`, `R_core=40.14%`, `F1_padP_coreR=57.15%`. These are poor retained-play
+recall results, not a beach-qualified model. Predictions/signals for both recordings
+were added to the comparison UIs. Ledger `private-reference-0215` binds unchanged
+checkpoint/source/label hashes, all four padding cases, and the publication checks.
+
+The current native Android complete-pipeline benchmark is a prototype: hardware
+MediaCodec decoding and CPU ONNX Runtime with four threads, without a validated GPU
+path. On indexed `recording-044` (17m41s), production completed in 499.300s
+and emitted 56 rallies; Small Mobile-TCN completed in 647.150s and emitted 37.
+DINO's corrected full run completed in 2361.555s, with rallies ready in 2220.998s
+and 35 rallies emitted. All three completed both score specialists; the earlier
+heap-exhausted DINO attempt is excluded. These full-video timings are single runs,
+bound by ledger `private-reference-0210`. Further DINO work was stopped at the user's
+request because of its native runtime; existing artifacts and results are retained.
+
+Two-minute pilot all-ready medians after warmup were 52.338s production,
+63.902s Small, 253.528s DINO, and 70.217s Large. Large's three measured pilot runs
+each emitted seven rallies; its highest-recall fit was benchmarked. The Large pilot
+is complete at ledger `private-reference-0212`; its full-video run at
+`private-reference-0213` completed in **656.983s**, emitting **37 rallies** and
+completing both score specialists. Against the 37 saved human rallies, this prototype
+wholly missed two after 2s padding and strictly-under-3s gap joining. These totals
+include feature generation and both score specialists, and exclude export rendering. They do not qualify
+feature/pixel/PTS accuracy parity, sustained phone behavior, or production release
+of a neural model.
+
+The Small and Large native misses are now linked to proven input-contract differences,
+not checkpoint/decoder selection. Frozen temporal replay matches each native and
+desktop score stream; replacing native AV104 and quality inputs with the corresponding
+desktop features recovers the missed play while keeping native embeddings. Different
+ROI, YUV range conversion, AV downsampling, and PTS selection prevent interpreting
+these prototype accuracy numbers as intrinsic model accuracy or editor parity.
+The [input-drift report](docs/research/native-small-tcn-input-drift.md) and ledger
+`private-reference-0217` record the counterfactuals. A corrected native implementation
+has not yet passed a controlled video-to-feature qualification.
+The range/matrix correction is implemented in the normal Android application
+and benchmark, with versioned cache invalidation. New Android analyses now use the
+full frame, matching the web default; project matching includes ROI geometry so an
+older cropped project is not reused for a new full-frame analysis. Existing saved
+projects retain their stored geometry and edits. Legacy recovery seeds without ROI
+provenance remain recoverable but cannot satisfy a new full-frame analysis request;
+new seeds retain the exact ROI and provenance. Normal-app build and all 165 unit
+tests pass.
+
+Device testing has resumed. The completed corrected Small and Large cases on
+`recording-044` found 40 and 39 rallies respectively, with no wholly missed saved
+human rallies. At the declared 2s padding, Small's `P_pad` / `R_core` /
+`F1_padP_coreR` is 78.20% / 97.93% / 86.96%; Large's is 86.84% / 96.99% / 91.63%.
+Rallies were ready in 556.871s / 595.719s and both score specialists in
+724.430s / 746.346s. These single observations combine color correction and crop
+removal. Both improve recall over the original native runs but lose precision;
+Small's F1 falls and Large's is nearly unchanged. Both still end a previously
+missed rally early. Frozen replay of the actual corrected tensors reproduces device
+probabilities within 7.75e-7 and reproduces decoded boundaries. AV-only desktop
+substitutions restore the missed-rally end, while embedding-only substitutions do
+not, identifying residual AV input drift. The production ensemble is affected by
+the same preprocessing change: its corrected run finds 60 rallies and wholly misses
+one saved human rally, versus 56 and zero before. Its `P_pad` / `R_core` /
+`F1_padP_coreR` changes from 61.94% / 96.77% / 75.53% to 66.21% / 96.01% / 78.37%,
+with both score specialists ready in 488.151s. The recall regression accompanies
+higher F1; this is not a uniform improvement. An ordinary normal-app editor run of
+the two-minute excerpt also passes, using full-frame geometry and both specialists:
+six rallies are ready in 27.732s and all analysis in 44.929s, with playback and saved
+project reopening verified. Neural runtime options remain in the benchmark flavor,
+not the normal editor. This is not a retrained model or a feature-parity claim. See
+the [follow-up report](docs/research/mobile-tcn-follow-up.md).
+The benchmark implementation is under [`android/neuralbenchmark`](android/neuralbenchmark)
+and [`scripts/summarize-pixel-complete-pipeline.py`](scripts/summarize-pixel-complete-pipeline.py).
+
 ## Report-only trained studies
 
 These studies trained fold-local or temporary downstream heads but did not publish one
@@ -492,59 +784,59 @@ failed. Fixed heuristics and decoders are likewise outside this registry.
 
 ## Source video catalog
 
-Model rows use the stable IDs below. Paths are the actual source files used by the
-training manifests on this machine; relocating the data does not change the recording
-ID. For a future rebuild, verify the manifest's content hash rather than trusting only
-the pathname. Historical manifests did not consistently record hashes, so this
+Model rows use the stable source IDs below. Resolve each ID through the private
+manifest and ledger at runtime; exact media locations stay outside Git. For a
+future rebuild, verify the manifest's content hash rather than trusting only
+the location. Historical manifests did not consistently record hashes, so this
 reconstruction does not invent them.
 
 ### Early excerpt and pilot clips
 
-| ID | Role-capable source video path |
+| ID | Private resolution |
 | --- | --- |
-| `v0-beach-JXM` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/labeled/beach/beach-source-02-deadstart25-duration62.mp4` |
-| `v0-grass-qpd` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/labeled/grass/grass-source-09-deadstart2-duration88.mp4` |
-| `v0-indoor-9lc` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/indoor/indoor-source-01-start340-duration90.mp4` |
-| `v0-grass-rSs` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/labeled/grass/grass-source-10-deadstart6-duration84.mp4` |
-| `v0-test-indoor-tds` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/labeled/indoor/indoor-source-05-deadstart41-duration49.mp4` |
-| `pilot-beach-JXM` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/beach/beach-source-02-start358-duration90.mp4` |
-| `pilot-beach-ey` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/beach/beach-source-01-start291-duration90.mp4` |
-| `pilot-grass-Dm` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/grass/grass-source-04-start344-duration90.mp4` |
-| `pilot-grass-GYU` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/grass/grass-source-01-start465-duration90.mp4` |
-| `pilot-grass-qpd` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/grass/grass-source-09-start366-duration90.mp4` |
-| `pilot-grass-rSs` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/grass/grass-source-10-start325-duration90.mp4` |
-| `pilot-indoor-9lc` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/indoor/indoor-source-01-start340-duration90.mp4` |
-| `pilot-indoor-Y9` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/indoor/indoor-source-07-start304-duration90.mp4` |
-| `pilot-test-indoor-tds` | `/mnt/freenas/volleycut/v0-2026-08-09/normalized/indoor/indoor-source-05-start387-duration90.mp4` |
+| `v0-beach-JXM` | Source ID + private manifest |
+| `v0-grass-qpd` | Source ID + private manifest |
+| `v0-indoor-9lc` | Source ID + private manifest |
+| `v0-grass-rSs` | Source ID + private manifest |
+| `v0-test-indoor-tds` | Source ID + private manifest |
+| `pilot-beach-JXM` | Source ID + private manifest |
+| `pilot-beach-ey` | Source ID + private manifest |
+| `pilot-grass-Dm` | Source ID + private manifest |
+| `pilot-grass-GYU` | Source ID + private manifest |
+| `pilot-grass-qpd` | Source ID + private manifest |
+| `pilot-grass-rSs` | Source ID + private manifest |
+| `pilot-indoor-9lc` | Source ID + private manifest |
+| `pilot-indoor-Y9` | Source ID + private manifest |
+| `pilot-test-indoor-tds` | Source ID + private manifest |
 
 ### Fully labeled proxy recordings
 
-| ID | Source video path |
+| ID | Private resolution |
 | --- | --- |
-| `beach-beach-source-02` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/beach/beach-source-02.mp4` |
-| `beach-beach-source-01` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/beach/beach-source-01.mp4` |
-| `grass-grass-source-04` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/grass/grass-source-04.mp4` |
-| `grass-grass-source-01` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/grass/grass-source-01.mp4` |
-| `grass-grass-source-09` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/grass/grass-source-09.mp4` |
-| `grass-grass-source-10` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/grass/grass-source-10.mp4` |
-| `indoor-indoor-source-01` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/indoor/indoor-source-01.mp4` |
-| `indoor-indoor-source-07` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/indoor/indoor-source-07.mp4` |
-| `test-indoor-indoor-source-05` | `/mnt/freenas/volleycut/labeling-v1-2026-08-09/proxies/indoor/indoor-source-05.mp4` |
+| `beach-beach-source-02` | Source ID + private manifest |
+| `beach-beach-source-01` | Source ID + private manifest |
+| `grass-grass-source-04` | Source ID + private manifest |
+| `grass-grass-source-01` | Source ID + private manifest |
+| `grass-grass-source-09` | Source ID + private manifest |
+| `grass-grass-source-10` | Source ID + private manifest |
+| `indoor-indoor-source-01` | Source ID + private manifest |
+| `indoor-indoor-source-07` | Source ID + private manifest |
+| `test-indoor-indoor-source-05` | Source ID + private manifest |
 
 ### Intake additions and corrected-feedback recordings
 
-| ID | Source video path |
+| ID | Private resolution |
 | --- | --- |
-| `grass-grass-source-03` | `/mnt/freenas/volleycut/intake-2026-08-13/proxies/grass/grass-source-03.mp4` |
-| `grass-grass-source-05` | `/mnt/freenas/volleycut/intake-2026-08-13/proxies/grass/grass-source-05.mp4` |
-| `indoor-indoor-source-06` | `/mnt/freenas/volleycut/intake-2026-08-13/proxies/indoor/indoor-source-06.mp4` |
-| `indoor-indoor-source-04` | `/mnt/freenas/volleycut/intake-2026-08-13/proxies/indoor/indoor-source-04.mp4` |
-| `indoor-indoor-source-08` | `/mnt/freenas/volleycut/intake-2026-08-13/proxies/indoor/indoor-source-08.mp4` |
-| `project-cmh0xj` | `/mnt/freenas/volleycut-raw-no-backup/PXL_20260816_193307688.mp4` |
-| `project-kqx9c` | `/mnt/freenas/volleycut-raw-no-backup/PXL_20260816_171720964.mp4` |
-| `project-qkf86k` | `/mnt/freenas/volleycut-raw-no-backup/PXL_20260816_161923155.mp4` |
-| `project-vxcbv3` | `/mnt/freenas/volleycut-raw-no-backup/PXL_20260816_203801418.mp4` |
-| `project-yf69sz` | `/mnt/freenas/volleycut-raw-no-backup/PXL_20260816_190429172.mp4` |
+| `grass-grass-source-03` | Source ID + private manifest |
+| `grass-grass-source-05` | Source ID + private manifest |
+| `indoor-indoor-source-06` | Source ID + private manifest |
+| `indoor-indoor-source-04` | Source ID + private manifest |
+| `indoor-indoor-source-08` | Source ID + private manifest |
+| `recording-033` | Source ID + private manifest |
+| `recording-029` | Source ID + private manifest |
+| `recording-027` | Source ID + private manifest |
+| `recording-034` | Source ID + private manifest |
+| `recording-032` | Source ID + private manifest |
 
 ## Source-set definitions
 
@@ -571,15 +863,15 @@ sets are separate even when listed on the same model row.
 | `ENV1-ALL8` | Fit: union of `ENV1-GRASS6` and `ENV1-INDOOR2` |
 | `ENV2-INDOOR5` | Fit: `ENV1-INDOOR2` plus `indoor-indoor-source-06`, `indoor-indoor-source-04`, `indoor-indoor-source-08` |
 | `ENV2-ALL11` | Fit: union of `ENV1-GRASS6` and `ENV2-INDOOR5` |
-| `FEEDBACK16` | Fit: `ENV2-ALL11` plus `project-cmh0xj`, `project-kqx9c`, `project-qkf86k`, `project-vxcbv3`, `project-yf69sz` |
+| `FEEDBACK16` | Fit: `ENV2-ALL11` plus `recording-033`, `recording-029`, `recording-027`, `recording-034`, `recording-032` |
 | `SIDE4` | Fit: `beach-beach-source-02`, `beach-beach-source-01`, `grass-grass-source-01`, `grass-grass-source-09` |
 | `SIDE3-NO-BLUR` | Counterfactual fit: `beach-beach-source-01`, `grass-grass-source-01`, `grass-grass-source-09`; only `beach-beach-source-02` is removed from historical `SIDE4` |
-| `SIDE-V2-T5` | Fit: `raw-no-backup-PXL_20260816_164327879`, `raw-no-backup-PXL_20260816_171720964`, `raw-no-backup-PXL_20260816_190429172`, `raw-no-backup-PXL_20260816_180646590`, `raw-no-backup-PXL_20260816_183701800` |
-| `SIDE-V2-V2` | Threshold and decoder selection only: `raw-no-backup-PXL_20260816_210449857`, `raw-no-backup-PXL_20260816_193307688` |
-| `SIDE-V2-E4` | Confirmation evaluation only: `raw-no-backup-PXL_20260816_160023210`, `raw-no-backup-PXL_20260816_161923155`, `raw-no-backup-PXL_20260816_203801418`, `raw-no-backup-PXL_20260816_212717581` |
+| `SIDE-V2-T5` | Fit: `recording-028`, `recording-029`, `recording-032`, `recording-030`, `recording-031` |
+| `SIDE-V2-V2` | Threshold and decoder selection only: `recording-035`, `recording-033` |
+| `SIDE-V2-E4` | Confirmation evaluation only: `recording-026`, `recording-027`, `recording-034`, `recording-036` |
 | `SIDE-V3-T6` | Fit/model-family selection: `beach-beach-source-01`, `grass-grass-source-02`, `grass-grass-source-06`, `grass-grass-source-01`, `grass-grass-source-05`, `grass-grass-source-09` |
 | `SIDE-V3-V4` | Threshold/decoder selection only: `grass-grass-source-03`, `grass-grass-source-04`, `grass-grass-source-08`, `grass-grass-source-10` |
-| `SIDE-V3-E11` | Retrospective evaluation only: all 11 `raw-no-backup-PXL_20260816_*` recordings in `FROZEN_RECORDING_SPLIT`; source group is disjoint from `SIDE-V3-T6` and `SIDE-V3-V4` |
+| `SIDE-V3-E11` | Retrospective evaluation only: all 11 indexed camera recordings in `FROZEN_RECORDING_SPLIT`; source group is disjoint from `SIDE-V3-T6` and `SIDE-V3-V4` |
 
 ## Rebuild checklist
 

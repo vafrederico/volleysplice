@@ -1,4 +1,4 @@
-import { CanvasSink, VideoSample, VideoSampleSink } from "mediabunny";
+import { CanvasSink, EncodedPacketSink, VideoSample, VideoSampleSink } from "mediabunny";
 
 import {
   MIN_ANALYSIS_WINDOW_SECONDS,
@@ -29,11 +29,17 @@ import {
 import { rollingMean } from "./feature-math";
 import { analysisTimestamps, type OpenedMedia } from "./media";
 import { runProductionInferenceFromFeatures } from "./production-inference";
+import { DEFAULT_RALLY_MODEL, type RallyModelSelection } from "./rally-model";
 import {
   DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
   type OnDeviceRuntimeVariant,
 } from "./runtime-variants";
-import { samplesAtTimestampsFromSequentialPass } from "./sequential-samples";
+import {
+  nearestSamplesAtTimestampsFromSequentialPass,
+  samplesAtTimestampsFromSequentialPass,
+} from "./sequential-samples";
+import { nearestFrameTimestamps } from "./nearest-frame-timestamps";
+import { visualCrop } from "./visual-crop";
 import type {
   AnalysisProgress,
   BaseFeatureSequence,
@@ -66,6 +72,10 @@ type ExtractedBrowserFeatures = BaseFeatureSequence & {
 };
 
 export type FeatureExtractionOptions = {
+  rallyModel?: RallyModelSelection;
+  signal?: AbortSignal;
+  /** Corrected contract is opt-in until broader model/runtime qualification. */
+  visualPreprocessing?: "canvas-preceding-v1" | "opencv-area-nearest-grid-v1";
   detailedProfiling?: boolean;
   decodeStrategy?: VideoDecodeStrategy;
   decoderAcceleration?: VideoDecoderAcceleration;
@@ -186,6 +196,7 @@ export async function extractBrowserFeatures(
   options: FeatureExtractionOptions = {},
 ): Promise<ExtractedBrowserFeatures> {
   const detailedProfiling = options.detailedProfiling ?? true;
+  const areaNearest = options.visualPreprocessing === "opencv-area-nearest-grid-v1";
   const decodeStrategy = options.decodeStrategy ?? DEFAULT_VIDEO_DECODE_STRATEGY;
   const decoderAcceleration =
     options.decoderAcceleration ?? VIDEO_DECODER_HARDWARE_ACCELERATION;
@@ -254,12 +265,14 @@ export async function extractBrowserFeatures(
     const experiment =
       decodeStrategy === LEGACY_FEATURE_CACHE_DECODE_STRATEGY &&
       decoderAcceleration === VIDEO_DECODER_HARDWARE_ACCELERATION &&
-      reductionKernel === LEGACY_FEATURE_CACHE_REDUCTION_KERNEL
+      reductionKernel === LEGACY_FEATURE_CACHE_REDUCTION_KERNEL &&
+      !areaNearest
         ? undefined
         : {
             decodeStrategy,
             decoderAcceleration,
             ...(reductionKernel === "wasm" ? { reductionKernel } : {}),
+            ...(areaNearest ? { areaNearest: true } : {}),
           };
     const resolvedCacheKey = visualFeatureCacheKey(
       cacheSource,
@@ -308,10 +321,6 @@ export async function extractBrowserFeatures(
     featureCache: featureCache(),
     performance: performanceSnapshot(),
   });
-  const left = Math.round(roi.x * media.info.width);
-  const top = Math.round(roi.y * media.info.height);
-  const right = Math.round((roi.x + roi.width) * media.info.width);
-  const bottom = Math.round((roi.y + roi.height) * media.info.height);
   const times: number[] = Array.from(cachedTimes);
   const rows: Float32Array[] = rowsFromValues(cachedValues, cachedRows);
   let decoded = cachedRows;
@@ -321,12 +330,7 @@ export async function extractBrowserFeatures(
       analysisWindow.start,
       resumeAfter - 1 / ANALYSIS_FPS,
     );
-    const crop = {
-      left,
-      top,
-      width: Math.max(1, right - left),
-      height: Math.max(1, bottom - top),
-    };
+    const crop = visualCrop(roi, media.info.width, media.info.height, areaNearest);
     let pendingTimes: number[] = [];
     let pendingRows: Float32Array[] = [];
     const writePendingRows = async (complete: boolean) => {
@@ -363,6 +367,7 @@ export async function extractBrowserFeatures(
       pendingRows = [];
     };
     const appendGeneratedFrame = async (timestamp: number, values: Float32Array) => {
+      options.signal?.throwIfAborted();
       if (timestamp <= resumeAfter + 1e-9) return;
       if (times.length && timestamp <= times[times.length - 1] + 1e-9) return;
       times.push(timestamp);
@@ -409,6 +414,7 @@ export async function extractBrowserFeatures(
       const workerClient = await VisualFeatureWorkerClient.create(
         detailedProfiling,
         reductionKernel,
+        areaNearest,
       ).catch((error: unknown) => {
         if (reductionKernel === "wasm") {
           throw new Error(
@@ -434,12 +440,19 @@ export async function extractBrowserFeatures(
             analysisWindow.end,
           ),
         );
+        const sparseTimestamps = decodeStrategy === "sparse" && areaNearest
+          ? await nearestSparseTimestamps(media, requestedTimestamps, analysisWindow.end)
+          : requestedTimestamps;
+        let targetIndex = 0;
+        const selectSequential = areaNearest
+          ? nearestSamplesAtTimestampsFromSequentialPass
+          : samplesAtTimestampsFromSequentialPass;
         const sampleIterator = decodeStrategy === "sequential"
-          ? samplesAtTimestampsFromSequentialPass(sink, requestedTimestamps, () => {
+          ? selectSequential(sink, requestedTimestamps, () => {
               timingTotals.decodedSourceFrames =
                 (timingTotals.decodedSourceFrames ?? 0) + 1;
-            })
-          : sink.samplesAtTimestamps(requestedTimestamps);
+            }, analysisWindow.end)
+          : sink.samplesAtTimestamps(sparseTimestamps);
         const pendingFeatures: Promise<WorkerFeatureResult>[] = [];
         const consumeOldest = async () => {
           const pending = pendingFeatures.shift();
@@ -458,6 +471,7 @@ export async function extractBrowserFeatures(
         };
         try {
           while (true) {
+            options.signal?.throwIfAborted();
             const decoderStartedAt = detailedProfiling ? performance.now() : 0;
             const next = await sampleIterator.next();
             if (detailedProfiling) {
@@ -467,10 +481,14 @@ export async function extractBrowserFeatures(
             }
             if (next.done) break;
             const sample = next.value;
-            if (!sample) continue;
+            const timestamp = requestedTimestamps[targetIndex++]!;
+            if (!sample) {
+              if (areaNearest) throw new Error("The video decoder omitted a selected analysis frame.");
+              continue;
+            }
             const frame = sample.toVideoFrame();
             const metadata = {
-              timestamp: sample.timestamp,
+              timestamp: areaNearest ? timestamp : sample.timestamp,
               duration: sample.duration,
               rotation: sample.rotation,
               crop,
@@ -497,20 +515,18 @@ export async function extractBrowserFeatures(
         }
         const sink = new CanvasSink(media.videoTrack, {
           crop,
-          width: ANALYSIS_WIDTH,
-          height: ANALYSIS_HEIGHT,
+          width: areaNearest ? crop.width : ANALYSIS_WIDTH,
+          height: areaNearest ? crop.height : ANALYSIS_HEIGHT,
           fit: "fill",
           poolSize: 1,
           decoderOptions: { hardwareAcceleration: decoderAcceleration },
         });
-        const canvasIterator = sink.canvasesAtTimestamps(
-          analysisTimestampsBetween(
-            media.info.duration,
-            ANALYSIS_FPS,
-            warmupStart,
-            analysisWindow.end,
-          ),
-        );
+        const requestedTimestamps = Array.from(analysisTimestampsBetween(
+          media.info.duration, ANALYSIS_FPS, warmupStart, analysisWindow.end,
+        ));
+        const selectedTimestamps = areaNearest ? await nearestSparseTimestamps(media, requestedTimestamps, analysisWindow.end) : requestedTimestamps;
+        const canvasIterator = sink.canvasesAtTimestamps(selectedTimestamps);
+        let targetIndex = 0;
         const stopCanvasDrawTiming = detailedProfiling
           ? instrumentCanvasDraw((milliseconds) => {
               timingTotals.canvasDrawMs += milliseconds;
@@ -537,9 +553,13 @@ export async function extractBrowserFeatures(
             }
             if (next.done) break;
             const wrapped = next.value;
+            const timestamp = requestedTimestamps[targetIndex++]!;
             nextRequestedAt = detailedProfiling ? performance.now() : 0;
             pendingNext = canvasIterator.next();
-            if (!wrapped) continue;
+            if (!wrapped) {
+              if (areaNearest) throw new Error("The video decoder omitted a selected analysis frame.");
+              continue;
+            }
             const extractionStartedAt = detailedProfiling ? performance.now() : 0;
             const result = extractVisualFeatures(
               cv,
@@ -560,7 +580,7 @@ export async function extractBrowserFeatures(
             }
             previousGray?.delete();
             previousGray = result.gray;
-            await appendGeneratedFrame(wrapped.timestamp, result.values);
+            await appendGeneratedFrame(areaNearest ? timestamp : wrapped.timestamp, result.values);
           }
         } finally {
           stopCanvasDrawTiming();
@@ -666,6 +686,11 @@ export async function analyzeOpenedMedia(
   cacheSource?: LocalFeatureSource,
   options: FeatureExtractionOptions = {},
 ): Promise<OnDeviceAnalysis> {
+  const rallyModel = options.rallyModel ?? DEFAULT_RALLY_MODEL;
+  if (rallyModel !== "ensemble") {
+    const { analyzeNeuralMedia } = await import("./neural-pipeline");
+    return analyzeNeuralMedia(media, roi, rallyModel, runtimeVariant, onProgress, cacheSource, options);
+  }
   const analysisWindow = normalizeAnalysisWindow(
     options.analysisWindow,
     media.info.duration,
@@ -690,7 +715,7 @@ export async function analyzeOpenedMedia(
   await yieldToBrowser();
   onProgress?.({
     stage: "inference",
-    completed: sequence.rows,
+    completed: 0,
     total: sequence.rows,
     detail: "Running both production stacks and suppression specialist on CPU",
     featureCache: sequence.featureCache,
@@ -706,4 +731,15 @@ export async function analyzeOpenedMedia(
     performance: sequence.performance,
   });
   return { ...result, featurePath };
+}
+
+async function nearestSparseTimestamps(media: OpenedMedia, targets: readonly number[], end: number): Promise<number[]> {
+  const presentationTimes: number[] = [];
+  const packets = new EncodedPacketSink(media.videoTrack);
+  for await (const packet of packets.packets(undefined, undefined, { metadataOnly: true })) {
+    if (packet.timestamp < end) presentationTimes.push(packet.timestamp);
+  }
+  presentationTimes.sort((a, b) => a - b);
+  if (!presentationTimes.length) throw new Error("The video has no presentation timestamps.");
+  return nearestFrameTimestamps(presentationTimes, targets);
 }

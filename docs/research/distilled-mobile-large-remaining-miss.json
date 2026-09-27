@@ -1,0 +1,5828 @@
+{
+  "schema": "remaining-distilled-f1-miss-v1",
+  "recordingIndex": "recording-044",
+  "artifactIndex": "private-reference-0223",
+  "goldSha256": "97ab7adce70f57ad521add3a18f18765abec61d36b2ba31cf0c739638164d94c",
+  "decoder": {
+    "smoothing": 1.0,
+    "enter": 0.9,
+    "minimum": 0.25,
+    "boundary": false
+  },
+  "weightsSha256": "1d73c21e9ecd9c0cf7b454c5860f00a6db317f41cf0286a95c4770948b1d5c1c",
+  "encoderWeightsSha256": "25d6bbd2e2a133cd1a9d6427b9cd9b4619d1efd554356c0bf4a9e15894f45a66",
+  "targetPaddingSeconds": 2,
+  "joinGapSeconds": 3,
+  "inputHashes": {
+    "correctedPhoneAudio": "276a2952be5899245be43935b2d4e71d4912979041ebacd7f3dc3b90c7c7ff68",
+    "nativeFusedFeatures": "9899998c15b7d42441b7f0e06e10de64fa6fb36d9cb17cf75d82cb9ce2512638",
+    "desktopSavedProbabilities": "acc2c5d6984d79f3bb2787a6591b0a96757de296f52164ed807d4a8172955209",
+    "onnxGraph": "9e1b7fb3ea21c83dd920f268c6d5e58113e2b503573083dea99cb7b2812640cb"
+  },
+  "verification": {
+    "desktop": {
+      "probabilitiesMaxAbsoluteError": 1.0132789611816406e-06
+    },
+    "original_native": {
+      "probabilitiesMaxAbsoluteError": 1.4901161193847656e-06
+    },
+    "correctedAudioReplayExactlyReproducesPriorBoundariesAndMetrics": true
+  },
+  "localFeatureDifferences": [
+    {
+      "humanRallyNumber": 6,
+      "feature": "focus_quality",
+      "column": 28,
+      "native": {
+        "standardizedMean": 4.690392971038818,
+        "standardizedMin": 4.636582374572754,
+        "standardizedMax": 4.73477840423584,
+        "clippedValueMean": 0.9924148321151733
+      },
+      "desktop": {
+        "standardizedMean": 0.4548841714859009,
+        "standardizedMin": 0.2138601541519165,
+        "standardizedMax": 0.6178191900253296,
+        "clippedValueMean": 0.9632501006126404
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "blur_probability",
+      "column": 29,
+      "native": {
+        "standardizedMean": -4.690395832061768,
+        "standardizedMin": -4.734783172607422,
+        "standardizedMax": -4.636589527130127,
+        "clippedValueMean": 0.0075852046720683575
+      },
+      "desktop": {
+        "standardizedMean": -0.45488646626472473,
+        "standardizedMin": -0.6178175210952759,
+        "standardizedMax": -0.21386122703552246,
+        "clippedValueMean": 0.036749958992004395
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "visibility_quality",
+      "column": 34,
+      "native": {
+        "standardizedMean": 1.819849967956543,
+        "standardizedMin": 1.4832972288131714,
+        "standardizedMax": 2.0961568355560303,
+        "clippedValueMean": 0.9839262366294861
+      },
+      "desktop": {
+        "standardizedMean": -0.3722412884235382,
+        "standardizedMin": -0.8139705657958984,
+        "standardizedMax": -0.08817688375711441,
+        "clippedValueMean": 0.9735716581344604
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "content_fraction",
+      "column": 3944,
+      "native": {
+        "standardizedMean": 1.388717770576477,
+        "standardizedMin": 1.388717770576477,
+        "standardizedMax": 1.388717770576477,
+        "clippedValueMean": 0.5625
+      },
+      "desktop": {
+        "standardizedMean": 1.388717770576477,
+        "standardizedMin": 1.388717770576477,
+        "standardizedMax": 1.388717770576477,
+        "clippedValueMean": 0.5625
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "luminance_mean",
+      "column": 3945,
+      "native": {
+        "standardizedMean": -1.1320134401321411,
+        "standardizedMin": -1.288554072380066,
+        "standardizedMax": -0.9908561706542969,
+        "clippedValueMean": 0.4281315803527832
+      },
+      "desktop": {
+        "standardizedMean": -0.6735724806785583,
+        "standardizedMin": -0.8265676498413086,
+        "standardizedMax": -0.538569450378418,
+        "clippedValueMean": 0.43999165296554565
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "luminance_std",
+      "column": 3946,
+      "native": {
+        "standardizedMean": 0.010560053400695324,
+        "standardizedMin": -0.08594512194395065,
+        "standardizedMax": 0.08662651479244232,
+        "clippedValueMean": 0.1853952705860138
+      },
+      "desktop": {
+        "standardizedMean": 0.37505048513412476,
+        "standardizedMin": 0.2684689462184906,
+        "standardizedMax": 0.44703975319862366,
+        "clippedValueMean": 0.19346189498901367
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "laplacian_variance",
+      "column": 3947,
+      "native": {
+        "standardizedMean": 2.117659330368042,
+        "standardizedMin": 1.894029140472412,
+        "standardizedMax": 2.310121536254883,
+        "clippedValueMean": 0.15846756100654602
+      },
+      "desktop": {
+        "standardizedMean": 2.196578025817871,
+        "standardizedMin": 1.962422490119934,
+        "standardizedMax": 2.3878254890441895,
+        "clippedValueMean": 0.16057951748371124
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "clipped_pixel_fraction",
+      "column": 3948,
+      "native": {
+        "standardizedMean": -0.7885489463806152,
+        "standardizedMin": -0.9421728849411011,
+        "standardizedMax": -0.6064173579216003,
+        "clippedValueMean": 0.0002653970441315323
+      },
+      "desktop": {
+        "standardizedMean": -0.8381731510162354,
+        "standardizedMin": -0.9421728849411011,
+        "standardizedMax": -0.6623766422271729,
+        "clippedValueMean": 0.00020255740673746914
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "selected_pts_offset_seconds",
+      "column": 3949,
+      "native": {
+        "standardizedMean": 10.0,
+        "standardizedMin": 10.0,
+        "standardizedMax": 10.0,
+        "clippedValueMean": 0.0010000001639127731
+      },
+      "desktop": {
+        "standardizedMean": 5.220125675201416,
+        "standardizedMin": -10.0,
+        "standardizedMax": 10.0,
+        "clippedValueMean": 0.0005220127059146762
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "age",
+      "column": 3950,
+      "native": {
+        "standardizedMean": 0.06488440185785294,
+        "standardizedMin": -0.9998056888580322,
+        "standardizedMax": 1.1430515050888062,
+        "clippedValueMean": 0.12421383708715439
+      },
+      "desktop": {
+        "standardizedMean": 0.06488440185785294,
+        "standardizedMin": -0.9998056888580322,
+        "standardizedMax": 1.1430515050888062,
+        "clippedValueMean": 0.12421383708715439
+      }
+    },
+    {
+      "humanRallyNumber": 6,
+      "feature": "available",
+      "column": 3951,
+      "native": {
+        "standardizedMean": 0.0,
+        "standardizedMin": 0.0,
+        "standardizedMax": 0.0,
+        "clippedValueMean": 1.0
+      },
+      "desktop": {
+        "standardizedMean": 0.0,
+        "standardizedMin": 0.0,
+        "standardizedMax": 0.0,
+        "clippedValueMean": 1.0
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "focus_quality",
+      "column": 28,
+      "native": {
+        "standardizedMean": 4.669002056121826,
+        "standardizedMin": 4.606649398803711,
+        "standardizedMax": 4.7569122314453125,
+        "clippedValueMean": 0.9922674894332886
+      },
+      "desktop": {
+        "standardizedMean": 0.40974920988082886,
+        "standardizedMin": 0.1480730026960373,
+        "standardizedMax": 0.7315790057182312,
+        "clippedValueMean": 0.9629393219947815
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "blur_probability",
+      "column": 29,
+      "native": {
+        "standardizedMean": -4.669004440307617,
+        "standardizedMin": -4.756918430328369,
+        "standardizedMax": -4.606656551361084,
+        "clippedValueMean": 0.007732497528195381
+      },
+      "desktop": {
+        "standardizedMean": -0.4097519814968109,
+        "standardizedMin": -0.7315806150436401,
+        "standardizedMax": -0.14807246625423431,
+        "clippedValueMean": 0.03706074133515358
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "visibility_quality",
+      "column": 34,
+      "native": {
+        "standardizedMean": 2.1559360027313232,
+        "standardizedMin": 1.7664777040481567,
+        "standardizedMax": 3.006051778793335,
+        "clippedValueMean": 0.9855138063430786
+      },
+      "desktop": {
+        "standardizedMean": -0.24584472179412842,
+        "standardizedMin": -0.6253138780593872,
+        "standardizedMax": 0.5732759237289429,
+        "clippedValueMean": 0.9741686582565308
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "content_fraction",
+      "column": 3944,
+      "native": {
+        "standardizedMean": 1.388717770576477,
+        "standardizedMin": 1.388717770576477,
+        "standardizedMax": 1.388717770576477,
+        "clippedValueMean": 0.5625
+      },
+      "desktop": {
+        "standardizedMean": 1.388717770576477,
+        "standardizedMin": 1.388717770576477,
+        "standardizedMax": 1.388717770576477,
+        "clippedValueMean": 0.5625
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "luminance_mean",
+      "column": 3945,
+      "native": {
+        "standardizedMean": -0.7590935826301575,
+        "standardizedMin": -1.0931377410888672,
+        "standardizedMax": -0.030056525021791458,
+        "clippedValueMean": 0.43777918815612793
+      },
+      "desktop": {
+        "standardizedMean": -0.3270433843135834,
+        "standardizedMin": -0.6607654690742493,
+        "standardizedMax": 0.40505748987197876,
+        "clippedValueMean": 0.4489564597606659
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "luminance_std",
+      "column": 3946,
+      "native": {
+        "standardizedMean": 0.10862935334444046,
+        "standardizedMin": -0.08799198269844055,
+        "standardizedMax": 0.5262693166732788,
+        "clippedValueMean": 0.18756568431854248
+      },
+      "desktop": {
+        "standardizedMean": 0.4594980478286743,
+        "standardizedMin": 0.27484315633773804,
+        "standardizedMax": 0.8296984434127808,
+        "clippedValueMean": 0.19533084332942963
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "laplacian_variance",
+      "column": 3947,
+      "native": {
+        "standardizedMean": 2.022660493850708,
+        "standardizedMin": 1.7803081274032593,
+        "standardizedMax": 2.546297788619995,
+        "clippedValueMean": 0.15592525899410248
+      },
+      "desktop": {
+        "standardizedMean": 2.091372013092041,
+        "standardizedMin": 1.852693796157837,
+        "standardizedMax": 2.5774953365325928,
+        "clippedValueMean": 0.15776406228542328
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "clipped_pixel_fraction",
+      "column": 3948,
+      "native": {
+        "standardizedMean": -0.8291571736335754,
+        "standardizedMin": -0.9981321096420288,
+        "standardizedMax": -0.3266212046146393,
+        "clippedValueMean": 0.0002139744901796803
+      },
+      "desktop": {
+        "standardizedMean": -0.8648175001144409,
+        "standardizedMin": -0.9981321096420288,
+        "standardizedMax": -0.5224785208702087,
+        "clippedValueMean": 0.00016881752526387572
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "selected_pts_offset_seconds",
+      "column": 3949,
+      "native": {
+        "standardizedMean": 10.0,
+        "standardizedMin": 10.0,
+        "standardizedMax": 10.0,
+        "clippedValueMean": 0.0010000000474974513
+      },
+      "desktop": {
+        "standardizedMean": -10.0,
+        "standardizedMin": -10.0,
+        "standardizedMax": -10.0,
+        "clippedValueMean": -0.0010000000474974513
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "age",
+      "column": 3950,
+      "native": {
+        "standardizedMean": 0.06462015211582184,
+        "standardizedMin": -0.9998056888580322,
+        "standardizedMax": 1.1430515050888062,
+        "clippedValueMean": 0.12418300658464432
+      },
+      "desktop": {
+        "standardizedMean": 0.06462015211582184,
+        "standardizedMin": -0.9998056888580322,
+        "standardizedMax": 1.1430515050888062,
+        "clippedValueMean": 0.12418300658464432
+      }
+    },
+    {
+      "humanRallyNumber": 16,
+      "feature": "available",
+      "column": 3951,
+      "native": {
+        "standardizedMean": 0.0,
+        "standardizedMin": 0.0,
+        "standardizedMax": 0.0,
+        "clippedValueMean": 1.0
+      },
+      "desktop": {
+        "standardizedMean": 0.0,
+        "standardizedMin": 0.0,
+        "standardizedMax": 0.0,
+        "clippedValueMean": 1.0
+      }
+    }
+  ],
+  "scope": "Frozen highest-F1 selected model, saved native nonaudio tensors plus actual corrected phone audio, compared with saved desktop inputs. Offline CPU replay and bounded same-frame resize checks only. No training, selection, threshold change, app modification or new full native pipeline benchmark.",
+  "cases": [
+    {
+      "name": "corrected_phone",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9857897162437439,
+          "maximumSmoothedLiveProbability": 0.885099470615387,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9901952147483826,
+          "maximumSmoothedLiveProbability": 0.8832541555166245,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.125
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9724079012345684,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9587827325818982,
+        "paddedModelExportSeconds": 393.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9279321235275406,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8333773440933578,
+          "paddedModelExportSeconds": 261.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9607493855411482,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9239140507868369,
+          "paddedModelExportSeconds": 327.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9724079012345684,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9587827325818982,
+          "paddedModelExportSeconds": 393.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9850693009485836,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9705282568950274,
+          "paddedModelExportSeconds": 459.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop",
+      "rallyCount": 34,
+      "whollyMissed": 1,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9079040884971619,
+          "maximumSmoothedLiveProbability": 0.639569066464901,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9688984155654907,
+          "maximumSmoothedLiveProbability": 0.9130075126886368,
+          "nearbyRallies": [
+            {
+              "start": 563.875,
+              "end": 565.125
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.25
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.875,
+          "end": 170.375
+        },
+        {
+          "start": 183.375,
+          "end": 201.375
+        },
+        {
+          "start": 215.625,
+          "end": 222.125
+        },
+        {
+          "start": 235.625,
+          "end": 244.875
+        },
+        {
+          "start": 256.625,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 312.125
+        },
+        {
+          "start": 329.125,
+          "end": 356.125
+        },
+        {
+          "start": 385.875,
+          "end": 392.375
+        },
+        {
+          "start": 407.125,
+          "end": 412.375
+        },
+        {
+          "start": 440.625,
+          "end": 446.625
+        },
+        {
+          "start": 470.375,
+          "end": 478.125
+        },
+        {
+          "start": 493.375,
+          "end": 501.125
+        },
+        {
+          "start": 525.625,
+          "end": 526.875
+        },
+        {
+          "start": 545.375,
+          "end": 546.875
+        },
+        {
+          "start": 563.875,
+          "end": 565.125
+        },
+        {
+          "start": 578.875,
+          "end": 584.125
+        },
+        {
+          "start": 601.125,
+          "end": 605.375
+        },
+        {
+          "start": 619.375,
+          "end": 626.625
+        },
+        {
+          "start": 641.875,
+          "end": 655.125
+        },
+        {
+          "start": 669.375,
+          "end": 671.375
+        },
+        {
+          "start": 708.875,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 751.875,
+          "end": 757.875
+        },
+        {
+          "start": 769.375,
+          "end": 791.375
+        },
+        {
+          "start": 805.875,
+          "end": 811.875
+        },
+        {
+          "start": 828.625,
+          "end": 832.875
+        },
+        {
+          "start": 849.375,
+          "end": 854.375
+        },
+        {
+          "start": 873.625,
+          "end": 877.625
+        },
+        {
+          "start": 900.125,
+          "end": 905.125
+        },
+        {
+          "start": 924.875,
+          "end": 932.875
+        },
+        {
+          "start": 944.125,
+          "end": 954.875
+        },
+        {
+          "start": 973.375,
+          "end": 974.875
+        },
+        {
+          "start": 990.625,
+          "end": 996.625
+        },
+        {
+          "start": 1032.625,
+          "end": 1039.375
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9769005865118862,
+        "R_core": 0.9668705380607598,
+        "F1_padP_coreR": 0.9718596842725332,
+        "paddedModelExportSeconds": 402.0,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -68.64469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9350175112781979,
+          "R_core": 0.7744593488299921,
+          "F1_padP_coreR": 0.847198426404349,
+          "paddedModelExportSeconds": 266.0,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -55.146175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9662096879574199,
+          "R_core": 0.9183508618806209,
+          "F1_padP_coreR": 0.9416725822572891,
+          "paddedModelExportSeconds": 334.0,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -63.14555333333669,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9769005865118862,
+          "R_core": 0.9668705380607598,
+          "F1_padP_coreR": 0.9718596842725332,
+          "paddedModelExportSeconds": 402.0,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -68.64469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9887532676122941,
+          "R_core": 0.9739385897784907,
+          "F1_padP_coreR": 0.9812900170456617,
+          "paddedModelExportSeconds": 470.0,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -74.64385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 34,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8529411764705882,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8169014084507041
+      }
+    },
+    {
+      "name": "desktop_audio",
+      "rallyCount": 36,
+      "whollyMissed": 1,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9892793297767639,
+          "maximumSmoothedLiveProbability": 0.9401020854711533,
+          "nearbyRallies": [
+            {
+              "start": 278.375,
+              "end": 279.125
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 0.75
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9732896089553833,
+          "maximumSmoothedLiveProbability": 0.8438734710216522,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 222.125
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.125,
+          "end": 265.625
+        },
+        {
+          "start": 278.375,
+          "end": 279.125
+        },
+        {
+          "start": 293.875,
+          "end": 315.125
+        },
+        {
+          "start": 329.125,
+          "end": 356.375
+        },
+        {
+          "start": 385.625,
+          "end": 392.875
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 440.375,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 478.125
+        },
+        {
+          "start": 492.375,
+          "end": 501.875
+        },
+        {
+          "start": 525.625,
+          "end": 527.625
+        },
+        {
+          "start": 545.625,
+          "end": 546.625
+        },
+        {
+          "start": 578.625,
+          "end": 580.125
+        },
+        {
+          "start": 582.625,
+          "end": 583.625
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 626.875
+        },
+        {
+          "start": 642.125,
+          "end": 655.125
+        },
+        {
+          "start": 669.875,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.625
+        },
+        {
+          "start": 726.625,
+          "end": 735.375
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.625,
+          "end": 876.625
+        },
+        {
+          "start": 899.625,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.125,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.625,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9733780280906695,
+        "R_core": 0.9626004161109615,
+        "F1_padP_coreR": 0.9679592225622532,
+        "paddedModelExportSeconds": 399.5,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -71.14469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9292794855576658,
+          "R_core": 0.7624725532566171,
+          "F1_padP_coreR": 0.8376524287078837,
+          "paddedModelExportSeconds": 263.5,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -57.646175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9618839282721644,
+          "R_core": 0.9030877956932255,
+          "F1_padP_coreR": 0.9315590422454793,
+          "paddedModelExportSeconds": 331.5,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -65.6455533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9733780280906695,
+          "R_core": 0.9626004161109615,
+          "F1_padP_coreR": 0.9679592225622532,
+          "paddedModelExportSeconds": 399.5,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -71.14469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9858064646464653,
+          "R_core": 0.9742818740921019,
+          "F1_padP_coreR": 0.9800102892158178,
+          "paddedModelExportSeconds": 467.5,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -77.14385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 36,
+        "matchedRallies": 28,
+        "eventPrecision": 0.7777777777777778,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7671232876712328
+      }
+    },
+    {
+      "name": "desktop_video",
+      "rallyCount": 34,
+      "whollyMissed": 1,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9567546844482422,
+          "maximumSmoothedLiveProbability": 0.729557454586029,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.992715060710907,
+          "maximumSmoothedLiveProbability": 0.9465503096580505,
+          "nearbyRallies": [
+            {
+              "start": 563.625,
+              "end": 565.625
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 2.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 170.125
+        },
+        {
+          "start": 183.375,
+          "end": 201.375
+        },
+        {
+          "start": 215.625,
+          "end": 220.125
+        },
+        {
+          "start": 235.625,
+          "end": 244.875
+        },
+        {
+          "start": 257.625,
+          "end": 265.125
+        },
+        {
+          "start": 293.875,
+          "end": 312.125
+        },
+        {
+          "start": 329.125,
+          "end": 356.375
+        },
+        {
+          "start": 385.875,
+          "end": 392.375
+        },
+        {
+          "start": 407.125,
+          "end": 412.375
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 470.125,
+          "end": 477.625
+        },
+        {
+          "start": 493.375,
+          "end": 501.125
+        },
+        {
+          "start": 525.625,
+          "end": 526.875
+        },
+        {
+          "start": 545.125,
+          "end": 546.625
+        },
+        {
+          "start": 563.625,
+          "end": 565.625
+        },
+        {
+          "start": 578.625,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 605.375
+        },
+        {
+          "start": 619.375,
+          "end": 627.625
+        },
+        {
+          "start": 642.125,
+          "end": 655.375
+        },
+        {
+          "start": 669.375,
+          "end": 671.125
+        },
+        {
+          "start": 709.125,
+          "end": 714.125
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 751.875,
+          "end": 757.125
+        },
+        {
+          "start": 769.375,
+          "end": 790.625
+        },
+        {
+          "start": 805.875,
+          "end": 811.875
+        },
+        {
+          "start": 828.875,
+          "end": 832.875
+        },
+        {
+          "start": 849.375,
+          "end": 854.125
+        },
+        {
+          "start": 872.625,
+          "end": 877.375
+        },
+        {
+          "start": 899.375,
+          "end": 905.125
+        },
+        {
+          "start": 924.875,
+          "end": 932.875
+        },
+        {
+          "start": 944.125,
+          "end": 954.875
+        },
+        {
+          "start": 973.375,
+          "end": 974.625
+        },
+        {
+          "start": 990.625,
+          "end": 996.625
+        },
+        {
+          "start": 1032.625,
+          "end": 1039.125
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9762138349007323,
+        "R_core": 0.9598702990072789,
+        "F1_padP_coreR": 0.9679730846301432,
+        "paddedModelExportSeconds": 398.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -71.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.933457236494346,
+          "R_core": 0.7637204100736917,
+          "F1_padP_coreR": 0.840101028767748,
+          "paddedModelExportSeconds": 262.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -58.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9652766943814574,
+          "R_core": 0.9071028167796084,
+          "F1_padP_coreR": 0.9352860392091824,
+          "paddedModelExportSeconds": 330.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -66.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9762138349007323,
+          "R_core": 0.9598702990072789,
+          "F1_padP_coreR": 0.9679730846301432,
+          "paddedModelExportSeconds": 398.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -71.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9882490983752908,
+          "R_core": 0.9708295521141674,
+          "F1_padP_coreR": 0.9794618805255324,
+          "paddedModelExportSeconds": 466.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -77.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 34,
+        "matchedRallies": 28,
+        "eventPrecision": 0.8235294117647058,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7887323943661971
+      }
+    },
+    {
+      "name": "desktop_embeddings",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9739134907722473,
+          "maximumSmoothedLiveProbability": 0.8201992213726044,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9886000156402588,
+          "maximumSmoothedLiveProbability": 0.8597158640623093,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 245.125
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.625
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.875
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 790.875
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 853.875
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 896.875,
+          "end": 897.625
+        },
+        {
+          "start": 899.125,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.125,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9666132045088575,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9559574734336873,
+        "paddedModelExportSeconds": 396.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -73.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9197522610429146,
+          "R_core": 0.7582354380831938,
+          "F1_padP_coreR": 0.8312203467797538,
+          "paddedModelExportSeconds": 264.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -56.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9539041236247594,
+          "R_core": 0.8890205082726601,
+          "F1_padP_coreR": 0.9203201413127278,
+          "paddedModelExportSeconds": 330.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -66.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9666132045088575,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9559574734336873,
+          "paddedModelExportSeconds": 396.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -73.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9800189927366595,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9680707096544233,
+          "paddedModelExportSeconds": 462.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -81.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_quality",
+      "rallyCount": 36,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 22,
+          "start": 668.253836,
+          "end": 671.427256,
+          "evaluableCoreSeconds": 3.1734200000000783
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9869725108146667,
+          "maximumSmoothedLiveProbability": 0.8978082984685898,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9939070343971252,
+          "maximumSmoothedLiveProbability": 0.9657917618751526,
+          "nearbyRallies": [
+            {
+              "start": 563.625,
+              "end": 564.625
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.875,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.375,
+          "end": 223.375
+        },
+        {
+          "start": 229.125,
+          "end": 232.125
+        },
+        {
+          "start": 235.125,
+          "end": 245.125
+        },
+        {
+          "start": 256.125,
+          "end": 267.125
+        },
+        {
+          "start": 293.875,
+          "end": 313.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 440.375,
+          "end": 447.625
+        },
+        {
+          "start": 466.875,
+          "end": 477.875
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.125
+        },
+        {
+          "start": 545.625,
+          "end": 547.125
+        },
+        {
+          "start": 563.625,
+          "end": 564.625
+        },
+        {
+          "start": 578.625,
+          "end": 584.125
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.875
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 757.625
+        },
+        {
+          "start": 770.625,
+          "end": 786.375
+        },
+        {
+          "start": 787.375,
+          "end": 792.375
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.375
+        },
+        {
+          "start": 873.375,
+          "end": 877.125
+        },
+        {
+          "start": 896.875,
+          "end": 897.125
+        },
+        {
+          "start": 900.125,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.375
+        },
+        {
+          "start": 973.625,
+          "end": 975.125
+        },
+        {
+          "start": 990.625,
+          "end": 996.125
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9459913942544833,
+        "R_core": 0.9539011653530216,
+        "F1_padP_coreR": 0.949929814536147,
+        "paddedModelExportSeconds": 416.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -53.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9083423273164882,
+          "R_core": 0.7834775682176477,
+          "F1_padP_coreR": 0.8413021263003836,
+          "paddedModelExportSeconds": 277.0,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -44.146175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9312133467048721,
+          "R_core": 0.9090543400108542,
+          "F1_padP_coreR": 0.9200004329901188,
+          "paddedModelExportSeconds": 349.0,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -48.14555333333669,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9459913942544833,
+          "R_core": 0.9539011653530216,
+          "F1_padP_coreR": 0.949929814536147,
+          "paddedModelExportSeconds": 416.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -53.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9656618066678231,
+          "R_core": 0.962500122564471,
+          "F1_padP_coreR": 0.9640783724463149,
+          "paddedModelExportSeconds": 480.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -63.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 36,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8055555555555556,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.7945205479452055
+      }
+    },
+    {
+      "name": "desktop_video_quality",
+      "rallyCount": 34,
+      "whollyMissed": 1,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9551736116409302,
+          "maximumSmoothedLiveProbability": 0.7566507384181023,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.987847089767456,
+          "maximumSmoothedLiveProbability": 0.9424366056919098,
+          "nearbyRallies": [
+            {
+              "start": 563.875,
+              "end": 565.375
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.5
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.875,
+          "end": 170.125
+        },
+        {
+          "start": 183.375,
+          "end": 201.375
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.625,
+          "end": 244.875
+        },
+        {
+          "start": 257.125,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 312.125
+        },
+        {
+          "start": 329.125,
+          "end": 356.125
+        },
+        {
+          "start": 385.875,
+          "end": 392.375
+        },
+        {
+          "start": 407.125,
+          "end": 412.375
+        },
+        {
+          "start": 440.375,
+          "end": 446.625
+        },
+        {
+          "start": 470.125,
+          "end": 477.875
+        },
+        {
+          "start": 493.375,
+          "end": 501.125
+        },
+        {
+          "start": 525.625,
+          "end": 526.875
+        },
+        {
+          "start": 545.375,
+          "end": 546.875
+        },
+        {
+          "start": 563.875,
+          "end": 565.375
+        },
+        {
+          "start": 578.875,
+          "end": 584.125
+        },
+        {
+          "start": 601.125,
+          "end": 605.375
+        },
+        {
+          "start": 619.375,
+          "end": 627.625
+        },
+        {
+          "start": 642.125,
+          "end": 655.375
+        },
+        {
+          "start": 669.625,
+          "end": 671.125
+        },
+        {
+          "start": 709.125,
+          "end": 714.125
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.125,
+          "end": 757.875
+        },
+        {
+          "start": 769.375,
+          "end": 791.375
+        },
+        {
+          "start": 805.875,
+          "end": 811.875
+        },
+        {
+          "start": 828.875,
+          "end": 832.875
+        },
+        {
+          "start": 849.375,
+          "end": 854.375
+        },
+        {
+          "start": 873.125,
+          "end": 877.625
+        },
+        {
+          "start": 899.875,
+          "end": 905.125
+        },
+        {
+          "start": 924.875,
+          "end": 932.875
+        },
+        {
+          "start": 944.125,
+          "end": 954.875
+        },
+        {
+          "start": 973.375,
+          "end": 974.875
+        },
+        {
+          "start": 990.625,
+          "end": 996.625
+        },
+        {
+          "start": 1032.875,
+          "end": 1039.125
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.976561972170302,
+        "R_core": 0.9668705380607598,
+        "F1_padP_coreR": 0.971692090681056,
+        "paddedModelExportSeconds": 401.25,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -69.39469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9343868560058668,
+          "R_core": 0.7717548344668926,
+          "F1_padP_coreR": 0.8453196793814135,
+          "paddedModelExportSeconds": 265.25,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -55.896175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.965777918479621,
+          "R_core": 0.9156365561991631,
+          "F1_padP_coreR": 0.9400390814797509,
+          "paddedModelExportSeconds": 333.25,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -63.89555333333669,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.976561972170302,
+          "R_core": 0.9668705380607598,
+          "F1_padP_coreR": 0.971692090681056,
+          "paddedModelExportSeconds": 401.25,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -69.39469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9884826666666675,
+          "R_core": 0.97471705148543,
+          "F1_padP_coreR": 0.9815515980255897,
+          "paddedModelExportSeconds": 469.25,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -75.39385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 34,
+        "matchedRallies": 28,
+        "eventPrecision": 0.8235294117647058,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7887323943661971
+      }
+    },
+    {
+      "name": "desktop_all_av",
+      "rallyCount": 34,
+      "whollyMissed": 1,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9543195366859436,
+          "maximumSmoothedLiveProbability": 0.7440866604447365,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9817379117012024,
+          "maximumSmoothedLiveProbability": 0.9496813863515854,
+          "nearbyRallies": [
+            {
+              "start": 563.625,
+              "end": 564.875
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.25
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 170.375
+        },
+        {
+          "start": 183.375,
+          "end": 201.375
+        },
+        {
+          "start": 215.625,
+          "end": 219.875
+        },
+        {
+          "start": 235.625,
+          "end": 244.625
+        },
+        {
+          "start": 257.375,
+          "end": 265.125
+        },
+        {
+          "start": 293.875,
+          "end": 312.125
+        },
+        {
+          "start": 329.125,
+          "end": 356.125
+        },
+        {
+          "start": 385.875,
+          "end": 392.375
+        },
+        {
+          "start": 407.125,
+          "end": 412.375
+        },
+        {
+          "start": 440.375,
+          "end": 446.375
+        },
+        {
+          "start": 469.875,
+          "end": 478.125
+        },
+        {
+          "start": 493.375,
+          "end": 501.125
+        },
+        {
+          "start": 525.625,
+          "end": 526.875
+        },
+        {
+          "start": 545.125,
+          "end": 546.625
+        },
+        {
+          "start": 563.625,
+          "end": 564.875
+        },
+        {
+          "start": 578.625,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 605.375
+        },
+        {
+          "start": 619.375,
+          "end": 626.625
+        },
+        {
+          "start": 642.125,
+          "end": 655.125
+        },
+        {
+          "start": 669.375,
+          "end": 671.125
+        },
+        {
+          "start": 708.875,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.375
+        },
+        {
+          "start": 751.875,
+          "end": 757.125
+        },
+        {
+          "start": 769.375,
+          "end": 790.625
+        },
+        {
+          "start": 805.875,
+          "end": 811.875
+        },
+        {
+          "start": 828.625,
+          "end": 832.875
+        },
+        {
+          "start": 849.375,
+          "end": 854.125
+        },
+        {
+          "start": 872.875,
+          "end": 877.375
+        },
+        {
+          "start": 899.625,
+          "end": 904.875
+        },
+        {
+          "start": 924.875,
+          "end": 932.875
+        },
+        {
+          "start": 944.125,
+          "end": 954.875
+        },
+        {
+          "start": 973.375,
+          "end": 974.875
+        },
+        {
+          "start": 990.625,
+          "end": 996.625
+        },
+        {
+          "start": 1032.625,
+          "end": 1039.375
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.977992485508765,
+        "R_core": 0.9575289975774887,
+        "F1_padP_coreR": 0.9676525654412409,
+        "paddedModelExportSeconds": 397.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -72.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9359966889525646,
+          "R_core": 0.7628835464395828,
+          "F1_padP_coreR": 0.8406201433722795,
+          "paddedModelExportSeconds": 261.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9673889647039009,
+          "R_core": 0.9071083179090039,
+          "F1_padP_coreR": 0.9362793797311713,
+          "paddedModelExportSeconds": 329.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -67.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.977992485508765,
+          "R_core": 0.9575289975774887,
+          "F1_padP_coreR": 0.9676525654412409,
+          "paddedModelExportSeconds": 397.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -72.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9897939046937441,
+          "R_core": 0.9677157052864104,
+          "F1_padP_coreR": 0.9786302980945338,
+          "paddedModelExportSeconds": 465.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -78.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 34,
+        "matchedRallies": 28,
+        "eventPrecision": 0.8235294117647058,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7887323943661971
+      }
+    },
+    {
+      "name": "desktop_av_focus_blur",
+      "rallyCount": 36,
+      "whollyMissed": 0,
+      "missedRanges": [],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9951683282852173,
+          "maximumSmoothedLiveProbability": 0.9691467434167862,
+          "nearbyRallies": [
+            {
+              "start": 277.875,
+              "end": 279.375
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.5
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9987540245056152,
+          "maximumSmoothedLiveProbability": 0.9783275723457336,
+          "nearbyRallies": [
+            {
+              "start": 563.625,
+              "end": 564.875
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.25
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.125,
+          "end": 173.125
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.125,
+          "end": 222.625
+        },
+        {
+          "start": 230.375,
+          "end": 232.375
+        },
+        {
+          "start": 234.625,
+          "end": 245.125
+        },
+        {
+          "start": 256.875,
+          "end": 267.875
+        },
+        {
+          "start": 277.875,
+          "end": 279.375
+        },
+        {
+          "start": 293.625,
+          "end": 313.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 393.125
+        },
+        {
+          "start": 407.125,
+          "end": 412.375
+        },
+        {
+          "start": 439.375,
+          "end": 446.375
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.875
+        },
+        {
+          "start": 525.625,
+          "end": 527.125
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 563.625,
+          "end": 564.875
+        },
+        {
+          "start": 578.625,
+          "end": 583.875
+        },
+        {
+          "start": 600.875,
+          "end": 604.875
+        },
+        {
+          "start": 619.125,
+          "end": 627.625
+        },
+        {
+          "start": 641.875,
+          "end": 655.375
+        },
+        {
+          "start": 669.875,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 715.125
+        },
+        {
+          "start": 726.625,
+          "end": 735.375
+        },
+        {
+          "start": 752.125,
+          "end": 757.125
+        },
+        {
+          "start": 770.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.875
+        },
+        {
+          "start": 828.625,
+          "end": 833.375
+        },
+        {
+          "start": 849.375,
+          "end": 854.125
+        },
+        {
+          "start": 872.625,
+          "end": 877.625
+        },
+        {
+          "start": 896.625,
+          "end": 905.125
+        },
+        {
+          "start": 924.625,
+          "end": 933.125
+        },
+        {
+          "start": 943.875,
+          "end": 954.875
+        },
+        {
+          "start": 973.375,
+          "end": 974.625
+        },
+        {
+          "start": 990.625,
+          "end": 995.875
+        },
+        {
+          "start": 1032.875,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9547131089057548,
+        "R_core": 0.9825034676663223,
+        "F1_padP_coreR": 0.9684089548585373,
+        "paddedModelExportSeconds": 428.25,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -42.39469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9049366483569458,
+          "R_core": 0.8122406827284862,
+          "F1_padP_coreR": 0.8560867276565568,
+          "paddedModelExportSeconds": 288.25,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -32.896175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9402578274017228,
+          "R_core": 0.9330329340715069,
+          "F1_padP_coreR": 0.9366314482802374,
+          "paddedModelExportSeconds": 358.25,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -38.89555333333669,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9547131089057548,
+          "R_core": 0.9825034676663223,
+          "F1_padP_coreR": 0.9684089548585373,
+          "paddedModelExportSeconds": 428.25,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -42.39469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9697086888888901,
+          "R_core": 0.9925886639686592,
+          "F1_padP_coreR": 0.9810152885762943,
+          "paddedModelExportSeconds": 500.0,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -44.64385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 36,
+        "matchedRallies": 28,
+        "eventPrecision": 0.7777777777777778,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7671232876712328
+      }
+    },
+    {
+      "name": "desktop_av_visibility",
+      "rallyCount": 36,
+      "whollyMissed": 3,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        },
+        {
+          "humanRallyNumber": 22,
+          "start": 668.253836,
+          "end": 671.427256,
+          "evaluableCoreSeconds": 3.1734200000000783
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9702057242393494,
+          "maximumSmoothedLiveProbability": 0.7951564341783524,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.8901516795158386,
+          "maximumSmoothedLiveProbability": 0.5915720462799072,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.875,
+          "end": 171.125
+        },
+        {
+          "start": 183.375,
+          "end": 201.375
+        },
+        {
+          "start": 215.875,
+          "end": 219.125
+        },
+        {
+          "start": 235.625,
+          "end": 244.625
+        },
+        {
+          "start": 257.625,
+          "end": 265.375
+        },
+        {
+          "start": 293.875,
+          "end": 313.625
+        },
+        {
+          "start": 329.125,
+          "end": 356.125
+        },
+        {
+          "start": 385.875,
+          "end": 392.375
+        },
+        {
+          "start": 407.375,
+          "end": 412.125
+        },
+        {
+          "start": 440.375,
+          "end": 446.125
+        },
+        {
+          "start": 470.875,
+          "end": 477.375
+        },
+        {
+          "start": 492.875,
+          "end": 501.125
+        },
+        {
+          "start": 525.625,
+          "end": 527.125
+        },
+        {
+          "start": 545.625,
+          "end": 546.625
+        },
+        {
+          "start": 583.125,
+          "end": 583.625
+        },
+        {
+          "start": 601.125,
+          "end": 603.875
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 645.875
+        },
+        {
+          "start": 649.375,
+          "end": 652.375
+        },
+        {
+          "start": 653.125,
+          "end": 654.875
+        },
+        {
+          "start": 709.375,
+          "end": 714.125
+        },
+        {
+          "start": 726.875,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.375
+        },
+        {
+          "start": 787.875,
+          "end": 790.625
+        },
+        {
+          "start": 805.875,
+          "end": 811.375
+        },
+        {
+          "start": 829.125,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 853.625
+        },
+        {
+          "start": 873.625,
+          "end": 875.875
+        },
+        {
+          "start": 900.125,
+          "end": 904.625
+        },
+        {
+          "start": 926.625,
+          "end": 932.375
+        },
+        {
+          "start": 944.625,
+          "end": 944.875
+        },
+        {
+          "start": 945.875,
+          "end": 954.375
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.625,
+          "end": 1038.375
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9818205151653717,
+        "R_core": 0.9075857730386637,
+        "F1_padP_coreR": 0.9432448032006924,
+        "paddedModelExportSeconds": 364.5,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -106.14469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9533486409155947,
+          "R_core": 0.6916795224139434,
+          "F1_padP_coreR": 0.8017026666678226,
+          "paddedModelExportSeconds": 233.0,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -88.14617555555913,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9712931040857837,
+          "R_core": 0.840960668384864,
+          "F1_padP_coreR": 0.9014403064489354,
+          "paddedModelExportSeconds": 300.5,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -96.6455533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9818205151653717,
+          "R_core": 0.9075857730386637,
+          "F1_padP_coreR": 0.9432448032006924,
+          "paddedModelExportSeconds": 364.5,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -106.14469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9938706599248028,
+          "R_core": 0.9293502822276585,
+          "F1_padP_coreR": 0.9605282035512309,
+          "paddedModelExportSeconds": 428.5,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -116.14385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 36,
+        "matchedRallies": 27,
+        "eventPrecision": 0.75,
+        "eventRecall": 0.7297297297297297,
+        "eventF1": 0.7397260273972601
+      }
+    },
+    {
+      "name": "desktop_focus_quality",
+      "rallyCount": 36,
+      "whollyMissed": 0,
+      "missedRanges": [],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9886044263839722,
+          "maximumSmoothedLiveProbability": 0.9302709698677063,
+          "nearbyRallies": [
+            {
+              "start": 278.125,
+              "end": 279.125
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9975353479385376,
+          "maximumSmoothedLiveProbability": 0.96185003221035,
+          "nearbyRallies": [
+            {
+              "start": 563.625,
+              "end": 564.625
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.375,
+          "end": 173.125
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.125,
+          "end": 222.625
+        },
+        {
+          "start": 230.875,
+          "end": 232.375
+        },
+        {
+          "start": 235.375,
+          "end": 245.125
+        },
+        {
+          "start": 256.875,
+          "end": 267.875
+        },
+        {
+          "start": 278.125,
+          "end": 279.125
+        },
+        {
+          "start": 293.625,
+          "end": 313.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.875
+        },
+        {
+          "start": 407.125,
+          "end": 412.375
+        },
+        {
+          "start": 437.875,
+          "end": 446.375
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.875
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 563.625,
+          "end": 564.625
+        },
+        {
+          "start": 578.625,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.375
+        },
+        {
+          "start": 619.375,
+          "end": 627.875
+        },
+        {
+          "start": 642.125,
+          "end": 655.625
+        },
+        {
+          "start": 669.875,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.625
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.125,
+          "end": 756.875
+        },
+        {
+          "start": 770.625,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.375,
+          "end": 854.125
+        },
+        {
+          "start": 873.125,
+          "end": 876.875
+        },
+        {
+          "start": 896.625,
+          "end": 905.125
+        },
+        {
+          "start": 924.625,
+          "end": 933.125
+        },
+        {
+          "start": 943.875,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.625,
+          "end": 995.875
+        },
+        {
+          "start": 1033.125,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9537066142248453,
+        "R_core": 0.9801680825455045,
+        "F1_padP_coreR": 0.966756310465072,
+        "paddedModelExportSeconds": 423.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -46.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9104972395369567,
+          "R_core": 0.795968065189608,
+          "F1_padP_coreR": 0.8493893478025761,
+          "paddedModelExportSeconds": 280.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -40.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9388682842559885,
+          "R_core": 0.9260267787090534,
+          "F1_padP_coreR": 0.9324033187361882,
+          "paddedModelExportSeconds": 353.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -43.39555333333669,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9537066142248453,
+          "R_core": 0.9801680825455045,
+          "F1_padP_coreR": 0.966756310465072,
+          "paddedModelExportSeconds": 423.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -46.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.968007325268818,
+          "R_core": 0.9910317405547806,
+          "F1_padP_coreR": 0.9793842309393913,
+          "paddedModelExportSeconds": 496.0,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -48.64385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 36,
+        "matchedRallies": 28,
+        "eventPrecision": 0.7777777777777778,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7671232876712328
+      }
+    },
+    {
+      "name": "desktop_blur_probability",
+      "rallyCount": 37,
+      "whollyMissed": 0,
+      "missedRanges": [],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9869660139083862,
+          "maximumSmoothedLiveProbability": 0.9423535168170929,
+          "nearbyRallies": [
+            {
+              "start": 278.375,
+              "end": 279.125
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 0.75
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9969434142112732,
+          "maximumSmoothedLiveProbability": 0.9540982991456985,
+          "nearbyRallies": [
+            {
+              "start": 563.625,
+              "end": 564.375
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 0.75
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.375,
+          "end": 222.375
+        },
+        {
+          "start": 235.375,
+          "end": 245.125
+        },
+        {
+          "start": 257.125,
+          "end": 265.875
+        },
+        {
+          "start": 266.875,
+          "end": 267.625
+        },
+        {
+          "start": 278.375,
+          "end": 279.125
+        },
+        {
+          "start": 293.625,
+          "end": 313.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.875
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.375
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.875
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 563.625,
+          "end": 564.375
+        },
+        {
+          "start": 578.625,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.375,
+          "end": 627.625
+        },
+        {
+          "start": 642.125,
+          "end": 655.375
+        },
+        {
+          "start": 669.875,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.625
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.125,
+          "end": 757.125
+        },
+        {
+          "start": 770.625,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.375
+        },
+        {
+          "start": 849.375,
+          "end": 854.125
+        },
+        {
+          "start": 873.125,
+          "end": 876.875
+        },
+        {
+          "start": 896.875,
+          "end": 897.625
+        },
+        {
+          "start": 899.125,
+          "end": 905.125
+        },
+        {
+          "start": 924.875,
+          "end": 933.125
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.625,
+          "end": 995.875
+        },
+        {
+          "start": 1033.125,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9688959516616323,
+        "R_core": 0.9762367471305659,
+        "F1_padP_coreR": 0.9725524975704241,
+        "paddedModelExportSeconds": 413.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -56.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9237673871131427,
+          "R_core": 0.7874337030006875,
+          "F1_padP_coreR": 0.8501696013966237,
+          "paddedModelExportSeconds": 273.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -47.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9567438545454556,
+          "R_core": 0.9197736207061477,
+          "F1_padP_coreR": 0.937894552850504,
+          "paddedModelExportSeconds": 343.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -53.39555333333669,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9688959516616323,
+          "R_core": 0.9762367471305659,
+          "F1_padP_coreR": 0.9725524975704241,
+          "paddedModelExportSeconds": 413.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -56.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.981665529715763,
+          "R_core": 0.9894748171409021,
+          "F1_padP_coreR": 0.9855547039641247,
+          "paddedModelExportSeconds": 483.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -60.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 37,
+        "matchedRallies": 28,
+        "eventPrecision": 0.7567567567567568,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7567567567567567
+      }
+    },
+    {
+      "name": "desktop_quality_content_fraction",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9857897162437439,
+          "maximumSmoothedLiveProbability": 0.885099470615387,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9901952147483826,
+          "maximumSmoothedLiveProbability": 0.8832541555166245,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.125
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9724079012345684,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9587827325818982,
+        "paddedModelExportSeconds": 393.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9279321235275406,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8333773440933578,
+          "paddedModelExportSeconds": 261.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9607493855411482,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9239140507868369,
+          "paddedModelExportSeconds": 327.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9724079012345684,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9587827325818982,
+          "paddedModelExportSeconds": 393.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9850693009485836,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9705282568950274,
+          "paddedModelExportSeconds": 459.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_quality_luminance_mean",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9856870770454407,
+          "maximumSmoothedLiveProbability": 0.8842471241950989,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9888442158699036,
+          "maximumSmoothedLiveProbability": 0.8678384870290756,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.625
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.125
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.625
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9730256953268394,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9590829371771462,
+        "paddedModelExportSeconds": 393.5,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -77.14469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9288192479286186,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8337349270395166,
+          "paddedModelExportSeconds": 261.5,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.646175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9614827820186604,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9242530351415984,
+          "paddedModelExportSeconds": 327.5,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.6455533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9730256953268394,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9590829371771462,
+          "paddedModelExportSeconds": 393.5,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -77.14469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9856052472494261,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9707883053097516,
+          "paddedModelExportSeconds": 459.5,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -85.14385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_quality_luminance_std",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9866042137145996,
+          "maximumSmoothedLiveProbability": 0.8893740773200989,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9916583895683289,
+          "maximumSmoothedLiveProbability": 0.8982582241296768,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.375
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.875
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.875
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9724428943845562,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9587997419652273,
+        "paddedModelExportSeconds": 394.25,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.39469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9280695265332078,
+          "R_core": 0.7578674505847488,
+          "F1_padP_coreR": 0.8343771986559934,
+          "paddedModelExportSeconds": 262.25,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -58.896175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9608091732250154,
+          "R_core": 0.8905774316865387,
+          "F1_padP_coreR": 0.924361193455301,
+          "paddedModelExportSeconds": 328.25,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -68.8955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9724428943845562,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9587997419652273,
+          "paddedModelExportSeconds": 394.25,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.39469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9850855211539626,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9705361292655073,
+          "paddedModelExportSeconds": 460.25,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.39385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_quality_laplacian_variance",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9858900308609009,
+          "maximumSmoothedLiveProbability": 0.8872582763433456,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9900693297386169,
+          "maximumSmoothedLiveProbability": 0.8813574910163879,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.125
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9724079012345684,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9587827325818982,
+        "paddedModelExportSeconds": 393.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9279321235275406,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8333773440933578,
+          "paddedModelExportSeconds": 261.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9607493855411482,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9239140507868369,
+          "paddedModelExportSeconds": 327.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9724079012345684,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9587827325818982,
+          "paddedModelExportSeconds": 393.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9850693009485836,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9705282568950274,
+          "paddedModelExportSeconds": 459.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_quality_clipped_pixel_fraction",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9859036803245544,
+          "maximumSmoothedLiveProbability": 0.8871296644210815,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9902642965316772,
+          "maximumSmoothedLiveProbability": 0.8826055079698563,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.625,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.125
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9717908911449525,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9584827158632033,
+        "paddedModelExportSeconds": 394.0,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.64469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9270466921119609,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8330200677452366,
+          "paddedModelExportSeconds": 262.0,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.146175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.960017107046071,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9235753149966103,
+          "paddedModelExportSeconds": 328.0,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.1455533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9717908911449525,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9584827158632033,
+          "paddedModelExportSeconds": 394.0,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.64469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.984533937198068,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9702683477631264,
+          "paddedModelExportSeconds": 460.0,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.64385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_quality_selected_pts_offset_seconds",
+      "rallyCount": 36,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 22,
+          "start": 668.253836,
+          "end": 671.427256,
+          "evaluableCoreSeconds": 3.1734200000000783
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9861053824424744,
+          "maximumSmoothedLiveProbability": 0.8913324773311615,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9937822222709656,
+          "maximumSmoothedLiveProbability": 0.9652234464883804,
+          "nearbyRallies": [
+            {
+              "start": 563.625,
+              "end": 564.625
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 1.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.875,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.375,
+          "end": 223.375
+        },
+        {
+          "start": 228.625,
+          "end": 232.125
+        },
+        {
+          "start": 235.125,
+          "end": 245.125
+        },
+        {
+          "start": 256.125,
+          "end": 267.125
+        },
+        {
+          "start": 293.875,
+          "end": 313.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 440.375,
+          "end": 447.625
+        },
+        {
+          "start": 466.875,
+          "end": 477.875
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.125
+        },
+        {
+          "start": 545.625,
+          "end": 547.125
+        },
+        {
+          "start": 563.625,
+          "end": 564.625
+        },
+        {
+          "start": 578.625,
+          "end": 584.125
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 757.625
+        },
+        {
+          "start": 770.625,
+          "end": 786.375
+        },
+        {
+          "start": 787.375,
+          "end": 792.375
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.375
+        },
+        {
+          "start": 873.375,
+          "end": 877.375
+        },
+        {
+          "start": 896.875,
+          "end": 897.125
+        },
+        {
+          "start": 900.125,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.375
+        },
+        {
+          "start": 973.625,
+          "end": 975.125
+        },
+        {
+          "start": 990.625,
+          "end": 996.125
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9459913942544833,
+        "R_core": 0.9539011653530216,
+        "F1_padP_coreR": 0.949929814536147,
+        "paddedModelExportSeconds": 416.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -53.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9067056744744766,
+          "R_core": 0.7834775682176477,
+          "F1_padP_coreR": 0.8405994557074248,
+          "paddedModelExportSeconds": 277.5,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -43.646175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.929881138769672,
+          "R_core": 0.9090543400108542,
+          "F1_padP_coreR": 0.9193498028037039,
+          "paddedModelExportSeconds": 349.5,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -47.64555333333669,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9459913942544833,
+          "R_core": 0.9539011653530216,
+          "F1_padP_coreR": 0.949929814536147,
+          "paddedModelExportSeconds": 416.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -53.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9656618066678231,
+          "R_core": 0.962500122564471,
+          "F1_padP_coreR": 0.9640783724463149,
+          "paddedModelExportSeconds": 480.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -63.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 36,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8055555555555556,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.7945205479452055
+      }
+    },
+    {
+      "name": "desktop_quality_age",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9857897162437439,
+          "maximumSmoothedLiveProbability": 0.885099470615387,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9901952147483826,
+          "maximumSmoothedLiveProbability": 0.8832541555166245,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.125
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9724079012345684,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9587827325818982,
+        "paddedModelExportSeconds": 393.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9279321235275406,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8333773440933578,
+          "paddedModelExportSeconds": 261.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9607493855411482,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9239140507868369,
+          "paddedModelExportSeconds": 327.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9724079012345684,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9587827325818982,
+          "paddedModelExportSeconds": 393.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9850693009485836,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9705282568950274,
+          "paddedModelExportSeconds": 459.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_quality_available",
+      "rallyCount": 35,
+      "whollyMissed": 2,
+      "missedRanges": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "evaluableCoreSeconds": 7.748777777777889
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "evaluableCoreSeconds": 6.249900000000025
+        }
+      ],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9857897162437439,
+          "maximumSmoothedLiveProbability": 0.885099470615387,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9901952147483826,
+          "maximumSmoothedLiveProbability": 0.8832541555166245,
+          "nearbyRallies": [],
+          "humanCoreSecondsRetainedWithoutPadding": 0.0
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 172.875
+        },
+        {
+          "start": 183.375,
+          "end": 201.625
+        },
+        {
+          "start": 215.625,
+          "end": 221.875
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.375,
+          "end": 265.625
+        },
+        {
+          "start": 293.875,
+          "end": 314.875
+        },
+        {
+          "start": 329.125,
+          "end": 356.625
+        },
+        {
+          "start": 385.625,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 439.875,
+          "end": 446.125
+        },
+        {
+          "start": 469.875,
+          "end": 477.625
+        },
+        {
+          "start": 492.375,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 527.375
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 578.625,
+          "end": 581.125
+        },
+        {
+          "start": 582.125,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.125
+        },
+        {
+          "start": 619.625,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.875
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.375,
+          "end": 756.625
+        },
+        {
+          "start": 770.625,
+          "end": 785.875
+        },
+        {
+          "start": 787.375,
+          "end": 791.125
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.625,
+          "end": 854.125
+        },
+        {
+          "start": 873.375,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 904.875
+        },
+        {
+          "start": 925.125,
+          "end": 932.625
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.875,
+          "end": 995.625
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9724079012345684,
+        "R_core": 0.9455341136139863,
+        "F1_padP_coreR": 0.9587827325818982,
+        "paddedModelExportSeconds": 393.75,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -76.89469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9279321235275406,
+          "R_core": 0.7563105271708702,
+          "F1_padP_coreR": 0.8333773440933578,
+          "paddedModelExportSeconds": 261.75,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -59.396175555559125,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9607493855411482,
+          "R_core": 0.8897989699795994,
+          "F1_padP_coreR": 0.9239140507868369,
+          "paddedModelExportSeconds": 327.75,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -69.3955533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9724079012345684,
+          "R_core": 0.9455341136139863,
+          "F1_padP_coreR": 0.9587827325818982,
+          "paddedModelExportSeconds": 393.75,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -76.89469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9850693009485836,
+          "R_core": 0.9564102616088728,
+          "F1_padP_coreR": 0.9705282568950274,
+          "paddedModelExportSeconds": 459.75,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -84.89385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 29,
+        "eventPrecision": 0.8285714285714286,
+        "eventRecall": 0.7837837837837838,
+        "eventF1": 0.8055555555555555
+      }
+    },
+    {
+      "name": "desktop_focus_blur_visibility",
+      "rallyCount": 35,
+      "whollyMissed": 0,
+      "missedRanges": [],
+      "targets": [
+        {
+          "humanRallyNumber": 6,
+          "start": 273.36562222222216,
+          "end": 281.11440000000005,
+          "maximumLiveProbability": 0.9838749170303345,
+          "maximumSmoothedLiveProbability": 0.92793869972229,
+          "nearbyRallies": [
+            {
+              "start": 278.625,
+              "end": 278.875
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 0.25
+        },
+        {
+          "humanRallyNumber": 16,
+          "start": 562.4958444444444,
+          "end": 568.7457444444444,
+          "maximumLiveProbability": 0.9902570247650146,
+          "maximumSmoothedLiveProbability": 0.9026094377040863,
+          "nearbyRallies": [
+            {
+              "start": 563.875,
+              "end": 564.375
+            }
+          ],
+          "humanCoreSecondsRetainedWithoutPadding": 0.5
+        }
+      ],
+      "rallies": [
+        {
+          "start": 160.625,
+          "end": 171.125
+        },
+        {
+          "start": 183.375,
+          "end": 201.375
+        },
+        {
+          "start": 215.625,
+          "end": 222.125
+        },
+        {
+          "start": 235.375,
+          "end": 244.875
+        },
+        {
+          "start": 257.625,
+          "end": 265.625
+        },
+        {
+          "start": 278.625,
+          "end": 278.875
+        },
+        {
+          "start": 293.625,
+          "end": 312.875
+        },
+        {
+          "start": 329.125,
+          "end": 355.875
+        },
+        {
+          "start": 385.875,
+          "end": 392.625
+        },
+        {
+          "start": 407.125,
+          "end": 412.125
+        },
+        {
+          "start": 440.375,
+          "end": 446.125
+        },
+        {
+          "start": 470.375,
+          "end": 477.625
+        },
+        {
+          "start": 493.125,
+          "end": 501.625
+        },
+        {
+          "start": 525.625,
+          "end": 526.875
+        },
+        {
+          "start": 545.625,
+          "end": 546.875
+        },
+        {
+          "start": 563.875,
+          "end": 564.375
+        },
+        {
+          "start": 578.625,
+          "end": 583.875
+        },
+        {
+          "start": 601.125,
+          "end": 604.375
+        },
+        {
+          "start": 619.375,
+          "end": 627.625
+        },
+        {
+          "start": 642.375,
+          "end": 655.125
+        },
+        {
+          "start": 670.125,
+          "end": 670.625
+        },
+        {
+          "start": 709.125,
+          "end": 714.375
+        },
+        {
+          "start": 726.625,
+          "end": 735.125
+        },
+        {
+          "start": 752.125,
+          "end": 756.875
+        },
+        {
+          "start": 770.625,
+          "end": 790.875
+        },
+        {
+          "start": 805.875,
+          "end": 811.625
+        },
+        {
+          "start": 828.625,
+          "end": 833.125
+        },
+        {
+          "start": 849.375,
+          "end": 853.625
+        },
+        {
+          "start": 873.625,
+          "end": 876.625
+        },
+        {
+          "start": 899.375,
+          "end": 905.125
+        },
+        {
+          "start": 925.375,
+          "end": 933.125
+        },
+        {
+          "start": 944.375,
+          "end": 954.625
+        },
+        {
+          "start": 973.625,
+          "end": 974.625
+        },
+        {
+          "start": 990.625,
+          "end": 995.875
+        },
+        {
+          "start": 1033.375,
+          "end": 1038.625
+        }
+      ],
+      "primary": {
+        "paddingSecondsBeforeAndAfter": 2.0,
+        "joinGapSeconds": 3.0,
+        "P_pad": 0.9801663163794315,
+        "R_core": 0.9723471372631203,
+        "F1_padP_coreR": 0.9762410701911157,
+        "paddedModelExportSeconds": 396.5,
+        "paddedHumanExportSeconds": 470.64469777778106,
+        "exportDurationDifferenceSeconds": -74.14469777778106,
+        "coreHumanSeconds": 321.1461755555591
+      },
+      "padding": [
+        {
+          "paddingSecondsBeforeAndAfter": 0.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9381542560103978,
+          "R_core": 0.7493054097573593,
+          "F1_padP_coreR": 0.8331625027560567,
+          "paddedModelExportSeconds": 256.5,
+          "paddedHumanExportSeconds": 321.1461755555591,
+          "exportDurationDifferenceSeconds": -64.64617555555913,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 1.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9697884975327552,
+          "R_core": 0.9062529171987468,
+          "F1_padP_coreR": 0.9369448329376385,
+          "paddedModelExportSeconds": 326.5,
+          "paddedHumanExportSeconds": 397.1455533333367,
+          "exportDurationDifferenceSeconds": -70.6455533333367,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 2.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9801663163794315,
+          "R_core": 0.9723471372631203,
+          "F1_padP_coreR": 0.9762410701911157,
+          "paddedModelExportSeconds": 396.5,
+          "paddedHumanExportSeconds": 470.64469777778106,
+          "exportDurationDifferenceSeconds": -74.14469777778106,
+          "coreHumanSeconds": 321.1461755555591
+        },
+        {
+          "paddingSecondsBeforeAndAfter": 3.0,
+          "joinGapSeconds": 3.0,
+          "P_pad": 0.9917169227104922,
+          "R_core": 0.9886963554339628,
+          "F1_padP_coreR": 0.9902043355563975,
+          "paddedModelExportSeconds": 466.5,
+          "paddedHumanExportSeconds": 544.6438533333364,
+          "exportDurationDifferenceSeconds": -78.14385333333644,
+          "coreHumanSeconds": 321.1461755555591
+        }
+      ],
+      "event": {
+        "trueRallies": 37,
+        "predictedRallies": 35,
+        "matchedRallies": 28,
+        "eventPrecision": 0.8,
+        "eventRecall": 0.7567567567567568,
+        "eventF1": 0.7777777777777778
+      }
+    }
+  ],
+  "sameFrameResize": {
+    "recordingIndex": "recording-044",
+    "artifactIndex": "private-reference-0223",
+    "scope": "Same OpenCV-decoded BGR frames; only downsampling changes. Center point emulates Android sampling coordinates but does not emulate device YUV decode/color conversion. Not an Android feature parity claim.",
+    "analysisSize": [
+      192,
+      108
+    ],
+    "frames": [
+      {
+        "requestedSeconds": 562.5,
+        "selectedPtsSeconds": 562.4954444444445,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2643.52197265625,
+          "focusQuality": 0.96355050150986,
+          "blurProbability": 0.036449498490140037,
+          "luminanceMean": 0.45710803225611235
+        },
+        "centerPoint": {
+          "laplacianVariance": 12940.73046875,
+          "focusQuality": 0.9923317179018741,
+          "blurProbability": 0.007668282098125854,
+          "luminanceMean": 0.45797022512708785
+        },
+        "bilinear": {
+          "laplacianVariance": 10112.2841796875,
+          "focusQuality": 0.9902078713987511,
+          "blurProbability": 0.009792128601248937,
+          "luminanceMean": 0.45856046508109416
+        }
+      },
+      {
+        "requestedSeconds": 563.0,
+        "selectedPtsSeconds": 562.9953666666667,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2630.93115234375,
+          "focusQuality": 0.9633824529358136,
+          "blurProbability": 0.03661754706418638,
+          "luminanceMean": 0.45320537551440326
+        },
+        "centerPoint": {
+          "laplacianVariance": 12474.947265625,
+          "focusQuality": 0.992047680368938,
+          "blurProbability": 0.007952319631062072,
+          "luminanceMean": 0.4535786961389494
+        },
+        "bilinear": {
+          "laplacianVariance": 9982.6025390625,
+          "focusQuality": 0.9900819258110617,
+          "blurProbability": 0.009918074188938345,
+          "luminanceMean": 0.45429961722343254
+        }
+      },
+      {
+        "requestedSeconds": 563.5,
+        "selectedPtsSeconds": 563.4952888888889,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2658.995361328125,
+          "focusQuality": 0.9637549227513518,
+          "blurProbability": 0.03624507724864822,
+          "luminanceMean": 0.448375279895909
+        },
+        "centerPoint": {
+          "laplacianVariance": 13207.9208984375,
+          "focusQuality": 0.9924856782090025,
+          "blurProbability": 0.007514321790997505,
+          "luminanceMean": 0.44885412884289516
+        },
+        "bilinear": {
+          "laplacianVariance": 10207.0498046875,
+          "focusQuality": 0.990297902707861,
+          "blurProbability": 0.00970209729213896,
+          "luminanceMean": 0.4497390159767611
+        }
+      },
+      {
+        "requestedSeconds": 564.0,
+        "selectedPtsSeconds": 563.9952111111112,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2615.266845703125,
+          "focusQuality": 0.9631712072210329,
+          "blurProbability": 0.03682879277896709,
+          "luminanceMean": 0.4477222524812394
+        },
+        "centerPoint": {
+          "laplacianVariance": 13027.1162109375,
+          "focusQuality": 0.9923821806409636,
+          "blurProbability": 0.007617819359036382,
+          "luminanceMean": 0.4477793663761801
+        },
+        "bilinear": {
+          "laplacianVariance": 10056.41796875,
+          "focusQuality": 0.9901540089913897,
+          "blurProbability": 0.009845991008610243,
+          "luminanceMean": 0.4487843439845074
+        }
+      },
+      {
+        "requestedSeconds": 564.5,
+        "selectedPtsSeconds": 564.4951333333333,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2566.557861328125,
+          "focusQuality": 0.9624984698624941,
+          "blurProbability": 0.037501530137505915,
+          "luminanceMean": 0.4472795252360204
+        },
+        "centerPoint": {
+          "laplacianVariance": 12754.06640625,
+          "focusQuality": 0.9922203607139156,
+          "blurProbability": 0.007779639286084383,
+          "luminanceMean": 0.4472490770999758
+        },
+        "bilinear": {
+          "laplacianVariance": 9984.162109375,
+          "focusQuality": 0.9900834596949772,
+          "blurProbability": 0.009916540305022708,
+          "luminanceMean": 0.4484193445896877
+        }
+      },
+      {
+        "requestedSeconds": 565.0,
+        "selectedPtsSeconds": 564.9950555555556,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2537.42578125,
+          "focusQuality": 0.9620842411146048,
+          "blurProbability": 0.037915758885395175,
+          "luminanceMean": 0.44690506989832973
+        },
+        "centerPoint": {
+          "laplacianVariance": 12893.5205078125,
+          "focusQuality": 0.9923038563767322,
+          "blurProbability": 0.007696143623267757,
+          "luminanceMean": 0.44674715565238443
+        },
+        "bilinear": {
+          "laplacianVariance": 9878.412109375,
+          "focusQuality": 0.9899783654048476,
+          "blurProbability": 0.010021634595152387,
+          "luminanceMean": 0.44816762739046234
+        }
+      },
+      {
+        "requestedSeconds": 565.5,
+        "selectedPtsSeconds": 565.4949777777776,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2613.18505859375,
+          "focusQuality": 0.9631429490283901,
+          "blurProbability": 0.036857050971609816,
+          "luminanceMean": 0.4481587388041637
+        },
+        "centerPoint": {
+          "laplacianVariance": 12444.513671875,
+          "focusQuality": 0.9920283876588853,
+          "blurProbability": 0.007971612341114634,
+          "luminanceMean": 0.44857688059791817
+        },
+        "bilinear": {
+          "laplacianVariance": 9932.7109375,
+          "focusQuality": 0.9900326042858244,
+          "blurProbability": 0.009967395714175584,
+          "luminanceMean": 0.44947803195352215
+        }
+      },
+      {
+        "requestedSeconds": 566.0,
+        "selectedPtsSeconds": 565.9949,
+        "sourceDimensions": [
+          1920,
+          1080
+        ],
+        "area": {
+          "laplacianVariance": 2619.7158203125,
+          "focusQuality": 0.9632314526197411,
+          "blurProbability": 0.036768547380258955,
+          "luminanceMean": 0.44777274721617044
+        },
+        "centerPoint": {
+          "laplacianVariance": 12709.64453125,
+          "focusQuality": 0.9921933821226621,
+          "blurProbability": 0.007806617877337906,
+          "luminanceMean": 0.44819675169450496
+        },
+        "bilinear": {
+          "laplacianVariance": 10006.19921875,
+          "focusQuality": 0.9901050832429198,
+          "blurProbability": 0.00989491675708018,
+          "luminanceMean": 0.4490281181917211
+        }
+      }
+    ]
+  },
+  "independentVerification": {
+    "intervalArithmetic": "Six named cases across all four padding settings independently recomputed with endpoint interval arithmetic; maximum duration discrepancy 1.14e-13 seconds.",
+    "cases": [
+      "corrected_phone",
+      "desktop",
+      "desktop_audio",
+      "desktop_video",
+      "desktop_embeddings",
+      "desktop_av_focus_blur"
+    ],
+    "liveEditor": "Clean current highest-F1 lab has exactly the same 34 rally ranges and gold metrics as saved desktop; serving enrichment does not change geometry; suppression defaults off."
+  },
+  "conclusions": [
+    "Extra corrected-native miss is human rally16, 562.4958444444444 to568.7457444444444 seconds. Desktop-only miss is rally6,273.36562222222216 to281.11440000000005.",
+    "Replacing desktop audio alone swaps which rally is missed; it does not recover rally16.",
+    "Replacing focus/blur alone is sufficient to recover rally16 with the frozen decoder. Same-frame point vs area sampling reproduces the direction and magnitude of focus/blur drift. This is strong evidence of visual preprocessing mismatch, not a completed app repair.",
+    "A separate first-frame-after vs nearest-frame convention changes the selected PTS offset scalar; replacing that scalar recovers16 but introduces22, so it is not a qualified isolated fix."
+  ]
+}

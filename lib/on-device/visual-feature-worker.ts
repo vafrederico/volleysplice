@@ -45,11 +45,8 @@ let detailedProfiling = true;
 let wasmReducer: WasmVisualFeatureReducer | null = null;
 const canvas = new OffscreenCanvas(ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
 const firefox = navigator.userAgent.includes("Firefox");
-const context = (() => {
-  const candidate = canvas.getContext("2d", { alpha: firefox });
-  if (!candidate) throw new Error("The extraction worker could not create a 2D canvas context.");
-  return candidate;
-})();
+let areaResize = false;
+let context: OffscreenCanvasRenderingContext2D;
 
 function withoutThen(candidate: CvThenable): CvRuntime {
   return new Proxy(candidate, {
@@ -90,6 +87,13 @@ async function processFrame(
       rotation: request.rotation,
     });
     const canvasDrawStartedAt = detailedProfiling ? performance.now() : 0;
+    // Read cropped RGB at source resolution. Canvas minification/mipmapping is
+    // not INTER_AREA; resizing here would bypass the canonical OpenCV reducer.
+    if (areaResize && (canvas.width !== request.crop.width || canvas.height !== request.crop.height)) {
+      canvas.width = request.crop.width;
+      canvas.height = request.crop.height;
+      canvasIsFresh = true;
+    }
     (sample as MipmappedVideoSample)._drawWithFitAndMipmapping(canvas, context, {
       fit: "fill",
       rotation: request.rotation,
@@ -100,7 +104,7 @@ async function processFrame(
     canvasIsFresh = false;
     const canvasDrawMs = detailedProfiling ? performance.now() - canvasDrawStartedAt : 0;
     const readbackStartedAt = detailedProfiling ? performance.now() : 0;
-    const imageData = context.getImageData(0, 0, ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
     const readbackMs = detailedProfiling ? performance.now() - readbackStartedAt : 0;
     const result = extractVisualFeaturesFromImageData(
       cv,
@@ -146,6 +150,13 @@ workerScope.addEventListener("message", (event: MessageEvent<VisualFeatureWorker
     try {
       if (request.type === "initialize") {
         detailedProfiling = request.detailedProfiling;
+        areaResize = request.areaResize;
+        const candidate = canvas.getContext("2d", {
+          alpha: firefox,
+          ...(areaResize ? { willReadFrequently: true } : {}),
+        });
+        if (!candidate) throw new Error("The extraction worker could not create a 2D canvas context.");
+        context = candidate;
         const startedAt = detailedProfiling ? performance.now() : 0;
         await loadWorkerOpenCv();
         const openCvLoadMs = detailedProfiling ? performance.now() - startedAt : 0;

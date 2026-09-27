@@ -6,3 +6,6 @@ public/licenses/
 *.tsbuildinfo
 .wrangler/
 vite.config.local.ts
+
+public/runtime/rally-models/
+public/runtime/ort/
