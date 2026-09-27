@@ -148,8 +148,6 @@ npm run deploy:check
 This builds locally, checks TypeScript and runtime integrity, enforces the Workers
 Free static asset limits (20,000 files, 25 MiB per file), and runs Wrangler's dry run.
 Wrangler is pinned in the dev dependencies and lockfile.
-The Miniflare dependency's `sharp` package is overridden to patched version 0.35.4
-for GHSA-rgj7-g3m4-5g8c; remove this override once upstream pins a patched release.
 
 For the first actual deployment, authenticate with your Cloudflare account:
 
@@ -177,10 +175,35 @@ Vite's fingerprinted `/assets/` files can be cached for one year. Cloudflare rea
 `public/_headers` and `public/_redirects` after Vite copies them into `dist/`.
 The redirects preserve legacy `/android/` links to the Google Play listing.
 
+### Branch previews
+
+Wrangler Previews serve a build from a branch without changing the production
+deployment. From `prod/`, check out the desired revision and run:
+
+```sh
+npm run deploy:preview
+```
+
+The script builds and verifies `dist/`, then uploads it with `wrangler preview`.
+The Preview name defaults to the current Git branch; use
+`npm run deploy:preview -- --name beta` for a stable `beta` Preview that can be
+updated from any checkout. Wrangler prints a stable Preview URL for the latest
+deployment and a unique URL for that particular deployment. Both use the
+account's `workers.dev` domain. Previews are public unless protected with
+Cloudflare Access, and their browser storage is separate from production.
+
+The top-level `previews` configuration is deliberately empty: this app has no
+server-side variables, secrets, or resource bindings. Static assets and the
+compatibility date remain at the top level as required by Wrangler. The
+`preview_urls` setting enables `workers.dev` Preview URLs when the production
+configuration is next deployed. Custom-domain Preview URLs require separate DNS,
+certificate, and routing setup because the production route already matches
+subdomains. See [Worker Previews](https://developers.cloudflare.com/workers/previews/)
+and [Preview configuration](https://developers.cloudflare.com/workers/previews/configuration/).
+
 `wrangler.jsonc` attaches `volleysplice.com` as the production Custom Domain and
 routes `*.volleysplice.com/*` to the same app. The account-specific `workers.dev`
-address is available in the deployment output. These URLs serve the same
-deployment; the `workers.dev` address is not a separate staging environment.
+address in production deployment output serves that same production deployment.
 Cloudflare manages the custom domain's DNS and HTTPS certificate. The domain must
 belong to an active Cloudflare zone in the deploying account. Keep the domain in
 the Wrangler configuration so later deployments preserve it.
