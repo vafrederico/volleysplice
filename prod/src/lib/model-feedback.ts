@@ -13,8 +13,10 @@ import {
   PREVIOUS_PRODUCTION_BUNDLE_SHA256,
   PREVIOUS_PRODUCTION_MODEL_ID,
   PRODUCTION_ENSEMBLE_ALGORITHM_VERSION,
+  PRODUCTION_ENSEMBLE_MODEL_ID,
 } from "./on-device/ensemble.ts";
 import { ANALYSIS_FPS } from "./on-device/feature-schema.ts";
+import { RALLY_MODEL_OPTIONS, isNeuralModelId } from "./on-device/rally-model.ts";
 import type { ProductAnalysis } from "./product-analysis";
 import {
   deriveScoreAt,
@@ -79,10 +81,20 @@ export type ModelFeedbackBundle = {
   } | null;
   initialInference: {
     modelId: string;
+    modelLabel: string;
+    modelSelection: string;
+    componentsRole: "score-support" | "rally-and-score";
     components: Array<{ modelId: string; bundleSha256: string }>;
     ensembleAlgorithmVersion: string;
     ranges: ProductAnalysis["rallies"];
     probabilityModelId: string;
+    probabilityModelIds: { rally: string; serve: string; deadState: string };
+    neuralScores: null | {
+      modelId: string;
+      heads: readonly ["live", "serve", "end", "keep"];
+      timestamps: EncodedNumericArray;
+      probabilities: EncodedNumericArray;
+    };
     timestamps: EncodedNumericArray;
     probabilities: {
       rally: EncodedNumericArray;
@@ -287,6 +299,21 @@ export function createModelFeedbackBundle(
     new Set(excludedRallyIds),
   );
 
+  const neural = isNeuralModelId(analysis.modelId);
+  if (neural && !analysis.neuralScores) {
+    warnings.push("Neural scores were not retained by this older analysis; saved rally ranges and corrections are still included.");
+  }
+  if (analysis.neuralScores && analysis.neuralScores.modelId !== analysis.modelId) {
+    throw new Error("Neural score model does not match this analysis.");
+  }
+  const model = RALLY_MODEL_OPTIONS.find(option => option.id === analysis.modelId);
+  // Native exports regenerate these three auxiliary traces with the legacy head.
+  // Imported bundles retain explicit per-head provenance when it is available.
+  const probabilityModelIds = analysis.probabilityModelIds ?? {
+    rally: neural && !analysis.runtimeVariant.startsWith("native-android") ? analysis.modelId : ALL_LABELS_V2_MODEL_ID,
+    serve: ALL_LABELS_V2_MODEL_ID,
+    deadState: ALL_LABELS_V2_MODEL_ID,
+  };
   return {
     schema: MODEL_FEEDBACK_SCHEMA,
     schemaVersion: MODEL_FEEDBACK_SCHEMA_VERSION,
@@ -325,6 +352,9 @@ export function createModelFeedbackBundle(
       : null,
     initialInference: {
       modelId: analysis.modelId,
+      modelLabel: model?.label ?? (analysis.modelId === PRODUCTION_ENSEMBLE_MODEL_ID ? "Legacy model" : "Saved model"),
+      modelSelection: model?.value ?? (analysis.modelId === PRODUCTION_ENSEMBLE_MODEL_ID ? "ensemble" : "unknown"),
+      componentsRole: neural ? "score-support" : "rally-and-score",
       components: [
         {
           modelId: ALL_LABELS_V2_MODEL_ID,
@@ -337,7 +367,14 @@ export function createModelFeedbackBundle(
       ],
       ensembleAlgorithmVersion: PRODUCTION_ENSEMBLE_ALGORITHM_VERSION,
       ranges: analysis.rallies.map((range) => ({ ...range })),
-      probabilityModelId: ALL_LABELS_V2_MODEL_ID,
+      probabilityModelId: probabilityModelIds.rally,
+      probabilityModelIds,
+      neuralScores: analysis.neuralScores ? {
+        modelId: analysis.neuralScores.modelId,
+        heads: [...analysis.neuralScores.heads],
+        timestamps: encodeNumericArray(analysis.neuralScores.timestamps, [analysis.neuralScores.timestamps.length]),
+        probabilities: encodeNumericArray(analysis.neuralScores.probabilities, [analysis.neuralScores.timestamps.length, 4]),
+      } : null,
       timestamps: encodeNumericArray(analysis.inferenceTimes, [
         analysis.inferenceTimes.length,
       ]),

@@ -82,6 +82,9 @@ internal object ModelFeedbackExporter {
             require(analysis.deadStateProbabilities.size == rows)
         }
         val warnings = JSONArray()
+        if (RallyModels.isNeural(project.modelId) && project.neuralScores == null) {
+            warnings.put("Neural scores were not retained by this older analysis; saved rally ranges and corrections are still included.")
+        }
         if (analysis == null) {
             warnings.put(
                 "Base features and probability traces are unavailable because the retained feature cache is missing; inference ranges and corrections are still included.",
@@ -173,6 +176,10 @@ internal object ModelFeedbackExporter {
             }} ?: JSONObject.NULL)
             put("initialInference", JSONObject().apply {
                 put("modelId", project.modelId)
+                put("neuralScores", project.neuralScores?.encode() ?: JSONObject.NULL)
+                put("modelLabel", RallyModels.label(project.modelId))
+                put("modelSelection", if (RallyModels.isNeural(project.modelId)) RallyModels.variant(project.modelId) else "ensemble")
+                put("componentsRole", if (RallyModels.isNeural(project.modelId)) "score-support" else "rally-and-score")
                 put("components", JSONArray().apply {
                     put(modelComponent(
                         FeatureSchema.ALL_LABELS_V2_MODEL_ID,
@@ -238,6 +245,12 @@ internal object ModelFeedbackExporter {
                     })
                 }} ?: JSONObject.NULL else JSONObject.NULL)
                 put("probabilityModelId", FeatureSchema.ALL_LABELS_V2_MODEL_ID)
+                // Native feedback regenerates auxiliary traces from cached AV features.
+                put("probabilityModelIds", JSONObject().apply {
+                    put("rally", FeatureSchema.ALL_LABELS_V2_MODEL_ID)
+                    put("serve", FeatureSchema.ALL_LABELS_V2_MODEL_ID)
+                    put("deadState", FeatureSchema.ALL_LABELS_V2_MODEL_ID)
+                })
                 put("timestamps", encode(
                     analysis?.timestamps ?: doubleArrayOf(),
                     intArrayOf(inferenceRows),

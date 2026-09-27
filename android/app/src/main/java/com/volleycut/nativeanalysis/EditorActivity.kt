@@ -72,7 +72,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -580,7 +579,6 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             .getString("rally-model", RallyModels.DEFAULT)?.takeIf(RallyModels::isSupported) ?: RallyModels.DEFAULT)
     }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
-    var prepareBothVariants by remember { mutableStateOf(false) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
     val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
@@ -825,7 +823,6 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                     analyzeServingSide,
                     generateSideSwitchMarkers,
                     rallyModelId,
-                    prepareBothVariants,
                 )
                 val existing = NativeProjectStore.findMatching(context, candidate)
                 val reusable = useCache && existing?.status == ProjectStatus.READY &&
@@ -1138,8 +1135,6 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 state = inference,
                 generateSideSwitchMarkers = generateSideSwitchMarkers,
                 rallyModelId = rallyModelId,
-                prepareBothVariants = prepareBothVariants,
-                onPrepareBothVariants = { prepareBothVariants = it },
                 onRallyModel = {
                     rallyModelId = it
                     context.getSharedPreferences("analysis-preferences", Context.MODE_PRIVATE)
@@ -2322,8 +2317,6 @@ private fun NewProjectCard(
     state: InferenceUiState,
     generateSideSwitchMarkers: Boolean,
     rallyModelId: String,
-    prepareBothVariants: Boolean,
-    onPrepareBothVariants: (Boolean) -> Unit,
     onRallyModel: (String) -> Unit,
     queueCount: Int,
     gameStartMs: Long,
@@ -2394,29 +2387,30 @@ private fun NewProjectCard(
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Rally detection", fontWeight = FontWeight.SemiBold)
-                listOf(RallyModels.RECALL, RallyModels.F1, FeatureSchema.MODEL_ID).forEach { id ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !preparing) { onRallyModel(id) },
-                        verticalAlignment = Alignment.CenterVertically,
+                var modelMenuExpanded by remember { mutableStateOf(false) }
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { modelMenuExpanded = true },
+                        enabled = !preparing,
+                        modifier = Modifier.fillMaxWidth().semantics {
+                            contentDescription = "Rally detection model: ${RallyModels.label(rallyModelId)}"
+                        },
                     ) {
-                        RadioButton(selected = rallyModelId == id, onClick = { onRallyModel(id) }, enabled = !preparing)
-                        Text(RallyModels.label(id), fontSize = 13.sp)
+                        Text(RallyModels.label(rallyModelId), modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+                        Text("▾")
                     }
-                }
-                Text("Highest recall keeps more possible play. Highest F1 makes tighter selections. Changing this creates a separate analysis.",
-                    fontSize = 12.sp, color = Muted)
-                if (RallyModels.isNeural(rallyModelId)) {
-                    Row(Modifier.fillMaxWidth().clickable(enabled = !preparing) {
-                        onPrepareBothVariants(!prepareBothVariants)
-                    }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = prepareBothVariants, onCheckedChange = onPrepareBothVariants, enabled = !preparing)
-                        Column {
-                            Text("Prepare both versions (experimental)", fontSize = 13.sp)
-                            Text("New analyses save recall and F1 results for switching without waiting. Initial analysis takes longer.",
-                                fontSize = 12.sp, color = Muted)
+                    DropdownMenu(expanded = modelMenuExpanded && !preparing,
+                        onDismissRequest = { modelMenuExpanded = false }) {
+                        RallyModels.OPTIONS.forEach { id ->
+                            DropdownMenuItem(
+                                text = { Text(RallyModels.label(id)) },
+                                onClick = { modelMenuExpanded = false; onRallyModel(id) },
+                            )
                         }
                     }
                 }
+                Text(RallyModels.description(rallyModelId),
+                    fontSize = 12.sp, color = Muted)
             }
             Surface(
                 modifier = Modifier
@@ -7086,6 +7080,8 @@ internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<
     JSONObject().apply {
         put("schemaVersion", 2)
         put("method", "android-editor-v3-suppression")
+        put("modelId", seed.rallyModelId)
+        put("modelLabel", RallyModels.label(seed.rallyModelId))
         put("sourceName", seed.displayName)
         put("sourceUri", seed.sourceUri)
         put("sourceDuration", seed.durationMs / 1_000.0)

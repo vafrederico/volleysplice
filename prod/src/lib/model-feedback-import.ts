@@ -189,6 +189,8 @@ function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {
   const suppression = feedback.initialInference.suppression;
   return {
     modelId: feedback.initialInference.modelId,
+    probabilityModelIds: feedback.initialInference.probabilityModelIds,
+    neuralScores: feedback.initialInference.neuralScores,
     featurePath: "local-source",
     intervals: feedback.initialInference.ranges.map((range, index) =>
       interval(range, `bundle.initialInference.ranges[${index}].agreement`),

@@ -73,7 +73,7 @@ internal data class NativeProject(
     val sideSwitchEnabled: Boolean = false,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
     val modelId: String = FeatureSchema.MODEL_ID,
-    val prepareBothVariants: Boolean = false,
+    val neuralScores: NeuralRallyScores? = null,
     val cacheMode: String = NativeFeatureCache.Mode.USE.wireName(),
     val analysisMeasurements: List<AnalysisRunMeasurements> = emptyList(),
     val error: String? = null,
@@ -113,6 +113,7 @@ internal data class NativeProject(
 
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
+    // Keep reading projects saved by the retired paired-inference experiment.
     private const val VERSION = 12
     private const val TAG = "VolleySpliceProjects"
     private const val DIRECTORY = "native-projects"
@@ -241,9 +242,11 @@ internal object NativeProjectStore {
 
     @Synchronized
     fun complete(context: Context, id: String, result: AnalysisTypes.AnalysisResult,
-                 measurementKind: AnalysisRunKind = AnalysisRunKind.PROJECT): NativeProject? {
+                 neuralScores: NeuralRallyScores? = null): NativeProject? {
         val current = get(context, id) ?: return null
+        require(neuralScores == null || neuralScores.modelId == current.modelId)
         val completed = current.copy(
+            neuralScores = neuralScores,
             source = current.source.copy(name = result.displayName()),
             featureCacheSource = null,
             media = result.media(),
@@ -283,7 +286,7 @@ internal object NativeProjectStore {
             cacheMode = NativeFeatureCache.Mode.USE.wireName(),
             analysisMeasurements = replaceAnalysisMeasurement(
                 current.analysisMeasurements,
-                AnalysisRunMeasurements.fromResult(result).copy(kind = measurementKind),
+                AnalysisRunMeasurements.fromResult(result),
             ),
             error = null,
             updatedAtMs = System.currentTimeMillis(),
@@ -292,18 +295,6 @@ internal object NativeProjectStore {
             save(context, it)
             EditorProjectStore.save(context, checkNotNull(it.editorSeed()))
         }
-    }
-
-    /** Save the companion result without overwriting an already completed/reviewed project. */
-    @Synchronized
-    fun completeAlternate(context: Context, primary: NativeProject, output: PairedNeuralAnalysis.Output): NativeProject? {
-        val candidate = newQueued(primary.source, primary.media, primary.roi, primary.analysisWindow,
-            primary.servingSideStatus != ServingSideAnalysisStatus.DISABLED, primary.sideSwitchEnabled,
-            output.alternateModelId)
-        val existing = findMatching(context, candidate)
-        if (existing?.status == ProjectStatus.READY) return existing
-        save(context, candidate)
-        return complete(context, candidate.id, output.alternate, AnalysisRunKind.PAIRED_COMPANION)
     }
 
     @Synchronized
@@ -475,7 +466,6 @@ internal object NativeProjectStore {
         analyzeServingSide: Boolean = true,
         sideSwitchEnabled: Boolean = false,
         rallyModelId: String = RallyModels.DEFAULT,
-        prepareBothVariants: Boolean = false,
     ): NativeProject {
         require(RallyModels.isSupported(rallyModelId)) { "Unknown rally model" }
         val now = System.currentTimeMillis()
@@ -488,7 +478,6 @@ internal object NativeProjectStore {
             roi = roi,
             status = ProjectStatus.QUEUED,
             modelId = rallyModelId,
-            prepareBothVariants = prepareBothVariants && RallyModels.isNeural(rallyModelId),
             servingSideStatus = if (analyzeServingSide) {
                 ServingSideAnalysisStatus.QUEUED
             } else ServingSideAnalysisStatus.DISABLED,
@@ -701,6 +690,7 @@ internal object NativeProjectStore {
         put("visualExtractorVersion", project.visualExtractorVersion)
         put("status", project.status.wireName)
         put("modelId", project.modelId)
+        put("neuralScores", project.neuralScores?.encode() ?: JSONObject.NULL)
         put("cacheMode", project.cacheMode)
         put("analysisMeasurements", AnalysisMeasurementsJson.encode(project.analysisMeasurements))
         put("error", project.error ?: JSONObject.NULL)
@@ -727,7 +717,6 @@ internal object NativeProjectStore {
         put("servingSideError", project.servingSideError ?: JSONObject.NULL)
         put("sideSwitchError", project.sideSwitchError ?: JSONObject.NULL)
         put("sideSwitchEnabled", project.sideSwitchEnabled)
-        put("prepareBothVariants", project.prepareBothVariants)
         put("suppression", project.suppression?.let(::encodeSuppression) ?: JSONObject.NULL)
     }
 
@@ -818,7 +807,9 @@ internal object NativeProjectStore {
             } else json.optJSONObject("sideSwitch") != null,
             suppression = json.optJSONObject("suppression")?.let(::decodeSuppression),
             modelId = json.optString("modelId"),
-            prepareBothVariants = json.optBoolean("prepareBothVariants", false),
+            neuralScores = json.optJSONObject("neuralScores")?.let {
+                NeuralRallyScores.decode(it, json.getString("modelId"), analysisWindow.start(), analysisWindow.end())
+            },
             cacheMode = json.optString("cacheMode", NativeFeatureCache.Mode.USE.wireName()),
             analysisMeasurements = AnalysisMeasurementsJson.decode(
                 json.optJSONArray("analysisMeasurements"),

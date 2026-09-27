@@ -64,11 +64,18 @@ change even when the column names do not change.
 ## Production profile
 
 This branch adds the selectable **Distilled Large** rally pipeline to the normal
-production web and Android apps, with the frozen highest-recall selection as the
-new-project default. Highest F1 and the existing production ensemble remain
-explicit choices. This is an application integration, not a published release or
+production web and Android apps, with the frozen highest-F1 selection as the
+default, labeled **Balanced · BETA**. Highest recall is **Maximum coverage · BETA**
+and the production ensemble is **Legacy model**. Each analysis runs only the
+selected rally variant. This is an application integration, not a published release or
 a new cross-platform accuracy study. The F104 profile below remains required for
 both neural fusion and serve/state evidence used by the score specialists.
+
+New analyses retain the selected TCN's four sigmoid scores (`live`, `serve`, `end`,
+`keep`) on the source-aligned 4 Hz timeline. Project feedback exports preserve those
+scores, their model identity, existing AV features, and editor/score corrections;
+they do not include image embeddings. Import restores the saved results without a
+video pass. See the [feedback contract](prod/docs/model-feedback-bundle.md).
 
 The neural input is **104 AV values + 3,840 regional image values + eight
 quality/age/availability values** per nominal 4 Hz tick. Images are sampled at
@@ -108,21 +115,6 @@ See the [bundle contract](models/distilled-large/README.md) for immutable hashes
 and reproducible build preparation, and the
 [normal-app integration checks](docs/research/distilled-large-production-integration.md)
 for browser and emulator validation.
-
-Android's experimental **Prepare both versions** option runs both frozen Large
-encoders on each prepared 224-pixel image during a fresh shared AV decode. One
-bounded four-image queue feeds a worker that runs the two sessions sequentially;
-each encoder writes a separate token stream. Image preparation, selected frame
-timestamps, and quality rows are shared, while normalization, TCN inference,
-decoding, and score outputs retain each variant's identity. Both projects are
-saved so reopening an already prepared choice requires no rally inference.
-An existing completed companion project is preserved, including reviewed edits.
-The option is off by default and does not change model selection or weights.
-Score specialists currently use a separate pass for each proposal set. When AV
-features are already cached, paired analysis currently falls back to the two
-independent embedding passes; the shared fresh-input optimization does not cover
-that case. See the [paired execution experiment](docs/research/paired-distilled-variants.md)
-for timing scope, output checks, and optimization opportunities.
 
 The current production profile is `audiovisual-noise-normalized-audio-v3` with audio
 profile `noise-normalized-bands-v3`:

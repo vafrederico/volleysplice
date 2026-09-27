@@ -11,8 +11,10 @@ export-encoding architecture.
 ## Distilled Large application path
 
 On this branch, normal web and Android projects default to the selected
-**Distilled MobileNetV3-Large + TCN, highest recall** model. The highest-F1
-selection and legacy production ensemble remain explicit choices. The following
+**Distilled MobileNetV3-Large + TCN, highest F1** model (**Balanced · BETA**).
+The highest-recall selection (**Maximum coverage · BETA**) and **Legacy model**
+(the production ensemble) remain explicit choices. Each analysis runs only the
+selected rally variant. The following
 new path supplements the deployed ensemble description below; no signed release
 or site deployment is implied by its implementation.
 
@@ -43,14 +45,6 @@ normalizer, and decoder atomically. The encoder weights differ, so embeddings
 cannot be reused across the choices. DINO and the training projector are absent
 at inference. See the [bundle manifests](models/distilled-large/README.md) and
 [feature contract](FEATURE_PIPELINE.md#production-profile).
-
-Android also offers an opt-in paired execution experiment. Fresh analyses feed
-each prepared image through both matched encoders, then run each TCN and decoder
-independently. AV features and production serve/state evidence are shared;
-serving-side and side-switch evaluation runs separately for each rally set.
-Both results are saved, so selecting either completed result needs no inference.
-This changes execution scheduling only; the model bundles and decision policies
-remain frozen. See the [paired-variant report](docs/research/paired-distilled-variants.md).
 
 The neural model supplies rally intervals. Existing production serve/dead-state
 heads still provide evidence for serving-side and side-switch classification,

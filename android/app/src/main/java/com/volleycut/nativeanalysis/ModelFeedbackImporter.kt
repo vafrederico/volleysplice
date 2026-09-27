@@ -87,6 +87,12 @@ internal object ModelFeedbackImporter {
         ) { "Feedback ROI is invalid" }
         val durationMs = secondsToMs(duration)
         val inference = bundle.getJSONObject("initialInference")
+        inference.optJSONObject("probabilityModelIds")?.let { sources ->
+            require(listOf("rally", "serve", "deadState").all { sources.getString(it).isNotBlank() } &&
+                sources.getString("rally") == inference.getString("probabilityModelId")) {
+                "Feedback probability model identities are inconsistent"
+            }
+        }
         require(RallyModels.isSupported(inference.getString("modelId")) &&
             inference.getString("ensembleAlgorithmVersion") == FeatureSchema.ENSEMBLE_ALGORITHM_VERSION
         ) { "Feedback uses a different production ensemble" }
@@ -173,6 +179,9 @@ internal object ModelFeedbackImporter {
             servingSideError = if (servingSide == null) "Imported bundle has no serving-side output" else null,
             suppression = suppression,
             modelId = inference.optString("modelId", FeatureSchema.MODEL_ID),
+            neuralScores = inference.optJSONObject("neuralScores")?.let {
+                NeuralRallyScores.decode(it, inference.getString("modelId"), windowStart, windowEnd)
+            },
             createdAtMs = nowMs,
             updatedAtMs = nowMs,
         )
@@ -591,7 +600,7 @@ internal object ModelFeedbackImporter {
         )
     } }
 
-    private fun decodeNumeric(json: JSONObject, expectedShape: IntArray? = null): DoubleArray {
+    internal fun decodeNumeric(json: JSONObject, expectedShape: IntArray? = null): DoubleArray {
         require(json.optString("encoding") == "base64" &&
             json.optString("byteOrder") == "little-endian"
         )

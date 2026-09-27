@@ -1310,6 +1310,8 @@ export function App() {
       recordingId: selectedProject.id,
       kind: "model",
       modelId: selectedProject.analysis.modelId,
+      probabilityModelIds: selectedProject.analysis.probabilityModelIds,
+      neuralScores: selectedProject.analysis.neuralScores,
       duration: selectedProject.info.duration,
       analysisWindow: selectedProject.analysisWindow,
       width: selectedProject.info.width,
@@ -1676,10 +1678,7 @@ export function App() {
                     onChange={event => { if (isRallyModelSelection(event.target.value)) setRallyModel(event.target.value); }}>
                     {RALLY_MODEL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
-                  <small>{rallyModel === "high-recall"
-                    ? "Prioritizes keeping play. Review extra footage in the editor."
-                    : rallyModel === "high-f1" ? "Balances retained play and extra footage."
-                    : "Uses the previous production detector."}</small>
+                  <small>{RALLY_MODEL_OPTIONS.find(option => option.value === rallyModel)?.description}</small>
                 </label>
                 <label
                   className={styles.sideSwitchToggle}

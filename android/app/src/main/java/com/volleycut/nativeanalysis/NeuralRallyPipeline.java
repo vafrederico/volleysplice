@@ -20,6 +20,8 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
     private final java.util.function.BooleanSupplier cancelled;
     private final JSONObject spec;
     final JSONObject report=new JSONObject();
+    private NeuralRallyScores scores;
+    NeuralRallyScores scores() { return scores; }
     private SharedEmbeddingConsumer shared;
     NeuralRallyPipeline(Context context,File root,JSONObject spec) {
         this(context,root,spec,root,()->false,true);
@@ -51,11 +53,6 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
         }
     }
     @Override public boolean supportsEnsembleSuppression() { return diagnostics; }
-    SharedEmbeddingConsumer.Target encoderTarget() throws IOException {
-        return new SharedEmbeddingConsumer.Target(spec.optString("id"),root,
-                model("-encoder-fp32.onnx"),file("mobile-large-encoder-pool_weights.f32"));
-    }
-    void useSharedEmbeddings(SharedEmbeddingConsumer consumer) { shared=consumer; }
     @Override public SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window, int sourceFrameLimit,
             java.util.function.BooleanSupplier cancelled) throws IOException {
@@ -109,7 +106,7 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
                 long stage=System.nanoTime();
                 JSONObject video;
                 if(shared!=null) {
-                    video=shared.report(spec.getString("id"));
+                    video=shared.report();
                     profile.put("neural/shared_embedding_prepare",video.getDouble("prepareMs"));
                     profile.put("neural/shared_encoder_inference_readback",video.getDouble("encoderAndReadbackMs"));
                     profile.put("neural/shared_encoder_load",video.getDouble("encoderLoadMs"));
@@ -165,6 +162,7 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
                 report.put("decoder",config.getJSONObject("decoder")).put("times",new JSONArray(times))
                     .put("precision","fp32").put("inputParity","Native pixel/PTS parity still requires qualification");
                 checkCancelled();
+                if(!diagnostics) scores=new NeuralRallyScores(spec.getString("id"),times.clone(),probabilities);
                 return ranges;
             }
         }catch(Exception error){throw new IOException("Neural pipeline failed",error);}

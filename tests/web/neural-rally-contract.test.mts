@@ -12,8 +12,9 @@ const manifest = parseNeuralManifest(JSON.parse(readFileSync(new URL("../../mode
 const config: NeuralPipelineConfig = { modelIdentity: "dino-distilled-mobilenet-v3-large-tcn", selectionMode: "recall", recallTargetPercent: 99,
   tokenDimension: 3840, mean: Array(112).fill(.2), scale: Array(112).fill(.7), decoder: { enter: .2, smoothing: .5, minimum: 1, boundary: true } };
 
-test("recall is the default and swapping requires the matching encoder, temporal model and scalers", () => {
-  assert.equal(DEFAULT_RALLY_MODEL, "high-recall");
+test("F1 is the default and swapping requires the matching encoder, temporal model and scalers", () => {
+  assert.equal(DEFAULT_RALLY_MODEL, "high-f1");
+  assert.equal(manifest.defaultVariant, DEFAULT_RALLY_MODEL);
   assert.notEqual(manifest.variants["high-recall"].files.encoder.sha256, manifest.variants["high-f1"].files.encoder.sha256);
   assert.notEqual(manifest.variants["high-recall"].files.temporal.sha256, manifest.variants["high-f1"].files.temporal.sha256);
   assert.notEqual(manifest.variants["high-recall"].files.pipeline.sha256, manifest.variants["high-f1"].files.pipeline.sha256);

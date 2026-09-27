@@ -270,7 +270,7 @@ function usePrototype(
     || review.draft.cuts.some(cut => cut.agreement === "neural");
   const cleanupAvailable = !neuralRallyModel && Boolean(review.suppression);
   const cleanupUnavailableReason = neuralRallyModel
-    ? "Automatic cleanup is available with the Production ensemble. Review neural rallies directly in the timeline."
+    ? "Automatic cleanup is available with the Legacy model. Review BETA model rallies directly in the timeline."
     : "Automatic cleanup is unavailable for this analysis.";
   const [baseDraft, setBaseDraft] = useState(review.draft);
   const initialClips = clipsFromReview(review);

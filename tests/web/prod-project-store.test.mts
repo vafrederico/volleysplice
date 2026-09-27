@@ -352,10 +352,10 @@ test("project picker distinguishes recall and F1 without changing source or save
   const f1 = storedProject(cachedAnalysis("distilled-large-f1-v1"));
   const originalSource = { ...recall.source };
   const originalId = recall.id;
-  assert.equal(projectDisplayName(recall), "match.mp4 - Distilled Large - highest recall");
-  assert.equal(projectDisplayName(f1), "match.mp4 - Distilled Large - highest F1");
-  assert.equal(projectDisplayName({ ...recall, analysis: null, rallyModel: "high-f1" }), "match.mp4 - Distilled Large - highest F1");
-  assert.equal(projectDisplayName(storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true))), "match.mp4 - Production ensemble");
+  assert.equal(projectDisplayName(recall), "match.mp4 - Maximum coverage · BETA");
+  assert.equal(projectDisplayName(f1), "match.mp4 - Balanced · BETA");
+  assert.equal(projectDisplayName({ ...recall, analysis: null, rallyModel: "high-f1" }), "match.mp4 - Balanced · BETA");
+  assert.equal(projectDisplayName(storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true))), "match.mp4 - Legacy model");
   assert.deepEqual(recall.source, originalSource);
   assert.equal(recall.id, originalId);
 });

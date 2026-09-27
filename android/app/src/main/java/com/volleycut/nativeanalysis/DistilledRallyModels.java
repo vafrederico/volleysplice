@@ -20,10 +20,6 @@ final class DistilledRallyModels {
     }
     static NeuralRallyPipeline open(Context context, String modelId, AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi, BooleanSupplier cancelled, boolean sharedDecoding) throws IOException {
-        return open(context,modelId,media,roi,cancelled,sharedDecoding,true);
-    }
-    static NeuralRallyPipeline open(Context context, String modelId, AnalysisTypes.MediaInfo media,
-            AnalysisTypes.Roi roi, BooleanSupplier cancelled, boolean sharedDecoding, boolean pruneStale) throws IOException {
         if (FeatureSchema.MODEL_ID.equals(modelId)) return null;
         if (!RallyModels.isNeural(modelId)) throw new IOException("The selected rally model is unavailable");
         File work=null;
@@ -66,7 +62,7 @@ final class DistilledRallyModels {
             // The foreground service serializes analyses. A killed process can leave
             // temporary tokens; remove those before allocating another recording.
             File[] stale=parent.listFiles();
-            if(pruneStale && stale!=null) for(File old:stale) removeWorkspace(old);
+            if(stale!=null) for(File old:stale) removeWorkspace(old);
             work=Files.createTempDirectory(parent.toPath(),"run-").toFile();
             NeuralRallyPipeline.writeFloats(new File(work,"mobile-large-encoder-pool_weights.f32"),
                     RegionalPoolWeights.forGeometry(media.width(),media.height(),media.rotation(),

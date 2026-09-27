@@ -1,5 +1,6 @@
 import { VideoSampleSink } from "mediabunny";
 import { runtimeAssetUrl } from "../runtime-assets";
+import { ALL_LABELS_V2_MODEL_ID } from "./ensemble";
 import { neuralEmbeddingTimes } from "./neural-contract";
 import { contextualizeFeatures } from "./feature-math";
 import { extractBrowserFeatures, type FeatureExtractionOptions } from "./pipeline";
@@ -23,7 +24,7 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
   progress({ stage: "video", completed: 0, total: duration, detail: "Loading the selected rally model" });
   const manifestUrl = runtimeAssetUrl("rally-models/manifest.json");
   const response = await fetch(manifestUrl, { signal: options.signal });
-  if (!response.ok) throw new Error("The selected rally model is unavailable. Retry, or choose Production ensemble.");
+  if (!response.ok) throw new Error("The selected rally model is unavailable. Retry, or choose Legacy model.");
   const bundle = parseNeuralManifest(await response.json()).variants[selection];
   const baseUrl = new URL(`${bundle.directory}/`, manifestUrl).href;
   const config = parseNeuralConfig(JSON.parse(new TextDecoder().decode(await verifiedAsset(
@@ -85,7 +86,11 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
     const intervals = result.rallies.map((rally, index) => ({ ...rally, start: Math.max(window.start, rally.start),
       end: Math.min(window.end, rally.end), id: `N${String(index + 1).padStart(3, "0")}`, included: true, agreement: "neural" as const })).filter(rally => rally.end > rally.start);
     const rallyProbabilities = Float32Array.from(sequence.times, (_, i) => result.probabilities[i * 4]);
-    const output: OnDeviceAnalysis = { ...production, modelId: bundle.id, intervals, rallyProbabilities, suppression: undefined };
+    const output: OnDeviceAnalysis = { ...production, modelId: bundle.id, intervals, rallyProbabilities,
+      probabilityModelIds: { rally: bundle.id, serve: ALL_LABELS_V2_MODEL_ID, deadState: ALL_LABELS_V2_MODEL_ID },
+      neuralScores: { modelId: bundle.id, heads: ["live", "serve", "end", "keep"],
+        timestamps: new Float64Array(sequence.times), probabilities: result.probabilities },
+      suppression: undefined };
     progress({ stage: "complete", completed: duration, total: duration, detail: `${intervals.length} rallies ready - ${bundle.label}` });
     return output;
   } finally { worker.dispose(); }

@@ -91,16 +91,18 @@ an implementation specification, not a production model registration.
 ### Distilled Large application integration on this branch
 
 The normal production web and Android apps now expose the two already-frozen
-Distilled Large selections. New projects default to `distilled-large-recall-v1`;
-`distilled-large-f1-v1` and the existing ensemble are explicit alternatives.
+Distilled Large selections. The default is `distilled-large-f1-v1`, labeled
+**Balanced · BETA**. `distilled-large-recall-v1` is **Maximum coverage · BETA**,
+and the existing ensemble is **Legacy model**. Each analysis runs only the
+selected variant; the paired execution experiment has been retired.
 Existing completed projects retain their model provenance. This registers
 application packaging of the existing fits, not a new fit, recalibration,
 selection, deployment, or physical-device qualification of the final app.
 
 | Runtime model | Original selection | Feature signature | Fit / selection sources | Change and disposition |
 | --- | --- | --- | --- | --- |
-| `distilled-large-recall-v1` | `expanded-large`, draw 3407, TCN epoch 15, target-99 calibration | `NEURAL-MOBILE-LARGE`, FP32 encoder/TCN; native FP32 tokens, browser FP16-rounded tokens | Unchanged indexed membership and label hashes from `distilled-mobile-large-v1`, ledger `private-reference-0222`; common exact-label panel selects recall | Promoted from lab/benchmark-only to normal-app default at user request; no new training or evaluation-based threshold change. |
-| `distilled-large-f1-v1` | `expanded-large`, draw 20260918, TCN epoch 60, target-99 calibration | Same dimensions, distinct encoder, temporal weights, normalizer, and decoder | Same study, with this draw's distinct indexed fit/calibration membership; common exact-label panel selects `F1_padP_coreR` | Alternate normal-app choice; switching invalidates incompatible embeddings and retains separate project results. |
+| `distilled-large-recall-v1` | `expanded-large`, draw 3407, TCN epoch 15, target-99 calibration | `NEURAL-MOBILE-LARGE`, FP32 encoder/TCN; native FP32 tokens, browser FP16-rounded tokens | Unchanged indexed membership and label hashes from `distilled-mobile-large-v1`, ledger `private-reference-0222`; common exact-label panel selects recall | Explicit Maximum coverage choice; previously the normal-app default. No new training or evaluation-based threshold change. |
+| `distilled-large-f1-v1` | `expanded-large`, draw 20260918, TCN epoch 60, target-99 calibration | Same dimensions, distinct encoder, temporal weights, normalizer, and decoder | Same study, with this draw's distinct indexed fit/calibration membership; common exact-label panel selects `F1_padP_coreR` | Default Balanced choice at user request; switching invalidates incompatible embeddings and retains separate project results. No new fit or calibration. |
 
 Exact graph/config hashes and byte counts are pinned in
 [Android](models/distilled-large/android-manifest.json) and

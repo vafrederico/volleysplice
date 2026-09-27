@@ -60,7 +60,7 @@ class ProductionNeuralAssetsTest(unittest.TestCase):
             (original / "mobile-large-encoder-fp32.onnx").write_bytes(b"changed encoder")
             (original / "mobile-large-tcn-dynamic-fp32.onnx").write_bytes(b"head")
             entry = dict(name="encoder.onnx", sha256=assets.digest(b"frozen encoder"), sizeBytes=len(b"frozen encoder"))
-            manifest = dict(schemaVersion=1, defaultVariant="high-recall", variants={
+            manifest = dict(schemaVersion=1, defaultVariant="high-f1", variants={
                 "high-recall": dict(directory="recall", files=dict(encoder=entry)),
             })
             (manifests / "android-manifest.json").write_text(json.dumps(manifest), encoding="utf8")

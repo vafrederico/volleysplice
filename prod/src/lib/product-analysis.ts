@@ -20,6 +20,8 @@ export type ProductAnalysis = {
   recordingId: string;
   kind: "model";
   modelId: string;
+  neuralScores?: OnDeviceAnalysis["neuralScores"];
+  probabilityModelIds?: OnDeviceAnalysis["probabilityModelIds"];
   duration: number;
   analysisWindow: AnalysisWindow;
   width: number;

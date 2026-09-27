@@ -1,6 +1,11 @@
 # Preparing both Distilled Large variants
 
-Android now has an opt-in **Prepare both versions (experimental)** setting for
+**Historical experiment, retired.** The paired execution path and setting were
+removed after this measurement. Current Android and web analyses run only the
+selected variant, defaulting to highest F1. This report preserves the results
+and optimization findings; it does not describe a current app setting.
+
+The experiment added an opt-in **Prepare both versions (experimental)** setting for
 new neural analyses. It produces separate highest-recall and highest-F1 projects
 with their own rally boundaries and score results. Choosing a saved project
 loads that result instead of starting another analysis. Existing completed
@@ -52,9 +57,10 @@ preparation, and decoder-wait counters overlap within the shared video stage;
 they must not be added to its wall time. Saved-result loading measures project
 read/validation and editor-seed construction, not UI tap-to-first-paint.
 
-The [runner](../../scripts/benchmark-paired-neural-variants.py) and
+The historical runner and Android execution source are retained in commit
+`2e350c2a` and the external artifact archive. The
 [qualification/report script](../../scripts/report-paired-neural-variants.py)
-keep raw receipts outside Git and publish only indexed summaries.
+still regenerates the indexed summary from those archived measurements.
 
 ## Two-minute results
 

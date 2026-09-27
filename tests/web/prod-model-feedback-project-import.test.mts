@@ -7,7 +7,8 @@ import {
   importModelFeedbackProject,
 } from "../../prod/src/lib/model-feedback-import.ts";
 import { createModelFeedbackBundle } from "../../prod/src/lib/model-feedback.ts";
-import { PRODUCTION_ENSEMBLE_MODEL_ID } from "../../prod/src/lib/on-device/ensemble.ts";
+import { ALL_LABELS_V2_MODEL_ID, PRODUCTION_ENSEMBLE_MODEL_ID } from "../../prod/src/lib/on-device/ensemble.ts";
+import { RALLY_MODEL_OPTIONS } from "../../prod/src/lib/on-device/rally-model.ts";
 import {
   SERVING_SIDE_ANCHOR_CONTRACT,
   SERVING_SIDE_FEATURE_COLUMNS,
@@ -333,4 +334,66 @@ test("Android neural feedback preserves provenance, corrected cuts and serving s
     assert.equal(draft.cuts[0].included, false);
     assert.equal(draft.scoreTracking.serveMarkers[0].timestamp, 5.5);
   }
+});
+
+test("model selection and mixed probability sources survive project export, import and re-export", () => {
+  for (const option of RALLY_MODEL_OPTIONS) for (const runtimeVariant of [analysis.runtimeVariant, "native-android-dsp-v1"]) {
+    const neural = option.value !== "ensemble";
+    const selected = { ...analysis, runtimeVariant,
+      modelId: neural ? option.id : PRODUCTION_ENSEMBLE_MODEL_ID,
+      rallies: analysis.rallies.map(range => ({ ...range, agreement: neural ? "neural" as const : range.agreement })),
+      suppression: undefined,
+      neuralScores: neural ? { modelId: option.id, heads: ["live", "serve", "end", "keep"],
+        timestamps: new Float64Array([2, 2.25]),
+        probabilities: new Float32Array([.1, .2, .3, .4, .5, .6, .7, .8]) } : undefined,
+    };
+    const draft = createCutDraft({ analysisId: selected.id, recordingId: selected.recordingId,
+      duration: selected.duration, rallies: selected.rallies, ignoredIntervals: [] });
+    const bundle = createModelFeedbackBundle(selected, draft, []);
+    const expectedRallySource = neural && !runtimeVariant.startsWith("native-android")
+      ? selected.modelId : ALL_LABELS_V2_MODEL_ID;
+    assert.equal(bundle.initialInference.modelId, selected.modelId);
+    assert.equal(bundle.initialInference.modelLabel, option.label);
+    assert.equal(bundle.initialInference.modelSelection, option.value);
+    assert.equal(bundle.initialInference.probabilityModelId, expectedRallySource);
+    assert.deepEqual(bundle.initialInference.probabilityModelIds, {
+      rally: expectedRallySource, serve: ALL_LABELS_V2_MODEL_ID, deadState: ALL_LABELS_V2_MODEL_ID,
+    });
+    const project = normalizeStoredProject(importModelFeedbackProject(JSON.stringify(bundle)).project);
+    assert.equal(project.status, "ready");
+    assert.equal(project.analysis!.modelId, selected.modelId);
+    assert.deepEqual(project.analysis!.featureValues, selected.features!.values);
+    assert.deepEqual(project.analysis!.neuralScores, selected.neuralScores);
+    assert.ok(!JSON.stringify(bundle).includes("embeddings"));
+    const reexported = createModelFeedbackBundle({ ...selected,
+      probabilityModelIds: project.analysis!.probabilityModelIds,
+      neuralScores: project.analysis!.neuralScores }, draft, []);
+    assert.equal(reexported.initialInference.modelId, selected.modelId);
+    assert.deepEqual(reexported.initialInference.probabilityModelIds, bundle.initialInference.probabilityModelIds);
+    assert.deepEqual(reexported.initialInference.neuralScores, bundle.initialInference.neuralScores);
+  }
+});
+
+test("neural score imports reject wrong identity, head order, shape and invalid values", () => {
+  const model = RALLY_MODEL_OPTIONS[0];
+  const selected: ProductAnalysis = { ...analysis, modelId: model.id,
+    rallies: analysis.rallies.map(range => ({ ...range, agreement: "neural" })), suppression: undefined,
+    neuralScores: { modelId: model.id, heads: ["live", "serve", "end", "keep"],
+      timestamps: new Float64Array([2, 2.25]), probabilities: new Float32Array([.1, .2, .3, .4, .5, .6, .7, .8]) } };
+  const draft = createCutDraft({ analysisId: selected.id, recordingId: selected.recordingId,
+    duration: selected.duration, rallies: selected.rallies, ignoredIntervals: [] });
+  for (const mutate of [
+    (scores: any) => { scores.modelId = RALLY_MODEL_OPTIONS[1].id; },
+    (scores: any) => { scores.heads.reverse(); },
+    (scores: any) => { scores.probabilities.shape = [4, 2]; },
+    (scores: any) => { scores.probabilities.data = Buffer.from(new Float32Array(8).fill(1.1).buffer).toString("base64"); },
+    (scores: any) => { scores.timestamps.data = Buffer.from(new Float64Array([2.25, 2]).buffer).toString("base64"); },
+  ]) {
+    const bundle = createModelFeedbackBundle(selected, draft, []);
+    mutate(bundle.initialInference.neuralScores);
+    assert.throws(() => importModelFeedbackProject(JSON.stringify(bundle)), ModelFeedbackValidationError);
+  }
+  const bundle = createModelFeedbackBundle({ ...selected, features: null }, draft, []);
+  assert.deepEqual(importModelFeedbackProject(JSON.stringify(bundle)).project.analysis?.neuralScores,
+    selected.neuralScores, "scores survive imports even when old AV features are absent");
 });

@@ -191,7 +191,7 @@ export function projectDisplayName(project: Pick<VolleySpliceProject, "source" |
     ? RALLY_MODEL_OPTIONS.find(option => option.id === project.analysis!.modelId)
     : RALLY_MODEL_OPTIONS.find(option => option.value === (project.rallyModel ?? "ensemble"));
   const label = model?.label ?? (project.analysis?.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
-    ? "Production ensemble" : "Saved model");
+    ? "Legacy model" : "Saved model");
   return `${project.source.name} - ${label}`;
 }
 

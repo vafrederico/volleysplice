@@ -28,7 +28,8 @@ class DistilledRallyIntegrationTest {
     private val progress = AnalysisTypes.ProgressListener { _, _, _ -> }
     private val roi = AnalysisTypes.Roi(0.0, 0.0, 1.0, 1.0, "Full frame")
 
-    private data class Output(val result: AnalysisTypes.AnalysisResult, val tokens: String, val metadata: String)
+    private data class Output(val result: AnalysisTypes.AnalysisResult, val tokens: String, val metadata: String,
+                              val scores: NeuralRallyScores)
 
     private fun run(file: File, model: String, shared: Boolean, window: AnalysisTypes.AnalysisWindow,
                     cacheMode: NativeFeatureCache.Mode = NativeFeatureCache.Mode.BYPASS): Output {
@@ -46,7 +47,10 @@ class DistilledRallyIntegrationTest {
             val video = neural.report.getJSONObject("video")
             val metadata = listOf("sampleTimestamps", "quality").joinToString("|") { video.getJSONArray(it).toString() }
             if (shared && cacheMode == NativeFeatureCache.Mode.BYPASS) assertTrue(neural.report.getBoolean("sharedDecoding"))
-            Output(result, hash, metadata)
+            val scores = requireNotNull(neural.scores())
+            assertEquals(model, scores.modelId)
+            assertArrayEquals(result.productionServeOutputs().allLabelsV2().times(), scores.timestamps, 0.0)
+            Output(result, hash, metadata, scores)
         }.also {
             assertTrue("Temporary embeddings must be removed", context.cacheDir.resolve("neural-analysis").listFiles().orEmpty().isEmpty())
         }
@@ -63,14 +67,17 @@ class DistilledRallyIntegrationTest {
                 assertEquals(model, independent.tokens, shared.tokens)
                 assertEquals(independent.metadata, shared.metadata)
                 assertEquals(independent.result.ranges(), shared.result.ranges())
+                assertArrayEquals(independent.scores.probabilities, shared.scores.probabilities, 1e-6f)
                 val source = NativeProjectStore.source(context, Uri.fromFile(fixture), fixture.name)
                 val project = NativeProjectStore.newQueued(source, shared.result.media(), roi, window,
                     false, false, model)
                 NativeProjectStore.save(context, project)
                 try {
-                    val saved = requireNotNull(NativeProjectStore.complete(context, project.id, shared.result))
+                    val saved = requireNotNull(NativeProjectStore.complete(context, project.id, shared.result, shared.scores))
                     assertEquals(model, saved.modelId)
                     assertEquals(model, requireNotNull(saved.editorSeed()).rallyModelId)
+                    val restored = requireNotNull(NativeProjectStore.get(context, project.id)?.neuralScores)
+                    assertArrayEquals(shared.scores.probabilities, restored.probabilities, 0f)
                 } finally { NativeProjectStore.delete(context, project) }
             }
         } finally { fixture.delete() }
@@ -147,7 +154,7 @@ class DistilledRallyIntegrationTest {
     }
 
     /** Loop the checked-in synthetic overlay fixture and mark display rotation. */
-    internal fun fixture(rotation: Int): File {
+    private fun fixture(rotation: Int): File {
         val encoded = instrumentation.context.assets.open("overlay-fixture.mp4.b64").bufferedReader().use { it.readText() }
         val source = File.createTempFile("neural-source-", ".mp4", context.cacheDir)
         val target = File.createTempFile("neural-integration-", ".mp4", context.cacheDir)

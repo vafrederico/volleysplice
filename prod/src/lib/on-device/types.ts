@@ -218,8 +218,18 @@ export type OnDeviceSuppression = {
   identicalPolicyResults: boolean;
 };
 
+export type NeuralRallyScores = {
+  modelId: string;
+  heads: readonly ["live", "serve", "end", "keep"];
+  timestamps: Float64Array;
+  /** Row-major sigmoid probabilities, before smoothing and boundary decoding. */
+  probabilities: Float32Array;
+};
+
 export type OnDeviceAnalysis = {
   modelId: string;
+  neuralScores?: NeuralRallyScores;
+  probabilityModelIds?: { rally: string; serve: string; deadState: string };
   featurePath: "local-source";
   intervals: OnDeviceInterval[];
   times: Float64Array;

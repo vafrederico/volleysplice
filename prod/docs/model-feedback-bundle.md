@@ -21,8 +21,10 @@ The bundle contains:
   variant;
 - the base audiovisual feature matrix and source-relative timestamps used to construct the model
   inputs;
-- the initial production-ensemble ranges and timestamped rally, serve, and dead-state probability
-  traces (the backward-compatible primary traces are produced by `probabilityModelId`);
+- the selected rally model's identity, user-facing name, initial ranges, and timestamped
+  probability traces, with explicit model identities for each trace;
+- all four neural classifier scores (`live`, `serve`, `end`, `keep`) when the selected
+  model is Balanced or Maximum coverage and the analysis retained them;
 - both production components' serve-probability traces and decoded serve contacts under
   `initialInference.componentServeOutputs`;
 - the frozen serving-side model identity, fingerprint, feature/anchor contracts, row-aligned
@@ -52,6 +54,36 @@ The label contract is deliberately simple:
 
 Ignored intervals remain outside the evaluation/training universe. They must not be converted into
 dead-time negatives.
+
+## Model identity and scores
+
+`initialInference.modelId` is the stable identity of the model that produced the rally
+ranges. `modelSelection` identifies `high-f1` (Balanced · BETA), `high-recall`
+(Maximum coverage · BETA), or `ensemble` (Legacy model); `modelLabel` is descriptive.
+Import preserves the stable identity instead of applying the current new-project default.
+
+`probabilityModelIds` identifies the producer of each primary `rally`, `serve`, and
+`deadState` trace. The older singular `probabilityModelId` identifies the rally trace.
+Web neural analyses use the neural live score for that trace and legacy auxiliary
+models for serve/dead-state evidence. Android regenerates these three auxiliary traces
+from the retained AV feature cache using the legacy model. `componentsRole` distinguishes
+legacy components used for score support from the Legacy model's rally ensemble.
+
+The separate `initialInference.neuralScores` payload preserves the selected neural
+model's original sigmoid outputs before smoothing and boundary decoding. It contains
+`modelId`, ordered `heads: ["live", "serve", "end", "keep"]`, source-relative Float64
+`timestamps`, and row-major Float32 `probabilities` with shape `[rows, 4]`. The neural
+serve/start score is distinct from the legacy serve-head evidence used for scoring.
+Both apps retain these scores with new analyses and restore them on import, even when
+the AV feature payload is absent. Missing scores in older projects remain absent, with
+an export warning; exporting does not regenerate embeddings to recover them.
+
+At four samples per second, these four scores plus timestamps need 96 bytes per video
+second before encoding. After base64 encoding, that is about 15.4 kB for two minutes,
+136 kB for the 17m41s benchmark, or 461 kB per hour, plus small JSON metadata. Existing AV features,
+auxiliary model outputs, and editor corrections are additional. Embeddings are **not**
+included. Imports restore saved inference and edits without running video analysis;
+running a different neural model still requires its encoder and the source video.
 
 ## Numeric arrays
 

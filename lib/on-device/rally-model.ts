@@ -1,13 +1,16 @@
 import type { NeuralPipelineConfig } from "./neural-contract.ts";
 
 export const RALLY_MODEL_OPTIONS = [
-  { value: "high-recall", id: "distilled-large-recall-v1", label: "Distilled Large - highest recall" },
-  { value: "high-f1", id: "distilled-large-f1-v1", label: "Distilled Large - highest F1" },
-  { value: "ensemble", id: "ensemble", label: "Production ensemble" },
+  { value: "high-f1", id: "distilled-large-f1-v1", label: "Balanced · BETA",
+    description: "Balances retained play and extra footage with tighter cuts." },
+  { value: "high-recall", id: "distilled-large-recall-v1", label: "Maximum coverage · BETA",
+    description: "Keeps more possible play, with more extra footage to review." },
+  { value: "ensemble", id: "ensemble", label: "Legacy model",
+    description: "Uses the previous production detector." },
 ] as const;
 export type RallyModelSelection = typeof RALLY_MODEL_OPTIONS[number]["value"];
 export type NeuralRallySelection = Exclude<RallyModelSelection, "ensemble">;
-export const DEFAULT_RALLY_MODEL: RallyModelSelection = "high-recall";
+export const DEFAULT_RALLY_MODEL: RallyModelSelection = "high-f1";
 export function isRallyModelSelection(value: unknown): value is RallyModelSelection {
   return RALLY_MODEL_OPTIONS.some(option => option.value === value);
 }
@@ -29,7 +32,7 @@ export type NeuralManifest = {
 
 export function parseNeuralManifest(value: unknown): NeuralManifest {
   const manifest = value as NeuralManifest;
-  if (manifest?.schemaVersion !== 1 || manifest.defaultVariant !== "high-recall") {
+  if (manifest?.schemaVersion !== 1 || manifest.defaultVariant !== "high-f1") {
     throw new Error("The rally model catalog is incompatible.");
   }
   for (const selection of ["high-recall", "high-f1"] as const) {

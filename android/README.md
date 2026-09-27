@@ -6,13 +6,21 @@ responsive phone, tablet, and desktop-mode layouts.
 
 This folder contains the native Android analysis path plus a first-party cut editor and exporter. The analysis workflow is:
 
-New projects default to **Distilled Large - highest recall**, with **highest F1**
-and **Production ensemble** as explicit alternatives. The neural selections each
+The rally-model select box defaults to **Balanced · BETA** (highest F1), with
+**Maximum coverage · BETA** (highest recall) and **Legacy model** (the production
+ensemble) as alternatives. Explicit choices are remembered. Each analysis runs
+only the selected rally variant. The neural selections each
 load a matched FP32 encoder, TCN, scalar normalizer, and decoder. Both are bundled
 for offline use; the DINO teacher is not included. Saved projects retain their
 own model identity, and switching models does not reuse incompatible embeddings
 or rewrite existing results. The original ensemble workflow below remains the
 reference for that explicit option and for the retained serve/state evidence.
+
+Project exports include the selected model's identity and all four neural probability
+heads from new analyses, alongside the existing AV features and score corrections.
+Embeddings remain temporary and are not exported. Import restores saved results
+without rerunning video inference; older projects without retained neural scores
+remain usable and export an explicit warning about that missing payload.
 
 ```text
 video URI

@@ -17,7 +17,7 @@ export class NeuralWorkerClient {
       this.pending.delete(value.id);
       if (value.type === "error") pending?.reject(new Error(value.message)); else pending?.resolve(value);
     });
-    this.worker.addEventListener("error", () => this.dispose(new Error("Neural analysis stopped. Try the Production ensemble option or retry.")));
+    this.worker.addEventListener("error", () => this.dispose(new Error("Neural analysis stopped. Try the Legacy model option or retry.")));
     this.worker.addEventListener("messageerror", () => this.dispose(new Error("The neural worker returned an unreadable result.")));
     signal?.addEventListener("abort", this.abort, { once: true });
   }

@@ -2032,7 +2032,7 @@ export function CutEditor({
                     <>
                       <small>
                         {neuralRallyModel
-                          ? "Automatic cleanup is available with the Production ensemble. Review neural rallies directly in the timeline."
+                          ? "Automatic cleanup is available with the Legacy model. Review BETA model rallies directly in the timeline."
                           : "Automatic cleanup is not available for this older project."}
                       </small>
                       {sourceFile && !neuralRallyModel && (

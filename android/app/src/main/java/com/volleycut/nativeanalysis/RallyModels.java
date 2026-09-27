@@ -4,7 +4,8 @@ package com.volleycut.nativeanalysis;
 final class RallyModels {
     static final String RECALL = "distilled-large-recall-v1";
     static final String F1 = "distilled-large-f1-v1";
-    static final String DEFAULT = RECALL;
+    static final String DEFAULT = F1;
+    static final String[] OPTIONS = {F1, RECALL, FeatureSchema.MODEL_ID};
     private RallyModels() {}
 
     static boolean isNeural(String id) { return RECALL.equals(id) || F1.equals(id); }
@@ -16,15 +17,17 @@ final class RallyModels {
         throw new IllegalArgumentException("Unknown neural rally model");
     }
     static String shortLabel(String id) {
-        if (RECALL.equals(id)) return "Highest recall";
-        if (F1.equals(id)) return "Highest F1";
-        if (FeatureSchema.MODEL_ID.equals(id)) return "Ensemble";
+        if (RECALL.equals(id)) return "Maximum coverage · BETA";
+        if (F1.equals(id)) return "Balanced · BETA";
+        if (FeatureSchema.MODEL_ID.equals(id)) return "Legacy model";
         return "Unavailable model";
     }
     static String label(String id) {
-        if (RECALL.equals(id)) return "Distilled Large · highest recall";
-        if (F1.equals(id)) return "Distilled Large · highest F1";
-        if (FeatureSchema.MODEL_ID.equals(id)) return "Production ensemble";
-        return "Unavailable rally model";
+        return shortLabel(id);
+    }
+    static String description(String id) {
+        if (F1.equals(id)) return "Balances retained play and extra footage with tighter cuts.";
+        if (RECALL.equals(id)) return "Keeps more possible play, with more extra footage to review.";
+        return "Uses the previous production detector.";
     }
 }
