@@ -26,10 +26,10 @@ export async function verifyNeuralAssets(appRoot, targetRoot) {
   }
 }
 export async function prepareNeuralAssets(appRoot, publicDirectory = resolve(appRoot, "public")) {
-  const root = process.env.VOLLEYCUT_NEURAL_ASSETS_DIR;
-  if (!root) throw new Error("Set VOLLEYCUT_NEURAL_ASSETS_DIR to a prepared model bundle before building; see models/distilled-large/README.md.");
   const pinned = await readFile(resolve(appRoot, "../models/distilled-large/web-manifest.json"));
-  const source = resolve(root, "web/rally-models");
+  // Public release inputs travel with the checkout, including Cloudflare builds.
+  // The private bundle environment remains an Android/research build input only.
+  const source = resolve(appRoot, "public/runtime/rally-models");
   const supplied = await readFile(resolve(source, "manifest.json"));
   if (sha(supplied) !== sha(pinned)) throw new Error("The supplied model bundle manifest does not match the pinned release.");
   const target = resolve(publicDirectory, "runtime");
@@ -39,12 +39,14 @@ export async function prepareNeuralAssets(appRoot, publicDirectory = resolve(app
     const bytes = await readFile(resolve(source, variant.directory, asset.name));
     if (bytes.byteLength !== asset.sizeBytes || sha(bytes) !== asset.sha256) throw new Error(`Invalid source model asset: ${variant.id}/${asset.name}.`);
   }
-  await mkdir(resolve(target, "rally-models"), { recursive: true });
-  for (const variant of Object.values(manifest.variants)) {
-    await mkdir(resolve(target, "rally-models", variant.directory), { recursive: true });
-    for (const asset of Object.values(variant.files)) await copyFile(resolve(source, variant.directory, asset.name), resolve(target, "rally-models", variant.directory, asset.name));
+  if (source !== resolve(target, "rally-models")) {
+    await mkdir(resolve(target, "rally-models"), { recursive: true });
+    for (const variant of Object.values(manifest.variants)) {
+      await mkdir(resolve(target, "rally-models", variant.directory), { recursive: true });
+      for (const asset of Object.values(variant.files)) await copyFile(resolve(source, variant.directory, asset.name), resolve(target, "rally-models", variant.directory, asset.name));
+    }
+    await copyFile(resolve(source, "manifest.json"), resolve(target, "rally-models/manifest.json"));
   }
-  await copyFile(resolve(source, "manifest.json"), resolve(target, "rally-models/manifest.json"));
   await mkdir(resolve(target, "ort"), { recursive: true });
   for (const [name, hash] of ortAssets) {
     const original = resolve(appRoot, "node_modules/onnxruntime-web/dist", name);

@@ -7,5 +7,4 @@ public/licenses/
 .wrangler/
 vite.config.local.ts
 
-public/runtime/rally-models/
 public/runtime/ort/

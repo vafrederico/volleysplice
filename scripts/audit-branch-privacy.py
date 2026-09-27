@@ -33,6 +33,148 @@ PUBLIC_LEGAL_URL_SHA256 = {
 }
 HTTPS_TOKEN = re.compile(r"https://[^\s\"'<>]+")
 
+# Only the four public, manifest-pinned graphs use protobuf-aware scanning.
+# Random float bytes can resemble a short drive prefix. All textual fields,
+# unknown fields, and external-data references remain in the scanned material.
+PUBLIC_ONNX_PATH = re.compile(
+    r"prod/public/runtime/rally-models/(?:f1|recall)/(?:encoder|temporal)\.onnx"
+)
+ONNX_CHILDREN = {
+    "model": {7: "graph", 8: "opset", 14: "entry", 20: "training", 25: "function"},
+    "graph": {1: "node", 5: "tensor", 11: "value", 12: "value", 13: "value",
+              15: "sparse", 16: "entry"},
+    "node": {5: "attribute", 9: "entry"},
+    "attribute": {5: "tensor", 6: "graph", 10: "tensor", 11: "graph",
+                  22: "sparse", 23: "sparse"},
+    "tensor": {13: "entry", 16: "entry"},
+    "sparse": {1: "tensor", 2: "tensor"},
+    "training": {1: "graph", 2: "graph", 3: "entry", 4: "entry"},
+    "function": {7: "node", 9: "opset", 11: "attribute", 12: "value", 14: "entry"},
+    "value": {4: "entry"},
+}
+# Byte widths of established numeric ONNX tensor types. STRING is deliberately
+# absent. Unknown/new types receive the ordinary byte scan, not an exemption.
+ONNX_NUMERIC_WIDTHS = {1: 4, 2: 1, 3: 1, 4: 2, 5: 2, 6: 4, 7: 8,
+                       9: 1, 10: 2, 11: 8, 12: 4, 13: 8, 14: 8, 15: 16, 16: 2}
+
+
+def protobuf_varint(data, start, end):
+    value = 0
+    for shift in range(0, 70, 7):
+        if start >= end:
+            raise ValueError("Truncated protobuf varint")
+        byte = data[start]
+        start += 1
+        if shift == 63 and byte > 1:
+            raise ValueError("Oversized protobuf varint")
+        value |= (byte & 127) << shift
+        if not byte & 128:
+            return value, start
+    raise ValueError("Oversized protobuf varint")
+
+
+def protobuf_fields(data, start, end):
+    fields = []
+    while start < end:
+        tag, start = protobuf_varint(data, start, end)
+        number, wire = tag >> 3, tag & 7
+        if not 0 < number < (1 << 29):
+            raise ValueError("Invalid protobuf field")
+        if wire == 0:
+            value, stop = protobuf_varint(data, start, end)
+        elif wire == 2:
+            size, start = protobuf_varint(data, start, end)
+            value, stop = None, start + size
+        elif wire in (1, 5):
+            value, stop = None, start + (8 if wire == 1 else 4)
+        else:
+            raise ValueError("Unsupported protobuf wire type")
+        if stop > end:
+            raise ValueError("Truncated protobuf field")
+        fields.append((number, wire, start, stop, value))
+        start = stop
+    return fields
+
+
+def public_onnx_text(data):
+    """Retain all bytes except validated numeric tensor payloads.
+
+    This is a privacy parser, not an ONNX execution/shape validator. Preparation
+    and build checks independently verify the pinned graph hashes. Protobuf
+    framing, the model envelope, and excluded tensor lengths fail closed here.
+    """
+    spans, leaves = [], []
+
+    def visit(kind, start, end, depth=0):
+        if depth > 64:
+            raise ValueError("Excessive ONNX nesting")
+        fields = protobuf_fields(data, start, end)
+        if kind == "model":
+            if (sum(n == 7 and w == 2 for n, w, *_ in fields) != 1
+                    or not any(n == 1 and w == 0 and v > 0 for n, w, _, _, v in fields)
+                    or not any(n == 8 and w == 2 for n, w, *_ in fields)):
+                raise ValueError("Missing ONNX model envelope")
+        masked = set()
+        if kind == "tensor":
+            types = [v for n, w, _, _, v in fields if n == 2 and w == 0]
+            raw = [(a, b) for n, w, a, b, _ in fields if n == 9 and w == 2]
+            if raw and (len(raw) != 1 or len(types) != 1):
+                raise ValueError("Ambiguous ONNX tensor storage")
+            if raw and types[0] in ONNX_NUMERIC_WIDTHS:
+                dimensions = []
+                for n, w, a, b, v in fields:
+                    if n != 1:
+                        continue
+                    if w == 0:
+                        dimensions.append(v)
+                    elif w == 2:
+                        while a < b:
+                            v, a = protobuf_varint(data, a, b)
+                            dimensions.append(v)
+                    else:
+                        raise ValueError("Invalid ONNX tensor dimensions")
+                count = 1
+                for dimension in dimensions:
+                    if dimension >= (1 << 63):
+                        raise ValueError("Negative ONNX tensor dimension")
+                    count *= dimension
+                a, b = raw[0]
+                if count * ONNX_NUMERIC_WIDTHS[types[0]] != b - a:
+                    raise ValueError("ONNX tensor payload length mismatch")
+                if any(n in (6, 13) or (n == 14 and v != 0) for n, _, _, _, v in fields):
+                    raise ValueError("Conflicting ONNX tensor storage")
+                spans.append((a, b))
+                masked.add((a, b))
+        for number, wire, a, b, _ in fields:
+            child = ONNX_CHILDREN.get(kind, {}).get(number)
+            if child:
+                if wire != 2:
+                    raise ValueError("Invalid ONNX nested message")
+                visit(child, a, b, depth + 1)
+            elif wire == 2 and (a, b) not in masked:
+                # Also scan leaves independently: protobuf length/tag bytes must
+                # not hide a text prefix by changing regex word boundaries.
+                leaves.append(data[a:b])
+
+    visit("model", 0, len(data))
+    pieces, previous = [], 0
+    for start, end in sorted(spans):
+        if start < previous:
+            raise ValueError("Overlapping ONNX tensor storage")
+        pieces.extend((data[previous:start], b"\n"))
+        previous = end
+    pieces.append(data[previous:])
+    return b"\n".join(pieces + leaves).decode("utf8", errors="replace")
+
+
+def audit_text(data, source_path):
+    if PUBLIC_ONNX_PATH.fullmatch(source_path or ""):
+        try:
+            return public_onnx_text(data), []
+        except (ValueError, RecursionError):
+            return data.decode("utf8", errors="replace"), ["invalid-public-onnx"]
+    return data.decode("utf8", errors="replace"), []
+
 
 def git(*args):
     return subprocess.check_output(["git", *args])
@@ -86,7 +228,10 @@ def main():
                 continue
             data = source.read_bytes()
         inspected += 1
-        for line, text in enumerate(data.decode("utf8", errors="replace").splitlines(), 1):
+        scan_text, parse_findings = audit_text(data, path)
+        if parse_findings:
+            findings.append({"file": path, "line": 0, "categories": parse_findings})
+        for line, text in enumerate(scan_text.splitlines(), 1):
             kinds = categories(text, identities, path)
             if kinds:
                 findings.append({"file": path if not categories(path, identities) else "private-filename",
@@ -106,7 +251,8 @@ def main():
                 data = process.stdout.read(int(header[2])); process.stdout.read(1)
                 # Commit metadata includes author identities; count separately.
                 if header[1] == "blob":
-                    kinds = sorted(set(categories(data.decode("utf8", errors="replace"), identities, object_path)
+                    scan_text, parse_findings = audit_text(data, object_path)
+                    kinds = sorted(set(parse_findings + categories(scan_text, identities, object_path)
                                        + categories(object_path, identities)))
                     if kinds: historical.append({"object": oid, "categories": kinds})
                 elif header[1] == "commit":

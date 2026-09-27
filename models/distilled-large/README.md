@@ -39,8 +39,16 @@ Neither DINO nor the training projection is distributed for inference.
 
 ## Prepare build inputs
 
-Model payloads are generated outside Git. Set the private ledger environment as
-described in [private research references](../../docs/research/private-research-ledger.md)
+The selected **web** payloads are checked in at
+[`prod/public/runtime/rally-models`](../../prod/public/runtime/rally-models),
+so `npm ci` and `npm run build` from `prod/` need no private assets directory.
+The web build verifies these bytes against `web-manifest.json`, copies them into
+the static output, and includes the pinned ONNX Runtime and license notices.
+No private ledger, raw video, embeddings, or research receipts are served.
+
+Android bundles and candidate releases are generated outside Git. Set the private
+ledger environment as described in
+[private research references](../../docs/research/private-research-ledger.md)
 and set `VOLLEYCUT_NEURAL_ASSETS_DIR` to an external generated-output directory.
 The source resolves through `private-reference-0223`. When its host spelling
 differs, an ignored `VOLLEYCUT_DEVICE_ARTIFACT_ROOT` override supplies that same
@@ -50,7 +58,8 @@ indexed artifact root; the ledger entry remains mandatory.
 python scripts/prepare-production-neural-assets.py
 ```
 
-Keep `VOLLEYCUT_NEURAL_ASSETS_DIR` set for production web and Android builds.
+Keep `VOLLEYCUT_NEURAL_ASSETS_DIR` set for Android builds and bundle generation;
+the production web build uses its checked-in release assets.
 Its generated layout is:
 
 ```text

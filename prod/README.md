@@ -95,11 +95,12 @@ iPhone and iPad users must use the native app, available on
 All iOS browsers, including iPad desktop mode, show an App Store banner and landing
 screen instead of the web editor. Android browsers show a Google Play banner.
 
-Prepare the pinned neural assets using the
-[bundle preparation instructions](../models/distilled-large/README.md), then keep
-`VOLLEYCUT_NEURAL_ASSETS_DIR` configured for development and builds. Missing or
-modified weights fail the build. Only model/runtime assets are served; no private
-ledger or research data enters the application.
+The selected neural models are checked in under `public/runtime/rally-models`,
+alongside the existing production model assets. Web development, builds, and
+Cloudflare deployment need no private ledger, dataset, or
+`VOLLEYCUT_NEURAL_ASSETS_DIR`. Missing or modified weights fail the pinned
+integrity checks. The build copies the inference runtime and license notices
+from the installed dependencies and checked-in license sources.
 
 ```sh
 npm install
@@ -241,6 +242,11 @@ curl -I "$VOLLEYCUT_APP_BASE_URL"
   Android navigation and help links use the same listing. APKs are not bundled
   with the website; nginx redirects legacy `/android/` download URLs to Google Play.
 - `public/runtime/model-1ca43e38eefc.json`: the promoted all-labels v2 inference heads and decoders.
+- `public/runtime/rally-models/`: the selected Balanced and Maximum coverage
+  encoders, temporal heads, and inference configurations, with their pinned
+  release manifest. Both bundles total approximately 24.2 MB; browsers fetch
+  only the selected bundle. The build includes them in `dist/runtime/rally-models`
+  for same-origin Cloudflare static serving.
 - `public/runtime/model-9c92b8e9333f.json`: the previous production heads used by the two-model consensus pass.
 - `public/runtime/suppression-39eddf581639.json`: the held corrected suppression
   specialist. Its neighboring manifest records the source artifact, weights, decoder,

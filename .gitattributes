@@ -7,3 +7,6 @@ android/app/src/main/assets/serving-side-85bc3325fbd4.json text eol=lf
 models/distilled-large/*.json text eol=lf
 models/distilled-large/licenses/* text eol=lf
 models/distilled-large/licenses/*.txt text eol=lf whitespace=-blank-at-eol
+prod/public/runtime/rally-models/**/*.json text eol=lf
+prod/public/runtime/rally-models/manifest.json text eol=lf
+prod/public/runtime/rally-models/**/*.onnx binary
