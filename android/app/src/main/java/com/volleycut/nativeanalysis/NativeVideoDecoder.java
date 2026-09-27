@@ -89,9 +89,11 @@ final class NativeVideoDecoder {
             String mime = format.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Video track has no MIME type");
 
+            progress.onProgress("video-preparing", 0, "Reading video timestamps before scanning frames");
             long operationStarted = System.nanoTime();
             SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds());
             profiler.add("sample_plan_scan", System.nanoTime() - operationStarted);
+            progress.onProgress("video-preparing", 0, "Starting the video decoder. Frame scanning starts next.");
             if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
                 throw new IOException("Video has no decodable frames in the benchmark window");
             }
@@ -218,9 +220,11 @@ final class NativeVideoDecoder {
             MediaFormat format = extractor.getTrackFormat(trackIndex);
             String mime = format.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Video track has no MIME type");
+            progress.onProgress("video-preparing", 0, "Reading video timestamps before scanning frames");
             long planStarted = System.nanoTime();
             SamplePlan samplePlan = buildSamplePlan(extractor, times, sourceFrameLimit, media.durationSeconds());
             profiler.add("sample_plan_scan", System.nanoTime() - planStarted);
+            progress.onProgress("video-preparing", 0, "Starting the video decoder. Frame scanning starts next.");
             if (samplePlan.sourceFrameCount() == 0 || samplePlan.sampleCount() == 0) {
                 throw new IOException("Video has no decodable frames in the analysis window");
             }

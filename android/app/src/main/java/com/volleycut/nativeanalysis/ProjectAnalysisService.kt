@@ -48,6 +48,7 @@ internal fun projectCreationOverallProgress(
     if (includeServingSide) {
         return when (stage) {
             "opening" -> 0.02 * bounded
+            "video-preparing" -> 0.02
             "video" -> 0.02 + 0.40 * bounded
             "audio" -> 0.42 + 0.16 * bounded
             "normalizing" -> 0.58 + 0.06 * bounded
@@ -61,6 +62,7 @@ internal fun projectCreationOverallProgress(
     }
     return when (stage) {
         "opening" -> 0.02 * bounded
+        "video-preparing" -> 0.02
         "video" -> 0.02 + 0.63 * bounded
         "audio" -> 0.65 + 0.19 * bounded
         "normalizing" -> 0.84 + 0.07 * bounded
@@ -76,6 +78,7 @@ internal data class ProjectNotificationStage(
     val step: Int,
     val stepCount: Int,
     val progress: Double,
+    val indeterminate: Boolean = false,
 ) {
     val title: String get() = "$label ($step/$stepCount)"
     val progressPercent: Int get() = (progress.coerceIn(0.0, 1.0) * 100).toInt()
@@ -147,7 +150,8 @@ internal fun projectCreationNotificationStage(
     val bounded = fraction.coerceIn(0.0, 1.0)
     val stepCount = if (includeServingSide) 3 else 2
     return when (stage) {
-        "opening", "video" -> ProjectNotificationStage(
+        "opening", "video-preparing" -> ProjectNotificationStage("Preparing video", 1, stepCount, 0.0, true)
+        "video" -> ProjectNotificationStage(
             "Video analysis", 1, stepCount, if (stage == "video") bounded else 0.0,
         )
         "audio" -> ProjectNotificationStage("Audio analysis", 2, stepCount, bounded * 0.80)
@@ -342,7 +346,7 @@ class ProjectAnalysisService : Service() {
             includeServingSide = includeServingSide,
             includeSideSwitch = includeServingSide && project.sideSwitchEnabled,
         )
-        val openingDetail = "Preparing game-window video + audio inference"
+        val openingDetail = "Loading analysis and checking the video. Frame scanning starts after setup."
         broadcast(
             projectId,
             ProjectStatus.ANALYZING,
@@ -358,6 +362,7 @@ class ProjectAnalysisService : Service() {
         val performanceUpdates = CallbackEmissionThrottle(1_000_000_000L)
         fun notificationDetail(): String {
             val stage = latestNotificationStage
+            if (stage.indeterminate) return "${project.source.name} · Preparing video before frame scanning"
             return if (stage.step == 1 && latestPerformance != null) {
                 projectInferenceNotificationDetail(
                     project.source.name, latestPerformance, stage.progressPercent,
@@ -371,7 +376,7 @@ class ProjectAnalysisService : Service() {
         updateNotification(
             latestNotificationStage.progressPercent,
             notificationDetail(),
-            false,
+            latestNotificationStage.indeterminate,
             latestNotificationStage.title,
         )
         try {
@@ -399,7 +404,7 @@ class ProjectAnalysisService : Service() {
                         updateNotification(
                             latestNotificationStage.progressPercent,
                             notificationDetail(),
-                            false,
+                            latestNotificationStage.indeterminate,
                             latestNotificationStage.title,
                         )
                         broadcast(

@@ -144,6 +144,7 @@ internal data class InferenceStepMeasurement(
     val fraction: Double,
     val detail: String,
     val elapsedMilliseconds: Double,
+    val indeterminate: Boolean = false,
 )
 
 /** Maintains the same user-facing inference steps as the production web progress panel. */
@@ -161,6 +162,7 @@ internal class InferenceProgressTracker(
         var detail: String = "Waiting for the previous step",
         var startedNanos: Long? = null,
         var finishedNanos: Long? = null,
+        var indeterminate: Boolean = false,
     )
 
     private val steps = buildList {
@@ -189,6 +191,7 @@ internal class InferenceProgressTracker(
             step.startedNanos = now
         }
         if (step.status != InferenceStepStatus.ERROR) {
+            step.indeterminate = stage == "opening" || stage == "video-preparing"
             step.fraction = maxOf(step.fraction, target.second).coerceIn(0.0, 1.0)
             step.detail = detail
             if (step.fraction >= 1.0) complete(step, now)
@@ -226,7 +229,7 @@ internal class InferenceProgressTracker(
     }
 
     private fun target(stage: String, fraction: Double): Pair<String, Double>? = when (stage) {
-        "opening" -> "video" to 0.0
+        "opening", "video-preparing" -> "video" to 0.0
         "video" -> "video" to fraction
         "audio" -> "audio" to fraction
         "normalizing" -> "rally" to (0.05 + 0.25 * fraction)
@@ -246,6 +249,7 @@ internal class InferenceProgressTracker(
         if (step.startedNanos == null) step.startedNanos = now
         step.finishedNanos = now
         step.status = InferenceStepStatus.COMPLETE
+        step.indeterminate = false
         step.fraction = 1.0
         if (step.detail == "Waiting for the previous step") step.detail = "${step.label} complete"
     }
@@ -255,12 +259,13 @@ internal class InferenceProgressTracker(
         val end = step.finishedNanos ?: now
         InferenceStepMeasurement(
             id = step.id,
-            label = step.label,
+            label = if (step.indeterminate) "Preparing video" else step.label,
             status = step.status,
             fraction = step.fraction,
             detail = step.detail,
             elapsedMilliseconds = if (started == null) 0.0
                 else (end - started).coerceAtLeast(0L) / 1_000_000.0,
+            indeterminate = step.indeterminate,
         )
     }
 }
@@ -274,6 +279,7 @@ internal object InferenceStepMeasurementsJson {
             put("fraction", step.fraction)
             put("detail", step.detail)
             put("elapsedMilliseconds", step.elapsedMilliseconds)
+            put("indeterminate", step.indeterminate)
         }) }
     }.toString()
 
@@ -290,6 +296,7 @@ internal object InferenceStepMeasurementsJson {
                     fraction = json.optDouble("fraction", 0.0).coerceIn(0.0, 1.0),
                     detail = json.optString("detail"),
                     elapsedMilliseconds = json.optDouble("elapsedMilliseconds", 0.0).coerceAtLeast(0.0),
+                    indeterminate = json.optBoolean("indeterminate", false),
                 ))
             }
         }

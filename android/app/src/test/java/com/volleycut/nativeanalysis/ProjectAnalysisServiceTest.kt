@@ -7,6 +7,26 @@ import org.junit.Test
 
 class ProjectAnalysisServiceTest {
     @Test
+    fun preparationIsIndeterminateUntilFrameScanningStarts() {
+        val tracker = InferenceProgressTracker(true, false, false)
+        val opening = tracker.update("opening", 1.0, "Checking cached features").first()
+        assertEquals("Preparing video", opening.label)
+        assertEquals(InferenceStepStatus.RUNNING, opening.status)
+        assertTrue(opening.indeterminate)
+        assertEquals(0.0, opening.fraction, 0.0)
+        val setup = tracker.update("video-preparing", 0.0, "Reading video timestamps")
+        assertEquals(setup, InferenceStepMeasurementsJson.decode(InferenceStepMeasurementsJson.encode(setup)))
+        assertTrue(projectCreationNotificationStage("video-preparing", 0.0, false).indeterminate)
+        assertEquals(0.02, projectCreationOverallProgress("video-preparing", 0.0, false), 0.0)
+        val scanning = tracker.update("video", .1, "Scanning frames").first()
+        assertEquals("Scanning video", scanning.label)
+        assertFalse(scanning.indeterminate)
+        assertEquals(.1, scanning.fraction, 0.0)
+        assertFalse(projectCreationNotificationStage("video", .1, false).indeterminate)
+        assertFalse(tracker.update("complete", 1.0, "Ready").first().indeterminate)
+    }
+
+    @Test
     fun projectNotificationShowsOnlyFilenameAndSpeedMeasurements() {
         val stats = AnalysisTypes.PerformanceStats(
             100,

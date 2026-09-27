@@ -173,6 +173,7 @@ final class AnalysisEngine {
         LinkedHashMap<String, Double> profile = new LinkedHashMap<>();
 
         long stage = System.nanoTime();
+        progress.onProgress("opening", 0, "Opening the video and checking saved analysis");
         String displayName = displayName(uri);
         AnalysisTypes.MediaInfo media = probe(uri);
         AnalysisTypes.Roi roi = fullFrame
@@ -193,10 +194,7 @@ final class AnalysisEngine {
                 requestedTimes.length, analysisWindow, cacheMode
         );
         timings.put("open", elapsedMs(stage));
-        progress.onProgress("opening", 1, String.format(Locale.US,
-                "%s · %dx%d · %.1f min · %s",
-                media.videoMime(), media.width(), media.height(), media.durationSeconds() / 60, roi.label()
-        ));
+        progress.onProgress("opening", 1, "Checking saved video features before scanning frames");
 
         stage = System.nanoTime();
         long cacheReadStarted = System.nanoTime();
@@ -234,6 +232,8 @@ final class AnalysisEngine {
                         cachedVisual.rows()
                 ));
             }
+            progress.onProgress("video-preparing", 0,
+                    "Preparing image analysis. Frame scanning starts after setup.");
             try (SharedVideoFrameConsumer shared = rallyOverride != null && cachedVisual.rows() == 0
                     ? rallyOverride.prepareSharedVideo(media, roi, analysisWindow,
                             sourceFrameLimit, cancelled::get) : null) {

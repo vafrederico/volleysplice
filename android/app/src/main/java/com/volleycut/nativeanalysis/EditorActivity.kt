@@ -1305,7 +1305,7 @@ private fun ProjectHeaderBar(
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             ) {
                                 Text(
-                                    if (creatingNew || selected == null) "＋ Start a new video…" else "${RallyModels.shortLabel(selected.modelId)} - ${selected.source.name}",
+                                    if (creatingNew || selected == null) "＋ Start a new video…" else selected.source.name,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     fontSize = 10.sp,
@@ -1460,7 +1460,7 @@ private fun ProjectHeaderBar(
                         ) {
                             Text(
                                 if (creatingNew || selected == null) "＋ Start a new video…"
-                                else "${RallyModels.shortLabel(selected.modelId)} - ${selected.source.name} - ${projectStatusLabel(selected, exportStatuses[selected.id])}",
+                                else "${selected.source.name} - ${projectStatusLabel(selected, exportStatuses[selected.id])}",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -1610,7 +1610,7 @@ private fun HeaderReviewQueue(
 }
 
 @Composable
-private fun AppSettingsDialog(
+internal fun AppSettingsDialog(
     displayAnalysisMeasurements: Boolean,
     onDisplayAnalysisMeasurements: (Boolean) -> Unit,
     onDismiss: () -> Unit,
@@ -1621,7 +1621,10 @@ private fun AppSettingsDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text("DISPLAY", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 UiScaleControl()
                 HorizontalDivider(color = Rail)
@@ -1823,7 +1826,8 @@ private fun AnalysisMeasurementsSetting(
         Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange,
+            modifier = Modifier.semantics { contentDescription = "Show analysis measurements" })
         Column(Modifier.weight(1f)) {
             Text("Show analysis measurements", fontWeight = FontWeight.SemiBold)
             Text("Show developer timing details in the editor.", color = Muted, fontSize = 11.sp)
@@ -1853,7 +1857,10 @@ private fun ProjectInferenceCard(
         )
         if (project.status == ProjectStatus.ANALYZING || state.progress > 0f) {
             if (state.stepMeasurements.isEmpty()) {
-                LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+                if (state.stage == "opening" || state.stage == "video-preparing" || state.stage.isBlank()) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(state.detail.ifBlank { "Preparing video before frame scanning begins" }, color = Muted, fontSize = 12.sp)
+                } else LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
             }
         }
         val detail = state.detail.ifBlank { project.error.orEmpty() }
@@ -1907,7 +1914,7 @@ private fun ProjectInferenceCard(
 }
 
 @Composable
-private fun InferenceProgressMeasurementsPanel(
+internal fun InferenceProgressMeasurementsPanel(
     steps: List<InferenceStepMeasurement>,
     performance: AnalysisTypes.PerformanceStats? = null,
     compact: Boolean = false,
@@ -1926,7 +1933,7 @@ private fun InferenceProgressMeasurementsPanel(
                 val percent = (step.fraction * 100).roundToInt()
                 val elapsedSeconds = step.elapsedMilliseconds / 1_000.0
                 val videoPerformance = performance?.takeIf {
-                    step.id == "video" && it.framesPerSecond() > 0.0
+                    step.id == "video" && !step.indeterminate && it.framesPerSecond() > 0.0
                 }
                 val etaSeconds = if (
                     step.status == InferenceStepStatus.RUNNING &&
@@ -1953,7 +1960,9 @@ private fun InferenceProgressMeasurementsPanel(
                     else -> "Measuring…"
                 }
                 val metrics = when (step.status) {
-                    InferenceStepStatus.RUNNING ->
+                    InferenceStepStatus.RUNNING -> if (step.indeterminate) {
+                        "Preparing · ${measurementDuration(step.elapsedMilliseconds)} elapsed"
+                    } else
                         "$percent% · $measuredRate · ${measurementDuration(step.elapsedMilliseconds)} elapsed · " +
                             if (etaSeconds != null) "ETA ${secondsLabel(etaSeconds)}" else "estimating ETA"
                     InferenceStepStatus.COMPLETE -> buildList {
@@ -1996,7 +2005,9 @@ private fun InferenceProgressMeasurementsPanel(
                             fontWeight = FontWeight.Bold,
                         )
                     }
-                    LinearProgressIndicator(
+                    if (step.indeterminate && step.status == InferenceStepStatus.RUNNING) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else LinearProgressIndicator(
                         progress = { step.fraction.toFloat() },
                         modifier = Modifier.fillMaxWidth(),
                     )
