@@ -715,7 +715,7 @@ export async function analyzeOpenedMedia(
   await yieldToBrowser();
   onProgress?.({
     stage: "inference",
-    completed: sequence.rows,
+    completed: 0,
     total: sequence.rows,
     detail: "Running both production stacks and suppression specialist on CPU",
     featureCache: sequence.featureCache,

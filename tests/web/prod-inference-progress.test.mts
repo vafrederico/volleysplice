@@ -151,3 +151,23 @@ test("each running step receives an independent ETA", () => {
   steps = finishInferenceStep(steps, "video", "Done", 6_000);
   assert.equal(inferenceStepEtaSeconds(steps[0], 10_000), 0);
 });
+
+test("temporal chunk progress advances the rally bar without completing support work early", () => {
+  let steps = createInferenceProgressSteps(CORE_INFERENCE_STEP_IDS);
+  let previous = 0;
+  for (const completed of [0, 128, 256, 512]) {
+    steps = updatePipelineInferenceSteps(steps, {
+      stage: "inference", completed, total: 512, detail: `Finding rallies: ${completed}/512`,
+    }, 1000 + completed);
+    assert.ok(steps[2].fraction > previous);
+    assert.equal(steps[2].status, "running");
+    assert.equal(steps[2].detail, `Finding rallies: ${completed}/512`);
+    previous = steps[2].fraction;
+  }
+  assert.equal(steps[2].fraction, .95);
+  steps = updatePipelineInferenceSteps(steps, {
+    stage: "complete", completed: 100, total: 100, detail: "Rallies ready",
+  }, 2000);
+  assert.equal(steps[2].status, "complete");
+  assert.equal(steps[2].fraction, 1);
+});

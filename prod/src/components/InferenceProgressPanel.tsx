@@ -85,7 +85,7 @@ function stepDescription(step: InferenceProgressStep): string {
   if (step.status === "skipped") return "This step is not needed for this video.";
   if (step.status === "error") return `This step could not finish. ${step.detail}`;
   if (step.status === "complete") return COMPLETE_DESCRIPTIONS[step.id];
-  return RUNNING_DESCRIPTIONS[step.id];
+  return step.detail || RUNNING_DESCRIPTIONS[step.id];
 }
 
 export function InferenceProgressPanel({

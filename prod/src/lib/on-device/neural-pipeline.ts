@@ -39,6 +39,8 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
     stage: "inference", completed, total, detail: `Finding rallies - ${Math.round(completed / total * 100)}%`,
   }));
   try {
+    progress({ stage: "video", completed: restored ? duration * .5 : 0, total: duration,
+      detail: restored ? "Reusing saved image features for the selected model" : "Loading the selected image model before reading video frames" });
     const ready = await worker.request({ type: "initialize", baseUrl, bundle, config, selection,
       needEncoder: !restored, ortBaseUrl: new URL("ort/", runtimeAssetUrl("opencv-worker.js")).href,
       openCvUrl: runtimeAssetUrl("opencv-worker.js") }, "ready");
@@ -65,7 +67,10 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
         } finally { sample.close(); }
       }
       if (row !== times.length) throw new Error("Image feature extraction did not finish.");
-      if (key) await writeNeuralEmbeddings(key, embeddings).catch(() => {});
+      if (key) {
+        progress({ stage: "video", completed: duration * .5, total: duration, detail: "Saving image features for reuse with this model" });
+        await writeNeuralEmbeddings(key, embeddings).catch(() => {});
+      }
     }
     options.signal?.throwIfAborted();
     const sequence = await extractBrowserFeatures(media, roi, runtimeVariant, update => progress({
@@ -78,10 +83,12 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
     const rankedAv = new Float32Array(sequence.rows * 104);
     for (let row = 0; row < sequence.rows; row++) rankedAv.set(contextual.values.subarray(row * 520 + 208, row * 520 + 312), row * 104);
     const modelTimes = new Float64Array(sequence.times);
+    progress({ stage: "inference", completed: 0, total: sequence.rows, detail: "Loading the rally classifier" });
     const result = await worker.request({ type: "temporal", times: modelTimes, rankedAv, embedding: embeddings, duration: window.end }, "temporal",
       [modelTimes.buffer, rankedAv.buffer, embeddings.times.buffer, embeddings.tokens.buffer, embeddings.quality.buffer]);
     // Keep the existing serve/state heads as evidence for score specialists. Their
     // rally proposals and ensemble suppression policy do not override neural cuts.
+    progress({ stage: "inference", completed: sequence.rows, total: sequence.rows, detail: "Preparing serve and court-state evidence for score tracking" });
     const production = await runProductionInferenceFromFeatures(sequence, window);
     const intervals = result.rallies.map((rally, index) => ({ ...rally, start: Math.max(window.start, rally.start),
       end: Math.min(window.end, rally.end), id: `N${String(index + 1).padStart(3, "0")}`, included: true, agreement: "neural" as const })).filter(rally => rally.end > rally.start);

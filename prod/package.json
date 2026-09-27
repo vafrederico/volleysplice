@@ -10,6 +10,7 @@
     "dev": "vite --host 0.0.0.0",
     "check": "tsc --noEmit",
     "test:youtube-ui": "node scripts/test-youtube-chapters-ui.mjs",
+    "test:inference-ui": "node scripts/test-inference-progress-ui.mjs",
     "prebuild": "npm run prepare-assets",
     "build": "npm run check && vite build",
     "postbuild": "node scripts/verify-build.mjs",
