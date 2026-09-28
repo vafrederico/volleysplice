@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import plistlib
+import struct
 import tempfile
 import unittest
 import zipfile
@@ -13,6 +14,11 @@ audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
 
+def executable(minimum=17, kind=2):
+    return struct.pack('<8I', 0xfeedfacf, 0x100000c, 0, kind, 1, 24, 0, 0) + \
+        struct.pack('<6I', 0x32, 24, 2, minimum << 16, 26 << 16, 0)
+
+
 class ReleaseResourceTests(unittest.TestCase):
     def setUp(self):
         self.manifest_path = Path(__file__).parents[2] / 'App/PrivacyInfo.xcprivacy'
@@ -20,8 +26,9 @@ class ReleaseResourceTests(unittest.TestCase):
         self.files = {name: b'{}' for name in audit.MODELS}
         self.files.update({'PrivacyInfo.xcprivacy': self.manifest_path.read_bytes(),
                            'Info.plist': plistlib.dumps({'CFBundleExecutable': 'VolleySplice',
+                                                        'MinimumOSVersion': '17.0',
                                                         'ITSAppUsesNonExemptEncryption': False}),
-                           'volleysplice_logo.png': b'logo', 'VolleySplice': b'executable'})
+                           'volleysplice_logo.png': b'logo', 'VolleySplice': executable()})
         self.neural = copy.deepcopy(audit.expected_neural_resources())
         for variant in self.neural['variants'].values():
             for role, asset in variant['files'].items():
@@ -123,8 +130,31 @@ class ReleaseResourceTests(unittest.TestCase):
         self.assertEqual(set(audit.expected_license_resources()), set(self.licenses))
 
     def test_clean_sdk_privacy_resource_is_reviewed_without_allowing_models(self):
-        files = self.files | {'Frameworks/onnxruntime.framework/PrivacyInfo.xcprivacy': plistlib.dumps(self.manifest)}
+        files = self.files | self.framework_files() | {'Frameworks/onnxruntime.framework/PrivacyInfo.xcprivacy': plistlib.dumps(self.manifest)}
         self.assertIn('Frameworks/onnxruntime.framework/PrivacyInfo.xcprivacy', self.checked(files)['privacy_manifests'])
+
+    def framework_files(self, minimum='17.0', binary_minimum=17):
+        return {'Frameworks/onnxruntime.framework/Info.plist': plistlib.dumps({
+                    'CFBundleExecutable': 'onnxruntime', 'MinimumOSVersion': minimum}),
+                'Frameworks/onnxruntime.framework/onnxruntime': executable(binary_minimum, 6)}
+
+    def test_framework_stub_plist_mismatch_reproduces_itms_90208(self):
+        with self.assertRaisesRegex(ValueError, '15.1 is below Mach-O requirement 17.0'):
+            self.checked(self.files | self.framework_files('15.1'))
+        result = self.checked(self.files | self.framework_files())
+        self.assertEqual(result['deployment_versions']['Frameworks/onnxruntime.framework']['declared'], '17.0')
+
+    def test_framework_cannot_require_newer_os_than_app(self):
+        with self.assertRaisesRegex(ValueError, 'exceeds the app'):
+            self.checked(self.files | self.framework_files('18.0', 18))
+
+    def test_missing_or_malformed_framework_cannot_skip_version_audit(self):
+        files = self.files | self.framework_files()
+        del files['Frameworks/onnxruntime.framework/Info.plist']
+        with self.assertRaisesRegex(ValueError, 'Missing embedded framework Info.plist'):
+            self.checked(files)
+        with self.assertRaisesRegex(ValueError, 'Mach-O executable'):
+            self.checked(self.files | self.framework_files() | {'Frameworks/onnxruntime.framework/onnxruntime': b'broken'})
 
 
 if __name__ == '__main__':

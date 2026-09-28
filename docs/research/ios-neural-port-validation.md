@@ -172,3 +172,31 @@ published reports now use indexes. Optional reference tests require
 `VOLLEYCUT_IOS_REFERENCE_VIDEO_NAME` instead of embedding a recording name.
 The extended ledger-based scan passed across all 167 iOS files. This cleanup
 changes current files; it does not rewrite the older commits inherited from main.
+
+## ITMS-90208 packaging correction — 2026-09-28
+
+The prior unsigned bundle reproduces the reported failure: the app's plist and
+binary require iOS 17.0, while the embedded ONNX Runtime framework plist declares
+15.1 and its stub binary requires 17.0. The initial resource/privacy audit did
+not inspect Mach-O deployment commands and therefore missed this inconsistency.
+
+The [pinned upstream SPM package](https://github.com/microsoft/onnxruntime-swift-package-manager/blob/1.24.2/Package.swift)
+provides a static library. Our Xcode archive log shows it removing the static
+executable from the embedded framework and injecting a stub at the app target.
+The retained upstream plist minimum did not follow that generated stub.
+
+The generated target now repairs only the embedded ORT framework metadata after
+the SPM copy/stub task, checks every binary slice against the app target and
+re-signs the framework when signing is enabled. No binary deployment command,
+model weight, runtime version or app deployment target is changed. The archive
+and exported IPA audits now reject this mismatch for any embedded framework.
+
+Validation: 23 Python checks pass, including thin/fat Mach-O parsing, the exact
+15.1-versus-17.0 regression, refusal to mask a requirement above the app target,
+and signing recovery. The original real bundle fails the new audit; repairing
+its plist passes while preserving the framework binary byte-for-byte. A fresh
+unsigned ARM64 Xcode archive runs the new phase and passes the full resource
+and deployment-version audit with both declarations at 17.0. A separate real
+ad-hoc signing check successfully re-signs the changed framework and passes
+`codesign --verify --strict`. App Store distribution signing and Apple upload
+acceptance were not repeated locally; a new release workflow build is required.

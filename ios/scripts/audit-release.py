@@ -7,7 +7,11 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import plistlib
+import sys
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from macho_versions import check_bundle_version, version
 
 MODELS = {
     'model-1ca43e38eefc.json', 'model-9c92b8e9333f.json',
@@ -113,6 +117,26 @@ def audit(files, read, expected_manifest, expected_neural=None, expected_license
     executable = info.get('CFBundleExecutable')
     if not isinstance(executable, str) or executable not in files or '/' in executable:
         raise ValueError('Missing or invalid app executable')
+    deployment = {'app': check_bundle_version(info, read(executable))}
+    framework_roots = set()
+    for name in files:
+        parts = PurePosixPath(name).parts
+        for index, part in enumerate(parts):
+            if part.endswith('.framework'):
+                framework_roots.add('/'.join(parts[:index + 1]))
+    for root in sorted(framework_roots):
+        metadata = root + '/Info.plist'
+        if metadata not in files:
+            raise ValueError('Missing embedded framework Info.plist: ' + root)
+        framework_info = plistlib.loads(read(metadata))
+        binary = framework_info.get('CFBundleExecutable')
+        if not isinstance(binary, str) or not binary or '/' in binary or root + '/' + binary not in files:
+            raise ValueError('Missing embedded framework executable: ' + root)
+        try:
+            deployment[root] = check_bundle_version(framework_info, read(root + '/' + binary),
+                                                     version(info.get('MinimumOSVersion')))
+        except ValueError as error:
+            raise ValueError(root + ': ' + str(error)) from error
     manifests = {}
     for name in files:
         if name.endswith('.xcprivacy'):
@@ -125,6 +149,7 @@ def audit(files, read, expected_manifest, expected_neural=None, expected_license
     if manifests['PrivacyInfo.xcprivacy'] != expected_manifest:
         raise ValueError('Bundled app privacy manifest differs from reviewed source')
     return {'files': files, 'privacy_manifests': manifests, 'test_resources_found': False,
+            'deployment_versions': deployment,
             'neural_assets': verified_assets, 'license_notices_verified': sorted(required_licenses),
             'bundle_id': info.get('CFBundleIdentifier'), 'version': info.get('CFBundleShortVersionString'),
             'build': info.get('CFBundleVersion'), 'uses_non_exempt_encryption': False,
@@ -149,7 +174,7 @@ def audit_release(archive, ipa, source_manifest, output, model_manifest=None, li
         'ipa_sha256': hashlib.sha256(ipa.read_bytes()).hexdigest(),
     }
     output.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
-    print('Release archive and IPA verified: privacy manifest present; no test resources found.')
+    print('Release archive and IPA verified: deployment versions consistent; privacy manifest present; no test resources found.')
 
 
 if __name__ == '__main__':

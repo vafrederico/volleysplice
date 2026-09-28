@@ -4,7 +4,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 def ident(value): return hashlib.sha256(value.encode()).hexdigest()[:24].upper()
-def quote(value): return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
+def quote(value): return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
 objects = []
 def obj(key, body):
     value = ident(key)
@@ -56,6 +56,17 @@ group = obj('group', f'isa = PBXGroup; children = ({",".join(refs + [product])})
 sourcePhase = obj('source-phase', f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(builds)}); runOnlyForDeploymentPostprocessing = 0;')
 resourcePhase = obj('resource-phase', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(resources)}); runOnlyForDeploymentPostprocessing = 0;')
 frameworkPhase = obj('framework-phase', f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({frameworkBuild},{ort_build}); runOnlyForDeploymentPostprocessing = 0;')
+# Xcode embeds the static ORT framework as a codeless bundle, injecting a stub
+# built for our deployment target but retaining the upstream framework plist.
+# Inputs force this phase after the implicit SPM copy/stub task. Re-sign the
+# framework when signing is enabled; Xcode signs the containing app afterwards.
+ort_fix = 'set -eu\npython3 "$SRCROOT/scripts/fix-onnx-framework-minimum.py" --framework "$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/onnxruntime.framework" --deployment-target "$IPHONEOS_DEPLOYMENT_TARGET" --platform "$PLATFORM_NAME"\n'
+ort_fix_inputs = [
+    '$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/onnxruntime.framework/Info.plist',
+    '$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/onnxruntime.framework/onnxruntime',
+    '$(SRCROOT)/scripts/fix-onnx-framework-minimum.py', '$(SRCROOT)/scripts/macho_versions.py',
+]
+ortFixPhase = obj('ort-minimum-os-phase', 'isa = PBXShellScriptBuildPhase; name = "Validate ONNX Runtime minimum OS"; buildActionMask = 2147483647; files = (); inputPaths = (' + ','.join(quote(v) for v in ort_fix_inputs) + '); outputPaths = (); alwaysOutOfDate = 1; runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = ' + quote(ort_fix) + ';')
 configs = []
 for name in ['Debug', 'Release']:
     settings = {
@@ -83,7 +94,7 @@ for name in ['Debug', 'Release']:
         settings['EXCLUDED_SOURCE_FILE_NAMES'] = '$(inherited) golden.json base.bin *fixture* *golden*'
     configs.append(obj('config:' + name, 'isa = XCBuildConfiguration; name = '+name+'; buildSettings = {'+''.join(f'{k} = {quote(v)};' for k,v in settings.items())+'};'))
 configList = obj('config-list', f'isa = XCConfigurationList; buildConfigurations = ({",".join(configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
-target = obj('target', f'isa = PBXNativeTarget; name = VolleySplice; productName = VolleySplice; productType = "com.apple.product-type.application"; productReference = {product}; buildConfigurationList = {configList}; buildPhases = ({sourcePhase},{frameworkPhase},{resourcePhase}); packageProductDependencies = ({ort_product}); dependencies = (); buildRules = ();')
+target = obj('target', f'isa = PBXNativeTarget; name = VolleySplice; productName = VolleySplice; productType = "com.apple.product-type.application"; productReference = {product}; buildConfigurationList = {configList}; buildPhases = ({sourcePhase},{frameworkPhase},{resourcePhase},{ortFixPhase}); packageProductDependencies = ({ort_product}); dependencies = (); buildRules = ();')
 test_targets = []
 test_references = []
 for test_name, folder, ui_test in [('VolleySpliceTests', 'Tests/AppIntegrationTests', False), ('VolleySpliceUITests', 'Tests/AppUITests', True)]:

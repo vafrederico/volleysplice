@@ -134,6 +134,16 @@ following [GitHub's signing pattern](https://docs.github.com/en/actions/how-tos/
 
 ## Run a release
 
+The generated Xcode target checks the embedded ONNX Runtime framework after
+SPM copies it. Xcode can inject a stub at the app's deployment target while
+retaining the upstream plist's older `MinimumOSVersion`, causing `ITMS-90208`.
+The build phase raises only that framework's plist minimum to its actual Mach-O
+requirement, verifies it still fits the app target, and re-signs the framework
+when signing is enabled. Xcode then signs the containing app. The app remains
+iOS/iPadOS 17+; changing plist metadata never lowers a binary's requirement.
+The archive and exported IPA audit independently compares the app and every
+embedded framework's plist against all Mach-O slices before upload.
+
 1. Open **Actions → iOS release → Run workflow** and select a trusted branch/tag.
 2. Enter a three-part version such as `1.0.0` and an increasing build number
    from `1` through `9999`. Use a new number for each upload, including reruns of

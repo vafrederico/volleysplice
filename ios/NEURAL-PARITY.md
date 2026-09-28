@@ -60,7 +60,11 @@ executed numerical, project-interchange and short-video checks.
 
 Only the two pinned model bundles and required license notices are allowed in
 Release. The archive/IPA resource audit checks each graph/config hash and size,
-the neural manifest, license payloads and app/SDK privacy declarations. Diagnostic
+the neural manifest, license payloads and app/SDK privacy declarations. It also
+checks app/framework minimum OS declarations against every Mach-O slice. The
+Xcode packaging phase repairs the known ORT static-framework stub metadata
+mismatch before final app signing; see [release instructions](RELEASING.md).
+Diagnostic
 fixtures and unrecognized model files are rejected. The teacher is DINOv2 ViT-S/14;
 teacher weights and its training-only projection are not packaged. License terms
 and attribution remain in [third-party notices](../THIRD_PARTY_NOTICES.md).
