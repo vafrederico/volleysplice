@@ -23,8 +23,14 @@ enum ScoreAnalysis {
         }
         progress(0, "Reusing project features for score preparation")
         let contextual = try FeatureMath.contextualize(times: analysis.timestamps, base: analysis.baseFeatures, names: FeatureSchema.base)
-        let all = try AnalysisPipeline.loadModel("model-1ca43e38eefc").run(times: analysis.timestamps, contextual: contextual, duration: Double(project.gameWindow.endMs) / 1000)
-        let previous = try AnalysisPipeline.loadModel("model-9c92b8e9333f").run(times: analysis.timestamps, contextual: contextual, duration: Double(project.gameWindow.endMs) / 1000)
+        let switches = feedback["source"]?["generateSideSwitchMarkers"]?.bool ?? true
+        let neural = RallyModel(modelId: feedback["initialInference"]?["modelId"]?.string ?? "ensemble")?.isNeural == true
+        func evidence(_ id: String) throws -> ModelRunner.RunResult {
+            let model = try AnalysisPipeline.loadModel(id), end = Double(project.gameWindow.endMs) / 1000
+            return try neural && !switches ? model.runEvidence(times: analysis.timestamps, contextual: contextual, duration: end)
+                : model.run(times: analysis.timestamps, contextual: contextual, duration: end)
+        }
+        let all = try evidence("model-1ca43e38eefc"), previous = try evidence("model-9c92b8e9333f")
         try FileManager.default.createDirectory(at: cacheFolder, withIntermediateDirectories: true)
         let safeID = project.id.filter { $0.isLetter || $0.isNumber || $0 == "-" }
         let sourceKey = try ProjectArchive.sampledFingerprint(url: source)
@@ -34,7 +40,7 @@ enum ScoreAnalysis {
             all: ProductionServeOutput(modelId: "model-1ca43e38eefc", times: analysis.timestamps, probabilities: all.serveProbabilities, detections: all.serveDetections),
             previous: ProductionServeOutput(modelId: "model-9c92b8e9333f", times: analysis.timestamps, probabilities: previous.serveProbabilities, detections: previous.serveDetections),
             cacheURL: cacheFolder.appendingPathComponent("project-\(safeID)-\(cacheKey)-serving.plist"),
-            switchInput: (feedback["source"]?["generateSideSwitchMarkers"]?.bool ?? true)
+            switchInput: switches
                 ? input(ranges: ranges, times: analysis.timestamps, all: all, previous: previous) : nil, stepProgress: stepProgress, progress: progress)
     }
     static func input(ranges: [Interval], times: [Double], all: ModelRunner.RunResult, previous: ModelRunner.RunResult) -> SideSwitchAnalysisInput {
@@ -43,12 +49,12 @@ enum ScoreAnalysis {
             previousProductionState: ProductionStateOutput(modelId: "model-9c92b8e9333f", times: times, rallyProbabilities: previous.rallyProbabilities, deadStateProbabilities: previous.deadStateProbabilities))
     }
     private struct Cache: Codable {
-        var schema = "ios-serving-gray-opencv412-v1"
+        var schema = "ios-serving-gray-area-color-opencv412-v2"
         var candidates: [ServingSideInference.CandidateInterval]
         var rawFeatures: [Double] = []
     }
     private struct SwitchCache: Codable {
-        var schema = "ios-switch-bgr-opencv412-v1"
+        var schema = "ios-switch-bgr-area-color-opencv412-v2"
         var plan: SideSwitchInference.FramePlan
         var visual: [Double]
     }
@@ -68,7 +74,7 @@ enum ScoreAnalysis {
         var switchError: String?
         if let switchPlan, let data = try? Data(contentsOf: switchCacheURL),
            let saved = try? PropertyListDecoder().decode(SwitchCache.self, from: data),
-           saved.schema == "ios-switch-bgr-opencv412-v1", saved.plan == switchPlan,
+           saved.schema == "ios-switch-bgr-area-color-opencv412-v2", saved.plan == switchPlan,
            saved.visual.count == switchPlan.candidates.count * 22, saved.visual.allSatisfy(\.isFinite) { switchVisual = saved.visual }
         var cache = Cache(candidates: plan.candidates)
         if let data = try? Data(contentsOf: cacheURL), let saved = try? PropertyListDecoder().decode(Cache.self, from: data),

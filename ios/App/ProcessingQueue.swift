@@ -314,11 +314,9 @@ struct ProcessingJobResult: Sendable {
     private func startProgressTracking(_ job: ProcessingJob) {
         progressTicker?.cancel(); analysisTracker = nil
         guard job.kind.supportsCPUContinuation else { return }
-        var steps: [AnalysisStep] = job.kind == .analysis ? [.video, .audio, .rally] : []
-        if job.kind == .analysis && job.analysis?.prepareScores == true {
-            steps.append(.servingSide)
-            if job.analysis?.generateSideSwitchMarkers ?? true { steps.append(.sideSwitch) }
-        }
+        let steps: [AnalysisStep] = job.kind == .analysis ? AnalysisStep.analysisSteps(
+            model: job.analysis?.rallyModel ?? .legacy, prepareScores: job.analysis?.prepareScores == true,
+            generateSideSwitchMarkers: job.analysis?.generateSideSwitchMarkers ?? true) : []
         // Score-only jobs discover the enabled steps from their retained project settings.
         analysisTracker = AnalysisProgressTracker(steps: steps); lastStepReport = -.infinity
         progressTicker = Task { [weak self] in

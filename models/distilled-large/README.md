@@ -6,7 +6,7 @@ labeled **Maximum coverage · BETA**. The alternative **highest F1**, labeled
 selects the production ensemble. Each analysis runs only one selected rally
 variant. Switching
 selection switches the encoder, temporal head, 112-column normalization, and
-decoder together. No retraining or threshold search happens in either app.
+decoder together. No retraining or threshold search happens in the apps.
 
 | Selection | Model ID | Selection draw / TCN epoch | Decoder smoothing / entry / minimum / boundaries |
 | --- | --- | --- | --- |
@@ -19,11 +19,12 @@ selection lineage remains in [MODELS.md](../../MODELS.md) and the
 [completed study](../../docs/research/distilled-mobile-large-results.md). This
 integration does not fit new weights or use evaluation videos for another selection.
 
-The checked-in [Android manifest](android-manifest.json) and
-[web manifest](web-manifest.json) pin every runtime asset's SHA-256 and byte count.
+The checked-in [Android manifest](android-manifest.json),
+[web manifest](web-manifest.json), and [iOS manifest](ios-manifest.json)
+pin every runtime asset's SHA-256 and byte count.
 Each platform's two model payloads total approximately 24.2 MB uncompressed,
 excluding the inference runtime. A browser needs only the selected bundle,
-approximately 12.1 MB, plus ONNX Runtime. Android packages both for offline use.
+approximately 12.1 MB, plus ONNX Runtime. Android and iOS package both for offline use.
 Android also extracts a verified copy of a selected bundle into app-private
 storage for file-backed inference. Temporary video embeddings are removed after
 the run; selecting both models can retain approximately another 24.2 MB of
@@ -36,6 +37,12 @@ Android keeps the validated original graph. Both temporal heads run FP32. Web
 embeddings retain the qualified FP16 cache rounding; native retains FP32
 embeddings. These are explicit platform contracts, not interchangeable caches.
 Neither DINO nor the training projection is distributed for inference.
+
+iOS reuses the portable web graph bytes with native FP32 image tokens, pinned in
+its own manifest. ONNX Runtime 1.24.2 runs CPU inference; Core ML, GPU and Neural
+Engine execution await physical-device qualification. The iOS source-preparation
+script verifies and stages the public graphs and licenses without a private asset
+directory. See the [iOS integration contract](../../ios/NEURAL-PARITY.md).
 
 ## Prepare build inputs
 

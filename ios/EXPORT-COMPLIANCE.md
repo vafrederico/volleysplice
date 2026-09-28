@@ -57,7 +57,7 @@ IPA uploaded. The changed binary still requires a new GitHub macOS build.
 - Privacy Policy: `https://www.volleysplice.com/privacy.html`
 - Support: `https://www.volleysplice.com/support.html`
 - Terms: `https://www.volleysplice.com/terms.html`
-- Contact: `volleysplice@vafrederico.com`
+- Contact: use the support contact configured in App Store Connect.
 
 Deploy the updated static site before using the new Support URL for submission.
 The repository now supplies a standalone support document rather than relying

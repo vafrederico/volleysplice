@@ -20,6 +20,9 @@ of visual/temporal and audio feature blocks, and Android JVM inference on the ex
 iPad context. Its purpose is to isolate numerical differences; mixed feature blocks
 are diagnostic inputs, not a proposed production pipeline.
 
+Resolve the private analysis artifact through ledger `private-reference-0224` and
+set `VOLLEYCUT_IOS_REFERENCE_ANALYSIS` before running.
+
 Run from the repository root in PowerShell after the normal Android debug build
 has produced Java classes. Compilation below writes only the external diagnostic
 class directory; it does not run Gradle or rebuild the app.
@@ -38,10 +41,10 @@ $replayCP = "$replayRoot/classes;$replayCompiled;$replayJSON;$replayAndroid"
 if ($LASTEXITCODE -ne 0) { throw 'Diagnostic compilation failed' }
 & "$replayJava/java.exe" -cp $replayCP com.volleycut.nativeanalysis.CacheInference $replayRepo $replayCache $replayDuration
 if ($LASTEXITCODE -ne 0) { throw 'Cache replay failed' }
-& "$replayJava/java.exe" -cp $replayCP com.volleycut.nativeanalysis.AudioAttribution $replayRepo "$replayCache/android-analysis.json" '${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/analysis-25c03a1835e4.json' "$replayRoot/audio-attribution.json"
+& "$replayJava/java.exe" -cp $replayCP com.volleycut.nativeanalysis.AudioAttribution $replayRepo "$replayCache/android-analysis.json" $env:VOLLEYCUT_IOS_REFERENCE_ANALYSIS "$replayRoot/audio-attribution.json"
 if ($LASTEXITCODE -ne 0) { throw 'Audio attribution failed' }
 ```
 
-The recovered Tds6 results and source-identity proof are in
+The recovered indexed-reference results and source-identity proof are in
 [PARITY.md](../../PARITY.md). Mac/device builds and tests remain serial under the
 main workflow; these utilities need only the local JDK and already-built classes.

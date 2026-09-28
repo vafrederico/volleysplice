@@ -1,7 +1,8 @@
 # Reference project: original serve-marker parity
 
-Checked September 11, 2026 against the saved `tds6-reference.mp4` project
-`CF30CE9A-58F4-4DB6-B225-0BEF1474BBDD` and its matching draft checkpoint.
+Checked September 11, 2026 against the saved project for `indoor-source-05`
+and its matching draft checkpoint. Private source/project/artifact identities
+are retained outside Git in ledger `private-reference-0224`.
 The selected game window is **6:28.065–11:38.938** (388.065–698.938 seconds),
 inside the 1,105.817-second source recording. No source video was decoded for
 this check and no device, project, checkpoint, or model parameters were changed.
@@ -144,8 +145,8 @@ All local evidence is under `${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/serve-parity/`:
   original/current Android-seeded score states.
 - `android-native-same-window.json`, `android-native-full-replay.json`: native-cache
   scope comparison, including actual Android serve-head evidence and gate results.
-- `ipad/project-CF30CE9A-58F4-4DB6-B225-0BEF1474BBDD.volleyproject.json` and its hidden
-  `.draft-checkpoint.json`: read-only saved project snapshots.
+- Indexed project and matching hidden draft checkpoint: read-only snapshots;
+  resolve their identities from `private-reference-0224`.
 
 From the repository root, using existing compiled Android debug classes:
 
@@ -155,14 +156,10 @@ From the repository root, using existing compiled Android debug classes:
 & ${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/serve-parity/replay.ps1 -Repo (Get-Location).Path -Mode native-full
 ```
 
-The full-project editor snapshot has ID
-`import-37bdca07-2465-4ed9-bc90-2a957770a12c`; it is an **imported project**, not
-independent proof of native decoding provenance. The native replay instead uses
-the cache `c490bc66537f0510ec3359439fb79f9ee88b533ee6767bc843b19f9a26add6a3` under
-`${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/android-reference/files/native-features-v1/`, bound by
-`${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/android-reference/provenance.json` to the original MP4 and ROI. Its retained
-`android-analysis.json` SHA256 is
-`d11fe35b3f3b111ef9bd4aeaceb4cc27f656ef485644ae3e9ef1058fcc5ff2b8`.
+The full-project editor snapshot is an **imported project**, not independent
+proof of native decoding provenance. Native replay uses the archived Android
+cache bound to the original recording and ROI. Source identity, artifact hashes
+and imported-project ID are retained in `private-reference-0224`.
 The iPad and imported Android snapshots have identical sampled source fingerprints
 and ROIs, but different analysis windows. Full-source native and imported range
 boundaries agree for 55 of 59 candidates, so those references are not interchangeable.

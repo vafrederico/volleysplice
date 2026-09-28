@@ -84,6 +84,11 @@ public enum ProjectArchive {
     public static let componentHashes = ["d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f",
                                          "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d"]
     public static let modelId = "ensemble-" + ensembleAlgorithmVersion + "-" + componentHashes.joined(separator: "-")
+    /// Missing provenance belongs to the pre-neural app, never to the new default.
+    public static func rallyModel(_ bundle: JSONValue?) -> RallyModel {
+        guard let id = bundle?["initialInference"]?["modelId"]?.string else { return .legacy }
+        return RallyModel(rawValue: id) ?? .legacy
+    }
     static func required(_ value: JSONValue?, _ field: String) throws -> JSONValue {
         guard let value = value else { throw ProjectError.invalid("Missing \(field)") }; return value
     }
@@ -122,11 +127,11 @@ public enum ProjectArchive {
     public static func source(projectId: String, name: String, sizeBytes: Int64, lastModifiedMs: Int64,
                               fingerprint: String? = nil, duration: Double, width: Int, height: Int, rotation: Int = 0,
                               videoCodec: String = "video/avc", audioCodec: String? = nil,
-                              gameWindow: TimeRange? = nil, roi: [Double] = [0, 0, 1, 1]) -> JSONValue {
-        let safeDurationMs = duration.isFinite && duration > 0 && duration < Double(Int64.max / 1_000) ? Int64((duration * 1_000).rounded()) : 0
+                              gameWindow: TimeRange? = nil, roi: [Double] = [0, 0, 1, 1], rallyModel: RallyModel = .legacy) -> JSONValue {
+        let safeDurationMs = (try? AnalysisWindowBounds.maximumEndMilliseconds(duration: duration)) ?? 0
         let window = gameWindow ?? TimeRange(startMs: 0, endMs: safeDurationMs)
         return .object([
-            "projectId": .string(projectId), "analysisId": .string(projectId + "-" + modelId + "-native-source"),
+            "projectId": .string(projectId), "analysisId": .string(projectId + "-" + rallyModel.modelId + "-native-source"),
             "timelineCoordinates": .string("seconds-from-start-of-source"), "videoBytesIncluded": .bool(false),
             "runtimeVariant": .string("native-ios-dsp-v1"),
             "file": .object(["name": .string(name), "sizeBytes": .number(Double(sizeBytes)),
@@ -142,12 +147,38 @@ public enum ProjectArchive {
                 "width": .number(roi.count == 4 ? roi[2] : 1), "height": .number(roi.count == 4 ? roi[3] : 1)])
         ])
     }
-    public static func initialInference(ranges: [EditableCut]) -> JSONValue {
-        .object(["modelId": .string(modelId), "ensembleAlgorithmVersion": .string(ensembleAlgorithmVersion),
+    public static func initialInference(ranges: [EditableCut], rallyModel: RallyModel = .legacy) -> JSONValue {
+        .object(["modelId": .string(rallyModel.modelId), "modelLabel": .string(rallyModel.displayName),
+            "modelSelection": .string(rallyModel.variantKey ?? "ensemble"),
+            "componentsRole": .string(rallyModel.isNeural ? "score-support" : "rally-and-score"),
+            "ensembleAlgorithmVersion": .string(ensembleAlgorithmVersion),
             "components": .array(zip(componentIds, componentHashes).map { .object(["modelId": .string($0), "bundleSha256": .string($1)]) }),
             "ranges": .array(ranges.map { cut in var value = wireRange(cut); value["included"] = .bool(true); return value }),
             "probabilityModelId": .string(componentIds[0]), "productionComponents": .object(["allLabelsV2": .array([]), "previousProduction": .array([])]),
+            "probabilityModelIds": .object(["rally": .string(componentIds[0]), "serve": .string(componentIds[0]), "deadState": .string(componentIds[0])]),
+            "neuralScores": .null,
             "suppression": .null, "servingSide": .null, "sideSwitch": .null])
+    }
+    public static func neuralScoresJSON(_ scores: NeuralRallyScores) throws -> JSONValue {
+        try scores.validate()
+        return .object(["modelId": .string(scores.modelId), "heads": strings(NeuralRallyScores.heads),
+            "timestamps": try FeedbackNumericArray(scores.times, shape: [scores.times.count]).json,
+            "probabilities": try FeedbackNumericArray(scores.probabilities, shape: [scores.times.count, 4]).json])
+    }
+    public static func retainedNeuralScores(_ bundle: JSONValue) throws -> NeuralRallyScores? {
+        guard let value = bundle["initialInference"]?["neuralScores"], value != .null else { return nil }
+        guard let id = value["modelId"]?.string, id == bundle["initialInference"]?["modelId"]?.string,
+              value["heads"]?.array?.count == NeuralRallyScores.heads.count,
+              value["heads"]?.array?.compactMap(\.string) == NeuralRallyScores.heads,
+              value["timestamps"]?["shape"]?.array?.count == 1 else {
+            throw ProjectError.invalid("Neural scores do not match the selected rally model")
+        }
+        let times = try FeedbackNumericArray.decode(required(value["timestamps"], "neural timestamps"), type: "float64")
+        let probabilities = try FeedbackNumericArray.decode(required(value["probabilities"], "neural probabilities"), shape: [times.count, 4], type: "float32")
+        let start = try number(bundle["source"]?["gameWindow"]?["start"], "game start")
+        let end = try number(bundle["source"]?["gameWindow"]?["end"], "game end")
+        guard times.allSatisfy({ $0 >= start && $0 < end }) else { throw ProjectError.invalid("Neural scores are outside the game window") }
+        return try NeuralRallyScores(modelId: id, times: times, probabilities: probabilities.map(Float.init))
     }
     /// Optional inference fields remain unchanged, including raw component ranges, suppression, and serving-side matrices.
     public static func create(source: JSONValue, initialInference: JSONValue, draft: EditorDraft,
@@ -313,16 +344,20 @@ public enum ProjectArchive {
         guard roi[0] >= 0, roi[1] >= 0, roi[2] > 0, roi[3] > 0, roi[0] + roi[2] <= 1.000001, roi[1] + roi[3] <= 1.000001 else { throw ProjectError.invalid("Invalid source ROI") }
         let inference = try required(bundle["initialInference"], "initialInference")
         try validateNumericPayloads(inference)
-        guard inference["modelId"]?.string == modelId, inference["ensembleAlgorithmVersion"]?.string == ensembleAlgorithmVersion,
+        let selectedId = inference["modelId"]?.string
+        let selected = selectedId.flatMap(RallyModel.init(rawValue:))
+        guard selectedId == modelId || selected?.isNeural == true else { throw ProjectError.invalid("Feedback uses an unsupported rally model") }
+        guard inference["ensembleAlgorithmVersion"]?.string == ensembleAlgorithmVersion,
               let components = inference["components"]?.array, components.count == 2,
-              (0..<2).allSatisfy({ components[$0]["modelId"]?.string == componentIds[$0] && components[$0]["bundleSha256"]?.string == componentHashes[$0] }) else { throw ProjectError.invalid("Feedback uses a different production ensemble") }
+              (0..<2).allSatisfy({ components[$0]["modelId"]?.string == componentIds[$0] && components[$0]["bundleSha256"]?.string == componentHashes[$0] }) else { throw ProjectError.invalid("Feedback uses different score-support models") }
+        _ = try retainedNeuralScores(bundle)
         guard let initialRanges = inference["ranges"]?.array else { throw ProjectError.invalid("Missing initial inference ranges") }
         for range in initialRanges {
             let a = try number(range["start"], "range start"); let b = try number(range["end"], "range end")
             let c = try number(range["confidence"], "range confidence")
             let agreement = range["agreement"]?.string
             guard a >= 0, b > a, b <= duration, (0...1).contains(c),
-                  agreement == nil || ["both-models", "all-labels-v2-only", "previous-production-only"].contains(agreement!) else { throw ProjectError.invalid("Invalid initial inference range") }
+                  agreement == nil || ["both-models", "all-labels-v2-only", "previous-production-only", "neural"].contains(agreement!) else { throw ProjectError.invalid("Invalid initial inference range") }
         }
         _ = try suppressionRegions(bundle)
         _ = try retainedAnalysis(bundle, expectedFeatureNames: expectedFeatureNames)

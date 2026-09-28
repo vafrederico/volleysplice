@@ -150,7 +150,7 @@ public struct ServingSideInference: Sendable {
     private static func validateCandidates(_ candidates: [CandidateInterval]) throws {
         guard Set(candidates.map(\.id)).count == candidates.count, candidates.allSatisfy({ !$0.id.isEmpty &&
             $0.start.isFinite && $0.start >= 0 && $0.end.isFinite && $0.end > $0.start &&
-            ($0.agreement == nil || ProductionEnsemble.isValidAgreement($0.agreement)) }) else {
+            ($0.agreement == nil || $0.agreement == "neural" || ProductionEnsemble.isValidAgreement($0.agreement)) }) else {
             throw AnalysisError.invalid("Invalid serving-side candidate identity or interval")
         }
     }
@@ -222,7 +222,7 @@ public struct ServingSideInference: Sendable {
         let verdict: ServingSideVerdict = source == .none ? .notServe : !reasons.isEmpty ? .review : side == .near ? .near : .far
         return ServingSideCandidate(id: candidate.id, anchor: candidate.start, intervalEnd: candidate.end, agreement: candidate.agreement,
             nearProbability: nearProbability, side: side, verdict: verdict, serveDecisionSource: source, reviewReasons: reasons,
-            allLabelsV2Evidence: allLabelsV2Evidence.json, previousProductionEvidence: previousProductionEvidence.json)
+            allLabelsV2Evidence: allLabelsV2Evidence.json, previousProductionEvidence: previousProductionEvidence.json).withNeuralRallyRecovery()
     }
     public func evaluate(candidates: [CandidateInterval], rawFeatures: [Double], allLabelsV2: ProductionServeOutput,
                           previousProduction: ProductionServeOutput) throws -> ServingSideOutput {

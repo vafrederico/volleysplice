@@ -23,8 +23,22 @@ public struct ProcessingAnalysisSettings: Codable, Equatable, Sendable {
     public var roi: [Double]
     public var prepareScores: Bool
     public var generateSideSwitchMarkers: Bool?
-    public init(startMs: Int64, endMs: Int64, roi: [Double], prepareScores: Bool, generateSideSwitchMarkers: Bool = false) {
+    public var rallyModel: RallyModel
+    public init(startMs: Int64, endMs: Int64, roi: [Double], prepareScores: Bool, generateSideSwitchMarkers: Bool = false,
+                rallyModel: RallyModel = .default) {
         self.startMs = startMs; self.endMs = endMs; self.roi = roi; self.prepareScores = prepareScores; self.generateSideSwitchMarkers = generateSideSwitchMarkers
+        self.rallyModel = rallyModel
+    }
+    private enum CodingKeys: String, CodingKey { case startMs, endMs, roi, prepareScores, generateSideSwitchMarkers, rallyModel }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        startMs = try values.decode(Int64.self, forKey: .startMs)
+        endMs = try values.decode(Int64.self, forKey: .endMs)
+        roi = try values.decode([Double].self, forKey: .roi)
+        prepareScores = try values.decode(Bool.self, forKey: .prepareScores)
+        generateSideSwitchMarkers = try values.decodeIfPresent(Bool.self, forKey: .generateSideSwitchMarkers)
+        // A queued job records intent. The new default must never change old work on resume.
+        rallyModel = try values.decodeIfPresent(RallyModel.self, forKey: .rallyModel) ?? .legacy
     }
 }
 /// Job metadata stays small. Immutable project snapshots are stored separately by job ID.

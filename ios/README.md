@@ -4,7 +4,8 @@ Available for iPhone and iPad on [the App Store](https://apps.apple.com/us/app/v
 
 Native Swift port of the Android app. `Sources/VolleyCore` contains portable DSP,
 model inference, project formats, scoring and editor math. `App` contains SwiftUI,
-AVFoundation, PhotoKit and thin Objective-C++ bridges for OpenCV primitives.
+AVFoundation, PhotoKit and thin Objective-C++ bridges for OpenCV primitives and
+ONNX Runtime.
 Android is the reference for analysis contracts and editor behavior.
 
 ## Build
@@ -35,8 +36,10 @@ profile. The signing helper verifies the app identity, paired device and expiry,
 then compares the downloaded IPA hash before installation.
 
 `scripts/prepare-source.py` uploads an explicit source manifest to
-`${VOLLEYCUT_IOS_REMOTE_PROJECT_ROOT}`. It stages canonical models from
-`android/app/src/main/assets` and test inputs into generated `Fixtures/` resources.
+`${VOLLEYCUT_IOS_REMOTE_PROJECT_ROOT}`. It stages canonical legacy models from
+`android/app/src/main/assets`, the selected public neural bundles verified against
+`models/distilled-large/ios-manifest.json`, license notices and test inputs into
+generated `Fixtures/` resources.
 Do not commit that generated directory, recordings, signing files or build output.
 Small synthetic test assets under `Tests/Fixtures` are intentional source inputs;
 see their [provenance](Tests/Fixtures/README.md).
@@ -75,12 +78,29 @@ local project and journal while retaining source media and separate exports.
 
 ## Analysis and project formats
 
-The pipeline samples visual frames at 4 Hz, builds 73 visual, four temporal and
-27 audio columns, and computes percentile ranks and 520-column context. It runs
-both production rally/serve/dead heads, ensemble merging and optional suppression.
-Score preparation adds the frozen 237-column serving-side extractor and hybrid
-serve gate, followed by the 34-column team-switch model. Specialist frames are
-shared and completed features are checkpointed for retry.
+New analyses default to **Maximum coverage · BETA**. The setup selector also
+offers **Balanced · BETA** and **Legacy model**. Only the selected bundle runs;
+each neural variant has its own encoder, temporal model, scalers and decoder.
+Saved projects and queued jobs keep their original selection. Older projects and
+jobs without a selection retain Legacy. The editor's More menu returns to setup
+to change the model; reanalysis saves a separate project and preserves prior edits.
+
+All paths retain 4 Hz visual/audio features for project exchange and score
+specialists. The two distilled MobileNetV3-Large + TCN bundles add 2 Hz image
+embeddings and four temporal score heads. Legacy uses the two production
+rally/serve/dead models, ensemble merging and optional suppression. Neural rallies
+come from the selected temporal model; legacy evidence heads support serving-side
+and team-switch decisions. Every neural rally is a serving-side candidate.
+The shared specialist pass uses the frozen 237-column serving-side extractor and
+34-column team-switch model. Features and selected encoder embeddings are cached
+for retry; preparation, video, audio, embeddings and rally inference have separate
+progress measurements.
+
+Neural inference uses pinned FP32 ONNX graphs with the CPU execution provider.
+Hardware acceleration and physical-device speed/accuracy are not yet qualified.
+The unaccelerated simulator supports functional checks and short video
+probes, not an estimate of iPad GPU or Neural Engine performance. See
+[Neural pipeline parity](NEURAL-PARITY.md) for the current contract and limits.
 
 The serial durable queue handles analysis, deferred scoring and video export
 while another project remains editable. Inputs and export snapshots are fixed
@@ -91,7 +111,8 @@ processing; earlier versions and video exports require the foreground.
 
 Local projects use `volleycut-ios-project`. Cross-platform exchange uses
 `volleycut-model-feedback` schema v3 with features, original inference and user
-corrections, without source media or device-local access credentials. See
+corrections. Neural projects include their selected model identity and four score
+traces, but not embeddings, source media or device-local access credentials. See
 [Project interoperability](PROJECT-INTEROPERABILITY.md) for known preservation
 gaps; accepting a file does not establish lossless import and reexport.
 

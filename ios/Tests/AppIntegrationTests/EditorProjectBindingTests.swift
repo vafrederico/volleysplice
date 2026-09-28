@@ -10,14 +10,22 @@ import XCTest
         let model = WorkspaceModel(documents: root, support: root.appendingPathComponent("support"))
         let full = AnalysisRegion(x: 0, y: 0, width: 1, height: 1)
         XCTAssertEqual(model.roi, full)
+        XCTAssertEqual(model.rallyModel, .maximumCoverage)
         var saved = project("saved-region")
         saved.feedback = .object(["source": .object(["featureRoi": .object([
             "x": .number(0.1), "y": .number(0.2), "width": .number(0.8), "height": .number(0.7)
         ])])])
         model.restoreSetup(saved)
+        XCTAssertEqual(model.rallyModel, .legacy)
         XCTAssertEqual(model.roi, AnalysisRegion(x: 0.1, y: 0.2, width: 0.8, height: 0.7))
         model.beginNewProject()
         XCTAssertEqual(model.roi, full)
+        XCTAssertEqual(model.rallyModel, .maximumCoverage)
+        for selection in RallyModel.allCases {
+            saved.feedback?["initialInference"] = ProjectArchive.initialInference(ranges: [], rallyModel: selection)
+            model.restoreSetup(saved)
+            XCTAssertEqual(model.rallyModel, selection)
+        }
     }
     func testDeleteCurrentProjectCancelsAutosaveAndResetsEditor() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -120,6 +120,17 @@ public struct ModelRunner: Sendable {
     }
 
     public func run(times: [Double], contextual: [Float], duration: Double) throws -> RunResult {
+        try run(times: times, contextual: contextual, duration: duration, includeRallyDecoding: true)
+    }
+
+    /// Auxiliary evidence for independent neural rallies. This evaluates the frozen scalar
+    /// heads and serve detections without constructing or refining legacy rally intervals.
+    /// Side-switch inference still uses run(), because its features include those intervals.
+    public func runEvidence(times: [Double], contextual: [Float], duration: Double) throws -> RunResult {
+        try run(times: times, contextual: contextual, duration: duration, includeRallyDecoding: false)
+    }
+
+    private func run(times: [Double], contextual: [Float], duration: Double, includeRallyDecoding: Bool) throws -> RunResult {
         guard duration.isFinite, duration >= 0 else { throw AnalysisError.invalid("Invalid video duration") }
         if times.isEmpty {
             guard contextual.isEmpty else { throw AnalysisError.invalid("Model matrix shape mismatch") }
@@ -137,6 +148,11 @@ public struct ModelRunner: Sendable {
         let rallyP = measure("rally_head") { predict(rally, contextual, rows: times.count) }
         let serveP = measure("serve_head") { predict(serve, contextual, rows: times.count) }
         let deadP = measure("dead_state_head") { predict(dead, contextual, rows: times.count) }
+        if !includeRallyDecoding {
+            let serves = measure("serve_decode") { decodeServes(times, serveP, duration) }
+            return RunResult(intervals: [], rallyProbabilities: rallyP, serveProbabilities: serveP,
+                             deadStateProbabilities: deadP, serveDetections: serves, profileMilliseconds: profile)
+        }
         let fps = effectiveFps(times)
         let primary = measure("primary_rally_decode") { decode(times, rallyP, duration, bundle.rally.decoder, fps) }
         let permissive = measure("permissive_rally_decode") { decode(times, rallyP, duration, bundle.serve.composition.permissiveDecoder, fps) }

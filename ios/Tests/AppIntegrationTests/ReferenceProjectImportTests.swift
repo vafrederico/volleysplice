@@ -5,11 +5,15 @@ import XCTest
 /// Stage both files in the simulator's Documents; no inference is performed.
 @MainActor final class ReferenceProjectImportTests: XCTestCase {
     func testImportFullIPadReferenceWithoutAnalysis() async throws {
+        guard let sourceName = ProcessInfo.processInfo.environment["VOLLEYCUT_IOS_REFERENCE_VIDEO_NAME"],
+              !sourceName.isEmpty, (sourceName as NSString).lastPathComponent == sourceName else {
+            throw XCTSkip("Configure the indexed reference video name through the private test environment")
+        }
         let model = WorkspaceModel()
         let input = model.documents.appendingPathComponent("Reference-iPad-full.model-feedback.json")
         try XCTSkipUnless(FileManager.default.fileExists(atPath: input.path), "Stage the real iPad reference export first")
         let original = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: input))
-        let source = model.documents.appendingPathComponent("tds6-reference.mp4")
+        let source = model.documents.appendingPathComponent(sourceName)
         try XCTSkipUnless(FileManager.default.fileExists(atPath: source.path), "Stage the matching original reference video")
         let jobs = model.queue.jobs
         model.openProject(input)

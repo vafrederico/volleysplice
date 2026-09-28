@@ -275,8 +275,8 @@ public final class AudioFeatureExtractor {
         return sources
     }
 
-    /// Preserve Android's integral-position zero behavior for feature parity.
-    /// Correcting that behavior requires a coordinated model/Android revision.
+    /// Linear percentile interpolation, including integral positions. Returning
+    /// zero at those positions creates false broadband/flux spikes at startup.
     static func rollingPercentile(_ values: [Float], window: Int, percentile: Double) -> [Float] {
         var sorted: [Float] = [], output = [Float](repeating: 0, count: values.count)
         for i in values.indices {
@@ -292,8 +292,9 @@ public final class AudioFeatureExtractor {
             if i >= window { sorted.remove(at: insertion(values[i - window])) }
             let position = Double(sorted.count - 1) * percentile
             let lower = Int(floor(position)), upper = Int(ceil(position))
-            output[i] = Float(Double(sorted[lower]) * (Double(upper) - position)
-                              + Double(sorted[upper]) * (position - Double(lower)))
+            let fraction = position - Double(lower)
+            output[i] = Float(Double(sorted[lower]) * (1 - fraction)
+                              + Double(sorted[upper]) * fraction)
         }
         return output
     }

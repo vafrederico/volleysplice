@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "ServingSideBridge.h"
 #include "SideSwitchBridge.h"
+#include "VideoPreprocessingBridge.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

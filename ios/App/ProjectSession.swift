@@ -2,7 +2,8 @@ import Foundation
 
 enum ProjectSession {
     static func create(sourceURL: URL, result: AnalysisResult) throws -> ProjectDocument {
-        let window = TimeRange(startMs: ms(result.start), endMs: ms(result.end))
+        let rallyModel = result.rallyModel ?? .legacy
+        let window = try AnalysisWindowBounds.normalize(start: result.start, end: result.end, duration: result.media.duration)
         let cuts = result.intervals.enumerated().map { index, interval in
             EditableCut(id: String(format: "R%03d", index + 1), coreStartMs: ms(interval.start), coreEndMs: ms(interval.end),
                         confidence: interval.confidence, agreement: interval.agreement)
@@ -18,11 +19,17 @@ enum ProjectSession {
             fingerprint: try ProjectArchive.sampledFingerprint(url: sourceURL), duration: result.media.duration,
             width: result.media.width, height: result.media.height, rotation: result.media.rotation,
             videoCodec: result.media.videoCodec ?? "unknown", audioCodec: result.media.audioCodec,
-            gameWindow: window, roi: [result.roi.x, result.roi.y, result.roi.width, result.roi.height])
-        var inference = ProjectArchive.initialInference(ranges: draft.cuts)
-        inference["productionComponents"] = .object([
-            "allLabelsV2": component(result.allLabels.intervals, prefix: "all-labels-v2"),
-            "previousProduction": component(result.previous.intervals, prefix: "previous-production")])
+            gameWindow: window, roi: [result.roi.x, result.roi.y, result.roi.width, result.roi.height], rallyModel: rallyModel)
+        var inference = ProjectArchive.initialInference(ranges: draft.cuts, rallyModel: rallyModel)
+        if !rallyModel.isNeural {
+            inference["productionComponents"] = .object([
+                "allLabelsV2": component(result.allLabels.intervals, prefix: "all-labels-v2"),
+                "previousProduction": component(result.previous.intervals, prefix: "previous-production")])
+        }
+        if let scores = result.neuralScores {
+            guard scores.modelId == rallyModel.modelId else { throw ProjectError.invalid("Neural scores belong to a different rally model") }
+            inference["neuralScores"] = try ProjectArchive.neuralScoresJSON(scores)
+        } else if rallyModel.isNeural { throw ProjectError.invalid("Neural rally scores are missing") }
         if let serving = result.servingSide { inference["servingSide"] = try servingFeedback(serving) }
         if let switches = result.sideSwitch { inference["sideSwitch"] = try switchFeedback(switches) }
         if let suppression = result.suppression {

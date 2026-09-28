@@ -1,15 +1,27 @@
 import Foundation
 
 public enum AnalysisStep: String, Codable, CaseIterable, Sendable {
-    case video, audio, rally, servingSide, sideSwitch
+    case preparation, video, audio, embedding, rally, servingSide, sideSwitch
     public var label: String {
         switch self {
+        case .preparation: return "Preparing video"
         case .video: return "Scanning video"
         case .audio: return "Listening for play"
+        case .embedding: return "Understanding play"
         case .rally: return "Finding rallies"
         case .servingSide: return "Finding serve markers"
         case .sideSwitch: return "Finding team switches"
         }
+    }
+    public static func analysisSteps(model: RallyModel, prepareScores: Bool, generateSideSwitchMarkers: Bool) -> [AnalysisStep] {
+        var steps: [AnalysisStep] = [.preparation, .video, .audio]
+        if model.isNeural { steps.append(.embedding) }
+        steps.append(.rally)
+        if prepareScores {
+            steps.append(.servingSide)
+            if generateSideSwitchMarkers { steps.append(.sideSwitch) }
+        }
+        return steps
     }
 }
 

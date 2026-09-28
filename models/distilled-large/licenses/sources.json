@@ -36,6 +36,18 @@
       "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.30.0/ThirdPartyNotices.txt",
       "sizeBytes": 338088,
       "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+    },
+    {
+      "file": "ONNX-Runtime-1.24.2-MIT.txt",
+      "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.24.2/LICENSE",
+      "sizeBytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "file": "ONNX-Runtime-1.24.2-ThirdPartyNotices.txt",
+      "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.24.2/ThirdPartyNotices.txt",
+      "sizeBytes": 325054,
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
     }
   ]
 }

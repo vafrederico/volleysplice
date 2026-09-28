@@ -3,9 +3,12 @@ import Foundation
 public enum ServingSide: String, Codable, Sendable { case near, far, review }
 public enum ServingSideVerdict: String, Codable, Sendable { case near, far, review, notServe = "not-serve" }
 public enum ServingSideDecisionSource: String, Codable, Sendable {
-    case serveHead = "serve-head", productionRallyRecovery = "production-rally-recovery", none
+    case serveHead = "serve-head", productionRallyRecovery = "production-rally-recovery"
+    case neuralRallyRecovery = "neural-rally-recovery", none
 }
-public enum ServingSideReviewReason: String, Codable, Sendable { case sideScore = "side-score", productionRallyRecovery = "production-rally-recovery" }
+public enum ServingSideReviewReason: String, Codable, Sendable {
+    case sideScore = "side-score", productionRallyRecovery = "production-rally-recovery", neuralRallyRecovery = "neural-rally-recovery"
+}
 public enum ScoreTeamId: String, Codable, Sendable { case team1 = "team-1", team2 = "team-2" }
 public enum ServeMarkerOrigin: String, Codable, Sendable { case model, manual }
 public enum ScorePointStatus: String, Codable, Sendable { case counted, ignored, review }
@@ -36,6 +39,16 @@ public struct ServingSideCandidate: Codable, Equatable, Sendable {
         self.agreement = agreement; self.nearProbability = nearProbability; self.side = side; self.verdict = verdict
         self.serveDecisionSource = serveDecisionSource; self.reviewReasons = reviewReasons
         self.allLabelsV2Evidence = allLabelsV2Evidence; self.previousProductionEvidence = previousProductionEvidence
+    }
+
+    /// A legacy serve-head miss must not hide a rally found independently by the neural model.
+    /// Preserve the side estimate and weak evidence, but require human review before scoring.
+    public func withNeuralRallyRecovery() -> ServingSideCandidate {
+        guard agreement == "neural", verdict == .notServe else { return self }
+        var value = self
+        value.verdict = .review; value.serveDecisionSource = .neuralRallyRecovery
+        if !value.reviewReasons.contains(.neuralRallyRecovery) { value.reviewReasons.append(.neuralRallyRecovery) }
+        return value
     }
 }
 public struct ServingSideOutput: Codable, Equatable, Sendable {
@@ -244,7 +257,8 @@ public enum ScoreReducer {
         for marker in current.serveMarkers { if let id = marker.rallyId { existingByRally[id] = marker } }
         var tracking = current
         if output != nil { tracking.serveMarkers.removeAll { $0.origin != .manual } }
-        for candidate in output?.candidates ?? [] {
+        for storedCandidate in output?.candidates ?? [] {
+            let candidate = storedCandidate.withNeuralRallyRecovery()
             let id = "serve-\(candidate.id)", existing = existingByRally[candidate.id]
             let corrected = existing?.modelSide != nil && existing?.side != existing?.modelSide
             if candidate.verdict == .notServe && !corrected { continue }

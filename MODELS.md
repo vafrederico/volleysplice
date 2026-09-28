@@ -90,9 +90,9 @@ an implementation specification, not a production model registration.
 
 ### Distilled Large application integration on this branch
 
-The normal production web and Android apps now expose the two already-frozen
-Distilled Large selections. The default is `distilled-large-f1-v1`, labeled
-**Balanced · BETA**. `distilled-large-recall-v1` is **Maximum coverage · BETA**,
+The normal production web, Android and iOS apps expose the two already-frozen
+Distilled Large selections. The default is `distilled-large-recall-v1`, labeled
+**Maximum coverage · BETA**. `distilled-large-f1-v1` is **Balanced · BETA**,
 and the existing ensemble is **Legacy model**. Each analysis runs only the
 selected variant; the paired execution experiment has been retired.
 Existing completed projects retain their model provenance. This registers
@@ -101,14 +101,18 @@ selection, deployment, or physical-device qualification of the final app.
 
 | Runtime model | Original selection | Feature signature | Fit / selection sources | Change and disposition |
 | --- | --- | --- | --- | --- |
-| `distilled-large-recall-v1` | `expanded-large`, draw 3407, TCN epoch 15, target-99 calibration | `NEURAL-MOBILE-LARGE`, FP32 encoder/TCN; native FP32 tokens, browser FP16-rounded tokens | Unchanged indexed membership and label hashes from `distilled-mobile-large-v1`, ledger `private-reference-0222`; common exact-label panel selects recall | Explicit Maximum coverage choice; previously the normal-app default. No new training or evaluation-based threshold change. |
-| `distilled-large-f1-v1` | `expanded-large`, draw 20260918, TCN epoch 60, target-99 calibration | Same dimensions, distinct encoder, temporal weights, normalizer, and decoder | Same study, with this draw's distinct indexed fit/calibration membership; common exact-label panel selects `F1_padP_coreR` | Default Balanced choice at user request; switching invalidates incompatible embeddings and retains separate project results. No new fit or calibration. |
+| `distilled-large-recall-v1` | `expanded-large`, draw 3407, TCN epoch 15, target-99 calibration | `NEURAL-MOBILE-LARGE`, FP32 encoder/TCN; native FP32 tokens, browser FP16-rounded tokens | Unchanged indexed membership and label hashes from `distilled-mobile-large-v1`, ledger `private-reference-0222`; common exact-label panel selects recall | Default Maximum coverage choice at user request. No new training or evaluation-based threshold change. |
+| `distilled-large-f1-v1` | `expanded-large`, draw 20260918, TCN epoch 60, target-99 calibration | Same dimensions, distinct encoder, temporal weights, normalizer, and decoder | Same study, with this draw's distinct indexed fit/calibration membership; common exact-label panel selects `F1_padP_coreR` | Explicit Balanced choice; switching invalidates incompatible embeddings and retains separate project results. No new fit or calibration. |
 
 Exact graph/config hashes and byte counts are pinned in
-[Android](models/distilled-large/android-manifest.json) and
-[web](models/distilled-large/web-manifest.json) manifests. Web uses the independently
-qualified portable regional-pooling export; native preserves the original ONNX
-export. The [bundle contract](models/distilled-large/README.md) identifies every
+[Android](models/distilled-large/android-manifest.json),
+[web](models/distilled-large/web-manifest.json) and
+[iOS](models/distilled-large/ios-manifest.json) manifests. Web and iOS use the
+portable regional-pooling export; Android preserves the original ONNX export.
+iOS uses FP32 CPU execution and FP32 embeddings. Its numerical and simulator
+checks do not qualify GPU/Neural Engine execution or physical-device speed. See
+the [iOS validation report](docs/research/ios-neural-port-validation.md).
+The [bundle contract](models/distilled-large/README.md) identifies every
 runtime component and generation rule. Existing serving-side and side-switch
 models retain their weights and run against the selected neural rally boundaries;
 the existing serve/state outputs still provide their evidence. The original

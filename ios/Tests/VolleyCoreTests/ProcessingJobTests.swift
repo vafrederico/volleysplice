@@ -3,6 +3,21 @@ import XCTest
 @testable import VolleyCore
 
 final class ProcessingJobTests: XCTestCase {
+    func testOldQueuedJobsKeepLegacyAndNewJobsPersistSelectedModel() throws {
+        let legacy = Data(#"{"startMs":0,"endMs":10000,"roi":[0,0,1,1],"prepareScores":true}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(ProcessingAnalysisSettings.self, from: legacy).rallyModel, .legacy)
+        XCTAssertEqual(job().analysis?.rallyModel, .maximumCoverage)
+        for model in RallyModel.allCases {
+            var selected = job(); selected.analysis?.rallyModel = model
+            let restored = try JSONDecoder().decode(ProcessingJob.self, from: JSONEncoder().encode(selected))
+            XCTAssertEqual(restored.analysis?.rallyModel, model)
+            var ledger = ProcessingJobLedger(); try ledger.enqueue(restored)
+            ledger.recoverAfterLaunch(nowMs: 2); try ledger.resume(id: restored.id, nowMs: 3)
+            XCTAssertEqual(try ledger.start(id: restored.id, token: "resumed", nowMs: 4).analysis?.rallyModel, model)
+        }
+        let invalid = Data(#"{"startMs":0,"endMs":10000,"roi":[0,0,1,1],"prepareScores":true,"rallyModel":"unknown"}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(ProcessingAnalysisSettings.self, from: invalid))
+    }
     private func job(projectId: String = "project") -> ProcessingJob {
         .init(kind: .analysis, projectId: projectId, sourceName: "match.mp4", sourceFingerprint: "sampled-sha256-v1:test",
               analysis: .init(startMs: 0, endMs: 10_000, roi: [0, 0, 1, 1], prepareScores: true), nowMs: 1)

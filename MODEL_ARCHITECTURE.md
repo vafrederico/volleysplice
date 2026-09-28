@@ -10,7 +10,7 @@ export-encoding architecture.
 
 ## Distilled Large application path
 
-On this branch, normal web and Android projects default to the selected
+On this branch, normal web, Android and iOS projects default to the selected
 **Distilled MobileNetV3-Large + TCN, highest recall** model (**Maximum coverage · BETA**).
 The highest-F1 selection (**Balanced · BETA**) and **Legacy model**
 (the production ensemble) remain explicit choices. Each analysis runs only the
@@ -45,6 +45,11 @@ normalizer, and decoder atomically. The encoder weights differ, so embeddings
 cannot be reused across the choices. DINO and the training projector are absent
 at inference. See the [bundle manifests](models/distilled-large/README.md) and
 [feature contract](FEATURE_PIPELINE.md#production-profile).
+
+iOS uses the portable regional-pooling graph with FP32 tokens and ONNX Runtime
+1.24.2 on CPU. Its two packaged choices retain the same frozen weights and
+decoders. GPU/Core ML/Neural Engine providers require later physical-device
+qualification; simulator measurements do not establish mobile throughput.
 
 The neural model supplies rally intervals. Existing production serve/dead-state
 heads still provide evidence for serving-side and side-switch classification,

@@ -169,6 +169,18 @@ struct NewProjectWorkspace: View {
                 SetupGameWindow(player: model.player, duration: media.duration, sourceID: model.sourceName ?? "",
                     start: $model.start, end: $model.end, desktop: desktop, enabled: !model.busy)
                     .guidedTourTarget("setup-window")
+                VStack(alignment: .leading, spacing: 6) {
+                    Picker("Rally detection", selection: $model.rallyModel) {
+                        ForEach(RallyModel.allCases, id: \.self) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }.pickerStyle(.menu).accessibilityIdentifier("rallyModelSelector")
+                    Text(model.rallyModel.detail).font(.system(size: 12)).foregroundStyle(SetupPalette.muted)
+                    if model.project != nil {
+                        Text("Running analysis again creates a separate project. Your current edits stay saved.")
+                            .font(.system(size: 11)).foregroundStyle(SetupPalette.muted)
+                    }
+                }.padding(10).overlay(RoundedRectangle(cornerRadius: 6).stroke(SetupPalette.rail)).disabled(model.busy)
                 Toggle(isOn: $model.generateSideSwitchMarkers) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Teams change court sides").font(.system(size: 13, weight: .semibold))
@@ -207,10 +219,16 @@ struct VolleySpliceLegalFooter: View {
                             Text("VolleySplice includes the following open-source components. Their licenses remain available to you under their original terms.")
                             Text("VolleySplice project code and project-owned assets — MIT License")
                             Text("OpenCV 4.12.0 — Apache License 2.0")
+                            Text("ONNX Runtime 1.24.2 — MIT License. MobileNetV3 (torchvision) — BSD 3-Clause License.")
+                            Text("The BETA rally models use MobileNetV3-Large encoders distilled with a DINOv2 ViT-S/14 teacher. DINOv2 code and models are distributed under Apache License 2.0; the teacher weights are not bundled in this app.")
                             Text("Apple system frameworks, device codecs, and other platform components are provided under their respective system licenses.")
                                 .font(.system(size: 12)).foregroundStyle(SetupPalette.muted)
-                            Link("View VolleySplice MIT License", destination: URL(string: "https://github.com/vafrederico/volleysplice/blob/main/LICENSE")!)
-                            Link("View all third-party notices", destination: URL(string: "https://github.com/vafrederico/volleysplice/blob/main/THIRD_PARTY_NOTICES.md")!)
+                            BundledNoticeDisclosure(title: "All third-party notices", name: "THIRD_PARTY_NOTICES", fileExtension: "md")
+                            BundledNoticeDisclosure(title: "ONNX Runtime MIT License", name: "ONNX-Runtime-1.24.2-MIT", subdirectory: "licenses")
+                            BundledNoticeDisclosure(title: "ONNX Runtime third-party notices", name: "ONNX-Runtime-1.24.2-ThirdPartyNotices", subdirectory: "licenses")
+                            BundledNoticeDisclosure(title: "TorchVision BSD 3-Clause License", name: "TorchVision-0.26.0-BSD-3-Clause", subdirectory: "licenses")
+                            BundledNoticeDisclosure(title: "DINOv2 Apache License", name: "DINOv2-Apache-2.0", subdirectory: "licenses")
+                            Link("View MIT License terms", destination: URL(string: "https://opensource.org/license/mit")!)
                             Link("View Apache License 2.0", destination: URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding()
                     }.background(SetupPalette.paper).foregroundStyle(SetupPalette.ink)
@@ -218,6 +236,32 @@ struct VolleySpliceLegalFooter: View {
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { showNotices = false } } }
                 }.tint(SetupPalette.green).interfaceScaled()
             }
+    }
+}
+
+private struct BundledNoticeDisclosure: View {
+    let title: String
+    let name: String
+    var fileExtension = "txt"
+    var subdirectory: String? = nil
+    @State private var expanded = false
+    @State private var contents: String?
+    var body: some View {
+        DisclosureGroup(title, isExpanded: $expanded) {
+            if let contents {
+                Text(contents).font(.system(size: 11, design: .monospaced))
+                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            } else { ProgressView("Loading notice") }
+        }.task(id: expanded) {
+            guard expanded, contents == nil else { return }
+            let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
+            contents = await Task.detached(priority: .utility) {
+                guard let url, let text = try? String(contentsOf: url, encoding: .utf8) else {
+                    return "This notice could not be loaded from the app."
+                }
+                return text
+            }.value
+        }
     }
 }
 

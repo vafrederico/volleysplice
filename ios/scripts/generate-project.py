@@ -18,6 +18,9 @@ for path in sources:
     refs.append(ref)
     builds.append(obj('build:' + rel, f'isa = PBXBuildFile; fileRef = {ref};'))
 resources = []
+neural_golden = obj('resource:neural-golden', 'isa = PBXFileReference; path = "Fixtures/neural-runtime-golden.json"; sourceTree = "<group>";')
+refs.append(neural_golden)
+resources.append(obj('resource-build:neural-golden', f'isa = PBXBuildFile; fileRef = {neural_golden};'))
 privacy = obj('resource:privacy', 'isa = PBXFileReference; path = "App/PrivacyInfo.xcprivacy"; sourceTree = "<group>"; lastKnownFileType = text.xml;')
 refs.append(privacy)
 resources.append(obj('resource-build:privacy', f'isa = PBXBuildFile; fileRef = {privacy};'))
@@ -36,11 +39,23 @@ for name in ['model-1ca43e38eefc.json', 'model-9c92b8e9333f.json', 'suppression-
 framework = obj('opencv', 'isa = PBXFileReference; path = "$(VOLLEYCUT_IOS_OPENCV_FRAMEWORK_ROOT)/opencv2.framework"; sourceTree = "<absolute>"; lastKnownFileType = wrapper.framework;')
 refs.append(framework)
 frameworkBuild = obj('opencv-build', f'isa = PBXBuildFile; fileRef = {framework};')
+neural_resource = obj('resource:neural', 'isa = PBXFileReference; path = "Fixtures/rally-models"; sourceTree = "<group>"; lastKnownFileType = folder;')
+refs.append(neural_resource)
+resources.append(obj('resource-build:neural', f'isa = PBXBuildFile; fileRef = {neural_resource};'))
+notices = obj('resource:notices', 'isa = PBXFileReference; path = "Fixtures/THIRD_PARTY_NOTICES.md"; sourceTree = "<group>";')
+refs.append(notices)
+resources.append(obj('resource-build:notices', f'isa = PBXBuildFile; fileRef = {notices};'))
+licenses = obj('resource:licenses', 'isa = PBXFileReference; path = "Fixtures/licenses"; sourceTree = "<group>"; lastKnownFileType = folder;')
+refs.append(licenses)
+resources.append(obj('resource-build:licenses', f'isa = PBXBuildFile; fileRef = {licenses};'))
+ort_package = obj('ort-package', 'isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager"; requirement = {kind = exactVersion; version = 1.24.2;};')
+ort_product = obj('ort-product', f'isa = XCSwiftPackageProductDependency; package = {ort_package}; productName = onnxruntime;')
+ort_build = obj('ort-build', f'isa = PBXBuildFile; productRef = {ort_product};')
 product = obj('product', 'isa = PBXFileReference; path = VolleySplice.app; sourceTree = BUILT_PRODUCTS_DIR; explicitFileType = wrapper.application;')
 group = obj('group', f'isa = PBXGroup; children = ({",".join(refs + [product])}); sourceTree = "<group>";')
 sourcePhase = obj('source-phase', f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(builds)}); runOnlyForDeploymentPostprocessing = 0;')
 resourcePhase = obj('resource-phase', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(resources)}); runOnlyForDeploymentPostprocessing = 0;')
-frameworkPhase = obj('framework-phase', f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({frameworkBuild}); runOnlyForDeploymentPostprocessing = 0;')
+frameworkPhase = obj('framework-phase', f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({frameworkBuild},{ort_build}); runOnlyForDeploymentPostprocessing = 0;')
 configs = []
 for name in ['Debug', 'Release']:
     settings = {
@@ -68,7 +83,7 @@ for name in ['Debug', 'Release']:
         settings['EXCLUDED_SOURCE_FILE_NAMES'] = '$(inherited) golden.json base.bin *fixture* *golden*'
     configs.append(obj('config:' + name, 'isa = XCBuildConfiguration; name = '+name+'; buildSettings = {'+''.join(f'{k} = {quote(v)};' for k,v in settings.items())+'};'))
 configList = obj('config-list', f'isa = XCConfigurationList; buildConfigurations = ({",".join(configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
-target = obj('target', f'isa = PBXNativeTarget; name = VolleySplice; productName = VolleySplice; productType = "com.apple.product-type.application"; productReference = {product}; buildConfigurationList = {configList}; buildPhases = ({sourcePhase},{frameworkPhase},{resourcePhase}); dependencies = (); buildRules = ();')
+target = obj('target', f'isa = PBXNativeTarget; name = VolleySplice; productName = VolleySplice; productType = "com.apple.product-type.application"; productReference = {product}; buildConfigurationList = {configList}; buildPhases = ({sourcePhase},{frameworkPhase},{resourcePhase}); packageProductDependencies = ({ort_product}); dependencies = (); buildRules = ();')
 test_targets = []
 test_references = []
 for test_name, folder, ui_test in [('VolleySpliceTests', 'Tests/AppIntegrationTests', False), ('VolleySpliceUITests', 'Tests/AppUITests', True)]:
@@ -99,7 +114,7 @@ for test_name, folder, ui_test in [('VolleySpliceTests', 'Tests/AppIntegrationTe
     test_target = obj(test_name + ':target', f'isa = PBXNativeTarget; name = {test_name}; productName = {test_name}; productType = "{product_type}"; productReference = {test_product}; buildConfigurationList = {config_list}; buildPhases = ({phase}); dependencies = ({dependency}); buildRules = ();')
     test_targets.append(test_target)
     test_references.append(f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{test_target}" BuildableName="{test_name}.xctest" BlueprintName="{test_name}" ReferencedContainer="container:VolleySplice.xcodeproj"/>')
-project = obj('project', f'isa = PBXProject; mainGroup = {group}; buildConfigurationList = {configList}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base); projectDirPath = ""; projectRoot = ""; targets = ({",".join([target] + test_targets)}); attributes = {{LastUpgradeCheck = 2630;}};')
+project = obj('project', f'isa = PBXProject; mainGroup = {group}; buildConfigurationList = {configList}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base); projectDirPath = ""; projectRoot = ""; targets = ({",".join([target] + test_targets)}); packageReferences = ({ort_package}); attributes = {{LastUpgradeCheck = 2630;}};')
 path = root / 'VolleySplice.xcodeproj'
 path.mkdir(exist_ok=True)
 (path / 'project.pbxproj').write_text('// !$*UTF8*$!\n{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n'+'\n'.join(objects)+f'\n}}; rootObject = {project};}}\n')

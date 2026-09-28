@@ -35,14 +35,21 @@ import Foundation
         }
         do {
             try roi.validate()
+            let window = try AnalysisWindowBounds.normalize(start: start, end: end, duration: media.duration)
+            guard flushProject() else { return }
+            let originalProjectId = project?.id
             let job = ProcessingJob(kind: .analysis, projectId: UUID().uuidString, sourceName: sourceName ?? source.lastPathComponent,
                 sourceFingerprint: try selectedFingerprint ?? ProjectArchive.sampledFingerprint(url: source),
-                analysis: .init(startMs: ProjectSession.ms(start), endMs: ProjectSession.ms(end),
-                    roi: [roi.x, roi.y, roi.width, roi.height], prepareScores: prepareScore, generateSideSwitchMarkers: generateSideSwitchMarkers))
+                analysis: .init(startMs: window.startMs, endMs: window.endMs,
+                    roi: [roi.x, roi.y, roi.width, roi.height], prepareScores: prepareScore, generateSideSwitchMarkers: generateSideSwitchMarkers,
+                    rallyModel: rallyModel))
             try prepareQueueFiles(source: source)
             Task {
                 do {
                     try await queue.enqueue(job)
+                    if selectedFingerprint == job.sourceFingerprint, project?.id == originalProjectId, !showEditor {
+                        project = nil; result = nil
+                    }
                     status = "Analysis queued; you can open another recording or project"
                 } catch is CancellationError { status = "Cancelled" }
                 catch { self.error = error.localizedDescription }
@@ -138,7 +145,8 @@ import Foundation
         let progress = progressRelay(for: job)
         let child = Task.detached(priority: .userInitiated) {
             try await AnalysisPipeline.analyze(url: sourceURL, roi: region, start: Double(settings.startMs) / 1000,
-                end: Double(settings.endMs) / 1000, cacheFolder: cached, prepareScore: settings.prepareScores, generateSideSwitchMarkers: settings.generateSideSwitchMarkers ?? true,
+                end: Double(settings.endMs) / 1000, cacheFolder: cached, rallyModel: settings.rallyModel,
+                prepareScore: settings.prepareScores, generateSideSwitchMarkers: settings.generateSideSwitchMarkers ?? true,
                 stepProgress: { progress.step($0) }) { value, detail in
                     progress.overall(value, detail)
                 }
@@ -156,7 +164,7 @@ import Foundation
         created.sourceName = job.sourceName
         created.feedback?["source"]?["file"]?["name"] = .string(job.sourceName)
         created.feedback?["source"]?["projectId"] = .string(job.projectId)
-        created.feedback?["source"]?["analysisId"] = .string(job.projectId + "-" + ProjectArchive.modelId + "-native-source")
+        created.feedback?["source"]?["analysisId"] = .string(job.projectId + "-" + settings.rallyModel.modelId + "-native-source")
         created.feedback?["source"]?["generateSideSwitchMarkers"] = .bool(settings.generateSideSwitchMarkers ?? true)
         let destination = projectURL(created)
         if FileManager.default.fileExists(atPath: destination.path) {
@@ -172,15 +180,19 @@ import Foundation
             try requireCurrent(job)
             created = try ProjectPersistence.publish(staged)
         }
-        let analysisURL = documents.appendingPathComponent("analysis-\(output.cacheIdentity.prefix(12)).json")
+        // AV caches are shared across variants; each queued result needs its own provenance.
+        // Job IDs are validated UUIDs and cannot escape this output directory.
+        let analysisURL = documents.appendingPathComponent("analysis-\(job.id).json")
         try await Task.detached {
             let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
             try encoder.encode(output).write(to: analysisURL, options: .atomic)
         }.value
         try requireCurrent(job)
         refreshFiles()
+        let currentWindow = media.flatMap { try? AnalysisWindowBounds.normalize(start: start, end: end, duration: $0.duration) }
         if selectedFingerprint == job.sourceFingerprint,
-           ProjectSession.ms(start) == settings.startMs, ProjectSession.ms(end) == settings.endMs,
+           currentWindow == TimeRange(startMs: ProjectSession.ms(output.start), endMs: ProjectSession.ms(output.end)),
+           rallyModel == settings.rallyModel,
            project == nil && !showEditor && !busy {
             result = output; exportURL = analysisURL
             project = created; restoreSetup(created)

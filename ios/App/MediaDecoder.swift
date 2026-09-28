@@ -66,55 +66,119 @@ enum MediaDecoder {
                                 audio: audioTrack != nil, videoCodec: codec(videoFormat), audioCodec: codec(audioFormat))
     }
 
+    /// The optional neural consumer runs in the same sequential decoder pass.
+    /// RGB values are fractional 0...255 HWC pixels, with a black 224-square
+    /// letterbox. Its synchronous callback bounds memory and provides backpressure.
     static func video(url: URL, media: MediaDescription, roi: AnalysisRegion, start: Double, end: Double,
                       resumeTimes: [Double] = [], resumeVisual: [Float] = [],
+                      embeddingFrame: ((Double, Double, [Float], NeuralImageGeometry) throws -> Void)? = nil,
                       measurement: @Sendable (Double, Int, Double) -> Void = { _, _, _ in },
                       progress: @Sendable (Double, String) -> Void,
                       checkpoint: ([Double], [Double], [Float]) throws -> Void) async throws -> (times: [Double], decodedTimes: [Double], visual: [Float]) {
         try roi.validate()
-        guard start.isFinite, end.isFinite, start >= 0, end > start, end <= media.duration + 0.001,
-              resumeVisual.count == resumeTimes.count * 73 else { throw AnalysisError.invalid("Invalid analysis window/cache") }
+        let targets = try VideoFrameSelection.targets(start: start, end: end, fps: 4)
+        guard end <= media.duration + 0.001, resumeVisual.count == resumeTimes.count * 73,
+              resumeTimes == Array(targets.prefix(resumeTimes.count)), resumeTimes.count <= targets.count,
+              embeddingFrame == nil || resumeTimes.isEmpty else {
+            throw AnalysisError.invalid("Invalid analysis window/cache")
+        }
+        var times = resumeTimes, decodedTimes: [Double] = [], visual = resumeVisual
+        let firstRow = max(0, resumeTimes.count - 1)
+        let extractor = VisualFeatureExtractor()
+        let neuralTargets = embeddingFrame == nil ? [] : try VideoFrameSelection.targets(start: floor(start * 2) / 2, end: end, fps: 2)
+        var neuralRow = 0, visualRow = firstRow
+        try await frames(url: url, end: end, targets: Array(Set(Array(targets.dropFirst(firstRow)) + neuralTargets)).sorted()) { target, pts, buffer in
+            try Task.checkCancellation()
+            if neuralRow < neuralTargets.count && target == neuralTargets[neuralRow], let embeddingFrame {
+                let frame = try sampleEmbeddingFrame(buffer, roi: roi, rotation: media.rotation)
+                try embeddingFrame(target, pts, frame.pixels, frame.geometry)
+                neuralRow += 1
+            }
+            // The neural plan can include a half-second tick before a clipped game.
+            if visualRow < targets.count && targets[visualRow] == target {
+                let features = try extractor.extract(sampleRGBA(buffer, roi: roi, rotation: media.rotation))
+                if visualRow >= resumeTimes.count {
+                    times.append(target); decodedTimes.append(pts); visual += features
+                    if times.count % 16 == 0 { try checkpoint(times, decodedTimes, visual) }
+                }
+                visualRow += 1
+            }
+            let fraction = min(1, max(0, (target - start + 0.25) / (end - start)))
+            progress(fraction, embeddingFrame == nil ? "Decoded \(times.count) video samples" : "Video features + selected model images: \(times.count) samples")
+            measurement(fraction, times.count, Double(times.count) / Double(FeatureSchema.analysisFPS))
+        }
+        guard times.count == targets.count, !times.isEmpty, neuralRow == neuralTargets.count else {
+            throw AnalysisError.invalid("Incomplete video sampling")
+        }
+        try checkpoint(times, decodedTimes, visual)
+        return (times, decodedTimes, visual)
+    }
+
+    /// Cached AV features can reuse the same sampler without recomputing OpenCV.
+    static func embeddings(url: URL, media: MediaDescription, roi: AnalysisRegion, start: Double, end: Double,
+                           progress: @Sendable (Double, String) -> Void,
+                           embeddingFrame: (Double, Double, [Float], NeuralImageGeometry) throws -> Void) async throws {
+        try roi.validate()
+        guard end <= media.duration + 0.001 else { throw AnalysisError.invalid("Invalid embedding window") }
+        let targets = try VideoFrameSelection.targets(start: floor(start * 2) / 2, end: end, fps: 2)
+        var completed = 0
+        try await frames(url: url, end: end, targets: targets) { target, pts, buffer in
+            let frame = try sampleEmbeddingFrame(buffer, roi: roi, rotation: media.rotation)
+            try embeddingFrame(target, pts, frame.pixels, frame.geometry)
+            completed += 1
+            progress(Double(completed) / Double(targets.count), "Selected model images: \(completed) / \(targets.count)")
+        }
+        guard completed == targets.count else { throw AnalysisError.invalid("Incomplete embedding sampling") }
+    }
+
+    /// Keep only two decoded NV12 buffers, and process each target as soon as its
+    /// bracketing source frame arrives. Repeated target selections intentionally
+    /// reuse the same image, including at low or variable source frame rates.
+    private static func frames(url: URL, end: Double, targets: [Double],
+                               consume: (Double, Double, CVPixelBuffer) throws -> Void) async throws {
+        guard !targets.isEmpty else { return }
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw AnalysisError.invalid("No video track") }
         let reader = try AVAssetReader(asset: asset)
-        // Request video-range NV12 and reproduce Android's integer YUV sampler.
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else { throw AnalysisError.invalid("Video decoder unavailable") }
         reader.add(output)
-        var times = resumeTimes, decodedTimes: [Double] = [], visual = resumeVisual
-        let firstTick = Int(ceil(start * 4 - 1e-9)), resumeTick = firstTick + resumeTimes.count
-        // Decode one prior analysis frame to restore the temporal OpenCV state.
-        var targetTick = max(firstTick, resumeTick - 1)
-        let warmStart = Double(targetTick) / 4
-        // The final requested target may need the first frame just after the game end.
-        reader.timeRange = CMTimeRange(start: CMTime(seconds: max(0, warmStart - 0.001), preferredTimescale: 60000), end: CMTime(seconds: media.duration, preferredTimescale: 60000))
+        // Read source PTS, never infer them from average FPS or seek per target.
+        // Starting at zero also preserves the prior frame for clipped windows.
         guard reader.startReading() else { throw reader.error ?? AnalysisError.invalid("Video decode did not start") }
         defer { reader.cancelReading() }
-        let extractor = VisualFeatureExtractor()
+        var previous: (Double, CVPixelBuffer)?, row = 0
         while let sample = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
             let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
             guard pts.isFinite else { throw AnalysisError.invalid("Invalid frame timestamp") }
-            let target = Double(targetTick) / 4
-            if target >= end || target >= media.duration { break }
-            if pts + 0.001 < target { continue }
-            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { throw AnalysisError.invalid("Missing decoded pixels") }
-            let features = try autoreleasepool { try extractor.extract(sampleRGBA(pixelBuffer, roi: roi, rotation: media.rotation)) }
-            if targetTick >= resumeTick {
-                times.append(target); decodedTimes.append(pts); visual += features
-                if times.count % 16 == 0 { try checkpoint(times, decodedTimes, visual) }
+            if pts >= end { break } // Same exclusive source-frame limit as Android.
+            if let previous {
+                guard pts >= previous.0 else { throw AnalysisError.invalid("Unsorted decoded frame timestamps") }
+                if pts == previous.0 { continue } // First image wins duplicate PTS.
             }
-            targetTick += 1
-            // Match Android: at most one analysis sample per decoded source frame.
-            progress(min(1, (pts - start) / (end - start)), "Decoded \(times.count) samples")
-            measurement(min(1, (pts - start) / (end - start)), times.count, Double(times.count) / Double(FeatureSchema.analysisFPS))
+            guard let buffer = CMSampleBufferGetImageBuffer(sample) else { throw AnalysisError.invalid("Missing decoded pixels") }
+            while row < targets.count && targets[row] <= pts {
+                let chosen: (Double, CVPixelBuffer)
+                if let previous, VideoFrameSelection.prefersEarlier(target: targets[row], earlier: previous.0, later: pts) {
+                    chosen = previous
+                } else { chosen = (pts, buffer) }
+                try autoreleasepool { try consume(targets[row], chosen.0, chosen.1) }
+                row += 1
+            }
+            previous = (pts, buffer)
+            if row == targets.count { break }
         }
         if reader.status == .failed { throw reader.error ?? AnalysisError.invalid("Video decode failed") }
-        try Task.checkCancellation()
-        guard !times.isEmpty else { throw AnalysisError.invalid("No video samples in game window") }
-        try checkpoint(times, decodedTimes, visual)
-        return (times, decodedTimes, visual)
+        if let previous {
+            while row < targets.count {
+                try Task.checkCancellation()
+                try autoreleasepool { try consume(targets[row], previous.0, previous.1) }
+                row += 1
+            }
+        }
+        guard row == targets.count else { throw AnalysisError.invalid("No video samples in game window") }
     }
 
     static func audio(url: URL, times: [Double], start: Double, end: Double,
@@ -154,47 +218,69 @@ enum MediaDecoder {
             let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
             let kept = min(mono.count, max(0, Int(ceil((end - pts) * asbd.mSampleRate))))
             try extractor.push(Array(mono.prefix(kept)), timestampSeconds: pts - start, sampleRate: Int(asbd.mSampleRate))
-            progress(min(1, (pts - start) / (end - start)), "Generating audio features")
+            progress(min(0.8, max(0, 0.8 * (pts - start) / (end - start))), "Decoding audio + generating feature frames")
         }
         if reader.status == .failed { throw reader.error ?? AnalysisError.invalid("Audio decode failed") }
         try Task.checkCancellation()
-        let features = try extractor.finishAndPool(times.map { $0 - start })
+        let features = try extractor.finishAndPool(times.map { $0 - start }, progress: progress)
         try Task.checkCancellation()
         return features
     }
 
-    static func sampleRGBA(_ buffer: CVPixelBuffer, roi: AnalysisRegion, rotation: Int, outputWidth: Int = 192, outputHeight: Int = 108) throws -> [UInt8] {
-        guard CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-              CVPixelBufferGetPlaneCount(buffer) == 2 else { throw AnalysisError.invalid("Decoder did not return video-range NV12") }
+    private static func withNV12<T>(_ buffer: CVPixelBuffer,
+                                    _ body: (UnsafePointer<UInt8>, Int32, UnsafePointer<UInt8>, Int32, CGRect, Int32, Int32) throws -> T) throws -> T {
+        let format = CVPixelBufferGetPixelFormatType(buffer)
+        guard [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange].contains(format),
+              CVPixelBufferGetPlaneCount(buffer) == 2 else { throw AnalysisError.invalid("Decoder did not return 8-bit NV12") }
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let yPlane = CVPixelBufferGetBaseAddressOfPlane(buffer, 0)?.assumingMemoryBound(to: UInt8.self),
-              let uvPlane = CVPixelBufferGetBaseAddressOfPlane(buffer, 1)?.assumingMemoryBound(to: UInt8.self) else { throw AnalysisError.invalid("Missing YUV planes") }
-        let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
-        let clean = CVImageBufferGetCleanRect(buffer).intersection(CGRect(x: 0, y: 0, width: width, height: height))
-        guard !clean.isNull, clean.width > 0, clean.height > 0 else { throw AnalysisError.invalid("Invalid video clean aperture") }
-        let yStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0), uvStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 1)
-        var rgba = [UInt8](repeating: 255, count: outputWidth * outputHeight * 4)
-        func byte(_ value: Int) -> UInt8 { UInt8(max(0, min(255, value))) }
-        for y in 0..<outputHeight { for x in 0..<outputWidth {
-            let u = roi.x + (Double(x) + 0.5) / Double(outputWidth) * roi.width, v = roi.y + (Double(y) + 0.5) / Double(outputHeight) * roi.height
-            let su: Double, sv: Double
-            switch rotation {
-            case 90: su = v; sv = 1 - u
-            case 180: su = 1 - u; sv = 1 - v
-            case 270: su = 1 - v; sv = u
-            default: su = u; sv = v
-            }
-            let sx = max(0, min(width - 1, Int(floor(clean.minX + su * clean.width))))
-            let sy = max(0, min(height - 1, Int(floor(clean.minY + sv * clean.height))))
-            let c = max(0, Int(yPlane[sy * yStride + sx]) - 16)
-            let uv = sy / 2 * uvStride + sx / 2 * 2
-            let d = Int(uvPlane[uv]) - 128, e = Int(uvPlane[uv + 1]) - 128, index = (y * outputWidth + x) * 4
-            rgba[index] = byte((298 * c + 409 * e + 128) >> 8)
-            rgba[index + 1] = byte((298 * c - 100 * d - 208 * e + 128) >> 8)
-            rgba[index + 2] = byte((298 * c + 516 * d + 128) >> 8)
-        } }
+        guard let y = CVPixelBufferGetBaseAddressOfPlane(buffer, 0)?.assumingMemoryBound(to: UInt8.self),
+              let uv = CVPixelBufferGetBaseAddressOfPlane(buffer, 1)?.assumingMemoryBound(to: UInt8.self) else { throw AnalysisError.invalid("Missing YUV planes") }
+        let bounds = CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
+        let clean = CVImageBufferGetCleanRect(buffer).intersection(bounds)
+        guard !clean.isNull, clean.width >= 1, clean.height >= 1 else { throw AnalysisError.invalid("Invalid video clean aperture") }
+        let matrix: Int32
+        if let value = CVBufferCopyAttachment(buffer, kCVImageBufferYCbCrMatrixKey, nil) {
+            if CFEqual(value, kCVImageBufferYCbCrMatrix_ITU_R_709_2) { matrix = 1 }
+            else if CFEqual(value, kCVImageBufferYCbCrMatrix_ITU_R_601_4) { matrix = 0 }
+            else if CFEqual(value, kCVImageBufferYCbCrMatrix_ITU_R_2020) { matrix = 2 }
+            else { throw AnalysisError.invalid("Unsupported decoded YUV matrix") }
+        } else { matrix = 0 } // Explicit BT.601 fallback, matching Android.
+        return try body(y, Int32(CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)), uv,
+                        Int32(CVPixelBufferGetBytesPerRowOfPlane(buffer, 1)), clean, matrix,
+                        format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ? 1 : 0)
+    }
+
+    static func sampleRGBA(_ buffer: CVPixelBuffer, roi: AnalysisRegion, rotation: Int, outputWidth: Int = 192, outputHeight: Int = 108) throws -> [UInt8] {
+        try roi.validate()
+        guard outputWidth > 0, outputHeight > 0 else { throw AnalysisError.invalid("Invalid sample dimensions") }
+        var rgba = [UInt8](repeating: 0, count: outputWidth * outputHeight * 4)
+        let status = try withNV12(buffer) { y, ys, uv, uvs, clean, matrix, full in
+            vc_nv12_area(y, ys, uv, uvs, Int32(clean.minX), Int32(clean.minY), Int32(clean.width), Int32(clean.height),
+                         Int32(rotation), matrix, full, [roi.x, roi.y, roi.width, roi.height], Int32(outputWidth), Int32(outputHeight), &rgba)
+        }
+        guard status == 0 else { throw AnalysisError.invalid("NV12 area sampling failed") }
         return rgba
+    }
+
+    static func sampleEmbeddingRGB(_ buffer: CVPixelBuffer, roi: AnalysisRegion, rotation: Int) throws -> [Float] {
+        try sampleEmbeddingFrame(buffer, roi: roi, rotation: rotation).pixels
+    }
+
+    /// Return the exact clean-aperture geometry used to prepare these pixels.
+    /// Encoded track dimensions can include padding and must not set pool masks.
+    static func sampleEmbeddingFrame(_ buffer: CVPixelBuffer, roi: AnalysisRegion, rotation: Int) throws -> (pixels: [Float], geometry: NeuralImageGeometry) {
+        try roi.validate()
+        var rgb = [Float](repeating: 0, count: 224 * 224 * 3)
+        return try withNV12(buffer) { y, ys, uv, uvs, clean, matrix, full in
+            let geometry = try NeuralRallyContract.geometry(width: Int(clean.width), height: Int(clean.height), rotation: rotation,
+                                                           roi: [roi.x, roi.y, roi.width, roi.height])
+            let values = [geometry.x, geometry.y, geometry.cropWidth, geometry.cropHeight, geometry.resizedWidth, geometry.resizedHeight, geometry.left, geometry.top].map(Int32.init)
+            let status = vc_nv12_letterbox(y, ys, uv, uvs, Int32(clean.minX), Int32(clean.minY), Int32(clean.width), Int32(clean.height),
+                                          Int32(rotation), matrix, full, values, 224, &rgb)
+            guard status == 0 else { throw AnalysisError.invalid("NV12 embedding sampling failed") }
+            return (rgb, geometry)
+        }
     }
 }
 

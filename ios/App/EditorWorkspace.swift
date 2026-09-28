@@ -278,6 +278,8 @@ struct EditorWorkspace: View {
     }
     private var moreMenu: some View {
         Menu("More") {
+            Button("Change model or analyze again") { player.pause(); onSave(); onBack() }
+                .accessibilityIdentifier("changeRallyModel")
             Button("Processing queue", action: onShowQueue).accessibilityIdentifier("editorProcessingQueue")
             Button("Manage storage", action: onManageStorage).accessibilityIdentifier("manageStorage")
             Button("Restart guided tour") { exportTab = false; GuidedTourStore.restart(stage: .editor) }.accessibilityIdentifier("replayTutorial")
@@ -650,7 +652,7 @@ struct EditorWorkspace: View {
                 timeline(range: .init(startMs: bounds.startMs, endMs: midpoint), identifier: "gameTimelineFirst", trackHeight: trackHeight).guidedTourTarget("editor-overview")
                 timeline(range: .init(startMs: midpoint, endMs: bounds.endMs), identifier: "gameTimelineSecond", trackHeight: trackHeight)
             } else { timeline(range: bounds, identifier: "gameTimeline", trackHeight: trackHeight).guidedTourTarget("editor-overview") }
-            TimelineLegend().accessibilityIdentifier("timelineLegend")
+            TimelineLegend(modelName: ProjectArchive.rallyModel(project.feedback).displayName).accessibilityIdentifier("timelineLegend")
         }
     }
     private func timeline(range: TimeRange, identifier: String, trackHeight: CGFloat = 60) -> some View {
@@ -693,7 +695,6 @@ struct EditorWorkspace: View {
                 } else if !desktop {
                     Text("\(time(cut.coreStartMs, precise: true)) – \(time(cut.coreEndMs, precise: true)) · \(Int(cut.confidence * 100))%")
                         .font(.system(.caption, design: .monospaced)).accessibilityIdentifier("currentRallyRange")
-                    if let agreement = cut.agreement { Text(agreement.replacingOccurrences(of: "-", with: " ")).font(isPhone ? .system(size: 11) : .caption) }
                 }
                 if !keptIds.contains(cut.id) { Text(cut.included ? "Removed by cleanup or ignored time" : "Removed by you").font(.caption.bold()).foregroundStyle(EditorPalette.danger) }
                 if selectedCleanup == nil { HStack(spacing: 6) {
@@ -1417,10 +1418,12 @@ private struct SidebarMarkerList: View {
 }
 
 private struct TimelineLegend: View {
+    var modelName: String
     @State private var contentHeight: CGFloat = 28
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 14) {
+                Text(modelName).font(.system(size: 10, weight: .semibold)).foregroundStyle(EditorPalette.muted)
                 item("Rally core") { block(EditorPalette.green) }
                 item("Padding") { block(EditorPalette.rail) }
                 item("Needs review") { block(EditorPalette.orange) }

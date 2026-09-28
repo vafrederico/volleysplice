@@ -9,11 +9,9 @@ struct SetupAnalysisProgress: View {
     private var job: ProcessingJob? { queue.jobs.last { $0.kind == .analysis && sourceFingerprint != nil && $0.sourceFingerprint == sourceFingerprint } }
     private func steps(_ job: ProcessingJob) -> [AnalysisStepMeasurement] {
         if let measured = job.analysisSteps { return measured }
-        var ids: [AnalysisStep] = [.video, .audio, .rally]
-        if job.analysis?.prepareScores == true {
-            ids.append(.servingSide)
-            if job.analysis?.generateSideSwitchMarkers ?? true { ids.append(.sideSwitch) }
-        }
+        let ids = AnalysisStep.analysisSteps(model: job.analysis?.rallyModel ?? .legacy,
+            prepareScores: job.analysis?.prepareScores == true,
+            generateSideSwitchMarkers: job.analysis?.generateSideSwitchMarkers ?? true)
         return ids.map { id in
             var row = AnalysisStepMeasurement(id: id)
             if job.state == .completed { row.status = .complete; row.fraction = 1 }
@@ -39,6 +37,10 @@ struct SetupAnalysisProgress: View {
                                 .font(.system(size: 11, design: .monospaced))
                         }
                         if row.status != .pending {
+                            if row.status == .running {
+                                Text(row.detail).font(.system(size: 12)).foregroundStyle(SetupPalette.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             Text(row.metrics).font(.system(size: 11, design: .monospaced)).foregroundStyle(SetupPalette.muted)
                                 .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("analysisMetrics-" + row.id.rawValue)
                         }

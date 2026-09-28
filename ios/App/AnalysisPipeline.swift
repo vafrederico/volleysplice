@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 struct FeatureCacheRecord: Codable {
-    var schema = "ios-avfoundation-nv12-opencv412-audio-linear-v1"
+    var schema = "ios-avfoundation-nv12-area-nearest-opencv412-audio-percentile-v2"
     var identity: String
     var complete = false
     var times: [Double] = []
@@ -14,6 +14,8 @@ struct FeatureCacheRecord: Codable {
 }
 
 struct AnalysisResult: Codable {
+    var rallyModel: RallyModel?
+    var neuralScores: NeuralRallyScores?
     var sourceName: String?
     var sourceSHA256: String?
     var modelSHA256: [String: String]?
@@ -52,19 +54,23 @@ enum AnalysisPipeline {
         return try ModelRunner(data: data)
     }
 
-    static func analyze(url: URL, roi: AnalysisRegion, start: Double, end: Double,
-                        cacheFolder: URL, prepareScore: Bool = true, generateSideSwitchMarkers: Bool = true,
+    static func analyze(url: URL, roi: AnalysisRegion, start requestedStart: Double, end requestedEnd: Double,
+                        cacheFolder: URL, rallyModel: RallyModel = .default, prepareScore: Bool = true, generateSideSwitchMarkers: Bool = true,
                         stepProgress: @escaping @Sendable (AnalysisProgressEvent) -> Void = { _ in },
                         progress: @escaping @Sendable (Double, String) -> Void) async throws -> AnalysisResult {
         let media = try await MediaDecoder.describe(url)
         try roi.validate()
-        guard start >= 0, end <= media.duration + 0.001, end > start else { throw AnalysisError.invalid("Invalid game window") }
+        let window = try AnalysisWindowBounds.normalize(start: requestedStart, end: requestedEnd, duration: media.duration)
+        let start = Double(window.startMs) / 1000, end = Double(window.endMs) / 1000
         try FileManager.default.createDirectory(at: cacheFolder, withIntermediateDirectories: true)
         progress(0, "Identifying source")
-        stepProgress(.init(.video, fraction: 0, detail: "Identifying source"))
-        let hash = try sourceHash(url)
+        stepProgress(.init(.preparation, fraction: 0, detail: "Identifying source"))
+        let hash = try sourceHash(url) { fraction in
+            progress(fraction * 0.03, "Preparing video \(Int(fraction * 100))%")
+            stepProgress(.init(.preparation, fraction: fraction * 0.9, detail: "Reading source \(Int(fraction * 100))%"))
+        }
         let settings = try JSONEncoder().encode([start, end, roi.x, roi.y, roi.width, roi.height, Double(media.rotation)])
-        let identity = SHA256.hash(data: Data(hash.utf8) + settings).map { String(format: "%02x", $0) }.joined()
+        let identity = SHA256.hash(data: Data((hash + FeatureCacheRecord(identity: "").schema).utf8) + settings).map { String(format: "%02x", $0) }.joined()
         let cacheURL = cacheFolder.appendingPathComponent(identity + ".plist")
         var cache = FeatureCacheRecord(identity: identity)
         if let data = try? Data(contentsOf: cacheURL) {
@@ -76,6 +82,12 @@ enum AnalysisPipeline {
             cache = saved
         }
         let cacheHit = cache.complete
+        let neural = try rallyModel.isNeural ? NeuralRallyRuntime(model: rallyModel, media: media, roi: roi, start: start, end: end,
+            sourceIdentity: identity, cacheFolder: cacheFolder) : nil
+        // A partial AV checkpoint has no corresponding partial embedding contract.
+        // Rebuild the shared pass rather than splice incompatible feature histories.
+        if neural != nil && !cache.complete && neural?.ready == false { cache = FeatureCacheRecord(identity: identity) }
+        stepProgress(.init(.preparation, fraction: 1, detail: "Video ready for analysis"))
         let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
         var stages: [String: Double] = [:]
         let resumeSeconds = max(0, (cache.times.last ?? start) - start)
@@ -84,12 +96,17 @@ enum AnalysisPipeline {
         if !cache.complete {
             var began = Date()
             let savedDecoded = cache.decodedTimes
+            let frameConsumer: ((Double, Double, [Float], NeuralImageGeometry) throws -> Void)? = neural?.ready == false ? { target, pts, rgb, geometry in
+                try neural!.encode(target: target, presentation: pts, rgb: rgb, geometry: geometry)
+            } : nil
             let visual = try await MediaDecoder.video(url: url, media: media, roi: roi, start: start, end: end,
-                resumeTimes: cache.times, resumeVisual: cache.visual,
+                resumeTimes: cache.times, resumeVisual: cache.visual, embeddingFrame: frameConsumer,
                 measurement: { fraction, frames, seconds in
-                    stepProgress(.init(.video, fraction: fraction, detail: "Decoded \(frames) samples", completedFrames: Double(frames), processedVideoSeconds: seconds))
+                    let detail = neural.map { "Decoded \(frames) samples; image features \($0.completedFrames)/\($0.expectedTimes.count)" }
+                        ?? "Decoded \(frames) samples"
+                    stepProgress(.init(.video, fraction: fraction, detail: detail, completedFrames: Double(frames), processedVideoSeconds: seconds))
                 },
-                progress: { progress($0 * 0.65, $1) }) { times, decoded, visual in
+                progress: { progress(0.03 + $0 * 0.57, neural == nil ? $1 : "\($1); image features \(neural!.completedFrames)/\(neural!.expectedTimes.count)") }) { times, decoded, visual in
                     cache.times = times; cache.decodedTimes = savedDecoded + decoded; cache.visual = visual
                     try encoder.encode(cache).write(to: cacheURL, options: .atomic)
                 }
@@ -101,7 +118,7 @@ enum AnalysisPipeline {
             if cache.audio.isEmpty {
                 cache.audio = try await MediaDecoder.audio(url: url, times: cache.times, start: start, end: end,
                     progress: { fraction, detail in
-                        progress(0.65 + fraction * 0.25, detail)
+                        progress(0.60 + fraction * 0.15, detail)
                         stepProgress(.init(.audio, fraction: fraction, detail: detail))
                     })
                 try encoder.encode(cache).write(to: cacheURL, options: .atomic)
@@ -109,8 +126,7 @@ enum AnalysisPipeline {
             stages["audio"] = Date().timeIntervalSince(began)
             stepProgress(.init(.audio, fraction: 1, detail: "Audio features ready"))
             began = Date()
-            progress(0.90, "Preparing features")
-            stepProgress(.init(.rally, fraction: 0, detail: "Preparing features"))
+            progress(0.75, "Preparing features")
             try FeatureMath.validate(times: cache.times, values: cache.audio, columns: 27)
             let temporal = try TemporalFeatures.generate(visual: cache.visual, rows: cache.times.count)
             var base: [Float] = []; base.reserveCapacity(cache.times.count * 104)
@@ -120,7 +136,6 @@ enum AnalysisPipeline {
                 base += cache.audio[(row * 27)..<((row + 1) * 27)]
             }
             cache.base = base
-            stepProgress(.init(.rally, fraction: 0.1, detail: "Preparing context features"))
             try Task.checkCancellation()
             cache.contextual = try FeatureMath.contextualize(times: cache.times, base: base, names: FeatureSchema.base)
             try Task.checkCancellation()
@@ -129,31 +144,62 @@ enum AnalysisPipeline {
             stages["context"] = Date().timeIntervalSince(began)
         } else {
             stepProgress(.init(.audio, fraction: 1, detail: "Reusing audio features"))
-            stepProgress(.init(.rally, fraction: 0, detail: "Reusing project features"))
+        }
+        if let neural {
+            stepProgress(.init(.embedding, fraction: neural.ready ? 1 : 0, detail: neural.ready ? "Image features ready" : "Generating image features"))
+            if !neural.ready {
+                let began = Date()
+                try await MediaDecoder.embeddings(url: url, media: media, roi: roi, start: start, end: end,
+                    progress: { fraction, detail in
+                        progress(0.75 + fraction * 0.15, detail)
+                        stepProgress(.init(.embedding, fraction: fraction, detail: detail, completedFrames: Double(neural.completedFrames)))
+                    }, embeddingFrame: { target, pts, rgb, geometry in try neural.encode(target: target, presentation: pts, rgb: rgb, geometry: geometry) })
+                stages["embeddingVideoPass"] = Date().timeIntervalSince(began)
+            }
+            try neural.finishEmbeddings()
+            stepProgress(.init(.embedding, fraction: 1, detail: neural.cacheHit ? "Reusing image features" : "Image features ready"))
         }
         try FeatureMath.validate(times: cache.times, values: cache.base, columns: 104)
         try FeatureMath.validate(times: cache.times, values: cache.contextual, columns: 520)
-        progress(0.92, "Running rally models")
-        stepProgress(.init(.rally, fraction: 0.3, detail: "Running rally models"))
+        progress(0.90, "Finding rallies")
+        stepProgress(.init(.rally, fraction: 0, detail: "Finding rallies"))
         try Task.checkCancellation()
         let began = Date()
-        let all = try loadModel("model-1ca43e38eefc").run(times: cache.times, contextual: cache.contextual, duration: end)
-        stepProgress(.init(.rally, fraction: 0.55, detail: "Checking rally agreement"))
+        // Team-switch features include legacy component intervals. Preserve that
+        // auxiliary contract when requested; none of these ranges override neural cuts.
+        let allModel = try loadModel("model-1ca43e38eefc")
+        let previousModel = try loadModel("model-9c92b8e9333f")
+        let fullLegacy = neural == nil || (prepareScore && generateSideSwitchMarkers)
+        let all = try fullLegacy ? allModel.run(times: cache.times, contextual: cache.contextual, duration: end)
+            : allModel.runEvidence(times: cache.times, contextual: cache.contextual, duration: end)
+        stepProgress(.init(.rally, fraction: 0.05, detail: neural == nil ? "Checking rally agreement" : "Preparing serve and court-state evidence"))
         try Task.checkCancellation()
-        let previous = try loadModel("model-9c92b8e9333f").run(times: cache.times, contextual: cache.contextual, duration: end)
-        stepProgress(.init(.rally, fraction: 0.8, detail: "Preparing cleanup suggestions"))
+        let previous = try fullLegacy ? previousModel.run(times: cache.times, contextual: cache.contextual, duration: end)
+            : previousModel.runEvidence(times: cache.times, contextual: cache.contextual, duration: end)
         try Task.checkCancellation()
-        let merged = ProductionEnsemble.merge(allLabelsV2: all.intervals, previousProduction: previous.intervals).compactMap { interval -> Interval? in
+        var merged = ProductionEnsemble.merge(allLabelsV2: all.intervals, previousProduction: previous.intervals).compactMap { interval -> Interval? in
             let lower = max(start, interval.start), upper = min(end, interval.end)
             return upper > lower ? Interval(start: lower, end: upper, confidence: interval.confidence, agreement: interval.agreement) : nil
         }
-        let suppressionData = try Data(contentsOf: Bundle.main.url(forResource: SuppressionModelRunner.modelId, withExtension: "json")!)
-        guard SHA256.hash(data: suppressionData).map({ String(format: "%02x", $0) }).joined() == SuppressionModelRunner.assetSha256 else {
-            throw AnalysisError.invalid("Suppression asset checksum mismatch")
+        var neuralScores: NeuralRallyScores?
+        var suppression: SuppressionAnalysis?
+        if let neural {
+            let output = try neural.run(times: cache.times, contextual: cache.contextual, start: start, end: end) { fraction, detail in
+                progress(0.90 + fraction * 0.04, detail)
+                stepProgress(.init(.rally, fraction: 0.10 + fraction * 0.90, detail: detail))
+            }
+            merged = output.intervals; neuralScores = output.scores
+            for (key, value) in neural.stageSeconds { stages["neural/" + key] = value }
+        } else {
+            stepProgress(.init(.rally, fraction: 0.8, detail: "Preparing cleanup suggestions"))
+            let suppressionData = try Data(contentsOf: Bundle.main.url(forResource: SuppressionModelRunner.modelId, withExtension: "json")!)
+            guard SHA256.hash(data: suppressionData).map({ String(format: "%02x", $0) }).joined() == SuppressionModelRunner.assetSha256 else {
+                throw AnalysisError.invalid("Suppression asset checksum mismatch")
+            }
+            let suppressionRun = try SuppressionModelRunner(data: suppressionData).run(times: cache.times, contextual: cache.contextual, duration: end)
+            suppression = try SuppressionPolicyEngine.build(allLabelsV2: all.intervals, previousProduction: previous.intervals,
+                probabilities: suppressionRun.probabilities, decoded: suppressionRun.decodedIntervals, duration: end)
         }
-        let suppressionRun = try SuppressionModelRunner(data: suppressionData).run(times: cache.times, contextual: cache.contextual, duration: end)
-        let suppression = try SuppressionPolicyEngine.build(allLabelsV2: all.intervals, previousProduction: previous.intervals,
-                                                           probabilities: suppressionRun.probabilities, decoded: suppressionRun.decodedIntervals, duration: end)
         try Task.checkCancellation()
         stages["inference"] = Date().timeIntervalSince(began)
         stepProgress(.init(.rally, fraction: 1, detail: "\(merged.count) rallies ready"))
@@ -164,7 +210,7 @@ enum AnalysisPipeline {
                 let score = try await ScoreAnalysis.run(url: url, media: media, roi: roi, ranges: merged,
                     all: ProductionServeOutput(modelId: "model-1ca43e38eefc", times: cache.times, probabilities: all.serveProbabilities, detections: all.serveDetections),
                     previous: ProductionServeOutput(modelId: "model-9c92b8e9333f", times: cache.times, probabilities: previous.serveProbabilities, detections: previous.serveDetections),
-                    cacheURL: cacheFolder.appendingPathComponent(identity + "-serving.plist"),
+                    cacheURL: cacheFolder.appendingPathComponent(identity + "-" + rallyModel.rawValue + "-serving.plist"),
                     switchInput: generateSideSwitchMarkers ? ScoreAnalysis.input(ranges: merged, times: cache.times, all: all, previous: previous) : nil,
                     stepProgress: stepProgress) { progress(0.94 + $0 * 0.06, $1) }
                 servingSide = score.servingSide; sideSwitch = score.sideSwitch; scoreError = score.error
@@ -176,18 +222,21 @@ enum AnalysisPipeline {
             stages["scoreSpecialists"] = Date().timeIntervalSince(scoreStart)
         }
         progress(1, "\(merged.count) rallies ready")
-        return AnalysisResult(sourceName: url.lastPathComponent, sourceSHA256: hash, modelSHA256: modelHashes,
+        return AnalysisResult(rallyModel: rallyModel, neuralScores: neuralScores, sourceName: url.lastPathComponent, sourceSHA256: hash, modelSHA256: modelHashes,
                               decoderSchema: cache.schema, media: media, roi: roi, start: start, end: end, cacheIdentity: identity,
                               times: cache.times, decodedTimes: cache.decodedTimes, base: cache.base, contextual: cache.contextual,
                               allLabels: all, previous: previous, intervals: merged, suppression: suppression,
                               servingSide: servingSide, sideSwitch: sideSwitch, scoreError: scoreError, stageSeconds: stages, cacheHit: cacheHit)
     }
 
-    static func sourceHash(_ url: URL) throws -> String {
+    static func sourceHash(_ url: URL, progress: (Double) -> Void = { _ in }) throws -> String {
         let handle = try FileHandle(forReadingFrom: url); defer { try? handle.close() }
+        let size = try handle.seekToEnd(); try handle.seek(toOffset: 0)
+        var consumed: UInt64 = 0
         var hash = SHA256()
         while let block = try handle.read(upToCount: 4 * 1024 * 1024), !block.isEmpty {
             try Task.checkCancellation(); hash.update(data: block)
+            consumed += UInt64(block.count); progress(size == 0 ? 1 : Double(consumed) / Double(size))
         }
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }

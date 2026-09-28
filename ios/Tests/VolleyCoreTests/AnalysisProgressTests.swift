@@ -53,12 +53,20 @@ final class AnalysisProgressTests: XCTestCase {
         XCTAssertTrue(freshAttempt.snapshot(now: 100).allSatisfy { $0.status == .pending && $0.etaSeconds == nil })
     }
     func testAllStepLabelsAndEarlyMetricsMatchTheAndroidProgressPanel() {
-        XCTAssertEqual(AnalysisStep.allCases.map(\.label), ["Scanning video", "Listening for play", "Finding rallies", "Finding serve markers", "Finding team switches"])
+        XCTAssertEqual(AnalysisStep.allCases.map(\.label), ["Preparing video", "Scanning video", "Listening for play", "Understanding play", "Finding rallies", "Finding serve markers", "Finding team switches"])
         for step in AnalysisStep.allCases {
             var tracker = AnalysisProgressTracker(steps: [step])
             tracker.update(.init(step, fraction: 0, detail: "Starting", uptime: 0))
             let row = tracker.snapshot(now: 0.1)[0]
             XCTAssertTrue(row.metrics.contains("Measuring…")); XCTAssertTrue(row.metrics.contains("estimating ETA"))
         }
+    }
+    func testSelectedModelProgressHasOnlyItsRequiredStages() {
+        XCTAssertEqual(AnalysisStep.analysisSteps(model: .maximumCoverage, prepareScores: true, generateSideSwitchMarkers: false),
+                       [.preparation, .video, .audio, .embedding, .rally, .servingSide])
+        XCTAssertEqual(AnalysisStep.analysisSteps(model: .balanced, prepareScores: false, generateSideSwitchMarkers: false),
+                       [.preparation, .video, .audio, .embedding, .rally])
+        XCTAssertEqual(AnalysisStep.analysisSteps(model: .legacy, prepareScores: true, generateSideSwitchMarkers: true),
+                       [.preparation, .video, .audio, .rally, .servingSide, .sideSwitch])
     }
 }

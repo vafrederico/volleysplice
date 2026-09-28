@@ -64,12 +64,20 @@ change even when the column names do not change.
 ## Production profile
 
 This branch adds the selectable **Distilled Large** rally pipeline to the normal
-production web and Android apps, with the frozen highest-recall selection as the
+production web, Android and iOS apps, with the frozen highest-recall selection as the
 default, labeled **Maximum coverage · BETA**. Highest F1 is **Balanced · BETA**
 and the production ensemble is **Legacy model**. Each analysis runs only the
 selected rally variant. This is an application integration, not a published release or
 a new cross-platform accuracy study. The F104 profile below remains required for
 both neural fusion and serve/state evidence used by the score specialists.
+
+The iOS implementation shares an AVFoundation NV12 decode pass between 4 Hz AV
+samples and 2 Hz encoder inputs. It uses actual presentation timestamps, earlier
+ties, metadata-aware YUV conversion, area resizing for AV features, and fractional
+bilinear letterboxing for the encoder. Regional pooling and quality calculations
+use the decoded clean aperture. Its corrected audio percentile interpolation
+matches Android; stale visual/audio caches are invalidated together. See the
+[iOS port contract](ios/NEURAL-PARITY.md) for qualification limits.
 
 New analyses retain the selected TCN's four sigmoid scores (`live`, `serve`, `end`,
 `keep`) on the source-aligned 4 Hz timeline. Project feedback exports preserve those

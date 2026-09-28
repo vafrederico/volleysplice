@@ -76,6 +76,12 @@ selection provenance are in the [bundle contract](models/distilled-large/README.
 
 ## iOS application
 
+The iOS neural pipeline links ONNX Runtime 1.24.2 under MIT, via its pinned
+Swift package. The app bundles its MIT license and upstream third-party notices,
+plus the TorchVision and DINOv2 notices described above. Both frozen neural
+variants run native FP32 CPU inference; device acceleration requires separate
+qualification.
+
 The iOS application links an OpenCV 4.12.0 framework prepared by
 `ios/scripts/prepare-opencv.ps1`. OpenCV 4.5 and later are licensed under
 Apache-2.0. The app's Open-source notices view identifies OpenCV and links to

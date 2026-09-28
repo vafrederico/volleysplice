@@ -4,7 +4,15 @@ import UIKit
 /// Uses the full iPad export imported by ReferenceProjectImportTests, never a
 /// synthetic replacement for its inference/timelines. Edits affect only this copy.
 final class ReferenceProjectUITests: XCTestCase {
-    override func setUpWithError() throws { continueAfterFailure = false }
+    private var referenceSourceName = ""
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        guard let name = ProcessInfo.processInfo.environment["VOLLEYCUT_IOS_REFERENCE_VIDEO_NAME"],
+              !name.isEmpty, (name as NSString).lastPathComponent == name else {
+            throw XCTSkip("Configure the indexed reference video name through the private test environment")
+        }
+        referenceSourceName = name
+    }
 
     @MainActor func testInterfaceScaleChangesWholeEditorAndPersistsIntoSetup() throws {
         XCUIDevice.shared.orientation = .portrait
@@ -13,7 +21,7 @@ final class ReferenceProjectUITests: XCTestCase {
         if app.buttons["tutorialSkip"].waitForExistence(timeout: 5) { app.buttons["tutorialSkip"].tap() }
         XCTAssertTrue(app.buttons["projectSelector"].waitForExistence(timeout: 20))
         app.buttons["projectSelector"].tap()
-        let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", "tds6-reference.mp4")).firstMatch
+        let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", referenceSourceName)).firstMatch
         try XCTSkipUnless(reference.waitForExistence(timeout: 10), "Import full iPad reference into this simulator first")
         reference.tap()
         let settings = app.buttons["editorSettings"]
@@ -72,7 +80,7 @@ final class ReferenceProjectUITests: XCTestCase {
         if app.buttons["tutorialSkip"].waitForExistence(timeout: 5) { app.buttons["tutorialSkip"].tap() }
         XCTAssertTrue(app.buttons["projectSelector"].waitForExistence(timeout: 20))
         app.buttons["projectSelector"].tap()
-        let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", "tds6-reference.mp4")).firstMatch
+        let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", referenceSourceName)).firstMatch
         try XCTSkipUnless(reference.waitForExistence(timeout: 10), "Import full iPad reference into this simulator first")
         reference.tap()
         let summary = app.descendants(matching: .any).matching(identifier: "exportSummary").firstMatch
@@ -168,7 +176,7 @@ final class ReferenceProjectUITests: XCTestCase {
         if app.buttons["tutorialSkip"].waitForExistence(timeout: 5) { app.buttons["tutorialSkip"].tap() }
         let selector = app.buttons["projectSelector"]
         XCTAssertTrue(selector.waitForExistence(timeout: 20)); selector.tap()
-        let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", "tds6-reference.mp4")).firstMatch
+        let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", referenceSourceName)).firstMatch
         try XCTSkipUnless(reference.waitForExistence(timeout: 10), "Import full iPad reference into this simulator first")
         reference.tap()
         XCTAssertTrue(app.buttons["reviewCleanup"].waitForExistence(timeout: 45), app.debugDescription)

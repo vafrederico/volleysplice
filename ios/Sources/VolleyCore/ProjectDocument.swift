@@ -112,7 +112,7 @@ public struct EditorDraft: Codable, Equatable, Sendable {
               cuts.allSatisfy({ !$0.id.isEmpty && $0.keepStartMs >= 0 && $0.keepStartMs <= $0.coreStartMs &&
                   $0.coreStartMs < $0.coreEndMs && $0.coreEndMs <= $0.keepEndMs && $0.keepEndMs <= durationMs &&
                   $0.confidence.isFinite && (0...1).contains($0.confidence) &&
-                  ($0.agreement == nil || ["both-models", "all-labels-v2-only", "previous-production-only"].contains($0.agreement!)) }),
+                  ($0.agreement == nil || ["both-models", "all-labels-v2-only", "previous-production-only", "neural"].contains($0.agreement!)) }),
               Set(ignoredIntervals.map(\.id)).count == ignoredIntervals.count,
               ignoredIntervals.allSatisfy({ !$0.id.isEmpty && $0.startMs >= 0 && $0.endMs > $0.startMs && $0.endMs <= durationMs }),
               userTouchedCutIds.isSubset(of: Set(cuts.map(\.id))),

@@ -7,36 +7,24 @@ have 59 ranges: 55 have identical boundaries, and the other four differ by one
 more than visual features; exact audio or probability parity is not established.
 
 This is a frozen implementation diagnostic, not model selection or release approval.
-`indoor-source-05` / `spu-match1-20260526` is historically protected test footage.
+`indoor-source-05` / `source-group-008` is historically protected test footage.
 No model, threshold, padding, decoder setting, seed or review policy was selected
 using it. Product padding remains **2 seconds before/after**; the other required
 padding cases are sensitivity results, never a best-case choice.
 
 ## Provenance
 
-The original is `20260527 - Spu Rev4s - 2026-05-26 - Match 1 - Set 1 [Tds6i9umsku](1).mp4`,
-named `VolleyCut-full-match.mp4` on Android and `tds6-reference.mp4` on iPad:
-3,579,653,863 bytes, 3840×2160, rotation 0°, audio present, duration 1105.817 s.
-Full-file SHA-256 read from the existing Android emulator copy:
+The source is the indexed recording `indoor-source-05` in `source-group-008`:
+3840?2160, rotation 0?, audio present, duration 1105.817 s. Original media names,
+source hashes, cache identities, device URIs and artifact mappings are retained
+outside Git in ledger `private-reference-0224`. Archived evidence is unchanged.
 
-`19c88cb2cbcd42c0ad65b778689a613ea648a4f03f89849ae20953c80d66b6e4`
-
-- Android cache `c490bc66537f0510ec3359439fb79f9ee88b533ee6767bc843b19f9a26add6a3`
-  was retained from September 3 under `files/native-features-v1`. Its key was
-  reproduced from `NativeFeatureCache.buildKey`: URI
-  `content://media/external/video/media/21`, source name/size above, modified time
-  `1786727888`, geometry/codecs, ROI `(0.03,0.12,0.94,0.86)` and source-frame cap
-  1,000,000. The cap was not reached: 66,349 source frames, 4,424 rows, software
-  decoder `c2.android.avc.decoder`.
-- iPad artifact `${VOLLEYCUT_IOS_LAB_ROOT}/artifacts/analysis-25c03a1835e4.json`, 29,543,721 bytes,
-  SHA-256 `57b928665a143c6d701c886bc3497a771341b0926ac83418464e85205888b506`.
-  Hashing the source SHA's ASCII text followed by
-  `[0,1105.817,0.03,0.12,0.94,0.86,0]` reproduces its full cache identity
-  `25c03a1835e4f457910cc0f931ce3c30c584391040a4208b4f9766e5862a9573`.
-  This binds the artifact to the source hash despite its missing explicit source
-  hash field. Its recorded decoded PTS all equal its requested timestamps.
-- The 720p30 cache `ebe803716a32…` was separately identified as MediaStore 23,
-  `VolleyCut-full-match-720p30-camera-feed.mp4`, 709,667,116 bytes. It is excluded.
+- The Android cache key was reproduced from archived source metadata and ROI
+  `(0.03,0.12,0.94,0.86)`. The 1,000,000-frame cap was not reached: 66,349
+  source frames, 4,424 rows, software decoder `c2.android.avc.decoder`.
+- The iPad cache identity binds its artifact to the same source despite its missing
+  explicit source-hash field. Decoded PTS equal requested timestamps.
+- A separately identified 720p30 derivative cache was excluded.
 - Android visual/audio/context binaries were copied unchanged through binary
   `adb exec-out run-as`. Base features and all six probability heads were replayed
   offline with unchanged compiled Android JVM code. **All 2,300,480 reconstructed
@@ -105,13 +93,11 @@ larger than one tick; ensemble composition reduces the final boundary difference
 
 ## Required padding sensitivity against reviewed human labels
 
-Both runtimes use the same complete reviewed gold:
-`labeling-v1-2026-08-09/completed/full-v1/indoor-source-05.labels.json`,
-SHA-256 `48fd12d57a2b0265609421a65f108c3e3b39c2c67a76fd28622371f25248d1df`.
-It has 39 rallies / 322.419 s core, annotator Vini, reviewed
-`2026-08-11T05:50:11.261480+00:00`, with no ignored intervals. Its timeout hard
-negatives remain in the evaluation universe. The mutable unreviewed `labels/full/`
-revision is not substituted.
+Both runtimes use the same complete reviewed gold for `indoor-source-05`.
+The exact label revision, digest and review provenance are preserved in ledger
+`private-reference-0224`. It has 39 rallies / 322.419 s core, with no ignored
+intervals. Timeout hard negatives remain in the evaluation universe; the mutable
+unreviewed revision is not substituted.
 
 Common duration is the gold proxy's 1105.800 s. Apply identical padding to model
 and human, clip, merge touching/overlapping intervals, and join positive gaps

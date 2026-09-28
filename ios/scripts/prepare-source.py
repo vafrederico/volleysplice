@@ -3,6 +3,8 @@ import argparse
 import base64
 import gzip
 import io
+import hashlib
+import json
 from pathlib import Path
 import tarfile
 
@@ -24,6 +26,23 @@ with tarfile.open(args.output, 'w:gz') as archive:
                 else:
                     archive.add(path, arcname=path.relative_to(root))
     archive.add(root / 'Package.swift', arcname='Package.swift')
+    # Reuse the published portable graphs; iOS retains native FP32 embeddings.
+    neural_manifest = root.parent / 'models/distilled-large/ios-manifest.json'
+    manifest = json.loads(neural_manifest.read_text(encoding='utf-8'))
+    archive.add(neural_manifest, arcname='Fixtures/rally-models/manifest.json')
+    for variant in manifest['variants'].values():
+        for asset in variant['files'].values():
+            relative = Path(variant['directory']) / asset['name']
+            payload = root.parent / 'prod/public/runtime/rally-models' / relative
+            data = payload.read_bytes()
+            if len(data) != asset['sizeBytes'] or hashlib.sha256(data).hexdigest() != asset['sha256']:
+                raise ValueError('Pinned iOS neural asset differs: ' + str(relative))
+            archive.add(payload, arcname='Fixtures/rally-models/' + relative.as_posix())
+    archive.add(root.parent / 'THIRD_PARTY_NOTICES.md', arcname='Fixtures/THIRD_PARTY_NOTICES.md')
+    archive.add(root / 'Tests/Fixtures/neural-runtime-golden.json', arcname='Fixtures/neural-runtime-golden.json')
+    for name in ('TorchVision-0.26.0-BSD-3-Clause.txt', 'DINOv2-Apache-2.0.txt',
+                 'ONNX-Runtime-1.24.2-MIT.txt', 'ONNX-Runtime-1.24.2-ThirdPartyNotices.txt'):
+        archive.add(root.parent / 'models/distilled-large/licenses' / name, arcname='Fixtures/licenses/' + name)
     archive.add(root.parent / 'android/app/src/main/res/drawable-xxxhdpi/volleysplice_logo.png', arcname='Fixtures/volleysplice_logo.png')
     for path in (root.parent / 'android/app/src/main/assets').glob('*.json'):
         archive.add(path, arcname='Fixtures/' + path.name)

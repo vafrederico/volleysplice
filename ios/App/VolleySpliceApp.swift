@@ -38,6 +38,7 @@ struct VolleySpliceApp: App {
     @Published var start = 0.0
     @Published var end = 0.0
     @Published var roi = AnalysisRegion.fullFrame
+    @Published var rallyModel: RallyModel = .default
     @Published var prepareScore = true
     @Published var generateSideSwitchMarkers = false
     @Published var progress = 0.0
@@ -148,7 +149,7 @@ struct VolleySpliceApp: App {
                 player.pause(); player.replaceCurrentItem(with: nil)
                 sourceAccess = access; selectedFingerprint = fingerprint
                 source = destination; media = info; start = 0; end = info.duration; result = nil; project = nil; showEditor = false
-                roi = .fullFrame
+                roi = .fullFrame; rallyModel = .default
                 player.replaceCurrentItem(with: access.playerItem())
                 status = "Set game bounds, then analyze"; busy = false; refreshFiles()
             } catch {
@@ -162,7 +163,7 @@ struct VolleySpliceApp: App {
         player.pause(); player.replaceCurrentItem(with: nil)
         sourceAccess = nil; selectedFingerprint = nil
         source = nil; media = nil; project = nil; result = nil; showEditor = false
-        start = 0; end = 0; roi = .fullFrame; prepareScore = true; generateSideSwitchMarkers = false
+        start = 0; end = 0; roi = .fullFrame; rallyModel = .default; prepareScore = true; generateSideSwitchMarkers = false
         error = nil; progress = 0; status = "Choose a game video"
     }
     func analyze() { enqueueAnalysis() }
@@ -284,6 +285,8 @@ struct VolleySpliceApp: App {
     }
     func restoreSetup(_ restored: ProjectDocument) {
         start = Double(restored.gameWindow.startMs) / 1000; end = Double(restored.gameWindow.endMs) / 1000
+        rallyModel = ProjectArchive.rallyModel(restored.feedback)
+        generateSideSwitchMarkers = restored.feedback?["source"]?["generateSideSwitchMarkers"]?.bool ?? true
         if let region = restored.feedback?["source"]?["featureRoi"],
            let x = region["x"]?.double, let y = region["y"]?.double,
            let width = region["width"]?.double, let height = region["height"]?.double {

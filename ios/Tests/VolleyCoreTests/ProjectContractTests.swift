@@ -192,6 +192,63 @@ final class ProjectContractTests: XCTestCase {
         XCTAssertThrowsError(try draft.validate(durationMs: 10_000))
         XCTAssertThrowsError(try ProjectArchive.importBundle(original, expectedFeatureNames: ["different"]))
     }
+    private func neuralBundle(_ model: RallyModel) throws -> JSONValue {
+        var value = try bundle()
+        let scores = try NeuralRallyScores(modelId: model.modelId, times: [0, 0.5],
+                                          probabilities: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+        let cut = EditableCut(id: "R001", coreStartMs: 1_000, coreEndMs: 3_000, confidence: 0.8, agreement: "neural")
+        var inference = ProjectArchive.initialInference(ranges: [cut], rallyModel: model)
+        inference["neuralScores"] = try ProjectArchive.neuralScoresJSON(scores)
+        inference["timestamps"] = value["initialInference"]?["timestamps"]
+        inference["probabilities"] = value["initialInference"]?["probabilities"]
+        value["initialInference"] = inference
+        var corrected = value["corrections"]?["correctedRanges"]?.array ?? []
+        corrected[0]["agreement"] = .string("neural")
+        value["corrections"]?["correctedRanges"] = .array(corrected)
+        return value
+    }
+    func testNeuralFeedbackRetainsChosenModelAndFourScoresWithoutEmbeddings() throws {
+        for model in [RallyModel.balanced, .maximumCoverage] {
+            var value = try neuralBundle(model)
+            var project = try ProjectArchive.importBundle(value)
+            XCTAssertEqual(ProjectArchive.rallyModel(project.feedback), model)
+            XCTAssertEqual(value["initialInference"]?["modelSelection"]?.string, model.variantKey)
+            XCTAssertEqual(value["initialInference"]?["componentsRole"]?.string, "score-support")
+            XCTAssertEqual(value["initialInference"]?["probabilityModelIds"]?["rally"]?.string, ProjectArchive.componentIds[0])
+            let scores = try XCTUnwrap(ProjectArchive.retainedNeuralScores(value))
+            XCTAssertEqual(scores.times, [0, 0.5])
+            XCTAssertEqual(scores.probabilities, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+            project.draft = EditorMath.setIncluded(project.draft, cutId: "R001", included: false)
+            try ProjectArchive.updateCorrections(&value, draft: project.draft)
+            XCTAssertEqual(try ProjectArchive.retainedNeuralScores(value), scores)
+            XCTAssertEqual(try ProjectArchive.importBundle(value).draft.cuts.first?.agreement, "neural")
+            XCTAssertNil(value["embeddings"])
+            XCTAssertNil(value["initialInference"]?["embeddings"])
+            XCTAssertEqual(try ProjectArchive.retainedAnalysis(value)?.baseFeatures, [1, 2, 3, 4])
+        }
+        XCTAssertEqual(ProjectArchive.rallyModel(try bundle()), .legacy)
+        XCTAssertEqual(ProjectArchive.rallyModel(nil), .legacy)
+    }
+    func testNeuralFeedbackRejectsWrongVariantHeadOrderShapeProbabilityAndWindow() throws {
+        let original = try neuralBundle(.maximumCoverage)
+        var invalid = original
+        invalid["initialInference"]?["neuralScores"]?["modelId"] = .string(RallyModel.balanced.modelId)
+        XCTAssertThrowsError(try ProjectArchive.importBundle(invalid))
+        invalid = original
+        invalid["initialInference"]?["neuralScores"]?["heads"] = .array(["live", "end", "serve", "keep"].map(JSONValue.string))
+        XCTAssertThrowsError(try ProjectArchive.importBundle(invalid))
+        invalid = original
+        invalid["initialInference"]?["neuralScores"]?["probabilities"] = try FeedbackNumericArray([Float](repeating: 0, count: 6), shape: [2, 3]).json
+        XCTAssertThrowsError(try ProjectArchive.importBundle(invalid))
+        invalid = original
+        invalid["initialInference"]?["neuralScores"]?["probabilities"] = try FeedbackNumericArray([Float](repeating: 1.01, count: 8), shape: [2, 4]).json
+        XCTAssertThrowsError(try ProjectArchive.importBundle(invalid))
+        invalid = original
+        invalid["initialInference"]?["neuralScores"]?["timestamps"] = try FeedbackNumericArray([Double(0), 10], shape: [2]).json
+        XCTAssertThrowsError(try ProjectArchive.importBundle(invalid))
+        XCTAssertThrowsError(try NeuralRallyScores(modelId: RallyModel.maximumCoverage.modelId, times: [0.5, 0], probabilities: [Float](repeating: 0, count: 8)))
+        XCTAssertThrowsError(try NeuralRallyScores(modelId: ProjectArchive.modelId, times: [0], probabilities: [0, 0, 0, 0]))
+    }
     func testAtomicLocalProjectRoundTrip() throws {
         let project = try ProjectArchive.importBundle(bundle())
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
@@ -277,5 +334,11 @@ final class ProjectContractTests: XCTestCase {
         fixture["features"] = features
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         try encoder.encode(fixture).write(to: URL(fileURLWithPath: path), options: .atomic)
+        for model in [RallyModel.balanced, .maximumCoverage] {
+            var neural = try neuralBundle(model)
+            neural["features"] = features
+            try encoder.encode(neural).write(to: URL(fileURLWithPath: path).deletingPathExtension()
+                .appendingPathExtension(model.variantKey! + ".json"), options: .atomic)
+        }
     }
 }

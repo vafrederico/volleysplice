@@ -39,7 +39,9 @@ those tests explicitly skip when permission is absent. Synthetic UI tests use
 
 `ReferenceProjectImportTests` is opt-in: stage the real full iPad feedback export
 as `Reference-iPad-full.model-feedback.json` and its matching original recording
-as `tds6-reference.mp4` in simulator Documents. It imports without analysis.
+under its saved source name in simulator Documents. Resolve that name through the
+private ledger and set `VOLLEYCUT_IOS_REFERENCE_VIDEO_NAME` in the test environment.
+Tests skip when it is absent. Import does not run analysis.
 Reference UI tests require that imported project. Do not commit personal videos,
 project snapshots or generated receipts as test fixtures.
 
