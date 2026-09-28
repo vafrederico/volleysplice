@@ -17,7 +17,8 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000 --strictPort",
     "predeploy": "npm run build",
     "deploy": "wrangler deploy",
-    "deploy:check": "npm run build && wrangler deploy --dry-run"
+    "deploy:check": "npm run build && wrangler deploy --dry-run",
+    "deploy:preview": "npm run build && wrangler preview"
   },
   "dependencies": {
     "@techstark/opencv-js": "4.12.0-release.1",
@@ -27,11 +28,6 @@
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
-  "overrides": {
-    "miniflare": {
-      "sharp": "0.35.4"
-    }
-  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
@@ -40,6 +36,6 @@
     "jsdom": "^30.0.1",
     "typescript": "^7.0.2",
     "vite": "8.2.1",
-    "wrangler": "4.130.0"
+    "wrangler": "4.142.0"
   }
 }

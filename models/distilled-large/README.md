@@ -65,6 +65,19 @@ indexed artifact root; the ledger entry remains mandatory.
 python scripts/prepare-production-neural-assets.py
 ```
 
+For a build from the public checkout, including GitHub Actions, the checked-in
+web graphs can reconstruct the exact pinned Android graphs. This requires
+`onnx==1.23.0` and verifies every source and output against the two manifests:
+
+```sh
+python scripts/prepare-android-neural-assets.py --output /external/model-bundle
+export VOLLEYCUT_NEURAL_ASSETS_DIR=/external/model-bundle
+```
+
+The Android encoder uses its original Einsum pooling operation; the web encoder
+uses the qualified browser rewrite. The reconstruction must match the original
+Android SHA-256 values, or preparation fails.
+
 Keep `VOLLEYCUT_NEURAL_ASSETS_DIR` set for Android builds and bundle generation;
 the production web build uses its checked-in release assets.
 Its generated layout is:

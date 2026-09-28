@@ -94,7 +94,9 @@ API 37 does not make the analysis kernels faster by itself, but it is now the de
 ## Build and install
 
 First prepare the pinned models as described in the
-[bundle contract](../models/distilled-large/README.md). Keep
+[bundle contract](../models/distilled-large/README.md). The public checkout can
+prepare the Android bundle from the checked-in web graphs using
+`scripts/prepare-android-neural-assets.py`. Keep
 `VOLLEYCUT_NEURAL_ASSETS_DIR` configured when running Gradle. Builds verify both
 matched model sets against the checked-in manifest and fail if any file is
 missing or changed. The generated assets are approximately 24.2 MB uncompressed
