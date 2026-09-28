@@ -13,6 +13,7 @@ import ai.onnxruntime.providers.NNAPIFlags;
 import org.json.*;
 import java.io.*;
 import java.nio.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 
@@ -45,13 +46,14 @@ public final class BenchmarkActivity extends Activity {
     }
     private void save(JSONObject report) throws Exception {
         File temp = local("result.tmp");
-        Files.writeString(temp.toPath(), report.toString(2));
+        Files.write(temp.toPath(), report.toString(2).getBytes(StandardCharsets.UTF_8));
         Files.move(temp.toPath(), local("result.json").toPath(), StandardCopyOption.REPLACE_EXISTING);
     }
     private void execute(String planName) {
         JSONObject report = new JSONObject();
         try {
-            JSONObject plan = new JSONObject(Files.readString(local(planName).toPath()));
+            JSONObject plan = new JSONObject(new String(
+                Files.readAllBytes(local(planName).toPath()), StandardCharsets.UTF_8));
             report.put("runId", plan.getString("runId"));
             report.put("status", "running");
             report.put("device", Build.MODEL);

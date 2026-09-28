@@ -8,6 +8,7 @@ import org.json.*;
 import java.io.*;
 import java.nio.*;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 
@@ -90,7 +91,8 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
             String family=spec.getString("family");
             boolean mobile=family.equals("mobile") || family.equals("mobile-large");
             String prefix=mobile?family:"dino";
-            JSONObject config=new JSONObject(Files.readString(model("-pipeline.json").toPath()));
+            JSONObject config=new JSONObject(new String(
+                Files.readAllBytes(model("-pipeline.json").toPath()),StandardCharsets.UTF_8));
             JSONArray mean=config.getJSONArray("mean"),std=config.getJSONArray("scale");
             int tokenDim=family.equals("mobile-large")?3840:mobile?2304:3840;
             int dimension=104+tokenDim+(mobile?8:0),n=times.length;

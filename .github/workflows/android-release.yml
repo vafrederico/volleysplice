@@ -98,6 +98,17 @@ jobs:
           echo "bundle_name=VolleySplice-v${VERSION_NAME}-${VERSION_CODE}-release.aab" >> "$GITHUB_OUTPUT"
           echo "release_name=VolleySplice ${VERSION_NAME} (${VERSION_CODE})" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare pinned Android neural models
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/android-model-env"
+          "$RUNNER_TEMP/android-model-env/bin/python" -m pip install \
+            --disable-pip-version-check onnx==1.23.0
+          "$RUNNER_TEMP/android-model-env/bin/python" scripts/prepare-android-neural-assets.py \
+            --output "$RUNNER_TEMP/volleycut-neural-assets"
+          echo "VOLLEYCUT_NEURAL_ASSETS_DIR=$RUNNER_TEMP/volleycut-neural-assets" >> "$GITHUB_ENV"
+
       - name: Test and build release artifacts
         working-directory: android
         shell: bash
