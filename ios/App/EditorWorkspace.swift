@@ -58,6 +58,7 @@ struct EditorWorkspace: View {
     var savedProjects: [URL] = []
     var projectNames: [URL: String] = [:]
     var projectDates: [URL: Date] = [:]
+    var projectModels: [URL: RallyModel] = [:]
     var onSelectProject: (URL) -> Void = { _ in }
     var onNewProject: () -> Void = {}
     var onManageStorage: () -> Void = {}
@@ -273,7 +274,7 @@ struct EditorWorkspace: View {
         }
     }
     private var projectMenuItems: some View {
-        SavedProjectMenuItems(projects: savedProjects, names: projectNames, dates: projectDates,
+        SavedProjectMenuItems(projects: savedProjects, names: projectNames, dates: projectDates, models: projectModels,
             onNew: onNewProject, onSelect: onSelectProject)
     }
     private var moreMenu: some View {
@@ -1064,11 +1065,13 @@ struct EditorWorkspace: View {
                     Slider(value: Binding(get: { Double(draft.confidenceReviewThreshold) }, set: { value in edit { $0.confidenceReviewThreshold = Float(value) } }), in: 0...1, step: 0.05)
                         .accessibilityIdentifier("reviewThreshold")
                 }
-                Section("Automatic cleanup") {
-                    Picker("Policy", selection: Binding(get: { draft.selectedSuppressionPolicy }, set: { value in edit { $0.selectedSuppressionPolicy = value; if value != "none" { $0.suppressionInitialBehavior = "disable-initially" } } })) {
-                        ForEach(["none", "conservative", "balanced", "aggressive"], id: \.self) { Text(["none": "Off", "conservative": "Light", "balanced": "Recommended", "aggressive": "Strong"][$0] ?? $0).tag($0) }
-                    }.accessibilityIdentifier("suppressionPolicy")
+                if !ProjectArchive.rallyModel(project.feedback).isNeural {
+                    Section("Automatic cleanup") {
+                        Picker("Policy", selection: Binding(get: { draft.selectedSuppressionPolicy }, set: { value in edit { $0.selectedSuppressionPolicy = value; if value != "none" { $0.suppressionInitialBehavior = "disable-initially" } } })) {
+                            ForEach(["none", "conservative", "balanced", "aggressive"], id: \.self) { Text(["none": "Off", "conservative": "Light", "balanced": "Recommended", "aggressive": "Strong"][$0] ?? $0).tag($0) }
+                        }.accessibilityIdentifier("suppressionPolicy")
 
+                    }
                 }
                 Section("Restore") { Button("Restore original model ranges", role: .destructive) { settings = false; resetConfirmation = true }.accessibilityIdentifier("resetRanges") }
             }.scrollContentBackground(.hidden).background(EditorPalette.paper).navigationTitle("Editor settings")

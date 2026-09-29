@@ -50,6 +50,7 @@ struct VolleySpliceApp: App {
     @Published var exportURL: URL?
     @Published var project: ProjectDocument?
     @Published var projects: [URL] = []
+    @Published private(set) var projectModels: [URL: RallyModel] = [:]
     @Published private(set) var projectNames: [URL: String] = [:]
     @Published private(set) var projectDates: [URL: Date] = [:]
     private var projectLabelRevisions: [URL: Date] = [:]
@@ -101,7 +102,7 @@ struct VolleySpliceApp: App {
     func refreshFiles() {
         fileRefreshTask?.cancel()
         let generation = UUID(); fileRefreshGeneration = generation
-        let folder = documents, previousNames = projectNames, previousDates = projectDates, previousRevisions = projectLabelRevisions
+        let folder = documents, previousModels = projectModels, previousNames = projectNames, previousDates = projectDates, previousRevisions = projectLabelRevisions
         fileRefreshTask = Task {
             let result = await Task.detached(priority: .utility) {
                 let entries = (try? FileManager.default.contentsOfDirectory(at: folder,
@@ -110,6 +111,7 @@ struct VolleySpliceApp: App {
                 let saved = entries.filter { $0.lastPathComponent.hasSuffix(".volleyproject.json") }
                 let present = Set(saved)
                 var names = previousNames.filter { present.contains($0.key) }, dates = previousDates.filter { present.contains($0.key) }
+                var models = previousModels.filter { present.contains($0.key) }
                 var revisions = previousRevisions.filter { present.contains($0.key) }
                 for url in saved {
                     let base = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
@@ -117,15 +119,18 @@ struct VolleySpliceApp: App {
                     let modified = max(base, journal)
                     guard revisions[url] != modified else { continue }
                     let metadata = try? ProjectPersistence.listMetadata(from: url)
+                    models[url] = metadata?.rallyModel
                     names[url] = metadata?.sourceName ?? "Saved project"
                     dates[url] = metadata.flatMap { $0.updatedAtMs > 0 ? Date(timeIntervalSince1970: Double($0.updatedAtMs) / 1000) : nil } ?? modified
                     revisions[url] = modified
                 }
-                return (media, saved, names, dates, revisions)
+                return (media, saved, names, dates, revisions, models)
             }.value
             guard !Task.isCancelled, generation == fileRefreshGeneration else { return }
+            projectModels = result.5
             files = result.0; projectNames = result.2; projectDates = result.3; projectLabelRevisions = result.4
             if let project, result.1.contains(projectURL(project)), project.draft.updatedAtMs > 0 {
+                projectModels[projectURL(project)] = ProjectArchive.rallyModel(project.feedback)
                 projectNames[projectURL(project)] = project.sourceName
                 projectDates[projectURL(project)] = Date(timeIntervalSince1970: Double(project.draft.updatedAtMs) / 1000)
             }
@@ -448,7 +453,7 @@ struct WorkspaceView: View {
             EditorWorkspace(project: Self.editorBinding($model.project, snapshot: project), player: model.player,
                             onSave: { if model.project?.id == project.id { model.saveProject() } }, onExportProject: { model.exportProject() },
                             onExportVideo: { model.exportVideo() }, onBack: { model.flushProject(); model.showEditor = false; model.player.pause() },
-                            savedProjects: model.projects, projectNames: model.projectNames, projectDates: model.projectDates,
+                            savedProjects: model.projects, projectNames: model.projectNames, projectDates: model.projectDates, projectModels: model.projectModels,
                             onSelectProject: model.openProject, onNewProject: model.beginNewProject,
                             onManageStorage: { if model.flushProject() { model.showStorage = true } },
                             onDeleteProject: model.deleteCurrentProject, onShowQueue: { model.showQueue = true },

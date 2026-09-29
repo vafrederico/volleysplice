@@ -55,6 +55,25 @@ final class ProjectPersistenceTests: XCTestCase {
         XCTAssertEqual(try ProjectPersistence.listMetadata(from: url).sourceName, "renamed.mp4")
         XCTAssertEqual(try ProjectPersistence.listMetadata(from: url).updatedAtMs, 1234)
     }
+    func testProjectListModelSurvivesReloadAndDraftCheckpoint() throws {
+        let directory = try folder(); defer { try? FileManager.default.removeItem(at: directory) }
+        for model in RallyModel.allCases {
+            let url = directory.appendingPathComponent(model.rawValue + ".volleyproject.json")
+            var project = fixture()
+            project.feedback?["initialInference"] = .object(["modelId": .string(model.modelId)])
+            project = try ProjectPersistence.publish(ProjectPersistence.stage(project, to: url))
+            XCTAssertEqual(try ProjectPersistence.listMetadata(from: url).rallyModel, model)
+            project.sourceName = "renamed.mp4"; project.draft.updatedAtMs = 1234
+            try ProjectPersistence.checkpoint(project, to: url)
+            let metadata = try ProjectPersistence.listMetadata(from: url)
+            XCTAssertEqual(metadata.rallyModel, model)
+            XCTAssertEqual(metadata.sourceName, "renamed.mp4")
+            XCTAssertEqual(metadata.updatedAtMs, 1234)
+        }
+        let legacyURL = directory.appendingPathComponent("old-project.volleyproject.json")
+        _ = try initial(legacyURL)
+        XCTAssertEqual(try ProjectPersistence.listMetadata(from: legacyURL).rallyModel, .legacy)
+    }
     func testOldPreparedSaveAndCheckpointCannotOverwriteNewScoreFeedback() throws {
         let directory = try folder(); defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("project.volleyproject.json")

@@ -14,10 +14,12 @@ public enum ProjectPersistence {
         let inode: UInt64, size: UInt64, modified: Date
     }
     private struct Identity: Equatable {
+        let rallyModel: RallyModel
         let id: String, sourceRevision: String
         let durationMs: Int64
         let gameWindow: TimeRange
         init(_ project: ProjectDocument) {
+            rallyModel = ProjectArchive.rallyModel(project.feedback)
             id = project.id; sourceRevision = project.draft.sourceRevision
             durationMs = project.durationMs; gameWindow = project.gameWindow
         }
@@ -64,6 +66,7 @@ public enum ProjectPersistence {
         fileprivate let journalVersion: FileVersion?
     }
     public struct ListMetadata: Sendable {
+        public let rallyModel: RallyModel
         public let sourceName: String
         public let updatedAtMs: Int64
     }
@@ -139,12 +142,12 @@ public enum ProjectPersistence {
                        ($0.baseRevision != nil || $0.legacyFileVersion == known.0)
                }) {
                 state.lock.unlock()
-                return ListMetadata(sourceName: entry.sourceName, updatedAtMs: entry.draft.updatedAtMs)
+                return ListMetadata(rallyModel: known.2.rallyModel, sourceName: entry.sourceName, updatedAtMs: entry.draft.updatedAtMs)
             }
             state.lock.unlock()
         } catch { state.lock.unlock(); throw error }
         let project = try read(from: url).project
-        return ListMetadata(sourceName: project.sourceName, updatedAtMs: project.draft.updatedAtMs)
+        return ListMetadata(rallyModel: ProjectArchive.rallyModel(project.feedback), sourceName: project.sourceName, updatedAtMs: project.draft.updatedAtMs)
     }
     /// Must follow a read/publication of this base. Stale project instances cannot
     /// checkpoint over newer model feedback or over an externally replaced file.

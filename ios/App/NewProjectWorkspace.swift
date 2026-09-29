@@ -31,6 +31,7 @@ struct SavedProjectMenuItems: View {
     let projects: [URL]
     let names: [URL: String]
     let dates: [URL: Date]
+    var models: [URL: RallyModel] = [:]
     let onNew: () -> Void
     let onSelect: (URL) -> Void
     var body: some View {
@@ -39,9 +40,9 @@ struct SavedProjectMenuItems: View {
         if projects.isEmpty { Text("No projects yet") }
         ForEach(projects, id: \.self) { url in
             Button { onSelect(url) } label: {
-                if let date = dates[url] {
-                    Text("\(names[url] ?? url.lastPathComponent) \u{00B7} \(date.formatted(date: .abbreviated, time: .shortened))")
-                } else { Text(names[url] ?? url.lastPathComponent) }
+                Text(names[url] ?? url.lastPathComponent)
+                Text([models[url]?.displayName, dates[url]?.formatted(date: .abbreviated, time: .shortened)]
+                    .compactMap { $0 }.joined(separator: " \u{00B7} "))
             }.accessibilityIdentifier("project-\(url.lastPathComponent)")
         }
     }
@@ -109,7 +110,7 @@ struct NewProjectWorkspace: View {
                     Text("CURRENT PROJECT").font(.system(size: 9, weight: .black)).tracking(0.9).foregroundStyle(SetupPalette.green)
                     Menu {
                         SavedProjectMenuItems(projects: model.projects, names: model.projectNames,
-                            dates: model.projectDates, onNew: model.beginNewProject, onSelect: model.openProject)
+                            dates: model.projectDates, models: model.projectModels, onNew: model.beginNewProject, onSelect: model.openProject)
                     } label: {
                         Text(model.sourceName ?? "Start a new video").font(.system(size: 13)).lineLimit(1)
                             .frame(maxWidth: .infinity, minHeight: 40)
