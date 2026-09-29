@@ -224,11 +224,11 @@ struct VolleySpliceLegalFooter: View {
                             Text("The BETA rally models use MobileNetV3-Large encoders distilled with a DINOv2 ViT-S/14 teacher. DINOv2 code and models are distributed under Apache License 2.0; the teacher weights are not bundled in this app.")
                             Text("Apple system frameworks, device codecs, and other platform components are provided under their respective system licenses.")
                                 .font(.system(size: 12)).foregroundStyle(SetupPalette.muted)
-                            BundledNoticeDisclosure(title: "All third-party notices", name: "THIRD_PARTY_NOTICES", fileExtension: "md")
-                            BundledNoticeDisclosure(title: "ONNX Runtime MIT License", name: "ONNX-Runtime-1.24.2-MIT", subdirectory: "licenses")
-                            BundledNoticeDisclosure(title: "ONNX Runtime third-party notices", name: "ONNX-Runtime-1.24.2-ThirdPartyNotices", subdirectory: "licenses")
-                            BundledNoticeDisclosure(title: "TorchVision BSD 3-Clause License", name: "TorchVision-0.26.0-BSD-3-Clause", subdirectory: "licenses")
-                            BundledNoticeDisclosure(title: "DINOv2 Apache License", name: "DINOv2-Apache-2.0", subdirectory: "licenses")
+                            BundledNoticeLink(title: "All third-party notices", name: "THIRD_PARTY_NOTICES", fileExtension: "md")
+                            BundledNoticeLink(title: "ONNX Runtime MIT License", name: "ONNX-Runtime-1.24.2-MIT", subdirectory: "licenses")
+                            BundledNoticeLink(title: "ONNX Runtime third-party notices", name: "ONNX-Runtime-1.24.2-ThirdPartyNotices", subdirectory: "licenses")
+                            BundledNoticeLink(title: "TorchVision BSD 3-Clause License", name: "TorchVision-0.26.0-BSD-3-Clause", subdirectory: "licenses")
+                            BundledNoticeLink(title: "DINOv2 Apache License", name: "DINOv2-Apache-2.0", subdirectory: "licenses")
                             Link("View MIT License terms", destination: URL(string: "https://opensource.org/license/mit")!)
                             Link("View Apache License 2.0", destination: URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding()
@@ -240,28 +240,82 @@ struct VolleySpliceLegalFooter: View {
     }
 }
 
-private struct BundledNoticeDisclosure: View {
+private struct BundledNoticeLink: View {
     let title: String
     let name: String
     var fileExtension = "txt"
     var subdirectory: String? = nil
-    @State private var expanded = false
-    @State private var contents: String?
     var body: some View {
-        DisclosureGroup(title, isExpanded: $expanded) {
-            if let contents {
-                Text(contents).font(.system(size: 11, design: .monospaced))
-                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-            } else { ProgressView("Loading notice") }
-        }.task(id: expanded) {
-            guard expanded, contents == nil else { return }
-            let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
-            contents = await Task.detached(priority: .utility) {
-                guard let url, let text = try? String(contentsOf: url, encoding: .utf8) else {
-                    return "This notice could not be loaded from the app."
+        NavigationLink {
+            BundledNoticeReader(title: title, name: name, fileExtension: fileExtension, subdirectory: subdirectory)
+        } label: {
+            HStack { Text(title); Spacer(); Image(systemName: "chevron.right").font(.caption) }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }.accessibilityIdentifier("notice-" + name)
+    }
+}
+
+private struct BundledNoticeDocument: Sendable {
+    let contents: String
+    let sections: [String]
+    init(_ contents: String) {
+        self.contents = contents
+        // A single selectable Text must lay out the entire document before it
+        // can report its height. Bound each lazy row, preserving every character.
+        var sections: [String] = [], start = contents.startIndex
+        while start < contents.endIndex {
+            let limit = contents.index(start, offsetBy: 3000, limitedBy: contents.endIndex) ?? contents.endIndex
+            let end = limit == contents.endIndex ? limit : contents[start..<limit].lastIndex(of: "\n")
+                .map { contents.index(after: $0) } ?? limit
+            sections.append(String(contents[start..<end]))
+            start = end
+        }
+        self.sections = sections
+    }
+}
+
+private struct BundledNoticeReader: View {
+    let title: String
+    let name: String
+    let fileExtension: String
+    let subdirectory: String?
+    @State private var document: BundledNoticeDocument?
+    @State private var loadFailed = false
+    @State private var copied = false
+    var body: some View {
+        Group {
+            if let document {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(document.sections.indices, id: \.self) { index in
+                            Text(document.sections[index]).font(.system(size: 11, design: .monospaced))
+                                .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }.padding()
                 }
-                return text
+            } else if loadFailed {
+                Text("This notice could not be loaded from the app.").padding()
+            } else { ProgressView("Loading notice") }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(SetupPalette.paper).foregroundStyle(SetupPalette.ink)
+            .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            .accessibilityIdentifier("noticeReader")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(copied ? "Copied" : "Copy all") {
+                        guard let document else { return }
+                        UIPasteboard.general.string = document.contents; copied = true
+                    }.disabled(document == nil).accessibilityIdentifier("copyNotice")
+                }
+            }.task {
+            guard document == nil, !loadFailed else { return }
+            let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
+            let loaded = await Task.detached(priority: .utility) {
+                guard let url, let text = try? String(contentsOf: url, encoding: .utf8) else { return nil as BundledNoticeDocument? }
+                return BundledNoticeDocument(text)
             }.value
+            guard !Task.isCancelled else { return }
+            document = loaded; loadFailed = loaded == nil
         }
     }
 }
