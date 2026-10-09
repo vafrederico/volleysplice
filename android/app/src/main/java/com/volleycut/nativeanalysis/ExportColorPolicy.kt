@@ -53,6 +53,17 @@ internal data class ExportColorPolicy(val color: ColorInfo) {
     }
 
     companion object {
+        internal fun requireSupportedHdrColor(color: ColorInfo) {
+            check(color.isDataSpaceValid && color.colorSpace == C.COLOR_SPACE_BT2020) {
+                "This HDR video's color metadata is unsupported."
+            }
+            // Media3 1.10.1's external HDR sampler always subtracts limited-range
+            // luma offset. Reject full range until that upstream path is corrected.
+            check(color.colorRange == C.COLOR_RANGE_LIMITED) {
+                "Full-range HDR recordings are not supported by this exporter."
+            }
+        }
+
         fun read(context: Context, source: Uri): ExportColorPolicy {
             val extractor = MediaExtractor()
             try {
@@ -62,9 +73,7 @@ internal data class ExportColorPolicy(val color: ColorInfo) {
                     if (format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") != true) continue
                     val color = MediaFormatUtil.getColorInfo(format)
                     if (ColorInfo.isTransferHdr(color)) {
-                        check(color != null && color.isDataSpaceValid && color.colorSpace == C.COLOR_SPACE_BT2020) {
-                            "This HDR video's color metadata is unsupported."
-                        }
+                        requireSupportedHdrColor(checkNotNull(color))
                         // Media3 requests an HLG base layer from a Dolby Vision decoder.
                         // That preserves iPhone profile 8.4, but would change a PQ source.
                         check(format.getString(MediaFormat.KEY_MIME) != MimeTypes.VIDEO_DOLBY_VISION ||

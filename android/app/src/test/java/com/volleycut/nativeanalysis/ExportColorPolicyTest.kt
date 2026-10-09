@@ -9,6 +9,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExportColorPolicyTest {
+    @Test fun rejectsFullRangeHlgAndPqBeforeMedia3CanApplyItsLimitedRangeOffset() {
+        for (transfer in listOf(C.COLOR_TRANSFER_HLG, C.COLOR_TRANSFER_ST2084)) {
+            val color = ColorInfo.Builder().setColorSpace(C.COLOR_SPACE_BT2020)
+                .setColorTransfer(transfer).setColorRange(C.COLOR_RANGE_LIMITED).build()
+            ExportColorPolicy.requireSupportedHdrColor(color)
+            val failure = runCatching { ExportColorPolicy.requireSupportedHdrColor(
+                color.buildUpon().setColorRange(C.COLOR_RANGE_FULL).build()) }.exceptionOrNull()
+            assertTrue(failure is IllegalStateException)
+            assertTrue(failure?.message?.contains("Full-range HDR") == true)
+        }
+    }
+
     @Test fun hdrRequiresHevcAndRejectsChangedTransferPrimariesRangeOrEightBitOutput() {
         for (transfer in listOf(C.COLOR_TRANSFER_HLG, C.COLOR_TRANSFER_ST2084)) {
             val color = ColorInfo.Builder().setColorSpace(C.COLOR_SPACE_BT2020)

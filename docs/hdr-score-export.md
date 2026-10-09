@@ -24,7 +24,9 @@ color or bit depth. HDR model accuracy remains a separate qualification task.
 Preserving the HLG base image of an iPhone Dolby Vision recording does not by
 itself preserve Dolby Vision dynamic metadata. See each platform's README for
 its export constraints. iOS currently accepts limited-range video and explicitly
-rejects full-range input rather than changing its range. The original failing
+rejects full-range input rather than changing its range. Android also rejects
+full-range HDR because its pinned Media3 HDR shader assumes a video-range luma
+offset. The original failing
 recording is still unavailable; the synthetic fixtures do not replace a test of
 that file.
 
@@ -59,7 +61,9 @@ checks place 203-nit white within two 10-bit code values of the HLG/PQ targets.
 ## Validation scope
 
 Android passed 217 JVM tests and 11 targeted emulator tests, plus a separate
-PQ-input smoke check. Coverage includes encoded SDR score pixels and rotation,
+PQ-input smoke check. A later full-range HDR preflight guard passed its three
+focused policy tests, including the new HLG/PQ range regression. Coverage
+includes encoded SDR score pixels and rotation,
 HLG/PQ floating-point GPU pixels, opaque colors, fades, and unchanged pixels
 outside the score. A software decoder override is used only by tests because
 the emulator's host H.264 decoder rejects these inputs.
