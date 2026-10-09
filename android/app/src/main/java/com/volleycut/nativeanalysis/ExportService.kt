@@ -21,7 +21,6 @@ import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.OverlayEffect
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -29,6 +28,8 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ProgressHolder
+import androidx.media3.transformer.InAppMp4Muxer
+import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
 import org.json.JSONArray
 import org.json.JSONObject
@@ -160,6 +161,8 @@ class ExportService : Service() {
         scoreSnapshot: ScoreExportSnapshot?,
     ) {
         val jobId = currentJob?.id ?: error("Export job missing")
+        val colorPolicy = ExportColorPolicy.read(this, source)
+        if (scoreSnapshot?.render == true) colorPolicy.requireHdrEncoder()
         var compositionStartUs = 0L
         val editedItems = intervals.map { interval ->
             val intervalCompositionStartUs = compositionStartUs
@@ -178,26 +181,27 @@ class ExportService : Service() {
                 if (scoreSnapshot?.render == true) {
                     setEffects(Effects(
                         emptyList(),
-                        listOf(OverlayEffect(listOf(ScoreCanvasOverlay(
+                        listOf(ScoreOverlayEffect(ScoreCanvasOverlay(
                             scoreSnapshot,
                             interval.startMs,
                             intervalCompositionStartUs,
-                        )))),
+                        ), colorPolicy.color.colorTransfer)),
                     ))
                 }
             }.build()
         }
         val sequence = EditedMediaItemSequence.withAudioAndVideoFrom(editedItems)
-        val composition = Composition.Builder(sequence).build()
+        val composition = Composition.Builder(sequence).setHdrMode(Composition.HDR_MODE_KEEP_HDR).build()
         val target = checkNotNull(destination) { "Destination missing" }
         val directMuxerFactory = DirectUriMp4MuxerFactory(this, target)
         val directOutput = directMuxerFactory.isSeekable()
         val transformerBuilder = Transformer.Builder(this)
-            .setVideoMimeType(MimeTypes.VIDEO_H264)
+            .setVideoMimeType(colorPolicy.outputMimeType)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
+            .setMuxerFactory(colorPolicy.preservingMuxer(InAppMp4Muxer.Factory()))
         val transformerOutputPath = if (directOutput) {
             outputWriteMode = "direct_document"
-            transformerBuilder.setMuxerFactory(directMuxerFactory)
+            transformerBuilder.setMuxerFactory(colorPolicy.preservingMuxer(directMuxerFactory))
             updateNotification(0, "Encoding directly to selected file")
             broadcast("running", 0, "Encoding directly to selected file", null)
             target.toString()
@@ -211,6 +215,21 @@ class ExportService : Service() {
         }
         transformer = transformerBuilder
             .addListener(object : Transformer.Listener {
+                override fun onFallbackApplied(
+                    composition: Composition,
+                    originalTransformationRequest: TransformationRequest,
+                    fallbackTransformationRequest: TransformationRequest,
+                ) {
+                    if (currentJob?.id != jobId || !colorPolicy.isHdr ||
+                        fallbackTransformationRequest.hdrMode == Composition.HDR_MODE_KEEP_HDR
+                    ) return
+                    transformer?.cancel()
+                    finishExport(
+                        "failed", "This device cannot export this video in its original HDR color space.",
+                        null, null,
+                    )
+                }
+
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     completeOutput(jobId, exportResult)
                 }

@@ -9,7 +9,7 @@ struct VideoExportResult: Sendable {
     let notes: [String]
 }
 
-/// Native on-device H.264/AAC export. The Mac lab only compiles this path.
+/// Native on-device source-color H.264/HEVC and AAC export. The Mac lab only compiles this path.
 /// Orientation is baked into upright pixels, including portrait source transforms.
 @MainActor enum VideoExporter {
     @discardableResult
@@ -145,11 +145,22 @@ struct VideoExportResult: Sendable {
                 let videoComposition = AVMutableVideoComposition()
                 videoComposition.renderSize = renderSize
                 videoComposition.frameDuration = frameDuration
-                if let format = try await sourceVideo.load(.formatDescriptions).first {
+                let sourceFormat = try await sourceVideo.load(.formatDescriptions).first
+                if let format = sourceFormat {
                     // Preserve the source color space through the compositor and overlay pass.
                     videoComposition.colorPrimaries = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_ColorPrimaries) as? String
                     videoComposition.colorYCbCrMatrix = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_YCbCrMatrix) as? String
                     videoComposition.colorTransferFunction = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String
+                }
+                let tracking = try visibleTracking(project, intervals: allIntervals)
+                let sourceIsHDR = [AVVideoTransferFunction_ITU_R_2100_HLG, AVVideoTransferFunction_SMPTE_ST_2084_PQ]
+                    .contains(videoComposition.colorTransferFunction ?? "")
+                var exportColor: VideoExportColor?
+                if sourceIsHDR || (project.draft.renderScoreOverlay && tracking.enabled) ||
+                    (videoComposition.colorPrimaries != nil && videoComposition.colorTransferFunction != nil && videoComposition.colorYCbCrMatrix != nil) {
+                    exportColor = try VideoExportColor(primaries: videoComposition.colorPrimaries,
+                        transfer: videoComposition.colorTransferFunction, matrix: videoComposition.colorYCbCrMatrix,
+                        fullRange: sourceFormat.flatMap { CMFormatDescriptionGetExtension($0, extensionKey: kCMFormatDescriptionExtension_FullRangeVideo) as? Bool } ?? false)
                 }
                 let instruction = AVMutableVideoCompositionInstruction()
                 instruction.timeRange = CMTimeRange(start: .zero, duration: time(timeline.durationMs))
@@ -158,20 +169,14 @@ struct VideoExportResult: Sendable {
                 layerInstruction.setTransform(upright, at: .zero)
                 instruction.layerInstructions = [layerInstruction]
                 videoComposition.instructions = [instruction]
-                let tracking = try visibleTracking(project, intervals: allIntervals)
                 let retainedIds = Set(allIntervals.flatMap(\.cutIds))
                 let ranges = project.draft.cuts.filter { retainedIds.contains($0.id) }.map {
                     ScoreRallyRange(coreStartMs: $0.coreStartMs, coreEndMs: $0.coreEndMs, keepStartMs: $0.keepStartMs, keepEndMs: $0.keepEndMs)
                 }
                 if project.draft.renderScoreOverlay && tracking.enabled {
                     progress(0.04, "Preparing score and point timeline overlays")
-                    let supportedPrimaries = [AVVideoColorPrimaries_ITU_R_709_2, AVVideoColorPrimaries_SMPTE_C, kCVImageBufferColorPrimaries_EBU_3213 as String]
-                    let matrix = videoComposition.colorYCbCrMatrix
-                    guard let primaries = videoComposition.colorPrimaries, supportedPrimaries.contains(primaries),
-                          videoComposition.colorTransferFunction == AVVideoTransferFunction_ITU_R_709_2,
-                          matrix == AVVideoYCbCrMatrix_ITU_R_709_2 || matrix == AVVideoYCbCrMatrix_ITU_R_601_4,
-                          YUVScoreCompositor.accepts(transform: upright) else {
-                        throw ProjectError.invalid("Score overlays currently require tagged SDR Rec.709/601 and a right-angle source orientation. Disable the score overlay to export HDR, wide-color or unsupported recordings.")
+                    guard let exportColor, YUVScoreCompositor.accepts(transform: upright) else {
+                        throw ProjectError.invalid("Score overlays require a right-angle source orientation")
                     }
                     // Freeze CPU-rendered strips and evaluate their fade in source time
                     // for every output frame. No CA animation track or full-frame RGB
@@ -180,8 +185,10 @@ struct VideoExportResult: Sendable {
                     try YUVScoreCompositor.checkKernels()
                     try ScoreOverlayRenderer.checkPixels()
                     #endif
-                    videoComposition.customVideoCompositorClass = YUVScoreCompositor.self
+                    videoComposition.customVideoCompositorClass = exportColor.isHDR ? HDRYUVScoreCompositor.self : YUVScoreCompositor.self
                     let prepared = PreparedScoreOverlay(tracking: tracking, rallyRanges: ranges)
+                    struct RasterKey: Hashable { let pixels: Data; let width: Int; let height: Int; let scoreWidth: Int }
+                    var convertedRasters: [RasterKey: ScoreBlendRaster] = [:]
                     var overlayInstructions: [AVVideoCompositionInstructionProtocol] = []
                     for span in timeline.spans {
                         let boundaries = [span.source.startMs] + prepared.changeTimestamps.filter {
@@ -192,11 +199,14 @@ struct VideoExportResult: Sendable {
                             let snapshot = prepared.snapshot(at: start)
                             let raster = try ScoreOverlayRenderer.raster(snapshot: snapshot, videoWidth: Int(renderSize.width),
                                 videoHeight: Int(renderSize.height), renderTimeline: project.draft.renderScoreTimeline)
+                            let key = RasterKey(pixels: raster.pixels, width: raster.width, height: raster.height, scoreWidth: raster.scoreWidth)
+                            let converted = convertedRasters[key] ?? ScoreBlendRaster(bgra: raster.pixels, width: raster.width,
+                                height: raster.height, scoreWidth: raster.scoreWidth, color: exportColor.space)
+                            convertedRasters[key] = converted
                             let outputStart = span.outputStartMs + start - span.source.startMs
                             overlayInstructions.append(YUVScoreInstruction(timeRange: CMTimeRange(start: time(outputStart), duration: time(end - start)),
-                                videoTrackID: video.trackID, transform: upright, raster: raster, sourceStartMs: start,
+                                videoTrackID: video.trackID, transform: upright, raster: converted, sourceStartMs: start,
                                 pointRevealTimestampMs: snapshot.revealTimestampMs,
-                                uses601Matrix: matrix == AVVideoYCbCrMatrix_ITU_R_601_4,
                                 fadeScoreOverlay: project.draft.fadeScoreOverlay == true))
                             // Preparing many score states must not starve scene changes
                             // or cancellation while UIKit rasterizes their small strips.
@@ -210,8 +220,8 @@ struct VideoExportResult: Sendable {
                 let chapters = YouTubeChapters.build(intervals: intervals, cuts: project.draft.cuts, scoreTracking: tracking,
                     options: chapterOptions)
                 try Data(YouTubeChapters.text(chapters, includeCredit: chapterOptions.includeCredit).utf8).write(to: temporaryChapters, options: .withoutOverwriting)
-                guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality),
-                      session.supportedFileTypes.contains(.mp4) else { throw ProjectError.invalid("H.264/AAC MP4 export is unavailable for this recording") }
+                guard let session = AVAssetExportSession(asset: composition, presetName: sourceIsHDR ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality),
+                      session.supportedFileTypes.contains(.mp4) else { throw ProjectError.invalid("Source-color MP4 export is unavailable for this recording") }
                 session.outputURL = temporaryVideo
                 session.outputFileType = .mp4
                 session.shouldOptimizeForNetworkUse = true
@@ -223,7 +233,7 @@ struct VideoExportResult: Sendable {
                 defer { if backgroundTask != .invalid { UIApplication.shared.endBackgroundTask(backgroundTask) } }
                 let monitor = Task { @MainActor in
                     while !Task.isCancelled {
-                        progress(0.05 + Double(session.progress) * 0.90, "Encoding H.264 video and AAC audio")
+                        progress(0.05 + Double(session.progress) * 0.90, sourceIsHDR ? "Encoding HDR HEVC video and AAC audio" : "Encoding H.264 video and AAC audio")
                         do { try await Task.sleep(for: .milliseconds(250)) } catch { break }
                     }
                 }
@@ -245,6 +255,12 @@ struct VideoExportResult: Sendable {
                     let audio = try await exported.loadTracks(withMediaType: .audio)
                     return (duration, video, audio)
                 } onCancel: { exported.cancelLoading() }
+                if let exportColor {
+                    guard let track = exportedVideo.first, let format = try await track.load(.formatDescriptions).first else {
+                        throw ProjectError.invalid("Export verification failed: missing output color description")
+                    }
+                    try exportColor.verify(format)
+                }
                 let expectedAudio = audio?.segments.contains { !$0.isEmpty } ?? false
                 guard !exportedVideo.isEmpty, !expectedAudio || !exportedAudio.isEmpty,
                       abs(actualDuration - Double(timeline.durationMs) / 1000) <= max(0.1, frameDuration.seconds * 2) else {
@@ -262,7 +278,8 @@ struct VideoExportResult: Sendable {
                 progress(1, "Video and YouTube chapters exported")
                 return VideoExportResult(videoURL: destination, chaptersURL: chapterDestination, durationMs: timeline.durationMs,
                     notes: ["\(embeddedChapterCount) chapters embedded in the MP4 and saved in a UTF-8 YouTube sidecar.",
-                            "Video is reencoded as upright H.264 with a constant source frame cadence; audio uses AAC."])
+                            "Video is reencoded as upright \(sourceIsHDR ? "10-bit HDR HEVC" : "H.264") with a constant source frame cadence; audio uses AAC.",
+                            sourceIsHDR ? "Source HDR primaries and transfer are retained; original Dolby Vision dynamic metadata is not copied after editing." : (exportColor == nil ? "Source has no complete color tags; AVFoundation selected the output color description." : "Source color space is retained.")])
             }
         } onCancel: { asset.cancelLoading() }
     }

@@ -2,7 +2,7 @@
 import Accelerate
 import Foundation
 
-/// Source 420v samples never take a full-frame RGB round trip. Immutable CPU
+/// Source NV12/P010 samples never take a full-frame RGB round trip. Immutable CPU
 /// score graphics touch only the top strip, with point opacity in source time.
 final class YUVScoreInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
     let timeRange: CMTimeRange
@@ -12,36 +12,35 @@ final class YUVScoreInstruction: NSObject, AVVideoCompositionInstructionProtocol
     let requiredSourceTrackIDs: [NSValue]?
     let videoTrackID: CMPersistentTrackID
     let transform: CGAffineTransform
-    let raster: ScoreOverlayRaster
+    let raster: ScoreBlendRaster
     let sourceStartMs: Int64
     let pointRevealTimestampMs: Int64?
     let fadeScoreOverlay: Bool
-    let uses601Matrix: Bool
 
     init(timeRange: CMTimeRange, videoTrackID: CMPersistentTrackID, transform: CGAffineTransform,
-         raster: ScoreOverlayRaster, sourceStartMs: Int64, pointRevealTimestampMs: Int64?, uses601Matrix: Bool,
+         raster: ScoreBlendRaster, sourceStartMs: Int64, pointRevealTimestampMs: Int64?,
          fadeScoreOverlay: Bool = false) {
         self.timeRange = timeRange; self.videoTrackID = videoTrackID
         self.transform = transform; self.raster = raster
         self.sourceStartMs = sourceStartMs; self.pointRevealTimestampMs = pointRevealTimestampMs
-        self.uses601Matrix = uses601Matrix
         self.fadeScoreOverlay = fadeScoreOverlay
         requiredSourceTrackIDs = [NSNumber(value: videoTrackID)]
         super.init()
     }
 }
 
-final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
-    // No CA input: AVFoundation supplies only source 420v, preserving its samples.
+class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
+    // Separate compositor classes make source and destination bit depth agree.
+    var pixelFormat: OSType { kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange }
     var sourcePixelBufferAttributes: [String: Any]? {
-        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        [kCVPixelBufferPixelFormatTypeKey as String: pixelFormat]
     }
     var requiredPixelBufferAttributesForRenderContext: [String: Any] {
-        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        [kCVPixelBufferPixelFormatTypeKey as String: pixelFormat]
     }
-    var canConformColorOfSourceFrames: Bool { true }
-    var supportsWideColorSourceFrames: Bool { false }
-    var supportsHDRSourceFrames: Bool { false }
+    var canConformColorOfSourceFrames: Bool { false }
+    var supportsWideColorSourceFrames: Bool { true }
+    var supportsHDRSourceFrames: Bool { true }
     private let cancellationLock = NSCondition()
     private var cancellationGeneration: UInt64 = 0
     private var inFlightRequests = 0
@@ -88,7 +87,7 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
                     ExportTimeline.pointTimelineOpacity(sourceTimestampMs: sourceTimestamp, revealTimestampMs: $0)
                 } ?? 0
                 try Self.compose(source: source, raster: instruction.raster, output: output,
-                                 transform: instruction.transform, pointOpacity: opacity, uses601Matrix: instruction.uses601Matrix,
+                                 transform: instruction.transform, pointOpacity: opacity,
                                  scoreOpacity: instruction.fadeScoreOverlay ? opacity : 1)
                 if generation() == current { request.finish(withComposedVideoFrame: output) }
                 else { request.finishCancelledRequest() }
@@ -107,13 +106,15 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
             && abs(abs(transform.a * transform.d - transform.b * transform.c) - 1) < 0.00001
     }
 
-    static func compose(source: CVPixelBuffer, raster: ScoreOverlayRaster, output: CVPixelBuffer,
-                        transform: CGAffineTransform, pointOpacity: Float, uses601Matrix: Bool, scoreOpacity: Float = 1) throws {
-        guard CVPixelBufferGetPixelFormatType(source) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-              CVPixelBufferGetPixelFormatType(output) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+    static func compose(source: CVPixelBuffer, raster: ScoreBlendRaster, output: CVPixelBuffer,
+                        transform: CGAffineTransform, pointOpacity: Float, scoreOpacity: Float = 1) throws {
+        let format = CVPixelBufferGetPixelFormatType(source)
+        let tenBit = format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+        guard (tenBit || format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+              CVPixelBufferGetPixelFormatType(output) == format,
               CVPixelBufferGetPlaneCount(source) == 2, CVPixelBufferGetPlaneCount(output) == 2,
               accepts(transform: transform) else {
-            throw ProjectError.invalid("Score overlays require SDR video-range YUV and a right-angle source orientation")
+            throw ProjectError.invalid("Score overlays require 8/10-bit video-range YUV and a right-angle source orientation")
         }
         guard CVPixelBufferLockBaseAddress(source, .readOnly) == kCVReturnSuccess else { throw ProjectError.invalid("Cannot read source pixels") }
         defer { CVPixelBufferUnlockBaseAddress(source, .readOnly) }
@@ -126,39 +127,44 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
                 width: CVPixelBufferGetWidthOfPlane(source, plane), height: CVPixelBufferGetHeightOfPlane(source, plane),
                 outputWidth: CVPixelBufferGetWidthOfPlane(output, plane), outputHeight: CVPixelBufferGetHeightOfPlane(output, plane),
                 inputStride: CVPixelBufferGetBytesPerRowOfPlane(source, plane), outputStride: CVPixelBufferGetBytesPerRowOfPlane(output, plane),
-                bytesPerPixel: plane == 0 ? 1 : 2, transform: transform)
+                bytesPerPixel: (plane == 0 ? 1 : 2) * (tenBit ? 2 : 1), transform: transform,
+                fillSample: plane == 0 ? (tenBit ? 64 << 6 : 16) : (tenBit ? 512 << 6 : 128), tenBit: tenBit)
         }
-        // Preserve source primaries, transfer function, matrix and chroma tags.
-        CVBufferPropagateAttachments(source, output)
-        guard let y = CVPixelBufferGetBaseAddressOfPlane(output, 0)?.assumingMemoryBound(to: UInt8.self),
-              let uv = CVPixelBufferGetBaseAddressOfPlane(output, 1)?.assumingMemoryBound(to: UInt8.self) else {
+        // Dolby Vision per-frame metadata is invalid after editing. Propagate
+        // color/chroma interpretation only; AVFoundation may generate new metadata.
+        for key in [kCVImageBufferColorPrimariesKey, kCVImageBufferTransferFunctionKey,
+                    kCVImageBufferYCbCrMatrixKey, kCVImageBufferChromaLocationTopFieldKey,
+                    kCVImageBufferChromaLocationBottomFieldKey] {
+            if let value = CVBufferCopyAttachment(source, key, nil) {
+                CVBufferSetAttachment(output, key, value, .shouldPropagate)
+            }
+        }
+        guard let y = CVPixelBufferGetBaseAddressOfPlane(output, 0),
+              let uv = CVPixelBufferGetBaseAddressOfPlane(output, 1) else {
             throw ProjectError.invalid("Missing score blend pixels")
         }
-        let width = min(CVPixelBufferGetWidth(output), raster.width)
-        let height = min(CVPixelBufferGetHeight(output), raster.height)
-        raster.pixels.withUnsafeBytes { bytes in
-            blend(bgra: bytes.bindMemory(to: UInt8.self).baseAddress!, bgraStride: raster.rowBytes,
-                  y: y, yStride: CVPixelBufferGetBytesPerRowOfPlane(output, 0),
-                  uv: uv, uvStride: CVPixelBufferGetBytesPerRowOfPlane(output, 1), width: width, height: height,
-                  uses601Matrix: uses601Matrix, pointStartX: raster.scoreWidth, pointOpacity: Double(pointOpacity),
-                  scoreOpacity: Double(scoreOpacity))
-        }
+        raster.blend(y: y, yStride: CVPixelBufferGetBytesPerRowOfPlane(output, 0),
+                     uv: uv, uvStride: CVPixelBufferGetBytesPerRowOfPlane(output, 1),
+                     frameWidth: CVPixelBufferGetWidth(output), frameHeight: CVPixelBufferGetHeight(output),
+                     tenBit: tenBit, pointOpacity: Double(pointOpacity), scoreOpacity: Double(scoreOpacity))
     }
 
     private static func copyPlane(input: UnsafeMutableRawPointer, output: UnsafeMutableRawPointer,
                                   width: Int, height: Int, outputWidth: Int, outputHeight: Int,
-                                  inputStride: Int, outputStride: Int, bytesPerPixel: Int, transform: CGAffineTransform) throws {
+                                  inputStride: Int, outputStride: Int, bytesPerPixel: Int, transform: CGAffineTransform, fillSample: Int = 16, tenBit: Bool = false) throws {
         let a = Int(transform.a.rounded()), b = Int(transform.b.rounded())
         let c = Int(transform.c.rounded()), d = Int(transform.d.rounded())
         let rotatedWidth = a == 0 ? height : width, rotatedHeight = a == 0 ? width : height
         guard rotatedWidth <= outputWidth, rotatedHeight <= outputHeight else { throw ProjectError.invalid("Score compositor output geometry mismatch") }
-        // Only optional one-pixel H.264 padding lies outside the rotated source.
-        memset(output, bytesPerPixel == 1 ? 16 : 128, outputStride * outputHeight)
+        // Only optional one-pixel codec padding lies outside the rotated source.
+        if tenBit {
+            output.assumingMemoryBound(to: UInt16.self).initialize(repeating: UInt16(fillSample), count: outputStride * outputHeight / 2)
+        } else { memset(output, Int32(fillSample), outputStride * outputHeight) }
         if a == 1 && d == 1 {
             for row in 0..<height { memcpy(output.advanced(by: row * outputStride), input.advanced(by: row * inputStride), width * bytesPerPixel) }
             return
         }
-        if a * d - b * c == 1 && rotatedWidth == outputWidth && rotatedHeight == outputHeight {
+        if bytesPerPixel <= 2 && a * d - b * c == 1 && rotatedWidth == outputWidth && rotatedHeight == outputHeight {
             var source = vImage_Buffer(data: input, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: inputStride)
             var target = vImage_Buffer(data: output, height: vImagePixelCount(outputHeight), width: vImagePixelCount(outputWidth), rowBytes: outputStride)
             let rotation = UInt8(a == -1 ? kRotate180DegreesClockwise : b == 1 ? kRotate90DegreesClockwise : kRotate270DegreesClockwise)
@@ -179,46 +185,7 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
             for sx in 0..<width {
                 let from = sy * inputStride + sx * bytesPerPixel
                 let to = (b * sx + d * sy + ty) * outputStride + (a * sx + c * sy + tx) * bytesPerPixel
-                dst[to] = src[from]
-                if bytesPerPixel == 2 { dst[to + 1] = src[from + 1] }
-            }
-        }
-    }
-
-    private static func byte(_ value: Double) -> UInt8 { UInt8(max(0, min(255, value.rounded()))) }
-    private static func blend(bgra: UnsafePointer<UInt8>, bgraStride: Int,
-                              y: UnsafeMutablePointer<UInt8>, yStride: Int,
-                              uv: UnsafeMutablePointer<UInt8>, uvStride: Int, width: Int, height: Int, uses601Matrix: Bool = false,
-                              pointStartX: Int = .max, pointOpacity: Double = 1, scoreOpacity: Double = 1) {
-        // BT.709/601 non-linear RGB -> studio-range Y'CbCr. This is the standard
-        // coding matrix for the graphics, not a transfer/gamma adjustment of video.
-        let kr = uses601Matrix ? 0.299 : 0.2126, kb = uses601Matrix ? 0.114 : 0.0722
-        for row in stride(from: 0, to: height, by: 2) {
-            for column in stride(from: 0, to: width, by: 2) {
-                var alphaSum = 0.0, cbSum = 0.0, crSum = 0.0
-                for dy in 0..<2 where row + dy < height {
-                    for dx in 0..<2 where column + dx < width {
-                        let offset = (row + dy) * bgraStride + (column + dx) * 4
-                        // BGRA is premultiplied: fade color and alpha together.
-                        // Evaluate per pixel so an odd-width scoreboard does not
-                        // fade the score side of its shared 2x2 chroma block.
-                        let opacity = max(0, min(1, column + dx >= pointStartX ? pointOpacity : scoreOpacity))
-                        let alpha = Double(bgra[offset + 3]) / 255 * opacity
-                        if alpha == 0 { continue }
-                        let blue = Double(bgra[offset]) * opacity, green = Double(bgra[offset + 1]) * opacity, red = Double(bgra[offset + 2]) * opacity
-                        let luma = kr * red + (1 - kr - kb) * green + kb * blue
-                        let yi = (row + dy) * yStride + column + dx
-                        y[yi] = byte(Double(y[yi]) * (1 - alpha) + 16 * alpha + (219.0 / 255) * luma)
-                        alphaSum += alpha
-                        cbSum += (224.0 / 255) * (blue - luma) / (2 * (1 - kb))
-                        crSum += (224.0 / 255) * (red - luma) / (2 * (1 - kr))
-                    }
-                }
-                if alphaSum == 0 { continue }
-                let index = (row / 2) * uvStride + (column / 2) * 2
-                let alpha = alphaSum / 4
-                uv[index] = byte(Double(uv[index]) * (1 - alpha) + 128 * alpha + cbSum / 4)
-                uv[index + 1] = byte(Double(uv[index + 1]) * (1 - alpha) + 128 * alpha + crSum / 4)
+                for byte in 0..<bytesPerPixel { dst[to + byte] = src[from + byte] }
             }
         }
     }
@@ -236,13 +203,13 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
             (.init(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: 2), [4,5,6,7,0,1,2,3]),
             (.init(a: 0, b: 1, c: 1, d: 0, tx: 0, ty: 0), [0,4,1,5,2,6,3,7]),
             (.init(a: 0, b: -1, c: -1, d: 0, tx: 2, ty: 4), [7,3,6,2,5,1,4,0])]
-        for bytes in [1, 2] {
+        for bytes in [1, 2, 4] {
             let inputStride = 4 * bytes + 4
             var input = [UInt8](repeating: 99, count: inputStride * 2)
             for index in 0..<8 {
                 let offset = (index / 4) * inputStride + (index % 4) * bytes
                 input[offset] = UInt8(index)
-                if bytes == 2 { input[offset + 1] = UInt8(255 - index) }
+                for byte in 1..<bytes { input[offset + byte] = UInt8(255 - index - byte) }
             }
             for (transform, expected) in cases {
                 let width = transform.a == 0 ? 2 : 4, height = transform.a == 0 ? 4 : 2
@@ -257,52 +224,16 @@ final class YUVScoreCompositor: NSObject, AVVideoCompositing, @unchecked Sendabl
                 }
                 for index in 0..<8 {
                     let offset = (index / width) * outputStride + (index % width) * bytes
-                    guard output[offset] == UInt8(expected[index]), bytes == 1 || output[offset + 1] == UInt8(255 - expected[index]) else {
+                    guard output[offset] == UInt8(expected[index]), (1..<bytes).allSatisfy({ output[offset + $0] == UInt8(255 - expected[index] - $0) }) else {
                         throw ProjectError.invalid("YUV rotation kernel self-check failed")
                     }
                 }
             }
         }
-        var graphics = [UInt8](repeating: 0, count: 4 * 4 * 4)
-        var luma = [UInt8](repeating: 100, count: 16), chroma = [UInt8](repeating: 128, count: 8)
-        func runBlend(pointStartX: Int = .max, pointOpacity: Double = 1) {
-            graphics.withUnsafeBufferPointer { image in
-                luma.withUnsafeMutableBufferPointer { y in
-                    chroma.withUnsafeMutableBufferPointer { uv in
-                        blend(bgra: image.baseAddress!, bgraStride: 16, y: y.baseAddress!, yStride: 4,
-                              uv: uv.baseAddress!, uvStride: 4, width: 4, height: 2,
-                              pointStartX: pointStartX, pointOpacity: pointOpacity)
-                    }
-                }
-            }
-        }
-        runBlend()
-        guard luma.allSatisfy({ $0 == 100 }), chroma.allSatisfy({ $0 == 128 }) else { throw ProjectError.invalid("Transparent overlay changed source samples") }
-        for row in 0..<2 {
-            for col in 0..<2 {
-                let offset = row * 16 + col * 4
-                for channel in 0..<4 { graphics[offset + channel] = 255 }
-            }
-        }
-        runBlend()
-        guard luma == [235,235,100,100,235,235,100,100,100,100,100,100,100,100,100,100], chroma.allSatisfy({ $0 == 128 }) else {
-            throw ProjectError.invalid("Score blend changed pixels outside its region")
-        }
-        luma = [UInt8](repeating: 100, count: 16)
-        for index in graphics.indices { if graphics[index] == 255 { graphics[index] = 128 } }
-        runBlend()
-        guard luma[0] == 168, luma[2] == 100, chroma.allSatisfy({ $0 == 128 }) else { throw ProjectError.invalid("Score blend premultiplied-alpha self-check failed") }
-        // A point timeline can begin on an odd column in the same chroma block
-        // as the scoreboard. Its fade must never fade the score pixels.
-        graphics = [UInt8](repeating: 255, count: graphics.count)
-        luma = [UInt8](repeating: 100, count: 16)
-        runBlend(pointStartX: 1, pointOpacity: 0.5)
-        guard Array(luma.prefix(4)) == [235, 168, 168, 168], Array(luma.suffix(8)) == Array(repeating: 100, count: 8) else {
-            throw ProjectError.invalid("Point timeline fade changed the scoreboard or pixels below the overlay")
-        }
-        luma = [UInt8](repeating: 100, count: 16)
-        runBlend(pointStartX: 1, pointOpacity: 0)
-        guard Array(luma.prefix(4)) == [235, 100, 100, 100] else { throw ProjectError.invalid("Hidden point timeline changed source pixels") }
     }
     #endif
+}
+
+final class HDRYUVScoreCompositor: YUVScoreCompositor, @unchecked Sendable {
+    override var pixelFormat: OSType { kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange }
 }

@@ -150,17 +150,29 @@ closed private movie and imports using `shouldMoveFile = true`; successful impor
 removes it, while failed imports retain it for recovery. Delivery receipts guard
 against duplicate imports after known success or an ambiguous crash.
 
-Output is upright H.264/AAC MP4 with embedded chapters and a UTF-8 YouTube chapter
-sidecar. Chapter authoring preserves encoded media and byte offsets, appending a
+Output is upright H.264/AAC MP4 for SDR or 10-bit HEVC/AAC MP4 for HDR, with
+embedded chapters and a UTF-8 YouTube chapter sidecar. Chapter authoring preserves encoded media and byte offsets, appending a
 text track and replacement metadata; fast-start network playback optimization
 is not retained. Source recordings are never modified.
 
-The score compositor preserves source pixels outside overlays and supports
-tagged SDR Rec.709/601 with right-angle rotation. Unsupported color formats
-produce an explicit error; export can proceed with overlays disabled. HDR/wide
-color overlays and Android's detailed codec/thermal benchmark controls are not
-implemented. Full-match export and provider failure cases require hardware
-validation described in [Testing](TESTING.md).
+The CPU score compositor preserves decoded source samples outside overlay pixels
+(and their shared 2x2 chroma blocks). It supports tagged SDR Rec.709/601, BT.2020,
+and P3-D65, plus BT.2020 HLG and PQ HDR, with right-angle rotations and mirrored
+orientations. Score graphics are converted from sRGB into the source gamut and
+transfer; translucent edges and fades blend in linear light. HDR graphics use
+203-nit diffuse white and the 1000-nit HLG reference display. NV12/P010 source
+video is never converted through full-frame RGB.
+
+Export verifies original primaries, transfer and matrix; HDR additionally requires
+10-bit HEVC. Full-range sources are explicitly rejected because the current
+preset path cannot promise range preservation. Untagged SDR can still export
+without scores using AVFoundation defaults. Original Dolby Vision dynamic metadata
+is not copied after pixels are edited; output retains the underlying HLG/PQ color
+space, without promising the original Dolby Vision metadata. See
+[HDR export validation](../docs/hdr-score-export.md) for platform coverage.
+
+Full-match export, physical HDR display appearance and provider failure cases
+require hardware validation described in [Testing](TESTING.md).
 
 ## Analysis references
 

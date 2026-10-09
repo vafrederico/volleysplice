@@ -111,3 +111,43 @@ eviction/download cancellation, Photos denial/recovery and interrupted delivery.
 Local-provider and simulator Photos checks do not cover those conditions.
 For cross-platform import/edit/reexport gaps, see
 [Project interoperability](PROJECT-INTEROPERABILITY.md).
+
+## HDR score export without a GPU
+
+`ScoreColorSpaceTests` runs in the portable Swift package. It checks independent
+ST.2084 luminance values, HLG 203-nit white at 75%, colored HLG OOTF round trips,
+sRGB-to-BT.2020 primaries, premultiplied alpha, linear fades, NV12/P010 storage,
+row strides, and bit-exact transparent/background preservation. The converted
+raster uses a compact color palette to avoid retaining full floating-point colors
+for every pixel of every score state.
+
+For a bounded AVFoundation check on macOS, compile and run the standalone probe:
+
+```sh
+xcrun swiftc -Onone -whole-module-optimization -D DEBUG -parse-as-library Sources/VolleyCore/*.swift \
+  App/VideoExportColor.swift App/YUVScoreCompositor.swift \
+  Tests/Container/HDRScoreProbe.swift -o artifacts/hdr-score-probe
+python3 -c 'import subprocess; subprocess.run(["artifacts/hdr-score-probe", "artifacts/hdr-score-samples"], timeout=240, check=True)'
+```
+
+The sample directory must not exist beforehand. This creates only three-frame
+64x48 synthetic SDR/HLG/PQ recordings, exports each with and without a score,
+using the custom compositor for scores and the production built-in compositor
+when scores are off, then verifies color tags, HDR 10-bit HEVC, decoded score luminance and unchanged
+background luminance within codec tolerance. It also checks every rotation and
+mirror permutation for 8-bit, 16-bit and 32-bit (P010 CbCr) samples. An unavailable
+HEVC software encoder or compositor runtime is a validation limitation, not a
+passing result. This probe does not establish physical HDR display appearance,
+real iPhone Dolby Vision compatibility, or full-recording export performance.
+
+Validation on the CPU-only macOS lab: 165 portable tests passed; unsigned iOS
+build-for-testing compiles the app and hosted test targets. The bounded probe
+passed all three direct pixel-buffer cases and all six SDR/HLG/PQ exports with
+scores on/off, including output metadata, HDR 10-bit checks and decoded pixels.
+The hosted XCTest targets were compiled, not executed. Independent ffprobe checks
+confirmed H.264 8-bit Rec.709 for SDR and HEVC Main 10 BT.2020 HLG/PQ for HDR.
+
+The synthetic HLG writer initially failed while using default Dolby Vision
+metadata insertion. Its fixture writer now explicitly disables dynamic metadata
+insertion; the production export preset is unchanged. Plain HLG tests pass,
+while real iPhone Dolby Vision input and HDR display appearance remain unverified.

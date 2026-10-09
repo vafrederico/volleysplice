@@ -9,9 +9,7 @@ import android.net.Uri
 import android.util.Base64
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.OverlayEffect
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -19,6 +17,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.InAppMp4Muxer
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -167,11 +166,12 @@ class ScoreOverlayInstrumentedTest {
             excludedRallyIds = emptySet(),
             rallyRanges = emptyList(),
         )
+        val policy = ExportColorPolicy.read(context, Uri.fromFile(input))
         val edited = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(input)))
             .setDurationUs(1_000_000)
             .setEffects(Effects(
                 emptyList(),
-                listOf(OverlayEffect(listOf(ScoreCanvasOverlay(snapshot, 0, 0)))),
+                listOf(ScoreOverlayEffect(ScoreCanvasOverlay(snapshot, 0, 0), policy.color.colorTransfer)),
             ))
             .build()
         val composition = Composition.Builder(
@@ -182,7 +182,9 @@ class ScoreOverlayInstrumentedTest {
 
         instrumentation.runOnMainSync {
             Transformer.Builder(context)
-                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .withInstrumentedDecoder(context)
+                .setVideoMimeType(policy.outputMimeType)
+                .setMuxerFactory(policy.preservingMuxer(InAppMp4Muxer.Factory()))
                 .addListener(object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                         completed.countDown()
