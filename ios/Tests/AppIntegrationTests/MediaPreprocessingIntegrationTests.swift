@@ -4,6 +4,22 @@ import XCTest
 @testable import VolleySplice
 
 final class MediaPreprocessingIntegrationTests: XCTestCase {
+    func testSpecialistDecoderSupportsIsolatedAndSharedTerminalTargets() async throws {
+        let source = try XCTUnwrap(Bundle.main.url(forResource: "ios-editor-fixture", withExtension: "mp4"))
+        let media = try await MediaDecoder.describe(source)
+        let last = media.duration - 0.01, previous = media.duration - 0.04
+        for targets in [[last], [previous, last]] {
+            let samples = try await SpecialistFrameDecoder.decode(url: source, media: media, roi: .fullFrame,
+                servingTimes: targets, sideSwitchTimes: [last], progress: { _, _ in })
+            XCTAssertEqual(Set(samples.servingGray.keys), Set(targets))
+            XCTAssertEqual(Set(samples.sideSwitchBGR.keys), Set([last]))
+            for target in targets {
+                let pts = try XCTUnwrap(samples.decodedTimes[target])
+                XCTAssertGreaterThanOrEqual(pts + 1, target)
+            }
+        }
+    }
+
     func testHDRAnalysisRequestsSDRConversionBeforeEightBitSampling() throws {
         let settings = AnalysisVideoColor.outputSettings(isHDR: true)
         XCTAssertEqual(settings[kCVPixelBufferPixelFormatTypeKey as String] as? OSType, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)

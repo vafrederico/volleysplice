@@ -28,19 +28,9 @@ enum SpecialistFrameDecoder {
         let outputSettings = try await AnalysisVideoColor.outputSettings(for: track)
         for group in groups {
             try Task.checkCancellation()
-            let reader = try AVAssetReader(asset: asset)
-            let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
-            output.alwaysCopiesSampleData = false
-            guard reader.canAdd(output) else { throw AnalysisError.invalid("Specialist decoder unavailable") }
-            reader.add(output)
-            reader.timeRange = CMTimeRange(start: CMTime(seconds: max(0, group[0] - 0.001), preferredTimescale: 60000),
-                                          end: CMTime(seconds: media.duration, preferredTimescale: 60000))
-            guard reader.startReading() else { throw reader.error ?? AnalysisError.invalid("Specialist decode did not start") }
-            defer { reader.cancelReading() }
-            var index = 0
-            var fallback: (buffer: CVPixelBuffer, pts: Double)?
-            func store(_ buffer: CVPixelBuffer, pts: Double, through upper: Int) throws {
-                let targets = group[index..<upper]
+            try SpecialistFrameReader.read(asset: asset, track: track, targets: group, duration: media.duration,
+                                           outputSettings: outputSettings) { buffer, pts, indices in
+                let targets = group[indices]
                 let gray = try targets.contains(where: { serving.contains($0) }) ? ServingSideFeatureExtractor.grayscale(MediaDecoder.sampleRGBA(buffer, roi: roi, rotation: media.rotation)) : nil
                 var bgr: [UInt8]?
                 if targets.contains(where: { switches.contains($0) }) {
@@ -54,25 +44,8 @@ enum SpecialistFrameDecoder {
                     if switches.contains(time) { result.sideSwitchBGR[time] = bgr }
                     result.decodedTimes[time] = pts
                 }
-                index = upper
                 progress(Double(result.decodedTimes.count) / Double(max(1, requested.count)), "Score frames \(result.decodedTimes.count)/\(requested.count)")
             }
-            while index < group.count, let sample = output.copyNextSampleBuffer() {
-                try Task.checkCancellation()
-                let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-                guard pts.isFinite, let buffer = CMSampleBufferGetImageBuffer(sample) else { throw AnalysisError.invalid("Invalid specialist frame") }
-                if pts + 0.001 < group[index] {
-                    if pts >= media.duration - 1 { fallback = (buffer, pts) }
-                    continue
-                }
-                var upper = index + 1
-                while upper < group.count && pts + 0.001 >= group[upper] { upper += 1 }
-                try autoreleasepool { try store(buffer, pts: pts, through: upper) }
-                fallback = nil
-            }
-            if reader.status == .failed { throw reader.error ?? AnalysisError.invalid("Specialist frame decode failed") }
-            if index < group.count, let fallback { try store(fallback.buffer, pts: fallback.pts, through: group.count) }
-            guard index == group.count else { throw AnalysisError.invalid("Specialist frame segment ended early") }
         }
         return result
     }
