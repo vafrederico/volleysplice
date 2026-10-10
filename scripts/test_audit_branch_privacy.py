@@ -65,15 +65,5 @@ class PublicLegalUrlTest(unittest.TestCase):
             del patterns["test-public-token"]
 
 
-class PublicArchiveTest(unittest.TestCase):
-    def test_only_exact_upstream_source_bytes_are_exempt(self):
-        path = "vendor/hdr-hevc-wasm/sources/ffmpeg-7.1.5.tar.xz"
-        data = (Path(__file__).resolve().parents[1] / path).read_bytes()
-        self.assertEqual(("", []), AUDIT["audit_text"](data, path))
-        changed = bytes([data[0] ^ 1]) + data[1:]
-        self.assertEqual(["unverified-public-source-archive"], AUDIT["audit_text"](changed, path)[1])
-        self.assertTrue(AUDIT["audit_text"](data, "another.tar.xz")[0])
-
-
 if __name__ == "__main__":
     unittest.main()

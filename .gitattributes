@@ -1,8 +1,4 @@
 vendor/libswresample-wasm/dist/libswresample.mjs text eol=lf whitespace=-blank-at-eol
-vendor/hdr-hevc-wasm/dist/hdr-hevc.mjs text eol=lf whitespace=-blank-at-eol
-vendor/hdr-hevc-wasm/dist/hdr-hevc.wasm binary
-vendor/hdr-hevc-wasm/sources/*.tar.xz binary
-scripts/build-hdr-hevc-wasm.sh text eol=lf
 prod/public/runtime/libswresample.mjs text eol=lf
 android/*.sh text eol=lf
 ios/scripts/build-device.sh text eol=lf

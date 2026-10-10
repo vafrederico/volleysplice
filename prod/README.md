@@ -82,20 +82,9 @@ and save only the missing specialist work without repeating the main feature pip
 The optional **Render score on final video** setting is available only while score
 tracking is enabled and defaults off per project. When enabled, the editor previews the
 source-timestamped score box over the video and the MP4 exporter burns the same Team 1 /
-Team 2 score into the top-left of every retained frame. SDR uses the AVC/canvas
-path. Tagged BT.2020 HLG/PQ sources retain their transfer function, range, and
-10-bit depth with or without scores. HDR graphics are converted from sRGB to
-BT.2020 at 203-nit white and blended in display light, without sending video
-pixels through an SDR canvas. Dolby Vision Profile 8.4/8.1 exports preserve the
-compatible HLG/PQ base layer; original dynamic metadata is not copied after editing.
-
-HDR encoding prefers native HEVC Main10, with a real-frame capability check.
-If unavailable, the browser uses 10-bit VP9 in MP4 (player compatibility differs
-from HEVC). Score-free exports use direct native frames when the encoder accepts
-them. Scored exports use native readable 10-bit planes when available; opaque
-HEVC frames fall back to the bundled FFmpeg WASM decoder in a dedicated worker.
-The fallback is slower and currently requires MP4/QuickTime HEVC Main10 inputs.
-Unsupported HDR formats/encoders fail explicitly, without an SDR fallback.
+Team 2 score into the top-left of every retained frame. The existing decode/AVC encode
+path is used with or without the overlay; the enabled path additionally composites each
+frame through a reusable canvas.
 
 ## Run locally
 
@@ -140,7 +129,7 @@ Do not open `dist/index.html` directly through `file://`; WebCodecs and module w
 need an HTTP origin.
 
 MP4 export uses direct File System Access when available.
-Exact boundaries require a single video/AAC transcode; the output keeps
+Exact boundaries require a single AVC/AAC transcode; the output keeps
 the source display dimensions and uses the very-high-quality encoder preset.
 
 ## Cloudflare Workers Static Assets (local builds)

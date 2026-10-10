@@ -8,5 +8,3 @@ public/licenses/
 vite.config.local.ts
 
 public/runtime/ort/
-public/runtime/hdr-hevc.mjs
-public/runtime/hdr-hevc.wasm

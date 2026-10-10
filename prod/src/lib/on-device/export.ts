@@ -15,10 +15,6 @@ import {
 } from "mediabunny";
 
 import { openLocalMedia } from "./media";
-import { assertHdrEncoding, chooseHdrEncoder, hdrColor, hdrOutputSample, hdrSamples } from "./hdr-export";
-import type { HdrColor } from "./hdr-export";
-import type { HdrMask } from "./hdr-color";
-import { validateHdrContainer } from "./hdr-container";
 import {
   clipSampleToInterval,
   normalizeExportIntervals,
@@ -77,14 +73,14 @@ type ExportCanvasContext =
   | CanvasRenderingContext2D
   | OffscreenCanvasRenderingContext2D;
 
-function createExportCanvas(width: number, height: number, alpha = false): {
+function createExportCanvas(width: number, height: number): {
   canvas: ExportCanvas;
   context: ExportCanvasContext;
 } {
   const canvas: ExportCanvas = typeof OffscreenCanvas === "function"
     ? new OffscreenCanvas(width, height)
     : Object.assign(document.createElement("canvas"), { width, height });
-  const context = canvas.getContext("2d", { alpha, willReadFrequently: alpha });
+  const context = canvas.getContext("2d", { alpha: false });
   if (!context) throw new Error("This browser cannot draw the score overlay.");
   return { canvas, context };
 }
@@ -218,25 +214,9 @@ export async function exportRawQualityReel(
   const audioQuality = new Quality("high");
   let videoSupported: boolean;
   let audioSupported: boolean;
-  let hdr: HdrColor | null = null;
-  let hdrEncoder: Awaited<ReturnType<typeof chooseHdrEncoder>> | null = null;
   try {
-    hdr = hdrColor(await media.videoTrack.getColorSpace());
-    if (hdr && media.info.videoCodec === "hevc") await validateHdrContainer(file, hdr.transfer);
-    if (hdr) {
-      let directProbe: VideoSample | null = null;
-      try {
-        if (!preparedScoreOverlay) {
-          directProbe = await new VideoSampleSink(media.videoTrack, { hardwareAcceleration: "prefer-hardware" })
-            .getSample(Math.max(intervals[0].start, await media.videoTrack.getFirstTimestamp())).catch(() => null);
-        }
-        hdrEncoder = await chooseHdrEncoder(
-          await media.videoTrack.getCodedWidth(), await media.videoTrack.getCodedHeight(), hdr, directProbe,
-        );
-      } finally { directProbe?.close(); }
-    }
     [videoSupported, audioSupported] = await Promise.all([
-      hdrEncoder ? Promise.resolve(true) : canEncodeVideo("avc", {
+      canEncodeVideo("avc", {
         width: media.info.width,
         height: media.info.height,
         quality: videoQuality,
@@ -289,14 +269,10 @@ export async function exportRawQualityReel(
     keyFrameInterval: 2,
     latencyMode: "quality",
     hardwareAcceleration: "prefer-hardware",
-    ...hdrEncoder?.encoding,
-    onEncodedPacket: (_packet, metadata) => {
-      if (hdr && metadata?.decoderConfig) assertHdrEncoding(metadata.decoderConfig, hdr);
-    },
   });
-  // SDR canvas overlays bake rotation in; HDR overlays retain coded orientation.
+  // Overlay frames are rendered in display orientation, so rotation is baked in.
   output.addVideoTrack(videoSource, {
-    rotation: preparedScoreOverlay && !hdr ? 0 : media.info.rotation,
+    rotation: preparedScoreOverlay ? 0 : media.info.rotation,
   });
   const audioSource = media.audioTrack
     ? new AudioSampleSource({ codec: "aac", quality: audioQuality })
@@ -310,7 +286,6 @@ export async function exportRawQualityReel(
   let progressTimer: number | null = null;
   let currentCompletedSeconds = 0;
   let currentDetail = "Preparing original local video";
-  let pumpFailed = false;
   const emitProgress = () => {
     const now = performance.now();
     onProgress?.({
@@ -341,37 +316,20 @@ export async function exportRawQualityReel(
         hardwareAcceleration: "prefer-hardware",
       });
       const overlaySurface = preparedScoreOverlay
-        ? createExportCanvas(media.info.width, hdr ? Math.min(76, media.info.height) : media.info.height, Boolean(hdr))
+        ? createExportCanvas(media.info.width, media.info.height)
         : null;
       let outputOffset = 0;
       try {
         for (const interval of intervals) {
           let first = true;
           const clipDuration = interval.end - interval.start;
-          const samples = hdr && !hdrEncoder?.direct ? hdrSamples(media.videoTrack, hdr, interval.start, interval.end) : sink.samples(interval.start, interval.end);
-          for await (const sample of samples) {
+          for await (const sample of sink.samples(interval.start, interval.end)) {
             try {
-              if (pumpFailed) break;
               const timing = clipSampleToInterval(sample.timestamp, sample.duration, interval);
               if (!timing) continue;
               const outputTimestamp = outputOffset + timing.timestamp;
               const sourceTimestamp = interval.start + timing.timestamp;
-              if (hdr && !hdrEncoder?.direct) {
-                let mask: HdrMask | undefined;
-                if (overlaySurface && preparedScoreOverlay) {
-                  overlaySurface.context.clearRect(0, 0, overlaySurface.canvas.width, overlaySurface.canvas.height);
-                  drawScoreOverlay(
-                    overlaySurface.context, media.info.width, media.info.height,
-                    scoreOverlaySnapshot(preparedScoreOverlay, sourceTimestamp),
-                    scorePointTimelineSnapshot(preparedScoreOverlay, sourceTimestamp),
-                    preparedScoreOverlay.renderPointTimeline, preparedScoreOverlay.fadeScoreOverlay,
-                  );
-                  mask = overlaySurface.context.getImageData(0, 0, overlaySurface.canvas.width, overlaySurface.canvas.height);
-                }
-                const outgoing = await hdrOutputSample(sample, hdr, outputTimestamp, timing.duration, mask);
-                try { await videoSource.add(outgoing, first ? { keyFrame: true } : undefined); }
-                finally { outgoing.close(); }
-              } else if (overlaySurface && preparedScoreOverlay) {
+              if (overlaySurface && preparedScoreOverlay) {
                 overlaySurface.context.clearRect(
                   0,
                   0,
@@ -424,7 +382,6 @@ export async function exportRawQualityReel(
             }
           }
           outputOffset += clipDuration;
-          if (pumpFailed) break;
         }
       } finally {
         videoSource.close();
@@ -440,7 +397,6 @@ export async function exportRawQualityReel(
           for await (const sample of sink.samples(interval.start, interval.end)) {
             let outgoing = sample;
             try {
-              if (pumpFailed) break;
               const firstFrame = Math.max(
                 0,
                 Math.round((interval.start - sample.timestamp) * sample.sampleRate),
@@ -461,18 +417,13 @@ export async function exportRawQualityReel(
             }
           }
           outputOffset += interval.end - interval.start;
-          if (pumpFailed) break;
         }
       } finally {
         audioSource.close();
       }
     };
 
-    const guardedPump = async (pump: () => Promise<void>) => {
-      try { await pump(); } catch (error) { pumpFailed = true; throw error; }
-    };
-    const results = await Promise.allSettled([guardedPump(videoPump), guardedPump(audioPump)]);
-    for (const result of results) if (result.status === "rejected") throw result.reason;
+    await Promise.all([videoPump(), audioPump()]);
     reportProgress(
       totalSeconds,
       destination.kind === "opfs"
