@@ -49,12 +49,12 @@ enum ScoreAnalysis {
             previousProductionState: ProductionStateOutput(modelId: "model-9c92b8e9333f", times: times, rallyProbabilities: previous.rallyProbabilities, deadStateProbabilities: previous.deadStateProbabilities))
     }
     private struct Cache: Codable {
-        var schema = "ios-serving-gray-area-color-opencv412-v2"
+        var schema = "ios-serving-gray-area-sdr709-opencv412-v3"
         var candidates: [ServingSideInference.CandidateInterval]
         var rawFeatures: [Double] = []
     }
     private struct SwitchCache: Codable {
-        var schema = "ios-switch-bgr-area-color-opencv412-v2"
+        var schema = "ios-switch-bgr-area-sdr709-opencv412-v3"
         var plan: SideSwitchInference.FramePlan
         var visual: [Double]
     }
@@ -74,7 +74,7 @@ enum ScoreAnalysis {
         var switchError: String?
         if let switchPlan, let data = try? Data(contentsOf: switchCacheURL),
            let saved = try? PropertyListDecoder().decode(SwitchCache.self, from: data),
-           saved.schema == "ios-switch-bgr-area-color-opencv412-v2", saved.plan == switchPlan,
+           saved.schema == "ios-switch-bgr-area-sdr709-opencv412-v3", saved.plan == switchPlan,
            saved.visual.count == switchPlan.candidates.count * 22, saved.visual.allSatisfy(\.isFinite) { switchVisual = saved.visual }
         var cache = Cache(candidates: plan.candidates)
         if let data = try? Data(contentsOf: cacheURL), let saved = try? PropertyListDecoder().decode(Cache.self, from: data),

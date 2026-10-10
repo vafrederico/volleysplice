@@ -25,10 +25,11 @@ enum SpecialistFrameDecoder {
         var result = Samples(); result.segments = groups.count
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw AnalysisError.invalid("Missing specialist video track") }
+        let outputSettings = try await AnalysisVideoColor.outputSettings(for: track)
         for group in groups {
             try Task.checkCancellation()
             let reader = try AVAssetReader(asset: asset)
-            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
             output.alwaysCopiesSampleData = false
             guard reader.canAdd(output) else { throw AnalysisError.invalid("Specialist decoder unavailable") }
             reader.add(output)

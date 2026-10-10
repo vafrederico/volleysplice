@@ -1,8 +1,18 @@
+import AVFoundation
 import CoreVideo
 import XCTest
 @testable import VolleySplice
 
 final class MediaPreprocessingIntegrationTests: XCTestCase {
+    func testHDRAnalysisRequestsSDRConversionBeforeEightBitSampling() throws {
+        let settings = AnalysisVideoColor.outputSettings(isHDR: true)
+        XCTAssertEqual(settings[kCVPixelBufferPixelFormatTypeKey as String] as? OSType, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+        let color = try XCTUnwrap(settings[AVVideoColorPropertiesKey] as? [String: String])
+        XCTAssertEqual(color[AVVideoColorPrimariesKey], AVVideoColorPrimaries_ITU_R_709_2)
+        XCTAssertEqual(color[AVVideoTransferFunctionKey], AVVideoTransferFunction_ITU_R_709_2)
+        XCTAssertEqual(color[AVVideoYCbCrMatrixKey], AVVideoYCbCrMatrix_ITU_R_709_2)
+        XCTAssertNil(AnalysisVideoColor.outputSettings(isHDR: false)[AVVideoColorPropertiesKey])
+    }
     private func fixture() throws -> CVPixelBuffer {
         var result: CVPixelBuffer?
         let status = CVPixelBufferCreate(kCFAllocatorDefault, 6, 4,
@@ -125,9 +135,9 @@ final class MediaPreprocessingIntegrationTests: XCTestCase {
         let staleServing = [Double](repeating: 314.25, count: servingPlan.candidates.count * ServingSideInference.columns)
         let staleSwitch = [Double](repeating: 314.25, count: switchPlan.candidates.count * 22)
         let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
-        try encoder.encode(SavedServing(schema: "ios-serving-gray-opencv412-v1", candidates: servingPlan.candidates,
+        try encoder.encode(SavedServing(schema: "ios-serving-gray-area-color-opencv412-v2", candidates: servingPlan.candidates,
                                         rawFeatures: staleServing)).write(to: cache)
-        try encoder.encode(SavedSwitch(schema: "ios-switch-bgr-opencv412-v1", plan: switchPlan,
+        try encoder.encode(SavedSwitch(schema: "ios-switch-bgr-area-color-opencv412-v2", plan: switchPlan,
                                        visual: staleSwitch)).write(to: switchCache)
         let result = try await ScoreAnalysis.run(url: source, media: media, roi: .fullFrame, ranges: ranges,
             all: ProductionServeOutput(modelId: "model-1ca43e38eefc", times: times, probabilities: rally),
@@ -138,8 +148,8 @@ final class MediaPreprocessingIntegrationTests: XCTestCase {
         XCTAssertNotEqual(result.servingSide.rawFeatures, staleServing)
         let servingSaved = try PropertyListDecoder().decode(SavedServing.self, from: Data(contentsOf: cache))
         let switchSaved = try PropertyListDecoder().decode(SavedSwitch.self, from: Data(contentsOf: switchCache))
-        XCTAssertEqual(servingSaved.schema, "ios-serving-gray-area-color-opencv412-v2")
-        XCTAssertEqual(switchSaved.schema, "ios-switch-bgr-area-color-opencv412-v2")
+        XCTAssertEqual(servingSaved.schema, "ios-serving-gray-area-sdr709-opencv412-v3")
+        XCTAssertEqual(switchSaved.schema, "ios-switch-bgr-area-sdr709-opencv412-v3")
         XCTAssertNotEqual(switchSaved.visual, staleSwitch)
         XCTAssertTrue(switchSaved.visual.allSatisfy(\.isFinite))
     }

@@ -140,7 +140,7 @@ enum MediaDecoder {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw AnalysisError.invalid("No video track") }
         let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: try await AnalysisVideoColor.outputSettings(for: track))
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else { throw AnalysisError.invalid("Video decoder unavailable") }
         reader.add(output)

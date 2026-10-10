@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 struct FeatureCacheRecord: Codable {
-    var schema = "ios-avfoundation-nv12-area-nearest-opencv412-audio-percentile-v2"
+    var schema = "ios-avfoundation-sdr709-nv12-area-nearest-opencv412-audio-percentile-v3"
     var identity: String
     var complete = false
     var times: [Double] = []
