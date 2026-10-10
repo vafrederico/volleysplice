@@ -1,4 +1,6 @@
 export type RuntimeAsset =
+  | "hdr-hevc.mjs"
+  | "hdr-hevc.wasm"
   | "rally-models/manifest.json"
   | "feature-reductions.wasm"
   | "libswresample.mjs"

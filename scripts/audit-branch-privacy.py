@@ -168,6 +168,14 @@ def public_onnx_text(data):
 
 
 def audit_text(data, source_path):
+    # Exact public upstream source archive, distributed to satisfy LGPL source
+    # availability. Compressed bytes are not text; no other archive is exempt.
+    # A single-byte change fails closed, including for historical branch blobs.
+    if source_path == "vendor/hdr-hevc-wasm/sources/ffmpeg-7.1.5.tar.xz":
+        expected = "de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f"
+        if hashlib.sha256(data).hexdigest() == expected:
+            return "", []
+        return "", ["unverified-public-source-archive"]
     if PUBLIC_ONNX_PATH.fullmatch(source_path or ""):
         try:
             return public_onnx_text(data), []
@@ -214,6 +222,7 @@ def main():
     paths = set(git("diff", "--name-only", f"{args.base}...{revision}").decode().splitlines())
     if not args.revision:
         paths.update(git("ls-files", "--modified", "--others", "--exclude-standard").decode().splitlines())
+        paths.update(git("diff", "--cached", "--name-only").decode().splitlines())
     findings = []
     inspected = 0
     for path in sorted(paths):

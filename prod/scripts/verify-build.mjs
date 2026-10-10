@@ -21,6 +21,9 @@ if (createHash("sha256").update(suppressionModelBytes).digest("hex") !== suppres
 }
 
 const expectedHashes = new Map([
+  ["runtime/hdr-hevc.mjs", "2f05d895a5f93670b96d8de066b7d49f7e6bad8397d762e144c703d2111009a2"],
+  ["runtime/hdr-hevc.wasm", "e77fdb640edb7ced739397c581d0c35eeff9993cb63a850f6cf202fd44af03e2"],
+  ["licenses/ffmpeg-7.1.5.tar.xz", "de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f"],
   [
     "runtime/model-1ca43e38eefc.json",
     "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f",
@@ -84,6 +87,9 @@ for (const asset of [
   "runtime/volleysplice-logo.png",
   "runtime/volleysplice-icon-transparent.png",
   "licenses/FFmpeg-LGPL-2.1.txt",
+  "licenses/hdr-hevc-LGPL-2.1.txt",
+  "licenses/hdr-hevc-wrapper-source.c",
+  "licenses/build-hdr-hevc-wasm.sh",
   "licenses/VolleySplice-MIT.txt",
   "licenses/THIRD_PARTY_NOTICES.md",
   "licenses/mediabunny-MPL-2.0.txt",

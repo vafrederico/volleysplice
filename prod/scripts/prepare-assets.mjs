@@ -56,6 +56,14 @@ for (const filename of licenseCandidates) {
 }
 
 await mkdir(licenseDirectory, { recursive: true });
+const hdrRoot = resolve(appRoot, "../vendor/hdr-hevc-wasm");
+await Promise.all([
+  ...["hdr-hevc.mjs", "hdr-hevc.wasm"].map(name => copyFile(resolve(hdrRoot, "dist", name), resolve(runtimeDirectory, name))),
+  copyFile(resolve(hdrRoot, "decoder.c"), resolve(licenseDirectory, "hdr-hevc-wrapper-source.c")),
+  copyFile(resolve(hdrRoot, "COPYING.LGPLv2.1"), resolve(licenseDirectory, "hdr-hevc-LGPL-2.1.txt")),
+  copyFile(resolve(hdrRoot, "sources/ffmpeg-7.1.5.tar.xz"), resolve(licenseDirectory, "ffmpeg-7.1.5.tar.xz")),
+  copyFile(resolve(appRoot, "../scripts/build-hdr-hevc-wasm.sh"), resolve(licenseDirectory, "build-hdr-hevc-wasm.sh")),
+]);
 await Promise.all([
   copyFile(
     resolve(appRoot, "../LICENSE"),

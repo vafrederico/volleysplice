@@ -90,6 +90,14 @@ platform terms.
 
 ## Python analysis environment
 
+The browser HDR export fallback includes FFmpeg 7.1.5's HEVC decoder and
+libavutil, compiled without GPL or nonfree components under LGPL-2.1-or-later.
+The MIT wrapper, pinned upstream source archive, license, and reproducible build
+script are in `vendor/hdr-hevc-wasm` and `scripts/build-hdr-hevc-wasm.sh`.
+The production site's `licenses/` directory distributes these source and build
+materials alongside the replaceable `runtime/hdr-hevc.mjs` and `.wasm` modules.
+No FFmpeg encoder is included; the browser supplies the output encoder.
+
 The source distribution pins NumPy 2.2.4 (BSD-3-Clause) and
 opencv-python-headless 4.12.0.88 (OpenCV Apache-2.0 plus notices for components
 bundled in the wheel). The repository does not redistribute those wheels.
