@@ -7,6 +7,7 @@ import android.graphics.Rect;
 import android.media.*;
 import android.os.SystemClock;
 import com.volleycut.video.DecodedVideoColor;
+import com.volleycut.video.AnalysisVideoDecoder;
 import com.volleycut.video.NearestFrameSelection;
 import com.volleycut.video.YuvColorConversion;
 import org.json.*;
@@ -87,11 +88,13 @@ public class NeuralVideoEncoder {
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT,MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
             format.setInteger(MediaFormat.KEY_OPERATING_RATE,240);
             format.setInteger(MediaFormat.KEY_PRIORITY,1);
-            codec=MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME));
+            codec=AnalysisVideoDecoder.create(format);
             report.put("decoder",codec.getName()).put("hardwareDecoder",codec.getCodecInfo().isHardwareAccelerated());
             report.put("pipeline","nearest actual PTS; sequential MediaCodec; bilinear YUV-to-RGB ROI letterbox; encoder; token readback");
             report.put("frameSelection", "nearest-media-pts-earlier-tie-v1");
-            codec.configure(format,null,null,0); codec.start();
+            codec.configure(format,null,null,0);
+            AnalysisVideoDecoder.requireConfiguration(codec,format);
+            codec.start();
             progress.accept(.05, "Reading images for the selected model: 0/" + plan.selectedPresentationUs().length);
             long lastProgressNs = SystemClock.elapsedRealtimeNanos();
             boolean inputDone=false, outputDone=false;
@@ -126,6 +129,7 @@ public class NeuralVideoEncoder {
                             long t=SystemClock.elapsedRealtimeNanos();
                             try(android.media.Image image=codec.getOutputImage(index)) {
                                 if(image==null) throw new IOException("Decoder did not provide YUV image");
+                                AnalysisVideoDecoder.requireOutput(codec.getOutputFormat(index),format);
                                 YuvColorConversion.Profile color = DecodedVideoColor.resolve(codec.getOutputFormat(index), format);
                                 if (!color.equals(previousColor)) {
                                     colorProfiles.put(new JSONObject().put("firstSampleSeconds", timestamp)

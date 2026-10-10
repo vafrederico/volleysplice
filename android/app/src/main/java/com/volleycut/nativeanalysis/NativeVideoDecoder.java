@@ -17,6 +17,7 @@ import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 
 import com.volleycut.video.DecodedVideoColor;
+import com.volleycut.video.AnalysisVideoDecoder;
 import com.volleycut.video.NearestFrameSelection;
 import com.volleycut.video.YuvColorConversion;
 import com.volleycut.video.YuvAreaResampler;
@@ -110,7 +111,7 @@ final class NativeVideoDecoder {
             if (decoderOptions.priority() >= 0) {
                 format.setInteger(MediaFormat.KEY_PRIORITY, decoderOptions.priority());
             }
-            codec = MediaCodec.createDecoderByType(mime);
+            codec = AnalysisVideoDecoder.create(format);
             String decoderName = codec.getName();
             boolean hardware = codec.getCodecInfo().isHardwareAccelerated();
             float[] output = new float[times.length * FeatureSchema.FRAME.size()];
@@ -134,6 +135,7 @@ final class NativeVideoDecoder {
             );
             codec.setCallback(state, new Handler(codecThread.getLooper()));
             codec.configure(format, null, null, 0);
+            AnalysisVideoDecoder.requireConfiguration(codec, format);
             codec.start();
             profiler.add("setup", System.nanoTime() - setupStarted);
 
@@ -237,10 +239,11 @@ final class NativeVideoDecoder {
             if (decoderOptions.priority() >= 0) {
                 format.setInteger(MediaFormat.KEY_PRIORITY, decoderOptions.priority());
             }
-            codec = MediaCodec.createDecoderByType(mime);
+            codec = AnalysisVideoDecoder.create(format);
             String decoderName = codec.getName();
             boolean hardware = !codec.getCodecInfo().isSoftwareOnly();
             codec.configure(format, null, null, 0);
+            AnalysisVideoDecoder.requireConfiguration(codec, format);
             codec.start();
             profiler.add("setup", System.nanoTime() - setupStarted);
 
@@ -320,6 +323,7 @@ final class NativeVideoDecoder {
                         );
                     }
                     try {
+                        AnalysisVideoDecoder.requireOutput(codec.getOutputFormat(outputIndex), format);
                         operationStarted = System.nanoTime();
                         Mat rgba = imageToAnalysisRgba(image, roi, media.rotation(),
                                 DecodedVideoColor.resolve(codec.getOutputFormat(outputIndex), format).conversion());
@@ -686,6 +690,7 @@ final class NativeVideoDecoder {
                 );
             }
             try {
+                AnalysisVideoDecoder.requireOutput(codec.getOutputFormat(outputIndex), trackFormat);
                 YuvColorConversion.Profile color = DecodedVideoColor.resolve(
                         codec.getOutputFormat(outputIndex), trackFormat);
                 if (shared != null && shared.wants(presentationUs)) {

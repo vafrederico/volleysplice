@@ -10,6 +10,7 @@ import android.media.MediaFormat;
 import android.net.Uri;
 
 import com.volleycut.video.DecodedVideoColor;
+import com.volleycut.video.AnalysisVideoDecoder;
 import com.volleycut.video.YuvColorConversion;
 
 import org.opencv.core.CvType;
@@ -218,8 +219,9 @@ final class SpecialistFrameDecoder {
             );
             format.setInteger(MediaFormat.KEY_OPERATING_RATE, 240);
             format.setInteger(MediaFormat.KEY_PRIORITY, 1);
-            codec = MediaCodec.createDecoderByType(mime);
+            codec = AnalysisVideoDecoder.create(format);
             codec.configure(format, null, null, 0);
+            AnalysisVideoDecoder.requireConfiguration(codec, format);
             codec.start();
             setupNanos = System.nanoTime() - setupStarted;
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
@@ -286,6 +288,7 @@ final class SpecialistFrameDecoder {
                         }
                         Converted converted;
                         try (image) {
+                            AnalysisVideoDecoder.requireOutput(codec.getOutputFormat(outputIndex), format);
                             long conversionStarted = System.nanoTime();
                             converted = converter.convert(
                                     image, produceServing, produceSideSwitch,

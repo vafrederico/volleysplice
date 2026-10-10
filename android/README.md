@@ -115,6 +115,23 @@ to select Android's software decoder in tests only. The optional
 never bundles private recordings. It retains outputs for independent metadata
 and visual inspection and explicitly logs when HDR encoding is unavailable.
 
+Analysis uses a separate decoder policy shared with the neural runtime. Verified
+Dolby Vision 8.4 input (profile 8, BT.2020 HLG) uses its HEVC Main10 base layer;
+other Dolby Vision profiles keep their original MIME type. HLG/PQ analysis
+requests decoder SDR tone mapping and checks support and the actual output
+transfer before reading 8-bit images. This covers fresh shared decoding, cached
+independent neural decoding, synchronous decoding and specialist samples.
+Unsupported tone mapping reports an error. Export still reads the original
+source. `opencv-v4-hdr-sdr-nearest-frame` invalidates earlier visual caches.
+
+`RuntimeHdrDeviceInstrumentedTest` accepts private files only through runtime
+arguments `hdrInput` and `sdrInput`, plus `sampleDurationMs` (default 60000).
+Use bounded samples to avoid decoding a full recording. Its six checks compare
+fresh and cached production-model predictions and export both inputs with scores
+on/off. Outputs and JSON receipts remain in the debug app's external files for
+independent inspection. Supply stable `hdrSourceIndex` and `sdrSourceIndex`
+arguments when archiving receipts; never commit original filenames or paths.
+
 First prepare the pinned models as described in the
 [bundle contract](../models/distilled-large/README.md). The public checkout can
 prepare the Android bundle from the checked-in web graphs using
@@ -274,7 +291,7 @@ The media front end is deliberately a native-distribution experiment, not a clai
 
 - Android supplies decoder YUV planes. New AV extraction averages converted/clipped RGB source pixels over each 192x108 output footprint, following the desktop area-downsampling operation. It avoids a full-resolution RGB allocation. Decoder/color differences still require separate feature parity qualification; explicit-size score-specialist samplers retain their existing behavior.
 - AV video and neural encoder sampling use actual nearest presentation timestamps, preferring the earlier frame on ties. Repeated or terminal grid targets reuse the selected image; embedding quality offsets describe that actual image. Actual timestamp planning replaces the short CFR extrapolation described in the historical timings above, and its scan cost is included in profiling.
-- `opencv-v3-area-nearest-frame` invalidates old visual caches for fresh analyses. Saved reviewed projects remain editable with their original extraction provenance and cannot silently satisfy a new analysis request.
+- `opencv-v4-hdr-sdr-nearest-frame` invalidates old visual caches for fresh analyses, including features made before explicit HDR-to-SDR decoder conversion. Saved reviewed projects remain editable with their original extraction provenance and cannot silently satisfy a new analysis request.
 - Audio uses Android's decoded PCM and the existing linear 16 kHz resampling/DSP math. It does not embed FFmpeg `libswresample`.
 - Batched audio uses supported AAC-LC codec framing, with synchronous AUTO fallback for unknown or inconsistent layouts. It no longer infers PCM size from packet spacing. Startup noise-floor interpolation is also corrected; cache and project provenance prevent reuse of old extracted inputs on new analyses. See the [repair and device validation](../docs/research/android-web-audio-fix.md) and [original root cause](../docs/research/android-audio-timeline-root-cause.md). Linear resampling remains a separate desktop-parity difference.
 - Native OpenCV implements phase correlation and Farneback flow. The algorithm settings and 73-channel schema match the web path, but native SIMD and float reductions can produce small numerical differences.

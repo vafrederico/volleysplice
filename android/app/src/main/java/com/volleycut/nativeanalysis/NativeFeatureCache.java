@@ -28,7 +28,7 @@ import java.util.Properties;
 /** Restart-safe cache for the expensive raw visual and audio feature matrices. */
 final class NativeFeatureCache {
     static final String AUDIO_EXTRACTOR_VERSION = "native-dsp-v2-codec-framing-percentile";
-    static final String VISUAL_EXTRACTOR_VERSION = "opencv-v3-area-nearest-frame";
+    static final String VISUAL_EXTRACTOR_VERSION = "opencv-v4-hdr-sdr-nearest-frame";
     enum Mode {
         USE("use"), BYPASS("bypass"), REFRESH("refresh");
 

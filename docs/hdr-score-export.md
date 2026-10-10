@@ -15,20 +15,26 @@ and [`VideoExporter.swift`](../ios/App/VideoExporter.swift).
 
 ## Analysis and export are separate
 
-This change does not alter model inputs. The existing native analysis paths
-decode sampled YUV frames, convert their matrix to clipped RGB and extract
-features. That conversion is not an HDR display tone mapper. Export reads the
-original media again, so the model's sampled RGB does not determine export
-color or bit depth. HDR model accuracy remains a separate qualification task.
+Android analysis selects the HEVC base layer for verified Dolby Vision 8.4
+(profile 8, BT.2020 HLG) instead of requiring a Dolby Vision decoder. Other
+Dolby Vision profiles are not reinterpreted as HEVC. The asynchronous, synchronous,
+specialist and independent neural decoder paths request SDR tone mapping for
+HLG/PQ input and verify both decoder support
+and the decoded SDR transfer before extracting features from 8-bit YUV frames.
+Unsupported tone mapping fails explicitly. The visual extraction version has
+changed so earlier HDR features cannot silently satisfy a new analysis.
+
+Export reads the original media again, so analysis conversion does not determine
+export color or bit depth. The existing iOS analysis conversion is unchanged.
+HDR model accuracy remains a separate qualification task.
 
 Preserving the HLG base image of an iPhone Dolby Vision recording does not by
 itself preserve Dolby Vision dynamic metadata. See each platform's README for
 its export constraints. iOS currently accepts limited-range video and explicitly
 rejects full-range input rather than changing its range. Android also rejects
 full-range HDR because its pinned Media3 HDR shader assumes a video-range luma
-offset. The original failing
-recording is still unavailable; the synthetic fixtures do not replace a test of
-that file.
+offset. The original Dolby Vision recording is supplied privately at runtime;
+it is never bundled in the APK or committed with the test suite.
 
 ## Reproducible fixtures
 
@@ -59,6 +65,23 @@ at its beginning, middle and end decode successfully. Synthetic white-patch
 checks place 203-nit white within two 10-bit code values of the HLG/PQ targets.
 
 ## Validation scope
+
+On a physical Pixel 10 Pro, minute-long SDR and original Dolby Vision 8.4
+samples passed production-model analysis, including matching fresh shared and
+cached independent predictions, synchronous decoding and specialist samples.
+Both inputs exported with scores on/off. Scored HDR output was HEVC Main10,
+limited-range BT.2020 HLG; the no-score control retained Dolby Vision through
+transmuxing. The scored HDR minute exported in about 15 seconds using the
+hardware HEVC encoder. SDR output remained 8-bit H.264/Rec.709.
+
+Independent first-frame inspection confirmed output tags and score colors.
+HDR white measured 725 in limited-range 10-bit luma (target about 721);
+SDR white measured 237 (target 235). Nine score GPU/encoded-pixel/rotation
+checks also passed on the phone. The decoder update passed 220 JVM tests.
+Full exported files remain on the phone; the private workstation artifacts
+contain sampled first-frame data, metadata, hashes and test receipts. These
+checks do not establish long-recording performance, model accuracy or HDR
+appearance on a calibrated display. Real iOS Dolby Vision remains untested.
 
 Android passed 217 JVM tests and 11 targeted emulator tests, plus a separate
 PQ-input smoke check. A later full-range HDR preflight guard passed its three
