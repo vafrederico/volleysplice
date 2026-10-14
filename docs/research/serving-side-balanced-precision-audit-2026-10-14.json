@@ -1,0 +1,86 @@
+{
+  "kind": "serving-side-balanced-precision-independent-audit-v1",
+  "studyIndex": "private-reference-0242",
+  "contractSha256": "33ad21271ebb2f00fc4349e8fcb3b729d50365704cb1af90e19998df9261ea40",
+  "summarySha256": "7a0eb4b5654c77e296626a624984a88f926d3c2196b6c451482ae793d88f9b91",
+  "auditorSha256": "c0122958a98d4ae379344167ec9dee9b937178c71e39a678a6f7efe351ef4e1e",
+  "independentSelectorSha256": "f4a3d858a2d762d4ee9a26c34f26e5d44c1a2ffd8331c03d067e920cb7458d5a",
+  "teacherPartitionsVerified": 37,
+  "nestedNeuralFitsVerified": 108,
+  "finalNeuralFitsVerified": 3,
+  "artifactHashesVerified": 555,
+  "outerPoliciesReplayed": 72,
+  "finalPoliciesReplayed": 9,
+  "selectedCheckpointsReloaded": 35,
+  "maximumReloadLogitError": 0.0,
+  "finalNeuralConfigurationsVerified": 9,
+  "maximumCpuGpuScoreError": 2.1199515642944533e-07,
+  "maximumLogisticGradient": 6.245004513516506e-17,
+  "matchedInputsIndependentlyRebuilt": true,
+  "allAggregateAndConsensusMetricsReplayed": true,
+  "pairedConsensusOutcomes": {
+    "0.95": {
+      "maximumCoverageToBalanced": {
+        "review": {
+          "review": 29,
+          "correct": 18,
+          "wrong": 2
+        },
+        "correct": {
+          "review": 9,
+          "correct": 873,
+          "wrong": 2
+        },
+        "wrong": {
+          "review": 7,
+          "correct": 2,
+          "wrong": 26
+        }
+      },
+      "bothAcceptedSideDisagreements": 4
+    },
+    "0.98": {
+      "maximumCoverageToBalanced": {
+        "review": {
+          "review": 191,
+          "correct": 30,
+          "wrong": 2
+        },
+        "correct": {
+          "review": 29,
+          "correct": 707,
+          "wrong": 0
+        },
+        "wrong": {
+          "review": 0,
+          "correct": 0,
+          "wrong": 9
+        }
+      },
+      "bothAcceptedSideDisagreements": 0
+    },
+    "0.99": {
+      "maximumCoverageToBalanced": {
+        "review": {
+          "review": 526,
+          "correct": 104,
+          "wrong": 1
+        },
+        "correct": {
+          "review": 58,
+          "correct": 274,
+          "wrong": 0
+        },
+        "wrong": {
+          "review": 1,
+          "correct": 0,
+          "wrong": 4
+        }
+      },
+      "bothAcceptedSideDisagreements": 0
+    }
+  },
+  "protectedLabelsOpened": false,
+  "productionChanged": false,
+  "passed": true
+}

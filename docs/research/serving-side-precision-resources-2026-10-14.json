@@ -1,0 +1,22 @@
+{
+  "kind": "serving-side-precision-resource-summary-v1",
+  "studyIndex": "private-reference-0236",
+  "fastArtifactIndex": "private-reference-0237",
+  "samples": 46,
+  "sampleIntervalSeconds": 30,
+  "monitoredSeconds": 1348.7780435085297,
+  "maximumConcurrentTrainingOrEvaluationProcesses": 1,
+  "maximumWorkerResidentMiB": 1861.0546875,
+  "maximumWorkerSwapKiB": 0,
+  "minimumWslAvailableGiB": 12.661872863769531,
+  "wslSwapCounterDelta": {
+    "pswpin": 0,
+    "pswpout": 0
+  },
+  "monitorSha256": "656fc39dec3dd3d8969bbde65f14bc01b6883dc446f010edb164c4d019c1c055",
+  "nestedFits": 108,
+  "nestedFitWallSecondsSum": 1194.040036860155,
+  "finalFits": 3,
+  "finalFitWallSecondsSum": 52.791966777760535,
+  "measurementLimit": "Sampled Linux process RSS and WSL memory/swap counters; not a host-wide Windows paging audit. Independent checkpoint replay starts after this monitored training/evaluation interval."
+}
