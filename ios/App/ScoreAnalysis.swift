@@ -24,7 +24,8 @@ enum ScoreAnalysis {
         progress(0, "Reusing project features for score preparation")
         let contextual = try FeatureMath.contextualize(times: analysis.timestamps, base: analysis.baseFeatures, names: FeatureSchema.base)
         let switches = feedback["source"]?["generateSideSwitchMarkers"]?.bool ?? true
-        let neural = RallyModel(modelId: feedback["initialInference"]?["modelId"]?.string ?? "ensemble")?.isNeural == true
+        let rallyModel = ProjectArchive.rallyModel(feedback)
+        let neural = rallyModel.isNeural
         func evidence(_ id: String) throws -> ModelRunner.RunResult {
             let model = try AnalysisPipeline.loadModel(id), end = Double(project.gameWindow.endMs) / 1000
             return try neural && !switches ? model.runEvidence(times: analysis.timestamps, contextual: contextual, duration: end)
@@ -40,6 +41,8 @@ enum ScoreAnalysis {
             all: ProductionServeOutput(modelId: "model-1ca43e38eefc", times: analysis.timestamps, probabilities: all.serveProbabilities, detections: all.serveDetections),
             previous: ProductionServeOutput(modelId: "model-9c92b8e9333f", times: analysis.timestamps, probabilities: previous.serveProbabilities, detections: previous.serveDetections),
             cacheURL: cacheFolder.appendingPathComponent("project-\(safeID)-\(cacheKey)-serving.plist"),
+            rallyModel: rallyModel,
+            candidateIDs: initial.enumerated().map { $0.element["id"]?.string ?? String(format: "R%03d", $0.offset + 1) },
             switchInput: switches
                 ? input(ranges: ranges, times: analysis.timestamps, all: all, previous: previous) : nil, stepProgress: stepProgress, progress: progress)
     }
@@ -60,11 +63,21 @@ enum ScoreAnalysis {
     }
     static func run(url: URL, media: MediaDescription, roi: AnalysisRegion, ranges: [Interval],
                         all: ProductionServeOutput, previous: ProductionServeOutput, cacheURL: URL,
+                        rallyModel: RallyModel = .legacy, rallyRuntime: NeuralRallyRuntime? = nil,
+                        candidateIDs: [String]? = nil,
                         switchInput: SideSwitchAnalysisInput? = nil,
                         stepProgress: @escaping @Sendable (AnalysisProgressEvent) -> Void = { _ in },
                         progress: @escaping @Sendable (Double, String) -> Void) async throws -> Result {
         stepProgress(.init(.servingSide, fraction: 0, detail: "Finding serve markers"))
-        let plan = try ServingSideInference.framePlan(ranges: ranges, duration: media.duration)
+        func evaluate(_ specialist: ServingSideOutput) async throws -> ServingSideOutput {
+            guard rallyModel.isNeural else { return specialist }
+            return try await NeuralServingRuntime.evaluate(specialist, model: rallyModel, url: url, media: media, roi: roi,
+                cacheFolder: cacheURL.deletingLastPathComponent(), rallyRuntime: rallyRuntime) { fraction, detail in
+                    progress(0.85 + fraction * 0.1, detail)
+                    stepProgress(.init(.servingSide, fraction: 0.85 + fraction * 0.14, detail: detail))
+                }
+        }
+        let plan = try ServingSideInference.framePlan(ranges: ranges, duration: media.duration, ids: candidateIDs)
         let modelURL = Bundle.main.url(forResource: "serving-side-85bc3325fbd4", withExtension: "json")!
         let model = try ServingSideInference(data: Data(contentsOf: modelURL))
         let switchModel = try SideSwitchInference(data: Data(contentsOf: Bundle.main.url(forResource: "side-switch-c2570481c30d", withExtension: "json")!))
@@ -102,7 +115,7 @@ enum ScoreAnalysis {
             }
             // Evaluate serves before starting the separate team-switch step.
             stepProgress(.init(.servingSide, fraction: 0.99, detail: "Checking serve markers"))
-            let serving = try model.evaluate(candidates: plan.candidates, rawFeatures: cache.rawFeatures, allLabelsV2: all, previousProduction: previous)
+            let serving = try await evaluate(model.evaluate(candidates: plan.candidates, rawFeatures: cache.rawFeatures, allLabelsV2: all, previousProduction: previous))
             stepProgress(.init(.servingSide, fraction: 1, detail: "Serve markers ready"))
             if let switchPlan, switchVisual == nil {
                 progress(0.86, "Generating team-switch features")
@@ -119,7 +132,7 @@ enum ScoreAnalysis {
             return try finish(serving: serving, switchModel: switchModel, switchPlan: switchPlan, switchInput: switchInput,
                               switchVisual: switchVisual, switchError: switchError, stepProgress: stepProgress)
         }
-        let serving = try model.evaluate(candidates: plan.candidates, rawFeatures: cache.rawFeatures, allLabelsV2: all, previousProduction: previous)
+        let serving = try await evaluate(model.evaluate(candidates: plan.candidates, rawFeatures: cache.rawFeatures, allLabelsV2: all, previousProduction: previous))
         stepProgress(.init(.servingSide, fraction: 1, detail: "Serve markers ready"))
         return try finish(serving: serving, switchModel: switchModel, switchPlan: switchPlan, switchInput: switchInput,
                           switchVisual: switchVisual, switchError: switchError, stepProgress: stepProgress)

@@ -116,11 +116,12 @@ enum MediaDecoder {
 
     /// Cached AV features can reuse the same sampler without recomputing OpenCV.
     static func embeddings(url: URL, media: MediaDescription, roi: AnalysisRegion, start: Double, end: Double,
+                           requestedTimes: [Double]? = nil,
                            progress: @Sendable (Double, String) -> Void,
                            embeddingFrame: (Double, Double, [Float], NeuralImageGeometry) throws -> Void) async throws {
         try roi.validate()
         guard end <= media.duration + 0.001 else { throw AnalysisError.invalid("Invalid embedding window") }
-        let targets = try VideoFrameSelection.targets(start: floor(start * 2) / 2, end: end, fps: 2)
+        let targets = try requestedTimes ?? VideoFrameSelection.targets(start: floor(start * 2) / 2, end: end, fps: 2)
         var completed = 0
         try await frames(url: url, end: end, targets: targets) { target, pts, buffer in
             let frame = try sampleEmbeddingFrame(buffer, roi: roi, rotation: media.rotation)

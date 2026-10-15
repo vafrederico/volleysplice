@@ -151,3 +151,21 @@ The synthetic HLG writer initially failed while using default Dolby Vision
 metadata insertion. Its fixture writer now explicitly disables dynamic metadata
 insertion; the production export preset is unchanged. Plain HLG tests pass,
 while real iPhone Dolby Vision input and HDR display appearance remain unverified.
+
+## Paired neural serving checks
+
+Portable tests cover the encoder-specific consensus policy, independent serve-gate
+review reasons, recording-wide Float64 ranks, nearest-grid ties and video-edge
+masks. The source packager and Release audit pin both serving graphs and their
+catalog alongside the selected rally encoders.
+
+The Debug Settings > Developer checks > Check paired serving models action reads
+an opt-in `Documents/serving-validation.json` plan containing local document
+filenames: `{"source":"validation-source.mp4","projects":["balanced-feedback.json","coverage-feedback.json"]}`.
+Supply external schema-v3 project exports and the corresponding original video
+through the lab's app-container transfer tools; keep all private inputs outside
+Git. The check runs the independent synthetic ONNX golden, a fresh 30-second
+analysis per selection, full saved-anchor native extraction, and saved-feature
+replay. It writes `Documents/serving-validation-output.json` for comparison with
+the saved corrections. It preserves user projects and edits. Keep the app in
+front during execution and return to verified parking after success or failure.

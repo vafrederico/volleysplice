@@ -37,6 +37,12 @@ class ReleaseResourceTests(unittest.TestCase):
                 asset['sizeBytes'] = len(payload)
                 self.files['rally-models/' + variant['directory'] + '/' + asset['name']] = payload
         self.files[audit.NEURAL_MANIFEST] = json.dumps(self.neural).encode()
+        serving = audit.expected_serving_resources()
+        self.files[audit.SERVING_MANIFEST] = json.dumps(serving).encode()
+        repository = Path(__file__).resolve().parents[3]
+        for variant in serving['variants'].values():
+            name = 'serving-models/' + variant['directory'] + '/' + variant['file']['name']
+            self.files[name] = (repository / 'prod/public/runtime' / name).read_bytes()
         self.licenses = {'licenses/' + name: ('Synthetic license: ' + name).encode() for name in audit.LICENSE_NAMES}
         self.licenses['THIRD_PARTY_NOTICES.md'] = b'Synthetic notices'
         self.files.update(self.licenses)
@@ -66,7 +72,7 @@ class ReleaseResourceTests(unittest.TestCase):
             models.write_text(json.dumps(self.neural), encoding='utf-8')
             audit.audit_release(archive, ipa, self.manifest_path, root / 'audit.json', models, self.licenses)
             report = json.loads((root / 'audit.json').read_text(encoding='utf-8'))
-            self.assertEqual(len(report['ipa']['neural_assets']), 6)
+            self.assertEqual(len(report['ipa']['neural_assets']), 8)
             self.assertEqual(report['archive']['neural_assets'], report['ipa']['neural_assets'])
             # A fixture introduced during export must fail even if the archive is clean.
             with zipfile.ZipFile(ipa, 'a') as exported:
@@ -84,7 +90,8 @@ class ReleaseResourceTests(unittest.TestCase):
 
     def test_missing_manifest_or_production_model(self):
         for name in ['PrivacyInfo.xcprivacy', next(iter(audit.MODELS)), audit.NEURAL_MANIFEST,
-                     'rally-models/recall/encoder.onnx', 'licenses/DINOv2-Apache-2.0.txt']:
+                     'rally-models/recall/encoder.onnx', audit.SERVING_MANIFEST,
+                     'serving-models/f1/head.onnx', 'licenses/DINOv2-Apache-2.0.txt']:
             files = self.files.copy()
             del files[name]
             with self.subTest(name=name), self.assertRaises(ValueError):
@@ -99,7 +106,7 @@ class ReleaseResourceTests(unittest.TestCase):
 
     def test_graph_config_size_hash_and_manifest_are_pinned(self):
         for name in ['rally-models/recall/encoder.onnx', 'rally-models/f1/temporal.onnx',
-                     'rally-models/f1/pipeline.json']:
+                     'rally-models/f1/pipeline.json', 'serving-models/recall/head.onnx', 'serving-models/f1/head.onnx']:
             for payload in [self.files[name] + b'x', b'X' * len(self.files[name])]:
                 with self.subTest(name=name, size=len(payload)), self.assertRaisesRegex(ValueError, 'checksum or size'):
                     self.checked(self.files | {name: payload})

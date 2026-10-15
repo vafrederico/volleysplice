@@ -17,3 +17,9 @@ which is ignored. Build archives, result bundles, screenshots, reference-project
 exports and real match recordings also stay outside Git. Do not remove these
 source fixtures without updating `scripts/prepare-source.py`, the UI fixture
 loader and the rendering integration tests that consume them.
+
+`neural-serving-golden.json` contains synthetic three-row raw-logit reference
+outputs for both published serving heads, generated independently with ONNX
+Runtime 1.24.2 CPU. Its input recipe is recorded in the JSON. The Debug physical
+check verifies both graphs against these outputs at 1e-5 tolerance before running
+external feedback/source diagnostics. The golden is excluded from Release.

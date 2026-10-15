@@ -39,7 +39,21 @@ with tarfile.open(args.output, 'w:gz') as archive:
                 raise ValueError('Pinned iOS neural asset differs: ' + str(relative))
             archive.add(payload, arcname='Fixtures/rally-models/' + relative.as_posix())
     archive.add(root.parent / 'THIRD_PARTY_NOTICES.md', arcname='Fixtures/THIRD_PARTY_NOTICES.md')
+    serving_manifest = root.parent / 'models/serving-side/web-manifest.json'
+    serving = json.loads(serving_manifest.read_text(encoding='utf-8'))
+    archive.add(serving_manifest, arcname='Fixtures/serving-models/manifest.json')
+    for selection, variant in serving['variants'].items():
+        if variant['encoderSha256'] != manifest['variants'][selection]['files']['encoder']['sha256']:
+            raise ValueError('Serving head does not match iOS rally encoder')
+        asset = variant['file']
+        relative = Path(variant['directory']) / asset['name']
+        payload = root.parent / 'prod/public/runtime/serving-models' / relative
+        data = payload.read_bytes()
+        if len(data) != asset['sizeBytes'] or hashlib.sha256(data).hexdigest() != asset['sha256']:
+            raise ValueError('Pinned iOS serving asset differs: ' + str(relative))
+        archive.add(payload, arcname='Fixtures/serving-models/' + relative.as_posix())
     archive.add(root / 'Tests/Fixtures/neural-runtime-golden.json', arcname='Fixtures/neural-runtime-golden.json')
+    archive.add(root / 'Tests/Fixtures/neural-serving-golden.json', arcname='Fixtures/neural-serving-golden.json')
     for name in ('TorchVision-0.26.0-BSD-3-Clause.txt', 'DINOv2-Apache-2.0.txt',
                  'ONNX-Runtime-1.24.2-MIT.txt', 'ONNX-Runtime-1.24.2-ThirdPartyNotices.txt'):
         archive.add(root.parent / 'models/distilled-large/licenses' / name, arcname='Fixtures/licenses/' + name)

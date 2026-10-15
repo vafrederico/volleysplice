@@ -78,8 +78,8 @@ local project and journal while retaining source media and separate exports.
 
 ## Analysis and project formats
 
-New analyses default to **Maximum coverage · BETA**. The setup selector also
-offers **Balanced · BETA** and **Legacy model**. Only the selected bundle runs;
+New analyses default to **Maximum coverage Ã‚Â· BETA**. The setup selector also
+offers **Balanced Ã‚Â· BETA** and **Legacy model**. Only the selected bundle runs;
 each neural variant has its own encoder, temporal model, scalers and decoder.
 Saved projects and queued jobs keep their original selection. Older projects and
 jobs without a selection retain Legacy. The editor's More menu returns to setup
@@ -92,7 +92,14 @@ rally/serve/dead models, ensemble merging and optional suppression. Neural ralli
 come from the selected temporal model; legacy evidence heads support serving-side
 and team-switch decisions. Every neural rally is a serving-side candidate.
 The shared specialist pass uses the frozen 237-column serving-side extractor and
-34-column team-switch model. Features and selected encoder embeddings are cached
+34-column team-switch model. Balanced and Maximum coverage use their matching
+encoder-paired serving heads: centered 13-frame windows plus 249 specialist/quality
+features, with all three seeds required to accept the same side. Independent
+serve-gate recovery reasons still require review. Legacy keeps its fixed-flight
+serving classifier. Deferred scoring generates sparse matching encoder samples;
+new analysis reuses its embeddings when they cover the complete serve windows.
+Enabling score preparation also checks the saved serving-model fingerprint;
+refreshing old output retains corrected markers and explicit deletions. Features and selected encoder embeddings are cached
 for retry; preparation, video, audio, embeddings and rally inference have separate
 progress measurements.
 

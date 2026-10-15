@@ -115,14 +115,19 @@ public struct ServingSideInference: Sendable {
         model = payload.model
     }
 
-    public static func candidates(ranges: [Interval]) throws -> [CandidateInterval] {
+    public static func candidates(ranges: [Interval], ids: [String]? = nil) throws -> [CandidateInterval] {
+        if let ids {
+            guard ids.count == ranges.count, ids.allSatisfy({ !$0.isEmpty }), Set(ids).count == ids.count else {
+                throw AnalysisError.invalid("Invalid serving-side candidate identities")
+            }
+        }
         var result: [CandidateInterval] = []
         for (index, range) in ranges.enumerated() {
             guard range.start.isFinite, range.end.isFinite, abs(range.start) < Double(Int64.max / 2000),
                   abs(range.end) < Double(Int64.max / 2000) else { throw AnalysisError.invalid("Invalid serving-side anchor") }
             let start = floor(range.start * 1000 + 0.5) / 1000, end = floor(range.end * 1000 + 0.5) / 1000
             if start < 0 || end <= start { continue }
-            result.append(.init(id: String(format: "R%03d", index + 1), start: start, end: end, agreement: range.agreement))
+            result.append(.init(id: ids?[index] ?? String(format: "R%03d", index + 1), start: start, end: end, agreement: range.agreement))
         }
         return result.sorted { ($0.start, $0.end, $0.id) < ($1.start, $1.end, $1.id) }
     }
@@ -138,8 +143,8 @@ public struct ServingSideInference: Sendable {
         } }
         return times.sorted()
     }
-    public static func framePlan(ranges: [Interval], duration: Double) throws -> FramePlan {
-        let candidates = try candidates(ranges: ranges)
+    public static func framePlan(ranges: [Interval], duration: Double, ids: [String]? = nil) throws -> FramePlan {
+        let candidates = try candidates(ranges: ranges, ids: ids)
         return FramePlan(candidates: candidates, requestedTimes: try requestedTimestamps(candidates: candidates, duration: duration))
     }
     /// ScoreSpecialistInference's shared decode schedule can also include optional side-switch timestamps.

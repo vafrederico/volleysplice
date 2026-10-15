@@ -19,6 +19,7 @@ MODELS = {
     'side-switch-c2570481c30d.json',
 }
 NEURAL_MANIFEST = 'rally-models/manifest.json'
+SERVING_MANIFEST = 'serving-models/manifest.json'
 LICENSE_NAMES = {
     'TorchVision-0.26.0-BSD-3-Clause.txt', 'DINOv2-Apache-2.0.txt',
     'ONNX-Runtime-1.24.2-MIT.txt', 'ONNX-Runtime-1.24.2-ThirdPartyNotices.txt',
@@ -43,6 +44,13 @@ def expected_license_resources():
     return {'licenses/' + name: (folder / name).read_bytes() for name in LICENSE_NAMES} | {
         'THIRD_PARTY_NOTICES.md': notices.read_bytes(),
     }
+
+
+def expected_serving_resources():
+    source = Path(__file__).resolve().parents[1]
+    canonical = source.parent / 'models/serving-side/web-manifest.json'
+    path = canonical if canonical.is_file() else source / 'Fixtures/serving-models/manifest.json'
+    return json.loads(path.read_text(encoding='utf-8'))
 
 
 def neural_assets(manifest):
@@ -81,7 +89,10 @@ def audit(files, read, expected_manifest, expected_neural=None, expected_license
     if set(expected_licenses) != required_licenses:
         raise ValueError('Incomplete pinned license resource inventory')
     assets = neural_assets(expected_neural)
-    neural_files = set(assets) | {NEURAL_MANIFEST}
+    serving = expected_serving_resources()
+    for variant in serving['variants'].values():
+        assets['serving-models/' + variant['directory'] + '/' + variant['file']['name']] = variant['file']
+    neural_files = set(assets) | {NEURAL_MANIFEST, SERVING_MANIFEST}
     forbidden = []
     for name in files:
         path = PurePosixPath(name)
@@ -91,7 +102,7 @@ def audit(files, read, expected_manifest, expected_neural=None, expected_license
                 or any(part.lower() in ('tests', 'test', 'plugIns'.lower()) for part in path.parts)
                 or path.suffix.lower() in ('.bin', '.b64', '.mp4', '.swift', '.py', '.sh')
                 or (path.suffix.lower() in ('.json', '.onnx', '.ort') and name not in MODELS | neural_files)
-                or (path.parts[0] == 'rally-models' and name not in neural_files)
+                or (path.parts[0] in ('rally-models', 'serving-models') and name not in neural_files)
                 or (path.parts[0] == 'licenses' and name not in required_licenses)):
             forbidden.append(name)
     if forbidden:
@@ -101,6 +112,8 @@ def audit(files, read, expected_manifest, expected_neural=None, expected_license
             raise ValueError('Missing Release resource: ' + required)
     if json.loads(read(NEURAL_MANIFEST)) != expected_neural:
         raise ValueError('Bundled neural manifest differs from pinned source')
+    if json.loads(read(SERVING_MANIFEST)) != serving:
+        raise ValueError('Bundled serving manifest differs from pinned source')
     verified_assets = {}
     for name, expected in assets.items():
         content = read(name)

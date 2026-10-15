@@ -430,6 +430,7 @@ private struct SetupSettings: View {
                     DisclosureGroup("Developer checks") {
                         Button("Check Android rotation fixtures") { dismiss(); model.mediaCheck() }.accessibilityIdentifier("mediaCheck")
                         Button("Check canonical inference") { dismiss(); model.golden() }.accessibilityIdentifier("goldenCheck")
+                        Button("Check paired serving models") { dismiss(); model.neuralServingCheck() }.accessibilityIdentifier("neuralServingCheck")
                         if model.source != nil { Button("Check native video export") { dismiss(); model.exportCheck() }.accessibilityIdentifier("videoExportCheck") }
                     }.accessibilityIdentifier("developerChecks").disabled(model.busy || model.queue.hasPendingWork)
                 }

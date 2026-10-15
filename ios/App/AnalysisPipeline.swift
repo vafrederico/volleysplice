@@ -211,6 +211,7 @@ enum AnalysisPipeline {
                     all: ProductionServeOutput(modelId: "model-1ca43e38eefc", times: cache.times, probabilities: all.serveProbabilities, detections: all.serveDetections),
                     previous: ProductionServeOutput(modelId: "model-9c92b8e9333f", times: cache.times, probabilities: previous.serveProbabilities, detections: previous.serveDetections),
                     cacheURL: cacheFolder.appendingPathComponent(identity + "-" + rallyModel.rawValue + "-serving.plist"),
+                    rallyModel: rallyModel, rallyRuntime: neural,
                     switchInput: generateSideSwitchMarkers ? ScoreAnalysis.input(ranges: merged, times: cache.times, all: all, previous: previous) : nil,
                     stepProgress: stepProgress) { progress(0.94 + $0 * 0.06, $1) }
                 servingSide = score.servingSide; sideSwitch = score.sideSwitch; scoreError = score.error

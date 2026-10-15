@@ -25,9 +25,10 @@ final class NeuralRallyRuntime {
     private(set) var stageSeconds: [String: Double] = [:]
     var ready: Bool { times == expectedTimes && tokens.count == times.count * 3840 }
     var completedFrames: Int { times.count }
+    var servingEmbeddings: (times: [Double], tokens: [Float]) { (times, tokens) }
 
     init(model: RallyModel, media: MediaDescription, roi: AnalysisRegion, start: Double, end: Double,
-         sourceIdentity: String, cacheFolder: URL, assets: URL? = nil) throws {
+         sourceIdentity: String, cacheFolder: URL, assets: URL? = nil, servingTimes: [Double]? = nil) throws {
         self.model = model
         guard model.isNeural, let assets = assets ?? Bundle.main.resourceURL?.appendingPathComponent("rally-models") else {
             throw AnalysisError.invalid("Selected rally model is unavailable")
@@ -36,8 +37,9 @@ final class NeuralRallyRuntime {
         bundle = try manifest.bundle(for: model)
         root = assets.appendingPathComponent(bundle.directory)
         config = try NeuralPipelineConfig(data: Self.verified(root, bundle.files.pipeline), model: model, bundle: bundle)
-        expectedTimes = try NeuralRallyContract.embeddingTimes(duration: media.duration, start: start, end: end)
-        identity = Self.hash(Data((sourceIdentity + Self.preprocessingVersion + bundle.files.encoder.sha256).utf8))
+        expectedTimes = try servingTimes ?? NeuralRallyContract.embeddingTimes(duration: media.duration, start: start, end: end)
+        identity = Self.hash(Data((sourceIdentity + Self.preprocessingVersion + bundle.files.encoder.sha256).utf8)
+            + (servingTimes == nil ? Data() : try JSONEncoder().encode(servingTimes)))
         cacheURL = cacheFolder.appendingPathComponent(identity + "-embeddings.plist")
         environment = try ORTEnv(loggingLevel: .warning)
         if let bytes = try? Data(contentsOf: cacheURL), let saved = try? PropertyListDecoder().decode(Cache.self, from: bytes),
@@ -52,7 +54,7 @@ final class NeuralRallyRuntime {
     }
 
     private static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
-    private static func verified(_ root: URL, _ asset: NeuralRallyAsset) throws -> Data {
+    static func verified(_ root: URL, _ asset: NeuralRallyAsset) throws -> Data {
         let bytes = try Data(contentsOf: root.appendingPathComponent(asset.name), options: .mappedIfSafe)
         guard bytes.count == asset.sizeBytes, hash(bytes) == asset.sha256 else {
             throw AnalysisError.invalid("Selected rally model failed its integrity check")
@@ -66,7 +68,7 @@ final class NeuralRallyRuntime {
         try options.setGraphOptimizationLevel(.all)
         return try ORTSession(env: environment, modelPath: root.appendingPathComponent(asset.name).path, sessionOptions: options)
     }
-    private static func tensor(_ values: [Float], _ shape: [Int]) throws -> ORTValue {
+    static func tensor(_ values: [Float], _ shape: [Int]) throws -> ORTValue {
         let bytes = values.withUnsafeBytes { NSMutableData(bytes: $0.baseAddress!, length: $0.count) }
         return try ORTValue(tensorData: bytes, elementType: .float, shape: shape.map(NSNumber.init(value:)))
     }
@@ -75,7 +77,7 @@ final class NeuralRallyRuntime {
             (0..<(bytes.count / 4)).map { Float(bitPattern: UInt32(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 4, as: UInt32.self))) }
         }
     }
-    private static func output(_ value: ORTValue?, shape: [Int]) throws -> [Float] {
+    static func output(_ value: ORTValue?, shape: [Int]) throws -> [Float] {
         guard let value, try value.tensorTypeAndShapeInfo().shape.map(\.intValue) == shape else {
             throw AnalysisError.invalid("Neural model output shape changed")
         }

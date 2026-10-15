@@ -389,6 +389,20 @@ struct VolleySpliceApp: App {
     @Published var showExportFolder = false
     func exportVideo() { showExportDestination = true }
     #if DEBUG
+    func neuralServingCheck() {
+        guard !busy else { return }; busy = true; status = "Checking paired serving models"
+        let documents = documents, cache = cacheFolder
+        work = Task {
+            do {
+                status = try await Task.detached {
+                    try await DeviceNeuralServingCheck.run(documents: documents, cache: cache) { fraction, detail in
+                        Task { @MainActor in self.progress = fraction; self.status = detail }
+                    }
+                }.value
+                busy = false
+            } catch { fail(error) }
+        }
+    }
     func golden() {
         guard !busy else { return }; busy = true; status = "Checking canonical features"
         work = Task {

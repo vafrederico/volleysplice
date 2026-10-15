@@ -149,7 +149,9 @@ struct EditorWorkspace: View {
         let output = project.feedback?["initialInference"]?["servingSide"]
         let switches = project.feedback?["initialInference"]?["sideSwitch"]
         let wantsSwitches = project.feedback?["source"]?["generateSideSwitchMarkers"]?.bool ?? true
-        return output == nil || output == .null || (wantsSwitches && (switches == nil || switches == .null)) || project.feedback?["scorePreparationError"]?.string != nil
+        let expected = NeuralServingManifest.identity(for: ProjectArchive.rallyModel(project.feedback))
+        return output?["modelId"]?.string != expected.id || output?["modelFingerprint"]?.string != expected.fingerprint ||
+            (wantsSwitches && (switches == nil || switches == .null)) || project.feedback?["scorePreparationError"]?.string != nil
     }
     private var visibleScore: ScoreTracking { presentation.visibleScore }
     private var scoreTimestampMs: Int64 { preparedOverlay.snapshot(at: playheadMs).effectiveTimestampMs }
