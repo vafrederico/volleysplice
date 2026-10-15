@@ -65,6 +65,10 @@ half-second samples. Cache reuse checks the selected serving ID and fingerprint.
 Neural serving motion features select the latest actual presentation timestamp
 at or before each requested time, matching the frozen web specialist contract.
 Planned images must decode at that exact timestamp; missing images fail closed.
+For open-GOP HEVC sources, Android's previous-sync seek can return a sample with
+a presentation timestamp after the first planned image. Neural serving sampling
+backs up the seek until the sync sample is at or before that image, then decodes forward
+without substituting a later frame.
 Serving-side failures are recoverable and do not discard otherwise valid rally inference.
 Project creation exposes a **Prepare score tracking** switch, enabled by default. Turning it off
 skips the additional serving-side frame sampling and starts the editor with score tracking off.

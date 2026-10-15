@@ -257,10 +257,17 @@ final class SpecialistFrameDecoder {
             MediaFormat format = extractor.getTrackFormat(track);
             String mime = format.getString(MediaFormat.KEY_MIME);
             if (mime == null) throw new IOException("Video track has no MIME type");
-            extractor.seekTo(
-                    Math.max(0, Math.round(requests.get(0).time * 1_000_000)),
-                    MediaExtractor.SEEK_TO_PREVIOUS_SYNC
-            );
+            long firstTargetUs = Math.max(0, Math.round(requests.get(0).time * 1_000_000));
+            long seekUs = firstTargetUs;
+            while (true) {
+                if (cancelled.getAsBoolean()) throw new IOException("Analysis cancelled");
+                extractor.seekTo(seekUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+                // HEVC open GOPs can seek to a sync sample whose presentation
+                // time follows the request. Decode from an earlier sync sample
+                // so its leading pictures include the exact planned image.
+                if (!exactServingFrames || extractor.getSampleTime() <= firstTargetUs || seekUs == 0) break;
+                seekUs = Math.max(0, seekUs - 1_000_000);
+            }
             format.setInteger(
                     MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
@@ -349,7 +356,10 @@ final class SpecialistFrameDecoder {
                             while (target < satisfiedEnd) {
                                 if (exactServingFrames && requests.get(target).serving
                                         && Math.round(requests.get(target).time * 1e6) != info.presentationTimeUs)
-                                    throw new IOException("Decoder missed the planned preceding serving image");
+                                    throw new IOException("Decoder missed the planned preceding serving image"
+                                            + " (planned=" + Math.round(requests.get(target).time * 1e6)
+                                            + "us, decoded=" + info.presentationTimeUs + "us, segment="
+                                            + (segmentIndex + 1) + ")");
                                 put(requests.get(target), converted, serving, switches);
                                 target++;
                             }
