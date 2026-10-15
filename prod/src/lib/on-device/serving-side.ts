@@ -1,6 +1,7 @@
 import type { Mat } from "@techstark/opencv-js";
 
 import { runtimeAssetUrl } from "../runtime-assets.ts";
+import { neuralServingBundle, neuralServingSelection } from "./neural-serving-model.ts";
 import type { OpenedMedia } from "./media.ts";
 import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
 import {
@@ -37,6 +38,7 @@ import { loadOpenCv } from "./visual-features.ts";
 type CvRuntime = typeof import("@techstark/opencv-js");
 
 export type ServingSideAnalysisInput = {
+  modelId?: string;
   intervals?: readonly OnDeviceInterval[];
   rallies?: readonly OnDeviceInterval[];
   times?: ArrayLike<number>;
@@ -779,9 +781,10 @@ export async function inferServingSides(
     throw new Error("Serving-side inference requires both production serve-head outputs.");
   }
   if (candidates.length === 0) {
+    const neural = neuralServingBundle(analysis.modelId);
     return {
-      modelId: SERVING_SIDE_MODEL_ID,
-      modelFingerprint: SERVING_SIDE_MODEL_FINGERPRINT,
+      modelId: neural?.id ?? SERVING_SIDE_MODEL_ID,
+      modelFingerprint: neural?.fingerprint ?? SERVING_SIDE_MODEL_FINGERPRINT,
       featureVersion: SERVING_SIDE_FEATURE_VERSION,
       anchorContract: SERVING_SIDE_ANCHOR_CONTRACT,
       features: {
@@ -817,11 +820,14 @@ export async function inferServingSides(
       detail: `Checking serve court sides · ${completed}/${total} rallies`,
     }),
   );
+  const output = neuralServingSelection(analysis.modelId)
+    ? await (await import("./neural-serving")).inferNeuralServingSideOutput(media, roi, analysis, evaluated.output, onProgress)
+    : evaluated.output;
   onProgress?.({
     stage: "complete",
     completed: candidates.length,
     total: candidates.length,
     detail: `Serve markers ready · ${candidates.length} rallies checked`,
   });
-  return evaluated.output;
+  return output;
 }

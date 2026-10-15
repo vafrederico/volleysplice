@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "kind": "requested-temporal-serving-side-heads-v1",
+  "studyIndex": "private-reference-0225",
+  "contractSha256": "e724a2f152dca33ac28a1137f21785bcf5afa165426fff19b980dffc6869abb3",
+  "arm": "temporal",
+  "rowsFitted": 968,
+  "deliveryCodeSha256": "f0e201bc284d0e0107226a6a74a59970bae85b6270851df0f5fc0d1868e70bc8",
+  "heads": [
+    {
+      "seed": 3407,
+      "epoch": 60,
+      "threshold": 0.925,
+      "weightsSha256": "90a1704f32a37035475d672b9e33ea3ccbc4c6091e7b0b968de0195ffed1b0fb",
+      "parameters": 34961,
+      "float32WeightBytes": 139844,
+      "cpuGpuMaximumError": 1.1324882507324219e-06
+    },
+    {
+      "seed": 1729,
+      "epoch": 30,
+      "threshold": 0.875,
+      "weightsSha256": "c0e315d2fa9415c2b6e2def3b9c5336d1570865fac802e4f887bf12e2a4afeed",
+      "parameters": 34961,
+      "float32WeightBytes": 139844,
+      "cpuGpuMaximumError": 2.980232238769531e-07
+    },
+    {
+      "seed": 20260918,
+      "epoch": 15,
+      "threshold": 0.2,
+      "weightsSha256": "c984a20b2c9939362281d0198e92fbd1b2639174a67167c070bf5d2a64974189",
+      "parameters": 34961,
+      "float32WeightBytes": 139844,
+      "cpuGpuMaximumError": 1.1920928955078125e-07
+    }
+  ],
+  "newCandidateSearchOrOuterTestEstimate": false
+}

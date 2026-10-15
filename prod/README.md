@@ -177,6 +177,19 @@ The redirects preserve legacy `/android/` links to the Google Play listing.
 
 ### Branch previews
 
+For serving-side testing, Balanced and Maximum coverage each load their matching
+centered serving-side head from `runtime/serving-models`. The saved 98% target
+policy requires all three trained seeds to accept and agree. Legacy model keeps
+the existing serving-side specialist. The separate serve/no-serve review gate
+still applies to all three choices. Changing rally models also invalidates
+serving-side results saved under a different model or fingerprint.
+
+The neural serving heads reuse the active rally analysis's encoder features.
+Restored projects extract the required image windows with the paired encoder.
+Build checks verify both serving-head assets, policies and encoder pairings;
+`models/serving-side/export-validation.json` records export parity. These models
+are enabled for testing and retain their development-selected policies.
+
 Wrangler Previews serve a build from a branch without changing the production
 deployment. From `prod/`, check out the desired revision and run:
 

@@ -1,0 +1,23 @@
+{
+  "status": "pass",
+  "contractSha256": "dc2fdf8b932724a1b0958163c4335b01a35351ce0658f118ad615d66cb7f7176",
+  "auditCodeSha256": "c118686e2f63a81cff08251aacf13b2837885b29d2a4dd3bf2543daf7bf6a7ed",
+  "inputWindowsIndependentlyReplayed": 968,
+  "specialistRowsIndependentlyReplayed": 968,
+  "specialistFeaturesPerRow": 237,
+  "logisticFitsVerified": 37,
+  "maximumLogisticGradient": 3.729655473350135e-17,
+  "nestedFitsAudited": 216,
+  "outerSelectionsReplayed": 120,
+  "heldCheckpointsReplayed": 70,
+  "heldPredictionMaximumError": 0.0,
+  "finalCpuGpuMaximumError": 1.2389165870985153e-07,
+  "publicFilesPrivacyChecked": 14,
+  "protectedLabelsOpened": false,
+  "productionChanged": false,
+  "studyIndex": "private-reference-0231",
+  "focusedUnitTestsPassed": 24,
+  "independentSyntheticSelectorCasesPassed": 30,
+  "historicalSourceScopeAndEncoderExposureLimitsRemain": true,
+  "finalNewFilesPrivacyChecked": 11
+}

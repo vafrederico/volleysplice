@@ -11,6 +11,7 @@ import {
 } from "./side-switch.ts";
 import type { SideSwitchAnalysisInput } from "./side-switch-model.ts";
 import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
+import { neuralServingSelection } from "./neural-serving-model.ts";
 import type { OpenedMedia } from "./media.ts";
 import type {
   NormalizedRoi,
@@ -112,7 +113,11 @@ export async function inferScoreSpecialists(
           detail: `Checking serve court sides · ${completed}/${total} rallies`,
         }),
     );
-    output.servingSide = artifacts.output;
+    output.servingSide = neuralServingSelection(request.servingSide.analysis.modelId)
+      ? await (await import("./neural-serving")).inferNeuralServingSideOutput(
+          media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress,
+        )
+      : artifacts.output;
     request.servingSide.onProgress?.({
       stage: "complete",
       completed: artifacts.output.candidates.length,

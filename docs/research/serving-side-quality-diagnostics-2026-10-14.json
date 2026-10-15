@@ -1,0 +1,309 @@
+{
+  "bySourceGroup": [
+    {
+      "highCorrect": {
+        "nearLabels": 10,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.0016727244997292794,
+          "meanActiveFraction": 0.09871720679012345,
+          "meanEnergy": 0.00031880484786799777,
+          "meanSmallComponentEnergyFraction": 0.004143587666302822
+        },
+        "rows": 23
+      },
+      "highWrong": {
+        "nearLabels": 0,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.007553528044650531,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.0005345774643838349,
+          "meanSmallComponentEnergyFraction": 0.004176157746004478
+        },
+        "rows": 2
+      },
+      "sourceGroup": "source-group-002"
+    },
+    {
+      "highCorrect": {
+        "nearLabels": 10,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.004629402485377935,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.0005586059474029782,
+          "meanSmallComponentEnergyFraction": 0.0025555322517145803
+        },
+        "rows": 17
+      },
+      "highWrong": {
+        "nearLabels": 0,
+        "qualityMedians": null,
+        "rows": 0
+      },
+      "sourceGroup": "source-group-003"
+    },
+    {
+      "highCorrect": {
+        "nearLabels": 58,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.003529785260648198,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.0006398659447181927,
+          "meanSmallComponentEnergyFraction": 0.0006977638394506766
+        },
+        "rows": 102
+      },
+      "highWrong": {
+        "nearLabels": 5,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.0009846415695237848,
+          "meanActiveFraction": 0.0668724279835391,
+          "meanEnergy": 0.0001634351449654323,
+          "meanSmallComponentEnergyFraction": 0.0022582734866452877
+        },
+        "rows": 5
+      },
+      "sourceGroup": "source-group-005"
+    },
+    {
+      "highCorrect": {
+        "nearLabels": 60,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.004959524087218365,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.0005149546904893673,
+          "meanSmallComponentEnergyFraction": 0.0017106857072859104
+        },
+        "rows": 123
+      },
+      "highWrong": {
+        "nearLabels": 0,
+        "qualityMedians": null,
+        "rows": 0
+      },
+      "sourceGroup": "source-group-007"
+    },
+    {
+      "highCorrect": {
+        "nearLabels": 33,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.006506444851267324,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.0005266181678931122,
+          "meanSmallComponentEnergyFraction": 0.003511198381217205
+        },
+        "rows": 63
+      },
+      "highWrong": {
+        "nearLabels": 0,
+        "qualityMedians": null,
+        "rows": 0
+      },
+      "sourceGroup": "source-group-009"
+    },
+    {
+      "highCorrect": {
+        "nearLabels": 16,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.002582834395801084,
+          "meanActiveFraction": 0.0978116426611797,
+          "meanEnergy": 0.00034790890735957584,
+          "meanSmallComponentEnergyFraction": 0.0010771725458773018
+        },
+        "rows": 27
+      },
+      "highWrong": {
+        "nearLabels": 0,
+        "qualityMedians": null,
+        "rows": 0
+      },
+      "sourceGroup": "source-group-010"
+    },
+    {
+      "highCorrect": {
+        "nearLabels": 12,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.0027662787129351064,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.0005175904443005096,
+          "meanSmallComponentEnergyFraction": 0.0018383367367784593
+        },
+        "rows": 18
+      },
+      "highWrong": {
+        "nearLabels": 0,
+        "qualityMedians": null,
+        "rows": 0
+      },
+      "sourceGroup": "source-group-012"
+    },
+    {
+      "highCorrect": {
+        "nearLabels": 120,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.003272738047815807,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.00047274862281957445,
+          "meanSmallComponentEnergyFraction": 0.0008535534555709789
+        },
+        "rows": 249
+      },
+      "highWrong": {
+        "nearLabels": 2,
+        "qualityMedians": {
+          "meanAbsoluteFlowY": 0.0019947918792333494,
+          "meanActiveFraction": 0.10001929012345678,
+          "meanEnergy": 0.0004238471379180431,
+          "meanSmallComponentEnergyFraction": 0.0005021225615445198
+        },
+        "rows": 3
+      },
+      "sourceGroup": "source-group-013"
+    }
+  ],
+  "codeSha256": "e98af847166368497ace1760688dfe80d6e3fd287fc0222926a30b26465c0f4b",
+  "counts": {
+    "allWrongFixedHalf": 63,
+    "highConfidence": 632,
+    "highConfidencePrecision": 0.9841772151898734,
+    "highCorrect": 622,
+    "highRoutesDifferUsingHistoricalNestedThreshold": 0,
+    "highWrong": 10,
+    "highWrongUsingHistoricalNestedThreshold": 10
+  },
+  "datasetIndex": "private-reference-0226",
+  "date": "2026-10-14",
+  "diagnosticChoices": {
+    "aggregation": "Equal-weight phase mean; flowY is made absolute before averaging.",
+    "confidence": "max(p, 1-p)",
+    "configuration": "192x108-r4c6",
+    "focusChosenBeforeInspectingTheseDiagnosticOutcomes": true,
+    "highConfidenceThreshold": 0.9,
+    "historicalModel": "nested-logistic",
+    "phases": [
+      "launch",
+      "early",
+      "late"
+    ],
+    "qualification": "Post-hoc follow-up focus fixed before this diagnostic's values were examined; not a prospective training preregistration.",
+    "qualities": [
+      "meanEnergy",
+      "meanActiveFraction",
+      "meanSmallComponentEnergyFraction",
+      "meanAbsoluteFlowY"
+    ],
+    "seed": 3407,
+    "sideThreshold": 0.5
+  },
+  "embeddingsLoaded": false,
+  "historicalStudyIndex": "private-reference-0231",
+  "inputSha256": {
+    "dataset": "c4ddf9f94bec00ba0fa62f8267dc166fdeeb6f9419180acad2e7eadf4910af7d",
+    "historicalNestedPredictions": "3bf34a2faf7735df76724582976eab170442959bc2b4a9d332f6d5b18efab6a9",
+    "historicalRegistration": "1b3eb04cf0105ef7c5cfdc8166e2451155a84eea9f0219f377de6e2deaf3c627",
+    "rows": "56c3bd1f51388d9530128abb75ed29b6be6686f1ad0a460651f9f1e3b6e411f7"
+  },
+  "kind": "serving-side-quality-post-hoc-diagnostics-v1",
+  "limitations": [
+    "Only ten high-confidence mistakes; half are from one source. Other sources can show stronger motion among wrong guesses.",
+    "Seven of ten mistakes have a near label, so class composition differs as well as source composition.",
+    "Flight activeFraction is approximately capped at 0.1 by the 90th-percentile motion threshold; depletion reflects the additional absolute floor.",
+    "The four measures suggest testing motion-quality interactions but do not establish a universal rejection rule.",
+    "Existing phase-wise recording ranks already contain related information; these descriptive associations do not prove incremental benefit from raw values.",
+    "Within-recording ranks here are only a descriptive adjustment, not new model inputs or a selected operating point.",
+    "Reviewed true serves only; no unclear or not-serve supervision, no fresh rally detection, and no protected-test claim."
+  ],
+  "modelFittingPerformed": false,
+  "pooled": {
+    "highCorrect": {
+      "nearLabels": 319,
+      "qualityMedians": {
+        "meanAbsoluteFlowY": 0.003809760624197275,
+        "meanActiveFraction": 0.10001929012345678,
+        "meanEnergy": 0.0005144939474024201,
+        "meanSmallComponentEnergyFraction": 0.0012381003231358254
+      },
+      "rows": 622
+    },
+    "highWrong": {
+      "nearLabels": 7,
+      "qualityMedians": {
+        "meanAbsoluteFlowY": 0.001543976636482494,
+        "meanActiveFraction": 0.08291002229080932,
+        "meanEnergy": 0.00026667388465557507,
+        "meanSmallComponentEnergyFraction": 0.002171205333715635
+      },
+      "rows": 10
+    },
+    "lowerConfidence": {
+      "nearLabels": 154,
+      "qualityMedians": {
+        "meanAbsoluteFlowY": 0.0026473997433905704,
+        "meanActiveFraction": 0.10001929012345678,
+        "meanEnergy": 0.0004676454617302701,
+        "meanSmallComponentEnergyFraction": 0.0014911210830064186
+      },
+      "rows": 336
+    }
+  },
+  "productionChanged": false,
+  "protectedLabelsOpened": false,
+  "recordings": 26,
+  "rows": 968,
+  "schemaVersion": 1,
+  "sourceGroups": 8,
+  "studyIndex": "private-reference-0236",
+  "usedForSelection": false,
+  "withinRecordingRanks": {
+    "highCorrect": {
+      "nearLabels": 319,
+      "qualityMedians": {
+        "meanAbsoluteFlowY": 0.5315824468085106,
+        "meanActiveFraction": 0.5789473684210527,
+        "meanEnergy": 0.5326241134751772,
+        "meanSmallComponentEnergyFraction": 0.488034188034188
+      },
+      "rows": 622
+    },
+    "highWrong": {
+      "nearLabels": 7,
+      "qualityMedians": {
+        "meanAbsoluteFlowY": 0.2706508135168961,
+        "meanActiveFraction": 0.18421052631578946,
+        "meanEnergy": 0.18421052631578946,
+        "meanSmallComponentEnergyFraction": 0.6302600472813239
+      },
+      "rows": 10
+    },
+    "method": "Midpoint ranks of each phase-averaged quality over all frozen serves in the same recording; singleton rank 0.5."
+  },
+  "wrongConfidenceAndCorrectionBound": {
+    "cost49Residual3FloorFormula": "sigmoid(abs(base_logit) - 3 - log(49))",
+    "floorCounts": {
+      "0.5": 0,
+      "0.9": 0,
+      "0.99": 0
+    },
+    "interpretation": "Hypothetical lower score with a maximum opposing residual and cost ratio 49, computed from historical scores; not an attainable trained-model guarantee or exact new FP32 replay.",
+    "maximumWrongAbsoluteLogit": 4.595022678375244,
+    "maximumWrongConfidence": 0.9899990379537762,
+    "maximumWrongScoreFloor": 0.09138852826313677,
+    "topTenWrongAbsoluteLogits": [
+      4.595022678375244,
+      4.278165340423577,
+      4.2345852851867685,
+      3.8650131225585938,
+      3.6548762321472177,
+      3.341060161590576,
+      3.1528682708740234,
+      3.075467586517334,
+      2.803485870361328,
+      2.5457022190093994
+    ],
+    "wrongConfidenceCounts": {
+      "0.9": 10,
+      "0.99": 0,
+      "0.999": 0,
+      "0.9999": 0
+    }
+  }
+}
