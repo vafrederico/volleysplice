@@ -60,6 +60,7 @@ a model study.
 | `SIDE36` | 36 | Separate side-switch marker appearance/context signature |
 | `SERVSIDE38` | 38 | Nineteen serving-side motion/palette/HOG scalars plus paired missingness indicators |
 | `SERVSIDE237-FLIGHT` | 237 | 82 court-flow recording ranks plus 155 fixed-anchor residual-flight grid recording ranks |
+| `SERVSIDE-CENTERED249` | 13×3,843 temporal values + 249 scalars | Encoder-matched FP16-rounded four-region Large embeddings at −3…+3 s, valid-window centering, three mask/time columns; 237 specialist ranks + 12 unranked phase-quality values. Public input contract `centered-13x3843-plus-249-v1`; production web only. |
 | `SIDE34-V2` | 34 | 17 adaptive side-conditioned/derived marker features plus one missingness indicator per scalar; separate from production F104 |
 | `LOWRES12` | 12 | Detector-free 192×108 HSV assignment, motion, blur, luma, and edge changes for side-switch v3 |
 | `MULTIFRAME-NORMALIZED19` | 19 | Seven-frame 256×144 court-normalized broad/tight side identity, motion, and alignment-quality profile for side-switch v4 |
@@ -79,7 +80,9 @@ a model study.
 | `NEURAL-MOBILE-LARGE` | 104 AV + 4×960 visual values + 8 quality values per tick | Frozen or DINO-distilled MobileNetV3-Large regional representation aligned from 2 Hz to 4 Hz; encoder identity belongs to each matched artifact; selected distilled variants are integrated on this branch |
 
 The profile key is a summary only. The ordered `featureNames` embedded in an artifact is
-the authoritative signature.
+the authoritative signature. `SERVSIDE-CENTERED249` is registry shorthand for the
+serving manifest's `centered-13x3843-plus-249-v1` tensor contract, not a replacement
+for the persisted `SERVSIDE237-FLIGHT` raw-feature version.
 
 For the selected side-switch winner, the checked-in
 [`production-port contract`](data/side-switch-current-research-winner-production-port-v1.json)
@@ -88,7 +91,7 @@ an implementation specification, not a production model registration.
 
 ## Current production system
 
-### Distilled Large application integration on this branch
+### Distilled Large application integration
 
 The normal production web, Android and iOS apps expose the two already-frozen
 Distilled Large selections. The default is `distilled-large-recall-v1`, labeled
@@ -113,10 +116,13 @@ iOS uses FP32 CPU execution and FP32 embeddings. Its numerical and simulator
 checks do not qualify GPU/Neural Engine execution or physical-device speed. See
 the [iOS validation report](docs/research/ios-neural-port-validation.md).
 The [bundle contract](models/distilled-large/README.md) identifies every
-runtime component and generation rule. Existing serving-side and side-switch
-models retain their weights and run against the selected neural rally boundaries;
-the existing serve/state outputs still provide their evidence. The original
-ensemble remains selectable with its original suppression behavior.
+runtime component and generation rule. Since the serving-side integration merged
+into main on 2026-10-15 (`d852076a`, merge `569986be`), the production **web** app
+pairs each neural rally model with its own centered serving-side ensemble below.
+Android and iOS retain the fixed-flight serving specialist; these new serving
+graphs have no native port. The existing serve/state outputs still supply gate
+and side-switch evidence, and the side-switch weights are unchanged. The original
+ensemble remains selectable with its fixed-flight specialist and suppression behavior.
 
 The reported selection-panel metrics below remain selection metrics. Known poor
 beach results and the distinction between retained-core recall and wholly missed
@@ -126,6 +132,108 @@ and [browser qualification](docs/research/distilled-large-browser-experiment.md)
 for the preceding benchmark evidence, rather than treating model packaging as a
 new performance result. The [integration report](docs/research/distilled-large-production-integration.md)
 records checks of the normal app pipelines and matched-model switching.
+
+### Encoder-paired serving-side models in the production web app
+
+These are the final all-development refits of experiment `09-neural-centered`,
+exported with the **98% target, all-three-seeds-agree** policy. Each ONNX contains
+three separately fitted heads, in seed order **3407, 1729, 20260918**; every shipped
+checkpoint is **epoch 5**. No runtime training, threshold search, best-seed choice,
+or cross-encoder voting is performed. Each head uses `SERVSIDE-CENTERED249`, a
+fold-fitted logistic prior, and bounded temporal corrections trained with the
+asymmetric false-positive cost of 49. See the
+[architecture](MODEL_ARCHITECTURE.md) and [feature contract](FEATURE_PIPELINE.md).
+
+| Serving model | Paired rally model | Fit / policy lineage | Public ONNX SHA-256 | Disposition |
+| --- | --- | --- | --- | --- |
+| `serving-side-centered-recall-v1` | `distilled-large-recall-v1` / Maximum coverage | `SERVSIDE-NB26`; experiment 09, ledger `private-reference-0240` | `9c9f303e5cc2553d0358bc1f84fb4f3b4f1cc9d506c433bba0a3971c2356412e` | Integrated into the production web neural path; replaces fixed-flight side scores while retaining its feature extraction and independent serve gate. |
+| `serving-side-centered-f1-v1` | `distilled-large-f1-v1` / Balanced | Same `SERVSIDE-NB26` and protocol, newly fitted on the distinct Balanced embeddings; ledger `private-reference-0242` | `e22852a02e99c85cb157de86f97769cecb5f4af5e9eeb809e0b5f55093b17cdf` | Integrated into the production web Balanced path; does not reuse the Maximum coverage serving weights or embeddings. |
+
+Each graph is **633,333 bytes**, at
+[`recall/head.onnx`](prod/public/runtime/serving-models/recall/head.onnx) or
+[`f1/head.onnx`](prod/public/runtime/serving-models/f1/head.onnx).
+The [serving manifest](models/serving-side/web-manifest.json) pins every seed's
+weight hash, epoch, encoder weight/graph hashes, and the combined model fingerprint.
+It is copied byte-for-byte to the [runtime manifest](prod/public/runtime/serving-models/manifest.json).
+The final per-seed **far / near evidence cutoffs**, in the seed order above, are:
+
+| Pairing | Seed 3407 | Seed 1729 | Seed 20260918 |
+| --- | --- | --- | --- |
+| Maximum coverage | 0.31 / 0.33 | 0.34 / 0.30 | 0.24 / 0.38 |
+| Balanced | 0.41 / 0.19 | 0.30 / 0.32 | 0.31 / 0.47 |
+
+These are cutoffs on each side's evidence mass, not a 0.98 cutoff on the displayed
+near probability. Every seed must accept the same side; otherwise `side-score`
+review is required. The displayed near probability is the mean of the three
+conditional near routes. Independent serve/recovery review reasons still apply,
+and a neural side answer cannot clear a `not-serve` verdict. Existing manual edits
+remain separate. A missing/mismatched graph reports a specialist-stage error;
+there is no silent substitution of legacy side scores under a neural identity.
+Cache reuse requires the selected serving ID/fingerprint and unchanged anchors;
+the retained raw feature payload still has the `SERVSIDE237-FLIGHT` version.
+
+The [exporter](scripts/export-neural-serving-side-runtime.py) verifies the frozen
+registration, training encoder and final checkpoint hashes before export. The
+[export validation](models/serving-side/export-validation.json) records numerical
+parity on all 968 cached research rows for each graph: maximum native ONNX logit
+error **2.87e-6**, Web WASM error **3.82e-6**, and identical seed/consensus
+acceptance decisions. The Web WASM check runs the pinned browser runtime under
+Node, rather than decoding media in a browser UI. Production serving-head inference
+uses that single-threaded WASM engine even when the image encoder uses WebGPU.
+This qualifies the export on those inputs; it does not measure fresh-video
+extraction, final-model generalization, or end-to-end production accuracy.
+
+### Serving-side precision evidence and its limits
+
+The research uses **968 reviewed true non-beach serves from 26 recordings and eight
+source groups** (`SERVSIDE-NB26`), with 480 near and 488 far labels. Eight outer
+source folds exclude the held source from serving-head, prior and scaler fitting
+and inner epoch/cutoff selection. The frozen encoder's earlier exposure is a
+separate limitation below. The neural fits use three seeds and checkpoints 5/15/30/60.
+Inner selection requires at least 20 accepted predictions and four supporting
+groups per predicted side, satisfies both-side and source-average precision at
+the requested target, and maximizes source-average automatic coverage; infeasible
+policies review all. Final policies are selected from source-held development
+predictions **before** fitting the exported heads on all 968 rows.
+
+**Accepted precision** is correct automatic near/far answers / all accepted side
+answers. **Review rate** is reviews / all 968 true serves. Correct automatic
+coverage is correct automatic answers / all 968, separate from acceptance coverage.
+These measurements exclude fresh rally detection, false-serve candidates, and the
+independent serve/no-serve/recovery gate.
+
+| Encoder / three-seed agreement | Selection target | Held-source accepted precision | Reviews / all serves | Wrong automatic answers | Runtime status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Maximum coverage | 95% | 96.19% | 49 / 968 (5.06%) | 35 | Research comparison |
+| Maximum coverage | **98%** | **98.79%** | **223 / 968 (23.04%)** | **9** | Policy family exported; final all-development heads shipped on web |
+| Maximum coverage | 99% | 98.52% | 631 / 968 (65.19%) | 5 | Research comparison; misses 99% |
+| Balanced | 95% | 96.75% | 45 / 968 (4.65%) | 30 | Research comparison |
+| Balanced | **98%** | **98.53%** | **220 / 968 (22.73%)** | **11** | Policy family exported; final all-development heads shipped on web |
+| Balanced | 99% | 98.69% | 585 / 968 (60.43%) | 5 | Research comparison; misses 99% |
+
+At 98%, the agreement policies pass pooled, near, far and source-average empirical
+guards. The mean individual-head results do not: Maximum coverage's source average
+is 97.97%, and Balanced's far/source averages are 97.97%/97.73%. Agreement is the
+predeclared policy, not the best seed. The historical specialist's original review
+rule on the same-sized held-source known-serve population measured **95.17%** with
+**37 / 968 (3.82%)** reviews and **45** wrong automatic answers; it is a different
+operating point, not its exact deployed-weight in-sample accuracy.
+
+The target is not a precision guarantee. The weakest sources remain at
+94.12%/94.29%, and descriptive pooled Wilson lower bounds are 97.72%/97.39% for
+Maximum coverage/Balanced. Balanced retains all nine confident Maximum coverage
+errors and adds two on cases the other policy reviews. Encoder diversity has not
+eliminated the shared errors. Prior encoder pixel exposure, historical rally-based
+encoder selection, reused development comparisons, and ranks over reviewed rather
+than production candidates limit transfer claims. Untouched-source and complete
+production-candidate evaluation remain outstanding; export parity does not close
+those gaps.
+
+The [ten-experiment results](docs/research/serving-side-precision-iterations-results-2026-10-14.md)
+and [Balanced comparison](docs/research/serving-side-balanced-precision-results-2026-10-14.md)
+are immutable research snapshots. Their statements that production was unchanged
+describe the study date, before the later web integration registered here. Their
+aggregate JSON, source archives and audit hashes are preserved.
 
 ### Existing ensemble and specialist artifacts
 
@@ -140,7 +248,7 @@ Android production feature until the remaining physical-device parity gates pass
 | `model-1ca43e38eefc` (`environment-specialists-v2-all-labels`) | Rally, serve-contact, and dead-state linear heads | F104 | `ENV2-ALL11` | Compared with `environment-specialists-v1/all-labels` and previous production. Added three indoor recordings containing walking/ball-retrieval hard negatives; refit all three heads on six grass plus five indoor recordings. | Primary production bundle. Artifact SHA-256 `1ca43e38eefc…`; component artifact hashes remain in the bundle. |
 | `model-9c92b8e9333f` | `full-audiovisual-audio-normalized-v3` rally, `serve-specialist-audio-normalized-v5` serve, and `dead-state-transition-audio-normalized-v5-no-legacy-final` dead-state heads | F104 | `GOLD-NB-T4` | Compared component-by-component with the prior F90 models. Added 14 noise-normalized audio base features; the serve/dead-state heads also tested legacy/new audio ablations. | Previous production bundle, retained in the two-model consensus because it still recovers some rallies missed by the newer refit. Artifact SHA-256 `9c92b8e9333f…`. |
 | `suppression-overlap-exclusion-retrained` | Binary false-positive suppression head | F104 | `FEEDBACK16` | Compared with the original feedback suppression v3 fit. Corrected the target builder so false-positive intervals overlapping an included corrected rally core were excluded from suppression positives; production decoder settings were held fixed. | Production suppression model, gated to eligible one-model intervals. Artifact SHA-256 `39eddf581639…`; learned-weights SHA-256 `a943…`. |
-| `serving-side-fixed-flight-v3` | Camera-space near/far class-balanced logistic head | SERVSIDE237-FLIGHT | 1,027 correction-clean rows from 28 recordings and nine development source groups; protected recording excluded from fitting and selection | Compared with court-flow, trajectory, high-resolution, quality-mixture, and group-balanced variants. Adds the selected fixed-anchor 155-value flight bank to 82 court-flow values. | Production browser serving-side model; native Android implementation landed with device release gates pending. Runtime asset `serving-side-85bc3325fbd4.json`, file SHA-256 `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`, model fingerprint `85bc3325fbd4…`. The deterministic hybrid gate below is part of the composition. |
+| `serving-side-fixed-flight-v3` | Camera-space near/far class-balanced logistic head | SERVSIDE237-FLIGHT | 1,027 correction-clean rows from 28 recordings and nine development source groups; protected recording excluded from fitting and selection | Compared with court-flow, trajectory, high-resolution, quality-mixture, and group-balanced variants. Adds the selected fixed-anchor 155-value flight bank to 82 court-flow values. | Retained by the Legacy web path and native Android/iOS serving paths. Neural web paths reuse its extraction and gate, then replace the side scores with their paired ensemble. Runtime asset `serving-side-85bc3325fbd4.json`, file SHA-256 `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`, model fingerprint `85bc3325fbd4…`. Native qualification remains a separate gate. |
 
 ## Named artifact lineage
 
@@ -259,15 +367,64 @@ compatibility. Serving-side and side-switch feature evaluation remain independen
 their requested frames are routed from the shared pass. No model refit or new artifact is
 required for this cutover.
 
-### Production serving-side contract
+### Temporal serving-side research lineage
 
-The production browser deploys the indivisible composition
+These studies share `SERVSIDE-NB26`; the parent study represents its nested fold
+artifacts and all seeds, rather than registering each fold as a separate model.
+The earlier encoder is the frozen Maximum coverage Large encoder. The final
+Balanced study changes to the matching Balanced encoder and newly trains every
+serving head. Neither study fine-tunes an image encoder or changes a rally decoder.
+
+| Study / durable ledger artifact | Compared with / change / reason | Result and disposition |
+| --- | --- | --- |
+| [Temporal and anchor-only heads](docs/research/serving-side-temporal-head-2026-10-13.md), `private-reference-0225` | Ordered 13-frame embeddings versus the identical network with only the anchor frame, to test previous/future context. Balanced-accuracy selection. | Mean source-macro balanced accuracy 77.37% versus 70.54%; both below the historical specialist's 93.97%. Final temporal heads retained for research; none shipped. |
+| [Temporal hybrid and specialist-only controls](docs/research/serving-side-hybrid-head-2026-10-13.md), `private-reference-0231` | Adds all 237 specialist ranks and a freshly fold-fitted logistic skip; compares full and inner-selected neural correction strengths. | Selected hybrid source-macro BA 93.51%, versus matched logistic 93.41% and specialist-only neural 93.33%. Small incremental benefit; predecessor to precision work, not the production graph. |
+| [Learned-rejection prototype](docs/research/serving-side-selective-head-2026-10-14.md), `private-reference-0234` | Replaces pure classification with a learned review option and rejection-cost objective. | Stopped after 20 completed partitions because acceptance collapsed and the cutoff grid could not resolve tiny scores. Incomplete evaluation; no performance or promotion claim. |
+| [Asymmetric-cost heads and evidence agreement](docs/research/serving-side-precision-head-2026-10-14.md), `private-reference-0236` | Separate far/near evidence with false-positive cost 49, compared with BCE hybrid, full-feature logistic and court/flight agreement controls. Precision-first 95/98/99 policy selection. | At 98%, mean cost-head precision 97.49%, reviews 28.44%; consensus 97.87%, reviews 37.09%. Does not meet the desired precision guards; research predecessor. |
+| [Ten registered precision experiments](docs/research/serving-side-precision-iterations-results-2026-10-14.md), `private-reference-0240` | Tests absolute quality, phase quality, raw flow, projected embedding changes, quality interactions, correctness heads, and three temporal representations, with matched controls. | Experiment 09's centered representation plus quality and three-seed agreement supplies the web Maximum coverage serving model. Other arms remain research; no individual-head mean clears every 98% guard. |
+| [Balanced matched encoder comparison](docs/research/serving-side-balanced-precision-results-2026-10-14.md), `private-reference-0242` | Repeats only experiment 09 with the Balanced encoder; same labels, features, folds, seeds, loss and selector. | Three new seed refits supply the web Balanced serving model. Consensus 98.53% precision / 22.73% review; it does not establish a better precision tradeoff than Maximum coverage. |
+
+The ten arms are `01-quality-mean`, `02-quality-phases`, `03-raw-court`,
+`04-embedding-changes`, `05-quality-interactions`, `06-correctness-linear`,
+`07-correctness-interactions`, `08-neural-quality`, `09-neural-centered`, and
+`10-neural-differences`; use the
+[aggregate report](docs/research/serving-side-precision-iterations-2026-10-14.json)
+for the exact arm identifiers, selected configurations and checkpoint hashes.
+Experiments 08–10 hold architecture/training fixed and change the temporal
+representation. Centering removes each valid window's static mean, while the
+quality branch restores absolute motion evidence absent from recording ranks.
+This supports the observed improvement without proving a physical explanation
+for every error. Earlier diagnostics documented source-dependent score shifts,
+overfitting and heavy dependence on the specialist's explicit motion features.
+
+The main study registration SHA-256 is
+`6dddbd097a11b1d37825e2d99929da1563b5d10092be24cd3f08660a7b301796`;
+the Balanced registration is
+`33ad21271ebb2f00fc4349e8fcb3b729d50365704cb1af90e19998df9261ea40`.
+Their [main audit](docs/research/serving-side-precision-iterations-audit-2026-10-14.json)
+and [Balanced audit](docs/research/serving-side-balanced-precision-audit-2026-10-14.json)
+bind labels, feature reconstruction, source exclusions, policies, checkpoint
+reloads and aggregates. Main training completed 324 nested neural fits plus nine
+all-development refits; Balanced completed 108 plus three. Both ran sequentially
+with two CPU threads (peak sampled RSS 2.09 / 1.77 GiB, no sampled process swap).
+The initial stopped implementation is archived at `private-reference-0238` and
+was fully restarted without reusing its fits. Exact media, row membership,
+private weights/receipts and archived source are resolved through the ledger.
+
+### Fixed-flight serving-side and shared serve-gate contract
+
+The production web neural paths use the paired side models above. This section
+registers the retained **Legacy web and native fixed-flight side classifier** and
+the independent serve gate shared with the neural web composition. Its historical
+evaluation metrics do not describe the new neural serving heads.
+
+The Legacy web path retains the indivisible composition
 `serving-side-fixed-flight-v3` + `serving-side-hybrid-serve-gate-v2`. Do not deploy
 fixed-flight v3 with the older serve-head-only gate, and do not describe the hybrid
 gate as a learned replacement for either production serve head.
 
 The browser and Android runtimes add the separate 237-column visual feature pipeline and
-side-model runner described in **Browser implementation and Android delta** in
+side-model runner described in **Shared specialist features and native status** in
 [`FEATURE_PIPELINE.md`](FEATURE_PIPELINE.md). It does not add another serve/rally feature
 bank: the hybrid gate reuses the two existing serve-head score streams and the ensemble
 interval-agreement output. Android's implementation must still pass the physical-device
@@ -318,8 +475,10 @@ review and retains the predicted near/far side and both heads' evidence. It is
 not a confirmed serve or a guaranteed accurate contact timestamp. Saved neural
 `not-serve` results are upgraded using their existing predictions without video
 reprocessing; manual corrections and removed markers remain respected. Legacy
-ensemble decisions and the frozen side classifier are unchanged. The historical
-metrics below describe the legacy gate, not this neural recovery policy.
+ensemble decisions and the native fixed-flight side classifier are unchanged.
+Web neural analysis subsequently replaces side evidence with its paired ensemble,
+preserving these recovery review reasons. The historical metrics below describe
+the legacy gate, not this neural recovery policy or the centered head.
 
 On the current corrected-label 1,114-row results universe, the hybrid gate has
 99.6324% serve precision and 98.0108% serve recall. It reduces missed serves from 56
@@ -869,6 +1028,7 @@ sets are separate even when listed on the same model row.
 | `ENV2-ALL11` | Fit: union of `ENV1-GRASS6` and `ENV2-INDOOR5` |
 | `FEEDBACK16` | Fit: `ENV2-ALL11` plus `recording-033`, `recording-029`, `recording-027`, `recording-034`, `recording-032` |
 | `SIDE4` | Fit: `beach-beach-source-02`, `beach-beach-source-01`, `grass-grass-source-01`, `grass-grass-source-09` |
+| `SERVSIDE-NB26` | Frozen dataset via `private-reference-0226`, bound by the serving studies' registrations: 968 reviewed true non-beach serves (480 near / 488 far), 26 recordings, conservative source groups `source-group-002`, `003`, `005`, `007`, `009`, `010`, `012`, `013`. Every outer/inner fold excludes its declared sources from fitting and selection; all-development delivery refits use all 968 only after final policy selection. Protected sources, unclear/not-serve labels, beach and excluded time do not supply labels. Encoder fitting/selection exposure remains separately registered under the matching Distilled Large lineage. |
 | `SIDE3-NO-BLUR` | Counterfactual fit: `beach-beach-source-01`, `grass-grass-source-01`, `grass-grass-source-09`; only `beach-beach-source-02` is removed from historical `SIDE4` |
 | `SIDE-V2-T5` | Fit: `recording-028`, `recording-029`, `recording-032`, `recording-030`, `recording-031` |
 | `SIDE-V2-V2` | Threshold and decoder selection only: `recording-035`, `recording-033` |
@@ -889,8 +1049,11 @@ Before claiming a model has been reproduced:
    seed, optimizer, and calibration.
 5. Record both weight and full-artifact hashes. A metadata-only final alias should say
    that it reuses weights; a refit should never do so.
-6. Evaluate using the canonical ranking contract in
+6. For rally models, evaluate using the canonical ranking contract in
    [`docs/model-ranking-metric.md`](docs/model-ranking-metric.md), including all required
-   padding cases and the declared development scope.
+   padding cases and the declared development scope. For selective serving-side
+   heads, report accepted precision, both-side/source guards, wrong automatic
+   answers and review workload over all eligible serves at the registered targets;
+   padded rally-duration F1 does not rank a near/far head.
 7. Add the new row here in the same change as the durable artifact, including its
    predecessor, intended improvement, actual change, and disposition.

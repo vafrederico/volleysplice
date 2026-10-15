@@ -10,13 +10,22 @@ export-encoding architecture.
 
 ## Distilled Large application path
 
-On this branch, normal web, Android and iOS projects default to the selected
+Normal web, Android and iOS projects default to the selected
 **Distilled MobileNetV3-Large + TCN, highest recall** model (**Maximum coverage · BETA**).
 The highest-F1 selection (**Balanced · BETA**) and **Legacy model**
 (the production ensemble) remain explicit choices. Each analysis runs only the
-selected rally variant. The following
-new path supplements the deployed ensemble description below; no signed release
-or site deployment is implied by its implementation.
+selected rally variant. The encoder-paired serving-side integration merged into
+`main` in `569986be` (implementation `d852076a`) updates the production web path:
+
+| Client and rally selection | Serving-side inference |
+| --- | --- |
+| Web, Maximum coverage | `serving-side-centered-recall-v1`, paired with `distilled-large-recall-v1` |
+| Web, Balanced | `serving-side-centered-f1-v1`, paired with `distilled-large-f1-v1` |
+| Web, Legacy | `serving-side-fixed-flight-v3` |
+| Android and iOS, either neural selection or Legacy | Existing fixed-flight v3; the new temporal serving heads are web-only |
+
+This describes the merged application code and packaged assets. A separate site
+deployment or native release is not established by the merge alone.
 
 ```text
 Video -> 2 Hz 224-pixel image encoder -> four 960-value regional pools
@@ -41,7 +50,8 @@ against the user's video. Export padding and short-gap joining remain editor
 operations, separate from these core rally boundaries.
 
 Changing selection switches the matched encoder, temporal weights, scalar
-normalizer, and decoder atomically. The encoder weights differ, so embeddings
+normalizer, and decoder atomically; on web it also selects the matching serving
+head bundle. The encoder weights differ, so embeddings
 cannot be reused across the choices. DINO and the training projector are absent
 at inference. See the [bundle manifests](models/distilled-large/README.md) and
 [feature contract](FEATURE_PIPELINE.md#production-profile).
@@ -51,40 +61,42 @@ iOS uses the portable regional-pooling graph with FP32 tokens and ONNX Runtime
 decoders. GPU/Core ML/Neural Engine providers require later physical-device
 qualification; simulator measurements do not establish mobile throughput.
 
-The neural model supplies rally intervals. Existing production serve/dead-state
-heads still provide evidence for serving-side and side-switch classification,
-which run on those neural intervals. The ensemble's learned suppression policy
+The neural rally model supplies rally intervals. Existing production serve/dead-state
+heads still provide independent serve-gate and side-switch evidence on those
+intervals. Web neural serving heads replace the side estimate and its uncertainty
+rule while retaining those gates. The ensemble's learned suppression policy
 is not automatically applied to a neural proposal set: it was fitted around
 ensemble proposals and could remove recovered rallies. Selecting the legacy
 ensemble retains its existing suppression choices. A neural-runtime failure is
 reported explicitly; it must not silently relabel ensemble output as neural.
 
-## Deployed ensemble reference
+## Legacy ensemble reference
 
-VolleySplice's production architecture is a lightweight, on-device audiovisual signal-
+The legacy ensemble is a lightweight, on-device audiovisual signal-
 processing system. It does not explicitly detect the volleyball, players, net, score,
 or named volleyball actions. Instead, it learns statistical patterns that distinguish
 live rallies, serve contact, end-of-play transitions, common false positives, and—in
 the production browser—the physical camera-space serving side and team side changes.
 
-The currently deployed rally/export system contains seven logistic classifiers:
+The legacy rally/export system contains seven logistic classifiers:
 
 - two independent three-head rally-model bundles, used as a recall-safety ensemble; and
 - one false-positive suppression head, used as an optional, review-first veto.
 
-The production browser always adds one class-balanced logistic serving-side classifier.
+The legacy browser path adds one class-balanced logistic serving-side classifier.
 Its hybrid serve gate is deterministic and reuses the two existing serve heads and their
 decoded rally intervals. An optional, default-off score-tracking branch adds the
 `union34-top2-x2` side-switch logistic classifier. The hybrid gate and side-switch
-post-decoder are deterministic composition, not learned heads. The browser therefore
-runs eight learned classifiers normally and nine when side-switch inference is enabled.
+post-decoder are deterministic composition, not learned heads. This legacy path therefore
+runs eight learned classifiers normally and nine when side-switch inference is enabled;
+these counts do not describe the neural rally and serving paths.
 
 The seven rally/suppression classifiers run locally in both the production browser and
 native Android applications. Those clients share the same F104/520 model artifacts,
 temporal decoders, ensemble rules, and suppression-policy contract. Serving-side fixed-
-flight v3 and its hybrid gate are additionally deployed in the production browser and
-implemented on Android with physical-device release gates still pending. The side-switch
-classifier and its checked-in runtime are browser-only. The cross-platform serving-side
+flight v3 and its hybrid gate remain the native serving implementation and the web
+Legacy choice. Android and iOS have their own serving/score implementations; they do
+not yet run the new centered neural serving heads. The Android serving-side
 contract is specified in
 [`docs/serving-side-score-tracking-android-spec.md`](docs/serving-side-score-tracking-android-spec.md).
 
@@ -107,6 +119,9 @@ The serving-side target separately measures court-end residual flow and concentr
 post-contact motion around a candidate anchor. It uses changes across launch, early-flight,
 and late-flight phases to infer `near` versus `far`, including cases where the server is
 partially visible or offscreen. It is a motion proxy rather than a semantic ball detector.
+The web neural variant adds centered image embeddings from three seconds before through
+three seconds after the anchor, retaining the same court/flight evidence and adding
+absolute motion-quality values. Its temporal convolutions learn changes across that window.
 
 These are learned associations rather than semantic detections. For example, a strong
 transient does not necessarily mean ball contact, and court-wide movement does not
@@ -115,7 +130,7 @@ the next serve are important confusing cases represented in training and evaluat
 
 ## Feature pipeline
 
-The production feature path is:
+The shared audiovisual path feeding the legacy heads is:
 
 ```text
 Video sampled at 4 fps and reduced to 192x108
@@ -155,7 +170,7 @@ The canonical feature list is defined in
 and contextual normalization is implemented in
 [`prod/src/lib/on-device/feature-math.ts`](prod/src/lib/on-device/feature-math.ts).
 
-The production-browser serving-side path is a separate candidate-conditioned branch:
+The shared serving-side specialist features form a separate candidate-conditioned branch:
 
 ```text
 Saved rally/serve anchor and ROI
@@ -167,7 +182,7 @@ Saved rally/serve anchor and ROI
                                       |
                          237 ordered visual inputs
                                       |
-                  fixed-flight v3 logistic side score
+            fixed-flight v3, or neural serving fusion below
 ```
 
 The 82-value bank describes near/far residual flow in pre/contact/post phases and their
@@ -195,24 +210,27 @@ Production range boundaries + retained internal dead-state peaks
         union34 logistic score -> adjacent NMS -> post-six cost
 ```
 
-Serving-side and side-switch timestamp schedules are unioned and decoded in one full
-sequential specialist pass. Requested source samples are rendered independently to each
+The court/flight serving-side and side-switch timestamp schedules are unioned and
+decoded in one full sequential specialist pass. Requested source samples are rendered independently to each
 model's frozen pixel format, then feature extraction, ranking, classification, and
 post-decoding proceed separately. This sharing changes execution cost only; neither
 feature signature, model artifact, cache identity, nor inference output contract changes.
+Neural serving additionally consumes the selected rally encoder's image tokens. It
+reuses the active analysis buffers when available, or decodes and encodes the needed
+half-second samples in a separate sequential pass when rerun later.
 
-## Three-head rally-model bundles
+## Legacy three-head rally-model bundles
 
-Each of the two production rally-model bundles contains three independent, class-weighted
+Each of the two legacy rally-model bundles contains three independent, class-weighted
 logistic-regression heads. Every head has a bias and 520 learned feature weights:
 
 ```text
 score = sigmoid(bias + sum(standardized_feature[i] * weight[i]))
 ```
 
-There are no hidden layers, convolutions, recurrent layers, attention layers, or
-transformers. The small linear architecture is intentional: video and audio decoding and
-feature extraction dominate runtime, while the classifiers themselves are inexpensive on
+These logistic heads have no hidden layers, convolutions, recurrent layers, attention
+layers, or transformers. The small linear architecture is intentional: video/audio
+decoding and feature extraction dominate runtime, while the classifiers are inexpensive on
 mobile CPUs.
 
 The three heads have different training targets and responsibilities:
@@ -227,7 +245,7 @@ Raw sigmoid values are useful evidence but are not guaranteed to be calibrated
 probabilities. The temporal decoder and resulting interval confidence must not be
 interpreted as exact semantic certainty.
 
-## Temporal decoding
+## Legacy temporal decoding
 
 The classifier heads emit one score per 250-millisecond sample. The production decoder
 turns those scores into candidate intervals:
@@ -246,9 +264,9 @@ The exact cross-platform implementation is in
 [`prod/src/lib/on-device/model.ts`](prod/src/lib/on-device/model.ts) and
 [`android/app/src/main/java/com/volleycut/nativeanalysis/ModelRunner.java`](android/app/src/main/java/com/volleycut/nativeanalysis/ModelRunner.java).
 
-## Production recall-safety ensemble
+## Legacy recall-safety ensemble
 
-Production runs both three-head bundles over the same extracted feature matrix:
+The Legacy selection runs both three-head bundles over the same extracted feature matrix:
 
 | Model | Role |
 | --- | --- |
@@ -270,7 +288,7 @@ and uses model disagreement as review information. The merge contract is impleme
 
 ## False-positive suppression specialist
 
-Production also runs the single-head
+The legacy runtime also runs the single-head
 `suppression-overlap-exclusion-retrained` classifier over the same 520 inputs. Its positive
 class is valid non-rally time selected by the production ensemble, together with explicitly
 reviewed false positives, hard negatives, and side-switch samples. Human rally samples form
@@ -556,11 +574,105 @@ entirely removes four FP and one TP and is retained as a small, unpromoted preci
 candidate. See
 [`side-switch-internal-specialist-2026-08-23.md`](docs/research/side-switch-internal-specialist-2026-08-23.md).
 
-## Production-browser serving-side model and hybrid gate
+## Production-web temporal serving-side heads
 
-`serving-side-fixed-flight-v3` replaces the earlier 38-input v1 research baseline in the
-production browser. It is candidate-conditioned: at a known source-aligned anchor,
-it maps the 237 tied within-recording ranks to a near-side score:
+The web Maximum coverage and Balanced selections each use their own frozen
+DINO-distilled MobileNetV3-Large encoder and centered serving bundle. They share
+an architecture, not encoder weights or serving weights. The
+[serving manifest](models/serving-side/web-manifest.json) pins the matching rally
+model ID, encoder ONNX and training-weight hashes, serving graph hash, three seed
+checkpoints, and side-specific acceptance cutoffs. Runtime loading checks the
+catalog against its pinned copy, checks the encoder pairing, and verifies graph bytes.
+
+```text
+Selected encoder: 13 samples at anchor + [-3, -2.5, ..., +3] seconds
+       four 960-value tokens + validity / relative time / sample offset
+                              |
+                FP32 window [batch, 13, 3843]
+                              |
+          subtract each token channel's valid-frame window mean
+                              |
+   per-token LayerNorm -> shared 960-to-16 projection -> ReLU -> mask
+                              |
+           64 projected values + three time/validity scalars
+                              |
+      64-wide temporal CNN, kernel 3, residual dilations 1 / 2 / 3
+                              |
+                     center-tick 64 values
+                              |                   237 specialist ranks
+                              |                  + 12 raw phase-quality values
+                              |                   fitted scaling -> 249-to-32 ReLU
+                              +-------------------------+
+                                        |
+                              96-to-64-to-2 correction
+                                        |
+              bounded residuals + frozen 237-input logistic base
+                                        |
+                         two logits per seed: far, near
+                                        |
+                   all three seeds accept and agree, or review
+```
+
+The three seeds are 3407, 1729, and 20260918; both shipped bundles use their selected
+epoch-5 all-development refits. Their base logistic fits and scalers belong to the
+new training run, rather than reusing the deployed fixed-flight v3 weights. The
+12 quality features are raw `energyMean`, `activeFraction`,
+`smallComponentEnergyFraction`, and absolute `flowY` in launch, early, and late
+phases. The first 237 inputs retain tied recording-candidate ranks. There is no
+audio or serve-head score in the side head's inputs.
+
+Image tokens are FP16-rounded then represented as FP32. The sampler uses the
+global half-second grid, earlier samples on ties, and a quarter-second tolerance;
+out-of-range slots are masked and the center frame must be valid. Centering occurs
+inside the exported graph using only valid frames. The temporal convolution uses
+past and future frames; this is offline inference, not a causal streaming head.
+The graph includes three independent heads and returns `[batch, 3, 2]` logits.
+The browser runs it through ONNX Runtime WASM in batches of up to eight candidates,
+even when its image encoder uses WebGPU.
+
+For each seed, let `b` be its frozen logistic base and `r` its two learned
+corrections. The logits are `[-b, b] + 3*tanh(r) - log(49)`. Training penalizes
+false side acceptance 49 times as heavily as the corresponding positive term,
+with a bounded-residual penalty. At inference, the two sigmoid values are
+cost-transformed evidence. Their ratio routes to near/far, and the routed side's
+evidence must meet that seed's frozen side-specific cutoff. The automatic side
+requires all three seed policies to accept the same side; otherwise the candidate
+retains a side estimate with a `side-score` review reason. The stored
+`nearProbability` averages the three routing ratios. Neither it nor the acceptance
+evidence is a calibrated probability that the answer is correct.
+
+The shipped policy is the **98% selection target**. The 95% and 99% studies are
+comparisons, not runtime modes. The precursor embedding-only, hybrid, selective,
+and ten-arm studies remain documented research; only the centered quality head
+with three-seed agreement was exported for these two web selections. In nested
+source-held evaluation on 968 reviewed true non-beach serves from 26 recordings
+and eight source groups, Maximum coverage agreement reached **98.79% accepted
+precision with 23.04% review** (9 wrong automatic answers); Balanced reached
+**98.53% with 22.73% review** (11 wrong). Review rate uses all 968 serves as its
+denominator. These are reused development results before the independent serve
+gate, with corrected anchors and reviewed-candidate ranks. They do not establish
+end-to-end performance on production rally candidates, untouched-source precision,
+or a 98% guarantee on each recording. Balanced shares all nine Maximum coverage
+confident errors. Neither 99%-target agreement policy achieved 99% pooled precision.
+
+The [Maximum coverage study](docs/research/serving-side-precision-iterations-results-2026-10-14.md)
+and [Balanced comparison](docs/research/serving-side-balanced-precision-results-2026-10-14.md)
+are frozen historical reports; their statements that production had not changed
+describe the research completion date, before this web integration. The
+[export validation](models/serving-side/export-validation.json) checks 968 cached
+input rows per encoder: native ONNX and the pinned Web WASM runtime (run under
+Node) preserve all acceptance decisions, with maximum logit errors of `2.87e-6`
+and `3.82e-6`, respectively. This is numerical parity, not a browser media-decoding
+or end-to-end quality evaluation. The executable
+reference is [`export-neural-serving-side-runtime.py`](scripts/export-neural-serving-side-runtime.py),
+with browser orchestration in [`neural-serving.ts`](prod/src/lib/on-device/neural-serving.ts)
+and policy/sampling in [`neural-serving-model.ts`](prod/src/lib/on-device/neural-serving-model.ts).
+
+## Fixed-flight serving-side reference and shared hybrid gate
+
+`serving-side-fixed-flight-v3` replaced the earlier 38-input v1 research baseline and
+remains the web Legacy and native side estimator. It is candidate-conditioned: at a
+known source-aligned anchor, it maps the 237 tied within-recording ranks to a near-side score:
 
 ```text
 filled[i] = feature[i], or the fitted median when missing
@@ -577,7 +689,7 @@ Identity calibration is retained. Independently of the side decision threshold, 
 from `0.3121748736511044` through—but not including—`0.5028396703865513` are routed to
 human review; lower scores are automatic far and higher scores are automatic near.
 
-The side classifier always produces `near` or `far`. `not-serve` comes from the separate
+Both side architectures retain a `near` or `far` estimate. `not-serve` comes from the separate
 `serving-side-hybrid-serve-gate-v2` composition:
 
 ```text
@@ -592,7 +704,7 @@ otherwise
     -> not-serve; decision source = none
 ```
 
-The production rally intervals are the same overlap-connected union already decoded from
+For the Legacy selection, production rally intervals are the overlap-connected union decoded from
 `model-1ca43e38eefc` and `model-9c92b8e9333f`. The fallback requires support from both
 models; a one-model-only interval is insufficient. The gate does not alter intervals,
 retrain a serve head, or use the side score to decide whether a serve occurred. Side-score
@@ -600,11 +712,15 @@ uncertainty and rally recovery are independent review reasons.
 
 For independently decoded neural rallies, Android and production web retain an
 unconfirmed start as a `review` serve with source/reason `neural-rally-recovery`.
-The side classifier still runs for every valid rally and keeps its near/far
-prediction. This extends marker visibility beyond the legacy gate; it does not
-invent a confirmed serve or move its anchor. Saved neural `not-serve` results can
-be recovered from their existing side predictions without extracting features
-again. Legacy ensemble gating and model weights remain unchanged.
+The selected side classifier runs for every valid rally and keeps its near/far
+prediction. The web neural side policy replaces only the `side-score` reason;
+`production-rally-recovery` and `neural-rally-recovery` remain mandatory review,
+even when all three seeds accept. An existing `not-serve` verdict is preserved.
+This extends marker visibility beyond the legacy gate; it does not
+invent a confirmed serve or move its anchor. Within a matching cached model,
+saved neural `not-serve` results can be recovered from their existing side
+predictions without extracting features again. Legacy ensemble gating and model
+weights remain unchanged.
 
 The selected development fit contains 1,027 correction-clean near/far rows across 28
 recordings and nine source groups. Development leave-one-source-group-out performance is
@@ -614,7 +730,7 @@ precision and 98.01% serve recall, reducing missed serves from 56 to 22 while ad
 false serve. Those gate numbers are assisted post-hoc diagnostics, not a clean held-out
 model-selection estimate.
 
-The model, thresholds, source lineage, immutable NAS paths/hashes, and deployment status
+The models, thresholds, source lineage, private ledger indexes, hashes, and integration status
 are registered in [`MODELS.md`](MODELS.md). The browser runtime implementation is in
 [`prod/src/lib/on-device/serving-side-model.ts`](prod/src/lib/on-device/serving-side-model.ts)
 and [`prod/src/lib/on-device/serving-side.ts`](prod/src/lib/on-device/serving-side.ts).
@@ -627,21 +743,16 @@ extraction/inference scripts. The historical v1 non-promotion remains documented
 
 ## Production-browser inference, scoring, and export flow
 
-The complete selected production path is:
+The selected production-web path is:
 
 ```text
-Decode main video at 4 fps and decode audio
-                     |
-       extract and cache 104 base features
-                     |
-      normalize and gather 520 contextual inputs
-                     |
-        |-- all-labels-v2 rally/serve/dead-state heads
-        `-- previous-production rally/serve/dead-state heads
+Decode audiovisual features; selected neural path also encodes 2 Hz images
                                |
-          union rally outputs and mark agreement
+        |-- neural: matched encoder + TCN + frozen decoder
+        `-- Legacy: two logistic bundles + union + optional suppression
                                |
-        suppression head and gated suggestions
+                   selected core rally intervals
+       (legacy serve/state heads provide gate and switch evidence)
                                |
        build required serving timestamps and, when enabled,
                  optional side-switch timestamps
@@ -653,7 +764,12 @@ Decode main video at 4 fps and decode audio
                  |                             |
  extract/rank SERVSIDE237-FLIGHT      extract SIDE-SWITCH-UNION34-V1
                  |                             |
- fixed-flight near/far + hybrid gate    union34 score + post-decoder
+  |-- Legacy: fixed-flight v3           union34 score + post-decoder
+  `-- neural: +12 quality values                |
+      + matching encoder windows               |
+      -> centered three-seed agreement         |
+                 |                             |
+       independent hybrid/recovery gate         |
                  |                             |
        editable serve markers             editable switch markers
                  \                             /
@@ -677,13 +793,24 @@ Manual include/exclude decisions, boundary edits, ignored intervals, and selecte
 suppression overrides are materialized before preview and export.
 
 Score-specialist candidates are generated after the browser's rally/suppression analysis
-result for a new project and before the editor is shown. Every included merged production
-interval start is a serving-side anchor. Side-switch candidates are generated only when
+result for a new project and before the editor is shown. Every included selected rally
+start is a serving-side anchor. Side-switch candidates are generated only when
 the project's default-off side-switch option is enabled. The two requested timestamp sets
 share one sequential decode, while their feature matrices and model outputs remain
 separate. The raw matrices, verdict/proposal evidence, and model identities are stored
 with the project. Editor ignored ranges and disabled/suppressed rallies filter markers
 after inference and never cause video reprocessing.
+
+For neural serving, persistence retains the 237 raw specialist columns and final
+candidate evidence, not the temporal windows or derived 249-column matrix. Active
+rally embeddings are handed to the serving pass once; a later rerun can extract
+the needed image samples with the paired encoder. Cache reuse checks serving
+model ID/fingerprint, feature and anchor contracts, and exact included candidate
+IDs, starts, ends, and agreement. Thus an old fixed-flight result or the other
+encoder's result is not reusable for the selected neural model. Refreshing markers
+preserves manual serves, corrected sides, restored timestamps, and replay flags.
+An unavailable or mismatched neural serving bundle fails the specialist stage
+explicitly; it does not become a successful fixed-flight fallback.
 
 If the shared specialist stage fails, the browser reports the error and opens the editor
 with the already-complete rally/suppression result. A connected source plus the retained
@@ -712,29 +839,33 @@ composition is in [`prod/src/lib/score-overlay.ts`](prod/src/lib/score-overlay.t
 [`prod/src/lib/on-device/export.ts`](prod/src/lib/on-device/export.ts). The native Android
 rally/suppression equivalent begins in
 [`android/app/src/main/java/com/volleycut/nativeanalysis/AnalysisEngine.java`](android/app/src/main/java/com/volleycut/nativeanalysis/AnalysisEngine.java).
-The Android serving-side, score editor, timeline markers, persistence, feedback, preview,
-and export-overlay work remains to be implemented against the dedicated Android spec.
+Android and iOS already implement fixed-flight serving inference and score workflows;
+see [`android/README.md`](android/README.md) and [`ios/README.md`](ios/README.md).
+The new centered serving bundles and policy have not been ported to those clients.
 
 ## Design philosophy and limitations
 
-The production strategy is:
+The selected production strategy is:
 
 ```text
-two rally models maximize recall
+selected neural rally model, or legacy recall-safety ensemble
               +
-disagreement highlights uncertain material
+encoder-matched centered serving consensus on web neural selections
               +
-fixed-flight v3 estimates camera-space serving side
+fixed-flight v3 on web Legacy and native clients
               +
-the hybrid gate recovers dual-head serve misses only with both-model rally support
+independent serve confirmation and recovery review gates
               +
-optional gated suppression improves precision
+optional gated suppression for legacy ensemble proposals
               +
 human review and padding protect the final export
 ```
 
 The system understands audiovisual dynamics, not volleyball semantics. It does not reason
 directly about the ball trajectory, legal contacts, possession, score, outcome, or rules.
-Its predictions should remain editable suggestions, and production changes must continue
-to be evaluated with source-separated data, recall guardrails, ignored-interval handling,
-and the canonical [`F1_padP_coreR`](docs/model-ranking-metric.md) ranking contract.
+Its predictions should remain editable suggestions. Rally/export comparisons use
+source-separated data, recall guardrails, ignored-interval handling, and the canonical
+[`F1_padP_coreR`](docs/model-ranking-metric.md) ranking contract. Serving-side policies
+instead compare accepted-side precision and review workload at predeclared targets;
+their known-serve results require untouched-source and full production-candidate
+confirmation, including false serves and recovery review gates.

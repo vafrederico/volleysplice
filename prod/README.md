@@ -15,14 +15,17 @@ inference error is shown explicitly; select the ensemble to use that alternative
 
 Before queueing inference, the user can seek the local preview and mark the game start
 and end. The marked source-time window becomes part of the project and feature-cache
-identity. Video and audio decoding only generate features inside that window, inference
+identity. Main audiovisual features are generated inside that window, rally inference
 is clipped to it, editor padding cannot cross it, and the editor overview shows the game
 window instead of unused pre-game or post-game footage. Existing saved projects without
 explicit bounds migrate to the full source duration.
 
-Neural analysis may also read the immediately preceding 2 Hz image as context
-for the first quarter-second feature tick. This does not add rallies or export
-footage outside the marked window.
+Neural analysis also reads 2 Hz image context from three seconds before the game
+window through three seconds after it, clipped to the video. The first image is
+on the global half-second grid at or before that extended start. These images
+supply the temporal serving head's previous/future context and the first rally
+feature tick's preceding image; they do not add rallies or export footage outside
+the marked game window. See the [feature contract](../FEATURE_PIPELINE.md#encoder-paired-temporal-serving-inputs).
 
 The selected video stays in the browser. Each inference request creates a durable local
 project, and the top-bar project selector returns to completed inputs without rerunning

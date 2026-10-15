@@ -8,6 +8,16 @@ variant. Switching
 selection switches the encoder, temporal head, 112-column normalization, and
 decoder together. No retraining or threshold search happens in the apps.
 
+The production **web** app also switches to the encoder-matched serving-side
+ensemble: `serving-side-centered-recall-v1` or `serving-side-centered-f1-v1`.
+Each adds a 633,333-byte ONNX graph containing three centered temporal heads,
+using the frozen 98%-target agreement policy. The
+[serving manifest](../serving-side/web-manifest.json) pins these separate assets;
+[MODELS.md](../../MODELS.md#encoder-paired-serving-side-models-in-the-production-web-app)
+records their training, evaluation limits and production status. The payload
+totals below cover the rally bundles only. Android/iOS and the Legacy web choice
+retain the fixed-flight serving specialist; the new serving graphs are web-only.
+
 | Selection | Model ID | Selection draw / TCN epoch | Decoder smoothing / entry / minimum / boundaries |
 | --- | --- | --- | --- |
 | Highest F1 | `distilled-large-f1-v1` | 20260918 / 60 | 1 s / 0.9 / 0.25 s / disabled |
