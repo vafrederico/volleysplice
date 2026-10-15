@@ -1532,13 +1532,17 @@ private struct TimelineTrack: View {
                     context.fill(Path(CGRect(x: x(playheadMs) - 1, y: 0, width: 2, height: size.height)), with: .color(EditorPalette.orange))
                 }
                 for serve in serves where serve.timestampMs >= range.startMs && serve.timestampMs <= range.endMs {
-                    let center = CGPoint(x: x(serve.timestampMs), y: 10)
-                    context.fill(Path(CGRect(x: center.x - 0.5, y: 18, width: 1, height: size.height - 18)), with: .color(EditorPalette.ink))
-                    let circle = Path(ellipseIn: CGRect(x: center.x - 8, y: 2, width: 16, height: 16))
-                    context.fill(circle, with: .color(serve.side == .review ? Color(red: 1, green: 216 / 255.0, blue: 77 / 255.0) : .white))
-                    context.stroke(circle, with: .color(EditorPalette.ink), lineWidth: 1)
+                    let needsReview = serve.side == .review
+                    let radius: CGFloat = needsReview ? 9 : 8
+                    let center = CGPoint(x: x(serve.timestampMs), y: 12)
+                    let bounds = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+                    context.fill(Path(CGRect(x: center.x - 0.5, y: bounds.maxY, width: 1, height: max(0, size.height - bounds.maxY))), with: .color(EditorPalette.ink))
+                    let circle = Path(ellipseIn: bounds)
+                    context.fill(circle, with: .color(needsReview ? Color(red: 1, green: 216 / 255.0, blue: 77 / 255.0) : .white))
                     context.draw(Text("🏐").font(.system(size: 12)), at: center)
-                    if serve.id == selectedServeId { context.stroke(Path(ellipseIn: CGRect(x: center.x - 10, y: 0, width: 20, height: 20)), with: .color(EditorPalette.orange), lineWidth: 2) }
+                    // Keep the review outline visible over the emoji, with room for the selection ring above it.
+                    context.stroke(circle, with: .color(needsReview ? Color(red: 138 / 255.0, green: 101 / 255.0, blue: 0) : EditorPalette.ink), lineWidth: needsReview ? 1.5 : 1)
+                    if serve.id == selectedServeId { context.stroke(Path(ellipseIn: bounds.insetBy(dx: -2, dy: -2)), with: .color(EditorPalette.orange), lineWidth: 2) }
                 }
                 for marker in switches where marker.timestampMs >= range.startMs && marker.timestampMs <= range.endMs {
                     let center = CGPoint(x: x(marker.timestampMs), y: 10)
