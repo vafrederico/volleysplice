@@ -11,6 +11,7 @@ import { nearestSamplesAtTimestampsFromSequentialPass } from "./sequential-sampl
 import { parseNeuralManifest, parseNeuralConfig, verifiedAsset, type NeuralRallySelection } from "./rally-model";
 import { neuralEmbeddingCacheKey, readNeuralEmbeddings, writeNeuralEmbeddings, type EmbeddingSequence } from "./neural-cache";
 import { NeuralWorkerClient } from "./neural-worker-client";
+import { rememberServingEmbeddings } from "./neural-serving-context";
 import type { LocalFeatureSource } from "./feature-cache";
 import type { OnDeviceRuntimeVariant } from "./runtime-variants";
 import type { AnalysisProgress, NormalizedRoi, OnDeviceAnalysis } from "./types";
@@ -30,7 +31,9 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
   const config = parseNeuralConfig(JSON.parse(new TextDecoder().decode(await verifiedAsset(
     new URL(bundle.files.pipeline.name, baseUrl).href, bundle.files.pipeline, options.signal))), selection);
   // Both AV and embeddings use the global source grid, clipped to the same game window.
-  const times = neuralEmbeddingTimes(media.info.duration, window.start, window.end);
+  // The serving head needs three seconds of context around every detected start.
+  const imageStart = Math.max(0, window.start - 3), imageEnd = Math.min(media.info.duration, window.end + 3);
+  const times = neuralEmbeddingTimes(media.info.duration, imageStart, imageEnd);
   if (!times.length) throw new Error("The game window contains no image samples.");
   const key = source ? neuralEmbeddingCacheKey(source, media.info, roi, window, bundle) : null;
   let embeddings: EmbeddingSequence | null = key ? await readNeuralEmbeddings(key, times).catch(() => null) : null;
@@ -48,7 +51,7 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
       embeddings = { times, tokens: new Float32Array(times.length * 3840), quality: new Float32Array(times.length * 6) };
       const sink = new VideoSampleSink(media.videoTrack, { hardwareAcceleration: options.decoderAcceleration ?? "prefer-hardware" });
       let row = 0;
-      for await (const sample of nearestSamplesAtTimestampsFromSequentialPass(sink, Array.from(times), () => {}, window.end)) {
+      for await (const sample of nearestSamplesAtTimestampsFromSequentialPass(sink, Array.from(times), () => {}, imageEnd)) {
         options.signal?.throwIfAborted();
         if (!sample) throw new Error("The video decoder omitted an image sample.");
         try {
@@ -98,6 +101,7 @@ export async function analyzeNeuralMedia(media: OpenedMedia, roi: NormalizedRoi,
       neuralScores: { modelId: bundle.id, heads: ["live", "serve", "end", "keep"],
         timestamps: new Float64Array(sequence.times), probabilities: result.probabilities },
       suppression: undefined };
+    rememberServingEmbeddings(output, result.embedding);
     progress({ stage: "complete", completed: duration, total: duration, detail: `${intervals.length} rallies ready - ${bundle.label}` });
     return output;
   } finally { worker.dispose(); }

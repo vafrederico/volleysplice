@@ -32,7 +32,8 @@ metadata also remains. Do not merge or publish this research history on the
 strength of a working tree pass alone. A sanitized squash or explicit history
 rewrite is needed before publication.
 
-The four pinned public ONNX graphs under `prod/public/runtime/rally-models` use
+The pinned public ONNX graphs under `prod/public/runtime/rally-models` and
+`prod/public/runtime/serving-models` use
 protobuf-aware inspection. The audit scans metadata, strings, unknown fields,
 and external-data references, while excluding only numeric tensor payloads whose
 type, dimensions, and byte length agree. Malformed graphs fail the audit; build

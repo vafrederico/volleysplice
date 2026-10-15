@@ -584,6 +584,7 @@ export function normalizeStoredProject(
     !isReusableServingSideOutput(
       windowNormalizedProject.analysis.servingSide,
       windowNormalizedProject.analysis.intervals,
+      windowNormalizedProject.analysis.modelId,
     )
       ? {
           ...windowNormalizedProject,

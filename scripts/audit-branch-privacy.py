@@ -33,11 +33,11 @@ PUBLIC_LEGAL_URL_SHA256 = {
 }
 HTTPS_TOKEN = re.compile(r"https://[^\s\"'<>]+")
 
-# Only the four public, manifest-pinned graphs use protobuf-aware scanning.
+# Only public, manifest-pinned rally and serving graphs use protobuf-aware scanning.
 # Random float bytes can resemble a short drive prefix. All textual fields,
 # unknown fields, and external-data references remain in the scanned material.
 PUBLIC_ONNX_PATH = re.compile(
-    r"prod/public/runtime/rally-models/(?:f1|recall)/(?:encoder|temporal)\.onnx"
+    r"prod/public/runtime/(?:rally-models/(?:f1|recall)/(?:encoder|temporal)|serving-models/(?:f1|recall)/head)\.onnx"
 )
 ONNX_CHILDREN = {
     "model": {7: "graph", 8: "opset", 14: "entry", 20: "training", 25: "function"},

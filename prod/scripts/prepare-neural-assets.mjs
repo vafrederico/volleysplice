@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, cp } from "node:fs/promises";
 import { resolve } from "node:path";
+import { prepareServingAssets, verifyServingAssets } from "./prepare-serving-assets.mjs";
 
 // These are the exact package assets used by the qualified ORT Web 1.22.0 runtime.
 export const ortAssets = new Map([
@@ -12,6 +13,7 @@ export const ortAssets = new Map([
 ]);
 function sha(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
 export async function verifyNeuralAssets(appRoot, targetRoot) {
+  await verifyServingAssets(appRoot, targetRoot);
   const pinnedBytes = await readFile(resolve(appRoot, "../models/distilled-large/web-manifest.json"));
   const manifest = JSON.parse(pinnedBytes);
   const shipped = await readFile(resolve(targetRoot, "rally-models/manifest.json"));
@@ -54,5 +56,6 @@ export async function prepareNeuralAssets(appRoot, publicDirectory = resolve(app
     await copyFile(original, resolve(target, "ort", name));
   }
   await cp(resolve(appRoot, "../models/distilled-large/licenses"), resolve(publicDirectory, "licenses/distilled-large"), { recursive: true });
+  await prepareServingAssets(appRoot, target);
   await verifyNeuralAssets(appRoot, target);
 }

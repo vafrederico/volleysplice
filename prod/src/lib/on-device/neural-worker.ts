@@ -15,6 +15,8 @@ let config: NeuralPipelineConfig;
 let provider: "webgpu" | "wasm" = "wasm";
 let encoder: Ort.InferenceSession | undefined;
 let canvas: OffscreenCanvas | undefined;
+let servingHead: Ort.InferenceSession | undefined;
+let servingFingerprint: string | undefined;
 
 function post(value: NeuralWorkerResponse, transfer: Transferable[] = []) { scope.postMessage(value, transfer); }
 function finite(values: Float32Array): Float32Array {
@@ -103,8 +105,36 @@ async function temporal(request: Extract<NeuralWorkerRequest, { type: "temporal"
       post({ id: request.id, type: "progress", completed: end, total: rows });
     }
     const rallies = decodeRallies(request.times, probabilities, request.duration, config.decoder);
-    post({ id: request.id, type: "temporal", probabilities, rallies }, [probabilities.buffer]);
+    post({ id: request.id, type: "temporal", probabilities, rallies, embedding: request.embedding },
+      [probabilities.buffer, request.embedding.times.buffer, request.embedding.tokens.buffer, request.embedding.quality.buffer]);
   } finally { await head.release(); }
+}
+async function servingSide(request: Extract<NeuralWorkerRequest, { type: "serving-side" }>) {
+  if (request.bundle.rallyModelId !== bundle.id || request.bundle.encoderSha256 !== bundle.files.encoder.sha256) {
+    throw new Error("The serving-side head and image encoder do not match.");
+  }
+  const rows = request.features.length / 249;
+  if (!Number.isSafeInteger(rows) || rows <= 0 || request.windows.length !== rows * 13 * 3843) {
+    throw new Error("The serving-side input dimensions changed.");
+  }
+  await encoder?.release(); encoder = undefined; canvas = undefined;
+  if (!servingHead) {
+    const bytes = await verifiedAsset(request.assetUrl, request.bundle.file);
+    // The small three-seed graph runs on the qualified CPU runtime on all browsers.
+    servingHead = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+    servingFingerprint = request.bundle.fingerprint;
+  }
+  if (servingFingerprint !== request.bundle.fingerprint) throw new Error("Serving-side model identity changed during inference.");
+  const windows = new ort.Tensor("float32", request.windows, [rows, 13, 3843]);
+  const features = new ort.Tensor("float32", request.features, [rows, 249]);
+  try {
+    const outputs = await servingHead.run({ windows, features });
+    try {
+      if (outputs.logits?.dims.join(",") !== `${rows},3,2`) throw new Error("The serving-side output dimensions changed.");
+      const logits = Float32Array.from(finite(outputs.logits.data as Float32Array));
+      post({ id: request.id, type: "serving-side", logits }, [logits.buffer]);
+    } finally { for (const output of Object.values(outputs)) output.dispose(); }
+  } finally { windows.dispose(); features.dispose(); }
 }
 let queue = Promise.resolve();
 scope.addEventListener("message", (event: MessageEvent<NeuralWorkerRequest>) => {
@@ -113,7 +143,8 @@ scope.addEventListener("message", (event: MessageEvent<NeuralWorkerRequest>) => 
     try {
       if (request.type === "initialize") await initialize(request);
       else if (request.type === "frame") await encode(request);
-      else await temporal(request);
+      else if (request.type === "temporal") await temporal(request);
+      else await servingSide(request);
     } catch (error) {
       post({ id: request.id, type: "error", message: error instanceof Error ? error.message : String(error) });
     }

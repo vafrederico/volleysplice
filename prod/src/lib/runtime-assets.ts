@@ -1,5 +1,6 @@
 export type RuntimeAsset =
   | "rally-models/manifest.json"
+  | "serving-models/manifest.json"
   | "feature-reductions.wasm"
   | "libswresample.mjs"
   | "libswresample.wasm"

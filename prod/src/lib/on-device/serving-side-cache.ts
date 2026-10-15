@@ -1,4 +1,5 @@
 import type { OnDeviceInterval, OnDeviceServingSideOutput } from "./types.ts";
+import { neuralServingBundle } from "./neural-serving-model.ts";
 
 export const SERVING_SIDE_MODEL_ID = "serving-side-fixed-flight-v3";
 export const SERVING_SIDE_MODEL_FINGERPRINT =
@@ -16,12 +17,14 @@ export const SERVING_SIDE_FEATURE_COLUMNS = 237;
 export function isReusableServingSideOutput(
   value: unknown,
   intervals: readonly OnDeviceInterval[],
+  rallyModelId?: string,
 ): value is OnDeviceServingSideOutput {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const output = value as Partial<OnDeviceServingSideOutput>;
+  const neural = neuralServingBundle(rallyModelId);
   if (
-    output.modelId !== SERVING_SIDE_MODEL_ID ||
-    output.modelFingerprint !== SERVING_SIDE_MODEL_FINGERPRINT ||
+    output.modelId !== (neural?.id ?? SERVING_SIDE_MODEL_ID) ||
+    output.modelFingerprint !== (neural?.fingerprint ?? SERVING_SIDE_MODEL_FINGERPRINT) ||
     output.featureVersion !== SERVING_SIDE_FEATURE_VERSION ||
     output.anchorContract !== SERVING_SIDE_ANCHOR_CONTRACT ||
     !output.features ||

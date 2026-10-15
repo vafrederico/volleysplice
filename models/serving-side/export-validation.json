@@ -1,0 +1,64 @@
+{
+  "kind": "neural-serving-browser-export-parity-v1",
+  "syntheticInput": "all-valid-ramp-midrank-v1",
+  "variants": {
+    "high-recall": {
+      "validationRows": 968,
+      "maximumLogitError": 2.86102294921875e-06,
+      "acceptanceDecisionsMatch": true,
+      "sha256": "9c9f303e5cc2553d0358bc1f84fb4f3b4f1cc9d506c433bba0a3971c2356412e",
+      "syntheticLogits": [
+        [
+          -5.506233215332031,
+          -1.060877799987793
+        ],
+        [
+          -4.3586320877075195,
+          -1.9706213474273682
+        ],
+        [
+          -3.7490901947021484,
+          -1.3661534786224365
+        ]
+      ],
+      "browserWasm": {
+        "runtime": "1.22.0",
+        "validationRows": 968,
+        "maximumLogitError": 3.814697265625e-06,
+        "maximumRouteError": 3.1198794453457523e-07,
+        "maximumEvidenceError": 4.0990656557937655e-07,
+        "seedAcceptanceDecisionsMatch": true,
+        "consensusDecisionsMatch": true
+      }
+    },
+    "high-f1": {
+      "validationRows": 968,
+      "maximumLogitError": 2.86102294921875e-06,
+      "acceptanceDecisionsMatch": true,
+      "sha256": "e22852a02e99c85cb157de86f97769cecb5f4af5e9eeb809e0b5f55093b17cdf",
+      "syntheticLogits": [
+        [
+          -5.220940113067627,
+          -1.2129461765289307
+        ],
+        [
+          -4.741903305053711,
+          -1.335866928100586
+        ],
+        [
+          -4.316401481628418,
+          -1.2803106307983398
+        ]
+      ],
+      "browserWasm": {
+        "runtime": "1.22.0",
+        "validationRows": 968,
+        "maximumLogitError": 3.814697265625e-06,
+        "maximumRouteError": 3.13532643625436e-07,
+        "maximumEvidenceError": 4.1372561376817885e-07,
+        "seedAcceptanceDecisionsMatch": true,
+        "consensusDecisionsMatch": true
+      }
+    }
+  }
+}
