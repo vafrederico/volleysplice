@@ -24,9 +24,11 @@ internal object ServingSideInference {
     internal fun framePlan(
         ranges: List<AnalysisTypes.Interval>,
         duration: Double,
+        rangeIds: List<String>? = null,
     ): FramePlan {
-        val seeds = ranges.map {
-            SeedRange(secondsToMs(it.start()), secondsToMs(it.end()), it.confidence(), it.agreement())
+        require(rangeIds == null || rangeIds.size == ranges.size)
+        val seeds = ranges.mapIndexed { index, range ->
+            SeedRange(secondsToMs(range.start()), secondsToMs(range.end()), range.confidence(), range.agreement(), rangeIds?.get(index))
         }
         val candidates = ServingSideModelRunner.candidates(seeds)
         return FramePlan(candidates, requestedTimestamps(candidates, duration))

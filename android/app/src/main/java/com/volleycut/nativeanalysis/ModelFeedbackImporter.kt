@@ -121,8 +121,13 @@ internal object ModelFeedbackImporter {
                 (agreement == null || if (RallyModels.isNeural(inference.getString("modelId"))) agreement == "neural"
                 else ProductionEnsemble.isValidAgreement(agreement))
             ) { "Feedback contains an invalid production range" }
-            SeedRange(secondsToMs(start), secondsToMs(end), confidence.toFloat(), agreement)
+            val defaultId = "R${(index + 1).toString().padStart(3, '0')}"
+            val rangeId = if (it.isNull("id")) null else it.getString("id").also { id ->
+                require(id.isNotBlank()) { "Feedback range identity is blank" }
+            }.takeUnless { id -> id == defaultId }
+            SeedRange(secondsToMs(start), secondsToMs(end), confidence.toFloat(), agreement, rangeId)
         } }
+        ServingSideModelRunner.candidates(ranges) // Reject ambiguous imported identities even without score output.
         val serveOutputs = inference.optJSONObject("componentServeOutputs")?.let { outputs ->
             val times = decodeNumeric(inference.getJSONObject("timestamps"))
             require(times.all { it in 0.0..duration } &&
@@ -190,7 +195,7 @@ internal object ModelFeedbackImporter {
                 ServingSideCache.identity(projectWithoutCacheIdentity)
             },
         )
-        require(servingSide == null || servingSide.isReusableFor(ranges)) {
+        require(servingSide == null || servingSide.isReusableFor(ranges, project.modelId) || servingSide.isReusableFor(ranges)) {
             "Serving-side candidates do not match the imported production ranges"
         }
         val seed = checkNotNull(project.editorSeed())
@@ -505,7 +510,7 @@ internal object ModelFeedbackImporter {
         ) { "Feedback uses a different production component" }
     }
 
-    private fun decodeServingSide(json: JSONObject): ServingSideOutput {
+    internal fun decodeServingSide(json: JSONObject): ServingSideOutput {
         val features = json.getJSONObject("features")
         val rows = features.getInt("rows")
         val columns = features.getInt("columns")
@@ -536,8 +541,10 @@ internal object ModelFeedbackImporter {
                 )
             } },
         ).also { output ->
-            require(output.modelId == SERVING_SIDE_MODEL_ID &&
-                output.modelFingerprint == SERVING_SIDE_MODEL_FINGERPRINT &&
+            require(listOf(FeatureSchema.MODEL_ID, RallyModels.F1, RallyModels.RECALL).any {
+                val identity = NeuralServingContract.identity(it)
+                output.modelId == identity.first && output.modelFingerprint == identity.second
+            } &&
                 output.featureVersion == SERVING_SIDE_FEATURE_VERSION &&
                 output.anchorContract == SERVING_SIDE_ANCHOR_CONTRACT &&
                 output.columns == SERVING_SIDE_FEATURE_COLUMNS &&

@@ -56,6 +56,15 @@ In the production project flow, choose a recording and use the local preview to 
 The native Android app packages and verifies the frozen production-browser serving-side runtime,
 extracts the exact 82 court-flow plus 155 fixed-flight columns, ranks each column across the
 recording, and composes the side result with both production serve heads and the hybrid gate.
+Balanced and Maximum coverage then run their encoder-paired serving heads on
+centered 13-frame windows and 249 specialist/quality features. All three seeds
+must accept the same side; independent serve/recovery review reasons remain.
+Legacy keeps the fixed-flight side classifier. Fresh analysis reuses matching
+image embeddings; deferred scoring generates the required sparse source-wide
+half-second samples. Cache reuse checks the selected serving ID and fingerprint.
+Neural serving motion features select the latest actual presentation timestamp
+at or before each requested time, matching the frozen web specialist contract.
+Planned images must decode at that exact timestamp; missing images fail closed.
 Serving-side failures are recoverable and do not discard otherwise valid rally inference.
 Project creation exposes a **Prepare score tracking** switch, enabled by default. Turning it off
 skips the additional serving-side frame sampling and starts the editor with score tracking off.
@@ -317,3 +326,25 @@ The first full audiovisual run and its interval-level comparison against the sto
 - `app/src/main/java/com/volleycut/nativeanalysis/ExportService.kt`: foreground Media3 composition export and telemetry
 - `app/src/test/java/com/volleycut/nativeanalysis/EditorMathTest.kt`: merge, ignored-time, padding, and seed identity tests
 - `app/src/test/java/com/volleycut/nativeanalysis/GoldenModelTest.java`: frozen-feature model parity test
+
+## Paired serving validation
+
+`NeuralServingContractTest` covers encoder pairing, catalog tampering, consensus,
+review reasons, ranks, sparse sampling, persistence and cross-encoder cache rejection.
+`NeuralServingInstrumentedTest` runs the shared independent ONNX raw-logit golden
+for both heads. Optional `servingSource`, `balancedFeedback` and `coverageFeedback`
+instrumentation arguments add a 30-second fresh production analysis per selection
+and full saved-anchor native-feature/replay checks. Supply private input paths only
+at runtime. Run the golden-only check once before copying inputs into the app's
+scoped external directory so Android prepares it. Receipts stay in the debug
+app's external `serving-validation` folder.
+After a separate fresh-pipeline check, `skipFresh=true` runs just the saved-anchor
+checks. An optional `servingEmbeddingCache` directory retains actual native
+embeddings for repeated feature checks; reuse requires matching source, encoder,
+tensor hashes and every requested sample timestamp.
+The Android serving manifest retains the web head bytes, trained encoder-weight
+hashes and fingerprints, while pinning Android's original encoder graph hashes.
+Imported model range IDs persist independently of score caches and feed both
+specialists during rescoring, preserving corrections and removed-marker IDs.
+With feedback arguments, the instrumented check also validates complete imports;
+`importFeedbackOnly=true` runs those checks and the head goldens without video analysis.

@@ -119,8 +119,10 @@ The [bundle contract](models/distilled-large/README.md) identifies every
 runtime component and generation rule. Since the serving-side integration merged
 into main on 2026-10-15 (`d852076a`, merge `569986be`), the production **web** app
 pairs each neural rally model with its own centered serving-side ensemble below.
-Android and iOS retain the fixed-flight serving specialist; these new serving
-graphs have no native port. The existing serve/state outputs still supply gate
+Android and iOS now use the same paired serving graphs for their neural choices.
+They retain the fixed-flight extractor and independent serve gate; Legacy keeps
+its fixed-flight side classifier. Native CPU implementations apply the same
+centered sampling and three-seed consensus policy. The existing serve/state outputs still supply gate
 and side-switch evidence, and the side-switch weights are unchanged. The original
 ensemble remains selectable with its fixed-flight specialist and suppression behavior.
 
@@ -133,7 +135,7 @@ for the preceding benchmark evidence, rather than treating model packaging as a
 new performance result. The [integration report](docs/research/distilled-large-production-integration.md)
 records checks of the normal app pipelines and matched-model switching.
 
-### Encoder-paired serving-side models in the production web app
+### Encoder-paired serving-side models in web, Android and iOS
 
 These are the final all-development refits of experiment `09-neural-centered`,
 exported with the **98% target, all-three-seeds-agree** policy. Each ONNX contains
@@ -146,15 +148,18 @@ asymmetric false-positive cost of 49. See the
 
 | Serving model | Paired rally model | Fit / policy lineage | Public ONNX SHA-256 | Disposition |
 | --- | --- | --- | --- | --- |
-| `serving-side-centered-recall-v1` | `distilled-large-recall-v1` / Maximum coverage | `SERVSIDE-NB26`; experiment 09, ledger `private-reference-0240` | `9c9f303e5cc2553d0358bc1f84fb4f3b4f1cc9d506c433bba0a3971c2356412e` | Integrated into the production web neural path; replaces fixed-flight side scores while retaining its feature extraction and independent serve gate. |
-| `serving-side-centered-f1-v1` | `distilled-large-f1-v1` / Balanced | Same `SERVSIDE-NB26` and protocol, newly fitted on the distinct Balanced embeddings; ledger `private-reference-0242` | `e22852a02e99c85cb157de86f97769cecb5f4af5e9eeb809e0b5f55093b17cdf` | Integrated into the production web Balanced path; does not reuse the Maximum coverage serving weights or embeddings. |
+| `serving-side-centered-recall-v1` | `distilled-large-recall-v1` / Maximum coverage | `SERVSIDE-NB26`; experiment 09, ledger `private-reference-0240` | `9c9f303e5cc2553d0358bc1f84fb4f3b4f1cc9d506c433bba0a3971c2356412e` | Integrated into the web and native neural paths; replaces fixed-flight side scores while retaining its feature extraction and independent serve gate. |
+| `serving-side-centered-f1-v1` | `distilled-large-f1-v1` / Balanced | Same `SERVSIDE-NB26` and protocol, newly fitted on the distinct Balanced embeddings; ledger `private-reference-0242` | `e22852a02e99c85cb157de86f97769cecb5f4af5e9eeb809e0b5f55093b17cdf` | Integrated into the web and native Balanced paths; does not reuse the Maximum coverage serving weights or embeddings. |
 
 Each graph is **633,333 bytes**, at
 [`recall/head.onnx`](prod/public/runtime/serving-models/recall/head.onnx) or
 [`f1/head.onnx`](prod/public/runtime/serving-models/f1/head.onnx).
 The [serving manifest](models/serving-side/web-manifest.json) pins every seed's
 weight hash, epoch, encoder weight/graph hashes, and the combined model fingerprint.
-It is copied byte-for-byte to the [runtime manifest](prod/public/runtime/serving-models/manifest.json).
+It is copied byte-for-byte to the [runtime manifest](prod/public/runtime/serving-models/manifest.json)
+and staged for iOS. The [Android serving manifest](models/serving-side/android-manifest.json)
+pins the equivalent original Android encoder graph hashes with the same trained
+encoder weights, serving heads, cutoffs and model fingerprints.
 The final per-seed **far / near evidence cutoffs**, in the seed order above, are:
 
 | Pairing | Seed 3407 | Seed 1729 | Seed 20260918 |
@@ -248,7 +253,7 @@ Android production feature until the remaining physical-device parity gates pass
 | `model-1ca43e38eefc` (`environment-specialists-v2-all-labels`) | Rally, serve-contact, and dead-state linear heads | F104 | `ENV2-ALL11` | Compared with `environment-specialists-v1/all-labels` and previous production. Added three indoor recordings containing walking/ball-retrieval hard negatives; refit all three heads on six grass plus five indoor recordings. | Primary production bundle. Artifact SHA-256 `1ca43e38eefc…`; component artifact hashes remain in the bundle. |
 | `model-9c92b8e9333f` | `full-audiovisual-audio-normalized-v3` rally, `serve-specialist-audio-normalized-v5` serve, and `dead-state-transition-audio-normalized-v5-no-legacy-final` dead-state heads | F104 | `GOLD-NB-T4` | Compared component-by-component with the prior F90 models. Added 14 noise-normalized audio base features; the serve/dead-state heads also tested legacy/new audio ablations. | Previous production bundle, retained in the two-model consensus because it still recovers some rallies missed by the newer refit. Artifact SHA-256 `9c92b8e9333f…`. |
 | `suppression-overlap-exclusion-retrained` | Binary false-positive suppression head | F104 | `FEEDBACK16` | Compared with the original feedback suppression v3 fit. Corrected the target builder so false-positive intervals overlapping an included corrected rally core were excluded from suppression positives; production decoder settings were held fixed. | Production suppression model, gated to eligible one-model intervals. Artifact SHA-256 `39eddf581639…`; learned-weights SHA-256 `a943…`. |
-| `serving-side-fixed-flight-v3` | Camera-space near/far class-balanced logistic head | SERVSIDE237-FLIGHT | 1,027 correction-clean rows from 28 recordings and nine development source groups; protected recording excluded from fitting and selection | Compared with court-flow, trajectory, high-resolution, quality-mixture, and group-balanced variants. Adds the selected fixed-anchor 155-value flight bank to 82 court-flow values. | Retained by the Legacy web path and native Android/iOS serving paths. Neural web paths reuse its extraction and gate, then replace the side scores with their paired ensemble. Runtime asset `serving-side-85bc3325fbd4.json`, file SHA-256 `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`, model fingerprint `85bc3325fbd4…`. Native qualification remains a separate gate. |
+| `serving-side-fixed-flight-v3` | Camera-space near/far class-balanced logistic head | SERVSIDE237-FLIGHT | 1,027 correction-clean rows from 28 recordings and nine development source groups; protected recording excluded from fitting and selection | Compared with court-flow, trajectory, high-resolution, quality-mixture, and group-balanced variants. Adds the selected fixed-anchor 155-value flight bank to 82 court-flow values. | Retained by Legacy on web, Android and iOS. Neural paths on all three platforms reuse its extraction and gate, then replace the side scores with their paired ensemble. Runtime asset `serving-side-85bc3325fbd4.json`, file SHA-256 `14f18bf0b0f326ccd7ef4b3d614a96a53dd9675df61813fd375677489d0e5a7c`, model fingerprint `85bc3325fbd4…`. Native qualification remains a separate gate. |
 
 ## Named artifact lineage
 
@@ -414,8 +419,8 @@ private weights/receipts and archived source are resolved through the ledger.
 ### Fixed-flight serving-side and shared serve-gate contract
 
 The production web neural paths use the paired side models above. This section
-registers the retained **Legacy web and native fixed-flight side classifier** and
-the independent serve gate shared with the neural web composition. Its historical
+registers the retained **Legacy fixed-flight side classifier on all three platforms** and
+the independent serve gate shared with neural composition on all three platforms. Its historical
 evaluation metrics do not describe the new neural serving heads.
 
 The Legacy web path retains the indivisible composition
@@ -468,15 +473,15 @@ The hybrid serving decision is evaluated after the side score:
    `production-rally-recovery` and require review.
 3. Otherwise emit `not-serve` with source `none`.
 
-The Android and production web neural paths add `neural-rally-recovery` after
+The Android, iOS and production web neural paths add `neural-rally-recovery` after
 this legacy gate: every independently decoded neural rally receives a serve
 marker. When neither legacy serve head confirms its start, the marker requires
 review and retains the predicted near/far side and both heads' evidence. It is
 not a confirmed serve or a guaranteed accurate contact timestamp. Saved neural
 `not-serve` results are upgraded using their existing predictions without video
 reprocessing; manual corrections and removed markers remain respected. Legacy
-ensemble decisions and the native fixed-flight side classifier are unchanged.
-Web neural analysis subsequently replaces side evidence with its paired ensemble,
+ensemble decisions and the Legacy fixed-flight side classifier are unchanged.
+Neural analysis subsequently replaces side evidence with its paired ensemble,
 preserving these recovery review reasons. The historical metrics below describe
 the legacy gate, not this neural recovery policy or the centered head.
 

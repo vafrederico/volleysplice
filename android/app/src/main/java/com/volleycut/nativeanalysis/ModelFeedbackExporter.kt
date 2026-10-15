@@ -193,7 +193,7 @@ internal object ModelFeedbackExporter {
                 put("ensembleAlgorithmVersion", FeatureSchema.ENSEMBLE_ALGORITHM_VERSION)
                 put("ranges", JSONArray().apply {
                     project.ranges.forEachIndexed { index, range -> put(JSONObject().apply {
-                        put("id", "R${(index + 1).toString().padStart(3, '0')}")
+                        put("id", range.id ?: "R${(index + 1).toString().padStart(3, '0')}")
                         put("start", range.startMs / 1_000.0)
                         put("end", range.endMs / 1_000.0)
                         put("confidence", range.confidence.toDouble())

@@ -12,6 +12,7 @@ import android.net.Uri;
 import com.volleycut.video.DecodedVideoColor;
 import com.volleycut.video.AnalysisVideoDecoder;
 import com.volleycut.video.YuvColorConversion;
+import com.volleycut.video.NearestFrameSelection;
 
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -20,6 +21,7 @@ import org.opencv.imgproc.Imgproc;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,17 +62,63 @@ final class SpecialistFrameDecoder {
 
     private final Context context;
     private final double maximumSequentialGapSeconds;
+    private final boolean exactServingFrames;
 
     SpecialistFrameDecoder(Context context) {
         this(context, MAX_SEQUENTIAL_GAP_SECONDS);
     }
 
     SpecialistFrameDecoder(Context context, double maximumSequentialGapSeconds) {
+        this(context, maximumSequentialGapSeconds, false);
+    }
+
+    private SpecialistFrameDecoder(Context context, double maximumSequentialGapSeconds, boolean exactServingFrames) {
         this.context = context.getApplicationContext();
         if (!(maximumSequentialGapSeconds > 0)) {
             throw new IllegalArgumentException("Maximum sequential gap must be positive");
         }
         this.maximumSequentialGapSeconds = maximumSequentialGapSeconds;
+        this.exactServingFrames = exactServingFrames;
+    }
+
+    /** Neural serving quality features use the production web's preceding-frame contract. */
+    Samples decodePrecedingServing(Uri uri, AnalysisTypes.MediaInfo media, AnalysisTypes.Roi roi,
+            double[] servingTimes, double[] sideSwitchTimes, AnalysisTypes.ProgressListener progress,
+            BooleanSupplier cancelled) throws IOException {
+        validate(servingTimes, "Serving-side");
+        if (servingTimes.length == 0) return decode(uri, media, roi, servingTimes, sideSwitchTimes, progress, cancelled);
+        long started = System.nanoTime();
+        progress.onProgress("specialist-frames", 0, "Reading serving-frame timestamps");
+        ArrayList<Long> timestamps = new ArrayList<>();
+        MediaExtractor extractor = new MediaExtractor();
+        try {
+            extractor.setDataSource(context, uri, null);
+            int track = NativeVideoDecoder.findTrack(extractor, "video/");
+            if (track < 0) throw new IOException("The selected file has no video track");
+            extractor.selectTrack(track);
+            do {
+                if (cancelled.getAsBoolean()) throw new IOException("Analysis cancelled");
+                long pts = extractor.getSampleTime();
+                if (pts < 0) break;
+                timestamps.add(pts);
+            } while (extractor.advance());
+        } finally { extractor.release(); }
+        long[] sorted = timestamps.stream().mapToLong(Long::longValue).sorted().toArray();
+        long[] selected = NearestFrameSelection.preceding(sorted, servingTimes);
+        double[] actual = Arrays.stream(selected).mapToDouble(pts -> pts / 1e6).toArray();
+        double planningMs = (System.nanoTime() - started) / 1e6;
+        Samples sampled = new SpecialistFrameDecoder(context, maximumSequentialGapSeconds, true).decode(
+                uri, media, roi, Arrays.stream(actual).distinct().toArray(), sideSwitchTimes, progress, cancelled);
+        LinkedHashMap<Double, byte[]> serving = new LinkedHashMap<>();
+        for (int i = 0; i < servingTimes.length; i++) {
+            byte[] frame = sampled.servingGray().get(actual[i]);
+            if (frame == null) throw new IOException("A preceding serving image is missing");
+            serving.put(servingTimes[i], frame);
+        }
+        Stats stats = sampled.stats();
+        return new Samples(Map.copyOf(serving), sampled.sideSwitchBgr(), new Stats(stats.segments(),
+                servingTimes.length + sideSwitchTimes.length, stats.decoderOutputFrames(), stats.convertedOutputFrames(),
+                stats.setupMilliseconds() + planningMs, stats.conversionMilliseconds(), stats.wallMilliseconds() + planningMs));
     }
 
     Samples decode(
@@ -299,6 +347,9 @@ final class SpecialistFrameDecoder {
                         }
                         if (finalOutput || atOrAfterTarget) {
                             while (target < satisfiedEnd) {
+                                if (exactServingFrames && requests.get(target).serving
+                                        && Math.round(requests.get(target).time * 1e6) != info.presentationTimeUs)
+                                    throw new IOException("Decoder missed the planned preceding serving image");
                                 put(requests.get(target), converted, serving, switches);
                                 target++;
                             }
@@ -320,7 +371,11 @@ final class SpecialistFrameDecoder {
                 outputEnded = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
             }
             if (target < requests.size() && fallback != null) {
-                while (target < requests.size()) put(requests.get(target++), fallback, serving, switches);
+                while (target < requests.size()) {
+                    if (exactServingFrames && requests.get(target).serving)
+                        throw new IOException("Decoder ended before the planned preceding serving image");
+                    put(requests.get(target++), fallback, serving, switches);
+                }
             }
             if (target != requests.size()) {
                 throw new IOException("Specialist frame segment ended early (" + target + "/" + requests.size()

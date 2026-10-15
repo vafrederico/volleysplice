@@ -81,7 +81,22 @@ public class NeuralVideoEncoder {
             // Scan real packet PTS before decoding. Keeping only a current image
             // cannot select an earlier (closer) frame once it has been released.
             progress.accept(0.0, "Reading image timestamps for the selected model");
-            EmbeddingSamplePlan plan = buildSamplePlan(extractor, startSeconds, seconds, fps, cancelled, progress);
+            double[] requested = null;
+            if (spec.has("requestedTimes")) {
+                JSONArray values = spec.getJSONArray("requestedTimes");
+                requested = new double[values.length()];
+                for (int i=0;i<requested.length;i++) {
+                    requested[i]=values.getDouble(i);
+                    if(!Double.isFinite(requested[i]) || requested[i]<startSeconds || requested[i]>=seconds
+                            || (i>0 && requested[i]<=requested[i-1])) throw new IOException("Invalid serving image schedule");
+                }
+            }
+            EmbeddingSamplePlan plan = buildSamplePlan(extractor, startSeconds, seconds, fps, requested, cancelled, progress);
+            if(requested!=null) {
+                if(plan.targetSeconds().length!=requested.length) throw new IOException("Incomplete serving image schedule");
+                for(int i=0;i<requested.length;i++) if(Math.abs(plan.selectedPresentationUs()[i]/1e6-requested[i])>.25+1e-9)
+                    throw new IOException("Serving-side image timing is too sparse");
+            }
             samplePlanNs = SystemClock.elapsedRealtimeNanos() - planStarted;
             if (plan.selectedPresentationUs().length == 0) throw new IOException("No frames in sampling window");
             extractor.seekTo((long)(startSeconds*1e6), MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
@@ -205,7 +220,7 @@ public class NeuralVideoEncoder {
 
     private record EmbeddingSamplePlan(long[] selectedPresentationUs, double[] targetSeconds, int inputFrameCount) {}
 
-    private static EmbeddingSamplePlan buildSamplePlan(MediaExtractor extractor, double start, double end, double fps,
+    private static EmbeddingSamplePlan buildSamplePlan(MediaExtractor extractor, double start, double end, double fps, double[] requested,
             java.util.function.BooleanSupplier cancelled, java.util.function.BiConsumer<Double, String> progress) throws IOException {
         extractor.seekTo((long)(start*1e6), MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         ArrayList<Long> presentationUs = new ArrayList<>();
@@ -234,9 +249,9 @@ public class NeuralVideoEncoder {
         long[] sorted = new long[presentationUs.size()];
         for(int i=0;i<sorted.length;i++) sorted[i]=presentationUs.get(i);
         Arrays.sort(sorted);
-        int count=(int)Math.ceil((end-start)*fps-1e-9);
-        double[] targets=new double[count];
-        for(int i=0;i<count;i++) targets[i]=start+i/fps;
+        int count=requested==null?(int)Math.ceil((end-start)*fps-1e-9):requested.length;
+        double[] targets=requested==null?new double[count]:requested;
+        if(requested==null) for(int i=0;i<count;i++) targets[i]=start+i/fps;
         long[] selected=NearestFrameSelection.select(sorted, targets, end);
         return new EmbeddingSamplePlan(selected, Arrays.copyOf(targets, selected.length), inputFrameCount);
     }

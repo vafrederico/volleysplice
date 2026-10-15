@@ -36,7 +36,8 @@ internal object ServingSideCache {
         project.media.width(), project.media.height(), project.media.rotation(),
         project.roi.x(), project.roi.y(), project.roi.width(), project.roi.height(),
         project.analysisWindow.start(), project.analysisWindow.end(),
-        SERVING_SIDE_DECODE_VARIANT,
+        if (RallyModels.isNeural(project.modelId)) "$SERVING_SIDE_DECODE_VARIANT/neural-serving-preceding-v1"
+        else SERVING_SIDE_DECODE_VARIANT,
         signature(ServingSideFeatureNames.all()),
         signature(ServingSideModelRunner.candidates(project.ranges).map {
             "${it.id}|${it.start}|${it.end}|${it.agreement.orEmpty()}"
@@ -47,7 +48,7 @@ internal object ServingSideCache {
         cachedIdentity: ServingSideCacheIdentity,
         currentProject: NativeProject,
         output: ServingSideOutput,
-    ): Boolean = cachedIdentity == identity(currentProject) && output.isReusableFor(currentProject.ranges)
+    ): Boolean = cachedIdentity == identity(currentProject) && output.isReusableFor(currentProject.ranges, currentProject.modelId)
 
     private fun signature(values: List<String>): String = MessageDigest.getInstance("SHA-256")
         .digest(values.joinToString("\u0000").toByteArray())

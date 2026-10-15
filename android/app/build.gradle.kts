@@ -88,6 +88,7 @@ android {
 
     sourceSets.getByName("main").java.srcDir("../video-common/src/main/java")
     sourceSets.getByName("main").java.srcDir("../neural-runtime/src/main/java")
+    sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("../ios/Tests/Fixtures"))
 
     buildFeatures {
         compose = true
@@ -155,6 +156,42 @@ val prepareNeuralAssets by tasks.registering {
     }
 }
 
+val generatedServingAssets = layout.buildDirectory.dir("generated/serving-assets")
+android.sourceSets.getByName("main").assets.srcDir(generatedServingAssets.get().asFile)
+val prepareServingAssets by tasks.registering {
+    val manifest = rootProject.file("../models/serving-side/android-manifest.json")
+    val graphs = rootProject.file("../prod/public/runtime/serving-models")
+    val rallyManifest = rootProject.file("../models/distilled-large/android-manifest.json")
+    inputs.files(manifest, rallyManifest)
+    inputs.dir(graphs)
+    outputs.dir(generatedServingAssets)
+    doLast {
+        val canonical = manifest.readText(Charsets.UTF_8).replace("\r\n", "\n").toByteArray(Charsets.UTF_8)
+        check(MessageDigest.getInstance("SHA-256").digest(canonical).joinToString("") { "%02x".format(it.toInt() and 255) } ==
+            "ffc0aaf5a46344e51702bf4e4a8c4fbfa02cc8c2240c23e8ea94b3929122aada") { "Serving catalog integrity mismatch" }
+        val catalog = JsonSlurper().parse(manifest) as Map<*, *>
+        val rally = (JsonSlurper().parse(rallyManifest) as Map<*, *>)["variants"] as Map<*, *>
+        val target = generatedServingAssets.get().asFile.resolve("serving-models")
+        for ((selection, rawVariant) in catalog["variants"] as Map<*, *>) {
+            val variant = rawVariant as Map<*, *>
+            val paired = rally[selection] as Map<*, *>
+            val encoder = (paired["files"] as Map<*, *>)["encoder"] as Map<*, *>
+            check(variant["rallyModelId"] == paired["id"] && variant["encoderSha256"] == encoder["sha256"] &&
+                variant["encoderWeightsSha256"] == paired["encoderWeightsSha256"]) { "Serving head does not match the Android rally encoder" }
+            val directory = variant["directory"] as String
+            check(directory in setOf("f1", "recall"))
+            val metadata = variant["file"] as Map<*, *>
+            check(metadata["name"] == "head.onnx")
+            val source = graphs.resolve(directory).resolve("head.onnx")
+            val digest = MessageDigest.getInstance("SHA-256").digest(source.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(source.length() == (metadata["sizeBytes"] as Number).toLong() && digest == metadata["sha256"]) { "Serving head integrity mismatch" }
+            val output = target.resolve(directory).resolve("head.onnx")
+            output.parentFile.mkdirs(); source.copyTo(output, overwrite = true)
+        }
+        manifest.copyTo(target.resolve("manifest.json"), overwrite = true)
+    }
+}
+
 val verifySuppressionAsset by tasks.registering {
     val asset = layout.projectDirectory.file(
         "src/main/assets/suppression-overlap-exclusion-retrained.json",
@@ -212,7 +249,7 @@ val verifySideSwitchAsset by tasks.registering {
 }
 
 tasks.named("preBuild").configure {
-    dependsOn(verifySuppressionAsset, verifyServingSideAsset, verifySideSwitchAsset, prepareNeuralAssets)
+    dependsOn(verifySuppressionAsset, verifyServingSideAsset, verifySideSwitchAsset, prepareNeuralAssets, prepareServingAssets)
 }
 
 dependencies {

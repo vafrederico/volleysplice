@@ -82,8 +82,10 @@ internal object ServingSideJson {
                 }
             },
         ).takeIf { output ->
-            output.modelId == SERVING_SIDE_MODEL_ID &&
-                output.modelFingerprint == SERVING_SIDE_MODEL_FINGERPRINT &&
+            listOf(FeatureSchema.MODEL_ID, RallyModels.F1, RallyModels.RECALL).any {
+                val identity = NeuralServingContract.identity(it)
+                output.modelId == identity.first && output.modelFingerprint == identity.second
+            } &&
                 output.featureVersion == SERVING_SIDE_FEATURE_VERSION &&
                 output.anchorContract == SERVING_SIDE_ANCHOR_CONTRACT &&
                 output.columns == SERVING_SIDE_FEATURE_COLUMNS &&

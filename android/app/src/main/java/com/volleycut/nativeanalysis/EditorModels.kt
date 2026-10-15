@@ -81,7 +81,9 @@ internal data class EditorSeed(
             if (rallyModelId != FeatureSchema.MODEL_ID) append("model=").append(rallyModelId).append('|')
             ranges.forEach {
                 append(it.startMs).append(':').append(it.endMs).append(':').append(it.confidence)
-                    .append(':').append(it.agreement).append(';')
+                    .append(':').append(it.agreement)
+                it.id?.let { id -> append(":id=").append(id) }
+                append(';')
             }
         }
         MessageDigest.getInstance("SHA-256")
@@ -95,6 +97,8 @@ internal data class SeedRange(
     val endMs: Long,
     val confidence: Float,
     val agreement: String? = null,
+    /** Imported model range identity, retained independently of score caches. */
+    val id: String? = null,
 )
 
 internal data class EditableCut(
@@ -210,7 +214,7 @@ internal object EditorMath {
             val coreEnd = range.endMs.coerceIn(seed.gameStartMs, seed.gameEndMs)
             if (coreEnd <= coreStart) return@mapNotNull null
             EditableCut(
-                id = "",
+                id = range.id.orEmpty(),
                 coreStartMs = coreStart,
                 coreEndMs = coreEnd,
                 keepStartMs = (coreStart - DEFAULT_BEFORE_PADDING_MS).coerceAtLeast(seed.gameStartMs),
@@ -220,7 +224,7 @@ internal object EditorMath {
                 origin = CutOrigin.INFERRED,
                 agreement = range.agreement,
             )
-        }.mapIndexed { index, cut -> cut.copy(id = "R${(index + 1).toString().padStart(3, '0')}") },
+        }.mapIndexed { index, cut -> cut.copy(id = cut.id.ifBlank { "R${(index + 1).toString().padStart(3, '0')}" }) },
         ignoredIntervals = buildList {
             if (seed.gameStartMs > 0) {
                 add(IgnoredSourceInterval("G001", 0, seed.gameStartMs, "outside-game-window"))

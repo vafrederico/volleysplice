@@ -68,6 +68,7 @@ internal object EditorProjectStore {
                     put("endMs", range.endMs)
                     put("confidence", range.confidence.toDouble())
                     put("agreement", range.agreement ?: JSONObject.NULL)
+                    range.id?.let { put("id", it) }
                 })
             }
         })
@@ -93,6 +94,7 @@ internal object EditorProjectStore {
                     endMs = range.getLong("endMs"),
                     confidence = range.getDouble("confidence").toFloat(),
                     agreement = if (range.isNull("agreement")) null else range.optString("agreement"),
+                    id = if (range.isNull("id")) null else range.getString("id"),
                 ))
             }
         }
@@ -137,6 +139,7 @@ internal object EditorProjectStore {
             },
         ).takeIf { seed ->
             seed.durationMs > 0 && seed.sourceUri.isNotBlank() &&
+                runCatching { ServingSideModelRunner.candidates(seed.ranges) }.isSuccess &&
                 seed.gameStartMs >= 0 && seed.gameEndMs <= seed.durationMs &&
                 seed.gameEndMs - seed.gameStartMs >= 1_000 && seed.ranges.all {
                 it.startMs >= seed.gameStartMs && it.endMs > it.startMs &&

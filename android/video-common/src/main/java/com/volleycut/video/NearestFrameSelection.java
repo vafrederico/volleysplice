@@ -8,6 +8,26 @@ import java.util.Set;
 public final class NearestFrameSelection {
     private NearestFrameSelection() {}
 
+    /** Frozen score-specialist rule: latest actual PTS at or before each request. */
+    public static long[] preceding(long[] sortedPresentationUs, double[] targetSeconds) {
+        for (int i = 1; i < sortedPresentationUs.length; i++) {
+            if (sortedPresentationUs[i] < sortedPresentationUs[i - 1])
+                throw new IllegalArgumentException("Source timestamps must be sorted");
+        }
+        long[] selected = new long[targetSeconds.length];
+        int next = 0;
+        for (int i = 0; i < targetSeconds.length; i++) {
+            double target = targetSeconds[i];
+            if (!Double.isFinite(target) || (i > 0 && target < targetSeconds[i - 1]))
+                throw new IllegalArgumentException("Target timestamps must be finite and sorted");
+            // Match the web selector's 1e-10-second comparison tolerance.
+            while (next < sortedPresentationUs.length && sortedPresentationUs[next] <= target * 1e6 + 1e-4) next++;
+            if (next == 0) throw new IllegalArgumentException("No preceding specialist image exists");
+            selected[i] = sortedPresentationUs[next - 1];
+        }
+        return selected;
+    }
+
     /**
      * One source PTS per requested grid row before the exclusive analysis end.
      * Equidistant frames choose the earlier PTS. A source frame may serve several

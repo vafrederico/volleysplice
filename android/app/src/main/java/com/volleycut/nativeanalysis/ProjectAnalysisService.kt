@@ -574,6 +574,10 @@ class ProjectAnalysisService : Service() {
                 },
                 cancelled::get,
                 project.sideSwitchEnabled,
+                project.modelId,
+                rangeIds = project.ranges.mapIndexed { index, range ->
+                    range.id ?: "R${(index + 1).toString().padStart(3, '0')}"
+                },
             )
             if (!cancelled.get() && NativeProjectStore.get(this, projectId) != null) {
                 NativeProjectStore.completeServingSide(

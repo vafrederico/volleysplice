@@ -443,7 +443,9 @@ final class AnalysisEngine {
                             ScoreSpecialistInference.INSTANCE.run(
                             context, uri, media, roi, ranges, productionServeOutputs,
                             productionStateOutputs, productionComponents, progress, cancelled::get,
-                            includeSideSwitch
+                            includeSideSwitch,
+                            rallyOverride instanceof NeuralRallyPipeline neural ? neural.modelId() : FeatureSchema.MODEL_ID,
+                            rallyOverride instanceof NeuralRallyPipeline neural ? neural : null
                     );
                     servingSide = scoreSpecialists.getServingSide();
                     sideSwitch = scoreSpecialists.getSideSwitch();

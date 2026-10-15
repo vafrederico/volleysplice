@@ -122,6 +122,7 @@ internal data class SideSwitchAnalysisInput(
     val intervals: List<AnalysisTypes.Interval>,
     val productionComponents: AnalysisTypes.ProductionComponents,
     val productionStateOutputs: AnalysisTypes.ProductionStateOutputs,
+    val rangeIds: List<String>? = null,
 )
 
 internal data class SideSwitchRuntime(
@@ -197,12 +198,16 @@ internal object SideSwitchModelRunner {
         val interval: AnalysisTypes.Interval,
     )
 
-    private fun orderedRanges(source: List<AnalysisTypes.Interval>): List<NamedRange> = source
-        .filter { it.end() > it.start() && it.start().isFinite() && it.end().isFinite() }
-        .sortedWith(compareBy<AnalysisTypes.Interval> { it.start() }.thenBy { it.end() })
-        .mapIndexed { index, interval ->
-            NamedRange("R${(index + 1).toString().padStart(3, '0')}", interval.start(), interval.end(), interval)
-        }
+    private fun orderedRanges(source: List<AnalysisTypes.Interval>, ids: List<String>? = null): List<NamedRange> {
+        require(ids == null || (ids.size == source.size && ids.all(String::isNotBlank) && ids.distinct().size == ids.size))
+        return source.withIndex()
+            .filter { it.value.end() > it.value.start() && it.value.start().isFinite() && it.value.end().isFinite() }
+            .sortedWith(compareBy<IndexedValue<AnalysisTypes.Interval>> { it.value.start() }.thenBy { it.value.end() })
+            .mapIndexed { index, item ->
+                NamedRange(ids?.get(item.index) ?: "R${(index + 1).toString().padStart(3, '0')}",
+                    item.value.start(), item.value.end(), item.value)
+            }
+    }
 
     internal fun sampleTimes(start: Double, end: Double): DoubleArray {
         val duration = end - start
@@ -222,7 +227,7 @@ internal object SideSwitchModelRunner {
         input: SideSwitchAnalysisInput,
         runtime: SideSwitchRuntime,
     ): List<SideSwitchCandidateProposal> {
-        val ranges = orderedRanges(input.intervals)
+        val ranges = orderedRanges(input.intervals, input.rangeIds)
         val state = input.productionStateOutputs.allLabelsV2()
         validateStateOutputs(input.productionStateOutputs)
         val times = state.times()
@@ -299,7 +304,7 @@ internal object SideSwitchModelRunner {
         candidate: SideSwitchCandidateProposal,
         input: SideSwitchAnalysisInput,
     ): DoubleArray {
-        val ranges = orderedRanges(input.intervals).associateBy { it.id }
+        val ranges = orderedRanges(input.intervals, input.rangeIds).associateBy { it.id }
         val beforeRange = checkNotNull(ranges[candidate.sourceRangeIds.first()])
         val afterRange = checkNotNull(ranges[candidate.sourceRangeIds.last()])
         val before = evidence(beforeRange, input)

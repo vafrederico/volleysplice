@@ -24,6 +24,28 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
     private NeuralRallyScores scores;
     NeuralRallyScores scores() { return scores; }
     private SharedEmbeddingConsumer shared;
+    record Embedding(double[] times, FloatBuffer tokens) {}
+    private Embedding servingEmbedding;
+    String modelId() { return spec.optString("id"); }
+    Embedding servingEmbeddings(Uri uri, AnalysisTypes.Roi roi, double duration, double[] needed,
+            AnalysisTypes.ProgressListener progress) throws Exception {
+        if(servingEmbedding!=null && Arrays.stream(needed).allMatch(t -> Arrays.binarySearch(servingEmbedding.times(),t)>=0)) return servingEmbedding;
+        OrtEnvironment env=OrtEnvironment.getEnvironment();
+        try(OrtSession.SessionOptions options=new OrtSession.SessionOptions()) {
+            options.setIntraOpNumThreads(4); options.setInterOpNumThreads(1);
+            JSONObject videoSpec=new JSONObject().put("id",modelId()+"-serving").put("videoUri",uri.toString())
+                .put("imageSize",224).put("sampleFps",2).put("seconds",duration).put("startSeconds",needed[0])
+                .put("requestedTimes",new JSONArray(needed)).put("dynamicPoolWeights",true)
+                .put("rotation",spec.optInt("rotation",0)).put("poolWeights","mobile-large-encoder-pool_weights.f32")
+                .put("roi",new JSONArray(new double[]{roi.x(),roi.y(),roi.width(),roi.height()}));
+            try(OrtSession encoder=env.createSession(model("-encoder-fp32.onnx").toString(),options)) {
+                JSONObject video=NeuralVideoEncoder.run(context,encoder,env,file("unused"),root,videoSpec,cancelled,
+                    (fraction,detail)->progress.onProgress("serving-side-features",fraction,detail));
+                servingEmbedding=new Embedding(needed,readFloats(file(video.getString("tokens"))));
+                return servingEmbedding;
+            }
+        }
+    }
     NeuralRallyPipeline(Context context,File root,JSONObject spec) {
         this(context,root,spec,root,()->false,true);
     }
@@ -140,6 +162,11 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
                 if(tokens.remaining()!=samples*tokenDim)throw new IOException("Invalid token count");
                 JSONArray quality=video.getJSONArray("quality");
                 double sampleStart=video.optDouble("startSeconds",0);
+                if(!diagnostics) {
+                    double[] embeddingTimes=new double[samples];
+                    for(int row=0;row<samples;row++) embeddingTimes[row]=sampleStart+row*.5;
+                    servingEmbedding=new Embedding(embeddingTimes,tokens);
+                }
                 // Production fuses one bounded halo chunk at a time. Diagnostic runs
                 // retain the full tensor for strict numerical qualification only.
                 float[] values=diagnostics?fuse(times,contextual,tokens,quality,mean,std,

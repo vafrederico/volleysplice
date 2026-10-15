@@ -13,6 +13,71 @@ import java.util.concurrent.TimeUnit
 
 class ServingSidePersistenceTest {
     @Test
+    fun importedNeuralRangeIdsSurviveCachesExportsAndRescoringWithoutLosingCorrections() {
+        for (model in listOf(RallyModels.F1, RallyModels.RECALL)) {
+            val base = projectFixture()
+            val identity = NeuralServingContract.identity(model)
+            val id = "neural-alpha"
+            val serving = requireNotNull(base.servingSide).let { output -> output.copy(
+                modelId = identity.first, modelFingerprint = identity.second,
+                candidates = output.candidates.map { it.copy(id = id, agreement = "neural") },
+            ) }
+            val project = base.copy(modelId = model,
+                ranges = base.ranges.map { it.copy(agreement = "neural", id = id) }, servingSide = serving)
+            val seed = requireNotNull(project.editorSeed())
+            val original = EditorMath.newDraft(seed)
+            assertEquals(id, original.cuts.single().id)
+            val corrected = original.copy(scoreTracking = original.scoreTracking.copy(
+                serveMarkers = original.scoreTracking.serveMarkers.map { it.copy(side = ServingSide.FAR) },
+            ))
+            val bundle = ModelFeedbackExporter.createBundle(project, corrected,
+                EditorMath.finalIntervals(corrected), null, null)
+            val imported = ModelFeedbackImporter.parse(bundle.toString(), 300)
+            assertEquals(id, imported.project.ranges.single().id)
+            assertEquals(id, imported.project.servingSide?.candidates?.single()?.id)
+            assertEquals(ServingSide.FAR, imported.draft.scoreTracking.serveMarkers.single().side)
+            assertBrowserAccepts(bundle.toString())
+            val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(imported.project)))
+            assertEquals(id, restored.ranges.single().id)
+            val restoredSeed = requireNotNull(EditorProjectStore.decode(EditorProjectStore.encode(requireNotNull(restored.editorSeed()))))
+            assertEquals(seed.ranges, restoredSeed.ranges)
+            // Cache invalidation retains IDs independently of the discarded output.
+            val stale = NativeProjectStore.normalizeStored(restored.copy(servingSideCacheIdentity = null))
+            assertEquals(null, stale.servingSide)
+            assertEquals(id, stale.ranges.single().id)
+            val ranges = stale.ranges.map { AnalysisTypes.Interval(it.startMs / 1000.0, it.endMs / 1000.0, it.confidence, it.agreement) }
+            val plan = ServingSideInference.framePlan(ranges, 10.0, stale.ranges.map { requireNotNull(it.id) })
+            assertEquals(id, plan.candidates.single().id)
+            val rescored = serving.copy(candidates = serving.candidates.map { it.copy(side = ServingSide.NEAR) })
+            assertEquals(ServingSide.FAR,
+                ScoreReducer.seedModelMarkers(imported.draft.scoreTracking, rescored).serveMarkers.single().side)
+            val removed = imported.draft.scoreTracking.copy(serveMarkers = emptyList(), removedModelMarkerIds = setOf("serve-$id"))
+            assertTrue(ScoreReducer.seedModelMarkers(removed, rescored).serveMarkers.isEmpty())
+        }
+    }
+
+    @Test
+    fun retainedRangeIdsKeepSwitchCandidateIdentityAndRejectDuplicates() {
+        val times = DoubleArray(11) { it.toDouble() }
+        fun state(model: String) = AnalysisTypes.ProductionStateOutput(model, times, FloatArray(11) { .9f }, FloatArray(11))
+        val input = SideSwitchAnalysisInput(
+            listOf(AnalysisTypes.Interval(1.0, 3.0, .9f), AnalysisTypes.Interval(6.0, 9.0, .9f)),
+            AnalysisTypes.ProductionComponents.empty(), AnalysisTypes.ProductionStateOutputs(
+                state(FeatureSchema.ALL_LABELS_V2_MODEL_ID), state(FeatureSchema.PREVIOUS_PRODUCTION_MODEL_ID)),
+            listOf("neural-alpha", "neural-beta"),
+        )
+        val runtime = Files.newInputStream(repositoryRoot().resolve("android/app/src/main/assets/$SIDE_SWITCH_RUNTIME_ASSET"))
+            .use(SideSwitchRuntimeParser::read)
+        val candidate = SideSwitchModelRunner.generateCandidates(input, runtime).single()
+        assertEquals("switch:boundary:neural-alpha:neural-beta", candidate.id)
+        assertEquals(input.rangeIds, candidate.sourceRangeIds)
+        assertEquals(10, SideSwitchModelRunner.stateFeatures(candidate, input).size)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            ServingSideModelRunner.candidates(listOf(SeedRange(1000, 2000, .9f, id = "duplicate"), SeedRange(3000, 4000, .9f, id = "duplicate")))
+        }
+    }
+
+    @Test
     fun savedNeuralNotServeIsRecoveredWithoutChangingFeaturesAndFeedbackKeepsItsProvenance() {
         val original = requireNotNull(projectFixture().servingSide)
         val old = original.copy(candidates = original.candidates.map { it.copy(

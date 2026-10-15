@@ -704,6 +704,7 @@ internal object NativeProjectStore {
                 put("endMs", range.endMs)
                 put("confidence", range.confidence.toDouble())
                 put("agreement", range.agreement ?: JSONObject.NULL)
+                range.id?.let { put("id", it) }
             }) }
         })
         put("productionComponents", encodeProductionComponents(project.productionComponents))
@@ -774,6 +775,7 @@ internal object NativeProjectStore {
                         range.getLong("endMs"),
                         range.getDouble("confidence").toFloat(),
                         if (range.isNull("agreement")) null else range.optString("agreement"),
+                        if (range.isNull("id")) null else range.getString("id"),
                     ))
                 }
             },
@@ -828,7 +830,7 @@ internal object NativeProjectStore {
                 it.media.durationSeconds() > 0 &&
                 it.analysisWindow.end() - it.analysisWindow.start() >=
                     AnalysisTypes.MIN_ANALYSIS_WINDOW_SECONDS &&
-                it.ranges.all { range ->
+                runCatching { ServingSideModelRunner.candidates(it.ranges) }.isSuccess && it.ranges.all { range ->
                     range.startMs >= 0 && range.endMs > range.startMs &&
                         range.endMs <= (it.media.durationSeconds() * 1_000.0).toLong() &&
                         range.confidence in 0f..1f &&

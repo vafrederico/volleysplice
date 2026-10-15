@@ -107,13 +107,14 @@ internal data class ServingSideOutput(
     val rawFeatures: DoubleArray,
     val candidates: List<ServingSideCandidate>,
 ) {
-    fun isReusableFor(ranges: List<SeedRange>): Boolean {
-        if (modelId != SERVING_SIDE_MODEL_ID ||
-            modelFingerprint != SERVING_SIDE_MODEL_FINGERPRINT ||
+    fun isReusableFor(ranges: List<SeedRange>, rallyModelId: String = FeatureSchema.MODEL_ID): Boolean {
+        val expectedIdentity = NeuralServingContract.identity(rallyModelId)
+        if (modelId != expectedIdentity.first ||
+            modelFingerprint != expectedIdentity.second ||
             featureVersion != SERVING_SIDE_FEATURE_VERSION ||
             anchorContract != SERVING_SIDE_ANCHOR_CONTRACT ||
             columns != SERVING_SIDE_FEATURE_COLUMNS || rows != candidates.size ||
-            rawFeatures.size != rows * columns
+            rawFeatures.size != rows * columns || !rawFeatures.all(Double::isFinite)
         ) return false
         val expected = ServingSideModelRunner.candidates(ranges)
         return expected.size == candidates.size && expected.indices.all { index ->
@@ -279,7 +280,7 @@ internal object ServingSideModelRunner {
     fun candidates(ranges: List<SeedRange>): List<CandidateInterval> {
         val ordered = ranges.mapIndexedNotNull { index, range ->
             if (range.startMs < 0 || range.endMs <= range.startMs) null else CandidateInterval(
-                "R${(index + 1).toString().padStart(3, '0')}",
+                range.id ?: "R${(index + 1).toString().padStart(3, '0')}",
                 range.startMs / 1_000.0,
                 range.endMs / 1_000.0,
                 range.agreement,

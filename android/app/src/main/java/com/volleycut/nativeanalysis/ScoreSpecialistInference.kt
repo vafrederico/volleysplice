@@ -40,7 +40,7 @@ internal object ScoreSpecialistInference {
         val profile: Profile,
     )
 
-    fun run(
+    @JvmOverloads fun run(
         context: Context,
         uri: Uri,
         media: AnalysisTypes.MediaInfo,
@@ -52,12 +52,15 @@ internal object ScoreSpecialistInference {
         progress: AnalysisTypes.ProgressListener,
         cancelled: () -> Boolean,
         includeSideSwitch: Boolean = true,
+        modelId: String = FeatureSchema.MODEL_ID,
+        pipeline: NeuralRallyPipeline? = null,
+        rangeIds: List<String>? = null,
     ): Result {
         val started = System.nanoTime()
         val duration = media.durationSeconds()
-        val servingPlan = ServingSideInference.framePlan(ranges, duration)
+        val servingPlan = ServingSideInference.framePlan(ranges, duration, rangeIds)
         val switchInput = if (includeSideSwitch) {
-            SideSwitchAnalysisInput(ranges, productionComponents, stateOutputs)
+            SideSwitchAnalysisInput(ranges, productionComponents, stateOutputs, rangeIds)
         } else null
         val switchPlan = switchInput?.let { SideSwitchInference.framePlan(context, it, duration) }
         val planningMilliseconds = elapsedMilliseconds(started)
@@ -67,17 +70,14 @@ internal object ScoreSpecialistInference {
             if (includeSideSwitch) "Loading serving-side and team-switch models"
             else "Loading serving-side model; automatic team switches are off",
         )
-        val sampled = SpecialistFrameDecoder(context).decode(
-            uri,
-            media,
-            roi,
-            servingPlan.requestedTimes,
-            switchPlan?.requestedTimes ?: doubleArrayOf(),
-            progress,
-            cancelled,
+        val decoder = SpecialistFrameDecoder(context)
+        val sampled = if (RallyModels.isNeural(modelId)) decoder.decodePrecedingServing(
+            uri, media, roi, servingPlan.requestedTimes, switchPlan?.requestedTimes ?: doubleArrayOf(), progress, cancelled,
+        ) else decoder.decode(
+            uri, media, roi, servingPlan.requestedTimes, switchPlan?.requestedTimes ?: doubleArrayOf(), progress, cancelled,
         )
         val servingStarted = System.nanoTime()
-        val serving = ServingSideInference.evaluate(
+        val specialist = ServingSideInference.evaluate(
             context,
             duration,
             servingPlan.candidates,
@@ -86,6 +86,9 @@ internal object ScoreSpecialistInference {
             progress,
             cancelled,
         )
+        val serving = if (RallyModels.isNeural(modelId)) NeuralServingRuntime.run(
+            context, uri, media, roi, modelId, specialist, pipeline, progress, cancelled,
+        ) else specialist
         val servingEvaluationMilliseconds = elapsedMilliseconds(servingStarted)
         val sideSwitchStarted = System.nanoTime()
         val switches = if (switchInput != null && switchPlan != null) {

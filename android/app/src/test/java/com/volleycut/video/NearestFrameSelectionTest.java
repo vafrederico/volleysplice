@@ -5,6 +5,21 @@ import org.junit.Test;
 import java.util.Set;
 
 public final class NearestFrameSelectionTest {
+    @Test public void servingUsesPrecedingPtsIncludingExactRequestsAndTerminalRepeats() {
+        assertArrayEquals(new long[]{0, 0, 491_200, 491_200, 525_400, 970_000},
+                NearestFrameSelection.preceding(new long[]{0, 491_200, 525_400, 970_000},
+                        new double[]{0, .4, .4912, .52, .5254, 1.01}));
+    }
+
+    @Test public void servingDoesNotSubstituteAFutureImage() {
+        assertThrows(IllegalArgumentException.class, () ->
+                NearestFrameSelection.preceding(new long[]{20_000}, new double[]{0}));
+        assertThrows(IllegalArgumentException.class, () ->
+                NearestFrameSelection.preceding(new long[]{2, 1}, new double[]{0}));
+        assertThrows(IllegalArgumentException.class, () ->
+                NearestFrameSelection.preceding(new long[]{0}, new double[]{Double.NaN}));
+    }
+
     @Test public void choosesActualNearestPtsAndEarlierOnTies() {
         assertArrayEquals(new long[]{0, 33_333, 33_333, 66_667},
                 NearestFrameSelection.select(new long[]{0, 33_333, 66_667},
