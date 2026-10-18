@@ -80,7 +80,7 @@ for name in ['Debug', 'Release']:
         'CODE_SIGN_STYLE': 'Automatic', 'CODE_SIGN_IDENTITY': 'Apple Development',
         'CURRENT_PROJECT_VERSION': '1', 'MARKETING_VERSION': '1.0.0', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0',
         'SDKROOT': 'iphoneos', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator',
-        'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon',
+        'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIconDebug' if name == 'Debug' else 'AppIcon',
         'SWIFT_VERSION': '5.0', 'SWIFT_OPTIMIZATION_LEVEL': '-O', 'ENABLE_TESTABILITY': 'YES' if name == 'Debug' else 'NO',
         'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG' if name == 'Debug' else '',
         'CLANG_CXX_LANGUAGE_STANDARD': 'c++17', 'CLANG_ENABLE_MODULES': 'YES',
