@@ -355,6 +355,7 @@ function usePrototype(
   const [chapterCredit, setChapterCredit] = useState(true);
   const [projectName, setProjectName] = useState(review.projectName);
   const [storageMessage, setStorageMessage] = useState("Live review data loaded");
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false);
   const videoElementRef = useRef<HTMLVideoElement>(null);
   const videoExportJob = review.exportJob;
   const exportProgress =
@@ -580,9 +581,35 @@ function usePrototype(
   }
 
   useEffect(() => {
-    review.saveDraft(workingDraft);
-    setStorageMessage("Saved to the live review on this device");
-  }, [review, workingDraft]);
+    let canceled = false;
+    setStorageMessage("Saving edits…");
+    const failed = () => {
+      if (canceled) return;
+      setDraftSaveFailed(true);
+      setStorageMessage("Edits are not saved. Export a project backup before closing this tab.");
+    };
+    try {
+      const pending = review.saveDraft(workingDraft);
+      void Promise.resolve(pending).then((result) => {
+        if (canceled) return;
+        setDraftSaveFailed(result?.saved === false);
+        setStorageMessage(result?.message ?? "Saved on this device");
+      }).catch(failed);
+    } catch {
+      failed();
+    }
+    return () => { canceled = true; };
+  }, [review.saveDraft, workingDraft]);
+
+  useEffect(() => {
+    if (!draftSaveFailed) return;
+    const warnBeforeClosing = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeClosing);
+    return () => window.removeEventListener("beforeunload", warnBeforeClosing);
+  }, [draftSaveFailed]);
 
   useEffect(() => {
     setNeedsSource(review.sourceNeedsReconnect);
@@ -1361,7 +1388,7 @@ function usePrototype(
     clipReviewTaskIds, preparedScoreOverlay,
     currentPlayingClipId: currentPlayingCut?.id ?? null,
     currentServeMarkerId: currentServeMarker?.id ?? null,
-    cleanupSuggestions, projectName, storageMessage,
+    cleanupSuggestions, projectName, storageMessage, draftSaveFailed,
     projects: review.projects, selectedProjectId: review.projectId,
     workActivity: review.workActivity,
     selectProject: review.selectProject,
@@ -2829,6 +2856,7 @@ export function RallyDesk({
         {state.stage === "review" && <ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} />}
         <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
       </header>
+      {state.draftSaveFailed && <p className="rd-storage-alert" role="alert">{state.storageMessage}</p>}
       {state.stage === "review" ? (
         <ResizableWorkspace
           {...layoutPreferences}

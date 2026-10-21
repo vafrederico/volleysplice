@@ -143,6 +143,9 @@ function ReadyProjectEditor({
         {review.state === "loading"
           ? "Opening your saved review…"
           : review.message}
+        {review.state !== "loading" && (
+          <button type="button" onClick={() => onSelectProject(null)}>Open another project</button>
+        )}
       </section>
     </main>
   );

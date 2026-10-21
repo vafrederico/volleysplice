@@ -1,18 +1,10 @@
 import { projectDisplayName } from "@/lib/project-store";
 import { useEffect, useRef, useState } from "react";
 
-import {
-  createCutDraft,
-  cutDraftStorageKey,
-  cutDraftStorageKeys,
-  parseCutDraft,
-  type CutDraft,
-  type CutDraftSeed,
-} from "@/lib/cut-draft";
+import type { CutDraft, CutDraftSeed } from "@/lib/cut-draft";
 import {
   listProjects,
   projectAnalysisId,
-  putProjectReviewDraft,
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
   type VolleySpliceProject,
@@ -23,7 +15,13 @@ import type {
   ScoreOverlayOptions,
 } from "@/lib/on-device/export";
 import type { ProductAnalysis } from "@/lib/product-analysis";
-import { createModelReviewDraft, withModelScoreMarkers } from "@/lib/model-review-draft";
+import { createModelReviewDraft } from "@/lib/model-review-draft";
+import {
+  browserDraftStorage,
+  restoreProjectReviewDraft,
+  saveProjectReviewDraft,
+  type DraftSaveResult,
+} from "@/lib/review-draft-persistence";
 
 import { normalizeCleanupDecisions } from "./taste/cleanup-decisions";
 
@@ -109,7 +107,7 @@ export type ReadyDesignReview = {
     videoUrl: string | null;
   }>;
   queueVideoExport: (request: DesignVideoExportRequest) => void;
-  saveDraft: (draft: CutDraft) => void;
+  saveDraft: (draft: CutDraft) => Promise<DraftSaveResult> | void;
 };
 
 export type DesignReviewState =
@@ -206,42 +204,6 @@ function reviewSeed(project: VolleySpliceProject): CutDraftSeed | null {
   };
 }
 
-function restoredDraft(project: VolleySpliceProject, seed: CutDraftSeed): CutDraft {
-  const withGeneratedScoreMarkers = (draft: CutDraft) => withModelScoreMarkers(draft, project.analysis!);
-  const persistedDrafts: CutDraft[] = [];
-  try {
-    for (const key of cutDraftStorageKeys(seed.analysisId)) {
-      const raw = window.localStorage.getItem(key);
-      const parsed = raw ? parseCutDraft(raw, seed) : null;
-      if (parsed) persistedDrafts.push(parsed);
-    }
-  } catch {
-    // Imported or inferred state below remains usable when storage is restricted.
-  }
-  if (project.reviewDraft) {
-    const indexedDbDraft = parseCutDraft(
-      JSON.stringify(project.reviewDraft),
-      seed,
-    );
-    if (indexedDbDraft) persistedDrafts.push(indexedDbDraft);
-  }
-  const latestPersistedDraft = persistedDrafts.sort(
-    (left, right) =>
-      (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0),
-  )[0];
-  if (latestPersistedDraft) {
-    return withGeneratedScoreMarkers(latestPersistedDraft);
-  }
-  if (project.importedFeedback?.initialDraft) {
-    const imported = parseCutDraft(
-      JSON.stringify(project.importedFeedback.initialDraft),
-      seed,
-    );
-    if (imported) return withGeneratedScoreMarkers(imported);
-  }
-  return withGeneratedScoreMarkers(createCutDraft(seed));
-}
-
 function cleanupSuggestions(
   project: VolleySpliceProject,
   draft: CutDraft,
@@ -329,7 +291,7 @@ export function useDesignReview(
           });
           return;
         }
-        const draft = restoredDraft(project, seed);
+        const draft = restoreProjectReviewDraft(project, seed, browserDraftStorage());
         const attachSource = async (file: File) => {
           if (!(await sourceCanReconnectFile(project.source, file))) {
             return {
@@ -358,23 +320,8 @@ export function useDesignReview(
             videoUrl,
           };
         };
-        const saveDraft = (next: CutDraft) => {
-          const persistedDraft = {
-            ...next,
-            updatedAt: new Date().toISOString(),
-          };
-          try {
-            window.localStorage.setItem(
-              cutDraftStorageKey(seed.analysisId),
-              JSON.stringify(persistedDraft),
-            );
-          } catch {
-            // The current editor remains usable in memory when browser storage is restricted.
-          }
-          void putProjectReviewDraft(project.id, persistedDraft).catch(() => {
-            // localStorage remains the synchronous fallback when IndexedDB is unavailable.
-          });
-        };
+        const saveDraft = (next: CutDraft) =>
+          saveProjectReviewDraft(project.id, seed, next, browserDraftStorage());
         setReview({
           state: "ready",
           projectId: project.id,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createModelReviewDraft } from "../../prod/src/lib/model-review-draft.ts";
+import { createModelReviewDraft, withModelScoreMarkers } from "../../prod/src/lib/model-review-draft.ts";
 import { createCutDraft, parseCutDraft, rallySuppressionDecisionKey } from "../../prod/src/lib/cut-draft.ts";
 import { recordEdit, moveHistory, readEditHistory } from "../../prod/src/designs/taste/edit-history.ts";
 
@@ -53,4 +53,28 @@ test("projects without specialist results reset without inventing serve or switc
   assert.deepEqual(baseline.scoreTracking.serveMarkers, []);
   assert.deepEqual(baseline.scoreTracking.sideSwitchMarkers, []);
   assert.deepEqual(baseline.cuts, createCutDraft(seed).cuts);
+});
+
+test("restoring model markers preserves saved serve decisions and moved side switches", () => {
+  const edited = createModelReviewDraft(seed, analysis);
+  edited.reviewedCutIds = ["R001"];
+  edited.cuts[0].included = false;
+  const serve = edited.scoreTracking.serveMarkers[0];
+  serve.side = "far";
+  serve.ignorePreviousPoint = true;
+  // Historical saved markers need not include modelSide provenance.
+  delete serve.modelSide;
+  edited.scoreTracking.sideSwitchMarkers[0].timestamp = 35;
+  const restored = withModelScoreMarkers(edited, analysis);
+  assert.deepEqual(restored, edited);
+});
+
+test("restoring model markers preserves split-rally markers and model removals", () => {
+  const edited = createModelReviewDraft(seed, analysis);
+  edited.scoreTracking.serveMarkers = [{ ...edited.scoreTracking.serveMarkers[0],
+    id: "serve-R001A", rallyId: "R001A", timestamp: 12, side: "far" }];
+  edited.scoreTracking.sideSwitchMarkers = [];
+  edited.scoreTracking.removedModelMarkerIds = ["serve-R001", "switch-side1"];
+  const restored = withModelScoreMarkers(edited, analysis);
+  assert.deepEqual(restored.scoreTracking, edited.scoreTracking);
 });

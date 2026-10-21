@@ -662,7 +662,21 @@ export async function putProject(project: VolleySpliceProject): Promise<void> {
   try {
     const transaction = database.transaction(PROJECT_STORE, "readwrite");
     const complete = transactionComplete(transaction);
-    transaction.objectStore(PROJECT_STORE).put(project);
+    const store = transaction.objectStore(PROJECT_STORE);
+    const stored = await requestResult(store.get(project.id) as IDBRequest<unknown>);
+    // Analysis/source updates use the app's project snapshot, which may predate
+    // editor saves. Merge the latest review in the same transaction as the put.
+    if (validProject(stored)) {
+      const storedDraft = stored.reviewDraft;
+      if (storedDraft && (!project.reviewDraft ||
+          (Date.parse(storedDraft.updatedAt) || 0) >= (Date.parse(project.reviewDraft.updatedAt) || 0))) {
+        project = { ...project, reviewDraft: storedDraft };
+      }
+      if (stored.lastExportedAt && (!project.lastExportedAt || stored.lastExportedAt > project.lastExportedAt)) {
+        project = { ...project, lastExportedAt: stored.lastExportedAt };
+      }
+    }
+    store.put(project);
     await complete;
   } finally {
     database.close();
@@ -700,7 +714,14 @@ export async function putProjectReviewDraft(
     if (!validProject(stored)) {
       throw new Error("The project record is unavailable or invalid.");
     }
-    store.put({ ...stored, reviewDraft });
+    if (reviewDraft.recordingId !== stored.id || reviewDraft.analysisId !== projectAnalysisId(stored)) {
+      throw new Error("The review does not belong to this project's analysis.");
+    }
+    // Opening a database for each save can complete out of order.
+    if (!stored.reviewDraft ||
+        (Date.parse(stored.reviewDraft.updatedAt) || 0) <= (Date.parse(reviewDraft.updatedAt) || 0)) {
+      store.put({ ...stored, reviewDraft });
+    }
     await complete;
   } finally {
     database.close();
