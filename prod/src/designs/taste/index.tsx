@@ -10,6 +10,7 @@ import {
 
 import {
   materializeFinalCutIntervals,
+  retainExplicitRallyGroups,
   rallySuppressionDecisionKey,
   PLAYBACK_RATES,
   type CutDraft,
@@ -442,6 +443,8 @@ function usePrototype(
           included: clip.included,
           origin: clip.origin === "manual" ? "manual" : "cached-label",
           ...(clip.agreement ? { agreement: clip.agreement } : {}),
+          ...(previous?.editableGroupId && previous.origin === (clip.origin === "manual" ? "manual" : "cached-label")
+            ? { editableGroupId: previous.editableGroupId } : {}),
         };
       }),
       ignoredIntervals: excludedRanges.map((interval) => ({
@@ -565,7 +568,7 @@ function usePrototype(
   }
 
   function resetProjectChanges() {
-    applyReviewDraft(review.modelDraft);
+    applyReviewDraft(retainExplicitRallyGroups(review.modelDraft, workingDraft));
     setPlaying(false);
     setFinalPreview(review.modelDraft.cutPreviewEnabled);
     setPlaybackRate(review.modelDraft.playbackRate);

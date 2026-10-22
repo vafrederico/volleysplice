@@ -74,6 +74,7 @@ internal object ModelFeedbackExporter {
         sampledFingerprint: String?,
         generatedAt: Instant = Instant.now(),
     ): JSONObject {
+        ExplicitRallyGroups.validate(draft.cuts)
         if (analysis != null) {
             val rows = analysis.timestamps.size
             require(analysis.baseFeatures.size == rows * FeatureSchema.BASE.size)
@@ -456,6 +457,7 @@ internal object ModelFeedbackExporter {
     }
 
     private fun correctedRange(cut: EditableCut) = JSONObject().apply {
+        cut.editableGroupId?.let { put("editableGroupId", it) }
         put("id", cut.id)
         put("coreStart", cut.coreStartMs / 1_000.0)
         put("coreEnd", cut.coreEndMs / 1_000.0)

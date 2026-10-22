@@ -27,6 +27,7 @@ export type CorrectedFeedbackRange = {
   included: boolean;
   origin: "cached-label" | "manual";
   agreement?: string;
+  editableGroupId?: string;
 };
 
 export type IgnoredFeedbackRange = {
@@ -460,6 +461,11 @@ function correctedRange(
   if (item.origin !== "cached-label" && item.origin !== "manual") {
     fail(`${field}.origin`, "must be cached-label or manual");
   }
+  if ("editableGroupId" in item && (typeof item.editableGroupId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(item.editableGroupId) ||
+      typeof item.id !== "string" || item.id.trim().length === 0 || item.id.length > 256)) {
+    fail(`${field}.editableGroupId`, "must be a bounded group token on a stable cut identity");
+  }
   return {
     id: string(item.id, `${field}.id`),
     coreStart,
@@ -469,6 +475,7 @@ function correctedRange(
     confidence,
     included: boolean(item.included, `${field}.included`),
     origin: item.origin,
+    ...("editableGroupId" in item ? { editableGroupId: item.editableGroupId as string } : {}),
     ...(item.agreement === undefined
       ? {}
       : { agreement: string(item.agreement, `${field}.agreement`) }),
@@ -1320,6 +1327,8 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   const correctedValue = corrections.correctedRanges;
   if (!Array.isArray(correctedValue))
     fail("bundle.corrections.correctedRanges", "must be an array");
+  if (correctedValue.filter((cut) => cut && typeof cut === "object" && "editableGroupId" in cut).length > 2048)
+    fail("bundle.corrections.correctedRanges", "too many explicit rally members");
   const ignoredValue = corrections.ignoredIntervals;
   if (!Array.isArray(ignoredValue))
     fail("bundle.corrections.ignoredIntervals", "must be an array");

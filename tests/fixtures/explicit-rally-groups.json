@@ -1,0 +1,10 @@
+{
+  "contract": "feedback-v3-corrected-range-editableGroupId",
+  "correctedRanges": [
+    { "id": "R001", "coreStart": 5, "coreEnd": 12, "keepStart": 3, "keepEnd": 14, "confidence": 0.95, "included": true, "origin": "cached-label", "editableGroupId": "split:inferred-left" },
+    { "id": "R002", "coreStart": 12, "coreEnd": 20, "keepStart": 10, "keepEnd": 22, "confidence": 0.95, "included": true, "origin": "cached-label", "editableGroupId": "split:inferred-right" },
+    { "id": "M001", "coreStart": 23, "coreEnd": 25, "keepStart": 23, "keepEnd": 25, "confidence": 1, "included": true, "origin": "manual", "editableGroupId": "split:manual-left" },
+    { "id": "M002", "coreStart": 25, "coreEnd": 27, "keepStart": 25, "keepEnd": 27, "confidence": 1, "included": true, "origin": "manual", "editableGroupId": "split:manual-right" }
+  ],
+  "invalidGroupIds": [null, "", 1, true, [], {}, "has space", "../escape", "__proto__", "é"]
+}

@@ -2975,7 +2975,9 @@ private fun EditorScreen(
         suggestion.logicalId() !in draft.suppressionDecisionOverrides
     }
     val selectedSuggestion = activeSuggestions.firstOrNull { it.fragmentId() == selectedSuggestionId }
-    val selectedClipSuggestion = selectedSuggestion ?: selectedRally?.let { rally ->
+    val selectedClipSuggestion = selectedSuggestion ?: selectedRally?.takeIf { rally ->
+        rally.cuts.none { it.editableGroupId != null }
+    }?.let { rally ->
         activeSuggestions.firstOrNull { suggestion ->
             rally.cuts.any { cut ->
                 cut.coreStartMs < suggestion.endMs() && suggestion.startMs() < cut.coreEndMs
@@ -3142,6 +3144,7 @@ private fun EditorScreen(
                 playbackPositionMs,
                 seed.gameStartMs,
                 seed.gameEndMs,
+                groupCutIds = selectedRally?.cutIds.orEmpty(),
             )?.also { split = it }?.draft?.copy(
                 reviewedCutIds = current.reviewedCutIds - cut.id,
             ) ?: current
@@ -3387,8 +3390,8 @@ private fun EditorScreen(
                 continue
             }
             playbackPositionMs = position
-            editableRallies.filter { it.keepStartMs <= position }.maxByOrNull { it.keepStartMs }?.let { reached ->
-                if (reached.id != selectedId) selectedId = reached.id
+            EditorMath.rallySelectionAtPlayhead(editableRallies, selectedId, position, player.isPlaying)?.let { reached ->
+                if (reached != selectedId) selectedId = reached
             }
             previewEndMs?.let { end ->
                 if (player.isPlaying && position >= end) {
@@ -3421,7 +3424,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset this edit?") },
-            text = { Text("All clip boundaries, included or excluded choices, score markers, added clips, and omitted sections will be discarded.") },
+            text = { Text("Clip choices, score markers, and omitted sections will be reset. Explicit split parts and their identities will be kept.") },
             confirmButton = {
                 TextButton(onClick = {
                     store.clear()
@@ -4870,6 +4873,7 @@ private fun EditorScreen(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (rally.id == selectedRally?.id) Color(0xFFFFEEE8) else Color.Transparent)
                                 .clickable { selectedId = rally.id; seekTo(rally.keepStartMs) }
+                                .testTag("rally-row-${rally.id}")
                                 .padding(vertical = 7.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -5249,6 +5253,7 @@ private fun DesktopRallyLedger(
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (rally.id == selectedId) Acid.copy(alpha = .5f) else Color.Transparent)
                         .clickable { onSelect(rally) }
+                        .testTag("rally-row-${rally.id}")
                         .padding(horizontal = 7.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -7196,6 +7201,7 @@ internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<
                 put("confidence", cut.confidence.toDouble())
                 put("included", cut.included)
                 put("origin", cut.origin.name.lowercase())
+                cut.editableGroupId?.let { put("editableGroupId", it) }
                 put("agreement", cut.agreement ?: JSONObject.NULL)
             }) }
         })

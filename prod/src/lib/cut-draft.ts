@@ -36,6 +36,7 @@ export type EditableCut = {
   included: boolean;
   origin: CutOrigin;
   agreement?: Rally["agreement"];
+  editableGroupId?: string;
 };
 
 export type IgnoredSourceInterval = IgnoredInterval & {
@@ -84,6 +85,23 @@ export type CutSplitResult = {
   draft: CutDraft;
   newCut: EditableCut;
 };
+
+/** Reset ordinary edits without reusing split cut identities for model ranges. */
+export function retainExplicitRallyGroups(defaults: CutDraft, current: CutDraft): CutDraft {
+  const retained = current.cuts.filter((cut) => cut.editableGroupId !== undefined);
+  const ids = new Set(retained.map((cut) => cut.id));
+  return withTouchedCachedCuts({
+    ...defaults,
+    // PR14's transport envelope stays opaque, including future UI versions.
+    ...("portableUi" in current ? { portableUi: current.portableUi } : {}),
+    cuts: [...defaults.cuts.filter((cut) => !ids.has(cut.id)), ...retained.map((cut) => ({
+      ...cut,
+      included: true,
+      keepStart: cut.origin === "manual" ? cut.coreStart : Math.max(defaults.analysisStart, cut.coreStart - defaults.beforePaddingSeconds),
+      keepEnd: cut.origin === "manual" ? cut.coreEnd : Math.min(defaults.analysisEnd, cut.coreEnd + defaults.afterPaddingSeconds),
+    }))],
+  }, [...ids]);
+}
 
 export type FinalCutProvenanceSegment = {
   start: number;
@@ -273,6 +291,8 @@ function validCut(
   return (
     typeof cut.id === "string" &&
     cut.id.length > 0 &&
+    (!("editableGroupId" in cut) || (typeof cut.editableGroupId === "string" &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(cut.editableGroupId) && cut.id.trim().length > 0 && cut.id.length <= 256)) &&
     finiteTime(cut.coreStart) &&
     finiteTime(cut.coreEnd) &&
     finiteTime(cut.keepStart) &&
@@ -530,6 +550,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       ...value.ignoredIntervals.map((interval) => interval.id),
     ];
     if (new Set(ids).size !== ids.length) return null;
+    if (value.cuts.filter((cut) => cut.editableGroupId !== undefined).length > 2048) return null;
     const cachedCutIds = new Set(
       value.cuts.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
     );
@@ -677,6 +698,7 @@ export function splitCutAt(
     id: nextCutId(prefix, draft.cuts),
     coreStart: position,
     keepStart: roundTime(Math.max(minimum, position - beforePadding)),
+    ...(cut.editableGroupId ? { editableGroupId: `split:${crypto.randomUUID()}` } : {}),
   };
   const cuts = [...draft.cuts];
   cuts.splice(cutIndex, 1, left, right);

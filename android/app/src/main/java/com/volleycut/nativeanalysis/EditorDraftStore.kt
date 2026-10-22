@@ -40,6 +40,7 @@ internal class EditorDraftStore(private val directory: File, private val seed: E
     }
 
     private fun encode(draft: EditorDraft) = JSONObject().apply {
+        ExplicitRallyGroups.validate(draft.cuts)
         put("version", draft.version)
         put("sourceRevision", draft.sourceRevision)
         put("updatedAtMs", draft.updatedAtMs)
@@ -84,6 +85,7 @@ internal class EditorDraftStore(private val directory: File, private val seed: E
                 put("included", cut.included)
                 put("origin", cut.origin.name)
                 put("agreement", cut.agreement ?: JSONObject.NULL)
+                cut.editableGroupId?.let { put("editableGroupId", it) }
             }) }
         })
         put("ignoredIntervals", JSONArray().apply {
@@ -113,9 +115,11 @@ internal class EditorDraftStore(private val directory: File, private val seed: E
                     included = item.getBoolean("included"),
                     origin = CutOrigin.valueOf(item.getString("origin")),
                     agreement = item.optNullableString("agreement"),
+                    editableGroupId = ExplicitRallyGroups.decode(item),
                 ))
             }
         }
+        ExplicitRallyGroups.validate(cuts)
         val ignoredJson = json.optJSONArray("ignoredIntervals") ?: JSONArray()
         val ignored = buildList {
             for (index in 0 until ignoredJson.length()) {

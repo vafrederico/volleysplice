@@ -130,6 +130,8 @@ try {
     ignoredIntervals: [],
   };
   const key = cutDraftStorageKey(seed.analysisId);
+  project.reviewDraft = createCutDraft(seed);
+  project.reviewDraft.cuts[0].editableGroupId = "split:synthetic-retained";
   let readyReview;
   function Editor({ savedProject }) {
     const projects = React.useMemo(() => [savedProject], [savedProject]);
@@ -148,6 +150,7 @@ try {
     root.render(React.createElement(Editor, { savedProject: project })),
   );
   await waitFor(() => window.localStorage.getItem(key));
+  assert.equal(JSON.parse(window.localStorage.getItem(key)).cuts[0].editableGroupId, "split:synthetic-retained");
   await click("Remove rally");
   await waitFor(
     () =>
@@ -158,6 +161,7 @@ try {
     [reloaded] = await listProjects();
   });
   assert.equal(reloaded.reviewDraft.cuts[0].included, false);
+  assert.equal(reloaded.reviewDraft.cuts[0].editableGroupId, "split:synthetic-retained");
   await act(async () =>
     root.render(
       React.createElement(Editor, { key: "reload", savedProject: reloaded }),

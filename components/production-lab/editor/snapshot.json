@@ -86,8 +86,8 @@
     {
       "source": "prod/src/designs/taste/index.tsx",
       "destination": "components/production-lab/editor/designs/taste/index.tsx",
-      "sourceSha256": "890b1fa1257b401686409dfffe0c9e0dcf51ee9204f5be250cb8ce7526aa3000",
-      "snapshotSha256": "0881d8d70226f1585095da67afd02cd9b0641495fbd382fa463b96f1bfd796dc"
+      "sourceSha256": "e3ef90d2b3132b5b60fabee42297d99de4faf72ea9f64f0451f4b7c8ede5720b",
+      "snapshotSha256": "2eabe70f039b2c432a826b7a483e8a043a280c20bf68ca4fe7a6b9ce5a561c23"
     },
     {
       "source": "prod/src/designs/taste/keyboard-shortcuts.ts",
@@ -128,8 +128,8 @@
     {
       "source": "prod/src/lib/cut-draft.ts",
       "destination": "components/production-lab/editor/lib/cut-draft.ts",
-      "sourceSha256": "619a2640d78b0134169190110b6baae46be7c8ebc83e4a0a35b031a3bfc91881",
-      "snapshotSha256": "a9d1d9f684140824901fe5890cd5b64c913338a448507c4b3134cae72cb9c42b"
+      "sourceSha256": "571913af267a7752d31d39acdfaa1b894389df736ed462b159f985ccfe40fd56",
+      "snapshotSha256": "2a34ce47788f15f664bad2341d610dcfc7bb815abc2f4e2d7f66d61a19c37dc4"
     },
     {
       "source": "prod/src/lib/edit-list.ts",
