@@ -18,6 +18,10 @@ internal class UnreadableEditorDraftException : IllegalStateException(
     "Saved edits could not be restored. They have been preserved. Recover or reset the review before replacing them.",
 )
 
+internal class EditorDraftSaveException(cause: Throwable) : java.io.IOException(
+    "Edits could not be saved. Free device storage and retry, or export a project backup before leaving this review.", cause,
+)
+
 internal class EditorDraftStore(filesDir: File, private val seed: EditorSeed) {
     constructor(context: Context, seed: EditorSeed) : this(context.filesDir, seed)
 
@@ -60,7 +64,7 @@ internal class EditorDraftStore(filesDir: File, private val seed: EditorSeed) {
             } catch (_: Exception) {
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
-        }.onFailure { Log.e(TAG, "Could not persist editor draft", it) }
+        }.onFailure { throw EditorDraftSaveException(it) }
     }
 
     fun clear() {

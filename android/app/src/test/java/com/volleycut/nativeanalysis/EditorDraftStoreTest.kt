@@ -46,6 +46,42 @@ class EditorDraftStoreTest {
         assertEquals(500L, (store().load() as EditorDraftLoadResult.Restored).draft.beforePaddingMs)
     }
 
+    @Test fun failedWriteReportsFailurePreservesLastSavedBytesAndCanRetry() {
+        val original = goodBytes()
+        val draft = (store().load() as EditorDraftLoadResult.Restored).draft.copy(beforePaddingMs = 500)
+        val blocker = File(target.parentFile, "${target.name}.tmp").apply { mkdirs() }
+        val error = assertThrows(EditorDraftSaveException::class.java) { store().save(draft) }
+        assertNotNull(error.cause)
+        assertTrue(error.message!!.contains("could not be saved"))
+        assertArrayEquals(original, target.readBytes())
+        assertTrue(blocker.delete())
+        store().save(draft)
+        assertEquals(500L, (store().load() as EditorDraftLoadResult.Restored).draft.beforePaddingMs)
+    }
+
+    @Test fun newDraftWriteFailureIsNotReportedAsSaved() {
+        val blocker = File(target.parentFile, "${target.name}.tmp").apply { mkdirs() }
+        assertThrows(EditorDraftSaveException::class.java) { store().save(EditorMath.newDraft(seed)) }
+        assertEquals(EditorDraftLoadResult.Missing, store().load())
+        assertTrue(blocker.delete())
+        store().save(EditorMath.newDraft(seed))
+        assertTrue(store().load() is EditorDraftLoadResult.Restored)
+    }
+
+    @Test fun failedRelinkSaveKeepsOriginalReviewRecoverable() {
+        val original = goodBytes()
+        val replacement = seed.copy(sourceUri = "content://synthetic/relinked-draft-test")
+        val newTarget = File(temporary.root, "editor-drafts/${replacement.sourceRevision}.json")
+        val blocker = File(newTarget.parentFile, "${newTarget.name}.tmp").apply { mkdirs() }
+        assertThrows(EditorDraftSaveException::class.java) { EditorDraftStore.relink(temporary.root, seed, replacement) }
+        assertArrayEquals(original, target.readBytes())
+        assertFalse(newTarget.exists())
+        assertTrue(blocker.delete())
+        EditorDraftStore.relink(temporary.root, seed, replacement)
+        val relinked = EditorDraftStore(temporary.root, replacement).load() as EditorDraftLoadResult.Restored
+        assertEquals(1_000L, relinked.draft.beforePaddingMs)
+    }
+
     @Test fun truncatedJsonSurvivesFallbackAndNewWriter() =
         assertProtected("{\"version\":8,\"cuts\":[".toByteArray())
 
