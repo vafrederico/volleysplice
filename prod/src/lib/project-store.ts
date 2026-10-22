@@ -214,8 +214,10 @@ export async function sourceCanReconnectFile(
   source: ProjectSource,
   file: File,
 ): Promise<boolean> {
-  if (sourceMatchesFile(source, file)) return true;
-  if (!source.fingerprint || source.size !== file.size) return false;
+  // Legacy projects have only metadata. Once a fingerprint exists it is the
+  // authority, even when all metadata still matches a replaced local file.
+  if (source.fingerprint === undefined) return sourceMatchesFile(source, file);
+  if (source.size !== file.size) return false;
   try {
     return source.fingerprint === (await sourceFileFingerprint(file));
   } catch {

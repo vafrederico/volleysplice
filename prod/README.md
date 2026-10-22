@@ -37,7 +37,11 @@ with WebGPU where available and a WASM fallback. The ensemble uses its existing
 CPU classifiers. Visual checkpoints, completed audio features, project metadata,
 and finalized inference results use local IndexedDB; edit drafts use local storage. Source
 video bytes are not copied into project storage, so a browser restart only requires
-reconnecting the exact local file for playback or export—not rerunning inference. Deleting
+reconnecting the exact local file for playback or export—not rerunning inference.
+Reconnection uses the saved sampled fingerprint whenever one exists, even when a
+replacement file has identical name, size and modification time. Identical
+transferred bytes can have a different filename or timestamp. Legacy projects
+without a fingerprint retain exact metadata matching. Deleting
 a project also deletes its cached features, inference, and edit draft. The editor exports
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
