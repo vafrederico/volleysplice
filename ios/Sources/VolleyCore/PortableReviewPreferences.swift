@@ -107,11 +107,11 @@ public enum PortableReviewPreferences {
         if let retained {
             try validate(retained, cuts: draft.cuts, checkIdentities: false)
             // An update of a retained bundle must never downgrade a newer envelope.
-            if isFuture(retained) { return retained }
+            if isFuture(retained) { return try opaqueExport(retained, cuts: draft.cuts) }
         }
         var ui = draft.portableUi ?? retained ?? .object([:])
         try validate(ui, cuts: draft.cuts, checkIdentities: false)
-        if isFuture(ui) { return ui }
+        if isFuture(ui) { return try opaqueExport(ui, cuts: draft.cuts) }
         if draft.portableUi != nil, let retained {
             // Retain extensions added to either copy since import. Known transport values
             // belong to the draft, including deliberate removals made during reset.
@@ -151,6 +151,16 @@ public enum PortableReviewPreferences {
         }
         ui["schemaVersion"] = .number(1); ui["preferences"] = prefs
         try validate(ui, cuts: draft.cuts)
+        return ui
+    }
+
+    private static func opaqueExport(_ ui: JSONValue, cuts: [EditableCut]) throws -> JSONValue {
+        // Local persistence may retain references to removed cuts. A published
+        // archive must pass the same identity validation as its next import.
+        do { try validate(ui, cuts: cuts) }
+        catch {
+            throw ProjectError.invalid("Cannot export: newer project preferences refer to rallies changed or removed. Open an unchanged copy, or export with an app that supports this preferences version. Your local project is preserved.")
+        }
         return ui
     }
 

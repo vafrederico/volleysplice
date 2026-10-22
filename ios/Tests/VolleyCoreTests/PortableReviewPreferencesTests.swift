@@ -36,6 +36,175 @@ final class PortableReviewPreferencesTests: XCTestCase {
         return url
     }
 
+    private func legacyLocalProject() throws -> ProjectDocument {
+        var project = try ProjectArchive.importBundle(bundle())
+        project.id = "legacy-local"; project.sourceName = "local-fixture.mp4"
+        project.sourceBookmark = Data([1, 2, 3]); project.persistenceRevision = "retained-generation"
+        project.draft = EditorMath.addManual(project.draft, startMs: 4000, endMs: 6000,
+            bounds: .init(startMs: 0, endMs: 10000))
+        // The previous inclusion toggle marked both inferred and manual cuts reviewed.
+        project.draft.reviewedCutIds = ["R001", "M001"]
+        project.draft.userTouchedCutIds = ["M001"]
+        project.draft.beforePaddingMs = 1000; project.draft.afterPaddingMs = 500
+        project.draft.joinGapMs = 1234; project.draft.updatedAtMs = 123456
+        project.draft.pendingManualStartMs = 7000; project.draft.pendingIgnoreStartMs = 8000
+        project.draft.ignoreReason = "retained reason"; project.draft.finalPreviewEnabled = true
+        project.draft.playbackRate = 4; project.draft.confidenceReviewThreshold = 0.77
+        project.draft.ignoredIntervals = [.init(id: "I001", startMs: 8000, endMs: 9000)]
+        project.draft.suppressionDecisionOverrides = ["cleanup": "keep"]
+        project.draft.suppressionScopeOverrides = ["cleanup": "veto-region"]
+        project.draft.renderScoreOverlay = false; project.draft.renderScoreTimeline = true
+        project.draft.fadeScoreOverlay = true
+        project.draft.chapterOptions = .init(includeRallyNumber: false, includeServeNumber: true,
+            includeScore: true, includeServingTeam: false, includeSideSwitches: true, includeCredit: false)
+        project.draft.scoreTracking = try ScoreTracking(enabled: false, team1Name: "Retained team").jsonValue()
+        project.feedback?["localExtension"] = .array([.null, .object(["retained": .bool(true)])])
+        return project
+    }
+
+    func testLegacyLocalManualReviewUpgradePreservesAllOtherMetadataAndDoesNotRewriteSource() throws {
+        let directory = try folder(); defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("legacy.volleyproject.json")
+        let legacy = try legacyLocalProject()
+        let data = try JSONEncoder().encode(legacy)
+        try data.write(to: url) // Exact old local v8 representation, without portableUi.
+        XCTAssertNil(try JSONDecoder().decode(JSONValue.self, from: data)["draft"]?["portableUi"])
+        var expected = legacy; expected.draft.reviewedCutIds = ["R001"]
+        let loaded = try ProjectDocument.load(from: url)
+        XCTAssertEqual(loaded, expected)
+        XCTAssertEqual(try Data(contentsOf: url), data)
+        XCTAssertEqual(try ProjectPersistence.read(from: url).project, expected)
+        XCTAssertEqual(try ProjectPersistence.listMetadata(from: url).sourceName, legacy.sourceName)
+        // The direct local-decoder path used by VolleyProjectCheck performs the same upgrade.
+        let decoded = try JSONDecoder().decode(ProjectDocument.self, from: data).migratingLegacyLocalReviewIds()
+        try decoded.validate(); XCTAssertEqual(decoded, expected)
+        var output = try XCTUnwrap(loaded.feedback)
+        try ProjectArchive.updateCorrections(&output, draft: loaded.draft)
+        let reimported = try ProjectArchive.importBundle(output)
+        XCTAssertEqual(reimported.draft.reviewedCutIds, ["R001"])
+        XCTAssertEqual(reimported.draft.cuts, legacy.draft.cuts)
+    }
+
+    func testLegacyManualReviewUpgradeRunsAfterCheckpointRecoveryAndSurvivesPublication() throws {
+        let directory = try folder(); defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("checkpoint.volleyproject.json")
+        var valid = try legacyLocalProject(); valid.draft.reviewedCutIds = ["R001"]
+        let base = try ProjectPersistence.publish(ProjectPersistence.stage(valid, to: url))
+        var latest = base; latest.sourceName = "checkpoint-fixture.mp4"
+        latest.sourceBookmark = Data([7, 8, 9]); latest.draft.updatedAtMs += 1
+        latest.draft.chapterOptions?.includeCredit = true
+        try ProjectPersistence.checkpoint(latest, to: url)
+        let journalURL = ProjectPersistence.checkpointURL(for: url)
+        var journal = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: journalURL))
+        var entries = try XCTUnwrap(journal["entries"]?.array)
+        entries[0]["draft"]?["reviewedCutIds"] = .array([.string("R001"), .string("M001")])
+        journal["entries"] = .array(entries)
+        let oldJournal = try JSONEncoder().encode(journal)
+        try oldJournal.write(to: journalURL)
+        let baseBytes = try Data(contentsOf: url)
+        let loaded = try ProjectDocument.load(from: url)
+        XCTAssertEqual(loaded, latest)
+        XCTAssertEqual(try Data(contentsOf: url), baseBytes)
+        XCTAssertEqual(try Data(contentsOf: journalURL), oldJournal)
+        try ProjectPersistence.checkpoint(loaded, to: url)
+        let published = try ProjectPersistence.publish(ProjectPersistence.stage(loaded, to: url), current: loaded)
+        XCTAssertEqual(try ProjectDocument.load(from: url), published)
+        XCTAssertEqual(published.draft, latest.draft)
+    }
+
+    func testLegacyLocalMigrationDoesNotSanitizeUnknownIdsOrModernDrafts() throws {
+        let directory = try folder(); defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("invalid-local.json")
+        var legacy = try legacyLocalProject(); legacy.draft.reviewedCutIds.insert("missing")
+        let migrated = legacy.migratingLegacyLocalReviewIds()
+        XCTAssertEqual(migrated.draft.reviewedCutIds, ["R001", "missing"])
+        try JSONEncoder().encode(legacy).write(to: url)
+        XCTAssertThrowsError(try ProjectDocument.load(from: url))
+        var modern = try legacyLocalProject(); modern.draft.portableUi = ui([:])
+        XCTAssertEqual(modern.migratingLegacyLocalReviewIds(), modern)
+        try JSONEncoder().encode(modern).write(to: url)
+        XCTAssertThrowsError(try ProjectDocument.load(from: url))
+        var otherVersion = try legacyLocalProject(); otherVersion.draft.version = 9
+        XCTAssertEqual(otherVersion.migratingLegacyLocalReviewIds(), otherVersion)
+        var otherSchema = try legacyLocalProject(); otherSchema.schema = "other-format"
+        XCTAssertEqual(otherSchema.migratingLegacyLocalReviewIds(), otherSchema)
+    }
+
+    func testLocalUpgradeDoesNotWeakenWireManualReviewIdentityRejection() throws {
+        var draft = try legacyLocalProject().draft; draft.reviewedCutIds = ["R001"]
+        var input = try bundle()
+        try ProjectArchive.updateCorrections(&input, draft: draft)
+        for version in [nil, JSONValue.number(1), .number(2)] as [JSONValue?] {
+            input["corrections"]?["ui"] = ui(["reviewedCutIds": .array([.string("M001")])], version: version)
+            XCTAssertThrowsError(try ProjectArchive.importData(JSONEncoder().encode(input)))
+        }
+    }
+
+    private func futureSplitProject() throws -> ProjectDocument {
+        var input = try bundle()
+        let original = try ProjectArchive.importBundle(input)
+        let split = try XCTUnwrap(EditorMath.splitCut(original.draft, cutId: "R001", positionMs: 2000,
+            bounds: original.gameWindow))
+        XCTAssertEqual(split.cuts.map(\.id), ["R001", "R002"])
+        try ProjectArchive.updateCorrections(&input, draft: split)
+        var future = try fixture("futureUi")
+        future["preferences"]?["reviewedCutIds"] = .array([.string("R002")])
+        input["corrections"]?["ui"] = future
+        return try ProjectArchive.importData(JSONEncoder().encode(input))
+    }
+
+    func testFutureResetKeepsLocalDataLosslessButRejectsEveryArchiveExportPathWithStaleReviewIds() throws {
+        let directory = try folder(); defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("future-reset.volleyproject.json")
+        var project = try futureSplitProject()
+        let envelope = project.draft.portableUi
+        project.draft = try ProjectArchive.restoredModelDraft(project)
+        XCTAssertEqual(project.draft.cuts.map(\.id), ["R001"])
+        XCTAssertEqual(project.draft.portableUi, envelope)
+        try project.save(to: url)
+        let reopened = try ProjectDocument.load(from: url)
+        XCTAssertEqual(reopened, project)
+        XCTAssertEqual(reopened.draft.portableUi, envelope)
+        // Exercise both opaque early returns: retained bundle and draft-only envelope.
+        for retained in [envelope, nil, ui([:])] as [JSONValue?] {
+            var output = try XCTUnwrap(reopened.feedback)
+            output["corrections"]?["ui"] = retained
+            let before = output
+            XCTAssertThrowsError(try ProjectArchive.updateCorrections(&output, draft: reopened.draft)) { error in
+                XCTAssertTrue(error.localizedDescription.contains("Cannot export"))
+                XCTAssertTrue(error.localizedDescription.contains("unchanged copy"))
+                XCTAssertTrue(error.localizedDescription.contains("local project is preserved"))
+            }
+            XCTAssertEqual(output, before)
+        }
+        XCTAssertThrowsError(try PortableReviewPreferences.compose(reopened.draft))
+        XCTAssertEqual(try ProjectDocument.load(from: url), reopened)
+    }
+
+    func testFutureReviewIdentityMustStillBeInferredOnExportAfterOriginChange() throws {
+        var project = try futureSplitProject()
+        let envelope = project.draft.portableUi
+        project.draft.cuts[1].origin = .manual
+        try project.validate() // Local state remains valid and the envelope stays opaque.
+        var output = try XCTUnwrap(project.feedback)
+        let before = output
+        XCTAssertThrowsError(try ProjectArchive.updateCorrections(&output, draft: project.draft))
+        XCTAssertEqual(output, before); XCTAssertEqual(project.draft.portableUi, envelope)
+    }
+
+    func testFutureResetWithCurrentReviewIdentityExportsAndReimportsWholeEnvelope() throws {
+        var future = try fixture("futureUi")
+        future["preferences"]?["reviewedCutIds"] = .array([.string("R001")])
+        var project = try ProjectArchive.importData(JSONEncoder().encode(bundle(ui: future)))
+        project.draft = try ProjectArchive.restoredModelDraft(project)
+        var output = try XCTUnwrap(project.feedback)
+        try ProjectArchive.updateCorrections(&output, draft: project.draft)
+        let reimported = try ProjectArchive.importData(JSONEncoder().encode(output))
+        XCTAssertEqual(output["corrections"]?["ui"], future)
+        XCTAssertEqual(reimported.draft.portableUi, future)
+        XCTAssertEqual(reimported.draft.cuts, project.draft.cuts)
+    }
+
     func testSharedV1FixtureActivatesNativeSettingsAndRetainsNestedExtensions() throws {
         let ui = try fixture("portableUi"), project = try ProjectArchive.importBundle(bundle(ui: ui))
         let draft = project.draft

@@ -104,7 +104,7 @@ public struct EditorDraft: Codable, Equatable, Sendable {
     public var fadeScoreOverlay: Bool?
     /// Nil keeps the score-aware defaults for projects saved before chapter preferences existed.
     public var chapterOptions: YouTubeChapterOptions?
-    /// Optional in version 8 so legacy synthesized Codable drafts need no migration.
+    /// Optional in version 8 so legacy synthesized Codable drafts still decode.
     public var portableUi: JSONValue?
     public init(sourceRevision: String, cuts: [EditableCut] = []) { self.sourceRevision = sourceRevision; self.cuts = cuts }
     public func validate(durationMs: Int64) throws {
@@ -166,6 +166,16 @@ public struct ProjectDocument: Codable, Equatable, Sendable {
             try PortableReviewPreferences.validate(ui, cuts: draft.cuts, checkIdentities: false)
         }
         if let feedback { try PortableReviewPreferences.finalScoreAlias(feedback) }
+    }
+    /// Local v8 inclusion toggles used to mark manual cuts reviewed. Remove only
+    /// those redundant IDs on upgrade; never sanitize wire UI or unknown IDs.
+    /// Apply after checkpoint recovery, before validating the recovered draft.
+    public func migratingLegacyLocalReviewIds() -> Self {
+        guard schema == "volleycut-ios-project", schemaVersion == 1,
+              draft.version == 8, draft.portableUi == nil else { return self }
+        var project = self
+        project.draft.reviewedCutIds.subtract(draft.cuts.filter { $0.origin == .manual }.map(\.id))
+        return project
     }
     public func save(to url: URL) throws {
         try validate()

@@ -25,7 +25,12 @@ Missing fixture skips are not a successful inference-parity result.
 through `scripts/prepare-source.py`. It covers the
 [portable preferences contract](../docs/portable-review-preferences.md), archive
 import/export/reimport, local checkpoints and reset, opaque future versions,
-chapter extensions and bounded JSON validation. Native final-score rendering
+chapter extensions and bounded JSON validation. Legacy local v8 drafts without
+`portableUi` remove redundant reviewed manual-cut IDs after checkpoint recovery;
+wire imports still reject manual or missing review identities. Future envelopes
+remain lossless in local saves, but archive export rejects references to changed
+or removed rallies with guidance to use an unchanged copy or a supporting app.
+Native final-score rendering
 uses `renderScoreOnFinalVideo`; the independent web preview score flag is retained
 without activation. Portable tests do not typecheck SwiftUI or exercise AVPlayer,
 source relinking, accessibility/layout, or encoded MP4 output. Verify playback,
