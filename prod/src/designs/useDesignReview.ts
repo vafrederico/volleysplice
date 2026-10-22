@@ -346,7 +346,10 @@ export function useDesignReview(
           projectStatus: project.status,
           draft,
           draftSeed: seed,
-          modelDraft: createModelReviewDraft(seed, project.analysis),
+          modelDraft: createModelReviewDraft(seed, {
+            ...project.analysis,
+            sideSwitchEnabled: project.sideSwitchEnabled,
+          }),
           suppression: project.analysis.suppression,
           cleanupSuggestions: cleanupSuggestions(project, draft),
           projects: projectChoices,

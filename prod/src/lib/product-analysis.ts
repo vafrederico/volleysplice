@@ -46,5 +46,7 @@ export type ProductAnalysis = {
   productionStateOutputs?: OnDeviceAnalysis["productionStateOutputs"];
   servingSide?: OnDeviceAnalysis["servingSide"];
   sideSwitch?: OnDeviceAnalysis["sideSwitch"];
+  /** Original analysis preference, independent of cached specialist evidence. */
+  sideSwitchEnabled?: boolean;
   suppression?: OnDeviceAnalysis["suppression"];
 };

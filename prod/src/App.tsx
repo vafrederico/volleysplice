@@ -1390,6 +1390,7 @@ function WebApp() {
       productionStateOutputs: selectedProject.analysis.productionStateOutputs,
       servingSide: selectedProject.analysis.servingSide,
       sideSwitch: selectedProject.analysis.sideSwitch,
+      sideSwitchEnabled: selectedProject.sideSwitchEnabled !== false,
       suppression: selectedProject.analysis.suppression,
     };
   }, [selectedProject, selectedVideoUrl]);

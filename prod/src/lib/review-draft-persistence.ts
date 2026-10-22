@@ -73,7 +73,11 @@ export function restoreProjectReviewDraft(
       "The saved edits could not be restored. They have been preserved. Open an exported project backup to recover your review.",
     );
   }
-  if (latest) return withModelScoreMarkers(latest, project.analysis!);
+  const modelResults = {
+    ...project.analysis!,
+    sideSwitchEnabled: project.sideSwitchEnabled,
+  };
+  if (latest) return withModelScoreMarkers(latest, modelResults);
   if (project.importedFeedback) {
     const imported = parseCutDraft(
       JSON.stringify(project.importedFeedback.initialDraft),
@@ -83,9 +87,9 @@ export function restoreProjectReviewDraft(
       throw new Error(
         "The imported review could not be restored. Its saved data has been preserved.",
       );
-    return withModelScoreMarkers(imported, project.analysis!);
+    return withModelScoreMarkers(imported, modelResults);
   }
-  return withModelScoreMarkers(createCutDraft(seed), project.analysis!);
+  return withModelScoreMarkers(createCutDraft(seed), modelResults);
 }
 
 export async function saveProjectReviewDraft(
