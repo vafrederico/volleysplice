@@ -327,16 +327,16 @@ function inferLegacyTouchedCutIds(
     .filter((cut) => {
       const rally = rallies.get(cut.id);
       if (!rally) return true;
-      const expectedStart = roundTime(clamp(
+      const expectedStart = roundTimeWithin(
         rally.start - beforePaddingSeconds,
         bounds.start,
         bounds.end,
-      ));
-      const expectedEnd = roundTime(clamp(
+      );
+      const expectedEnd = roundTimeWithin(
         rally.end + afterPaddingSeconds,
         bounds.start,
         bounds.end,
-      ));
+      );
       return (
         cut.included !== rally.included ||
         Math.abs(cut.coreStart - rally.start) > 0.000_5 ||
@@ -561,12 +561,8 @@ export function applyPaddingToCachedCuts(
       cut.origin === "cached-label"
         ? {
             ...cut,
-            keepStart: roundTime(
-              clamp(cut.coreStart - before, analysisStart, analysisEnd),
-            ),
-            keepEnd: roundTime(
-              clamp(cut.coreEnd + after, analysisStart, analysisEnd),
-            ),
+            keepStart: roundTimeWithin(cut.coreStart - before, analysisStart, cut.coreStart),
+            keepEnd: roundTimeWithin(cut.coreEnd + after, cut.coreEnd, analysisEnd),
           }
         : cut,
     ),
@@ -584,12 +580,12 @@ export function setCutCoreStart(
     if (cut.id !== cutId) return cut;
     const maximumStart = cut.coreEnd - MIN_CUT_SECONDS;
     if (maximumStart < minimum) return cut;
-    const start = roundTime(clamp(value, minimum, maximumStart));
+    const start = roundTimeWithin(value, minimum, maximumStart);
     const beforePadding = cut.coreStart - cut.keepStart;
     return {
       ...cut,
       coreStart: start,
-      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
+      keepStart: roundTimeWithin(start - beforePadding, minimum, start),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -606,12 +602,12 @@ export function setCutCoreEnd(
     if (cut.id !== cutId) return cut;
     const minimumEnd = cut.coreStart + MIN_CUT_SECONDS;
     if (minimumEnd > maximum) return cut;
-    const end = roundTime(clamp(value, minimumEnd, maximum));
+    const end = roundTimeWithin(value, minimumEnd, maximum);
     const afterPadding = cut.keepEnd - cut.coreEnd;
     return {
       ...cut,
       coreEnd: end,
-      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+      keepEnd: roundTimeWithin(end + afterPadding, end, maximum),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -632,16 +628,16 @@ export function setCutCoreRange(
   ) return draft;
   const cuts = draft.cuts.map((cut) => {
     if (cut.id !== cutId) return cut;
-    const start = roundTime(clamp(startValue, minimum, maximum - MIN_CUT_SECONDS));
-    const end = roundTime(clamp(endValue, start + MIN_CUT_SECONDS, maximum));
+    const start = roundTimeWithin(startValue, minimum, maximum - MIN_CUT_SECONDS);
+    const end = roundTimeWithin(endValue, start + MIN_CUT_SECONDS, maximum);
     const beforePadding = cut.coreStart - cut.keepStart;
     const afterPadding = cut.keepEnd - cut.coreEnd;
     return {
       ...cut,
       coreStart: start,
       coreEnd: end,
-      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
-      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+      keepStart: roundTimeWithin(start - beforePadding, minimum, start),
+      keepEnd: roundTimeWithin(end + afterPadding, end, maximum),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -670,13 +666,13 @@ export function splitCutAt(
   const left: EditableCut = {
     ...cut,
     coreEnd: position,
-    keepEnd: roundTime(Math.min(maximum, position + afterPadding)),
+    keepEnd: roundTimeWithin(position + afterPadding, position, maximum),
   };
   const right: EditableCut = {
     ...cut,
     id: nextCutId(prefix, draft.cuts),
     coreStart: position,
-    keepStart: roundTime(Math.max(minimum, position - beforePadding)),
+    keepStart: roundTimeWithin(position - beforePadding, minimum, position),
   };
   const cuts = [...draft.cuts];
   cuts.splice(cutIndex, 1, left, right);
@@ -703,6 +699,11 @@ export function playbackFocusCut(
 
 function roundTime(seconds: number): number {
   return Math.round(seconds * 1000) / 1000;
+}
+
+function roundTimeWithin(seconds: number, minimum: number, maximum: number): number {
+  // Preserve millisecond rounding except where an exact source/core bound wins.
+  return clamp(roundTime(seconds), minimum, maximum);
 }
 
 function mergeIgnoredIntervals(
@@ -867,16 +868,16 @@ export function materializeFinalCutIntervals(
     for (const fragment of fragments) {
       const outerStart = Math.abs(fragment.start - cut.coreStart) < 0.000_5;
       const outerEnd = Math.abs(fragment.end - cut.coreEnd) < 0.000_5;
-      const paddedStart = roundTime(clamp(
+      // Rounded padding may extend a surviving core, never trim or erase it.
+      // Veto and ignored ranges are still subtracted at their exact boundaries.
+      const paddedStart = roundTimeWithin(
         outerStart ? cut.keepStart : fragment.start - draft.beforePaddingSeconds,
-        draft.analysisStart,
-        draft.analysisEnd,
-      ));
-      const paddedEnd = roundTime(clamp(
+        draft.analysisStart, fragment.start,
+      );
+      const paddedEnd = roundTimeWithin(
         outerEnd ? cut.keepEnd : fragment.end + draft.afterPaddingSeconds,
-        draft.analysisStart,
-        draft.analysisEnd,
-      ));
+        fragment.end, draft.analysisEnd,
+      );
       if (paddedEnd <= paddedStart) continue;
       const hardClipped = subtractRanges(
         { start: paddedStart, end: paddedEnd },

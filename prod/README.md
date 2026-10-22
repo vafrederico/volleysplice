@@ -45,8 +45,9 @@ file. JSON edit-list export is also available.
 Review edits and export ranges round ordinary time boundaries to milliseconds.
 Exact fractional source, game-window, and core bounds take precedence over that
 rounding, so padding cannot introduce footage outside the selected recording or
-make a saved project's corrected ranges invalid on import. Fractional ignored
-boundaries remain exact barriers.
+trim a surviving rally core, including a core shorter than a millisecond. Saved
+corrected ranges remain valid on import. Fractional veto and ignored boundaries
+remain exact barriers.
 For model improvement, the editor can additionally download a versioned model-feedback JSON
 containing the retained 104-column base feature matrix, source timestamps, probability traces,
 untouched initial inference ranges, corrected ranges, explicit false-positive and false-negative

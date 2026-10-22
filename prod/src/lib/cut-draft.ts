@@ -868,13 +868,15 @@ export function materializeFinalCutIntervals(
     for (const fragment of fragments) {
       const outerStart = Math.abs(fragment.start - cut.coreStart) < 0.000_5;
       const outerEnd = Math.abs(fragment.end - cut.coreEnd) < 0.000_5;
+      // Rounded padding may extend a surviving core, never trim or erase it.
+      // Veto and ignored ranges are still subtracted at their exact boundaries.
       const paddedStart = roundTimeWithin(
         outerStart ? cut.keepStart : fragment.start - draft.beforePaddingSeconds,
-        draft.analysisStart, draft.analysisEnd,
+        draft.analysisStart, fragment.start,
       );
       const paddedEnd = roundTimeWithin(
         outerEnd ? cut.keepEnd : fragment.end + draft.afterPaddingSeconds,
-        draft.analysisStart, draft.analysisEnd,
+        fragment.end, draft.analysisEnd,
       );
       if (paddedEnd <= paddedStart) continue;
       const hardClipped = subtractRanges(

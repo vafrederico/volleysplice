@@ -52,9 +52,10 @@ const clickText = async text => {
 try {
   const { App } = await server.ssrLoadModule("/src/App.tsx");
   const store = await server.ssrLoadModule("/src/lib/project-store.ts");
+  const { createCutDraft, applyPaddingToCachedCuts } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
   const { PRODUCTION_ENSEMBLE_MODEL_ID } = await server.ssrLoadModule("/src/lib/on-device/ensemble.ts");
   const duration = 1.0026666666666666;
-  const project = { schemaVersion: 1, id: "synthetic-app-roundtrip",
+  const baseProject = { schemaVersion: 1, id: "synthetic-app-roundtrip",
     source: { name: "synthetic-fractional.mp4", size: 1000, lastModified: 100, type: "video/mp4" },
     info: { duration, width: 320, height: 240, rotation: 0, mimeType: "video/mp4", videoCodec: "avc", videoCodecString: null,
       canDecodeVideo: true, hasAudio: false, audioCodec: null, sampleRate: null, channels: null, canDecodeAudio: false },
@@ -65,33 +66,57 @@ try {
       times: new Float64Array([0]), rallyProbabilities: new Float32Array([.9]),
       serveProbabilities: new Float32Array([.1]), deadStateProbabilities: new Float32Array([.1]) },
     createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
-  await store.putProject(project);
-  window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
-  await act(async () => root.render(React.createElement(App)));
-  await waitFor(() => document.querySelector(".taste-rally-desk"));
   const download = async () => {
     await click(".td-stages button:last-child"); await click('input[value="feedback"]');
     downloaded = undefined; await clickText("Save project"); assert.ok(downloaded);
     return JSON.parse(await downloaded.text());
   };
-  const exported = await download();
-  assert.deepEqual(exported.finalExportIntervals, [{ start: 0, end: duration, cutIds: ["R001"] }]);
-  assert.equal(exported.corrections.correctedRanges[0].keepEnd, duration);
-  const select = document.querySelector('select[aria-label="Current review project"]');
-  await act(async () => { select.value = "__new__"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
-  await waitFor(() => document.querySelector('input[accept="application/json,.json"]'));
-  const input = document.querySelector('input[accept="application/json,.json"]');
-  Object.defineProperty(input, "files", { value: [new File([JSON.stringify(exported)], "synthetic-project.json", { type: "application/json" })], configurable: true });
-  await act(async () => input.dispatchEvent(new window.Event("change", { bubbles: true })));
-  await waitFor(async () => (await store.listProjects()).some(p => p.importedFeedback));
-  await waitFor(() => document.querySelector(".taste-rally-desk"));
-  const imported = (await store.listProjects()).find(p => p.importedFeedback);
-  assert.equal(imported.reviewDraft.cuts[0].keepEnd, duration);
-  const reexported = await download();
-  assert.deepEqual(reexported.finalExportIntervals, exported.finalExportIntervals, "Save/open/save must preserve exact fractional bounds");
-  assert.equal(document.body.textContent.includes("Could not open that saved project"), false);
-  console.log("App project roundtrip: unmodified Save project output imports and re-exports within fractional source bounds.");
+  for (const scenario of [
+    { name: "source-edge", start: .1, end: .9, padding: 2, expectedStart: 0, expectedEnd: duration },
+    { name: "reversed-core", start: .1236, end: .9874, padding: 0, expectedStart: .1236, expectedEnd: .9874 },
+    { name: "submillisecond-core", start: .5001, end: .5004, padding: 0, expectedStart: .5, expectedEnd: .5004 },
+  ]) {
+    await act(async () => root.render(null));
+    const project = structuredClone(baseProject);
+    project.id += `-${scenario.name}`;
+    project.analysis.intervals[0].start = scenario.start;
+    project.analysis.intervals[0].end = scenario.end;
+    if (scenario.padding === 0) project.analysis.intervals.push({ ...project.analysis.intervals[0], id: "R002", start: .99, end: 1 });
+    let draft = createCutDraft({ analysisId: store.projectAnalysisId(project), recordingId: project.id, duration,
+      rallies: project.analysis.intervals, ignoredIntervals: [] });
+    draft = applyPaddingToCachedCuts(draft, scenario.padding, scenario.padding, duration);
+    draft.joinGapSeconds = 0;
+    draft.scoreTracking.serveMarkers = project.analysis.intervals.map(r => ({ id: `serve-${r.id}`, rallyId: r.id, timestamp: r.start,
+      side: "near", origin: "manual", ignorePreviousPoint: false }));
+    project.reviewDraft = draft;
+    await store.putProject(project);
+    window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
+    await act(async () => root.render(React.createElement(App)));
+    await waitFor(() => document.querySelector(".taste-rally-desk"));
+    const exported = await download();
+    assert.deepEqual(exported.finalExportIntervals, [
+      { start: scenario.expectedStart, end: scenario.expectedEnd, cutIds: ["R001"] },
+      ...(scenario.padding === 0 ? [{ start: .99, end: 1, cutIds: ["R002"] }] : []),
+    ], scenario.name);
+    assert.deepEqual(exported.corrections.scoreTracking.excludedRallyIds, []);
+    assert.equal(exported.corrections.scoreTracking.derivedFinalScore.team1Score, scenario.padding === 0 ? 1 : 0);
+    const select = document.querySelector('select[aria-label="Current review project"]');
+    await act(async () => { select.value = "__new__"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await waitFor(() => document.querySelector('input[accept="application/json,.json"]'));
+    const input = document.querySelector('input[accept="application/json,.json"]');
+    Object.defineProperty(input, "files", { value: [new File([JSON.stringify(exported)], "synthetic-project.json", { type: "application/json" })], configurable: true });
+    await act(async () => input.dispatchEvent(new window.Event("change", { bubbles: true })));
+    await waitFor(async () => (await store.listProjects()).some(p => p.importedFeedback?.originalProjectId === project.id));
+    await waitFor(() => document.querySelector(".taste-rally-desk"));
+    const imported = (await store.listProjects()).find(p => p.importedFeedback?.originalProjectId === project.id);
+    assert.equal(imported.reviewDraft.cuts[0].keepEnd, exported.corrections.correctedRanges[0].keepEnd);
+    const reexported = await download();
+    assert.deepEqual(reexported.finalExportIntervals, exported.finalExportIntervals, "Save/open/save must preserve exact fractional bounds");
+    assert.deepEqual(reexported.corrections.scoreTracking, exported.corrections.scoreTracking, "The core's serve and completed point remain included");
+    assert.equal(document.body.textContent.includes("Could not open that saved project"), false);
+  }
+  console.log("App project roundtrip: source edges, fractional cores and submillisecond cores preserve export ranges and scoring through Save/open/save.");
 } finally {
   await act(async () => root.unmount()); await server.close(); dom.window.close();
   URL.createObjectURL = originalUrls.create; URL.revokeObjectURL = originalUrls.revoke;
