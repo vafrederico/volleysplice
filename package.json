@@ -78,7 +78,7 @@
     "@techstark/opencv-js": "4.12.0-release.1",
     "fft.js": "4.0.4",
     "mediabunny": "1.53.1",
-    "next": "16.3.5",
+    "next": "16.4.2",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -91,6 +91,6 @@
     "typescript": "^7.0.2"
   },
   "overrides": {
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   }
 }
