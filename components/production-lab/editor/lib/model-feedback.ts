@@ -16,6 +16,7 @@ import {
 } from "./on-device/ensemble.ts";
 import { ANALYSIS_FPS } from "./on-device/feature-schema.ts";
 import type { ProductAnalysis } from "./product-analysis";
+import { feedbackUiFromDraft, type FeedbackUi } from "./feedback-ui.ts";
 import {
   deriveScoreAt,
   scoreTrackingOutsideExcludedRallies,
@@ -137,6 +138,7 @@ export type ModelFeedbackBundle = {
     };
   };
   corrections: {
+    ui?: FeedbackUi;
     updatedAt: string;
     beforePaddingSeconds: number;
     afterPaddingSeconds: number;
@@ -491,6 +493,7 @@ export function createModelFeedbackBundle(
         : null,
     },
     corrections: {
+      ui: feedbackUiFromDraft(draft),
       updatedAt: draft.updatedAt,
       beforePaddingSeconds: draft.beforePaddingSeconds,
       afterPaddingSeconds: draft.afterPaddingSeconds,

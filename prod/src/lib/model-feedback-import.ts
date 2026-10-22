@@ -1,3 +1,4 @@
+import { portablePreferences } from "./feedback-ui.ts";
 import {
   type CutDraft,
   type CutDraftSeed,
@@ -338,14 +339,23 @@ function draftFromFeedback(
     );
   }
   const suppression = feedback.corrections.suppression;
+  const preferences = portablePreferences(feedback.corrections.ui);
   const candidate: CutDraft = {
     ...base,
     updatedAt: feedback.corrections.updatedAt,
     beforePaddingSeconds: feedback.corrections.beforePaddingSeconds,
     afterPaddingSeconds: feedback.corrections.afterPaddingSeconds,
     joinGapSeconds: feedback.corrections.joinGapSeconds,
+    portableUi: feedback.corrections.ui,
+    cutPreviewEnabled: preferences.cutPreviewEnabled ?? base.cutPreviewEnabled,
+    renderScoreOverlay: preferences.renderScoreOnPreviewVideo ?? base.renderScoreOverlay,
     renderScoreOnFinalVideo:
-      feedback.editorPreferences?.renderScoreOnFinalVideo ?? base.renderScoreOnFinalVideo,
+      preferences.renderScoreOnFinalVideo ?? feedback.editorPreferences?.renderScoreOnFinalVideo ?? base.renderScoreOnFinalVideo,
+    renderScoreTimeline: preferences.renderScoreTimeline ?? base.renderScoreTimeline,
+    fadeScoreOverlay: preferences.fadeScoreOverlay ?? base.fadeScoreOverlay,
+    playbackRate: preferences.playbackRate ?? base.playbackRate,
+    confidenceReviewThreshold: preferences.confidenceReviewThreshold ?? base.confidenceReviewThreshold,
+    reviewedCutIds: preferences.reviewedCutIds ?? base.reviewedCutIds,
     selectedSuppressionPolicy:
       suppression?.selectedPolicy ?? base.selectedSuppressionPolicy,
     suppressionDecisionOverrides: suppression?.decisionOverrides ?? {},

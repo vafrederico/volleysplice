@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { parseFeedbackUi } from "../../prod/src/lib/feedback-ui.ts";
 import {
   createCutDraft as createLabCutDraft,
   parseCutDraft as parseLabCutDraft,
@@ -26,11 +28,27 @@ const seed: CutDraftSeed = {
   ],
   ignoredIntervals: [],
 };
+const portableUi = JSON.parse(readFileSync(
+  new URL("../fixtures/portable-review-preferences.json", import.meta.url), "utf8",
+)).portableUi;
 
 for (const [name, create, parse] of [
   ["production", createCutDraft, parseCutDraft],
   ["lab", createLabCutDraft, parseLabCutDraft],
 ] as const) {
+  test(`${name} v16 drafts retain bounded UI extensions and exact imported playback rates`, () => {
+    const draft = { ...create(seed), portableUi, playbackRate: 1.75 };
+    const restored = parse(JSON.stringify(draft), seed);
+    assert.equal(restored?.version, 16);
+    assert.equal(restored?.playbackRate, 1.75);
+    assert.deepEqual(restored?.portableUi, portableUi);
+    for (const invalid of [null, [], { preferences: [] }, { preferences: { playbackRate: "fast" } }]) {
+      assert.equal(parse(JSON.stringify({ ...draft, portableUi: invalid }), seed), null);
+    }
+    for (const invalid of [0, 8.01, null, "1.5"]) {
+      assert.equal(parse(JSON.stringify({ ...draft, playbackRate: invalid }), seed), null);
+    }
+  });
   test(`${name} final-video score preference persists independently of preview`, () => {
     assert.equal(create(seed).renderScoreOnFinalVideo, true);
     for (const finalVideo of [false, true]) {
@@ -54,6 +72,18 @@ for (const [name, create, parse] of [
     }
   });
 }
+
+test("retained UI accepts only safe JSON, even before serialization", () => {
+  for (const invalid of [NaN, Infinity, () => {}, new Date(), new Map(), new Uint8Array([1])]) {
+    assert.throws(() => parseFeedbackUi({ extension: invalid }));
+  }
+  assert.throws(() => parseFeedbackUi({ schemaVersion: 1.5 }));
+  assert.throws(() => parseFeedbackUi({ schemaVersion: Number.MAX_SAFE_INTEGER + 1 }));
+  const original = structuredClone(portableUi);
+  const copied = parseFeedbackUi(original);
+  (copied.preferences as Record<string, unknown>).playbackRate = 2;
+  assert.equal(original.preferences.playbackRate, 1.5, "retention never aliases untrusted objects");
+});
 
 test("production drafts persist reviewed model ranges", () => {
   const draft = createCutDraft(seed);

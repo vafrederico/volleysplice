@@ -1,0 +1,170 @@
+{
+  "fixtureVersion": 1,
+  "description": "Synthetic corrections.ui fragments; overlay each on a valid feedback v3 bundle with inferred cut R001.",
+  "portableUi": {
+    "schemaVersion": 1,
+    "preferences": {
+      "cutPreviewEnabled": true,
+      "renderScoreOnPreviewVideo": false,
+      "renderScoreOnFinalVideo": true,
+      "renderScoreTimeline": true,
+      "fadeScoreOverlay": true,
+      "playbackRate": 1.5,
+      "confidenceReviewThreshold": 0.73,
+      "reviewedCutIds": [
+        "R001"
+      ],
+      "chapterOptions": {
+        "includeScore": false,
+        "includeCredit": false,
+        "futureFormatting": {
+          "separator": " / ",
+          "labels": [
+            "A",
+            "B"
+          ],
+          "enabled": null
+        },
+        "includeServingTeam": true,
+        "includeRallyNumber": true,
+        "includeServeNumber": false,
+        "includeSideSwitches": true
+      },
+      "futurePreference": {
+        "nested": [
+          false,
+          0,
+          {
+            "value": "retained"
+          }
+        ]
+      }
+    },
+    "futurePanel": {
+      "expanded": [
+        "score",
+        "chapters"
+      ]
+    }
+  },
+  "legacyIosUi": {
+    "preferences": {
+      "chapterOptions": {
+        "includeScore": true,
+        "includeCredit": true,
+        "includeServingTeam": false,
+        "includeRallyNumber": true,
+        "includeServeNumber": false,
+        "includeSideSwitches": true
+      }
+    }
+  },
+  "futureUi": {
+    "schemaVersion": 2,
+    "preferences": {
+      "renderScoreOnPreviewVideo": false,
+      "playbackRate": 1.5,
+      "futureControl": {
+        "level": 2
+      }
+    },
+    "futurePanel": [
+      1,
+      2
+    ]
+  },
+  "invalidUi": [
+    [],
+    null,
+    {
+      "schemaVersion": 0
+    },
+    {
+      "schemaVersion": "1"
+    },
+    {
+      "preferences": []
+    },
+    {
+      "preferences": null
+    },
+    {
+      "preferences": {
+        "renderScoreOnPreviewVideo": "false"
+      }
+    },
+    {
+      "preferences": {
+        "renderScoreOnFinalVideo": null
+      }
+    },
+    {
+      "preferences": {
+        "renderScoreTimeline": 1
+      }
+    },
+    {
+      "preferences": {
+        "fadeScoreOverlay": "true"
+      }
+    },
+    {
+      "preferences": {
+        "cutPreviewEnabled": null
+      }
+    },
+    {
+      "preferences": {
+        "playbackRate": 0
+      }
+    },
+    {
+      "preferences": {
+        "playbackRate": 8.1
+      }
+    },
+    {
+      "preferences": {
+        "confidenceReviewThreshold": 1.1
+      }
+    },
+    {
+      "preferences": {
+        "reviewedCutIds": [
+          "R001",
+          "R001"
+        ]
+      }
+    },
+    {
+      "preferences": {
+        "reviewedCutIds": [
+          ""
+        ]
+      }
+    },
+    {
+      "preferences": {
+        "reviewedCutIds": "R001"
+      }
+    },
+    {
+      "preferences": {
+        "chapterOptions": {
+          "__proto__": {
+            "polluted": true
+          }
+        }
+      }
+    },
+    {
+      "preferences": {
+        "chapterOptions": {
+          "constructor": {
+            "prototype": {}
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { IDBFactory } from "fake-indexeddb";
 import { JSDOM } from "jsdom";
@@ -49,6 +50,8 @@ dom.window.HTMLDialogElement.prototype.showModal = function () {
 const root = createRoot(document.getElementById("root"));
 const realSetItem = dom.window.Storage.prototype.setItem;
 const database = globalThis.indexedDB;
+const realCreateObjectURL = URL.createObjectURL;
+const realAnchorClick = dom.window.HTMLAnchorElement.prototype.click;
 const button = (text) =>
   [...document.querySelectorAll("button")].find(
     (node) => node.textContent === text || node.querySelector("strong")?.textContent === text,
@@ -140,6 +143,7 @@ try {
   const exports = [];
   const queueVideoExport = (request) => exports.push(request);
   let readyReview;
+  let feedbackAnalysis;
   function Editor({ savedProject }) {
     const projects = React.useMemo(() => [savedProject], [savedProject]);
     const review = useDesignReview({
@@ -148,6 +152,7 @@ try {
       sourceFile,
       videoUrl: "blob:synthetic-review-source",
       onQueueVideoExport: queueVideoExport,
+      productAnalysis: feedbackAnalysis,
     });
     if (review.state === "ready") readyReview = review;
     return review.state === "ready"
@@ -312,12 +317,112 @@ try {
     undefined,
     "No fresh editor may autosave over incompatible edits",
   );
+
+  // Import a portable bundle into the actual editor, then export it through the UI.
+  const { createModelFeedbackBundle } = await server.ssrLoadModule("/src/lib/model-feedback.ts");
+  const { importModelFeedbackProject } = await server.ssrLoadModule("/src/lib/model-feedback-import.ts");
+  const ui = JSON.parse(readFileSync(new URL("../../tests/fixtures/portable-review-preferences.json", import.meta.url), "utf8")).portableUi;
+  feedbackAnalysis = {
+    id: seed.analysisId, recordingId: project.id, kind: "model",
+    modelId: project.analysis.modelId, duration: 60,
+    analysisWindow: project.analysisWindow, width: 1920, height: 1080,
+    sourceFilename: project.source.name, source: project.source,
+    mediaInfo: { ...project.info, rotation: 0, videoCodecString: null,
+      audioCodec: null, sampleRate: null, channels: null },
+    roi: project.roi, runtimeVariant: "libswresample-wasm-v1", videoUrl: null,
+    rallies: project.analysis.intervals, ignoredIntervals: [], features: null,
+    inferenceTimes: project.analysis.times,
+    probabilities: { rally: project.analysis.rallyProbabilities,
+      serve: project.analysis.serveProbabilities, deadState: project.analysis.deadStateProbabilities },
+  };
+  const bundle = createModelFeedbackBundle(feedbackAnalysis, createCutDraft(seed), []);
+  bundle.corrections.ui = ui;
+  bundle.editorPreferences.renderScoreOnFinalVideo = false; // Canonical v1 wins.
+  const imported = importModelFeedbackProject(JSON.stringify(bundle)).project;
+  feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(imported), recordingId: imported.id };
+  const portableKey = cutDraftStorageKey(projectAnalysisId(imported));
+  await act(async () => root.render(null));
+  window.localStorage.clear();
+  window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+  window.localStorage.setItem("volleysplice:export:fade-scores", "false");
+  await putProject(imported);
+  await act(async () => root.render(React.createElement(Editor, { key: "portable", savedProject: imported })));
+  await waitFor(() => window.localStorage.getItem(portableKey));
+  const speed = () => document.querySelector('select[aria-label="Playback speed"]');
+  const selectValue = async (select, value) => {
+    assert.ok(select);
+    await act(async () => {
+      select.value = value;
+      select.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    });
+  };
+  assert.equal(speed().value, "1.5");
+  assert.equal(document.querySelector("video").playbackRate, 1.5);
+  assert.equal(scoreCheckbox("Preview score on video").checked, false);
+  assert.equal(scoreCheckbox("Play final cut").checked, true);
+  let portableDraft = JSON.parse(window.localStorage.getItem(portableKey));
+  assert.equal(portableDraft.fadeScoreOverlay, true, "project fade overrides device preference");
+  assert.equal(portableDraft.confidenceReviewThreshold, .73);
+  assert.deepEqual(portableDraft.reviewedCutIds, ["R001"]);
+  await selectValue(speed(), "2");
+  await click("Export");
+  assert.equal(scoreCheckbox("Render score on final video").checked, true);
+  const visibility = () => [...document.querySelectorAll("label")]
+    .find((node) => node.textContent.includes("Score visibility"))?.querySelector("select");
+  assert.equal(visibility().value, "fade");
+  await click("Save MP4");
+  assert.equal(exports.at(-1).scoreOverlay.renderPointTimeline, true);
+  assert.equal(exports.at(-1).scoreOverlay.fadeScoreOverlay, true);
+  await selectValue(visibility(), "always");
+  await click("Review");
+  await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })));
+  assert.equal(speed().value, "2", "review undo keeps the latest transport speed");
+  assert.equal(scoreCheckbox("Play final cut").checked, true);
+  await click("Export");
+  assert.equal(visibility().value, "fade", "undo restores historical project fade");
+  let downloaded;
+  URL.createObjectURL = (blob) => { downloaded = blob; return "blob:synthetic-project-export"; };
+  dom.window.HTMLAnchorElement.prototype.click = () => {};
+  await act(async () => document.querySelector('input[name="taste-export-kind"][value="feedback"]').click());
+  await click("Save project");
+  const reexported = JSON.parse(await downloaded.text());
+  assert.deepEqual(reexported.corrections.ui, { ...ui, preferences: { ...ui.preferences, playbackRate: 2 } });
+  assert.equal(reexported.editorPreferences.renderScoreOnFinalVideo, true);
+  const reimported = importModelFeedbackProject(JSON.stringify(reexported)).project.importedFeedback.initialDraft;
+  assert.equal(reimported.playbackRate, 2);
+  assert.deepEqual(reimported.portableUi.preferences.chapterOptions, ui.preferences.chapterOptions);
+  let portableSaved;
+  await act(async () => { portableSaved = (await listProjects()).find((value) => value.id === imported.id); });
+  await act(async () => root.render(null));
+  window.localStorage.clear();
+  window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+  window.localStorage.setItem("volleysplice:export:fade-scores", "false");
+  await act(async () => root.render(React.createElement(Editor, { key: "portable-reopen", savedProject: portableSaved })));
+  await waitFor(() => window.localStorage.getItem(portableKey));
+  assert.equal(speed().value, "2");
+  portableDraft = JSON.parse(window.localStorage.getItem(portableKey));
+  assert.equal(portableDraft.fadeScoreOverlay, true);
+  assert.deepEqual(portableDraft.portableUi.preferences.chapterOptions, ui.preferences.chapterOptions);
+  // A valid non-menu rate is exposed, activated exactly, and not rounded on reopen.
+  await act(async () => root.render(null));
+  window.localStorage.removeItem(portableKey);
+  portableSaved.reviewDraft.playbackRate = 1.75;
+  portableSaved.reviewDraft.renderScoreTimeline = false;
+  await act(async () => root.render(React.createElement(Editor, { key: "portable-custom-rate", savedProject: portableSaved })));
+  await waitFor(() => speed());
+  assert.equal(speed().value, "1.75");
+  assert.equal(document.querySelector("video").playbackRate, 1.75);
+  await click("Export");
+  await click("Save MP4");
+  assert.equal(exports.at(-1).scoreOverlay.renderPointTimeline, false);
   console.log(
-    "Review UI: legacy final-score default, final-score save/unmount/IndexedDB reopen, independent preview/export options, final-score undo/redo, rally reload, failed-save warning, close protection, recovery, stale acknowledgements and incompatible-draft preservation passed.",
+    "Review UI: legacy/final-score persistence, portable feedback import/UI export/reimport, exact playback rates, project fade precedence/undo, timeline queue options, unknown chapters, IndexedDB reopen, failed-save recovery and incompatible-draft preservation passed.",
   );
 } finally {
   dom.window.Storage.prototype.setItem = realSetItem;
   globalThis.indexedDB = database;
+  URL.createObjectURL = realCreateObjectURL;
+  dom.window.HTMLAnchorElement.prototype.click = realAnchorClick;
   await act(async () => root.unmount());
   await server.close();
   dom.window.close();
