@@ -5,6 +5,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executor
@@ -203,5 +204,88 @@ class EditorDraftSessionRegistryTest {
         assertEquals(EditorDraftLoadResult.Missing, store().load())
         assertNotSame(old, registry.open(store(), initial))
         executor.runAll()
+    }
+
+    @Test fun deletionRejectsReopensUntilServiceCompletesAndStaleOpensAfterMetadataRemoval() {
+        val executor = ManualExecutor()
+        val registry = EditorDraftSessionRegistry(executor) { it() }
+        val old = checkNotNull(registry.open(store(), initial))
+        old.update(removed)
+        var projectExists = true
+        val deletion = registry.beginDeletion("synthetic-project", store())
+        assertTrue(registry.isDeleting("synthetic-project"))
+        assertFalse(deletion.settled.isDone)
+        assertTrue(registry.save(store()).get() is java.util.concurrent.CancellationException)
+        assertNull(registry.open(store(), initial, available = { projectExists }))
+        executor.runAll()
+        assertTrue(deletion.settled.isDone)
+        // Closing the old writer does not finish the service's transaction.
+        assertFalse(deletion.result.isDone)
+        assertNull(registry.open(store(), initial, available = { projectExists }))
+        projectExists = false
+        store().clear()
+        registry.finishDeletion(deletion, null)
+        assertNull(deletion.result.get(5, SECONDS))
+        assertFalse(registry.isDeleting("synthetic-project"))
+        assertNull(registry.open(store(), initial, available = { projectExists }))
+        old.update(removed)
+        executor.runAll()
+        assertEquals(EditorDraftLoadResult.Missing, store().load())
+        // A deliberate new project with the same source may be created later.
+        projectExists = true
+        assertNotSame(old, registry.open(store(), initial, available = { projectExists }))
+        executor.runAll()
+    }
+
+    @Test fun failedDeletionRestoresNewestFailedReviewAndExplicitRetryStillWorks() {
+        val executor = ManualExecutor()
+        val callbacks = ArrayDeque<() -> Unit>()
+        val registry = EditorDraftSessionRegistry(executor) { callbacks.addLast(it) }
+        val old = checkNotNull(registry.open(store(), initial))
+        executor.runAll()
+        while (callbacks.isNotEmpty()) callbacks.removeFirst()()
+        val blocker = File(target.parentFile, "${target.name}.tmp").apply { mkdirs() }
+        old.update(removed)
+        executor.runAll()
+        while (callbacks.isNotEmpty()) callbacks.removeFirst()()
+        val previousFailure = old.failure.value
+        assertTrue(previousFailure is EditorDraftSaveException)
+        val deleting = registry.beginDeletion("synthetic-project", store())
+        assertSame(deleting, registry.beginDeletion("synthetic-project", store()))
+        val error = IOException("synthetic deletion refused")
+        registry.finishDeletion(deleting, error)
+        assertSame(error, deleting.result.get(5, SECONDS))
+        val restored = checkNotNull(registry.open(store(), initial))
+        assertNotSame(old, restored)
+        assertEquals(removed, restored.draft.value)
+        assertSame(previousFailure, restored.failure.value)
+        executor.runAll()
+        while (callbacks.isNotEmpty()) callbacks.removeFirst()()
+        assertTrue(restored.failure.value is EditorDraftSaveException)
+        assertTrue(blocker.delete())
+        restored.retry()
+        executor.runAll()
+        while (callbacks.isNotEmpty()) callbacks.removeFirst()()
+        assertNull(restored.failure.value)
+        assertEquals(removed, (store().load() as EditorDraftLoadResult.Restored).draft)
+    }
+
+    @Test fun deletingOneProjectDoesNotFenceAnotherStorageOrReviewOrDropNoDraftDeletion() {
+        val executor = ManualExecutor()
+        val registry = EditorDraftSessionRegistry(executor) { it() }
+        val deletion = registry.beginDeletion("synthetic-project", store())
+        assertTrue(deletion.settled.isDone)
+        assertNull(registry.open(store(), initial))
+        val otherStore = store(temporary.newFolder())
+        assertNotNull(registry.open(otherStore, initial))
+        val otherSeed = seed.copy(draftNamespace = "independent-synthetic-review")
+        assertNotNull(registry.open(EditorDraftStore(temporary.root, otherSeed), EditorMath.newDraft(otherSeed)))
+        val noDraft = registry.beginDeletion("synthetic-queued-project", null)
+        assertTrue(registry.isDeleting("synthetic-queued-project"))
+        executor.runAll()
+        assertNull(registry.open(store(), initial))
+        registry.finishDeletion(noDraft, null)
+        registry.finishDeletion(deletion, null)
+        assertFalse(registry.isDeleting("synthetic-queued-project"))
     }
 }

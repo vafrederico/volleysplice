@@ -251,7 +251,8 @@ class EditorActivity : ComponentActivity() {
             val selected = NativeProjectStore.selectedId(context)
                 ?.let { id -> projects.firstOrNull { it.id == id } }
             return (selected?.editorSeed() ?: projects.firstNotNullOfOrNull { it.editorSeed() }
-                ?: EditorProjectStore.load(context))?.let { intentFromSeed(context, it) }
+                ?: EditorProjectStore.load(context)?.takeUnless { EditorDraftSessions.isDeleting(context, it) })
+                ?.let { intentFromSeed(context, it) }
         }
 
         private fun intentFromSeed(context: Context, seed: EditorSeed) =
@@ -564,15 +565,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     val scope = rememberCoroutineScope()
     val draftSessions = remember(activity) { ViewModelProvider(activity)[EditorDraftSessions::class.java] }
     val initialProjects = remember {
-        var stored = NativeProjectStore.list(context)
+        NativeProjectStore.list(context)
             .map { NativeProjectStore.repairLegacyMetadata(context, it) }
-        if (initialSeed != null && stored.none { it.source.uri == initialSeed.sourceUri }) {
-            NativeProjectStore.fromSeed(context, initialSeed).also {
-                NativeProjectStore.save(context, it)
-                stored = NativeProjectStore.list(context)
-            }
-        }
-        stored
     }
     var projects by remember { mutableStateOf(initialProjects) }
     var selectedProjectId by remember {
@@ -598,6 +592,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             .getString("rally-model", RallyModels.DEFAULT)?.takeIf(RallyModels::isSupported) ?: RallyModels.DEFAULT)
     }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
+    var deleteFailure by remember { mutableStateOf<String?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
     val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
@@ -639,6 +634,29 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             ?: projects.firstOrNull()?.id
         NativeProjectStore.setSelectedId(context, selectedProjectId)
         if (selectedProjectId != null) creatingNew = false
+    }
+
+    LaunchedEffect(initialSeed) {
+        if (initialSeed != null && initialProjects.none { it.source.uri == initialSeed.sourceUri }) {
+            val recovered = withContext(Dispatchers.IO) {
+                // Intent extras alone cannot recreate a deleted project. Only
+                // the matching, still-authoritative legacy record may bootstrap.
+                if (EditorDraftSessions.isDeleting(context, initialSeed) ||
+                    EditorProjectStore.load(context)?.sourceRevision != initialSeed.sourceRevision
+                ) null else {
+                    if (NativeProjectStore.list(context).none { it.source.uri == initialSeed.sourceUri }) {
+                        NativeProjectStore.save(context, NativeProjectStore.fromSeed(context, initialSeed))
+                    }
+                    NativeProjectStore.list(context)
+                }
+            }
+            if (recovered != null) {
+                projects = recovered
+                selectedProjectId = recovered.firstOrNull { it.source.uri == initialSeed.sourceUri }?.id
+                NativeProjectStore.setSelectedId(context, selectedProjectId)
+                creatingNew = selectedProjectId == null
+            }
+        }
     }
 
     val sourcePicker = rememberLauncherForActivityResult(
@@ -972,6 +990,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 }
                 if (intent?.action != ProjectAnalysisService.ACTION_UPDATE) return
                 val projectId = intent.getStringExtra(ProjectAnalysisService.EXTRA_PROJECT_ID) ?: return
+                if (intent.getStringExtra(ProjectAnalysisService.EXTRA_STAGE) == "delete-failed") {
+                    deleteFailure = intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL) ?: "Please retry deleting the project."
+                }
                 if (intent.getBooleanExtra(ProjectAnalysisService.EXTRA_PERFORMANCE, false)) {
                     if (projectId == selectedProjectId) {
                         inference = inference.copy(
@@ -1050,11 +1071,14 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             confirmButton = {
                 TextButton(onClick = {
                     val nextId = projects.firstOrNull { it.id != deleting.id }?.id
-                    val settled = deleting.editorSeed()?.let { draftSessions.close(EditorDraftStore(context, it)) }
+                    // Marks the project before any lifecycle reload and owns the
+                    // fence until the service acknowledges actual deletion.
+                    val deletion = draftSessions.deleteProject(context, deleting)
                     scope.launch {
-                        withContext(NonCancellable + Dispatchers.IO) {
-                            settled?.get()
-                            ProjectAnalysisService.delete(context, deleting.id)
+                        val error = withContext(Dispatchers.IO) { deletion.get() }
+                        if (error != null) {
+                            deleteFailure = error.message ?: "Please retry deleting the project."
+                            reloadProjects(deleting.id, preserveNewProject = false)
                         }
                     }
                     projects = projects.filterNot { it.id == deleting.id }
@@ -1066,6 +1090,15 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 }) { Text("Delete", color = Danger) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+        )
+    }
+
+    deleteFailure?.let { detail ->
+        AlertDialog(
+            onDismissRequest = { deleteFailure = null },
+            title = { Text("Project could not be deleted") },
+            text = { Text(detail) },
+            confirmButton = { TextButton(onClick = { deleteFailure = null }) { Text("Close") } },
         )
     }
 
@@ -1247,10 +1280,16 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             suspend fun openReview(retry: Boolean = false) {
                 val session = withContext(Dispatchers.IO) {
                     if (retry) persistence?.retry()?.get()
-                    draftSessions.open(store, EditorMath.newDraft(currentSeed)) { draft ->
+                    draftSessions.openProject(context, selectedProject, store, EditorMath.newDraft(currentSeed)) { draft ->
                         draft.copy(fadeScoreOverlay = context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
                             .getBoolean("fadeScoreOverlay", draft.fadeScoreOverlay))
                     }
+                }
+                if (session == null && withContext(Dispatchers.IO) {
+                    EditorDraftSessions.isDeleting(context, selectedProject.id) || !NativeProjectStore.exists(context, selectedProject.id)
+                }) {
+                    reloadProjects(preserveNewProject = false)
+                    return
                 }
                 persistence = session
                 restored = if (session == null || session.failure.value is UnreadableEditorDraftException) {

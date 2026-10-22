@@ -189,6 +189,152 @@ class EditorDraftRecoveryInstrumentedTest {
             .mapNotNull { type -> runCatching { type.getDeclaredField("writer") }.getOrNull() }
             .first().apply { isAccessible = true }.get(null) as Executor
 
+    private fun flushDraftWriter() {
+        val flushed = CountDownLatch(1)
+        draftWriter().execute { flushed.countDown() }
+        assertTrue(flushed.await(10, SECONDS))
+    }
+
+    private fun deleteConfirmation(): () -> Boolean {
+        compose.onNodeWithText("More").performScrollTo().performClick()
+        compose.onNodeWithText("Delete current project").performClick()
+        return checkNotNull(compose.onNodeWithText("Delete").fetchSemanticsNode()
+            .config[SemanticsActions.OnClick].action)
+    }
+
+    @Test fun deletingProjectCannotQueueAReplacementDuringRecreationOrFromStaleResumeIntent() =
+        withProject { _, target, project ->
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            EditorProjectStore.save(context, checkNotNull(project.editorSeed()))
+            val staleResume = checkNotNull(EditorActivity.createResumeIntent(context))
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val replacementEntered = CountDownLatch(1)
+            val replacementRelease = CountDownLatch(1)
+            try {
+                launchEditor { scenario ->
+                    val remove = removeAction()
+                    flushDraftWriter()
+                    draftWriter().execute { entered.countDown(); release.await(45, SECONDS) }
+                    assertTrue(entered.await(10, SECONDS))
+                    scenario.onActivity { remove() }
+                    val confirm = deleteConfirmation()
+                    draftWriter().execute { replacementEntered.countDown(); replacementRelease.await(45, SECONDS) }
+                    scenario.onActivity { confirm() }
+                    scenario.recreate()
+                    compose.waitForIdle()
+                    // The old writer is still blocked, so metadata is physically
+                    // present. Reloads must nevertheless hide this project now.
+                    assertNotNull(NativeProjectStore.get(context, project.id))
+                    compose.onNodeWithTag("project-selector").performScrollTo().performClick()
+                    val offered = compose.onAllNodesWithText(project.source.name).fetchSemanticsNodes().isNotEmpty()
+                    if (offered) compose.onNodeWithText(project.source.name).performClick()
+                    else UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+                    release.countDown()
+                    assertTrue(replacementEntered.await(10, SECONDS))
+                    compose.waitUntil(10_000) { NativeProjectStore.get(context, project.id) == null }
+                    assertFalse("Draft must be absent before any replacement writer is released", target.exists())
+                    replacementRelease.countDown()
+                    flushDraftWriter()
+                    assertFalse("A replacement session resurrected the deleted draft", target.exists())
+                    assertFalse("A pending deletion was offered by the project selector", offered)
+                }
+                ActivityScenario.launch<EditorActivity>(staleResume).use {
+                    compose.waitForIdle()
+                    flushDraftWriter()
+                    assertNull(NativeProjectStore.get(context, project.id))
+                    assertFalse(target.exists())
+                    assertTrue(NativeProjectStore.list(context).none { it.id == project.id })
+                }
+            } finally {
+                release.countDown()
+                replacementRelease.countDown()
+                flushDraftWriter()
+            }
+        }
+
+    @Test fun failedDeletionRestoresPendingRemoveAndCanBeRetried() = failedDeletion("native-projects")
+
+    @Test fun failedLegacyRecoveryDeletionRestoresProjectAndPendingRemove() = failedDeletion("editor-drafts")
+
+    private fun failedDeletion(directoryName: String) = withProject { store, target, project ->
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        EditorProjectStore.save(context, checkNotNull(project.editorSeed()))
+        val directory = File(context.filesDir, directoryName)
+        val mode = android.system.Os.stat(directory.absolutePath).st_mode and 0xFFF
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        try {
+            launchEditor { scenario ->
+                val remove = removeAction()
+                flushDraftWriter()
+                draftWriter().execute { entered.countDown(); release.await(45, SECONDS) }
+                assertTrue(entered.await(10, SECONDS))
+                scenario.onActivity { remove() }
+                val confirm = deleteConfirmation()
+                android.system.Os.chmod(directory.absolutePath, mode and android.system.OsConstants.S_IWUSR.inv())
+                scenario.onActivity { confirm() }
+                release.countDown()
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithText("Project could not be deleted").fetchSemanticsNodes().isNotEmpty()
+                }
+                android.system.Os.chmod(directory.absolutePath, mode)
+                compose.onNodeWithText("Close").performClick()
+                compose.waitUntil(10_000) {
+                    (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false ||
+                        compose.onAllNodesWithTag("draft-save-retry").fetchSemanticsNodes().isNotEmpty()
+                }
+                if (compose.onAllNodesWithTag("draft-save-retry").fetchSemanticsNodes().isNotEmpty()) {
+                    compose.onNodeWithTag("draft-save-retry").performClick()
+                }
+                compose.waitUntil(10_000) {
+                    (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+                }
+                assertTrue(NativeProjectStore.list(context).any { it.id == project.id })
+                scenario.recreate()
+                compose.waitForIdle()
+                compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+                val retry = deleteConfirmation()
+                scenario.onActivity { retry() }
+                compose.waitUntil(10_000) { NativeProjectStore.get(context, project.id) == null }
+                flushDraftWriter()
+                assertFalse(target.exists())
+            }
+        } finally {
+            android.system.Os.chmod(directory.absolutePath, mode)
+            release.countDown()
+            flushDraftWriter()
+        }
+    }
+
+    @Test fun confirmedDeletionCompletesAfterImmediateActivityFinish() = withProject { _, target, project ->
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        launchEditor { scenario ->
+            removeAction()
+            flushDraftWriter()
+            val confirm = deleteConfirmation()
+            scenario.onActivity { activity -> confirm(); activity.finish() }
+        }
+        compose.waitUntil(10_000) { NativeProjectStore.get(context, project.id) == null }
+        flushDraftWriter()
+        assertFalse(target.exists())
+    }
+
+    @Test fun validLegacyRecoveryStillBootstrapsAMissingNativeProject() = withProject { _, _, project ->
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        EditorProjectStore.save(context, checkNotNull(project.editorSeed()))
+        val record = File(context.filesDir, "native-projects/${project.id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.json")
+        assertTrue(record.delete())
+        NativeProjectStore.setSelectedId(context, null)
+        launchEditor {
+            compose.waitUntil(10_000) {
+                NativeProjectStore.get(context, project.id) != null && NativeProjectStore.selectedId(context) == project.id
+            }
+            removeAction()
+            compose.onNodeWithText("Remove").assertIsDisplayed()
+        }
+    }
+
     @Test fun editAndImmediateProjectNavigationPreserveReviewOnReturn() = withProject { store, _, project ->
         launchEditor { scenario ->
             val remove = removeAction()
