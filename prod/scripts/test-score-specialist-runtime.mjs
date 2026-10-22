@@ -20,10 +20,13 @@ async function withRuntime(test, { cvReady = true } = {}) {
   if (cvReady) window.cv = {};
   const calls = [];
   let failure = null;
+  const unhandled = [], onUnhandled = (cause) => unhandled.push(cause);
+  process.on("unhandledRejection", onUnhandled);
   globalThis.fetch = async (url) => {
     const name = new URL(url).pathname.split("/").at(-1);
     calls.push(name);
     if (failure?.asset === name) {
+      if (failure.kind === "stalled") return failure.pending;
       if (failure.kind === "network") throw new TypeError("Synthetic network unavailable");
       if (failure.kind === "http") return new Response("Unavailable", { status: 503 });
       if (failure.kind === "json") return new Response("invalid JSON");
@@ -49,11 +52,37 @@ async function withRuntime(test, { cvReady = true } = {}) {
     await test({ run, request, project, saved, capture, serving, servingModel, switchModel,
       scoreSpecialistReadiness, missingScoreStages,
       fail: (asset, kind) => { failure = { asset, kind }; }, restore: () => { failure = null; },
+      stall: (asset) => {
+        let resolve, reject;
+        const pending = new Promise((yes, no) => { resolve = yes; reject = no; });
+        failure = { asset, kind: "stalled", pending };
+        return { resolve, reject };
+      },
       count: (asset) => calls.filter((name) => name === asset).length });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, [], "An abandoned load's late rejection must remain handled");
   } finally {
+    process.off("unhandledRejection", onUnhandled);
     Object.assign(globalThis, previous);
     dom.window.close(); await server.close();
   }
+}
+
+async function promptly(pending) {
+  let timeout;
+  try {
+    return await Promise.race([pending, new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("Cancellation waited for a stalled model transport")), 1000);
+    })]);
+  } finally { clearTimeout(timeout); }
+}
+
+async function waitFor(condition) {
+  for (let i = 0; i < 100; i++) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.fail("The requested model load did not start");
 }
 
 // A rejected request, HTTP response, JSON decoder or contract parser must not
@@ -145,4 +174,38 @@ for (const event of ["error", "load"]) await withRuntime(async ({ run, request, 
   assert.equal(count(servingModel.SERVING_SIDE_ASSET), 1, "A healthy model cache survives an OpenCV retry");
 }, { cvReady: false });
 
-console.log("Specialist runtime: real loader failure/retry, concurrent cache reuse, independent async/sync planning failures, validated partial readiness and OpenCV script recovery passed.");
+// Planning (switches) and evaluation (serves) both await shared model promises.
+// Cancelling one consumer must settle before transport and leave another caller
+// sharing that exact pending runtime able to finish or observe its own failure.
+for (const stage of ["servingSide", "sideSwitch"]) for (const completion of ["never", "resolve", "reject"]) {
+  await withRuntime(async ({ run, request, serving, servingModel, switchModel, stall, restore, count }) => {
+    const asset = stage === "servingSide" ? servingModel.SERVING_SIDE_ASSET : switchModel.SIDE_SWITCH_ASSET;
+    const load = stage === "servingSide" ? serving.loadServingSideRuntime : switchModel.loadSideSwitchRuntime;
+    const transport = stall(asset), abort = new AbortController(), saved = [];
+    const first = run({ [stage]: request[stage] }, { signal: abort.signal, onOutput: (output) => saved.push(output) });
+    const cancelled = assert.rejects(promptly(first), { name: "AbortError" });
+    await waitFor(() => count(asset) === 1);
+    const shared = load(); abort.abort(); await cancelled;
+    assert.strictEqual(load(), shared, "A consumer abort cannot invalidate or abort the shared loader cache");
+    assert.deepEqual(saved, []);
+    const otherStage = stage === "servingSide" ? "sideSwitch" : "servingSide";
+    await promptly(run({ [otherStage]: request[otherStage] }));
+    assert.equal(count(asset), 1, "Unrelated healthy work can finish while the first fetch never resolves");
+    if (completion === "never") return;
+
+    const secondSaved = [];
+    const second = run({ [stage]: request[stage] }, { onOutput: (output) => secondSaved.push(output) });
+    const finished = completion === "reject" ? assert.rejects(second, /Synthetic late model rejection/) : second;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(count(asset), 1); restore();
+    if (completion === "resolve") transport.resolve(new Response(await readFile(new URL(`../public/runtime/${asset}`, import.meta.url))));
+    else transport.reject(new TypeError("Synthetic late model rejection"));
+    await promptly(finished);
+    assert.deepEqual(saved, [], "Late load completion cannot checkpoint for the cancelled caller");
+    assert.equal(secondSaved.length, completion === "resolve" ? 1 : 0);
+    await promptly(run({ [stage]: request[stage] }));
+    assert.equal(count(asset), completion === "resolve" ? 1 : 2, "Successful shared loads stay cached; rejected loads can retry");
+  });
+}
+
+console.log("Specialist runtime: loader retry, concurrent cache reuse, independent planning failures, OpenCV recovery, prompt planning/evaluation cancellation, never/late resolve/late reject and shared-consumer isolation passed.");

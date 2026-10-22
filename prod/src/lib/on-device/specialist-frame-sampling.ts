@@ -8,6 +8,7 @@ import {
 import { samplesAtTimestampsFromSequentialPass } from "./sequential-samples.ts";
 import type { NormalizedRoi } from "./types.ts";
 import { loadOpenCv } from "./visual-features.ts";
+import { awaitWithAbort } from "./abortable.ts";
 
 const SIDE_SWITCH_WIDTH = 256;
 const SIDE_SWITCH_HEIGHT = 144;
@@ -68,7 +69,8 @@ export async function sampleSpecialistFramesSequentially(
     return { servingSide: new Map(), sideSwitch: new Map() };
   }
 
-  const cv = await loadOpenCv();
+  const cv = await awaitWithAbort(loadOpenCv(), signal);
+  signal?.throwIfAborted();
   const left = Math.round(roi.x * media.info.width);
   const top = Math.round(roi.y * media.info.height);
   const right = Math.round((roi.x + roi.width) * media.info.width);

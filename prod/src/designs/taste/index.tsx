@@ -561,7 +561,7 @@ function usePrototype(
     const sideSwitch = review.productAnalysis?.sideSwitch;
     if (servingSide === scoreOutputs.current.servingSide && sideSwitch === scoreOutputs.current.sideSwitch) return;
     scoreOutputs.current = { servingSide, sideSwitch };
-    const next = withModelScoreMarkers(workingDraft, { servingSide, sideSwitch });
+    const next = withModelScoreMarkers(workingDraft, { servingSide, sideSwitch, sideSwitchEnabled: review.sideSwitchEnabled });
     setScoreMarkers(next.scoreTracking.serveMarkers);
     setSideSwitchMarkers(next.scoreTracking.sideSwitchMarkers);
   }, [review.productAnalysis?.servingSide, review.productAnalysis?.sideSwitch]);

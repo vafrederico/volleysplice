@@ -365,7 +365,7 @@ export function useDesignReview(
           projectStatus: project.status,
           draft,
           draftSeed: seed,
-          modelDraft: createModelReviewDraft(seed, project.analysis),
+          modelDraft: createModelReviewDraft(seed, { ...project.analysis, sideSwitchEnabled: project.sideSwitchEnabled }),
           suppression: project.analysis.suppression,
           cleanupSuggestions: cleanupSuggestions(project, draft),
           projects: projectChoices,
@@ -417,7 +417,9 @@ export function useDesignReview(
                   scoreRecovery: options.scoreRecovery ?? current.scoreRecovery,
                   modelDraft: (() => {
                     const project = options.projects?.find((candidate) => candidate.id === current.projectId);
-                    return project?.analysis ? createModelReviewDraft(current.draftSeed, project.analysis) : current.modelDraft;
+                    return project?.analysis ? createModelReviewDraft(current.draftSeed, {
+                      ...project.analysis, sideSwitchEnabled: project.sideSwitchEnabled,
+                    }) : current.modelDraft;
                   })(),
                   exportJob:
                     options.exportJobs?.find(

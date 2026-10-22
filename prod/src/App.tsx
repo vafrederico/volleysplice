@@ -6,6 +6,7 @@ import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
+import { awaitWithAbort } from "@/lib/on-device/abortable";
 import { missingScoreStages, scoreSpecialistReadiness, type ScoreSpecialistStage } from "@/lib/score-specialist-state";
 import {
   CORE_INFERENCE_STEP_IDS,
@@ -958,15 +959,15 @@ function WebApp() {
       if ((stages.includes("servingSide") && !analysis.productionServeOutputs) ||
           (stages.includes("sideSwitch") && (!analysis.productionComponents || !analysis.productionStateOutputs))) {
         if (!analysis.featureNames || !analysis.featureValues) throw new Error("This saved analysis has no score evidence. Add markers manually.");
-        const cachedEvidence = await suppressionAugmentingRef.current.get(projectId);
-        const evidence = cachedEvidence ?? await runProductionInferenceFromFeatures({ times: analysis.times, values: analysis.featureValues,
-          rows: analysis.times.length, columns: analysis.featureNames.length, names: analysis.featureNames }, project.analysisWindow);
+        const cachedEvidence = await awaitWithAbort(Promise.resolve(suppressionAugmentingRef.current.get(projectId)), abort.signal);
+        const evidence = cachedEvidence ?? await awaitWithAbort(runProductionInferenceFromFeatures({ times: analysis.times, values: analysis.featureValues,
+          rows: analysis.times.length, columns: analysis.featureNames.length, names: analysis.featureNames }, project.analysisWindow), abort.signal);
         check();
         analysis = { ...analysis, productionServeOutputs: evidence.productionServeOutputs,
           productionStateOutputs: evidence.productionStateOutputs, productionComponents: evidence.productionComponents };
         commitProject({ ...currentProject()!, analysis });
       }
-      const { inferScoreSpecialists } = await import("@/lib/on-device/score-specialists");
+      const { inferScoreSpecialists } = await awaitWithAbort(import("@/lib/on-device/score-specialists"), abort.signal);
       check();
       const acceptOutput = (output: { servingSide?: NonNullable<OnDeviceAnalysis["servingSide"]>; sideSwitch?: NonNullable<OnDeviceAnalysis["sideSwitch"]> }) => {
         check();

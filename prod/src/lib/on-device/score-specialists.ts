@@ -12,6 +12,7 @@ import {
 import type { SideSwitchAnalysisInput } from "./side-switch-model.ts";
 import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
 import { neuralServingSelection } from "./neural-serving-model.ts";
+import { awaitWithAbort } from "./abortable.ts";
 import type { OpenedMedia } from "./media.ts";
 import type {
   NormalizedRoi,
@@ -67,7 +68,7 @@ export async function inferScoreSpecialists(
   // Planning can itself load a model or reject invalid candidate identity.
   // Capture synchronous and asynchronous failures per stage before building
   // the shared decode schedule, so one failed plan cannot discard the other.
-  const [servingResult, switchResult] = await Promise.allSettled([
+  const [servingResult, switchResult] = await awaitWithAbort(Promise.allSettled([
     Promise.resolve().then(() =>
       request.servingSide
         ? servingSideFramePlan(
@@ -82,7 +83,7 @@ export async function inferScoreSpecialists(
         ? sideSwitchFramePlan(request.sideSwitch.analysis, media.info.duration)
         : null,
     ),
-  ]);
+  ]), options.signal);
   check();
   const errors: string[] = [];
   const planned = <T>(result: PromiseSettledResult<T>): T | null => {
@@ -138,12 +139,15 @@ export async function inferScoreSpecialists(
             total,
             detail: `Checking serve court sides · ${completed}/${total} rallies`,
           }),
+        options.signal,
       );
-      output.servingSide = neuralServingSelection(request.servingSide.analysis.modelId)
-        ? await (await import("./neural-serving")).inferNeuralServingSideOutput(
-            media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress, options.signal,
-          )
-        : artifacts.output;
+      if (neuralServingSelection(request.servingSide.analysis.modelId)) {
+        const { inferNeuralServingSideOutput } = await awaitWithAbort(import("./neural-serving"), options.signal);
+        check();
+        output.servingSide = await awaitWithAbort(inferNeuralServingSideOutput(
+          media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress, options.signal,
+        ), options.signal);
+      } else output.servingSide = artifacts.output;
       check();
       options.onOutput?.({ servingSide: output.servingSide });
       request.servingSide.onProgress?.({
@@ -172,6 +176,7 @@ export async function inferScoreSpecialists(
             total,
             detail: `Checking possible side switches · ${completed}/${total}`,
           }),
+        options.signal,
       );
       output.sideSwitch = artifacts.output;
       check();

@@ -34,6 +34,7 @@ import type {
   ProductionServeOutputs,
 } from "./types.ts";
 import { loadOpenCv } from "./visual-features.ts";
+import { awaitWithAbort } from "./abortable.ts";
 
 type CvRuntime = typeof import("@techstark/opencv-js");
 
@@ -752,11 +753,14 @@ export async function evaluateServingSideFrames(
   candidateLimit: number | null,
   sampled: ReadonlyMap<number, Uint8Array>,
   onProgress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<ServingSideFrameEvaluation> {
-  const [cv, runtime] = await Promise.all([
+  signal?.throwIfAborted();
+  const [cv, runtime] = await awaitWithAbort(Promise.all([
     loadOpenCv(),
     loadServingSideRuntime(),
-  ]);
+  ]), signal);
+  signal?.throwIfAborted();
   return await servingSideOutputFromLoadedFrames(
     cv,
     runtime,
