@@ -2802,15 +2802,15 @@ private fun EditorScreen(
         context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
     }
     var draft by remember {
-        mutableStateOf(initialDraft.copy(
-            fadeScoreOverlay = exportPreferences.getBoolean("fadeScoreOverlay", initialDraft.fadeScoreOverlay),
+        mutableStateOf(PortableReviewPreferences.onOpen(
+            initialDraft, exportPreferences.getBoolean("fadeScoreOverlay", initialDraft.fadeScoreOverlay),
         ))
     }
     var selectedId by remember { mutableStateOf(initialDraft.cuts.firstOrNull()?.id.orEmpty()) }
     var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
     var isPlaying by remember { mutableStateOf(false) }
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
-    var message by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf(PortableReviewPreferences.notice(initialDraft)) }
     var exportState by remember(project.id) {
         mutableStateOf(
             ExportService.statusForProject(project.id)?.toUiState()
@@ -3027,7 +3027,9 @@ private fun EditorScreen(
     )
 
     fun updateDraft(mutate: (EditorDraft) -> EditorDraft) {
-        draft = EditorMath.reconcileTouchedCuts(mutate(draft), seed)
+        val changed = mutate(draft)
+        val reviewableIds = changed.cuts.filter { it.origin == CutOrigin.INFERRED }.mapTo(hashSetOf()) { it.id }
+        draft = EditorMath.reconcileTouchedCuts(changed.copy(reviewedCutIds = changed.reviewedCutIds.intersect(reviewableIds)), seed)
             .copy(updatedAtMs = System.currentTimeMillis())
     }
 
@@ -3365,7 +3367,7 @@ private fun EditorScreen(
     }
 
     LaunchedEffect(draft.playbackRate) {
-        player.playbackParameters = PlaybackParameters(draft.playbackRate)
+        player.playbackParameters = PlaybackParameters(draft.playbackRate.toFloat())
     }
 
     LaunchedEffect(player, draft.finalPreviewEnabled, finalIntervals, editableRallies, previewEndMs) {
@@ -3423,7 +3425,7 @@ private fun EditorScreen(
             confirmButton = {
                 TextButton(onClick = {
                     store.clear()
-                    draft = EditorMath.newDraft(seed)
+                    draft = PortableReviewPreferences.reset(seed, draft)
                     selectedId = draft.cuts.firstOrNull()?.id.orEmpty()
                     selectedSuggestionId = null
                     confirmReset = false
@@ -3574,7 +3576,6 @@ private fun EditorScreen(
                                                     updateDraft {
                                                         it.copy(
                                                             renderScoreOverlay = enabled,
-                                                            renderScoreTimeline = if (enabled) it.renderScoreTimeline else false,
                                                         )
                                                     }
                                                 },
@@ -4162,11 +4163,6 @@ private fun EditorScreen(
                                             updateDraft {
                                                 it.copy(
                                                     renderScoreOverlay = enabled,
-                                                    renderScoreTimeline = if (enabled) {
-                                                        it.renderScoreTimeline
-                                                    } else {
-                                                        false
-                                                    },
                                                 )
                                             }
                                         },
@@ -4187,7 +4183,7 @@ private fun EditorScreen(
                                         enabled = draft.scoreTracking.enabled && draft.renderScoreOverlay,
                                         onCheckedChange = { enabled ->
                                             updateDraft {
-                                                it.copy(renderScoreTimeline = it.renderScoreOverlay && enabled)
+                                                it.copy(renderScoreTimeline = enabled)
                                             }
                                         },
                                     )
@@ -4301,7 +4297,6 @@ private fun EditorScreen(
                                 updateDraft {
                                     it.copy(
                                         renderScoreOverlay = enabled,
-                                        renderScoreTimeline = if (enabled) it.renderScoreTimeline else false,
                                     )
                                 }
                             },
@@ -4332,7 +4327,7 @@ private fun EditorScreen(
                                 checked = draft.renderScoreTimeline,
                                 onCheckedChange = { enabled ->
                                     updateDraft {
-                                        it.copy(renderScoreTimeline = it.renderScoreOverlay && enabled)
+                                        it.copy(renderScoreTimeline = enabled)
                                     }
                                 },
                             )
@@ -6183,14 +6178,14 @@ private fun SectionCard(
 }
 
 @Composable
-private fun PlayerControls(
+internal fun PlayerControls(
     playing: Boolean,
     positionMs: Long,
     durationMs: Long,
-    playbackRate: Float,
+    playbackRate: Double,
     desktop: Boolean = false,
     onToggle: () -> Unit,
-    onRate: (Float) -> Unit,
+    onRate: (Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var rateExpanded by remember { mutableStateOf(false) }
@@ -6218,14 +6213,14 @@ private fun PlayerControls(
                     onClick = { rateExpanded = true },
                     modifier = Modifier.fillMaxWidth().height(34.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                ) { Text("Speed · ${playbackRate.toInt()}x", fontSize = 10.sp, maxLines = 1) }
+                ) { Text("Speed · ${PortableReviewPreferences.playbackRateLabel(playbackRate)}", fontSize = 10.sp, maxLines = 1) }
                 DropdownMenu(
                     expanded = rateExpanded,
                     onDismissRequest = { rateExpanded = false },
                 ) {
-                    listOf(1f, 2f, 4f, 8f).forEach { rate ->
+                    PortableReviewPreferences.playbackRates(playbackRate).forEach { rate ->
                         DropdownMenuItem(
-                            text = { Text("${rate.toInt()}x") },
+                            text = { Text("${PortableReviewPreferences.playbackRateLabel(rate)}") },
                             onClick = {
                                 rateExpanded = false
                                 onRate(rate)
@@ -6257,14 +6252,14 @@ private fun PlayerControls(
                     OutlinedButton(
                         onClick = { rateExpanded = true },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text("Speed · ${playbackRate.toInt()}x") }
+                    ) { Text("Speed · ${PortableReviewPreferences.playbackRateLabel(playbackRate)}") }
                     DropdownMenu(
                         expanded = rateExpanded,
                         onDismissRequest = { rateExpanded = false },
                     ) {
-                        listOf(1f, 2f, 4f, 8f).forEach { rate ->
+                        PortableReviewPreferences.playbackRates(playbackRate).forEach { rate ->
                             DropdownMenuItem(
-                                text = { Text("${rate.toInt()}x") },
+                                text = { Text("${PortableReviewPreferences.playbackRateLabel(rate)}") },
                                 onClick = {
                                     rateExpanded = false
                                     onRate(rate)

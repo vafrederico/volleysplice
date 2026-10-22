@@ -202,7 +202,7 @@ internal object ModelFeedbackImporter {
         }
         val seed = checkNotNull(project.editorSeed())
         val corrections = bundle.getJSONObject("corrections")
-        val draft = decodeDraft(corrections, seed, durationMs)
+        val draft = PortableReviewPreferences.import(decodeDraft(corrections, seed, durationMs), corrections, bundle)
         val featureCache = decodeFeatureCache(bundle.optJSONObject("features"), inference, project)
         return Imported(project, draft, featureCache)
     }

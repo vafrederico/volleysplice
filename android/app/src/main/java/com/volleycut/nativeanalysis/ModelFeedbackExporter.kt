@@ -133,6 +133,7 @@ internal object ModelFeedbackExporter {
             put("schema", MODEL_FEEDBACK_SCHEMA)
             put("schemaVersion", MODEL_FEEDBACK_SCHEMA_VERSION)
             put("generatedAt", generatedAt.toString())
+            put("editorPreferences", JSONObject().put("renderScoreOnFinalVideo", draft.renderScoreOverlay))
             put("source", JSONObject().apply {
                 put("projectId", project.id)
                 put("analysisId", "${project.id}-${project.modelId}-native-source")
@@ -295,6 +296,7 @@ internal object ModelFeedbackExporter {
                 put("sideSwitch", project.sideSwitch?.let(::sideSwitchFeedback) ?: JSONObject.NULL)
             })
             put("corrections", JSONObject().apply {
+                put("ui", PortableReviewPreferences.export(draft))
                 put("updatedAt", Instant.ofEpochMilli(updatedAtMs).toString())
                 put("beforePaddingSeconds", draft.beforePaddingMs / 1_000.0)
                 put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)

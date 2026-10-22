@@ -8,8 +8,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-internal class EditorDraftStore(context: Context, private val seed: EditorSeed) {
-    private val directory = File(context.filesDir, "editor-drafts")
+internal class EditorDraftStore(private val directory: File, private val seed: EditorSeed) {
+    constructor(context: Context, seed: EditorSeed) : this(File(context.filesDir, "editor-drafts"), seed)
     private val target = File(directory, "${seed.sourceRevision}.json")
 
     fun load(): EditorDraft? = runCatching {
@@ -71,6 +71,8 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         put("renderScoreOverlay", draft.renderScoreOverlay)
         put("renderScoreTimeline", draft.renderScoreTimeline)
         put("fadeScoreOverlay", draft.fadeScoreOverlay)
+        put("fadeScoreOverlayExplicit", draft.fadeScoreOverlayExplicit)
+        draft.portableUi?.let { put("portableUi", PortableReviewPreferences.validate(JSONObject(it), draft.cuts, false)) }
         put("cuts", JSONArray().apply {
             draft.cuts.forEach { cut -> put(JSONObject().apply {
                 put("id", cut.id)
@@ -163,7 +165,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             pendingIgnoreStartMs = json.optNullableLong("pendingIgnoreStartMs"),
             ignoreReason = json.optString("ignoreReason", "non-game-content"),
             finalPreviewEnabled = json.optBoolean("finalPreviewEnabled"),
-            playbackRate = json.optDouble("playbackRate", 1.0).toFloat(),
+            playbackRate = json.optDouble("playbackRate", 1.0),
             confidenceReviewThreshold = json.optDouble("confidenceReviewThreshold", .7).toFloat(),
             reviewedCutIds = buildSet {
                 for (index in 0 until reviewedJson.length()) add(reviewedJson.getString(index))
@@ -187,6 +189,10 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             ),
             scoreTracking = scoreTracking,
             fadeScoreOverlay = json.optBoolean("fadeScoreOverlay", false),
+            fadeScoreOverlayExplicit = json.optBoolean("fadeScoreOverlayExplicit", json.has("fadeScoreOverlay")),
+            portableUi = if (json.has("portableUi")) {
+                PortableReviewPreferences.validate(json.get("portableUi"), cuts, false).toString()
+            } else null,
             renderScoreOverlay = if (persistedVersion >= 6) {
                 json.optBoolean("renderScoreOverlay", true)
             } else true,
@@ -203,7 +209,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         draft.beforePaddingMs in 0..MAX_PADDING_MS &&
             draft.afterPaddingMs in 0..MAX_PADDING_MS &&
             draft.joinGapMs in 0..MAX_JOIN_GAP_MS &&
-            draft.playbackRate in setOf(1f, 2f, 4f, 8f) &&
+            draft.playbackRate.isFinite() && draft.playbackRate in .25..8.0 &&
             draft.confidenceReviewThreshold in 0f..1f &&
             draft.suppressionContractVersion == FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION &&
             ScoreTrackingJson.validate(draft.scoreTracking, seed.durationMs) &&

@@ -5,7 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
-internal const val EDITOR_DRAFT_VERSION = 8
+internal const val EDITOR_DRAFT_VERSION = 9
 internal const val DEFAULT_BEFORE_PADDING_MS = 2_000L
 internal const val DEFAULT_AFTER_PADDING_MS = 2_000L
 internal const val DEFAULT_JOIN_GAP_MS = 3_000L
@@ -131,7 +131,7 @@ internal data class EditorDraft(
     val pendingIgnoreStartMs: Long? = null,
     val ignoreReason: String = "non-game-content",
     val finalPreviewEnabled: Boolean = false,
-    val playbackRate: Float = 1f,
+    val playbackRate: Double = 1.0,
     val confidenceReviewThreshold: Float = .7f,
     val reviewedCutIds: Set<String> = emptySet(),
     val cuts: List<EditableCut>,
@@ -148,6 +148,8 @@ internal data class EditorDraft(
     val renderScoreOverlay: Boolean = true,
     val renderScoreTimeline: Boolean = true,
     val fadeScoreOverlay: Boolean = false,
+    val fadeScoreOverlayExplicit: Boolean = false,
+    val portableUi: String? = null,
 )
 
 internal data class JoinedGap(val startMs: Long, val endMs: Long)

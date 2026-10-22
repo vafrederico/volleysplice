@@ -219,8 +219,8 @@ class ServingSidePersistenceTest {
         )
         assertNotNull(imported.project.suppression)
         assertEquals(setOf("serve-R999"), imported.draft.scoreTracking.removedModelMarkerIds)
-        assertFalse(imported.draft.renderScoreOverlay)
-        assertFalse(imported.draft.renderScoreTimeline)
+        assertEquals(draft.renderScoreOverlay, imported.draft.renderScoreOverlay)
+        assertEquals(draft.renderScoreTimeline, imported.draft.renderScoreTimeline)
         assertEquals(ServingSide.FAR, imported.draft.scoreTracking.serveMarkers.first().side)
         assertTrue(imported.draft.scoreTracking.serveMarkers.first().ignorePreviousPoint)
         assertArrayEquals(
