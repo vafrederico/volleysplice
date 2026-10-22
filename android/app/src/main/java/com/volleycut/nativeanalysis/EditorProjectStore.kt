@@ -79,6 +79,7 @@ internal object EditorProjectStore {
         put("sideSwitch", seed.sideSwitch?.let(SideSwitchJson::encodeOutput) ?: JSONObject.NULL)
         put("sideSwitchError", seed.sideSwitchError ?: JSONObject.NULL)
         put("sideSwitchEnabled", seed.sideSwitchEnabled)
+        put("warnings", JSONArray(seed.feedbackWarnings))
         put("scoreTrackingInitiallyEnabled", seed.scoreTrackingInitiallyEnabled)
     }
 
@@ -123,6 +124,7 @@ internal object EditorProjectStore {
             sideSwitchEnabled = if (json.has("sideSwitchEnabled")) {
                 json.getBoolean("sideSwitchEnabled")
             } else json.optJSONObject("sideSwitch") != null,
+            feedbackWarnings = SideSwitchJson.decodeWarnings(json),
             scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", false),
             audioExtractorVersion = json.optString("audioExtractorVersion", "legacy"),
             visualExtractorVersion = json.optString("visualExtractorVersion", "legacy"),

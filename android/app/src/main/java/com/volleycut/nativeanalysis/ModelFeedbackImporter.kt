@@ -142,7 +142,13 @@ internal object ModelFeedbackImporter {
             }
         } ?: AnalysisTypes.ProductionServeOutputs.empty()
         val servingSide = inference.optJSONObject("servingSide")?.let(::decodeServingSide)
-        val sideSwitchEnabled = inference.optJSONObject("sideSwitch") != null
+        val sideSwitch = if (inference.isNull("sideSwitch")) null else
+            SideSwitchJson.decodeFeedback(inference.getJSONObject("sideSwitch"), duration)
+        val sideSwitchEnabled = if (source.has("generateSideSwitchMarkers")) {
+            source.get("generateSideSwitchMarkers").also {
+                require(it is Boolean) { "source.generateSideSwitchMarkers must be a boolean" }
+            } as Boolean
+        } else true // Historical web preference; independent of retained output presence.
         val suppression = inference.optJSONObject("suppression")
             ?.takeUnless { RallyModels.isNeural(inference.getString("modelId")) }
             ?.let(::decodeSuppression)
@@ -179,8 +185,9 @@ internal object ModelFeedbackImporter {
             } ?: AnalysisTypes.ProductionComponents.empty(),
             productionServeOutputs = serveOutputs,
             servingSide = servingSide,
+            sideSwitch = sideSwitch,
             sideSwitchEnabled = sideSwitchEnabled,
-            servingSideStatus = if (servingSide == null) {
+            servingSideStatus = if (servingSide == null || (sideSwitchEnabled && sideSwitch == null)) {
                 ServingSideAnalysisStatus.NOT_RUN
             } else ServingSideAnalysisStatus.READY,
             servingSideError = if (servingSide == null) "Imported bundle has no serving-side output" else null,
@@ -191,6 +198,7 @@ internal object ModelFeedbackImporter {
             },
             createdAtMs = nowMs,
             updatedAtMs = nowMs,
+            feedbackWarnings = SideSwitchJson.decodeWarnings(bundle),
         )
         val project = projectWithoutCacheIdentity.copy(
             servingSideCacheIdentity = servingSide?.let {
