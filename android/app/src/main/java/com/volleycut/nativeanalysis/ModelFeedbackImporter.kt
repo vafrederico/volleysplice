@@ -39,10 +39,11 @@ internal object ModelFeedbackImporter {
 
     fun import(context: Context, text: String): NativeProject {
         val imported = parse(text)
+        val seed = checkNotNull(imported.project.editorSeed())
+        // Refuse an unreadable target before publishing an imported project.
+        EditorDraftStore(context, seed).save(imported.draft)
         imported.featureCache?.let { hydrateFeatureCache(context, imported.project, it) }
         NativeProjectStore.save(context, imported.project)
-        val seed = checkNotNull(imported.project.editorSeed())
-        EditorDraftStore(context, seed).save(imported.draft)
         EditorProjectStore.save(context, seed)
         NativeProjectStore.setSelectedId(context, imported.project.id)
         return imported.project

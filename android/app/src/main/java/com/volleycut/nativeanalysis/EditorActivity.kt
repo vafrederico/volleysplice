@@ -492,7 +492,11 @@ private fun setScoreTrackingPreference(
 ) {
     val seed = project.editorSeed() ?: return
     val store = EditorDraftStore(context, seed)
-    val draft = store.load() ?: EditorMath.newDraft(seed)
+    val draft = when (val restored = store.load()) {
+        EditorDraftLoadResult.Missing -> EditorMath.newDraft(seed)
+        is EditorDraftLoadResult.Restored -> restored.draft
+        EditorDraftLoadResult.Unreadable -> return
+    }
     store.save(draft.copy(
         scoreTracking = draft.scoreTracking.copy(enabled = enabled),
         updatedAtMs = System.currentTimeMillis(),
@@ -1205,13 +1209,32 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             val store = remember(selectedProject.id, currentSeed.sourceRevision) {
                 EditorDraftStore(context, currentSeed)
             }
-            val restored = remember(selectedProject.id, currentSeed.sourceRevision) { store.load() }
-            EditorScreen(
+            var restored by remember(selectedProject.id, currentSeed.sourceRevision) {
+                mutableStateOf(store.load())
+            }
+            var resetFailed by remember { mutableStateOf(false) }
+            if (restored == EditorDraftLoadResult.Unreadable) {
+                ProjectShell(projectControls = { projectControls(null, null) }) {
+                    DraftRecoveryPanel(
+                        onRetry = { restored = store.load() },
+                        onImport = {
+                            feedbackImportPicker.launch(arrayOf("application/json", "text/json"))
+                        },
+                        onReset = {
+                            restored = store.resetUnreadable()
+                            resetFailed = restored == EditorDraftLoadResult.Unreadable
+                        },
+                        resetFailed = resetFailed,
+                    )
+                }
+            } else EditorScreen(
                 activity = activity,
                 project = selectedProject,
                 seed = currentSeed,
                 store = store,
-                initialDraft = restored ?: EditorMath.newDraft(currentSeed),
+                initialDraft = (restored as? EditorDraftLoadResult.Restored)?.draft
+                    ?: EditorMath.newDraft(currentSeed),
+                onDraftUnreadable = { restored = EditorDraftLoadResult.Unreadable },
                 analysisRunning = queueCount > 0,
                 displayAnalysisMeasurements = displayAnalysisMeasurements,
                 onDisplayAnalysisMeasurements = { enabled ->
@@ -1243,6 +1266,49 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 guidedTourRestartSignal = guidedTourRestartSignal,
             )
         }
+    }
+}
+
+@Composable
+internal fun DraftRecoveryPanel(
+    onRetry: () -> Unit,
+    onImport: () -> Unit,
+    onReset: () -> Unit,
+    resetFailed: Boolean,
+) {
+    var confirmReset by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Saved edits could not be opened", style = MaterialTheme.typography.titleLarge)
+        Text("Your saved edits are unchanged. Try again, or import an exported project backup to recover your review as a separate project.")
+        if (resetFailed) Text("The saved review could not be removed. It is still protected. Try again when device storage is available.", color = Danger)
+        OutlinedButton(onClick = onRetry, modifier = Modifier.testTag("draft-recovery-retry")) {
+            Text("Try again")
+        }
+        OutlinedButton(onClick = onImport, modifier = Modifier.testTag("draft-recovery-import")) {
+            Text("Import project backup")
+        }
+        OutlinedButton(
+            onClick = { confirmReset = true },
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+            modifier = Modifier.testTag("draft-recovery-reset"),
+        ) { Text("Reset saved review") }
+    }
+    if (confirmReset) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("Discard saved edits?") },
+            text = { Text("This permanently removes the unreadable review and starts from the original analysis. Keep it if you want to recover it with a compatible app version or a backup.") },
+            confirmButton = {
+                TextButton(
+                    onClick = { confirmReset = false; onReset() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Danger),
+                    modifier = Modifier.testTag("draft-recovery-confirm-reset"),
+                ) { Text("Discard edits and reset") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmReset = false }) { Text("Keep saved edits") }
+            },
+        )
     }
 }
 
@@ -2780,6 +2846,7 @@ private fun EditorScreen(
     seed: EditorSeed,
     store: EditorDraftStore,
     initialDraft: EditorDraft,
+    onDraftUnreadable: () -> Unit,
     analysisRunning: Boolean,
     displayAnalysisMeasurements: Boolean,
     onDisplayAnalysisMeasurements: (Boolean) -> Unit,
@@ -3361,7 +3428,11 @@ private fun EditorScreen(
 
     LaunchedEffect(draft) {
         delay(200)
-        withContext(Dispatchers.IO) { store.save(draft) }
+        try {
+            withContext(Dispatchers.IO) { store.save(draft) }
+        } catch (_: UnreadableEditorDraftException) {
+            onDraftUnreadable()
+        }
     }
 
     LaunchedEffect(draft.playbackRate) {
