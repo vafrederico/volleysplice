@@ -41,6 +41,7 @@ window.matchMedia = () => ({
   addEventListener() {},
   removeEventListener() {},
 });
+window.scrollTo = () => {};
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 dom.window.HTMLCanvasElement.prototype.getContext = () => null;
 dom.window.HTMLMediaElement.prototype.load = () => {};
@@ -503,8 +504,87 @@ try {
         undoneExport.corrections.ui, `${caseName}: reimport retention`);
     }
   }
+  // Exercise production through App itself, and the lab through its real desk.
+  // A corrected-only inferred ID is valid until reset removes it from the draft.
+  const { App } = await server.ssrLoadModule("/src/App.tsx");
+  const { SELECTED_PROJECT_STORAGE_KEY } = await server.ssrLoadModule("/src/lib/project-store.ts");
+  for (const mode of ["App", "lab"]) {
+    const envelope = structuredClone(fixtures.futureUi);
+    envelope.preferences.reviewedCutIds = ["corrected-only-cut"];
+    const input = structuredClone(bundle);
+    input.corrections.ui = envelope;
+    input.corrections.correctedRanges.push({ ...input.corrections.correctedRanges[0],
+      id: "corrected-only-cut", coreStart: 30, coreEnd: 40, keepStart: 28, keepEnd: 42 });
+    const savedProject = importModelFeedbackProject(JSON.stringify(input), {
+      occupiedProjectIds: new Set((await listProjects()).map(project => project.id)),
+    }).project;
+    const storageKey = cutDraftStorageKey(projectAnalysisId(savedProject));
+    feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(savedProject), recordingId: savedProject.id };
+    await act(async () => root.render(null));
+    window.localStorage.clear();
+    for (const prefix of ["volleycut", "volleycut:production-lab"]) {
+      window.localStorage.setItem(`${prefix}:rally-desk-tour:v1`, "dismissed");
+    }
+    window.localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, savedProject.id);
+    await putProject(savedProject);
+    const mount = async (project, suffix) => {
+      await act(async () => root.render(mode === "App"
+        ? React.createElement(App, { key: `${mode}-${suffix}` })
+        : React.createElement(Editor, { key: `${mode}-${suffix}`, savedProject: project, Desk: LabRallyDesk, connected: false })));
+      await waitFor(() => speed() && window.localStorage.getItem(storageKey));
+    };
+    const currentDraft = () => JSON.parse(window.localStorage.getItem(storageKey));
+    const saveFromUi = async () => {
+      await click("Export");
+      await act(async () => document.querySelector('input[name="taste-export-kind"][value="feedback"]').click());
+      await click("Save project");
+    };
+    await mount(savedProject, "valid");
+    assert.deepEqual(currentDraft().reviewedCutIds, [], `${mode}: future IDs stay inactive`);
+    assert.equal(speed().value, "1");
+    await saveFromUi();
+    const originalDownload = downloaded;
+    const originalText = await originalDownload.text();
+    assert.deepEqual(JSON.parse(originalText).corrections.ui, envelope);
+    await click("Review");
+    await act(async () => document.querySelector('button[aria-label="App menu"]').click());
+    await click("Reset project changes");
+    await click("Reset project changes");
+    await waitFor(() => !currentDraft().cuts.some(cut => cut.id === "corrected-only-cut"));
+    await selectValue(speed(), "2"); // Failed export must retain these local edits too.
+    const resetDraft = currentDraft();
+    assert.deepEqual(resetDraft.portableUi, envelope);
+    await saveFromUi();
+    const failure = document.querySelector(".td-status-message").textContent;
+    assert.match(failure, /Could not save the project:.*reviewedCutIds.*inferred cuts/);
+    assert.match(failure, /Undo the rally changes/);
+    assert.match(failure, /Your edits and imported preferences have been kept/);
+    assert.equal(downloaded, originalDownload, `${mode}: no replacement download on failure`);
+    assert.equal(await originalDownload.text(), originalText);
+    assert.deepEqual(currentDraft(), resetDraft, `${mode}: failed save preserves the entire draft`);
+    let persisted;
+    await act(async () => { persisted = (await listProjects()).find(value => value.id === savedProject.id); });
+    assert.deepEqual(persisted.reviewDraft.portableUi, envelope);
+    assert.equal(persisted.reviewDraft.playbackRate, 2);
+    await act(async () => root.render(null));
+    window.localStorage.removeItem(storageKey);
+    await mount(persisted, "reopen");
+    assert.deepEqual(currentDraft().portableUi, envelope, `${mode}: stale opaque draft reopens`);
+    assert.equal(speed().value, "2");
+    await saveFromUi();
+    assert.match(document.querySelector(".td-status-message").textContent, /Could not save the project:/);
+    assert.equal(downloaded, originalDownload);
+    await click("Review");
+    await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })));
+    await waitFor(() => currentDraft().cuts.some(cut => cut.id === "corrected-only-cut"));
+    await saveFromUi();
+    assert.notEqual(downloaded, originalDownload, `${mode}: undo restores an exportable identity`);
+    const recovered = JSON.parse(await downloaded.text());
+    assert.deepEqual(recovered.corrections.ui, envelope);
+    assert.deepEqual(importModelFeedbackProject(JSON.stringify(recovered)).project.importedFeedback.initialDraft.portableUi, envelope);
+  }
   console.log(
-    "Review UI: legacy/final-score persistence, portable feedback import/UI export/reimport, exact playback rates, project fade precedence/undo, timeline queue options, production/lab v1/v2 reconnect/reset/persist/reopen/export/undo envelope retention, failed-save recovery and incompatible-draft preservation passed.",
+    "Review UI: legacy/final-score persistence, portable feedback import/UI export/reimport, exact playback rates, project fade precedence/undo, timeline queue options, production/lab v1/v2 reconnect/reset/persist/reopen/export/undo envelope retention, actual App/lab future-ID reset export failures preserving prior downloads and drafts, reopen/undo recovery, failed-save recovery and incompatible-draft preservation passed.",
   );
 } finally {
   dom.window.Storage.prototype.setItem = realSetItem;

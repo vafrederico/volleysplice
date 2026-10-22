@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { parseFeedbackUi } from "../../prod/src/lib/feedback-ui.ts";
+import { feedbackUiFromDraft, parseFeedbackUi } from "../../prod/src/lib/feedback-ui.ts";
+import { feedbackUiFromDraft as labFeedbackUiFromDraft, parseFeedbackUi as parseLabFeedbackUi } from "../../components/production-lab/editor/lib/feedback-ui.ts";
 import {
   createCutDraft as createLabCutDraft,
   parseCutDraft as parseLabCutDraft,
@@ -84,6 +85,29 @@ test("retained UI accepts only safe JSON, even before serialization", () => {
   (copied.preferences as Record<string, unknown>).playbackRate = 2;
   assert.equal(original.preferences.playbackRate, 1.5, "retention never aliases untrusted objects");
 });
+
+for (const [name, parse, compose] of [
+  ["production", parseFeedbackUi, feedbackUiFromDraft],
+  ["lab", parseLabFeedbackUi, labFeedbackUiFromDraft],
+] as const) {
+  test(`${name} future UI distinguishes absent IDs from malformed or stale wire IDs`, () => {
+    const inferred = new Set(["R001"]);
+    for (const preferences of [undefined, {}, { reviewedCutIds: [] }, { reviewedCutIds: ["R001"] }]) {
+      const ui = { schemaVersion: 2, ...(preferences === undefined ? {} : { preferences }) };
+      assert.deepEqual(parse(ui, inferred), ui);
+    }
+    for (const ids of [null, "R001", {}, [false], [""], ["R001", "R001"]]) {
+      assert.throws(() => parse({ schemaVersion: 2, preferences: { reviewedCutIds: ids } }), /reviewedCutIds/);
+    }
+    const opaque = { schemaVersion: 2, preferences: { reviewedCutIds: ["missing-cut"],
+      chapterOptions: { future: [null, { retained: true }] } }, extension: "unchanged" };
+    assert.deepEqual(parse(opaque), opaque, "local retention has no wire identity context");
+    const draft = { ...createCutDraft(seed), portableUi: opaque, playbackRate: 1.75 };
+    const before = JSON.stringify(draft);
+    assert.throws(() => compose(draft), /reviewedCutIds.*inferred cuts/);
+    assert.equal(JSON.stringify(draft), before);
+  });
+}
 
 test("production drafts persist reviewed model ranges", () => {
   const draft = createCutDraft(seed);
