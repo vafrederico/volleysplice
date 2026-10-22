@@ -10,7 +10,7 @@ interval counts or passing a self-roundtrip does not prove cross-platform parity
 | --- | --- |
 | DSP and frozen inference | `AudioFeatureTests`, `FeatureMathTests`, `ModelRunnerTests`, `ServingSideInferenceTests`, `SideSwitchInferenceTests`, `SuppressionTests` |
 | Editing, scoring and export timing | `ProjectContractTests`, `RallyStartMarkerTests`, `EditorReviewTests`, `ScoreTrackingTests`, `ScoreOverlayTests`, `ChaptersTests`, `ExportTimelineTests` |
-| Storage, queue and progress | `ProjectPersistenceTests`, `AppStorageTests`, `ProcessingJobTests`, `RecordingImportTests`, `AnalysisProgressTests` |
+| Storage, queue and progress | `ProjectPersistenceTests`, `PortableReviewPreferencesTests`, `AppStorageTests`, `ProcessingJobTests`, `RecordingImportTests`, `AnalysisProgressTests` |
 | Layout and tutorial state | `EditorLayoutTests`, `InterfaceScaleTests`, `GuidedTourTests` |
 | Hosted media and persistence | `FeatureExtractionIntegrationTests`, `RenderingIntegrationTests`, `SourceVideoAccessTests`, `PhotoKitVideoSourceTests`, `QueueSnapshotTests`, `EditorProjectBindingTests` |
 | Orientation declaration | `AppOrientationDeclarationTests` reads the processed app plist, including device-qualified orientation keys |
@@ -19,6 +19,18 @@ interval counts or passing a self-roundtrip does not prove cross-platform parity
 Run portable tests with `scripts/test-core.ps1` on the configured lab, or
 `swift test` from this directory after staging the required canonical fixtures.
 Missing fixture skips are not a successful inference-parity result.
+
+`PortableReviewPreferencesTests` stages the shared
+[`corrections.ui` fixture](../tests/fixtures/portable-review-preferences.json)
+through `scripts/prepare-source.py`. It covers the
+[portable preferences contract](../docs/portable-review-preferences.md), archive
+import/export/reimport, local checkpoints and reset, opaque future versions,
+chapter extensions and bounded JSON validation. Native final-score rendering
+uses `renderScoreOnFinalVideo`; the independent web preview score flag is retained
+without activation. Portable tests do not typecheck SwiftUI or exercise AVPlayer,
+source relinking, accessibility/layout, or encoded MP4 output. Verify playback,
+score/timeline/fade controls, chapters and persistence on real iPhone and iPad
+before release, including relink, reset and export/reimport.
 
 After normal source upload, run hosted and UI tests on the Mac:
 

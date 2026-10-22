@@ -198,11 +198,22 @@ struct EditorWorkspace: View {
         .padding(.leading, -landscapeInsets.leading)
         .padding(.trailing, -landscapeInsets.trailing)
         .background(EditorPalette.paper.ignoresSafeArea())
+        .safeAreaInset(edge: .top) {
+            if let notice = PortableReviewPreferences.notice(draft) {
+                Text(notice).font(.caption).padding(8).frame(maxWidth: .infinity)
+                    .background(EditorPalette.kept).accessibilityIdentifier("portablePreferencesNotice")
+            }
+        }
         .onAppear {
+            synchronizePreferencesOnOpen()
             allSuggestions = (try? project.feedback.map(ProjectArchive.suppressionRegions)) ?? []
             refreshPresentation(); pollPlayback(); setTrimWindow()
         }
-        .onChange(of: project.draft) { _, _ in refreshPresentation() }
+        .onChange(of: project.draft) { _, _ in
+            if let fade = draft.fadeScoreOverlay { fadeScoreOverlay = fade }
+            refreshPresentation()
+        }
+        .onChange(of: project.id) { _, _ in synchronizePreferencesOnOpen() }
         .onReceive(clock) { _ in pollPlayback() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             deviceOrientation = UIDevice.current.orientation
@@ -493,7 +504,7 @@ struct EditorWorkspace: View {
                     compactToggleLabel("Play only the final video", detail: "Skip every part that will not be saved")
                 }.accessibilityIdentifier("finalCutPreview")
                 if score.enabled {
-                    Toggle(isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value; if !value { $0.renderScoreTimeline = false } } })) {
+                    Toggle(isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value } })) {
                         compactToggleLabel("Add scores to the final video", detail: "Preview the scoreboard and include it when you save")
                     }.accessibilityIdentifier("renderScores")
                     if draft.renderScoreOverlay {
@@ -570,7 +581,7 @@ struct EditorWorkspace: View {
                         let aspect = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize.width / sourceSize.height : 16.0 / 9.0
                         let width = min(geometry.size.width, geometry.size.height * aspect)
                         let height = width / aspect
-                        ScoreOverlayPreview(prepared: preparedOverlay, sourceTimestampMs: playheadMs, renderTimeline: draft.renderScoreTimeline, fadeScoreOverlay: fadeScoreOverlay)
+                        ScoreOverlayPreview(prepared: preparedOverlay, sourceTimestampMs: playheadMs, renderTimeline: draft.renderScoreTimeline, fadeScoreOverlay: draft.fadeScoreOverlay ?? fadeScoreOverlay)
                             .frame(width: width, height: height)
                             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                     }.allowsHitTesting(false)
@@ -617,8 +628,8 @@ struct EditorWorkspace: View {
                     .frame(minWidth: 40, maxWidth: .infinity).frame(height: 36).accessibilityLabel("Seek source video").accessibilityIdentifier("sourceSeek")
             }
             Picker("Speed", selection: Binding(get: { draft.playbackRate }, set: { value in
-                edit { $0.playbackRate = value }; if playing { player.rate = value }
-            })) { ForEach([Float(1), 2, 4, 8], id: \.self) { Text("\(Int($0))×").tag($0) } }
+                edit { $0.playbackRate = value }; if playing { player.rate = Float(value) }
+            })) { ForEach(PortableReviewPreferences.playbackRates(draft.playbackRate), id: \.self) { Text(PortableReviewPreferences.playbackRateLabel($0)).tag($0) } }
                 .pickerStyle(.menu).font(isPhone ? .system(size: 11) : .body).controlSize(isPhone ? .mini : .regular).accessibilityIdentifier("playbackRate")
             Button(playing ? "Pause" : "Play", action: togglePlay)
                 .buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white)).disabled(player.currentItem == nil).accessibilityIdentifier("playPause")
@@ -632,12 +643,12 @@ struct EditorWorkspace: View {
                 }
                 HStack(spacing: 8) {
                     Menu {
-                        ForEach([Float(1), 2, 4, 8], id: \.self) { rate in
-                            Button("\(Int(rate))x") {
-                                edit { $0.playbackRate = rate }; if playing { player.rate = rate }
+                        ForEach(PortableReviewPreferences.playbackRates(draft.playbackRate), id: \.self) { rate in
+                            Button(PortableReviewPreferences.playbackRateLabel(rate)) {
+                                edit { $0.playbackRate = rate }; if playing { player.rate = Float(rate) }
                             }
                         }
-                    } label: { Text("Speed \u{00B7} \(Int(draft.playbackRate))x") }
+                    } label: { Text("Speed \u{00B7} \(PortableReviewPreferences.playbackRateLabel(draft.playbackRate))") }
                         .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink, expand: true, minimumHeight: 48))
                         .accessibilityIdentifier("playbackRate")
                     Button(playing ? "Pause" : "Play", action: togglePlay)
@@ -846,7 +857,9 @@ struct EditorWorkspace: View {
     }
     private var scoreVisibilityPicker: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Picker("Score visibility", selection: $fadeScoreOverlay) {
+            Picker("Score visibility", selection: Binding(get: { draft.fadeScoreOverlay ?? fadeScoreOverlay }, set: { value in
+                edit { $0.fadeScoreOverlay = value }; fadeScoreOverlay = value
+            })) {
                 Text("Always visible").tag(false)
                 Text("Fade in and out").tag(true)
             }.pickerStyle(.menu).accessibilityIdentifier("scoreVisibility")
@@ -855,7 +868,6 @@ struct EditorWorkspace: View {
         }
     }
     private func saveVideoWithOverlaySettings() {
-        edit { $0.fadeScoreOverlay = fadeScoreOverlay }
         onSave()
         onExportVideo()
     }
@@ -866,7 +878,7 @@ struct EditorWorkspace: View {
                 .accessibilityIdentifier("finalCutPreview")
             Divider().padding(.vertical, 6)
             sectionHeading("VIDEO OVERLAY")
-            Toggle("Render scores", isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value; if !value { $0.renderScoreTimeline = false } } }))
+            Toggle("Render scores", isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value } }))
                 .accessibilityIdentifier("renderScores")
             if draft.renderScoreOverlay && score.enabled { scoreVisibilityPicker }
             Toggle("Render point timeline", isOn: Binding(get: { draft.renderScoreTimeline }, set: { value in edit { $0.renderScoreTimeline = value } }))
@@ -1174,6 +1186,11 @@ struct EditorWorkspace: View {
     }
 
     private func edit(_ operation: (inout EditorDraft) -> Void) { var value = draft; operation(&value); replaceDraft(value) }
+    private func synchronizePreferencesOnOpen() {
+        let opened = PortableReviewPreferences.onOpen(draft, deviceFade: fadeScoreOverlay)
+        if opened != draft { replaceDraft(opened) }
+        fadeScoreOverlay = opened.fadeScoreOverlay ?? false
+    }
     private func replaceDraft(_ value: EditorDraft) {
         var value = value; value.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1_000)
         do { try value.validate(durationMs: project.durationMs); project.draft = value; onSave() }
@@ -1201,7 +1218,7 @@ struct EditorWorkspace: View {
         let members = rallyGroups.first { $0.cutIds.contains(cut.id) }?.cuts ?? [cut]
         var value = draft
         for member in members { value = EditorMath.setIncluded(value, cutId: member.id, included: keep) }
-        value.reviewedCutIds.formUnion(members.map(\.id))
+        value.reviewedCutIds.formUnion(members.filter { $0.origin == .inferred }.map(\.id))
         replaceDraft(value)
     }
     private func decideCleanup(_ suggestion: SuppressionRegion, keep: Bool) {
@@ -1232,13 +1249,13 @@ struct EditorWorkspace: View {
     private func previewRally(_ cut: EditableCut) {
         edit { $0.finalPreviewEnabled = false }
         seek(cut.keepStartMs); previewEndMs = cut.keepEndMs
-        player.playImmediately(atRate: draft.playbackRate); playing = true
+        player.playImmediately(atRate: Float(draft.playbackRate)); playing = true
     }
     private func nextReview() {
         let current = reviewCuts.first { $0.id == currentCut?.id }
         let remaining = reviewCuts.filter { $0.id != current?.id }
         if let current, let group = rallyGroups.first(where: { $0.id == current.id }) {
-            edit { $0.reviewedCutIds.formUnion(group.cutIds) }
+            edit { $0.reviewedCutIds.formUnion(group.cuts.filter { $0.origin == .inferred }.map(\.id)) }
         }
         guard let next = remaining.first(where: { $0.keepStartMs >= playheadMs }) ?? remaining.first,
               let timestamp = EditorReview.firstReviewableTime(startMs: next.keepStartMs, endMs: next.keepEndMs, ignored: draft.ignoredIntervals) else { return }
@@ -1275,7 +1292,7 @@ struct EditorWorkspace: View {
         guard player.currentItem != nil else { return }
         previewEndMs = nil
         if player.rate > 0 { player.pause(); playing = false }
-        else { if playheadMs >= project.durationMs { seek(bounds.startMs) }; player.playImmediately(atRate: draft.playbackRate); playing = true }
+        else { if playheadMs >= project.durationMs { seek(bounds.startMs) }; player.playImmediately(atRate: Float(draft.playbackRate)); playing = true }
     }
     private func pollPlayback() {
         let seconds = player.currentTime().seconds
