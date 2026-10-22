@@ -25,7 +25,15 @@ extension EditorMath {
         var indexes: [String: Set<Int>] = [:]
         for cut in cuts { indexes[cut.id] = Set(intervals.indices.filter { intervals[$0].cutIds.contains(cut.id) }) }
         var groups: [EditableRallyGroup] = []
+        let explicit = Dictionary(grouping: cuts.filter { $0.editableGroupId != nil }, by: { $0.editableGroupId! })
+        var emitted = Set<String>()
         for cut in cuts.sorted(by: { ($0.keepStartMs, $0.keepEndMs) < ($1.keepStartMs, $1.keepEndMs) }) {
+            if let token = cut.editableGroupId {
+                if emitted.insert(token).inserted {
+                    groups.append(.init(cuts: explicit[token]!.sorted { ($0.coreStartMs, $0.id) < ($1.coreStartMs, $1.id) }))
+                }
+                continue
+            }
             guard let previous = groups.last else { groups.append(.init(cuts: [cut])); continue }
             let previousIndexes = previous.cutIds.reduce(into: Set<Int>()) { $0.formUnion(indexes[$1] ?? []) }
             let sharesInterval = !previousIndexes.isDisjoint(with: indexes[cut.id] ?? [])
@@ -33,10 +41,18 @@ extension EditorMath {
                 $0.rallyId == cut.id || ($0.rallyId == nil && $0.timestampMs >= cut.keepStartMs && $0.timestampMs < cut.coreEndMs)
             }
             let hardBoundary = hardBoundaryCutIds.contains(cut.id) || !previous.cutIds.isDisjoint(with: hardBoundaryCutIds)
-            if !sharesInterval || separatedByServe || hardBoundary { groups.append(.init(cuts: [cut])) }
+            if previous.cuts.contains(where: { $0.editableGroupId != nil }) || !sharesInterval || separatedByServe || hardBoundary { groups.append(.init(cuts: [cut])) }
             else { groups[groups.count - 1].cuts.append(cut) }
         }
         return groups
+    }
+    /// A paused player must not reselect an overlapping sibling's padding.
+    public static func rallySelectionAtPlayhead(groups: [EditableRallyGroup], selectedId: String?,
+                                                positionMs: Int64, playing: Bool) -> EditableRallyGroup? {
+        if !playing, let selected = groups.first(where: { $0.id == selectedId }),
+           selected.cuts.contains(where: { $0.editableGroupId != nil }) { return selected }
+        return groups.first { $0.keepStartMs <= positionMs && positionMs < $0.coreEndMs } ??
+            groups.last { $0.coreStartMs <= positionMs } ?? groups.first
     }
 }
 
