@@ -213,7 +213,81 @@ try {
       assert.deepEqual(probe.exports.at(-1)[1], [{ start: 0, end: 2, cutIds: ["R001"] }], "Source validation must preserve the frozen cut intervals");
     } finally { held.resolve({ ready: true, reason: null }); }
   }
-  console.log("App export: awaited readiness, project queue, failure/retry, cancellation, native target, deletion and source/instance races passed.");
+  const staleStatusFailures = [];
+  for (const failureMode of ["conflict", "storage"]) {
+    await act(async () => root.render(null));
+    indexedDB = new IDBFactory(); window.localStorage.clear();
+    const project = fixture(`synthetic-export-status-${failureMode}`);
+    Object.assign(project, await store.putProject(project, { expectedSource: null }));
+    window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
+    window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+    await act(async () => root.render(React.createElement(App)));
+    await waitFor(() => document.querySelector(".taste-rally-desk"));
+    const original = new File(["video"], project.source.name, { type: "video/mp4", lastModified: 100 });
+    await attach(project, original); await click("Export");
+
+    // Delay only the old status write's DB-open completion. Its production
+    // persistence/token checks remain real; the second case injects a read error.
+    const open = indexedDB.open.bind(indexedDB);
+    let interceptNext = false, releaseOpen = null, settled = false, rejectOpen;
+    indexedDB.open = function (...args) {
+      const request = open(...args);
+      if (interceptNext) {
+        interceptNext = false;
+        const add = request.addEventListener.bind(request);
+        request.addEventListener = function (type, listener, options) {
+          if (type === "error") rejectOpen = listener;
+          if (type === "success") add(type, event => {
+            releaseOpen = () => {
+              if (failureMode === "storage") {
+                Object.defineProperty(request, "error", { value: new DOMException("Synthetic delayed storage failure", "UnknownError"), configurable: true });
+                rejectOpen.call(request, event); settled = true;
+              } else {
+                const database = request.result;
+                const transaction = database.transaction.bind(database);
+                database.transaction = (...transactionArgs) => {
+                  const result = transaction(...transactionArgs);
+                  result.addEventListener("complete", () => { settled = true; });
+                  result.addEventListener("abort", () => { settled = true; });
+                  return result;
+                };
+                listener.call(request, event);
+              }
+            };
+          }, options);
+          else add(type, listener, options);
+        };
+      }
+      return request;
+    };
+    probe.nextExport = async () => { interceptNext = true; };
+    try {
+      await click("Save MP4"); await waitFor(() => releaseOpen !== null);
+      probe.nextExport = null;
+      const old = await store.getProject(project.id), recreated = { ...old };
+      delete recreated.instanceId;
+      await store.deleteProject(project.id, old.instanceId);
+      const fresh = await store.putProject(recreated, { expectedSource: null });
+      await click("Save MP4");
+      await waitFor(() => document.body.textContent.includes("instance changed"));
+      await attach(fresh, original);
+      const expected = await store.getProject(project.id);
+      await act(async () => releaseOpen()); releaseOpen = null;
+      await waitFor(() => settled);
+      assert.deepEqual(await store.getProject(project.id), expected, "Old status callbacks must preserve replacement storage");
+      assert.equal(Boolean(document.querySelector('.td-reconnect input[type="file"]')), false,
+        `${failureMode}: old status callbacks must preserve the replacement's verified source link`);
+      assert.doesNotMatch(document.body.textContent, /Reopen it before saving export status|exported status could not be saved/,
+        `${failureMode}: obsolete status errors must not reach the replacement review`);
+    } catch (error) {
+      staleStatusFailures.push(`${failureMode}: ${error.message}`);
+    } finally {
+      if (releaseOpen) await act(async () => releaseOpen());
+      indexedDB.open = open; probe.nextExport = null;
+    }
+  }
+  assert.deepEqual(staleStatusFailures, [], "Late export-status conflict/storage failures must be scoped to their original project instance");
+  console.log("App export: awaited readiness, project queue, failure/retry, cancellation, native target, deletion and source/instance races and delayed status callbacks passed.");
 } finally {
   await act(async () => root.unmount());
   await server.close(); dom.window.close();

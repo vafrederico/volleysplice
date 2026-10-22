@@ -492,8 +492,10 @@ function WebApp() {
         project.id === job.projectId ? { ...project, lastExportedAt } : project,
       ));
       void markProjectExported(job.projectId, lastExportedAt, job.projectInstanceId).catch((cause) => {
-        if (cause instanceof ProjectSourceConflictError) { sourceFailure(job.projectId, cause); return; }
-        if (mountedRef.current) setError("The video was exported, but its exported status could not be saved in browser storage.");
+        if (!mountedRef.current || wasDeleted(job.projectId, job.projectInstanceId) ||
+            !projectsRef.current.some((project) => project.id === job.projectId && project.instanceId === job.projectInstanceId)) return;
+        if (cause instanceof ProjectSourceConflictError) { sourceFailure(job.projectId, cause, job.projectInstanceId); return; }
+        setError("The video was exported, but its exported status could not be saved in browser storage.");
       });
     }
   }, []);
