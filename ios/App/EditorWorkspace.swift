@@ -136,7 +136,7 @@ struct EditorWorkspace: View {
     private var pendingConfidenceIds: Set<String> { presentation.pendingConfidenceIds }
     private var rallyGroups: [EditableRallyGroup] { presentation.groups }
     private var currentGroup: EditableRallyGroup? {
-        if !playing, let selected = rallyGroups.first(where: { $0.id == selectedRallyId }),
+        if !playing, let selectedRallyId, let selected = rallyGroups.first(where: { $0.cutIds.contains(selectedRallyId) }),
            selected.cuts.contains(where: { $0.editableGroupId != nil }) { return selected }
         if let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
            let group = rallyGroups.first(where: { $0.cuts.contains { $0.coreStartMs < selected.endMs && selected.startMs < $0.coreEndMs } }) { return group }

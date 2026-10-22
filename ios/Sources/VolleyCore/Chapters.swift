@@ -49,7 +49,7 @@ extension EditorMath {
     /// A paused player must not reselect an overlapping sibling's padding.
     public static func rallySelectionAtPlayhead(groups: [EditableRallyGroup], selectedId: String?,
                                                 positionMs: Int64, playing: Bool) -> EditableRallyGroup? {
-        if !playing, let selected = groups.first(where: { $0.id == selectedId }),
+        if !playing, let selectedId, let selected = groups.first(where: { $0.cutIds.contains(selectedId) }),
            selected.cuts.contains(where: { $0.editableGroupId != nil }) { return selected }
         return groups.first { $0.keepStartMs <= positionMs && positionMs < $0.coreEndMs } ??
             groups.last { $0.coreStartMs <= positionMs } ?? groups.first

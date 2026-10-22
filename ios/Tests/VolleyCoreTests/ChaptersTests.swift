@@ -196,4 +196,20 @@ final class ChaptersTests: XCTestCase {
         XCTAssertEqual(EditorMath.nextId(prefix: "R", ids: ["R001", "R4294967296"]), "R4294967297")
         XCTAssertEqual(EditorMath.nextId(prefix: "R", ids: ["R001", "R009"]), "R010")
     }
+    func testPausedSelectionUsesImmutableMembershipAfterTrimmingChangesGroupRepresentative() throws {
+        let original = EditorDraft(sourceRevision: "selection", cuts: [
+            .init(id: "R001", coreStartMs: 10000, coreEndMs: 20000, keepStartMs: 8000, keepEndMs: 22000, editableGroupId: "A"),
+            .init(id: "R002", coreStartMs: 12000, coreEndMs: 18000, keepStartMs: 10000, keepEndMs: 20000, editableGroupId: "A"),
+            .init(id: "R003", coreStartMs: 11000, coreEndMs: 19000, keepStartMs: 9000, keepEndMs: 21000, editableGroupId: "B")])
+        let selectedId = try XCTUnwrap(groups(original).first { $0.cutIds.contains("R001") }?.id)
+        let trimmed = EditorMath.setCoreStart(original, cutId: "R001", valueMs: 14000, minimumMs: 0)
+        let current = try XCTUnwrap(EditorMath.rallySelectionAtPlayhead(groups: groups(trimmed), selectedId: selectedId,
+            positionMs: 10000, playing: false))
+        XCTAssertEqual(current.id, "R002", "the representative legitimately changes after trimming")
+        XCTAssertEqual(current.cutIds, ["R001", "R002"], "selection remains on the same explicit group")
+        var removed = trimmed
+        for id in current.cutIds { removed = EditorMath.setIncluded(removed, cutId: id, included: false) }
+        XCTAssertFalse(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
+        XCTAssertTrue(removed.cuts[2].included)
+    }
 }
