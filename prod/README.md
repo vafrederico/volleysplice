@@ -41,7 +41,9 @@ reconnecting the exact local file for playback or export—not rerunning inferen
 Reconnection uses the saved sampled fingerprint whenever one exists, even when a
 replacement file has identical name, size and modification time. Identical
 transferred bytes can have a different filename or timestamp. Legacy projects
-without a fingerprint retain exact metadata matching. Deleting
+without a fingerprint retain exact metadata matching. Starting a new analysis
+that would reuse a saved project verifies the same source identity before linking
+the video or reopening its review. Deleting
 a project also deletes its cached features, inference, and edit draft. The editor exports
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected

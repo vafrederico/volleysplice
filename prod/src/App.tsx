@@ -285,6 +285,7 @@ function WebApp() {
     useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedbackImporting, setFeedbackImporting] = useState(false);
+  const [checkingProjectSource, setCheckingProjectSource] = useState(false);
   const [exportJobs, setExportJobs] = useState<AppExportJob[]>([]);
 
   const projectsRef = useRef<VolleySpliceProject[]>([]);
@@ -306,6 +307,8 @@ function WebApp() {
   const resumePreviewAfterSeek = useRef(false);
   const candidateVideoRef = useRef<HTMLVideoElement>(null);
   const suppressionAugmentingRef = useRef(new Set<string>());
+  const checkingProjectSourceRef = useRef(false);
+  const candidateRevisionRef = useRef(0);
 
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
@@ -314,7 +317,7 @@ function WebApp() {
     "AudioDecoder" in window &&
     "VideoFrame" in window;
   const secureContext = window.isSecureContext;
-  const busy = workState === "opening" || feedbackImporting;
+  const busy = workState === "opening" || feedbackImporting || checkingProjectSource;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedSourceFile = selectedProjectId
@@ -599,6 +602,7 @@ function WebApp() {
   }
 
   function resetCandidate() {
+    candidateRevisionRef.current += 1;
     replacePreviewUrl(null);
     setFile(null);
     setInfo(null);
@@ -612,6 +616,7 @@ function WebApp() {
   }
 
   function selectProject(projectIdToSelect: string | null) {
+    candidateRevisionRef.current += 1;
     setSelectedProjectId(projectIdToSelect);
     setError(null);
     if (projectIdToSelect === null) resetCandidate();
@@ -743,6 +748,7 @@ function WebApp() {
 
   async function chooseFile(selected: File | null) {
     if (!selected) return;
+    candidateRevisionRef.current += 1;
     if (safariUnsupported) {
       setError(
         "Safari is not supported. Open VolleySplice in Google Chrome on your desktop computer instead.",
@@ -855,8 +861,8 @@ function WebApp() {
     setGameBoundary(side, candidateVideoRef.current?.currentTime ?? 0);
   }
 
-  function createAndQueueProject() {
-    if (!file || !info) return;
+  async function createAndQueueProject() {
+    if (!file || !info || checkingProjectSourceRef.current) return;
     const normalizedWindow = normalizeAnalysisWindow(
       analysisWindow,
       info.duration,
@@ -873,6 +879,41 @@ function WebApp() {
     const source = projectSource(file);
     const id = projectId(source, info, normalizedWindow, rallyModel);
     const existing = projectsRef.current.find((project) => project.id === id);
+    if (existing) {
+      const revision = candidateRevisionRef.current;
+      checkingProjectSourceRef.current = true;
+      setCheckingProjectSource(true);
+      try {
+        const matches = await sourceCanReconnectFile(existing.source, file);
+        if (!mountedRef.current || revision !== candidateRevisionRef.current)
+          return;
+        if (!matches) {
+          setError(
+            `This video does not match ${existing.source.name}. Choose the original video to reuse its saved analysis.`,
+          );
+          return;
+        }
+        if (
+          deletedProjectIdsRef.current.has(id) ||
+          !projectsRef.current.some((project) => project.id === id)
+        ) {
+          setError(
+            "This saved project is no longer available. Open another project.",
+          );
+          return;
+        }
+      } catch (cause) {
+        if (mountedRef.current && revision === candidateRevisionRef.current) {
+          setError(
+            `Could not verify the saved video: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        }
+        return;
+      } finally {
+        checkingProjectSourceRef.current = false;
+        if (mountedRef.current) setCheckingProjectSource(false);
+      }
+    }
     linkSourceFile(id, file);
 
     if (existing?.status === "ready" && existing.analysis) {
@@ -1179,10 +1220,17 @@ function WebApp() {
   ) {
     if (!selected) return;
     if (!(await sourceCanReconnectFile(project.source, selected))) {
-      setError(
-        `Choose the original ${project.source.name} file (${compactBytes(project.source.size)}). The selected file does not match this project.`,
+      const message = `Choose the original ${project.source.name} file (${compactBytes(project.source.size)}). The selected file does not match this project.`;
+      setError(message);
+      throw new Error(message);
+    }
+    if (
+      deletedProjectIdsRef.current.has(project.id) ||
+      !projectsRef.current.some((candidate) => candidate.id === project.id)
+    ) {
+      throw new Error(
+        "This project is no longer available. Open another project.",
       );
-      return;
     }
     linkSourceFile(project.id, selected);
     setError(null);
@@ -1775,7 +1823,11 @@ function WebApp() {
                     void attachSource(
                       selectedProject,
                       event.currentTarget.files?.[0] ?? null,
-                    )
+                    ).catch((cause) => {
+                      setError(
+                        `Could not reconnect the video: ${cause instanceof Error ? cause.message : String(cause)}`,
+                      );
+                    })
                   }
                 />
               </label>

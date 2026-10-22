@@ -85,12 +85,26 @@ try {
   assert.equal(JSON.stringify((await store.listProjects()).find(p => p.id === first.id).reviewDraft), saved);
   const unreadable = new File(["original"], original.name, { type: original.type, lastModified: original.lastModified });
   Object.defineProperty(unreadable, "slice", { value: () => { throw new Error("Synthetic read failure"); } });
-  await attach(unreadable); assert.ok(document.querySelector(".td-reconnect")); assert.equal(linkedFiles.length, 0);
-  await attach(original);
+  await attach(unreadable);
+  await waitFor(() => document.querySelector(".td-reconnect")?.textContent.includes("Could not reconnect"));
+  assert.equal(linkedFiles.length, 0);
+  assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
+  assert.equal(JSON.stringify((await store.listProjects()).find(p => p.id === first.id).reviewDraft), saved);
+  // A second read used to reach a separately rejecting App check whose void
+  // return was ignored by the hook. One authoritative validation removes that
+  // fallible duplicate gate; it must never be asked to hash this File twice.
+  const oneRead = new File(["original"], original.name, { type: original.type, lastModified: original.lastModified });
+  let reads = 0;
+  Object.defineProperty(oneRead, "slice", { value: (...args) => {
+    if (++reads > 1) throw new Error("Synthetic second read failure");
+    return original.slice(...args);
+  } });
+  await attach(oneRead);
   await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector(".td-reconnect"));
+  assert.equal(reads, 1, "App must authoritatively validate once before the hook links a source");
   await click(".td-stages button:last-child");
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Save MP4").disabled, false);
-  assert.ok(linkedFiles.every(file => file === original));
+  assert.ok(linkedFiles.every(file => file === oneRead));
 
   // Reopening clears the tab's source link. A transfer with different metadata
   // still connects by its persisted fingerprint and leaves analysis/review intact.
