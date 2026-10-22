@@ -81,6 +81,12 @@ internal object ModelFeedbackExporter {
             require(analysis.serveProbabilities.size == rows)
             require(analysis.deadStateProbabilities.size == rows)
         }
+        // Cleanup geometry belongs to the saved inference, not the evictable AV cache.
+        // Neural rally models do not use the legacy ensemble's cleanup layer.
+        val suppression = project.suppression.takeUnless { RallyModels.isNeural(project.modelId) }
+        require(analysis == null || suppression == null ||
+            suppression.probabilities().size == analysis.timestamps.size
+        ) { "Suppression probabilities do not match the retained feature-cache timeline" }
         val warnings = JSONArray()
         if (RallyModels.isNeural(project.modelId) && project.neuralScores == null) {
             warnings.put("Neural scores were not retained by this older analysis; saved rally ranges and corrections are still included.")
@@ -88,6 +94,9 @@ internal object ModelFeedbackExporter {
         if (analysis == null) {
             warnings.put(
                 "Base features and probability traces are unavailable because the retained feature cache is missing; inference ranges and corrections are still included.",
+            )
+            if (suppression != null) warnings.put(
+                "Suppression probability traces have no retained feature-cache timeline; saved cleanup events, suggestions and review state are still included.",
             )
         }
         if (sampledFingerprint == null) {
@@ -110,7 +119,7 @@ internal object ModelFeedbackExporter {
         val manualCuts = draft.cuts.filter { it.origin == CutOrigin.MANUAL }
         val inferenceRows = analysis?.timestamps?.size ?: 0
         val updatedAtMs = draft.updatedAtMs.takeIf { it > 0 } ?: project.updatedAtMs
-        val effectiveIds = EditorMath.effectiveKeptIds(draft, project.suppression)
+        val effectiveIds = EditorMath.effectiveKeptIds(draft, suppression)
         val excludedRallyIds = draft.cuts.filter {
             it.origin == CutOrigin.INFERRED && (!it.included || it.id !in effectiveIds)
         }.map { it.id }.sorted()
@@ -211,20 +220,25 @@ internal object ModelFeedbackExporter {
                         "previous-production",
                     ))
                 })
-                put("suppression", if (analysis != null) project.suppression
-                    ?.takeIf { it.probabilities().size == inferenceRows }
-                    ?.let { suppression -> JSONObject().apply {
+                put("suppression", suppression?.let { suppression -> JSONObject().apply {
                     put("modelId", suppression.modelId())
                     put("artifactSha256", suppression.artifactSha256())
                     put("weightsSha256", suppression.weightsSha256())
                     put("decoderVersion", suppression.decoderVersion())
                     put("policyContractVersion", 1)
                     put("identicalPolicyResults", identicalSuppressionPolicies(suppression))
-                    put("timestamps", encode(analysis.timestamps, intArrayOf(inferenceRows)))
+                    put("timestamps", encode(analysis?.timestamps ?: doubleArrayOf(), intArrayOf(inferenceRows)))
                     put("probabilities", encode(
-                        suppression.probabilities(),
-                        intArrayOf(suppression.probabilities().size),
+                        if (analysis != null) suppression.probabilities() else floatArrayOf(),
+                        intArrayOf(inferenceRows),
                     ))
+                    if (analysis == null) {
+                        // Schema v3 traces share the AV timeline (zero rows without it).
+                        // Keep the original values separately for native reimport/reexport;
+                        // these are not an aligned training trace or reconstructed samples.
+                        put("retainedProbabilities", encode(suppression.probabilities(),
+                            intArrayOf(suppression.probabilities().size)))
+                    }
                     put("decodedIntervals", analysisIntervals(
                         suppression.decodedIntervals(),
                         "suppression",
@@ -243,7 +257,7 @@ internal object ModelFeedbackExporter {
                             put("eligiblePolicyIds", JSONArray(suggestion.eligiblePolicyIds()))
                         }) }
                     })
-                }} ?: JSONObject.NULL else JSONObject.NULL)
+                }} ?: JSONObject.NULL)
                 put("probabilityModelId", FeatureSchema.ALL_LABELS_V2_MODEL_ID)
                 // Native feedback regenerates auxiliary traces from cached AV features.
                 put("probabilityModelIds", JSONObject().apply {
@@ -301,7 +315,7 @@ internal object ModelFeedbackExporter {
                     }
                 })
                 put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
-                put("suppression", suppressionCorrections(project.suppression, draft))
+                put("suppression", suppressionCorrections(suppression, draft))
                 put("correctedRanges", JSONArray().apply {
                     draft.cuts.forEach { put(correctedRange(it)) }
                 })
@@ -339,7 +353,7 @@ internal object ModelFeedbackExporter {
                 }) }
             })
             put("finalExportProvenance", JSONArray().apply {
-                EditorMath.materialize(draft, project.suppression).provenance.forEach { segment ->
+                EditorMath.materialize(draft, suppression).provenance.forEach { segment ->
                     put(JSONObject().apply {
                         put("start", segment.startMs / 1_000.0)
                         put("end", segment.endMs / 1_000.0)

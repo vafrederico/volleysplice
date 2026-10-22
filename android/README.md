@@ -22,6 +22,16 @@ Embeddings remain temporary and are not exported. Import restores saved results
 without rerunning video inference; older projects without retained neural scores
 remain usable and export an explicit warning about that missing payload.
 
+Legacy cleanup events, policy-eligible suggestions, and review decisions survive
+feedback export/import even after the AV feature cache is evicted. Schema v3's
+aligned inference and suppression traces remain empty without that cache; the
+optional `initialInference.suppression.retainedProbabilities` array archives the
+saved native suppression values without claiming an available sample timeline.
+Native import restores those values for later reexport. Missing-feature warnings
+remain, and the project stays editable with its original cuts, cleanup scopes,
+overrides, touched IDs, and materialized export union. Neural rally imports ignore
+the legacy cleanup layer.
+
 ```text
 video URI
   -> MediaExtractor presentation-order sample plan
