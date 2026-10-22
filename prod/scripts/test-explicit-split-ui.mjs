@@ -149,6 +149,8 @@ try {
     { name: "unassigned-adds-two", assigned: 2047, targetAssigned: false, blocked: /2,048/ },
     { name: "many-unassigned", assigned: 0, targetAssigned: false, legacy: 2048 },
     { name: "assigned-siblings", assigned: 2046, targetAssigned: false, legacy: 3, longSibling: true },
+    { name: "ignored-id-collision", assigned: 0, targetAssigned: false, rightId: "R003",
+      ignoredIntervals: [{ id: "R002", start: 1, end: 2, reason: "other" }] },
   ];
   const failures = [];
   for (const scenario of limitCases) {
@@ -170,6 +172,7 @@ try {
           id: scenario.longSibling && index === 0 ? "L".repeat(257) : `L${index}` })),
       ];
       caseProject.reviewDraft.portableUi = futureUi;
+      caseProject.reviewDraft.ignoredIntervals = scenario.ignoredIntervals ?? [];
       assert.ok(parseCutDraft(JSON.stringify(caseProject.reviewDraft), caseSeed), `${scenario.name}: input must be valid`);
       await act(async () => { await putProject(caseProject); });
       await act(async () => root.render(React.createElement(Editor, { key: scenario.name, savedProject: caseProject,
@@ -195,14 +198,38 @@ try {
         await act(async () => { projectAfter = (await listProjects()).find((item) => item.id === caseProject.id); });
         assert.deepEqual(projectAfter.reviewDraft, projectBefore.reviewDraft, `${scenario.name}: IndexedDB must be unchanged`);
       } else {
+        if (scenario.rightId) {
+          assert.equal(document.querySelector(".rd-register-list").children[1].querySelector(".rd-register-id").textContent,
+            scenario.rightId, "the rendered split must allocate outside the ignored-range namespace");
+        }
         await waitFor(() => JSON.parse(window.localStorage.getItem(caseKey)).cuts.length === expectedLength);
         const cuts = JSON.parse(window.localStorage.getItem(caseKey)).cuts;
         assert.equal(cuts[0].id, id, `${scenario.name}: existing IDs stay stable`);
-        assert.equal(cuts[1].id, "R002");
+        assert.equal(cuts[1].id, scenario.rightId ?? "R002");
         assert.ok(cuts[0].editableGroupId && cuts[1].editableGroupId);
         assert.notEqual(cuts[0].editableGroupId, cuts[1].editableGroupId);
         assert.deepEqual(cuts.slice(2), caseProject.reviewDraft.cuts.slice(1), `${scenario.name}: preserve assigned siblings and unassigned legacy cuts`);
         assert.equal(cuts.filter((item) => item.editableGroupId !== undefined).length, Math.max(2, scenario.assigned + (scenario.targetAssigned ? 1 : 2)));
+        if (scenario.name === "ignored-id-collision") {
+          assert.deepEqual(cuts.map((item) => item.id), ["R001", "R003"]);
+          assert.deepEqual(JSON.parse(window.localStorage.getItem(caseKey)).ignoredIntervals, scenario.ignoredIntervals);
+          await key("z", { ctrlKey: true });
+          await waitFor(() => JSON.parse(window.localStorage.getItem(caseKey)).cuts.length === 1);
+          assert.equal(document.querySelector(".rd-register-list").children.length, 1);
+          assert.ok(parseCutDraft(window.localStorage.getItem(caseKey), caseSeed));
+          await key("y", { ctrlKey: true });
+          await waitFor(() => JSON.parse(window.localStorage.getItem(caseKey)).cuts.length === 2);
+          assert.equal(document.querySelector(".rd-register-list").children.length, 2);
+          assert.deepEqual(JSON.parse(window.localStorage.getItem(caseKey)).cuts, cuts, "redo keeps the allocated IDs and explicit metadata");
+          let reloadedCase;
+          await act(async () => { reloadedCase = (await listProjects()).find((item) => item.id === caseProject.id); });
+          assert.deepEqual(reloadedCase.reviewDraft.cuts, cuts, "the fresh range IDs must autosave to IndexedDB");
+          assert.deepEqual(reloadedCase.reviewDraft.ignoredIntervals, scenario.ignoredIntervals);
+          const history = JSON.parse(window.localStorage.getItem(historyKey));
+          for (const snapshot of [...history.past, history.present, ...history.future]) {
+            assert.ok(parseCutDraft(JSON.stringify(snapshot), caseSeed), "undo/redo snapshots must remain parseable");
+          }
+        }
       }
       const saved = JSON.parse(window.localStorage.getItem(caseKey));
       assert.ok(parseCutDraft(JSON.stringify(saved), caseSeed), `${scenario.name}: draft save remains valid`);
@@ -214,8 +241,10 @@ try {
       let backup;
       await act(async () => { backup = JSON.parse(await downloads[downloadIndex].text()); });
       assert.deepEqual(backup.corrections.correctedRanges, saved.cuts);
-      assert.deepEqual(importModelFeedbackProject(JSON.stringify(backup)).project.importedFeedback.initialDraft.cuts, saved.cuts,
+      const reimportedDraft = importModelFeedbackProject(JSON.stringify(backup)).project.importedFeedback.initialDraft;
+      assert.deepEqual(reimportedDraft.cuts, saved.cuts,
         `${scenario.name}: the actual component backup must reimport`);
+      assert.deepEqual(reimportedDraft.ignoredIntervals, saved.ignoredIntervals);
       // Import validation stays strict even though the action now prevents creating these states.
       if (scenario.name === "at-limit") {
         backup.corrections.correctedRanges.push({ ...backup.corrections.correctedRanges[0], id: "extra-part" });
@@ -223,6 +252,9 @@ try {
       } else if (scenario.name === "long-legacy-id") {
         backup.corrections.correctedRanges[0].editableGroupId = "split:invalid-legacy";
         assert.throws(() => importModelFeedbackProject(JSON.stringify(backup)), /stable cut identity/);
+      } else if (scenario.name === "ignored-id-collision") {
+        backup.corrections.correctedRanges[1].id = "R002";
+        assert.throws(() => importModelFeedbackProject(JSON.stringify(backup)), /not compatible/);
       }
       console.log(`Production RallyDesk split limit: ${scenario.name} passed.`);
     } catch (error) {

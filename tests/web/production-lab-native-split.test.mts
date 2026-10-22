@@ -25,7 +25,7 @@ async function loadSplitEvent() {
   return module.exports.splitEvent;
 }
 
-test("native rally split keeps the corrected first serve and requests a new serving-side decision", async () => {
+test("native rally split skips ignored IDs, keeps the corrected first serve and requests a new serving-side decision", async () => {
   const scoreTracking = createScoreTracking(true);
   scoreTracking.serveMarkers = [
     { id: "lab-serve:R1", rallyId: "R001", timestamp: 10, side: "far", modelSide: "near", origin: "model", ignorePreviousPoint: true },
@@ -39,17 +39,18 @@ test("native rally split keeps the corrected first serve and requests a new serv
   let removed = scoreTracking.removedModelMarkerIds;
   let selected = "R001";
   splitEvent({ selected: originalClip, playhead: 15, clips, suppressionDecisions: {}, workingDraft: { ...createCutDraft({ analysisId: "fixture", recordingId: "fixture", duration: 100,
-      rallies: [{ id: "R001", start: 10, end: 20, confidence: .9, included: true }], ignoredIntervals: [] }), scoreTracking },
+      rallies: [{ id: "R001", start: 10, end: 20, confidence: .9, included: true }], ignoredIntervals: [] }),
+      ignoredIntervals: [{ id: "R002", start: 1, end: 2, reason: "other" }], scoreTracking },
     splitLabServeMarkers, splitCutAt, splitCutValidationMessage, gameStart: 0, gameEnd: 100,
     setClips: (update: (value: typeof clips) => typeof clips) => { clips = update(clips); },
     setScoreMarkers: (value: typeof markers) => { markers = value; },
     setRemovedModelMarkerIds: (value: string[]) => { removed = value; },
     setSuppressionDecisions: () => {}, setSelectedId: (value: string) => { selected = value; }, setReviewMessage: () => {},
   });
-  assert.deepEqual(clips.map(clip => [clip.id, clip.start, clip.end]), [["R001", 10, 15], ["R002", 15, 20]]);
-  assert.equal(selected, "R002");
+  assert.deepEqual(clips.map(clip => [clip.id, clip.start, clip.end]), [["R001", 10, 15], ["R003", 15, 20]]);
+  assert.equal(selected, "R003");
   assert.deepEqual(markers.find(marker => marker.id === "lab-serve:R1"), { ...original.serveMarkers[0], rallyId: "R001" });
-  assert.deepEqual(markers.find(marker => marker.rallyId === "R002"), { id: "lab-split-serve:R002", rallyId: "R002", timestamp: 15,
+  assert.deepEqual(markers.find(marker => marker.rallyId === "R003"), { id: "lab-split-serve:R003", rallyId: "R003", timestamp: 15,
     side: "review", modelSide: "review", origin: "model", ignorePreviousPoint: false });
   assert.equal(markers.filter(marker => marker.rallyId === "R001").length, 1);
   assert.deepEqual(scoreTracking, original, "the immutable model score input must stay unchanged");

@@ -128,8 +128,8 @@
     {
       "source": "prod/src/lib/cut-draft.ts",
       "destination": "components/production-lab/editor/lib/cut-draft.ts",
-      "sourceSha256": "d654ff9a8e110cde3f16f18e9b923271278a57151e6d5751e4d78c08fe7398ba",
-      "snapshotSha256": "902cb82dc6b883e7d2f6516909d32dc7fae54876b760761cf742e170b3b60cf3"
+      "sourceSha256": "3a1a7c295a772ad8947ceccf67cbb21e686a905187732f27672974a07db160b2",
+      "snapshotSha256": "cbdc5ce87ff569c3de7254f5993e9f4348e3c159c5b9a5e70a44d743c82bcc41"
     },
     {
       "source": "prod/src/lib/edit-list.ts",

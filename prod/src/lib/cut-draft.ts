@@ -151,13 +151,18 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function nextCutId(prefix: string, cuts: readonly EditableCut[]): string {
-  const used = new Set(cuts.map((cut) => cut.id));
-  for (let index = 1; index < 10_000; index += 1) {
+/** Cuts and ignored intervals share one namespace; score IDs and group tokens do not. */
+function draftRangeIds(draft: Pick<CutDraft, "cuts" | "ignoredIntervals">): string[] {
+  return [...draft.cuts.map((cut) => cut.id), ...draft.ignoredIntervals.map((interval) => interval.id)];
+}
+
+function nextCutId(prefix: string, draft: Pick<CutDraft, "cuts" | "ignoredIntervals">): string {
+  const used = new Set(draftRangeIds(draft));
+  // A finite namespace always leaves a free numbered ID within used.size + 1.
+  for (let index = 1; ; index += 1) {
     const candidate = `${prefix}${String(index).padStart(3, "0")}`;
     if (!used.has(candidate)) return candidate;
   }
-  return `${prefix}${Date.now()}`;
 }
 
 function withTouchedCachedCuts(draft: CutDraft, ids: readonly string[]): CutDraft {
@@ -543,10 +548,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     ) {
       return null;
     }
-    const ids = [
-      ...value.cuts.map((cut) => cut.id),
-      ...value.ignoredIntervals.map((interval) => interval.id),
-    ];
+    const ids = draftRangeIds({ cuts: value.cuts, ignoredIntervals: value.ignoredIntervals });
     if (new Set(ids).size !== ids.length) return null;
     if (value.cuts.filter((cut) => cut.editableGroupId !== undefined).length > MAX_EXPLICIT_RALLY_MEMBERS) return null;
     const cachedCutIds = new Set(
@@ -670,18 +672,20 @@ export function setCutCoreRange(
 export function splitCutValidationMessage(draft: CutDraft, cutId: string): string | null {
   const target = draft.cuts.find((cut) => cut.id === cutId);
   if (!target) return "Choose a clip before splitting.";
+  const newCutId = nextCutId(target.origin === "cached-label" ? "R" : "M", draft);
   const participatingIds = draft.cuts
     .filter((cut) => cut.editableGroupId !== undefined || cut === target)
     .map((cut) => cut.id);
-  participatingIds.push(nextCutId(target.origin === "cached-label" ? "R" : "M", draft.cuts));
+  participatingIds.push(newCutId);
   if (participatingIds.length > MAX_EXPLICIT_RALLY_MEMBERS) {
     return "Cannot split: this project supports at most 2,048 independently editable parts.";
   }
   if (participatingIds.some((id) => !validExplicitCutId(id))) {
     return "Cannot split this legacy clip: split parts need nonblank IDs of at most 256 characters.";
   }
-  if (new Set(participatingIds).size !== participatingIds.length) {
-    return "Cannot split: split parts need unique clip IDs.";
+  const resultingIds = [...draftRangeIds(draft), newCutId];
+  if (new Set(resultingIds).size !== resultingIds.length) {
+    return "Cannot split: clip and excluded-range IDs must be unique.";
   }
   return null;
 }
@@ -715,7 +719,7 @@ export function splitCutAt(
   };
   const right: EditableCut = {
     ...cut,
-    id: nextCutId(prefix, draft.cuts),
+    id: nextCutId(prefix, draft),
     coreStart: position,
     keepStart: roundTime(Math.max(minimum, position - beforePadding)),
     editableGroupId: `split:${crypto.randomUUID()}`,
