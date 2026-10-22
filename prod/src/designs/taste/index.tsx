@@ -1115,7 +1115,10 @@ function usePrototype(
     const nextId = pendingIds[(currentIndex + 1) % pendingIds.length];
     setFinalPreview(false);
     selectClip(nextId);
-    setReviewMessage(`${nextId} was excluded by automatic cleanup. Watch it, then keep it or confirm the exclusion.`);
+    const disposition = effectiveKeptIds.has(nextId)
+      ? "has footage retained in the final cut"
+      : "is currently excluded from the final cut";
+    setReviewMessage(`${nextId} is flagged for automatic cleanup review and ${disposition}. Watch it, then choose Keep or Remove.`);
   }
 
   function applySuppressionToSimilar() {
@@ -2157,7 +2160,7 @@ function ReviewSummary({
         <nav className="td-review-shortcuts" aria-label="Items needing review">
           {state.scoreEnabled && <button type="button" disabled={state.serveReview === 0} onClick={state.openServeReview}><strong>{state.serveReview}</strong><span>Review serves</span></button>}
           <button type="button" disabled={clipReviewCount === 0} onClick={state.openClipReview}><strong>{clipReviewCount}</strong><span>Review clips</span></button>
-          {state.cleanupAvailable && <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleaned up</span></button>}
+          {state.cleanupAvailable && <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleanup flags</span></button>}
         </nav>
       )}
       <div><strong>{state.included.length}</strong><span>clips included</span></div>
@@ -2211,7 +2214,7 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
               <li data-ready={!state.needsSource || undefined}><strong>Source video</strong><span>{state.needsSource ? "Reconnect for playback and MP4" : "Connected locally"}</span></li>
               <li data-ready={state.remaining === 0 || undefined}><strong>Suggested clips</strong><span>{state.remaining === 0 ? "All included clips checked" : `${state.remaining} still need review`}</span></li>
               <li data-ready={!state.scoreEnabled || state.serveReview === 0 || undefined}><strong>Score markers</strong><span>{!state.scoreEnabled ? "Score tracking is off" : state.serveReview === 0 ? "All serve sides checked" : `${state.serveReview} serve sides need review`}</span></li>
-              {state.cleanupAvailable && <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} excluded suggestion needs review`}</span></li>}
+              {state.cleanupAvailable && <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} flagged ${state.suppressionPending === 1 ? "suggestion awaits" : "suggestions await"} review`}</span></li>}
               <li data-ready><strong>Final ranges</strong><span>{state.included.length} clips, {state.excludedRanges.length} excluded {state.excludedRanges.length === 1 ? "section" : "sections"}</span></li>
             </ul>
             {(state.remaining > 0 || state.serveReview > 0 || state.suppressionPending > 0 || state.needsSource) && <p>You can still prepare any available output. MP4 alone requires the matching source. Unresolved items remain in the saved review.</p>}
