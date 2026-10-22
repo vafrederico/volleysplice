@@ -383,7 +383,9 @@ internal object NativeProjectStore {
             "That file has different video dimensions or rotation from the original recording."
         project.media.videoMime() != replacementMedia.videoMime() ->
             "That file uses a different video codec from the original recording."
-        project.media.audioMime() != replacementMedia.audioMime() ->
+        // Probing a video-only file returns null; older saved projects use an
+        // empty string for the same absence. Keep real codec checks exact.
+        project.media.audioMime().orEmpty() != replacementMedia.audioMime().orEmpty() ->
             "That file has a different audio track from the original recording."
         else -> null
     }

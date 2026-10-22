@@ -128,8 +128,11 @@ class EditorDraftRecoveryInstrumentedTest {
 
     @Test fun legacyImportedBackupCanStillRecoverToOriginalVideo() = recoverBackup(legacyImport = true)
 
-    private fun recoverBackup(legacyImport: Boolean) =
-        withProject { store, target, project ->
+    @Test fun silentVideoBackupRelinksOriginalVideoAndPreservesReview() =
+        recoverBackup(legacyImport = false, silentVideo = true)
+
+    private fun recoverBackup(legacyImport: Boolean, silentVideo: Boolean = false) =
+        withProject(silentVideo) { store, target, project ->
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val savedDraft = (store.load() as EditorDraftLoadResult.Restored).draft
             val backup = File(context.filesDir, "draft-recovery-backup.json").apply {
@@ -236,14 +239,15 @@ class EditorDraftRecoveryInstrumentedTest {
         ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use(block)
     }
 
-    private fun withProject(block: (EditorDraftStore, File, NativeProject) -> Unit) {
+    private fun withProject(silentVideo: Boolean = false, block: (EditorDraftStore, File, NativeProject) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val previousSelection = NativeProjectStore.selectedId(context)
         val video = File(context.filesDir, "draft-recovery-synthetic.mp4")
-        // Color/overlay fixture plus synthetic AAC silence, so the source's audio
-        // metadata round-trips without the separate legacy blank/null MIME issue.
-        video.writeBytes(Base64.decode(instrumentation.context.assets.open("draft-recovery-fixture.mp4.b64")
+        // Exercise both synthetic AAC and video-only source metadata through
+        // persistence, feedback import and the actual source-picker relink.
+        val fixture = if (silentVideo) "overlay-fixture.mp4.b64" else "draft-recovery-fixture.mp4.b64"
+        video.writeBytes(Base64.decode(instrumentation.context.assets.open(fixture)
             .bufferedReader().use { it.readText() }, Base64.DEFAULT))
         val input = EditorSeed(Uri.fromFile(video).toString(), video.name, 1_000, 320, 240, 0,
             listOf(SeedRange(250, 750, .9f, ProductionEnsemble.BOTH_MODELS)))
