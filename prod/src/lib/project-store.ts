@@ -183,8 +183,16 @@ const DEFAULT_PROJECT_SETUP: ProjectSetupOptions = {
   sideSwitchEnabled: false,
 };
 
+function canonicalProjectRoi(roi: NormalizedRoi): NormalizedRoi {
+  // Remove control-order arithmetic noise while retaining subpixel differences:
+  // one unit at this precision is less than 0.00002 pixel even at 16K.
+  const round = (value: number) => Math.round(value * 1e9) / 1e9;
+  return { x: round(roi.x), y: round(roi.y), width: round(roi.width), height: round(roi.height) };
+}
+
 function projectSetupIdentity(setup: ProjectSetup): string {
-  const { source, info, roi, rallyModel, sideSwitchEnabled } = setup;
+  const { source, info, rallyModel, sideSwitchEnabled } = setup;
+  const roi = canonicalProjectRoi(setup.roi);
   const window = normalizeAnalysisWindow(setup.analysisWindow, info.duration);
   // Fixed field order also ignores optional source fingerprints acquired later.
   return JSON.stringify([
@@ -241,13 +249,24 @@ export function resolveProjectSetup(
 }
 
 /** Display-only identity: never change filenames, source fingerprints or project IDs. */
-export function projectDisplayName(project: Pick<VolleySpliceProject, "source" | "analysis" | "rallyModel">): string {
+export function projectDisplayName(project: Pick<VolleySpliceProject,
+  "source" | "analysis" | "rallyModel" | "info" | "analysisWindow" | "roi" | "sideSwitchEnabled"
+>): string {
   const model = project.analysis
     ? RALLY_MODEL_OPTIONS.find(option => option.id === project.analysis!.modelId)
     : RALLY_MODEL_OPTIONS.find(option => option.value === (project.rallyModel ?? "ensemble"));
   const label = model?.label ?? (project.analysis?.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
     ? "Legacy model" : "Saved model");
-  return `${project.source.name} - ${label}`;
+  const roi = canonicalProjectRoi(project.roi);
+  const percent = (value: number) => `${Number((value * 100).toFixed(7))}%`;
+  const crop = roi.x === 0 && roi.y === 0 && roi.width === 1 && roi.height === 1
+    ? "Full frame"
+    : `Crop x ${percent(roi.x)}, y ${percent(roi.y)}, ${percent(roi.width)} × ${percent(roi.height)}`;
+  const window = normalizeAnalysisWindow(project.analysisWindow, project.info.duration);
+  const game = window.start === 0 && window.end === project.info.duration
+    ? "Full video" : `Game ${window.start}–${window.end} s`;
+  const switches = `Court switches ${project.sideSwitchEnabled !== false ? "on" : "off"}`;
+  return `${project.source.name} - ${label} · ${crop} · ${game} · ${switches}`;
 }
 
 export function projectAnalysisId(project: VolleySpliceProject): string | null {

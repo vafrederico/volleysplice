@@ -124,7 +124,8 @@ try {
   await act(async () => root.render(React.createElement(App)));
   await settle(() => document.querySelector('input[accept^="video/"]')?.disabled === false);
 
-  const setup = async ({ crop = "1", switches = false } = {}) => {
+  const setup = async ({ crop = "1", switches = false,
+    cropChanges = [["width", crop]], gameWindow = null } = {}) => {
     probe.editor = null;
     if (button("Start a new video")) await click("Start a new video");
     const input = document.querySelector('input[accept^="video/"]');
@@ -132,7 +133,13 @@ try {
     Object.defineProperty(input, "files", { value: [file], configurable: true });
     await act(async () => input.dispatchEvent(new window.Event("change", { bubbles: true })));
     await change('[aria-label="Rally detection model"]', "ensemble");
-    await change('[aria-label="Feature crop width"]', crop);
+    for (const [field, value] of cropChanges) {
+      await change(`[aria-label="Feature crop ${field}"]`, value);
+    }
+    if (gameWindow) {
+      await change('[aria-label="Game start in seconds"]', gameWindow.start);
+      await change('[aria-label="Game end in seconds"]', gameWindow.end);
+    }
     if (switches) await act(async () => document.querySelector('input[type="checkbox"]').click());
     await click("Find the rallies");
     await settle(() => probe.editor !== null);
@@ -160,13 +167,46 @@ try {
     "Requested team switches reach specialist execution");
   assert.equal(await setup({ switches: true }), switchId);
   assert.equal(probe.runs.length, 2);
+
+  const clampedId = await setup({ cropChanges: [["x", "0.7"]] });
+  assert.equal(probe.runs.length, 3);
+  assert.equal(probe.runs[2].roi.width, 0.30000000000000004,
+    "X first exercises the real clamp's floating-point representation");
+  assert.equal(await setup({ cropChanges: [["width", "0.3"], ["x", "0.7"]] }), clampedId,
+    "Width first selects the equivalent saved crop despite raw float differences");
+  assert.equal(probe.runs.length, 3, "Equivalent crop control order must not rerun inference");
+  const narrowerId = await setup({ cropChanges: [["width", "0.29"], ["x", "0.7"]] });
+  assert.notEqual(narrowerId, clampedId, "Genuinely different crops retain separate projects");
+  assert.equal(probe.runs.length, 4);
+  const windowedId = await setup({ gameWindow: { start: "10", end: "80" } });
+  assert.equal(probe.runs.length, 5);
   assert.equal(await setup(), saved.id, "Returning to the original configuration keeps the legacy project");
   const projects = await store.listProjects();
-  assert.equal(projects.length, 3);
+  assert.equal(projects.length, 6);
   assert.deepEqual(projects.find(p => p.id === saved.id), original,
     "New analyses never mutate the legacy project or its review");
   assert.equal(projects.find(p => p.id === switchId).sideSwitchEnabled, true);
   assert.equal(projects.find(p => p.id === croppedId).roi.width, 0.8);
+
+  await click("Start a new video");
+  const options = [...document.querySelectorAll('[aria-label="Selected project"] option')]
+    .filter(option => option.value !== "__new__");
+  assert.equal(options.length, projects.length);
+  assert.equal(new Set(options.map(option => option.textContent)).size, projects.length,
+    "The real project picker distinguishes ready projects for the same source/model");
+  const label = id => options.find(option => option.value === id).textContent;
+  assert.match(label(saved.id), /^match\.mp4 - Legacy model.*Full frame.*Full video.*Court switches off/);
+  assert.match(label(croppedId), /Crop x 0%, y 0%, 80% × 100%/);
+  assert.match(label(clampedId), /Crop x 70%, y 0%, 30% × 100%/);
+  assert.match(label(narrowerId), /Crop x 70%, y 0%, 29% × 100%/);
+  assert.match(label(switchId), /Court switches on/);
+  assert.match(label(windowedId), /Game 10–80 s/);
+  assert.deepEqual(await store.listProjects(), projects, "Displaying labels never rewrites project IDs or sources");
+  await change('[aria-label="Selected project"]', clampedId);
+  assert.equal(probe.editor.projectId, clampedId, "A labeled crop variant opens its own saved analysis");
+  await click("Start a new video");
+  await change('[aria-label="Selected project"]', saved.id);
+  assert.equal(probe.editor.projectId, saved.id, "The legacy label still opens the original saved review");
 
   await act(async () => root.unmount());
   root = createRoot(document.getElementById("root"));

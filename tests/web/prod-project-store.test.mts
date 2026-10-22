@@ -176,6 +176,27 @@ test("legacy defaults, source fingerprints and changed saved settings resolve sa
   assert.equal(resolveProjectSetup([{ ...changed, sideSwitchEnabled: true }], setup).id, baseId);
 });
 
+test("ROI matching and hashing share canonical precision for requested and saved values", () => {
+  const saved = { ...storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true)),
+    roi: { x: 0.7, y: 0.7, width: 1 - 0.7, height: 1 - 0.7 }, sideSwitchEnabled: false };
+  const setup = { source, info, analysisWindow: saved.analysisWindow,
+    roi: { x: 0.7, y: 0.7, width: 0.3, height: 0.3 },
+    rallyModel: "ensemble" as const, sideSwitchEnabled: false };
+  const id = projectId(source, info, setup.analysisWindow, setup.rallyModel, setup);
+  assert.equal(id, projectId(source, info, setup.analysisWindow, setup.rallyModel,
+    { ...setup, roi: saved.roi }));
+  assert.equal(resolveProjectSetup([saved], setup).existing, saved);
+  assert.equal(resolveProjectSetup([{ ...saved, roi: setup.roi }], { ...setup, roi: saved.roi }).id, saved.id);
+  assert.equal(resolveProjectSetup([], setup).id, id);
+  for (const field of ["x", "y", "width", "height"] as const) {
+    const different = { ...setup, roi: { ...setup.roi, [field]: setup.roi[field] - 1e-8 } };
+    assert.equal(resolveProjectSetup([saved], different).existing, undefined, field);
+    assert.notEqual(projectId(source, info, setup.analysisWindow, setup.rallyModel, different), id, field);
+  }
+  assert.deepEqual(saved.roi, { x: 0.7, y: 0.7, width: 1 - 0.7, height: 1 - 0.7 },
+    "Canonical comparisons never rewrite existing analysis metadata");
+});
+
 test("project IDs and visual caches are isolated by marked game window", () => {
   const fullId = projectId(source, info);
   const firstGame = { start: 10, end: 80 };
@@ -405,10 +426,23 @@ test("project picker distinguishes recall and F1 without changing source or save
   const f1 = storedProject(cachedAnalysis("distilled-large-f1-v1"));
   const originalSource = { ...recall.source };
   const originalId = recall.id;
-  assert.equal(projectDisplayName(recall), "match.mp4 - Maximum coverage · BETA");
-  assert.equal(projectDisplayName(f1), "match.mp4 - Balanced · BETA");
-  assert.equal(projectDisplayName({ ...recall, analysis: null, rallyModel: "high-f1" }), "match.mp4 - Balanced · BETA");
-  assert.equal(projectDisplayName(storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true))), "match.mp4 - Legacy model");
+  const setupLabel = " · Full frame · Full video · Court switches on";
+  assert.equal(projectDisplayName(recall), `match.mp4 - Maximum coverage · BETA${setupLabel}`);
+  assert.equal(projectDisplayName(f1), `match.mp4 - Balanced · BETA${setupLabel}`);
+  assert.equal(projectDisplayName({ ...recall, analysis: null, rallyModel: "high-f1" }), `match.mp4 - Balanced · BETA${setupLabel}`);
+  assert.equal(projectDisplayName(storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true))), `match.mp4 - Legacy model${setupLabel}`);
   assert.deepEqual(recall.source, originalSource);
   assert.equal(recall.id, originalId);
+});
+
+test("display labels use canonical crops and preserve the saved configuration", () => {
+  const saved = { ...storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true)),
+    roi: { x: 0.7, y: 0, width: 1 - 0.7, height: 1 },
+    analysisWindow: { start: 10, end: 80 }, sideSwitchEnabled: false };
+  const before = structuredClone(saved);
+  assert.equal(projectDisplayName(saved),
+    "match.mp4 - Legacy model · Crop x 70%, y 0%, 30% × 100% · Game 10–80 s · Court switches off");
+  assert.equal(projectDisplayName(saved), projectDisplayName({ ...saved, roi: { ...saved.roi, width: 0.3 } }));
+  assert.notEqual(projectDisplayName(saved), projectDisplayName({ ...saved, roi: { ...saved.roi, width: 0.3 - 1e-8 } }));
+  assert.deepEqual(saved, before);
 });
