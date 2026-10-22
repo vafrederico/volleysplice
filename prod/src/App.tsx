@@ -65,9 +65,9 @@ import {
   listProjects,
   markProjectExported,
   projectAnalysisId,
-  projectId,
   projectSource,
   putProject,
+  resolveProjectSetup,
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
   sourceFileFingerprint,
@@ -871,8 +871,14 @@ function WebApp() {
       return;
     }
     const source = projectSource(file);
-    const id = projectId(source, info, normalizedWindow, rallyModel);
-    const existing = projectsRef.current.find((project) => project.id === id);
+    const { id, existing } = resolveProjectSetup(projectsRef.current, {
+      source,
+      info,
+      analysisWindow: normalizedWindow,
+      roi,
+      rallyModel,
+      sideSwitchEnabled,
+    });
     linkSourceFile(id, file);
 
     if (existing?.status === "ready" && existing.analysis) {
@@ -883,9 +889,10 @@ function WebApp() {
 
     const now = new Date().toISOString();
     const project: VolleySpliceProject = {
+      ...existing,
       schemaVersion: 1,
       id,
-      source,
+      source: { ...existing?.source, ...source },
       info,
       analysisWindow: normalizedWindow,
       roi,

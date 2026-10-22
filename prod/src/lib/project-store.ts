@@ -1,7 +1,6 @@
 import {
   type AnalysisWindow,
   fullAnalysisWindow,
-  isFullAnalysisWindow,
   normalizeAnalysisWindow,
 } from "./on-device/analysis-window.ts";
 import { isNeuralModelId, isRallyModelSelection, RALLY_MODEL_OPTIONS, type RallyModelSelection } from "./on-device/rally-model.ts";
@@ -167,23 +166,78 @@ export async function sourceFileFingerprint(file: File): Promise<string> {
   return `sampled-sha256-v1:${hex(digest)}`;
 }
 
+type ProjectSetupOptions = {
+  roi: NormalizedRoi;
+  sideSwitchEnabled: boolean;
+};
+
+type ProjectSetup = ProjectSetupOptions & {
+  source: ProjectSource;
+  info: OnDeviceMediaInfo;
+  analysisWindow: AnalysisWindow;
+  rallyModel: RallyModelSelection;
+};
+
+const DEFAULT_PROJECT_SETUP: ProjectSetupOptions = {
+  roi: { x: 0, y: 0, width: 1, height: 1 },
+  sideSwitchEnabled: false,
+};
+
+function projectSetupIdentity(setup: ProjectSetup): string {
+  const { source, info, roi, rallyModel, sideSwitchEnabled } = setup;
+  const window = normalizeAnalysisWindow(setup.analysisWindow, info.duration);
+  // Fixed field order also ignores optional source fingerprints acquired later.
+  return JSON.stringify([
+    source.name, source.size, source.lastModified, source.type,
+    info.duration, info.width, info.height, info.rotation ?? 0,
+    info.mimeType, info.videoCodec, info.videoCodecString ?? null,
+    info.canDecodeVideo, info.hasAudio, info.audioCodec ?? null,
+    info.sampleRate ?? null, info.channels ?? null, info.canDecodeAudio,
+    window.start, window.end, rallyModel,
+    roi.x, roi.y, roi.width, roi.height, sideSwitchEnabled,
+  ]);
+}
+
 export function projectId(
   source: ProjectSource,
   info: OnDeviceMediaInfo,
   requestedWindow: AnalysisWindow = fullAnalysisWindow(info.duration),
   rallyModel: RallyModelSelection = "ensemble",
+  options: ProjectSetupOptions = DEFAULT_PROJECT_SETUP,
 ): string {
-  const analysisWindow = normalizeAnalysisWindow(
-    requestedWindow,
-    info.duration,
+  // A separate namespace prevents collisions with any legacy full-frame ID.
+  return `project-v2-${hashText(projectSetupIdentity({
+    ...options, source, info, analysisWindow: requestedWindow, rallyModel,
+  }))}`;
+}
+
+/** Resolve legacy and current projects by their saved inputs, without renaming
+ * IDs that also own review drafts, edit history, source links and selection. */
+export function resolveProjectSetup(
+  projects: VolleySpliceProject[],
+  setup: ProjectSetup,
+): { id: string; existing?: VolleySpliceProject } {
+  const identity = projectSetupIdentity(setup);
+  const existing = projects.find((project) =>
+    !project.importedFeedback && projectSetupIdentity({
+      ...project,
+      rallyModel: project.rallyModel ?? "ensemble",
+      // This is the same legacy default used by runProject.
+      sideSwitchEnabled: project.sideSwitchEnabled !== false,
+    }) === identity,
   );
-  const windowIdentity = isFullAnalysisWindow(analysisWindow, info.duration)
-    ? ""
-    : `\u0000${analysisWindow.start}\u0000${analysisWindow.end}`;
-  const modelIdentity = rallyModel === "ensemble" ? "" : `\u0000${rallyModel}`;
-  return `project-${hashText(
-    `${source.name}\u0000${source.size}\u0000${source.lastModified}\u0000${info.duration}${windowIdentity}${modelIdentity}`,
-  )}`;
+  if (existing) return { id: existing.id, existing };
+
+  const baseId = projectId(
+    setup.source, setup.info, setup.analysisWindow, setup.rallyModel, setup,
+  );
+  let id = baseId;
+  // Hashes are only a storage key. A collision or an edited saved configuration
+  // must never overwrite another project's analysis or review.
+  for (let suffix = 2; projects.some((project) => project.id === id); suffix += 1) {
+    id = `${baseId}-${suffix}`;
+  }
+  return { id };
 }
 
 /** Display-only identity: never change filenames, source fingerprints or project IDs. */
