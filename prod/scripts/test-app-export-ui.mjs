@@ -287,7 +287,101 @@ try {
     }
   }
   assert.deepEqual(staleStatusFailures, [], "Late export-status conflict/storage failures must be scoped to their original project instance");
-  console.log("App export: awaited readiness, project queue, failure/retry, cancellation, native target, deletion and source/instance races and delayed status callbacks passed.");
+  const staleDeleteFailures = [];
+  for (const outcome of ["conflict", "storage", "success"]) {
+    await act(async () => root.render(null));
+    indexedDB = new IDBFactory(); window.localStorage.clear();
+    const project = fixture(`synthetic-delete-${outcome}`);
+    project.reviewDraft = createCutDraft({ analysisId: store.projectAnalysisId(project), recordingId: project.id,
+      duration: project.info.duration, rallies: project.analysis.intervals, ignoredIntervals: [] });
+    project.reviewDraft.updatedAt = new Date(Date.now() + 60000).toISOString();
+    project.reviewDraft.scoreTracking.team1Name = "Replacement-owned review";
+    Object.assign(project, await store.putProject(project, { expectedSource: null }));
+    window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
+    window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+    await act(async () => root.render(React.createElement(App)));
+    await waitFor(() => document.querySelector(".taste-rally-desk"));
+    const original = new File(["video"], project.source.name, { type: "video/mp4", lastModified: 100 });
+    await attach(project, original); await click("Export");
+
+    // Hold the old delete's open result for failures, or its transaction-complete
+    // delivery for success. Production storage and instance checks remain real.
+    const open = indexedDB.open.bind(indexedDB);
+    let interceptNext = true, release = null, settled = false, rejectOpen;
+    indexedDB.open = function (...args) {
+      const request = open(...args);
+      if (!interceptNext) return request;
+      interceptNext = false;
+      const add = request.addEventListener.bind(request);
+      request.addEventListener = function (type, listener, options) {
+        if (type === "error") rejectOpen = listener;
+        if (type !== "success") { add(type, listener, options); return; }
+        add(type, event => {
+          const deliver = () => {
+            if (outcome === "storage") {
+              request.result.close();
+              Object.defineProperty(request, "error", { value: new DOMException("Synthetic delayed delete storage failure", "UnknownError"), configurable: true });
+              rejectOpen.call(request, event); settled = true;
+              return;
+            }
+            const database = request.result, transaction = database.transaction.bind(database);
+            database.transaction = (...transactionArgs) => {
+              const result = transaction(...transactionArgs);
+              if (outcome === "success") {
+                const addTransaction = result.addEventListener.bind(result);
+                let heldCompletion = false;
+                result.addEventListener = function (eventType, callback, eventOptions) {
+                  if (eventType === "complete" && !heldCompletion) {
+                    heldCompletion = true;
+                    addTransaction(eventType, completeEvent => {
+                      release = () => { callback.call(result, completeEvent); settled = true; };
+                    }, eventOptions);
+                  } else addTransaction(eventType, callback, eventOptions);
+                };
+              } else {
+                result.addEventListener("complete", () => { settled = true; });
+                result.addEventListener("abort", () => { settled = true; });
+              }
+              return result;
+            };
+            listener.call(request, event);
+          };
+          if (outcome === "success") deliver();
+          else release = deliver;
+        }, options);
+      };
+      return request;
+    };
+    try {
+      await click("Delete"); await waitFor(() => release !== null);
+      const old = await store.getProject(project.id);
+      if (outcome === "success") assert.equal(old, null, "The old delete committed before completion delivery");
+      else await store.deleteProject(project.id, old.instanceId);
+      const recreated = { ...project }; delete recreated.instanceId;
+      const fresh = await store.putProject(recreated, { expectedSource: null });
+      await click("Save MP4");
+      await waitFor(() => document.body.textContent.includes("instance changed"));
+      await attach(fresh, original);
+      const expected = await store.getProject(project.id);
+      await act(async () => release()); release = null;
+      await waitFor(() => settled);
+      assert.deepEqual(await store.getProject(project.id), expected, "Late delete callbacks must preserve replacement storage");
+      assert.ok(document.querySelector(".taste-rally-desk"), `${outcome}: replacement editor must remain open`);
+      assert.equal(document.querySelector('select[aria-label="Current review project"]')?.value, project.id,
+        `${outcome}: replacement project must remain selected`);
+      assert.equal(Boolean(document.querySelector('.td-reconnect input[type="file"]')), false,
+        `${outcome}: replacement must retain its verified source link`);
+      assert.doesNotMatch(document.body.textContent, /Reopen it before deleting|Synthetic delayed delete storage failure/,
+        `${outcome}: obsolete delete errors must not reach the replacement review`);
+    } catch (error) {
+      staleDeleteFailures.push(`${outcome}: ${error.message}`);
+    } finally {
+      if (release) await act(async () => release());
+      indexedDB.open = open;
+    }
+  }
+  assert.deepEqual(staleDeleteFailures, [], "Late delete conflict, storage and success callbacks must belong to their captured instance");
+  console.log("App export: awaited readiness, project queue, failure/retry, cancellation, native target, deletion and source/instance races and delayed status/delete callbacks passed.");
 } finally {
   await act(async () => root.unmount());
   await server.close(); dom.window.close();

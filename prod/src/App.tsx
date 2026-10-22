@@ -1399,10 +1399,13 @@ function WebApp() {
     try {
       await deleteProject(selectedProject.id, selectedProject.instanceId);
     } catch (cause) {
-      sourceFailure(selectedProject.id, cause);
+      sourceFailure(selectedProject.id, cause, selectedProject.instanceId);
       return;
     }
     deletedProjectInstancesRef.current.add(selectedProject.instanceId ?? "");
+    if (!mountedRef.current || !projectsRef.current.some(
+      (project) => project.id === selectedProject.id && project.instanceId === selectedProject.instanceId,
+    )) return;
     if (activeMediaRef.current?.projectId === selectedProject.id) {
       activeAbortRef.current?.abort();
       activeMediaRef.current.media.input.dispose();
@@ -1428,7 +1431,7 @@ function WebApp() {
         (project) => project.id !== selectedProject.id,
       ),
     );
-    setSelectedProjectId(null);
+    setSelectedProjectId((current) => current === selectedProject.id ? null : current);
     setError(null);
 
     const analysisId = projectAnalysisId(selectedProject);
