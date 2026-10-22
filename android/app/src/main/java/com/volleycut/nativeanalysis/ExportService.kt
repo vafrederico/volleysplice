@@ -508,7 +508,8 @@ class ExportService : Service() {
         }
         val queued = queue.firstOrNull { it.id == requestedJobId } ?: return
         queue.remove(queued)
-        deleteIncompleteDestination(queued.destination)
+        // Queued jobs have never opened their destination. It may already
+        // contain a user's file or belong to a still-running publication.
         broadcast(queued, "cancelled", 0, "Queued export cancelled", null)
         publishQueuedStatuses()
         currentJob?.let { updateNotification(currentProgress(), activeNotificationDetail()) }
