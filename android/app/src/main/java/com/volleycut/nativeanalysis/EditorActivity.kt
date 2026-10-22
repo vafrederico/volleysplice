@@ -2975,6 +2975,7 @@ private fun EditorScreen(
         suggestion.logicalId() !in draft.suppressionDecisionOverrides
     }
     val selectedSuggestion = activeSuggestions.firstOrNull { it.fragmentId() == selectedSuggestionId }
+        .takeIf { selectedRally?.cuts?.none { it.editableGroupId != null } != false }
     val selectedClipSuggestion = selectedSuggestion ?: selectedRally?.takeIf { rally ->
         rally.cuts.none { it.editableGroupId != null }
     }?.let { rally ->
@@ -3067,6 +3068,12 @@ private fun EditorScreen(
         player.seekTo(target)
     }
 
+    fun selectRally(id: String, positionMs: Long? = null) {
+        selectedSuggestionId = null
+        selectedId = id
+        positionMs?.let(::seekTo)
+    }
+
     fun togglePlayback() {
         previewEndMs = null
         if (player.isPlaying) {
@@ -3154,7 +3161,7 @@ private fun EditorScreen(
             message = "Move the playhead inside the rally before splitting"
         } else {
             selectedSuggestionId = null
-            selectedId = created.id
+            selectRally(created.id)
             message = "Split ${cut.id} at ${preciseTime(playbackPositionMs)}; both parts can now be trimmed independently"
         }
     }
@@ -3391,7 +3398,7 @@ private fun EditorScreen(
             }
             playbackPositionMs = position
             EditorMath.rallySelectionAtPlayhead(editableRallies, selectedId, position, player.isPlaying)?.let { reached ->
-                if (reached != selectedId) selectedId = reached
+                if (reached != selectedId) selectRally(reached)
             }
             previewEndMs?.let { end ->
                 if (player.isPlaying && position >= end) {
@@ -3424,7 +3431,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset this edit?") },
-            text = { Text("Clip choices, score markers, and omitted sections will be reset. Explicit split parts and their identities will be kept.") },
+            text = { Text("All clip boundaries, splits, included or excluded choices, score markers, added clips, and omitted sections will be discarded.") },
             confirmButton = {
                 TextButton(onClick = {
                     store.clear()
@@ -3970,14 +3977,12 @@ private fun EditorScreen(
                                     }
                                     SmallButton("‹", enabled = selectedIndex > 0) {
                                         editableRallies.getOrNull(selectedIndex - 1)?.let {
-                                            selectedId = it.id
-                                            seekTo(it.keepStartMs)
+                                            selectRally(it.id, it.keepStartMs)
                                         }
                                     }
                                     SmallButton("›", enabled = selectedIndex in 0..<editableRallies.lastIndex) {
                                         editableRallies.getOrNull(selectedIndex + 1)?.let {
-                                            selectedId = it.id
-                                            seekTo(it.keepStartMs)
+                                            selectRally(it.id, it.keepStartMs)
                                         }
                                     }
                                 },
@@ -4094,7 +4099,7 @@ private fun EditorScreen(
                                 flat = true,
                                 onDraft = ::updateDraft,
                                 onManualCompleted = { cut ->
-                                    selectedId = cut.id
+                                    selectRally(cut.id)
                                     message = "Added ${cut.id} from ${preciseTime(cut.keepStartMs)} to ${preciseTime(cut.keepEndMs)}"
                                 },
                                 onMessage = { message = it },
@@ -4620,8 +4625,7 @@ private fun EditorScreen(
                 headerActions = {
                     SmallButton("Previous", enabled = selectedIndex > 0) {
                         editableRallies.getOrNull(selectedIndex - 1)?.let {
-                            selectedId = it.id
-                            seekTo(it.keepStartMs)
+                            selectRally(it.id, it.keepStartMs)
                         }
                     }
                     Text(
@@ -4634,8 +4638,7 @@ private fun EditorScreen(
                     )
                     SmallButton("Next", enabled = selectedIndex in 0..<editableRallies.lastIndex) {
                         editableRallies.getOrNull(selectedIndex + 1)?.let {
-                            selectedId = it.id
-                            seekTo(it.keepStartMs)
+                            selectRally(it.id, it.keepStartMs)
                         }
                     }
                 },
@@ -4798,7 +4801,7 @@ private fun EditorScreen(
                                     cuts = it.cuts.filterNot { cut -> cut.id in selectedRally.cutIds },
                                     reviewedCutIds = it.reviewedCutIds - selectedRally.cutIds,
                                 ) }
-                                selectedId = remaining.getOrNull((selectedIndex - 1).coerceAtLeast(0))?.id.orEmpty()
+                                selectRally(remaining.getOrNull((selectedIndex - 1).coerceAtLeast(0))?.id.orEmpty())
                             }) { Text("Delete", color = Danger) }
                         }
                     }
@@ -4811,7 +4814,7 @@ private fun EditorScreen(
                 playbackPositionMs = playbackPositionMs,
                 onDraft = ::updateDraft,
                 onManualCompleted = { cut ->
-                    selectedId = cut.id
+                    selectRally(cut.id)
                     message = "Added ${cut.id} from ${preciseTime(cut.keepStartMs)} to ${preciseTime(cut.keepEndMs)}"
                 },
                 onMessage = { message = it },
@@ -4872,7 +4875,7 @@ private fun EditorScreen(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (rally.id == selectedRally?.id) Color(0xFFFFEEE8) else Color.Transparent)
-                                .clickable { selectedId = rally.id; seekTo(rally.keepStartMs) }
+                                .clickable { selectRally(rally.id, rally.keepStartMs) }
                                 .testTag("rally-row-${rally.id}")
                                 .padding(vertical = 7.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,

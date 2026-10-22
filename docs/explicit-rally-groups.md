@@ -4,6 +4,8 @@ Feedback/project JSON stays `volleycut-model-feedback` **version 3**. The additi
 optional field **`corrections.correctedRanges[].editableGroupId`** records explicit
 editing identity. It is a core range extension, independent of `corrections.ui`,
 reviewed IDs, confidence, scores, suppression touch tracking, and export geometry.
+Selecting a rally clears cleanup selection. Even a selected overlapping cleanup
+suggestion cannot redirect a split part's Keep/Remove control to a shared override.
 Android local draft version **10** stores the same optional field on `cuts[]`.
 Web local draft version remains unchanged; its range parser, local persistence,
 history, editor reconstruction, and feedback writer relay the field.
@@ -41,11 +43,16 @@ is one interval. The invalid values must fail import, including explicit null.
   its inline membership naturally; no stale ID references remain. Do not transfer
   its metadata to a replacement or renumber existing IDs. Singleton groups remain
   explicit, including when their sibling was deleted.
-- Native reset retains explicit members, their IDs and current core geometry,
-  restores their inclusion and default padding, and resets other edits as before.
-  Manual explicit parts retain exact core bounds. Ordinary added clips and trims
-  without this metadata keep the legacy reset behavior. Android has no review
-  undo/redo; web review snapshots carry the inline field and restore it on undo/redo.
+- Full user-confirmed **Reset project changes / Start this review over** restores
+  the saved model geometry and original model order. It clears explicit groups,
+  trims, keep/remove choices, split children, and all manual additions, whether
+  those additions were split or unsplit. It does not rerun inference. Ordinary
+  edits, persistence, relink and archive round trips retain explicit identity.
+  Android has no review undo/redo; web history restores split metadata when undoing
+  the reset and clears it again on redo. The `fullReset` fixture exercises trimmed
+  `[12, 18]` split parts returning to model `[10, 20]`, an unrelated model range,
+  and a manual explicit addition disappearing.
+
 
 Final export materialization does **not** read this field. Existing padding,
 overlap, ignored-range subtraction, suppression, and strictly-less-than join-gap
@@ -61,9 +68,9 @@ modifies a future UI schema or overwrites chapter options. PR19's Android opaque
 UI preservation is retained. The reviewed web PR14 contract and fixture at
 `1d079cab58607aec3fcaa2456e77727cbf59c872` were read; this PR does not merge that
 branch. Its UI relay and this inline range relay are additive. When combining the
-reset handlers, retain PR14's `portableUi` envelope alongside the explicit members;
-the reset helper already carries that optional opaque envelope. Never replace it
-with model defaults. Unsupported UI versions stay whole and
+reset handlers, retain PR14's `portableUi` envelope while resetting supported edits;
+`resetProjectReview` already carries that optional opaque envelope. Never replace
+the envelope with model defaults. Unsupported UI versions stay whole and
 opaque. Unknown UI extension objects, arrays and nulls remain unchanged.
 
 Consumers predating this extension may drop it. Web in this change preserves it

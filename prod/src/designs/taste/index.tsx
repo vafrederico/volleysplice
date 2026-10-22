@@ -10,7 +10,8 @@ import {
 
 import {
   materializeFinalCutIntervals,
-  retainExplicitRallyGroups,
+  resetProjectReview,
+  splitCutAt,
   rallySuppressionDecisionKey,
   PLAYBACK_RATES,
   type CutDraft,
@@ -106,6 +107,7 @@ type Clip = {
   reviewed: boolean;
   origin: "model" | "manual";
   agreement?: EditableCut["agreement"];
+  editableGroupId?: string;
 };
 
 type DesignServeMarker = {
@@ -181,6 +183,7 @@ function clipsFromReview(review: ReadyDesignReview): Clip[] {
     reviewed: reviewed.has(cut.id),
     origin: cut.origin === "manual" ? "manual" : "model",
     agreement: cut.agreement,
+    editableGroupId: cut.editableGroupId,
   }));
 }
 
@@ -443,8 +446,7 @@ function usePrototype(
           included: clip.included,
           origin: clip.origin === "manual" ? "manual" : "cached-label",
           ...(clip.agreement ? { agreement: clip.agreement } : {}),
-          ...(previous?.editableGroupId && previous.origin === (clip.origin === "manual" ? "manual" : "cached-label")
-            ? { editableGroupId: previous.editableGroupId } : {}),
+          ...(clip.editableGroupId ? { editableGroupId: clip.editableGroupId } : {}),
         };
       }),
       ignoredIntervals: excludedRanges.map((interval) => ({
@@ -545,6 +547,7 @@ function usePrototype(
     setCleanup(cleanupAvailable ? cleanupStrengthForPolicy(draft.selectedSuppressionPolicy) : "off");
     setScoreEnabled(draft.scoreTracking.enabled);
     setScoreOverlay(draft.renderScoreOverlay);
+    setFadeScoreOverlay(draft.fadeScoreOverlay);
     setTeamOne(draft.scoreTracking.team1Name);
     setTeamTwo(draft.scoreTracking.team2Name);
     setScoreMarkers(draft.scoreTracking.serveMarkers);
@@ -568,7 +571,7 @@ function usePrototype(
   }
 
   function resetProjectChanges() {
-    applyReviewDraft(retainExplicitRallyGroups(review.modelDraft, workingDraft));
+    applyReviewDraft(resetProjectReview(review.modelDraft, workingDraft));
     setPlaying(false);
     setFinalPreview(review.modelDraft.cutPreviewEnabled);
     setPlaybackRate(review.modelDraft.playbackRate);
@@ -1003,15 +1006,15 @@ function usePrototype(
       setReviewMessage("Move the playhead inside the selected clip before splitting it.");
       return;
     }
-    const used = new Set(clips.map((clip) => clip.id));
-    let leftId = `${selected.id}A`;
-    let rightId = `${selected.id}B`;
-    while (used.has(leftId) || used.has(rightId)) {
-      leftId += "A";
-      rightId += "B";
-    }
-    const left: Clip = { ...selected, id: leftId, end: playhead, label: `${selected.label}, first part`, reviewed: true };
-    const right: Clip = { ...selected, id: rightId, start: playhead, label: `${selected.label}, second part`, reviewed: true };
+    const split = splitCutAt(workingDraft, selected.id, playhead, gameStart, gameEnd);
+    if (!split) return;
+    const leftRange = split.draft.cuts.find((cut) => cut.id === selected.id)!;
+    const leftId = leftRange.id;
+    const rightId = split.newCut.id;
+    const left: Clip = { ...selected, id: leftId, end: playhead, editableGroupId: leftRange.editableGroupId,
+      label: `${selected.label}, first part`, reviewed: true };
+    const right: Clip = { ...selected, id: rightId, start: playhead, editableGroupId: split.newCut.editableGroupId,
+      label: `${selected.label}, second part`, reviewed: true };
     setClips((current) => current.flatMap((clip) => clip.id === selected.id ? [left, right] : [clip]));
     const suppression = suppressionDecisions[selected.id];
     if (suppression) {

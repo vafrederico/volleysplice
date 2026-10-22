@@ -86,21 +86,13 @@ export type CutSplitResult = {
   newCut: EditableCut;
 };
 
-/** Reset ordinary edits without reusing split cut identities for model ranges. */
-export function retainExplicitRallyGroups(defaults: CutDraft, current: CutDraft): CutDraft {
-  const retained = current.cuts.filter((cut) => cut.editableGroupId !== undefined);
-  const ids = new Set(retained.map((cut) => cut.id));
-  return withTouchedCachedCuts({
+/** Full confirmed reset returns model geometry and retains only the opaque UI transport. */
+export function resetProjectReview(defaults: CutDraft, current: CutDraft): CutDraft {
+  return {
     ...defaults,
     // PR14's transport envelope stays opaque, including future UI versions.
     ...("portableUi" in current ? { portableUi: current.portableUi } : {}),
-    cuts: [...defaults.cuts.filter((cut) => !ids.has(cut.id)), ...retained.map((cut) => ({
-      ...cut,
-      included: true,
-      keepStart: cut.origin === "manual" ? cut.coreStart : Math.max(defaults.analysisStart, cut.coreStart - defaults.beforePaddingSeconds),
-      keepEnd: cut.origin === "manual" ? cut.coreEnd : Math.min(defaults.analysisEnd, cut.coreEnd + defaults.afterPaddingSeconds),
-    }))],
-  }, [...ids]);
+  };
 }
 
 export type FinalCutProvenanceSegment = {
@@ -690,6 +682,7 @@ export function splitCutAt(
   const prefix = cut.origin === "cached-label" ? "R" : "M";
   const left: EditableCut = {
     ...cut,
+    editableGroupId: `split:${crypto.randomUUID()}`,
     coreEnd: position,
     keepEnd: roundTime(Math.min(maximum, position + afterPadding)),
   };
@@ -698,7 +691,7 @@ export function splitCutAt(
     id: nextCutId(prefix, draft.cuts),
     coreStart: position,
     keepStart: roundTime(Math.max(minimum, position - beforePadding)),
-    ...(cut.editableGroupId ? { editableGroupId: `split:${crypto.randomUUID()}` } : {}),
+    editableGroupId: `split:${crypto.randomUUID()}`,
   };
   const cuts = [...draft.cuts];
   cuts.splice(cutIndex, 1, left, right);

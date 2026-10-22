@@ -125,7 +125,7 @@ internal object PortableReviewPreferences {
             (booleanKeys - "renderScoreOnPreviewVideo" + listOf("playbackRate", "confidenceReviewThreshold", "reviewedCutIds"))
                 .forEach { prefs?.remove(it) }
         }
-        return ExplicitRallyGroups.reset(seed, draft).copy(portableUi = ui?.toString(), fadeScoreOverlayExplicit = true)
+        return EditorMath.newDraft(seed).copy(portableUi = ui?.toString(), fadeScoreOverlayExplicit = true)
     }
 
     fun notice(draft: EditorDraft): String = if (draft.portableUi?.let { isFuture(JSONObject(it)) } == true) {

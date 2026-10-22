@@ -6,5 +6,18 @@
     { "id": "M001", "coreStart": 23, "coreEnd": 25, "keepStart": 23, "keepEnd": 25, "confidence": 1, "included": true, "origin": "manual", "editableGroupId": "split:manual-left" },
     { "id": "M002", "coreStart": 25, "coreEnd": 27, "keepStart": 25, "keepEnd": 27, "confidence": 1, "included": true, "origin": "manual", "editableGroupId": "split:manual-right" }
   ],
-  "invalidGroupIds": [null, "", 1, true, [], {}, "has space", "../escape", "__proto__", "é"]
+  "invalidGroupIds": [null, "", 1, true, [], {}, "has space", "../escape", "__proto__", "é"],
+  "fullReset": {
+    "modelRanges": [
+      { "id": "R001", "start": 10, "end": 20, "confidence": 0.95 },
+      { "id": "R009", "start": 30, "end": 35, "confidence": 0.95 }
+    ],
+    "correctedRanges": [
+      { "id": "R001", "coreStart": 12, "coreEnd": 15, "keepStart": 10, "keepEnd": 17, "confidence": 0.95, "included": false, "origin": "cached-label", "editableGroupId": "split:reset-left" },
+      { "id": "R002", "coreStart": 15, "coreEnd": 18, "keepStart": 13, "keepEnd": 20, "confidence": 0.95, "included": true, "origin": "cached-label", "editableGroupId": "split:reset-right" },
+      { "id": "M001", "coreStart": 23, "coreEnd": 25, "keepStart": 23, "keepEnd": 25, "confidence": 1, "included": true, "origin": "manual", "editableGroupId": "split:reset-manual" }
+    ],
+    "expectedCutIds": ["R001", "R009"],
+    "expectedCoreRanges": [[10, 20], [30, 35]]
+  }
 }

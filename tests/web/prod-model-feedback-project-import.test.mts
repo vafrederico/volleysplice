@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 import { ModelFeedbackValidationError } from "../../lib/model-feedback.ts";
-import { createCutDraft, parseCutDraft, retainExplicitRallyGroups, splitCutAt } from "../../prod/src/lib/cut-draft.ts";
+import { createCutDraft, parseCutDraft, resetProjectReview, splitCutAt } from "../../prod/src/lib/cut-draft.ts";
 import { moveHistory, recordEdit } from "../../prod/src/designs/taste/edit-history.ts";
 import {
   importModelFeedbackProject,
@@ -231,7 +231,7 @@ function feedbackText() {
   return JSON.stringify(bundle);
 }
 
-test("native explicit groups survive production parser, persistence, history, reset and archive relay", () => {
+test("native explicit groups survive ordinary persistence/history/archive while full reset restores model cuts", () => {
   const fixture = JSON.parse(readFileSync(new URL("../fixtures/explicit-rally-groups.json", import.meta.url), "utf8"));
   const bundle = JSON.parse(feedbackText());
   bundle.corrections.correctedRanges = fixture.correctedRanges;
@@ -242,11 +242,12 @@ test("native explicit groups survive production parser, persistence, history, re
     analysisStart: 2, analysisEnd: 28, rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals };
   const reopened = parseCutDraft(JSON.stringify(draft), seed)!;
   assert.deepEqual(reopened.cuts, draft.cuts);
-  const reset = retainExplicitRallyGroups(createCutDraft(seed), reopened);
+  const reset = resetProjectReview(createCutDraft(seed), reopened);
   const futureUi = { schemaVersion: 2, preferences: { chapterOptions: { future: [null] } } };
-  const opaqueReset = retainExplicitRallyGroups(createCutDraft(seed), { ...reopened, ...{ portableUi: futureUi } });
+  const opaqueReset = resetProjectReview(createCutDraft(seed), { ...reopened, ...{ portableUi: futureUi } });
   assert.deepEqual("portableUi" in opaqueReset && opaqueReset.portableUi, futureUi);
-  assert.deepEqual(reset.cuts.map((cut) => [cut.id, cut.editableGroupId]), draft.cuts.map((cut) => [cut.id, cut.editableGroupId]));
+  assert.deepEqual(reset.cuts, createCutDraft(seed).cuts);
+  assert.equal(reset.cuts.some((cut) => cut.editableGroupId !== undefined), false);
   const changed = { ...reopened, cuts: reopened.cuts.map((cut, index) => index ? cut : { ...cut, included: false }) };
   const history = recordEdit({ past: [], present: reopened, future: [] }, changed);
   assert.deepEqual(moveHistory(history, "undo").present.cuts, reopened.cuts);

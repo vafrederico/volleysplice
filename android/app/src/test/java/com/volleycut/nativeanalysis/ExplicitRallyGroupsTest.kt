@@ -103,7 +103,7 @@ class ExplicitRallyGroupsTest {
         })).size)
     }
 
-    @Test fun persistenceRelinkResetAndProductionArchiveRetainIdentityAndOpaqueUi() {
+    @Test fun persistenceRelinkAndArchiveRetainIdentityWhileFullResetRestoresModelAndOpaqueUi() {
         val directory = Files.createTempDirectory("explicit-split-test").toFile()
         try {
             for (ui in listOf(JSONObject().put("schemaVersion", 2).put("preferences", JSONObject()
@@ -118,20 +118,44 @@ class ExplicitRallyGroupsTest {
                 val relinkedSeed = seed.copy(sourceUri = "content://fixture/relinked")
                 EditorDraftStore(directory, relinkedSeed).save(reopened.copy(sourceRevision = relinkedSeed.sourceRevision))
                 assertEquals(d.cuts, requireNotNull(EditorDraftStore(directory, relinkedSeed).load()).cuts)
-                val reset = PortableReviewPreferences.reset(seed, reopened)
-                assertEquals(d.cuts.map { it.id to it.editableGroupId }, reset.cuts.map { it.id to it.editableGroupId })
-                store.save(reset)
-                assertEquals(2, groups(requireNotNull(store.load())).size)
-                val imported = ModelFeedbackImporter.parse(bundle(reset).toString())
-                assertEquals(reset.cuts, imported.draft.cuts)
+                val imported = ModelFeedbackImporter.parse(bundle(reopened).toString())
+                assertEquals(reopened.cuts, imported.draft.cuts)
                 assertEquals(2, groups(imported.draft).size)
-                assertEquals(geometry(reset), geometry(imported.draft))
+                assertEquals(geometry(reopened), geometry(imported.draft))
                 val reexport = bundle(imported.draft, imported.project)
                 assertEquals(ui.getJSONObject("preferences").getJSONObject("chapterOptions").toString(),
                     reexport.getJSONObject("corrections").getJSONObject("ui").getJSONObject("preferences").getJSONObject("chapterOptions").toString())
                 if (ui.getInt("schemaVersion") == 2) assertEquals(ui.toString(), reexport.getJSONObject("corrections").getJSONObject("ui").toString())
+                val reset = PortableReviewPreferences.reset(seed, reopened)
+                assertEquals(EditorMath.newDraft(seed).cuts, reset.cuts)
+                store.save(reset)
+                assertEquals(1, groups(requireNotNull(store.load())).size)
+                val resetUi = PortableReviewPreferences.export(reset)
+                assertEquals(ui.getJSONObject("preferences").getJSONObject("chapterOptions").toString(),
+                    resetUi.getJSONObject("preferences").getJSONObject("chapterOptions").toString())
+                if (ui.getInt("schemaVersion") == 2) assertEquals(ui.toString(), resetUi.toString())
             }
         } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun fullResetSharedFixtureRestoresModelOrderAndGeometryAndRemovesManualSplitAdditions() {
+        val scenario = fixture().getJSONObject("fullReset")
+        val ranges = scenario.getJSONArray("modelRanges")
+        val resetSeed = seed.copy(ranges = List(ranges.length()) { index -> ranges.getJSONObject(index).let {
+            SeedRange((it.getDouble("start") * 1000).toLong(), (it.getDouble("end") * 1000).toLong(),
+                it.getDouble("confidence").toFloat(), id = it.getString("id"))
+        } })
+        val input = bundle(draft()).apply {
+            getJSONObject("corrections").put("correctedRanges", scenario.getJSONArray("correctedRanges"))
+        }
+        val edited = ModelFeedbackImporter.parse(input.toString()).draft.copy(
+            sourceRevision = resetSeed.sourceRevision, reviewedCutIds = setOf("R001", "R002"))
+        val reset = PortableReviewPreferences.reset(resetSeed, edited)
+        assertEquals(EditorMath.newDraft(resetSeed).cuts, reset.cuts)
+        assertEquals(listOf("R001", "R009"), reset.cuts.map { it.id })
+        assertEquals(listOf(10_000L to 20_000L, 30_000L to 35_000L), reset.cuts.map { it.coreStartMs to it.coreEndMs })
+        assertTrue(reset.reviewedCutIds.isEmpty())
+        assertTrue(reset.cuts.all { it.editableGroupId == null && it.origin == CutOrigin.INFERRED && it.included })
     }
 
     @Test fun fixtureRoundTripsAndRemovedMembersLeaveNoStaleReferences() {
@@ -177,7 +201,7 @@ class ExplicitRallyGroupsTest {
             assertFalse(json.getJSONArray("cuts").getJSONObject(0).has("editableGroupId"))
             file.writeText(json.toString())
             assertEquals(draft().cuts, requireNotNull(store.load()).cuts)
-            assertEquals(EditorMath.newDraft(seed), ExplicitRallyGroups.reset(seed, draft()))
+            assertEquals(EditorMath.newDraft(seed).cuts, PortableReviewPreferences.reset(seed, draft()).cuts)
         } finally { directory.deleteRecursively() }
     }
 }
