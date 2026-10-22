@@ -2819,6 +2819,7 @@ private fun EditorScreen(
     }
     var pendingExportIntervals by remember { mutableStateOf<List<FinalCutInterval>?>(null) }
     var feedbackExporting by remember { mutableStateOf(false) }
+    var feedbackSaveError by remember { mutableStateOf<String?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
     var showRatingPrompt by remember { mutableStateOf(AppRating.hasPendingPrompt(context)) }
     var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
@@ -3270,12 +3271,13 @@ private fun EditorScreen(
     ) { uri ->
         if (uri != null) scope.launch {
             feedbackExporting = true
+            feedbackSaveError = null
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val bundle = createModelFeedback(context, project, draft, finalIntervals)
-                    context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
-                        it.write(bundle)
-                    }
+                    ModelFeedbackExporter.writeArchive(
+                        buildArchive = { createModelFeedback(context, project, draft, finalIntervals) },
+                        openDestination = { requireNotNull(context.contentResolver.openOutputStream(uri, "w")) },
+                    )
                 }
             }
             feedbackExporting = false
@@ -3283,6 +3285,7 @@ private fun EditorScreen(
                 message = "Saved the detailed project file"
             }.onFailure {
                 message = it.message ?: "Could not save the detailed project file"
+                feedbackSaveError = message
             }
         }
     }
@@ -3415,6 +3418,10 @@ private fun EditorScreen(
             activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { }
+    }
+
+    feedbackSaveError?.let { error ->
+        ProjectSaveErrorDialog(error, onDismiss = { feedbackSaveError = null })
     }
 
     if (confirmReset) {
@@ -5136,6 +5143,16 @@ private fun ScoreVisibilityOptions(
         }
         Text("Fading follows the point timeline. The timeline always fades in and out.", fontSize = 12.sp, color = Muted)
     }
+}
+
+@Composable
+internal fun ProjectSaveErrorDialog(message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Could not save project") },
+        text = { Text(message) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable

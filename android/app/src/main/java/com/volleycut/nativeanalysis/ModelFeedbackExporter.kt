@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.FileInputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -26,6 +27,12 @@ internal data class ModelFeedbackAnalysis(
 internal object ModelFeedbackExporter {
     private const val SAMPLE_BYTES = 1024 * 1024
     private const val RUNTIME_VARIANT = "native-android-dsp-v1"
+
+    /** Validate and serialize completely before opening a potentially existing destination. */
+    fun writeArchive(buildArchive: () -> String, openDestination: () -> OutputStream) {
+        val archive = buildArchive()
+        openDestination().bufferedWriter().use { it.write(archive) }
+    }
 
     fun loadAnalysis(context: Context, project: NativeProject): ModelFeedbackAnalysis? {
         val requestedTimes = AnalysisEngine.analysisTimes(

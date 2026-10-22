@@ -23,12 +23,28 @@ versions remain opaque through persistence, edits, reset, and export; the editor
 discloses that they are not applied. Changes made locally do not modify that
 future envelope.
 
+Archive export validates reserved future `reviewedCutIds` against the current
+inferred cuts in `correctedRanges`. An absent list remains valid; references to
+removed cuts, manual cuts, or initial inference alone fail with actionable
+feedback. Reset and repeated reset still retain the whole future envelope,
+including stale IDs, through local save/reopen. Export never drops those IDs or
+downgrades the envelope. The complete archive is validated and serialized before
+opening the destination stream, so this validation failure cannot overwrite an
+existing project file or publish a stale replacement. The editor catches the
+failure, displays its message in a dismissible dialog in every editor layout
+(including the desktop Export tab), and keeps the local project.
+
 `PortableReviewPreferencesTest` covers production feedback parse/export/reimport,
 the shared fragments, strict validation and bounds, alias precedence, local file
 persistence, legacy migration, source revision changes, reset, and future versions.
+It also covers stale future IDs after reset, unchanged future reimport, strict
+missing/malformed ID handling, nested opaque data, and destination preservation
+on export validation failure. Its original-failure control reconstructs the old
+dangling-ID archive and confirms that the production importer rejects it.
 `PortableReviewPreferencesInstrumentedTest` covers Android file persistence,
-fractional speed menu interaction, and the Media3 speed parameter using synthetic
-state. These checks do not exercise physical-device playback, browser exchange,
+fractional speed menu interaction, the Media3 speed parameter, and the future-ID
+export error dialog with retained draft/destination files using synthetic state.
+These checks do not exercise physical-device playback, browser exchange,
 or encoded video output; those remain manual release checks. No inference or
 private media is needed.
 

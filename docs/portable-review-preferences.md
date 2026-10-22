@@ -110,6 +110,15 @@ Export validates the composed envelope against the same bounds and fails rather
 than truncating extension data. No spreading/merging of unvalidated input into
 application objects is allowed.
 
+On import and archive export, reserved `reviewedCutIds` must reference the current
+`correctedRanges` entries with origin `cached-label`, including in future UI
+versions. Manual cuts and IDs present only in `initialInference` do not qualify.
+An absent list is valid; a present malformed list is rejected. Local drafts retain
+opaque future IDs losslessly even if reset removes a referenced inferred cut.
+Archive export then fails with visible feedback and preserves edits, the envelope,
+and any previous download. It must never remove IDs, rewrite, activate, or downgrade
+the future envelope to make an archive pass validation.
+
 The shared synthetic fixture is
 [`tests/fixtures/portable-review-preferences.json`](../tests/fixtures/portable-review-preferences.json).
 It contains UI fragments, not media or a complete project. Native port tests can
