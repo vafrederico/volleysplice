@@ -127,4 +127,37 @@ class EditorDraftStoreTest {
         assertEquals(replacement.sourceRevision, restored.sourceRevision)
         assertEquals(1_000L, restored.beforePaddingMs)
     }
+
+    @Test fun importedBackupCanRelinkOriginalVideoWithoutTouchingProtectedDraft() {
+        val originalSeed = seed
+        val source = ProjectSource(originalSeed.sourceUri, seed.displayName, 100, 0, "video/mp4")
+        val media = AnalysisTypes.MediaInfo(12.0, 320, 240, 0, "video/avc", null)
+        val project = NativeProjectStore.fromSeed(originalSeed, source, media)
+        val originalDraft = EditorMath.newDraft(originalSeed).copy(beforePaddingMs = 500)
+        val bundle = ModelFeedbackExporter.createBundle(
+            project, originalDraft, EditorMath.finalIntervals(originalDraft), null, null,
+        )
+        val invalid = "{\"version\":8,\"cuts\":[".toByteArray()
+        val originalTarget = File(temporary.root, "editor-drafts/${originalSeed.sourceRevision}.json")
+        checkNotNull(originalTarget.parentFile).mkdirs()
+        originalTarget.writeBytes(invalid)
+        val imported = ModelFeedbackImporter.parse(bundle.toString())
+        val importedSeed = checkNotNull(imported.project.editorSeed())
+        EditorDraftStore(temporary.root, importedSeed).save(imported.draft)
+        // Simulate persisted project restart and the production relink's source replacement.
+        val persisted = checkNotNull(NativeProjectStore.decode(NativeProjectStore.encode(imported.project)))
+        val relinked = persisted.copy(source = source, media = media)
+        val relinkedSeed = checkNotNull(relinked.editorSeed())
+        assertEquals(originalSeed.sourceRevision, relinkedSeed.copy(draftNamespace = null).sourceRevision)
+        assertNotEquals(originalSeed.sourceRevision, relinkedSeed.sourceRevision)
+        EditorDraftStore.relink(temporary.root, importedSeed, relinkedSeed)
+        val restored = (EditorDraftStore(temporary.root, relinkedSeed).load() as EditorDraftLoadResult.Restored).draft
+        assertEquals(500L, restored.beforePaddingMs)
+        assertEquals(originalDraft.cuts, restored.cuts)
+        assertArrayEquals(invalid, originalTarget.readBytes())
+        val reexported = ModelFeedbackExporter.createBundle(
+            relinked, restored, EditorMath.finalIntervals(restored), null, null,
+        )
+        assertEquals(originalDraft.cuts, ModelFeedbackImporter.parse(reexported.toString()).draft.cuts)
+    }
 }

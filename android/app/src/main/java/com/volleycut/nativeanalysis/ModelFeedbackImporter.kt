@@ -157,6 +157,7 @@ internal object ModelFeedbackImporter {
         )
         val projectWithoutCacheIdentity = NativeProject(
             id = id,
+            draftNamespace = id,
             source = projectSource,
             media = AnalysisTypes.MediaInfo(
                 duration, mediaJson.optInt("width"), mediaJson.optInt("height"),

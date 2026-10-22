@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 
 /** Stores only enough metadata to reopen the most recent editor after process death. */
 internal object EditorProjectStore {
-    private const val VERSION = 7
+    private const val VERSION = 8
     private const val TAG = "VolleySpliceEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
@@ -44,6 +44,7 @@ internal object EditorProjectStore {
     internal fun encode(seed: EditorSeed) = JSONObject().apply {
         put("version", VERSION)
         put("sourceUri", seed.sourceUri)
+        put("draftNamespace", seed.draftNamespace ?: JSONObject.NULL)
         put("displayName", seed.displayName)
         put("durationMs", seed.durationMs)
         put("width", seed.width)
@@ -100,6 +101,7 @@ internal object EditorProjectStore {
         }
         return EditorSeed(
             sourceUri = json.getString("sourceUri"),
+            draftNamespace = if (json.isNull("draftNamespace")) null else json.getString("draftNamespace"),
             displayName = json.getString("displayName"),
             durationMs = durationMs,
             width = json.optInt("width"),

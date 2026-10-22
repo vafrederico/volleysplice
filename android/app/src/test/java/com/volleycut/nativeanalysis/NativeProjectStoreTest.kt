@@ -8,6 +8,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeProjectStoreTest {
+    @Test fun legacyProjectsRetainTheirDraftIdentityWithoutAnImportNamespace() {
+        val original = readyProject()
+        val legacy = NativeProjectStore.encode(original).apply {
+            put("version", 12)
+            remove("draftNamespace")
+        }
+        val restored = requireNotNull(NativeProjectStore.decode(legacy))
+        assertEquals(null, restored.draftNamespace)
+        assertEquals(original.editorSeed()!!.sourceRevision, restored.editorSeed()!!.sourceRevision)
+    }
     @Test
     fun oldVisualOutputRemainsEditableButCannotSatisfyNewAnalysis() {
         val saved = readyProject()
