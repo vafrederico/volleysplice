@@ -64,20 +64,35 @@ export async function inferScoreSpecialists(
           ? "Getting serve markers ready"
           : "Getting side-switch markers ready",
   });
-  const [servingPlan, switchPlan] = await Promise.all([
-    request.servingSide
-      ? Promise.resolve(
-          servingSideFramePlan(
+  // Planning can itself load a model or reject invalid candidate identity.
+  // Capture synchronous and asynchronous failures per stage before building
+  // the shared decode schedule, so one failed plan cannot discard the other.
+  const [servingResult, switchResult] = await Promise.allSettled([
+    Promise.resolve().then(() =>
+      request.servingSide
+        ? servingSideFramePlan(
             request.servingSide.analysis,
             media.info.duration,
             null,
-          ),
-        )
-      : Promise.resolve(null),
-    request.sideSwitch
-      ? sideSwitchFramePlan(request.sideSwitch.analysis, media.info.duration)
-      : Promise.resolve(null),
+          )
+        : null,
+    ),
+    Promise.resolve().then(() =>
+      request.sideSwitch
+        ? sideSwitchFramePlan(request.sideSwitch.analysis, media.info.duration)
+        : null,
+    ),
   ]);
+  check();
+  const errors: string[] = [];
+  const planned = <T>(result: PromiseSettledResult<T>): T | null => {
+    if (result.status === "fulfilled") return result.value;
+    errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+    return null;
+  };
+  const servingPlan = planned(servingResult);
+  const switchPlan = planned(switchResult);
+  if (!servingPlan && !switchPlan) throw new Error(errors.join(" "));
   const frames = await sampleSpecialistFramesSequentially(
     media,
     roi,
@@ -87,16 +102,16 @@ export async function inferScoreSpecialists(
     },
     (completed, total) => {
       check();
-      if (request.servingSide) {
+      if (servingPlan && request.servingSide) {
         request.servingSide.onProgress?.({
           stage: "frames",
           completed,
           total,
-          detail: request.sideSwitch
+          detail: switchPlan
             ? `Checking serves and side switches · ${completed}/${total}`
             : `Checking serve court sides · ${completed}/${total}`,
         });
-      } else {
+      } else if (switchPlan) {
         request.sideSwitch?.onProgress?.({
           stage: "frames",
           completed,
@@ -108,8 +123,7 @@ export async function inferScoreSpecialists(
     options.signal,
   );
   const output: ScoreSpecialistInferenceOutput = {};
-  const errors: string[] = [];
-  if (request.servingSide) {
+  if (servingPlan && request.servingSide) {
     try {
       check();
       const artifacts = await evaluateServingSideFrames(
@@ -143,7 +157,7 @@ export async function inferScoreSpecialists(
       errors.push(cause instanceof Error ? cause.message : String(cause));
     }
   }
-  if (request.sideSwitch) {
+  if (switchPlan && request.sideSwitch) {
     try {
       check();
       const artifacts = await evaluateSideSwitchFrames(

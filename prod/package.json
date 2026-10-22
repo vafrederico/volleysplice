@@ -11,7 +11,7 @@
     "check": "tsc --noEmit",
     "test:youtube-ui": "node scripts/test-youtube-chapters-ui.mjs",
     "test:inference-ui": "node scripts/test-inference-progress-ui.mjs",
-    "test:score-recovery": "node scripts/test-score-specialists.mjs && node scripts/test-score-recovery-ui.mjs",
+    "test:score-recovery": "node scripts/test-score-specialists.mjs && node scripts/test-score-specialist-runtime.mjs && node scripts/test-score-recovery-ui.mjs",
     "test:review-persistence": "node --experimental-strip-types scripts/test-review-persistence.mjs && node scripts/test-review-persistence-ui.mjs",
     "prebuild": "npm run prepare-assets",
     "build": "npm run check && vite build",

@@ -69,6 +69,10 @@ export function loadServingSideRuntime(): Promise<ServingSideRuntimeModel> {
     .then(async (response) => {
       if (!response.ok) throw new Error(`Could not load serving-side model (${response.status}).`);
       return parseServingSideRuntime(await response.json());
+    })
+    .catch((cause) => {
+      runtimePromise = null;
+      throw cause;
     });
   return runtimePromise;
 }
