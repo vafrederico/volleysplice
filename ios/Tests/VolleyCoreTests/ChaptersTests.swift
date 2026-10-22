@@ -212,4 +212,22 @@ final class ChaptersTests: XCTestCase {
         XCTAssertFalse(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
         XCTAssertTrue(removed.cuts[2].included)
     }
+    func testPlaybackThenPauseKeepsTheCurrentSplitPartAfterReleasingThePausedSelection() throws {
+        let original = EditorDraft(sourceRevision: "playback-selection", cuts: [.init(id: "R001",
+            coreStartMs: 10000, coreEndMs: 30000, keepStartMs: 8000, keepEndMs: 32000)])
+        let split = try XCTUnwrap(EditorMath.splitCut(original, cutId: "R001", positionMs: 20000,
+            bounds: .init(startMs: 0, endMs: 40000)))
+        let rallies = groups(split)
+        XCTAssertEqual(EditorMath.rallySelectionAtPlayhead(groups: rallies, selectedId: "R001",
+            positionMs: 8000, playing: false)?.id, "R001")
+        // Starting playback releases the paused pin; pausing must retain time-based selection.
+        let selectedId: String? = nil
+        for playing in [true, false] {
+            let current = try XCTUnwrap(EditorMath.rallySelectionAtPlayhead(groups: rallies,
+                selectedId: selectedId, positionMs: 24000, playing: playing))
+            XCTAssertEqual(current.id, "R002")
+            let removed = EditorMath.setIncluded(split, cutId: current.id, included: false)
+            XCTAssertTrue(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
+        }
+    }
 }

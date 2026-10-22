@@ -1294,7 +1294,11 @@ struct EditorWorkspace: View {
         guard player.currentItem != nil else { return }
         previewEndMs = nil
         if player.rate > 0 { player.pause(); playing = false }
-        else { if playheadMs >= project.durationMs { seek(bounds.startMs) }; player.playImmediately(atRate: draft.playbackRate); playing = true }
+        else {
+            selectedRallyId = nil
+            if playheadMs >= project.durationMs { seek(bounds.startMs) }
+            player.playImmediately(atRate: draft.playbackRate); playing = true
+        }
     }
     private func pollPlayback() {
         let seconds = player.currentTime().seconds
@@ -1303,6 +1307,7 @@ struct EditorWorkspace: View {
             if value != playheadMs { playheadMs = value }
         }
         let isPlaying = player.rate > 0
+        if isPlaying { selectedRallyId = nil }
         if playing != isPlaying { playing = isPlaying }
         if playing, let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
            playheadMs < max(bounds.startMs, selected.startMs - 2_000) || playheadMs > selected.endMs { selectedSuggestionId = nil }
