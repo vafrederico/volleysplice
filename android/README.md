@@ -32,6 +32,17 @@ remain, and the project stays editable with its original cuts, cleanup scopes,
 overrides, touched IDs, and materialized export union. Neural rally imports ignore
 the legacy cleanup layer.
 
+Feedback import accepts a present `corrections.suppressionInitialBehavior` only
+when it is a JSON string equal to `highlight-only` or `disable-initially`.
+Unknown names, empty strings, other JSON types, and explicit null fail parsing
+before caches or project records are published. Only an absent field uses the
+legacy `disable-initially` default.
+
+The current web import/reexport path drops the native `retainedProbabilities`
+extension. Web schema acceptance does not establish preservation of those values
+through web interchange; the cleanup suggestions and final cut union are separate
+from this native probability archive.
+
 ```text
 video URI
   -> MediaExtractor presentation-order sample plan

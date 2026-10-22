@@ -72,6 +72,66 @@ class ModelFeedbackCleanupRoundTripTest {
     }
 
     @Test
+    fun presentInvalidSuppressionBehaviorsFailParsingForBothScopesAndCacheStates() {
+        val project = behaviorProject()
+        val invalidValues = listOf(
+            "future-highlight-mode", "", "null", " highlight-only ", "HIGHLIGHT-ONLY",
+            0, 1, .5, true, false, JSONObject.NULL,
+            JSONArray().put("highlight-only"), JSONObject().put("mode", "highlight-only"),
+        )
+        for (scope in SuppressionScope.entries) {
+            val highlighted = draft(project, scope).copy(
+                suppressionInitialBehavior = SuppressionInitialBehavior.HIGHLIGHT_ONLY,
+            )
+            assertEquals(listOf(FinalCutInterval(5_000, 12_000, listOf("R001"))),
+                EditorMath.finalIntervals(highlighted, project.suppression))
+            for (cachePresent in listOf(false, true)) {
+                for (invalid in invalidValues) {
+                    val exported = bundle(project, highlighted, analysis().takeIf { cachePresent })
+                    exported.getJSONObject("corrections").put("suppressionInitialBehavior", invalid)
+                    val error = assertThrows("scope=$scope cache=$cachePresent value=$invalid",
+                        IllegalArgumentException::class.java) { ModelFeedbackImporter.parse(exported.toString()) }
+                    assertTrue(error.message.orEmpty().contains("Invalid suppression initial behavior"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun supportedSuppressionBehaviorsPreserveStateForBothScopesAndCacheStates() {
+        val project = behaviorProject()
+        for (behavior in SuppressionInitialBehavior.entries) {
+            val expected = if (behavior == SuppressionInitialBehavior.HIGHLIGHT_ONLY) {
+                listOf(FinalCutInterval(5_000, 12_000, listOf("R001")))
+            } else emptyList()
+            for (scope in SuppressionScope.entries) {
+                val draft = draft(project, scope).copy(suppressionInitialBehavior = behavior)
+                for (cachePresent in listOf(false, true)) {
+                    for (reexportCachePresent in listOf(false, true)) {
+                        assertRoundTrip(project, draft, expected, cachePresent, reexportCachePresent)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun absentSuppressionBehaviorUsesLegacyDefaultForBothScopesAndCacheStates() {
+        val project = behaviorProject()
+        for (scope in SuppressionScope.entries) {
+            val draft = draft(project, scope).copy(
+                suppressionInitialBehavior = SuppressionInitialBehavior.DISABLE_INITIALLY,
+            )
+            for (cachePresent in listOf(false, true)) {
+                for (reexportCachePresent in listOf(false, true)) {
+                    assertRoundTrip(project, draft, emptyList(), cachePresent, reexportCachePresent,
+                        omitInitialBehavior = true)
+                }
+            }
+        }
+    }
+
+    @Test
     fun protectedEditsManualRangesAndExplicitDecisionsRemainEditableForBothScopes() {
         val project = project()
         val logicalId = project.suppression!!.suggestions().single().logicalId()
@@ -214,9 +274,11 @@ class ModelFeedbackCleanupRoundTripTest {
         expected: List<FinalCutInterval>,
         cachePresent: Boolean,
         reexportCachePresent: Boolean,
+        omitInitialBehavior: Boolean = false,
     ) {
         assertEquals(expected, EditorMath.finalIntervals(draft, project.suppression))
         val exported = bundle(project, draft, analysis().takeIf { cachePresent })
+        if (omitInitialBehavior) exported.getJSONObject("corrections").remove("suppressionInitialBehavior")
         val imported = ModelFeedbackImporter.parse(exported.toString())
         val restored = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(imported.project)))
         assertEquals(expected, EditorMath.finalIntervals(imported.draft, restored.suppression))
@@ -240,6 +302,7 @@ class ModelFeedbackCleanupRoundTripTest {
         assertEquals(exported.getJSONObject("corrections").getJSONObject("suppression").toString(),
             reexported.getJSONObject("corrections").getJSONObject("suppression").toString())
         val again = ModelFeedbackImporter.parse(reexported.toString())
+        assertEquals(imported.draft, again.draft.copy(sourceRevision = imported.draft.sourceRevision))
         assertEquals(expected, EditorMath.finalIntervals(again.draft, again.project.suppression))
         assertEquals(EditorMath.finalIntervals(draft.copy(selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.NONE),
             project.suppression), EditorMath.finalIntervals(
@@ -265,6 +328,16 @@ class ModelFeedbackCleanupRoundTripTest {
         val times = AnalysisEngine.analysisTimes(30.0, 0.0, 30.0)
         return ModelFeedbackAnalysis(times, FloatArray(times.size * FeatureSchema.BASE.size),
             FloatArray(times.size) { .4f }, FloatArray(times.size) { .2f }, FloatArray(times.size) { .6f })
+    }
+
+    private fun behaviorProject(): NativeProject {
+        val intervals = listOf(AnalysisTypes.Interval(5.0, 12.0, .9f))
+        return project().copy(
+            ranges = listOf(SeedRange(5_000, 12_000, .9f, ProductionEnsemble.ALL_LABELS_V2_ONLY)),
+            productionComponents = AnalysisTypes.ProductionComponents(intervals, emptyList()),
+            suppression = SuppressionPolicyEngine.build(intervals, emptyList(),
+                FloatArray(analysis().timestamps.size) { .9f }, intervals, 30.0),
+        )
     }
 
     private fun project(): NativeProject {

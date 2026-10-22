@@ -425,6 +425,13 @@ internal object ModelFeedbackImporter {
         require(selectedPolicyName in SuppressionPolicyEngine.Policy.entries.map { it.wireName }) {
             "Invalid suppression policy"
         }
+        val initialBehavior = if (corrections.has("suppressionInitialBehavior")) {
+            val raw = corrections.get("suppressionInitialBehavior")
+            require(raw is String) { "Invalid suppression initial behavior" }
+            requireNotNull(SuppressionInitialBehavior.entries.firstOrNull { it.wireName == raw }) {
+                "Invalid suppression initial behavior"
+            }
+        } else SuppressionInitialBehavior.DISABLE_INITIALLY
         val draft = EditorDraft(
             sourceRevision = seed.sourceRevision,
             updatedAtMs = runCatching {
@@ -456,9 +463,7 @@ internal object ModelFeedbackImporter {
             selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.fromWireName(
                 selectedPolicyName,
             ),
-            suppressionInitialBehavior = SuppressionInitialBehavior.fromWireName(
-                corrections.optString("suppressionInitialBehavior", "disable-initially"),
-            ),
+            suppressionInitialBehavior = initialBehavior,
             suppressionDecisionOverrides = decisionOverrides,
             suppressionScopeOverrides = scopeOverrides,
             userTouchedCutIds = buildSet {
