@@ -141,6 +141,26 @@ export function retainProjectSource(
   return existing?.fingerprint !== undefined ? existing : source;
 }
 
+export function sameProjectSource(left: ProjectSource, right: ProjectSource): boolean {
+  return left.name === right.name && left.size === right.size &&
+    left.lastModified === right.lastModified && left.type === right.type &&
+    left.fingerprint === right.fingerprint;
+}
+
+export class ProjectSourceConflictError extends Error {
+  readonly project: VolleySpliceProject | null;
+  constructor(
+    project: VolleySpliceProject | null,
+    message = project
+      ? "The saved video identity changed in another tab. Choose the original video and retry."
+      : "This saved project is no longer available. Open another project.",
+  ) {
+    super(message);
+    this.name = "ProjectSourceConflictError";
+    this.project = project ? normalizeStoredProject(project) : null;
+  }
+}
+
 const SOURCE_FINGERPRINT_SAMPLE_BYTES = 1024 * 1024;
 
 function hex(bytes: ArrayBuffer): string {
@@ -666,7 +686,45 @@ export async function listProjects(): Promise<VolleySpliceProject[]> {
   }
 }
 
-export async function putProject(project: VolleySpliceProject): Promise<void> {
+export async function getProject(id: string): Promise<VolleySpliceProject | null> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readonly");
+    const complete = transactionComplete(transaction);
+    const stored = await requestResult(transaction.objectStore(PROJECT_STORE).get(id) as IDBRequest<unknown>);
+    await complete;
+    if (stored === undefined) return null;
+    if (!validProject(stored)) throw new Error("The saved project is invalid. Open another project.");
+    return normalizeStoredProject(stored);
+  } finally {
+    database.close();
+  }
+}
+
+/** Linearize a source validation without holding an IDB transaction open during file I/O. */
+export async function confirmProjectSource(id: string, expected: ProjectSource): Promise<VolleySpliceProject> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    const stored = await requestResult(transaction.objectStore(PROJECT_STORE).get(id) as IDBRequest<unknown>);
+    if (!validProject(stored) || !sameProjectSource(stored.source, expected)) {
+      await complete;
+      throw new ProjectSourceConflictError(validProject(stored) ? stored : null);
+    }
+    await complete;
+    return normalizeStoredProject(stored);
+  } finally {
+    database.close();
+  }
+}
+
+/** Source-bound writes require their validated source (null requires a new ID).
+ * Source-neutral background writes may omit it and receive the retained identity. */
+export async function putProject(
+  project: VolleySpliceProject,
+  options: { expectedSource?: ProjectSource | null } = {},
+): Promise<VolleySpliceProject> {
   if (!validProject(project)) throw new Error("The project record is invalid.");
   const database = await openProjectDatabase();
   try {
@@ -674,6 +732,16 @@ export async function putProject(project: VolleySpliceProject): Promise<void> {
     const complete = transactionComplete(transaction);
     const store = transaction.objectStore(PROJECT_STORE);
     const stored = await requestResult(store.get(project.id) as IDBRequest<unknown>);
+    const existing = validProject(stored) ? stored : null;
+    const expected = options.expectedSource;
+    if ((expected !== undefined && (expected === null
+        ? stored !== undefined
+        : !existing || !sameProjectSource(existing.source, expected))) ||
+        (existing?.source.fingerprint !== undefined && project.source.fingerprint !== undefined &&
+          existing.source.fingerprint !== project.source.fingerprint)) {
+      await complete;
+      throw new ProjectSourceConflictError(existing);
+    }
     // Analysis/source updates use the app's project snapshot, which may predate
     // editor saves. Merge the latest review in the same transaction as the put.
     if (validProject(stored)) {
@@ -692,6 +760,7 @@ export async function putProject(project: VolleySpliceProject): Promise<void> {
     }
     store.put(project);
     await complete;
+    return project;
   } finally {
     database.close();
   }

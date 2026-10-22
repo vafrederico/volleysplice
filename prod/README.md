@@ -45,7 +45,10 @@ without a fingerprint retain exact metadata matching. Starting a new analysis
 that would reuse a saved project verifies the same source identity before linking
 the video or reopening its review. Once recorded, the source fingerprint survives
 requeue, read failures and retries; later metadata updates cannot replace or remove
-it. Deleting
+it. Attachment and setup reuse read the latest persisted identity and confirm it
+transactionally before linking. Source-bound queue and inference writes reject
+concurrent identity changes; ordinary review and background updates retain the
+latest identity. Deleting
 a project also deletes its cached features, inference, and edit draft. The editor exports
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected

@@ -4,6 +4,8 @@ import { IDBFactory } from "fake-indexeddb";
 import { createCutDraft, cutDraftStorageKey } from "../src/lib/cut-draft.ts";
 import {
   deleteProject,
+  confirmProjectSource,
+  getProject,
   listProjects,
   markProjectExported,
   projectAnalysisId,
@@ -11,6 +13,7 @@ import {
   putProjectReviewDraft,
   sourceFileFingerprint,
   projectSource,
+  ProjectSourceConflictError,
 } from "../src/lib/project-store.ts";
 import {
   restoreProjectReviewDraft,
@@ -123,16 +126,59 @@ test("status and metadata updates cannot remove or replace a recorded source ide
   const attempts = [
     { status: "queued", source: projectSource(original), normalizedStatus: "waiting" },
     { status: "analyzing", source: { ...verified, fingerprint: undefined }, normalizedStatus: "waiting" },
-    { status: "error", source: { ...projectSource(replacement), fingerprint: await sourceFileFingerprint(replacement) }, normalizedStatus: "error" },
+    { status: "error", source: { ...projectSource(replacement), fingerprint: await sourceFileFingerprint(replacement) }, conflict: true },
     { status: "ready", source: { ...verified, name: "synthetic-transfer.mp4", lastModified: 999, type: "application/octet-stream" }, normalizedStatus: "ready" },
   ];
-  for (const { status, source, normalizedStatus } of attempts) {
-    await putProject({ ...project, status, source });
+  for (const { status, source, normalizedStatus, conflict } of attempts) {
+    const previous = (await listProjects())[0];
+    if (conflict) await assert.rejects(putProject({ ...project, status, source }), ProjectSourceConflictError);
+    else await putProject({ ...project, status, source });
     const restored = (await listProjects())[0];
     assert.deepEqual(restored.source, verified, `The ${status} update must retain the recorded source identity`);
     assert.equal(restored.id, project.id);
-    assert.equal(restored.status, normalizedStatus);
+    assert.equal(restored.status, conflict ? previous.status : normalizedStatus);
   }
+});
+
+test("source confirmations and bound writes reject an upgrade after validation and return current identity", async () => {
+  const { project } = fixture();
+  await putProject(project);
+  const checked = await getProject(project.id);
+  const source = { ...project.source, fingerprint: `sampled-sha256-v1:${"1".repeat(64)}` };
+  await putProject({ ...project, source });
+  for (const operation of [
+    () => confirmProjectSource(project.id, checked.source),
+    () => putProject({ ...checked, status: "queued" }, { expectedSource: checked.source }),
+  ]) {
+    await assert.rejects(operation(), cause => cause instanceof ProjectSourceConflictError &&
+      cause.project.source.fingerprint === source.fingerprint);
+    assert.equal((await getProject(project.id)).status, "ready");
+  }
+  const saved = await putProject({ ...checked, updatedAt: "2026-01-04T00:00:00.000Z" });
+  assert.deepEqual(saved.source, source, "Ordinary background writes return the authoritative persisted source");
+  assert.deepEqual((await confirmProjectSource(project.id, source)).source, source);
+});
+
+test("source CAS permits unrelated concurrent review and export writes", async () => {
+  const { project, edited } = fixture();
+  await putProject(project);
+  const checked = await getProject(project.id);
+  await putProjectReviewDraft(project.id, edited);
+  await markProjectExported(project.id, "2026-01-05T00:00:00.000Z");
+  const queued = await putProject({ ...checked, status: "queued" }, { expectedSource: checked.source });
+  assert.deepEqual(queued.reviewDraft, edited);
+  assert.equal(queued.lastExportedAt, "2026-01-05T00:00:00.000Z");
+  assert.equal(queued.status, "queued");
+});
+
+test("source CAS prevents conflicting creation and resurrection after deletion", async () => {
+  const { project } = fixture();
+  await putProject(project, { expectedSource: null });
+  await assert.rejects(putProject(project, { expectedSource: null }), ProjectSourceConflictError);
+  await deleteProject(project.id);
+  await assert.rejects(putProject(project, { expectedSource: project.source }), ProjectSourceConflictError);
+  await assert.rejects(confirmProjectSource(project.id, project.source), ProjectSourceConflictError);
+  assert.equal(await getProject(project.id), null);
 });
 
 test("rally, review, serve and exclusion edits survive a complete project reload", async () => {

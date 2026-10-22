@@ -62,16 +62,21 @@ import {
 } from "@/designs/useDesignReview";
 import {
   deleteProject,
+  confirmProjectSource,
+  getProject,
   listProjects,
   markProjectExported,
   projectAnalysisId,
   projectId,
   projectSource,
+  ProjectSourceConflictError,
   putProject,
   retainProjectSource,
+  sameProjectSource,
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
   sourceFileFingerprint,
+  type ProjectSource,
   type VolleySpliceProject,
 } from "@/lib/project-store";
 
@@ -291,6 +296,7 @@ function WebApp() {
 
   const projectsRef = useRef<VolleySpliceProject[]>([]);
   const filesRef = useRef(new Map<string, File>());
+  const validatedSourcesRef = useRef(new Map<string, ProjectSource>());
   const videoUrlsRef = useRef(new Map<string, string>());
   const exportJobsRef = useRef(new Map<string, AppExportJob>());
   const exportQueueRef = useRef<QueuedVideoExport[]>([]);
@@ -334,6 +340,59 @@ function WebApp() {
     setProjects(sorted);
   }
 
+  function replaceProject(project: VolleySpliceProject) {
+    replaceProjects(projectsRef.current.some((candidate) => candidate.id === project.id)
+      ? projectsRef.current.map((candidate) => candidate.id === project.id ? project : candidate)
+      : [...projectsRef.current, project]);
+  }
+
+  function unlinkSourceFile(id: string) {
+    filesRef.current.delete(id);
+    validatedSourcesRef.current.delete(id);
+    const url = videoUrlsRef.current.get(id);
+    if (url) URL.revokeObjectURL(url);
+    videoUrlsRef.current.delete(id);
+    setFilesRevision((current) => current + 1);
+  }
+
+  function reconcileProject(project: VolleySpliceProject) {
+    if (!mountedRef.current || deletedProjectIdsRef.current.has(project.id)) return;
+    const current = projectsRef.current.find((candidate) => candidate.id === project.id);
+    if (current && !sameProjectSource(current.source, project.source)) unlinkSourceFile(project.id);
+    replaceProject(project);
+  }
+
+  function sourceFailure(id: string, cause: unknown) {
+    if (!mountedRef.current || deletedProjectIdsRef.current.has(id)) return;
+    unlinkSourceFile(id);
+    if (cause instanceof ProjectSourceConflictError) {
+      if (cause.project) reconcileProject(cause.project);
+      else replaceProjects(projectsRef.current.filter((project) => project.id !== id));
+    }
+    setError(cause instanceof Error ? cause.message : String(cause));
+  }
+
+  async function validateStoredSource(id: string, selected: File, approved?: ProjectSource) {
+    const latest = await getProject(id);
+    if (!latest) throw new ProjectSourceConflictError(null);
+    if ((!approved || !sameProjectSource(latest.source, approved)) &&
+        !(await sourceCanReconnectFile(latest.source, selected))) {
+      throw new ProjectSourceConflictError(latest,
+        `Choose the original ${latest.source.name} file (${compactBytes(latest.source.size)}). The selected file does not match this project.`);
+    }
+    return latest;
+  }
+
+  async function commitSourceProject(project: VolleySpliceProject, expectedSource: ProjectSource | null) {
+    const persisted = await putProject(project, { expectedSource });
+    if (deletedProjectIdsRef.current.has(project.id)) throw new ProjectSourceConflictError(null);
+    if (mountedRef.current) {
+      replaceProject(persisted);
+      if (filesRef.current.has(project.id)) validatedSourcesRef.current.set(project.id, persisted.source);
+    }
+    return persisted;
+  }
+
   function commitProject(project: VolleySpliceProject) {
     const existing = projectsRef.current.find(
       (candidate) => candidate.id === project.id,
@@ -342,13 +401,18 @@ function WebApp() {
       ...project,
       source: retainProjectSource(project.source, existing?.source),
     };
-    const next = existing
-      ? projectsRef.current.map((candidate) =>
-          candidate.id === project.id ? project : candidate,
-        )
-      : [...projectsRef.current, project];
-    replaceProjects(next);
-    void putProject(project).catch(() => {
+    replaceProject(project);
+    void putProject(project).then((persisted) => {
+      const current = projectsRef.current.find((candidate) => candidate.id === project.id);
+      if (mountedRef.current && !deletedProjectIdsRef.current.has(project.id) && current &&
+          sameProjectSource(current.source, project.source) && !sameProjectSource(current.source, persisted.source)) {
+        reconcileProject({ ...current, source: persisted.source });
+      }
+    }).catch((cause) => {
+      if (cause instanceof ProjectSourceConflictError) {
+        sourceFailure(project.id, cause);
+        return;
+      }
       if (mountedRef.current) {
         setError(
           "Browser project storage is unavailable. This project will last for this tab only.",
@@ -357,10 +421,11 @@ function WebApp() {
     });
   }
 
-  function linkSourceFile(projectIdToLink: string, sourceFile: File) {
+  function linkSourceFile(projectIdToLink: string, sourceFile: File, source: ProjectSource) {
     const previousUrl = videoUrlsRef.current.get(projectIdToLink);
     if (previousUrl) URL.revokeObjectURL(previousUrl);
     filesRef.current.set(projectIdToLink, sourceFile);
+    validatedSourcesRef.current.set(projectIdToLink, source);
     videoUrlsRef.current.set(
       projectIdToLink,
       URL.createObjectURL(sourceFile),
@@ -884,71 +949,56 @@ function WebApp() {
     }
     const source = projectSource(file);
     const id = projectId(source, info, normalizedWindow, rallyModel);
-    const existing = projectsRef.current.find((project) => project.id === id);
-    if (existing) {
-      const revision = candidateRevisionRef.current;
-      checkingProjectSourceRef.current = true;
-      setCheckingProjectSource(true);
-      try {
-        const matches = await sourceCanReconnectFile(existing.source, file);
-        if (!mountedRef.current || revision !== candidateRevisionRef.current)
-          return;
-        if (!matches) {
-          setError(
-            `This video does not match ${existing.source.name}. Choose the original video to reuse its saved analysis.`,
-          );
-          return;
+    const revision = candidateRevisionRef.current;
+    checkingProjectSourceRef.current = true;
+    setCheckingProjectSource(true);
+    try {
+      let existing = await getProject(id);
+      if (existing) {
+        if (!(await sourceCanReconnectFile(existing.source, file))) {
+          throw new ProjectSourceConflictError(existing,
+            `This video does not match ${existing.source.name}. Choose the original video to reuse its saved analysis.`);
         }
-        if (
-          deletedProjectIdsRef.current.has(id) ||
-          !projectsRef.current.some((project) => project.id === id)
-        ) {
-          setError(
-            "This saved project is no longer available. Open another project.",
-          );
-          return;
-        }
-      } catch (cause) {
-        if (mountedRef.current && revision === candidateRevisionRef.current) {
-          setError(
-            `Could not verify the saved video: ${cause instanceof Error ? cause.message : String(cause)}`,
-          );
-        }
-        return;
-      } finally {
-        checkingProjectSourceRef.current = false;
-        if (mountedRef.current) setCheckingProjectSource(false);
+        existing = await confirmProjectSource(id, existing.source);
       }
-    }
-    linkSourceFile(id, file);
-
-    if (existing?.status === "ready" && existing.analysis) {
+      if (!mountedRef.current || revision !== candidateRevisionRef.current) return;
+      if (deletedProjectIdsRef.current.has(id)) throw new ProjectSourceConflictError(null);
+      if (existing?.status === "ready" && existing.analysis) {
+        reconcileProject(existing);
+        linkSourceFile(id, file, existing.source);
+        setSelectedProjectId(id);
+        resetCandidate();
+        return;
+      }
+      const now = new Date().toISOString();
+      const project: VolleySpliceProject = {
+        schemaVersion: 1,
+        id,
+        source: existing?.source ?? source,
+        info,
+        analysisWindow: normalizedWindow,
+        roi,
+        servingSideEnabled: true,
+        sideSwitchEnabled,
+        rallyModel,
+        status: "queued",
+        analysis: null,
+        error: null,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      const queued = await commitSourceProject(project, existing?.source ?? null);
+      if (!mountedRef.current || revision !== candidateRevisionRef.current) return;
+      linkSourceFile(id, file, queued.source);
       setSelectedProjectId(id);
+      enqueueProject(id);
       resetCandidate();
-      return;
+    } catch (cause) {
+      if (revision === candidateRevisionRef.current) sourceFailure(id, cause);
+    } finally {
+      checkingProjectSourceRef.current = false;
+      if (mountedRef.current) setCheckingProjectSource(false);
     }
-
-    const now = new Date().toISOString();
-    const project: VolleySpliceProject = {
-      schemaVersion: 1,
-      id,
-      source: existing?.source ?? source,
-      info,
-      analysisWindow: normalizedWindow,
-      roi,
-      servingSideEnabled: true,
-      sideSwitchEnabled,
-      rallyModel,
-      status: "queued",
-      analysis: null,
-      error: null,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    commitProject(project);
-    setSelectedProjectId(id);
-    enqueueProject(id);
-    resetCandidate();
   }
 
   async function runProject(projectIdToRun: string) {
@@ -969,14 +1019,19 @@ function WebApp() {
           .then((fingerprint) => ({ ...project.source, fingerprint }))
           .catch(() => project.source);
     if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
-    const running: VolleySpliceProject = {
-      ...project,
-      source,
-      status: "analyzing",
-      error: null,
-      updatedAt: new Date().toISOString(),
-    };
-    commitProject(running);
+    let running: VolleySpliceProject;
+    try {
+      running = await commitSourceProject({
+        ...project,
+        source,
+        status: "analyzing",
+        error: null,
+        updatedAt: new Date().toISOString(),
+      }, project.source);
+    } catch (cause) {
+      sourceFailure(projectIdToRun, cause);
+      return;
+    }
     setActiveInferenceSteps(
       createInferenceProgressSteps([
         ...CORE_INFERENCE_STEP_IDS,
@@ -1161,16 +1216,24 @@ function WebApp() {
         error: null,
         updatedAt: new Date().toISOString(),
       };
-      commitProject(ready);
+      await commitSourceProject(ready, running.source);
     } catch (cause) {
       if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      if (cause instanceof ProjectSourceConflictError) {
+        sourceFailure(projectIdToRun, cause);
+        return;
+      }
       const failed: VolleySpliceProject = {
         ...running,
         status: "error",
         error: cause instanceof Error ? cause.message : String(cause),
         updatedAt: new Date().toISOString(),
       };
-      commitProject(failed);
+      try {
+        await commitSourceProject(failed, running.source);
+      } catch (writeFailure) {
+        sourceFailure(projectIdToRun, writeFailure);
+      }
     } finally {
       opened?.input.dispose();
       if (activeMediaRef.current?.projectId === projectIdToRun) {
@@ -1206,44 +1269,38 @@ function WebApp() {
   }, [queueIds]);
 
   function queueAttachedProject(project: VolleySpliceProject) {
-    if (!filesRef.current.has(project.id)) return;
-    const queued: VolleySpliceProject = {
-      ...project,
-      status: "queued",
-      error: null,
-      updatedAt: new Date().toISOString(),
-    };
-    commitProject(queued);
-    enqueueProject(project.id);
+    const selected = filesRef.current.get(project.id);
+    if (selected) void attachSource(project, selected, true).catch(() => undefined);
   }
 
   async function attachSource(
     project: VolleySpliceProject,
     selected: File | null,
+    forceQueue = false,
   ) {
     if (!selected) return;
-    if (!(await sourceCanReconnectFile(project.source, selected))) {
-      const message = `Choose the original ${project.source.name} file (${compactBytes(project.source.size)}). The selected file does not match this project.`;
-      setError(message);
-      throw new Error(message);
-    }
-    if (
-      deletedProjectIdsRef.current.has(project.id) ||
-      !projectsRef.current.some((candidate) => candidate.id === project.id)
-    ) {
-      throw new Error(
-        "This project is no longer available. Open another project.",
-      );
-    }
-    linkSourceFile(project.id, selected);
-    setError(null);
-    if (
-      project.status !== "ready" ||
-      (!project.importedFeedback &&
-        !project.analysis?.suppression &&
-        (!project.analysis?.featureNames || !project.analysis?.featureValues))
-    ) {
-      queueAttachedProject(project);
+    try {
+      // File bytes are immutable; a retry can reuse its proof only while the
+      // persisted source identity still matches the identity validated at link.
+      const approved = forceQueue && filesRef.current.get(project.id) === selected
+        ? validatedSourcesRef.current.get(project.id) : undefined;
+      const checked = await validateStoredSource(project.id, selected, approved);
+      let attached = await confirmProjectSource(project.id, checked.source);
+      const queue = forceQueue || attached.status !== "ready" ||
+        (!attached.importedFeedback && !attached.analysis?.suppression &&
+          (!attached.analysis?.featureNames || !attached.analysis?.featureValues));
+      if (queue) {
+        attached = await commitSourceProject({ ...attached, status: "queued", error: null,
+          updatedAt: new Date().toISOString() }, attached.source);
+      }
+      if (!mountedRef.current || deletedProjectIdsRef.current.has(project.id)) throw new ProjectSourceConflictError(null);
+      reconcileProject(attached);
+      linkSourceFile(project.id, selected, attached.source);
+      setError(null);
+      if (queue) enqueueProject(project.id);
+    } catch (cause) {
+      sourceFailure(project.id, cause);
+      throw cause;
     }
   }
 
@@ -1269,6 +1326,7 @@ function WebApp() {
     exportJobsRef.current.delete(selectedProject.id);
     setExportJobs([...exportJobsRef.current.values()]);
     filesRef.current.delete(selectedProject.id);
+    validatedSourcesRef.current.delete(selectedProject.id);
     const linkedVideoUrl = videoUrlsRef.current.get(selectedProject.id);
     if (linkedVideoUrl) URL.revokeObjectURL(linkedVideoUrl);
     videoUrlsRef.current.delete(selectedProject.id);
