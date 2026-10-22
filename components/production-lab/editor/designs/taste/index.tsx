@@ -666,7 +666,8 @@ function usePrototype(
   }
 
   function resetProjectChanges() {
-    applyReviewDraft(review.modelDraft);
+    // Reset supported review settings, retaining imported transport extensions.
+    applyReviewDraft({ ...review.modelDraft, portableUi: workingDraft.portableUi });
     setPlaying(false);
     setFinalPreview(review.modelDraft.cutPreviewEnabled);
     setPlaybackRate(review.modelDraft.playbackRate);

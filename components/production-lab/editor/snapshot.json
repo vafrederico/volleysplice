@@ -86,8 +86,8 @@
     {
       "source": "prod/src/designs/taste/index.tsx",
       "destination": "components/production-lab/editor/designs/taste/index.tsx",
-      "sourceSha256": "1c4dae815a839490239a8082fa09ee1dee7d7169d184c2b04582d72431e266fc",
-      "snapshotSha256": "4c8f61e07a08c53ef3b818619701461fafc312b1ba3561314da08d491b47b0eb"
+      "sourceSha256": "702c39b967201c8885d32a2cf13a29986f9ce02f5bbab3d6d3b0184cffd2535b",
+      "snapshotSha256": "62ed48460edb17b6ee8cb609b134042aeae41f9b7da1855cf1d8e7faf6fd1073"
     },
     {
       "source": "prod/src/designs/taste/keyboard-shortcuts.ts",

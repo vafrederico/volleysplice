@@ -77,8 +77,11 @@ Web's separate chapter-export controls do not reinterpret or overwrite that blob
 The active web draft fields own supported preferences. `portableUi` is the retained
 transport envelope, not another live settings object. On re-export, copy the
 envelope and overlay current known values; preserve unknown siblings. Keep this
-envelope through draft persistence and review history. Project fade wins over the
-device-local fade preference on opening/reopening; undo/redo restores fade from the
+envelope through source reconnection, draft persistence, project reset, and review
+history. Reset returns supported settings to model defaults while retaining the
+transport envelope; unknown members and opaque future versions survive unchanged.
+Project fade wins over the device-local fade preference on opening/reopening;
+undo/redo restores fade from the
 review snapshot. Playback/final-cut preview remain transport preferences excluded
 from review undo, so undo/redo keeps their current values.
 

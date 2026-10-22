@@ -10,6 +10,7 @@ import { createServer } from "vite";
 // Exercise the real editor and its persistence hook without serving the app.
 const server = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)),
+  resolve: { dedupe: ["react", "react-dom"] },
   server: { middlewareMode: true, hmr: false },
   appType: "custom",
 });
@@ -46,6 +47,10 @@ dom.window.HTMLMediaElement.prototype.load = () => {};
 dom.window.HTMLMediaElement.prototype.pause = () => {};
 dom.window.HTMLDialogElement.prototype.showModal = function () {
   this.open = true;
+};
+dom.window.HTMLDialogElement.prototype.close = function () {
+  this.open = false;
+  this.dispatchEvent(new dom.window.Event("close"));
 };
 const root = createRoot(document.getElementById("root"));
 const realSetItem = dom.window.Storage.prototype.setItem;
@@ -144,19 +149,19 @@ try {
   const queueVideoExport = (request) => exports.push(request);
   let readyReview;
   let feedbackAnalysis;
-  function Editor({ savedProject }) {
+  function Editor({ savedProject, Desk = RallyDesk, connected = true }) {
     const projects = React.useMemo(() => [savedProject], [savedProject]);
     const review = useDesignReview({
       projects,
       projectId: savedProject.id,
-      sourceFile,
-      videoUrl: "blob:synthetic-review-source",
+      sourceFile: connected ? sourceFile : null,
+      videoUrl: connected ? "blob:synthetic-review-source" : null,
       onQueueVideoExport: queueVideoExport,
       productAnalysis: feedbackAnalysis,
     });
     if (review.state === "ready") readyReview = review;
     return review.state === "ready"
-      ? React.createElement(RallyDesk, { review })
+      ? React.createElement(Desk, { review })
       : React.createElement(
           "p",
           { role: "status" },
@@ -415,8 +420,91 @@ try {
   await click("Export");
   await click("Save MP4");
   assert.equal(exports.at(-1).scoreOverlay.renderPointTimeline, false);
+
+  // Reset clears supported review settings, never the imported transport envelope.
+  await act(async () => root.render(null));
+  const { RallyDesk: LabRallyDesk } = await server.ssrLoadModule(`/@fs/${fileURLToPath(
+    new URL("../../components/production-lab/editor/designs/taste/index.tsx", import.meta.url),
+  ).replaceAll("\\", "/")}`);
+  const fixtures = JSON.parse(readFileSync(new URL("../../tests/fixtures/portable-review-preferences.json", import.meta.url), "utf8"));
+  const resetFields = ["cutPreviewEnabled", "renderScoreOverlay", "renderScoreOnFinalVideo",
+    "renderScoreTimeline", "fadeScoreOverlay", "playbackRate", "confidenceReviewThreshold", "reviewedCutIds"];
+  for (const [deskName, Desk] of [["production", RallyDesk], ["lab", LabRallyDesk]]) {
+    for (const envelope of [fixtures.portableUi, fixtures.futureUi]) {
+      const caseName = `${deskName}-reset-v${envelope.schemaVersion}`;
+      const input = structuredClone(bundle);
+      input.corrections.ui = envelope;
+      const resetProject = importModelFeedbackProject(JSON.stringify(input)).project;
+      const resetKey = cutDraftStorageKey(projectAnalysisId(resetProject));
+      feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(resetProject), recordingId: resetProject.id };
+      await act(async () => root.render(null));
+      window.localStorage.clear();
+      window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+      window.localStorage.setItem("volleycut:production-lab:rally-desk-tour:v1", "dismissed");
+      await putProject(resetProject);
+      await act(async () => root.render(React.createElement(Editor, { key: caseName, savedProject: resetProject, Desk, connected: false })));
+      await waitFor(() => window.localStorage.getItem(resetKey));
+      const currentDraft = () => JSON.parse(window.localStorage.getItem(resetKey));
+      assert.deepEqual(currentDraft().portableUi, envelope, `${caseName}: import retention`);
+      // Exercise the actual file-input/reconnect handler with synthetic metadata.
+      const reconnect = document.querySelector('.td-reconnect input[type="file"]');
+      assert.ok(reconnect, caseName);
+      const matchingSource = new File([new Uint8Array(1000)], "match.mp4", { type: "video/mp4", lastModified: 100 });
+      Object.defineProperty(reconnect, "files", { configurable: true, value: [matchingSource] });
+      await act(async () => reconnect.dispatchEvent(new dom.window.Event("change", { bubbles: true })));
+      await waitFor(() => !document.querySelector(".td-reconnect"));
+      assert.equal(readyReview.sourceFile, matchingSource);
+      assert.deepEqual(currentDraft().portableUi, envelope, `${caseName}: reconnect retention`);
+      await click("Remove rally");
+      const beforeReset = currentDraft();
+      const defaults = readyReview.modelDraft;
+      await act(async () => document.querySelector('button[aria-label="App menu"]').click());
+      await click("Reset project changes");
+      assert.equal(document.querySelector(".rd-reset-project-dialog").open, true);
+      await click("Reset project changes");
+      await waitFor(() => currentDraft().cuts[0].included);
+      for (const field of resetFields) assert.deepEqual(currentDraft()[field], defaults[field], `${caseName}: reset ${field}`);
+      assert.deepEqual(currentDraft().portableUi, envelope, `${caseName}: reset must retain the envelope`);
+      const saveProjectFromUi = async () => {
+        await click("Export");
+        await act(async () => document.querySelector('input[name="taste-export-kind"][value="feedback"]').click());
+        await click("Save project");
+        return JSON.parse(await downloaded.text());
+      };
+      const resetExport = await saveProjectFromUi();
+      const expectedUi = envelope.schemaVersion > 1 ? envelope : { ...envelope,
+        preferences: { ...envelope.preferences, cutPreviewEnabled: false,
+          renderScoreOnPreviewVideo: true, renderScoreOnFinalVideo: true,
+          renderScoreTimeline: false, fadeScoreOverlay: false, playbackRate: 1,
+          confidenceReviewThreshold: .7, reviewedCutIds: [] } };
+      assert.deepEqual(resetExport.corrections.ui, expectedUi, `${caseName}: reset export`);
+      assert.equal(resetExport.editorPreferences.renderScoreOnFinalVideo, defaults.renderScoreOnFinalVideo);
+      let savedReset;
+      await act(async () => { savedReset = (await listProjects()).find((value) => value.id === resetProject.id); });
+      assert.deepEqual(savedReset.reviewDraft.portableUi, envelope, `${caseName}: IndexedDB retention`);
+      for (const field of resetFields) assert.deepEqual(savedReset.reviewDraft[field], defaults[field]);
+      await act(async () => root.render(null));
+      window.localStorage.removeItem(resetKey); // Reopen from IndexedDB, retaining undo history.
+      await act(async () => root.render(React.createElement(Editor, { key: `${caseName}-reopen`, savedProject: savedReset, Desk, connected: false })));
+      await waitFor(() => window.localStorage.getItem(resetKey));
+      assert.deepEqual(currentDraft().portableUi, envelope, `${caseName}: reopen retention`);
+      for (const field of resetFields) assert.deepEqual(currentDraft()[field], defaults[field], `${caseName}: reopened reset ${field}`);
+      await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })));
+      await waitFor(() => !currentDraft().cuts[0].included);
+      assert.deepEqual(currentDraft().portableUi, envelope, `${caseName}: undo retention`);
+      for (const field of resetFields.filter((field) => !["playbackRate", "cutPreviewEnabled"].includes(field))) {
+        assert.deepEqual(currentDraft()[field], beforeReset[field], `${caseName}: undo ${field}`);
+      }
+      const undoneExport = await saveProjectFromUi();
+      assert.deepEqual(undoneExport.corrections.ui, envelope.schemaVersion > 1 ? envelope : {
+        ...envelope, preferences: { ...envelope.preferences, playbackRate: defaults.playbackRate, cutPreviewEnabled: defaults.cutPreviewEnabled },
+      }, `${caseName}: undo export preserves extensions and existing transport semantics`);
+      assert.deepEqual(importModelFeedbackProject(JSON.stringify(undoneExport)).project.importedFeedback.initialDraft.portableUi,
+        undoneExport.corrections.ui, `${caseName}: reimport retention`);
+    }
+  }
   console.log(
-    "Review UI: legacy/final-score persistence, portable feedback import/UI export/reimport, exact playback rates, project fade precedence/undo, timeline queue options, unknown chapters, IndexedDB reopen, failed-save recovery and incompatible-draft preservation passed.",
+    "Review UI: legacy/final-score persistence, portable feedback import/UI export/reimport, exact playback rates, project fade precedence/undo, timeline queue options, production/lab v1/v2 reconnect/reset/persist/reopen/export/undo envelope retention, failed-save recovery and incompatible-draft preservation passed.",
   );
 } finally {
   dom.window.Storage.prototype.setItem = realSetItem;
