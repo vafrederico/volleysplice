@@ -37,7 +37,7 @@
     "fake-indexeddb": "^6.2.6",
     "jsdom": "^30.0.1",
     "typescript": "^7.0.2",
-    "vite": "8.2.1",
-    "wrangler": "4.142.0"
+    "vite": "8.3.5",
+    "wrangler": "4.151.3"
   }
 }
