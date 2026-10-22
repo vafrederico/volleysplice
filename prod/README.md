@@ -42,6 +42,11 @@ a project also deletes its cached features, inference, and edit draft. The edito
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
 file. JSON edit-list export is also available.
+Review edits and export ranges round ordinary time boundaries to milliseconds.
+Exact fractional source, game-window, and core bounds take precedence over that
+rounding, so padding cannot introduce footage outside the selected recording or
+make a saved project's corrected ranges invalid on import. Fractional ignored
+boundaries remain exact barriers.
 For model improvement, the editor can additionally download a versioned model-feedback JSON
 containing the retained 104-column base feature matrix, source timestamps, probability traces,
 untouched initial inference ranges, corrected ranges, explicit false-positive and false-negative
