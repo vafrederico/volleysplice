@@ -48,7 +48,11 @@ requeue, read failures and retries; later metadata updates cannot replace or rem
 it. Attachment and setup reuse read the latest persisted identity and confirm it
 transactionally before linking. Source-bound queue and inference writes reject
 concurrent identity changes; ordinary review and background updates retain the
-latest identity. Deleting
+latest identity. Recreating a deleted project also creates a fresh browser-local instance token.
+Source-bound work, review saves and export status updates keep that token; work
+from a deleted instance cannot overwrite its replacement even for the same video.
+Legacy records acquire a stable token atomically. Draft and undo storage is scoped
+to the instance, with legacy restore retained for migrated records. Deleting
 a project also deletes its cached features, inference, and edit draft. The editor exports
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected

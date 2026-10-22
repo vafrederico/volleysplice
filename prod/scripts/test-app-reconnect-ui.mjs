@@ -69,7 +69,7 @@ try {
     createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
   const legacy = structuredClone(first); legacy.id = "synthetic-app-legacy";
   legacy.source.name = "synthetic-legacy.mp4"; delete legacy.source.fingerprint;
-  await store.putProject(first); await store.putProject(legacy);
+  Object.assign(first, await store.putProject(first)); Object.assign(legacy, await store.putProject(legacy));
   window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, first.id);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () => root.render(React.createElement(App)));

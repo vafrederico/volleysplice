@@ -77,6 +77,8 @@ export type DesignCleanupSuggestion = {
 export type ReadyDesignReview = {
   state: "ready";
   projectId: string;
+  projectInstanceId?: string;
+  legacyDraftStorage?: boolean;
   projectName: string;
   sourceName: string;
   sourceSize: number;
@@ -340,10 +342,12 @@ export function useDesignReview(
           };
         };
         const saveDraft = (next: CutDraft) =>
-          saveProjectReviewDraft(project.id, seed, next, browserDraftStorage());
+          saveProjectReviewDraft(project.id, seed, next, browserDraftStorage(), project.instanceId);
         setReview({
           state: "ready",
           projectId: project.id,
+          projectInstanceId: project.instanceId,
+          legacyDraftStorage: project.legacyDraftStorage,
           projectName: project.source.name.replace(/\.[^.]+$/, ""),
           sourceName: project.source.name,
           sourceSize: project.source.size,

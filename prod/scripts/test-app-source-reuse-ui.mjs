@@ -88,7 +88,7 @@ try {
     duration: info.duration, rallies: project.analysis.intervals, ignoredIntervals: [] });
   project.reviewDraft.reviewedCutIds = ["R001"];
   project.reviewDraft.scoreTracking.team1Name = "Retained team";
-  await store.putProject(project);
+  Object.assign(project, await store.putProject(project));
   window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () => root.render(React.createElement(App)));
@@ -120,8 +120,8 @@ try {
   // Legacy records retain their prior metadata-only contract through the setup path.
   await act(async () => root.render(null));
   const legacy = structuredClone(project); delete legacy.source.fingerprint;
-  await store.deleteProject(project.id);
-  await store.putProject(legacy);
+  await store.deleteProject(project.id, (await store.getProject(project.id)).instanceId);
+  Object.assign(legacy, await store.putProject(legacy, { expectedSource: null }));
   await act(async () => root.render(React.createElement(App)));
   await waitFor(() => document.querySelector(".td-reconnect"));
   await select("__new__"); await waitFor(() => document.querySelector('input[type="file"][accept^="video/"]'));
@@ -132,8 +132,8 @@ try {
   // Requeue a saved fingerprinted waiting project through real setup. The
   // validation read succeeds; later source reads fail before any inference.
   await act(async () => root.render(null));
-  const waiting = { ...project, analysis: null, status: "waiting", error: "Reconnect to resume." };
-  await store.putProject(waiting);
+  const waiting = { ...project, instanceId: legacy.instanceId, analysis: null, status: "waiting", error: "Reconnect to resume." };
+  Object.assign(waiting, await store.putProject(waiting));
   const waitingBefore = await savedProject(project.id);
   await act(async () => root.render(React.createElement(App)));
   await waitFor(() => document.body.textContent.includes("Choose original video"));
@@ -204,8 +204,8 @@ try {
   // Retaining an existing hash must not disable first-time fingerprinting for
   // genuine legacy records. The actual run upgrades identity before probing.
   await act(async () => root.render(null));
-  await store.deleteProject(project.id);
-  await store.putProject({ ...waiting, source: store.projectSource(original) });
+  await store.deleteProject(project.id, (await store.getProject(project.id)).instanceId);
+  await store.putProject({ ...waiting, source: store.projectSource(original) }, { expectedSource: null });
   codecSupported = true;
   await act(async () => root.render(React.createElement(App)));
   await waitFor(() => document.body.textContent.includes("Choose original video"));

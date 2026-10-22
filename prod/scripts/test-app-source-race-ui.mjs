@@ -84,7 +84,7 @@ try {
     await act(async () => root.render(null));
     indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
     const legacy = { ...structuredClone(base), status, ...(status === "waiting" ? { analysis: null } : {}) };
-    await store.putProject(legacy);
+    Object.assign(legacy, await store.putProject(legacy));
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, legacy.id);
     window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
     await act(async () => root.render(React.createElement(App)));
@@ -145,7 +145,7 @@ try {
     await act(async () => root.render(null));
     indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
     const legacy = { ...structuredClone(base), status, ...(status === "waiting" ? { analysis: null } : {}) };
-    await store.putProject(legacy);
+    Object.assign(legacy, await store.putProject(legacy));
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, legacy.id);
     window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
     await act(async () => root.render(React.createElement(App)));
@@ -181,7 +181,122 @@ try {
     assert.equal(persisted.reviewDraft.scoreTracking.team1Name, "Concurrent team");
     assert.equal(persisted.lastExportedAt, updatedAt);
   }
-  console.log("App cross-tab source races: 8 ready/pending attach/setup identity conflicts reject wrong bytes and allow original retry; 4 unrelated concurrent saves preserve reviews/export metadata and permit attachment.");
+  // Pause a genuine App run inside media probing, recreate the same ID/source,
+  // then let the old run fail. The new ready instance must remain untouched.
+  await act(async () => root.render(null));
+  indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+  const old = await store.putProject({ ...structuredClone(base), source: { ...source, fingerprint }, status: "waiting", analysis: null });
+  window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, old.id);
+  window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+  const { cutDraftStorageKey } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
+  window.localStorage.setItem(cutDraftStorageKey(base.reviewDraft.analysisId), JSON.stringify({ ...base.reviewDraft, updatedAt: new Date(Date.now() + 200000).toISOString() }));
+  await act(async () => root.render(React.createElement(App)));
+  await waitFor(() => document.body.textContent.includes("Choose original video"));
+  let release; let probing = false; let sourceReads = 0;
+  const pause = new Promise(resolve => { release = resolve; });
+  const controlled = file(bytes);
+  Object.defineProperty(controlled, "slice", { value: (...args) => {
+    const blob = original.slice(...args);
+    if (++sourceReads === 2) {
+      const read = blob.arrayBuffer.bind(blob);
+      Object.defineProperty(blob, "arrayBuffer", { value: async () => { probing = true; await pause; return read(); } });
+    }
+    return blob;
+  } });
+  await choose(controlled);
+  await waitFor(() => probing);
+  let fresh;
+  await act(async () => {
+    await store.deleteProject(old.id, old.instanceId);
+    const reviewDraft = createCutDraft({ analysisId: store.projectAnalysisId(base), recordingId: base.id,
+      duration: info.duration, rallies: base.analysis.intervals, ignoredIntervals: [] });
+    reviewDraft.scoreTracking.team1Name = "New instance";
+    fresh = await store.putProject({ ...structuredClone(base), source: { ...source, fingerprint }, reviewDraft,
+      createdAt: "2026-02-01T00:00:00.000Z" }, { expectedSource: null });
+    codecSupported = false; release();
+  });
+  await waitFor(() => document.querySelector(".taste-rally-desk") || document.body.textContent.includes("Try again"));
+  const afterOldFailure = await savedProject(base.id);
+  assert.equal(afterOldFailure.status, "ready", "An old run must not fail a recreated same-source ready project");
+  assert.deepEqual(afterOldFailure.analysis, fresh.analysis);
+  assert.equal(afterOldFailure.createdAt, fresh.createdAt);
+  assert.deepEqual(afterOldFailure.reviewDraft.reviewedCutIds, []);
+  assert.equal(afterOldFailure.reviewDraft.scoreTracking.team1Name, "New instance");
+  assert.equal(afterOldFailure.instanceId, fresh.instanceId);
+  assert.notEqual(fresh.instanceId, old.instanceId);
+
+  // A successful old run's first fingerprint completion must not even start
+  // analyzing a replacement instance. Final success/failure writes share this fence.
+  await act(async () => root.render(null));
+  indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+  const unverified = await store.putProject({ ...structuredClone(base), status: "waiting", analysis: null });
+  window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, unverified.id);
+  window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+  await act(async () => root.render(React.createElement(App)));
+  await waitFor(() => document.body.textContent.includes("Choose original video"));
+  let releaseHash; let hashing = false;
+  const hashPause = new Promise(resolve => { releaseHash = resolve; });
+  const delayedHash = file(bytes);
+  Object.defineProperty(delayedHash, "slice", { value: (...args) => {
+    const blob = original.slice(...args); const read = blob.arrayBuffer.bind(blob);
+    Object.defineProperty(blob, "arrayBuffer", { value: async () => { hashing = true; await hashPause; return read(); } });
+    return blob;
+  } });
+  await choose(delayedHash); await waitFor(() => hashing);
+  let replacementInstance;
+  await act(async () => {
+    await store.deleteProject(unverified.id, unverified.instanceId);
+    replacementInstance = await store.putProject({ ...structuredClone(base), source: { ...source, fingerprint },
+      createdAt: "2026-03-01T00:00:00.000Z" }, { expectedSource: null });
+    codecSupported = false; releaseHash();
+  });
+  await waitFor(() => document.body.textContent.includes("instance changed"));
+  const afterHash = await savedProject(base.id);
+  assert.equal(afterHash.instanceId, replacementInstance.instanceId);
+  assert.equal(afterHash.status, "ready"); assert.deepEqual(afterHash.analysis, replacementInstance.analysis);
+  assert.equal(afterHash.createdAt, replacementInstance.createdAt);
+
+  // Successful source validation followed by same-source recreation must fail
+  // confirmation for both attachment and setup, whether ready or pending.
+  for (const status of ["ready", "waiting"]) for (const path of ["attach", "setup"]) {
+    await act(async () => root.render(null));
+    indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+    const captured = await store.putProject({ ...structuredClone(base), source: { ...source, fingerprint }, status,
+      ...(status === "waiting" ? { analysis: null } : {}) });
+    window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, captured.id);
+    window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+    await act(async () => root.render(React.createElement(App)));
+    await waitFor(() => status === "ready" ? document.querySelector(".td-reconnect") : document.body.textContent.includes("Choose original video"));
+    const candidate = file(bytes);
+    if (path === "setup") {
+      await selectNew(); await choose(candidate);
+      await waitFor(() => document.querySelector('[data-tour="source-create"]'));
+    }
+    let validating = false; let resume;
+    const held = new Promise(resolve => { resume = resolve; });
+    Object.defineProperty(candidate, "slice", { value: (...args) => {
+      const blob = original.slice(...args); const read = blob.arrayBuffer.bind(blob);
+      Object.defineProperty(blob, "arrayBuffer", { value: async () => { validating = true; await held; return read(); } });
+      return blob;
+    } });
+    const before = linked.length;
+    if (path === "setup") await act(async () => document.querySelector('[data-tour="source-create"]').click());
+    else await choose(candidate);
+    await waitFor(() => validating);
+    let recreated;
+    await act(async () => {
+      await store.deleteProject(captured.id, captured.instanceId);
+      recreated = await store.putProject({ ...structuredClone(base), source: { ...source, fingerprint },
+        createdAt: "2026-04-01T00:00:00.000Z" }, { expectedSource: null });
+      codecSupported = false; resume();
+    });
+    await waitFor(() => document.body.textContent.includes("instance changed"));
+    assert.equal(linked.length, before, `${status}/${path}: deleted validation cannot link a recreated same-source project`);
+    const retained = await savedProject(base.id);
+    assert.equal(retained.instanceId, recreated.instanceId); assert.equal(retained.status, "ready");
+    assert.deepEqual(retained.analysis, recreated.analysis); assert.equal(retained.createdAt, recreated.createdAt);
+  }
+  console.log("App source/instance races: prior source checks and neutral controls pass; old run hash success/probe failure and four attachment/setup ABA races cannot touch or link recreated same-source instances.");
 } finally {
   await act(async () => root.unmount()); await server.close(); dom.window.close();
   URL.createObjectURL = originalUrls.create; URL.revokeObjectURL = originalUrls.revoke;
