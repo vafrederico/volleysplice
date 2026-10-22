@@ -92,7 +92,7 @@ class ModelFeedbackImportCacheInstrumentedTest {
             assertArrayEquals(sourceAnalysis.baseFeatures, retainedAnalysis.baseFeatures, 0f)
 
             val importedSeed = checkNotNull(importedProject.editorSeed())
-            val importedDraft = checkNotNull(EditorDraftStore(context, importedSeed).load())
+            val importedDraft = (EditorDraftStore(context, importedSeed).load() as EditorDraftLoadResult.Restored).draft
             val reexported = ModelFeedbackExporter.createBundle(
                 importedProject,
                 importedDraft,

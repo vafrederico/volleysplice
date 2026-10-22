@@ -8,6 +8,10 @@ AVFoundation, PhotoKit and thin Objective-C++ bridges for OpenCV primitives and
 ONNX Runtime.
 Android is the reference for analysis contracts and editor behavior.
 
+Restoring original model ranges keeps their saved rally IDs and existing score
+corrections. Linked serve markers follow the restored boundaries and later edits;
+removing a restored rally also removes its linked serve from visible scoring.
+
 ## Build
 
 For a signed App Store/TestFlight release without a local Mac, use the manual
