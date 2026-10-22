@@ -152,4 +152,23 @@ final class RallyStartMarkerTests: XCTestCase {
             .object(["id": .string("R001"), "start": .number(25), "end": .number(30)])])
         XCTAssertThrowsError(try ProjectArchive.restoredModelDraft(collision))
     }
+    func testRestoreUsesTheSameMillisecondPrecisionAsImportedFractionalSourceDurations() throws {
+        for model in RallyModel.allCases {
+            for duration in [10.0004, 10.0006] {
+                let durationMs = Int64((duration * 1000).rounded())
+                let cut = EditableCut(id: "N007", coreStartMs: 1000, coreEndMs: durationMs, agreement: "neural")
+                var inference = ProjectArchive.initialInference(ranges: [cut], rallyModel: model)
+                var ranges = try XCTUnwrap(inference["ranges"]?.array)
+                ranges[0]["end"] = .number(duration); inference["ranges"] = .array(ranges)
+                let archive = try ProjectArchive.create(source: ProjectArchive.source(projectId: "fractional-source",
+                    name: "synthetic.mp4", sizeBytes: 100, lastModifiedMs: 0, duration: duration, width: 320, height: 240),
+                    initialInference: inference, draft: .init(sourceRevision: "fractional", cuts: [cut]), analysis: nil)
+                let project = try ProjectArchive.importBundle(archive)
+                let restored = try ProjectArchive.restoredModelDraft(project)
+                XCTAssertEqual(restored.cuts.map(\.id), ["N007"])
+                XCTAssertEqual(restored.cuts[0].coreEndMs, min(durationMs, project.gameWindow.endMs))
+                try restored.validate(durationMs: durationMs)
+            }
+        }
+    }
 }

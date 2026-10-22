@@ -112,15 +112,16 @@ public enum ProjectArchive {
             guard ids.insert(id).inserted else { throw ProjectError.invalid("Duplicate original rally identity") }
             let start = try number(range["start"], "original rally start")
             let end = try number(range["end"], "original rally end")
+            let startMs = try ms(.number(start), "original rally start")
+            let endMs = try ms(.number(end), "original rally end")
             let confidence = try number(range["confidence"] ?? .number(1), "original rally confidence")
             let agreement = range["agreement"]?.string
-            guard start >= 0, end > start, end <= Double(project.durationMs) / 1_000,
+            guard end > start, endMs > startMs, endMs <= project.durationMs,
                   (0...1).contains(confidence),
                   agreement == nil || ["both-models", "all-labels-v2-only", "previous-production-only", "neural"].contains(agreement!) else {
                 throw ProjectError.invalid("Invalid original model range")
             }
-            return .init(id: id, coreStartMs: try ms(.number(start), "original rally start"),
-                         coreEndMs: try ms(.number(end), "original rally end"),
+            return .init(id: id, coreStartMs: startMs, coreEndMs: endMs,
                          confidence: Float(confidence), agreement: agreement)
         }
         var value = EditorMath.newDraft(ranges: cuts, durationMs: project.durationMs,
