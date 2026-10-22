@@ -9,6 +9,8 @@ import {
   projectAnalysisId,
   putProject,
   putProjectReviewDraft,
+  sourceFileFingerprint,
+  projectSource,
 } from "../src/lib/project-store.ts";
 import {
   restoreProjectReviewDraft,
@@ -95,6 +97,43 @@ export function fixture() {
   };
   return { project, seed, edited, storage, values };
 }
+
+test("a legacy source can acquire a fingerprint without a later stale write downgrading it", async () => {
+  const { project } = fixture();
+  const file = new File(["original"], "synthetic-source.mp4", { type: "video/mp4", lastModified: 100 });
+  project.source = projectSource(file);
+  await putProject(project);
+  const stale = structuredClone((await listProjects())[0]);
+  const verified = { ...project.source, fingerprint: await sourceFileFingerprint(file) };
+  await putProject({ ...project, source: verified });
+  await putProject({ ...stale, status: "error", error: "Synthetic read failure" });
+  const restored = (await listProjects())[0];
+  assert.deepEqual(restored.source, verified);
+  assert.equal(restored.status, "error");
+  assert.equal(restored.error, "Synthetic read failure");
+});
+
+test("status and metadata updates cannot remove or replace a recorded source identity", async () => {
+  const { project } = fixture();
+  const original = new File(["original"], "synthetic-source.mp4", { type: "video/mp4", lastModified: 100 });
+  const replacement = new File(["replaced"], original.name, { type: original.type, lastModified: original.lastModified });
+  const verified = { ...projectSource(original), fingerprint: await sourceFileFingerprint(original) };
+  project.source = verified;
+  await putProject(project);
+  const attempts = [
+    { status: "queued", source: projectSource(original), normalizedStatus: "waiting" },
+    { status: "analyzing", source: { ...verified, fingerprint: undefined }, normalizedStatus: "waiting" },
+    { status: "error", source: { ...projectSource(replacement), fingerprint: await sourceFileFingerprint(replacement) }, normalizedStatus: "error" },
+    { status: "ready", source: { ...verified, name: "synthetic-transfer.mp4", lastModified: 999, type: "application/octet-stream" }, normalizedStatus: "ready" },
+  ];
+  for (const { status, source, normalizedStatus } of attempts) {
+    await putProject({ ...project, status, source });
+    const restored = (await listProjects())[0];
+    assert.deepEqual(restored.source, verified, `The ${status} update must retain the recorded source identity`);
+    assert.equal(restored.id, project.id);
+    assert.equal(restored.status, normalizedStatus);
+  }
+});
 
 test("rally, review, serve and exclusion edits survive a complete project reload", async () => {
   const { project, seed, edited, storage } = fixture();

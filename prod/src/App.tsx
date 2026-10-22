@@ -68,6 +68,7 @@ import {
   projectId,
   projectSource,
   putProject,
+  retainProjectSource,
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
   sourceFileFingerprint,
@@ -334,9 +335,14 @@ function WebApp() {
   }
 
   function commitProject(project: VolleySpliceProject) {
-    const next = projectsRef.current.some(
+    const existing = projectsRef.current.find(
       (candidate) => candidate.id === project.id,
-    )
+    );
+    project = {
+      ...project,
+      source: retainProjectSource(project.source, existing?.source),
+    };
+    const next = existing
       ? projectsRef.current.map((candidate) =>
           candidate.id === project.id ? project : candidate,
         )
@@ -926,7 +932,7 @@ function WebApp() {
     const project: VolleySpliceProject = {
       schemaVersion: 1,
       id,
-      source,
+      source: existing?.source ?? source,
       info,
       analysisWindow: normalizedWindow,
       roi,
@@ -957,14 +963,11 @@ function WebApp() {
     )
       return;
 
-    const source = project.source.fingerprint
+    const source = project.source.fingerprint !== undefined
       ? project.source
-      : {
-          ...project.source,
-          fingerprint: await sourceFileFingerprint(sourceFile).catch(
-            () => undefined,
-          ),
-        };
+      : await sourceFileFingerprint(sourceFile)
+          .then((fingerprint) => ({ ...project.source, fingerprint }))
+          .catch(() => project.source);
     if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
     const running: VolleySpliceProject = {
       ...project,
@@ -1803,6 +1806,7 @@ function WebApp() {
                 : (selectedProject.error ??
                   "Choose the original video again so you can continue.")}
           </p>
+          {error && <p className={styles.error} role="alert">{error}</p>}
           {(selectedProject.status === "waiting" ||
             selectedProject.status === "error") &&
             (selectedSourceFile ? (

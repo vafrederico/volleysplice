@@ -133,6 +133,14 @@ export function projectSource(file: File): ProjectSource {
   };
 }
 
+/** A project's recorded fingerprint cannot be removed or replaced by a stale update. */
+export function retainProjectSource(
+  source: ProjectSource,
+  existing?: ProjectSource,
+): ProjectSource {
+  return existing?.fingerprint !== undefined ? existing : source;
+}
+
 const SOURCE_FINGERPRINT_SAMPLE_BYTES = 1024 * 1024;
 
 function hex(bytes: ArrayBuffer): string {
@@ -669,6 +677,10 @@ export async function putProject(project: VolleySpliceProject): Promise<void> {
     // Analysis/source updates use the app's project snapshot, which may predate
     // editor saves. Merge the latest review in the same transaction as the put.
     if (validProject(stored)) {
+      project = {
+        ...project,
+        source: retainProjectSource(project.source, stored.source),
+      };
       const storedDraft = stored.reviewDraft;
       if (storedDraft && (!project.reviewDraft ||
           (Date.parse(storedDraft.updatedAt) || 0) >= (Date.parse(project.reviewDraft.updatedAt) || 0))) {

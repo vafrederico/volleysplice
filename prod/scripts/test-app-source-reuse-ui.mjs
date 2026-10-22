@@ -19,7 +19,8 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   ResizeObserver: class { observe() {} disconnect() {} },
   requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
-class CodecCapabilities { static async isConfigSupported(config) { return { supported: true, config }; } }
+let codecSupported = true;
+class CodecCapabilities { static async isConfigSupported(config) { return { supported: codecSupported, config }; } }
 globalThis.VideoDecoder = window.VideoDecoder = CodecCapabilities;
 globalThis.AudioDecoder = window.AudioDecoder = CodecCapabilities;
 window.VideoFrame = class {};
@@ -119,6 +120,7 @@ try {
   // Legacy records retain their prior metadata-only contract through the setup path.
   await act(async () => root.render(null));
   const legacy = structuredClone(project); delete legacy.source.fingerprint;
+  await store.deleteProject(project.id);
   await store.putProject(legacy);
   await act(async () => root.render(React.createElement(App)));
   await waitFor(() => document.querySelector(".td-reconnect"));
@@ -126,7 +128,96 @@ try {
   await choose(original); await find();
   await waitFor(() => document.querySelector('select[aria-label="Current review project"]')?.value === project.id && !document.querySelector(".td-reconnect"));
   assert.equal((await savedProject(project.id)).source.fingerprint, undefined);
-  console.log("App setup reuse: same-metadata wrong bytes rejected, verified/legacy sources retain immutable IDs, analysis, review and MP4 gates.");
+
+  // Requeue a saved fingerprinted waiting project through real setup. The
+  // validation read succeeds; later source reads fail before any inference.
+  await act(async () => root.render(null));
+  const waiting = { ...project, analysis: null, status: "waiting", error: "Reconnect to resume." };
+  await store.putProject(waiting);
+  const waitingBefore = await savedProject(project.id);
+  await act(async () => root.render(React.createElement(App)));
+  await waitFor(() => document.body.textContent.includes("Choose original video"));
+  await select("__new__");
+  const transient = new File([bytes], original.name, { type: original.type, lastModified: original.lastModified });
+  await choose(transient);
+  let reads = 0;
+  Object.defineProperty(transient, "slice", { value: (...args) => {
+    if (++reads > 1) throw new Error("Synthetic source became unreadable after validation");
+    return original.slice(...args);
+  } });
+  const waitForFailure = async previousUpdatedAt => {
+    let failed;
+    await waitFor(async () => {
+      failed = (await store.listProjects()).find(p => p.id === project.id);
+      return failed?.status === "error" && failed.updatedAt !== previousUpdatedAt &&
+        [...document.querySelectorAll("button")].some(b => b.textContent === "Try again");
+    });
+    assert.equal(failed.id, waitingBefore.id);
+    assert.equal(failed.createdAt, waitingBefore.createdAt);
+    assert.deepEqual(failed.source, source, "Requeue or failed inference must never downgrade the verified source identity");
+    assert.deepEqual(failed.reviewDraft, waitingBefore.reviewDraft);
+    return failed;
+  };
+  await find();
+  let failed = await waitForFailure(waitingBefore.updatedAt);
+  assert.ok(reads > 1, "The production source read after setup validation must actually fail");
+  assert.match(failed.error, /unreadable after validation/);
+
+  // Rerunning an already linked failed project also retains its identity.
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    [...document.querySelectorAll("button")].find(b => b.textContent === "Try again").click();
+  });
+  failed = await waitForFailure(failed.updatedAt);
+
+  // A complete App remount clears source links, not the persisted authority.
+  await act(async () => root.render(null));
+  await act(async () => root.render(React.createElement(App)));
+  await waitFor(() => document.body.textContent.includes("Choose original video"));
+  const attachPending = async file => {
+    const input = document.querySelector('input[type="file"][accept^="video/"]'); assert.ok(input);
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    await act(async () => input.dispatchEvent(new window.Event("change", { bubbles: true })));
+  };
+  const beforeWrong = urls.length;
+  await attachPending(replacement);
+  await waitFor(() => document.body.textContent.includes("does not match"));
+  assert.equal(urls.length, beforeWrong, "Reload must not accept replacement bytes via a downgraded metadata identity");
+  assert.deepEqual((await savedProject(project.id)).source, source);
+
+  // Correct bytes retry through the pending-project chooser. The capability
+  // stub then rejects decoding during real probing, so no assets/inference run.
+  codecSupported = false;
+  await attachPending(original);
+  failed = await waitForFailure(failed.updatedAt);
+  assert.match(failed.error, /cannot decode/);
+  assert.equal(urls.length, beforeWrong + 1);
+  assert.equal(urls.at(-1), original);
+
+  // The setup path must also preserve identity when requeuing an error record.
+  codecSupported = true;
+  await select("__new__"); await choose(original);
+  codecSupported = false;
+  await find();
+  await waitForFailure(failed.updatedAt);
+
+  // Retaining an existing hash must not disable first-time fingerprinting for
+  // genuine legacy records. The actual run upgrades identity before probing.
+  await act(async () => root.render(null));
+  await store.deleteProject(project.id);
+  await store.putProject({ ...waiting, source: store.projectSource(original) });
+  codecSupported = true;
+  await act(async () => root.render(React.createElement(App)));
+  await waitFor(() => document.body.textContent.includes("Choose original video"));
+  await select("__new__"); await choose(original);
+  codecSupported = false;
+  await find();
+  await waitFor(async () => {
+    const upgraded = (await store.listProjects()).find(p => p.id === project.id);
+    return upgraded?.status === "error" && upgraded.source.fingerprint === source.fingerprint;
+  });
+  assert.deepEqual((await savedProject(project.id)).source, source);
+  console.log("App setup/requeue: wrong bytes rejected; verified/legacy reuse, waiting/error requeue, read failure, rerun, reload and valid retry preserve IDs, source identity, analysis/reviews and MP4 gates.");
 } finally {
   await act(async () => root.unmount()); await server.close(); dom.window.close();
   URL.createObjectURL = originalUrls.create; URL.revokeObjectURL = originalUrls.revoke;
