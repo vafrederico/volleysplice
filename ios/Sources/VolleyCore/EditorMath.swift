@@ -28,18 +28,22 @@ public enum EditorMath {
     static func clamp(_ value: Int64, _ low: Int64, _ high: Int64) -> Int64 { min(max(value, low), high) }
 
     public static func newDraft(ranges: [EditableCut], durationMs: Int64, gameWindow: TimeRange? = nil,
-                                sourceRevision: String = UUID().uuidString) -> EditorDraft {
+                                sourceRevision: String = UUID().uuidString, preserveRangeIds: Bool = false) -> EditorDraft {
         let window = gameWindow ?? TimeRange(startMs: 0, endMs: durationMs)
         var draft = EditorDraft(sourceRevision: sourceRevision)
         draft.cuts = ranges.compactMap { range -> EditableCut? in
             let start = clamp(range.coreStartMs, window.startMs, window.endMs)
             let end = clamp(range.coreEndMs, window.startMs, window.endMs)
             guard end > start else { return nil }
-            return EditableCut(id: "", coreStartMs: start, coreEndMs: end,
+            return EditableCut(id: preserveRangeIds ? range.id : "", coreStartMs: start, coreEndMs: end,
                                keepStartMs: max(window.startMs, start - defaultPaddingMs),
                                keepEndMs: min(window.endMs, end + defaultPaddingMs),
                                confidence: min(max(range.confidence, 0), 1), agreement: range.agreement)
-        }.enumerated().map { index, cut in var cut = cut; cut.id = String(format: "R%03d", index + 1); return cut }
+        }.enumerated().map { index, cut in
+            var cut = cut
+            if !preserveRangeIds { cut.id = String(format: "R%03d", index + 1) }
+            return cut
+        }
         if window.startMs > 0 { draft.ignoredIntervals.append(.init(id: "G001", startMs: 0, endMs: window.startMs, reason: "outside-game-window")) }
         if window.endMs < durationMs { draft.ignoredIntervals.append(.init(id: "G002", startMs: window.endMs, endMs: durationMs, reason: "outside-game-window")) }
         return draft
