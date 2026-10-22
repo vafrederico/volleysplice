@@ -21,6 +21,7 @@ import type {
   OnDeviceMediaInfo,
 } from "./on-device/types.ts";
 import type { CutDraft } from "./cut-draft.ts";
+import type { ScoreSpecialistErrors } from "./score-specialist-state.ts";
 
 const DATABASE_NAME = "volleycut-projects";
 const DATABASE_VERSION = 1;
@@ -59,6 +60,8 @@ export type VolleySpliceProject = {
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
   error: string | null;
+  /** Failures are independent of rally readiness and survive closing the tab. */
+  scoreSpecialistErrors?: ScoreSpecialistErrors;
   importedFeedback?: {
     schemaVersion: 1 | 2 | 3;
     generatedAt: string;
@@ -528,7 +531,7 @@ function validAnalysis(
         analysis.productionStateOutputs,
         analysis.times.length,
       )) &&
-    (analysis.sideSwitch === undefined ||
+    (analysis.sideSwitch == null ||
       (analysis.sideSwitch !== null &&
         typeof analysis.sideSwitch === "object")) &&
     (analysis.suppression === undefined ||
@@ -618,6 +621,11 @@ function validProject(value: unknown): value is VolleySpliceProject {
     (project.analysis === null ||
       validAnalysis(project.analysis, importedFeedbackPresent)) &&
     (project.error === null || typeof project.error === "string") &&
+    (project.scoreSpecialistErrors === undefined ||
+      (project.scoreSpecialistErrors !== null &&
+        typeof project.scoreSpecialistErrors === "object" &&
+        Object.entries(project.scoreSpecialistErrors).every(([key, message]) =>
+          (key === "servingSide" || key === "sideSwitch") && typeof message === "string"))) &&
     (!importedFeedbackPresent ||
       validImportedFeedback(
         project.importedFeedback,
@@ -635,7 +643,8 @@ function validProject(value: unknown): value is VolleySpliceProject {
 export function normalizeStoredProject(
   project: VolleySpliceProject,
 ): VolleySpliceProject {
-  if (project.analysis?.servingSide) {
+  if (project.analysis?.servingSide && Array.isArray(project.analysis.servingSide.candidates) &&
+      project.analysis.servingSide.candidates.every((candidate) => candidate && candidate.interval && Array.isArray(candidate.reviewReasons))) {
     const servingSide = retainNeuralServeCandidates(project.analysis.servingSide);
     if (servingSide !== project.analysis.servingSide) {
       project = { ...project, analysis: { ...project.analysis, servingSide } };
@@ -702,6 +711,11 @@ export function normalizeStoredProject(
     normalizedProject.status === "queued" ||
     normalizedProject.status === "analyzing"
   ) {
+    if (normalizedProject.analysis) {
+      // Rally evidence was checkpointed before score specialists. Reopening can
+      // recover missing specialists without decoding the rally model again.
+      return { ...normalizedProject, status: "ready", error: null };
+    }
     return {
       ...normalizedProject,
       status: "waiting",

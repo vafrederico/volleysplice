@@ -6,6 +6,7 @@ import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { cutDraftStorageKeys } from "@/lib/cut-draft";
+import { missingScoreStages, scoreSpecialistReadiness, type ScoreSpecialistStage } from "@/lib/score-specialist-state";
 import {
   CORE_INFERENCE_STEP_IDS,
   createInferenceProgressSteps,
@@ -33,7 +34,7 @@ import {
   DEFAULT_VIDEO_DECODE_STRATEGY,
   VIDEO_DECODER_HARDWARE_ACCELERATION,
 } from "@/lib/on-device/pipeline";
-import { augmentStoredAnalysisWithSuppression } from "@/lib/on-device/production-inference";
+import { augmentStoredAnalysisWithSuppression, runProductionInferenceFromFeatures } from "@/lib/on-device/production-inference";
 import {
   requestVideoExportTarget,
   type VideoExportTarget,
@@ -44,8 +45,6 @@ import type {
   NormalizedRoi,
   OnDeviceAnalysis,
   OnDeviceMediaInfo,
-  OnDeviceSideSwitchOutput,
-  OnDeviceServingSideOutput,
 } from "@/lib/on-device/types";
 import {
   holdScreenWakeLock,
@@ -58,6 +57,7 @@ import {
   type DesignExportJob,
   type DesignVideoExportRequest,
   type DesignWorkActivity,
+  type DesignScoreRecovery,
   useDesignReview,
 } from "@/designs/useDesignReview";
 import {
@@ -102,6 +102,8 @@ function ReadyProjectEditor({
   onAttachSource,
   onQueueVideoExport,
   onDeleteProject,
+  scoreRecovery,
+  storageError,
 }: {
   projectId: string;
   projects: VolleySpliceProject[];
@@ -114,6 +116,8 @@ function ReadyProjectEditor({
   onAttachSource: (file: File) => void | Promise<void>;
   onQueueVideoExport: (request: DesignVideoExportRequest) => void;
   onDeleteProject: () => void;
+  scoreRecovery: DesignScoreRecovery;
+  storageError: string | null;
 }) {
   const review = useDesignReview({
     projectId: readyProjectId,
@@ -126,14 +130,15 @@ function ReadyProjectEditor({
     onSelectProject,
     onAttachSource,
     onQueueVideoExport,
+    scoreRecovery,
   });
 
   if (review.state === "ready") {
     return (
-      <RallyDesk
-        review={review}
-        onDeleteProject={onDeleteProject}
-      />
+      <>
+        {storageError && <p className={styles.error} role="alert">{storageError}</p>}
+        <RallyDesk review={review} onDeleteProject={onDeleteProject} />
+      </>
     );
   }
 
@@ -286,6 +291,7 @@ function WebApp() {
   const [error, setError] = useState<string | null>(null);
   const [feedbackImporting, setFeedbackImporting] = useState(false);
   const [exportJobs, setExportJobs] = useState<AppExportJob[]>([]);
+  const [scoreJobs, setScoreJobs] = useState<Record<string, { status: "queued" | "running" | "cancelling"; detail: string }>>({});
 
   const projectsRef = useRef<VolleySpliceProject[]>([]);
   const filesRef = useRef(new Map<string, File>());
@@ -305,7 +311,9 @@ function WebApp() {
   const mountedRef = useRef(true);
   const resumePreviewAfterSeek = useRef(false);
   const candidateVideoRef = useRef<HTMLVideoElement>(null);
-  const suppressionAugmentingRef = useRef(new Set<string>());
+  const suppressionAugmentingRef = useRef(new Map<string, Promise<OnDeviceAnalysis | null>>());
+  const scoreRecoveryIdsRef = useRef(new Set<string>());
+  const projectWritesRef = useRef(Promise.resolve());
 
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
@@ -339,7 +347,9 @@ function WebApp() {
         )
       : [...projectsRef.current, project];
     replaceProjects(next);
-    void putProject(project).catch(() => {
+    projectWritesRef.current = projectWritesRef.current.then(async () => {
+      if (!deletedProjectIdsRef.current.has(project.id)) await putProject(project);
+    }).catch(() => {
       if (mountedRef.current) {
         setError(
           "Browser project storage is unavailable. This project will last for this tab only.",
@@ -561,37 +571,6 @@ function WebApp() {
     [drainVideoExportQueue, updateExportJob],
   );
 
-  function persistServingSideAnalysis(
-    projectIdToUpdate: string,
-    servingSide: OnDeviceServingSideOutput,
-  ) {
-    const project = projectsRef.current.find(
-      (candidate) => candidate.id === projectIdToUpdate,
-    );
-    if (!project?.analysis || project.status !== "ready") return;
-    commitProject({
-      ...project,
-      analysis: { ...project.analysis, servingSide },
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
-  function persistSideSwitchAnalysis(
-    projectIdToUpdate: string,
-    sideSwitch: OnDeviceSideSwitchOutput,
-  ) {
-    const project = projectsRef.current.find(
-      (candidate) => candidate.id === projectIdToUpdate,
-    );
-    if (!project?.analysis || project.status !== "ready") return;
-    commitProject({
-      ...project,
-      sideSwitchEnabled: true,
-      analysis: { ...project.analysis, sideSwitch },
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
   function replacePreviewUrl(next: string | null) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = next;
@@ -696,21 +675,28 @@ function WebApp() {
         project.analysis.productionStateOutputs) ||
       !project.analysis.featureNames ||
       !project.analysis.featureValues ||
+      scoreRecoveryIdsRef.current.has(project.id) ||
       suppressionAugmentingRef.current.has(project.id)
     ) {
       return;
     }
-    suppressionAugmentingRef.current.add(project.id);
     let active = true;
-    void augmentStoredAnalysisWithSuppression(
+    const augmentation = augmentStoredAnalysisWithSuppression(
       project.analysis,
       project.analysisWindow,
-    )
+    );
+    suppressionAugmentingRef.current.set(project.id, augmentation);
+    void augmentation
       .then((analysis) => {
         if (!active || !analysis) return;
+        const latest = projectsRef.current.find((candidate) => candidate.id === project.id);
+        if (!latest?.analysis || deletedProjectIdsRef.current.has(project.id)) return;
         commitProject({
-          ...project,
-          analysis,
+          ...latest,
+          analysis: { ...latest.analysis, suppression: analysis.suppression,
+            productionComponents: analysis.productionComponents,
+            productionServeOutputs: analysis.productionServeOutputs,
+            productionStateOutputs: analysis.productionStateOutputs },
           updatedAt: new Date().toISOString(),
         });
       })
@@ -911,6 +897,137 @@ function WebApp() {
     resetCandidate();
   }
 
+  function updateScoreJob(projectId: string, status: "queued" | "running" | "cancelling", detail: string) {
+    if (mountedRef.current) setScoreJobs((current) => ({ ...current, [projectId]: { status, detail } }));
+  }
+
+  function retryScoreSpecialists(projectId: string) {
+    const project = projectsRef.current.find((candidate) => candidate.id === projectId);
+    if (!project?.analysis || project.status !== "ready" || !filesRef.current.has(projectId) ||
+        scoreRecoveryIdsRef.current.has(projectId) || deletedProjectIdsRef.current.has(projectId) ||
+        missingScoreStages(project).length === 0) return;
+    scoreRecoveryIdsRef.current.add(projectId);
+    updateScoreJob(projectId, "queued", "Score markers queued. Your review stays available.");
+    enqueueProject(projectId);
+  }
+
+  function cancelScoreSpecialists(projectId: string) {
+    if (!scoreRecoveryIdsRef.current.has(projectId)) return;
+    if (activeJobRef.current === projectId) {
+      updateScoreJob(projectId, "cancelling", "Stopping score markers…");
+      activeAbortRef.current?.abort();
+    } else {
+      scoreRecoveryIdsRef.current.delete(projectId);
+      setQueueIds((current) => current.filter((id) => id !== projectId));
+      setScoreJobs((current) => { const next = { ...current }; delete next[projectId]; return next; });
+    }
+  }
+
+  async function runScoreStages(projectId: string, media: OpenedMedia, abort: AbortController) {
+    const project = projectsRef.current.find((candidate) => candidate.id === projectId);
+    if (!project?.analysis) return;
+    const stages = missingScoreStages(project);
+    if (!stages.length) return;
+    const stepId = (key: ScoreSpecialistStage) => key === "servingSide" ? "serving-side" as const : "side-switch" as const;
+    const currentProject = () => {
+      if (!mountedRef.current || deletedProjectIdsRef.current.has(projectId)) return null;
+      return projectsRef.current.find((candidate) => candidate.id === projectId) ?? null;
+    };
+    const check = () => { abort.signal.throwIfAborted(); if (!currentProject()) throw new DOMException("Analysis cancelled", "AbortError"); };
+    const saveFailure = (message: string) => {
+      const latest = currentProject();
+      if (!latest) return;
+      const missing = missingScoreStages(latest).filter((key) => stages.includes(key));
+      const errors = { ...latest.scoreSpecialistErrors };
+      for (const key of missing) errors[key] = message;
+      commitProject({ ...latest, scoreSpecialistErrors: errors, updatedAt: new Date().toISOString() });
+      for (const key of missing) setActiveInferenceSteps((current) => finishInferenceStep(current, stepId(key), message, performance.now(), "error"));
+    };
+    const progress = (key: ScoreSpecialistStage) => (value: { stage: "loading" | "frames" | "features" | "complete"; completed: number; total: number; detail: string }) => {
+      check();
+      setActiveProgress({ ...value, stage: "inference" });
+      setActiveInferenceSteps((current) => updateSpecialistInferenceStep(current, stepId(key), value, performance.now()));
+      if (scoreRecoveryIdsRef.current.has(projectId)) updateScoreJob(projectId, "running", value.detail);
+    };
+    if (scoreRecoveryIdsRef.current.has(projectId)) {
+      setActiveInferenceSteps(createInferenceProgressSteps(stages.map(stepId)));
+    }
+    try {
+      check();
+      let analysis = project.analysis;
+      if ((stages.includes("servingSide") && !analysis.productionServeOutputs) ||
+          (stages.includes("sideSwitch") && (!analysis.productionComponents || !analysis.productionStateOutputs))) {
+        if (!analysis.featureNames || !analysis.featureValues) throw new Error("This saved analysis has no score evidence. Add markers manually.");
+        const cachedEvidence = await suppressionAugmentingRef.current.get(projectId);
+        const evidence = cachedEvidence ?? await runProductionInferenceFromFeatures({ times: analysis.times, values: analysis.featureValues,
+          rows: analysis.times.length, columns: analysis.featureNames.length, names: analysis.featureNames }, project.analysisWindow);
+        check();
+        analysis = { ...analysis, productionServeOutputs: evidence.productionServeOutputs,
+          productionStateOutputs: evidence.productionStateOutputs, productionComponents: evidence.productionComponents };
+        commitProject({ ...currentProject()!, analysis });
+      }
+      const { inferScoreSpecialists } = await import("@/lib/on-device/score-specialists");
+      check();
+      const acceptOutput = (output: { servingSide?: NonNullable<OnDeviceAnalysis["servingSide"]>; sideSwitch?: NonNullable<OnDeviceAnalysis["sideSwitch"]> }) => {
+        check();
+        const latest = currentProject()!;
+        const merged = { ...latest.analysis!, ...output };
+        const readiness = scoreSpecialistReadiness({ ...latest, analysis: merged });
+        const errors = { ...latest.scoreSpecialistErrors };
+        for (const key of stages) {
+          if (!output[key]) continue;
+          if (readiness[key].status !== "complete") throw new Error("The score predictions did not match this analysis. Retry score markers.");
+          delete errors[key];
+        }
+        commitProject({ ...latest, analysis: merged, scoreSpecialistErrors: errors, updatedAt: new Date().toISOString() });
+      };
+      const output = await inferScoreSpecialists(media, project.roi, {
+        servingSide: stages.includes("servingSide") ? { analysis, onProgress: progress("servingSide") } : undefined,
+        sideSwitch: stages.includes("sideSwitch") ? { analysis: { ...analysis,
+          productionComponents: analysis.productionComponents!, productionStateOutputs: analysis.productionStateOutputs! }, onProgress: progress("sideSwitch") } : undefined,
+      }, { signal: abort.signal, onOutput: acceptOutput });
+      acceptOutput(output);
+      if (missingScoreStages(currentProject()!).some((key) => stages.includes(key))) {
+        throw new Error("Score predictions were not returned. Retry score markers.");
+      }
+    } catch (cause) {
+      saveFailure(abort.signal.aborted ? "Score markers cancelled. Retry when ready." :
+        `Score markers failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+  }
+
+  async function runScoreRecovery(projectId: string) {
+    const project = projectsRef.current.find((candidate) => candidate.id === projectId);
+    const source = filesRef.current.get(projectId);
+    if (!project?.analysis || !source) return;
+    const abort = new AbortController();
+    activeAbortRef.current = abort;
+    updateScoreJob(projectId, "running", "Opening the original video for score markers…");
+    let media: OpenedMedia | null = null;
+    let releaseWakeLock = () => Promise.resolve();
+    try {
+      releaseWakeLock = await holdScreenWakeLock(setWakeLockState);
+      abort.signal.throwIfAborted();
+      media = await openLocalMedia(source);
+      activeMediaRef.current = { projectId, media };
+      await runScoreStages(projectId, media, abort);
+    } catch (cause) {
+      const latest = projectsRef.current.find((candidate) => candidate.id === projectId);
+      if (latest && mountedRef.current && !deletedProjectIdsRef.current.has(projectId)) {
+        const errors = { ...latest.scoreSpecialistErrors };
+        for (const key of missingScoreStages(latest)) errors[key] = abort.signal.aborted
+          ? "Score markers cancelled. Retry when ready."
+          : `Could not open score markers: ${cause instanceof Error ? cause.message : String(cause)}`;
+        commitProject({ ...latest, scoreSpecialistErrors: errors });
+      }
+    } finally {
+      media?.input.dispose();
+      activeMediaRef.current = null;
+      activeAbortRef.current = null;
+      await releaseWakeLock();
+    }
+  }
+
   async function runProject(projectIdToRun: string) {
     const project = projectsRef.current.find(
       (candidate) => candidate.id === projectIdToRun,
@@ -996,137 +1113,15 @@ function WebApp() {
           analysisWindow: running.analysisWindow,
         },
       );
-      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
-      let completedAnalysis = result;
-      const shouldInferServing = Boolean(result.productionServeOutputs);
-      const shouldInferSwitches = Boolean(
-        running.sideSwitchEnabled !== false &&
-          result.productionComponents &&
-          result.productionStateOutputs,
-      );
-      if (shouldInferServing || shouldInferSwitches) {
-        try {
-          const { inferScoreSpecialists } = await import(
-            "@/lib/on-device/score-specialists"
-          );
-          const specialistOutput = await inferScoreSpecialists(
-            opened,
-            running.roi,
-            {
-              servingSide: shouldInferServing
-                ? {
-                    analysis: result,
-                    onProgress: (progress) => {
-                      if (
-                        !deletedProjectIdsRef.current.has(projectIdToRun) &&
-                        mountedRef.current
-                      ) {
-                        setActiveProgress({
-                          stage: "inference",
-                          completed: progress.completed,
-                          total: progress.total,
-                          detail: progress.detail,
-                        });
-                        setActiveInferenceSteps((current) =>
-                          updateSpecialistInferenceStep(
-                            current,
-                            "serving-side",
-                            progress,
-                            performance.now(),
-                          ),
-                        );
-                      }
-                    },
-                  }
-                : undefined,
-              sideSwitch: shouldInferSwitches
-                ? {
-                    analysis: {
-                      intervals: result.intervals,
-                      times: result.times,
-                      deadStateProbabilities: result.deadStateProbabilities,
-                      productionComponents: result.productionComponents!,
-                      productionStateOutputs: result.productionStateOutputs!,
-                    },
-                    onProgress: (progress) => {
-                      if (
-                        !deletedProjectIdsRef.current.has(projectIdToRun) &&
-                        mountedRef.current
-                      ) {
-                        setActiveProgress({
-                          stage: "inference",
-                          completed: progress.completed,
-                          total: progress.total,
-                          detail: progress.detail,
-                        });
-                        setActiveInferenceSteps((current) =>
-                          updateSpecialistInferenceStep(
-                            current,
-                            "side-switch",
-                            progress,
-                            performance.now(),
-                          ),
-                        );
-                      }
-                    },
-                  }
-                : undefined,
-            },
-          );
-          if (specialistOutput.servingSide) {
-            setActiveInferenceSteps((current) =>
-              finishInferenceStep(
-                current,
-                "serving-side",
-                `Serve markers ready · ${specialistOutput.servingSide!.candidates.length} rallies checked`,
-                performance.now(),
-              ),
-            );
-          }
-          if (specialistOutput.sideSwitch) {
-            setActiveInferenceSteps((current) =>
-              finishInferenceStep(
-                current,
-                "side-switch",
-                `Side switches ready · ${specialistOutput.sideSwitch!.candidates.length} found`,
-                performance.now(),
-              ),
-            );
-          }
-          completedAnalysis = { ...result, ...specialistOutput };
-        } catch (cause) {
-          for (const step of [
-            ...(shouldInferServing ? ["serving-side" as const] : []),
-            ...(shouldInferSwitches ? ["side-switch" as const] : []),
-          ]) {
-            setActiveInferenceSteps((current) =>
-              finishInferenceStep(
-                current,
-                step,
-                cause instanceof Error ? cause.message : String(cause),
-                performance.now(),
-                "error",
-              ),
-            );
-          }
-          if (mountedRef.current) {
-            setError(
-              `The score markers could not be saved: ${cause instanceof Error ? cause.message : String(cause)}`,
-            );
-          }
-        }
-      }
-      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
-      const ready: VolleySpliceProject = {
-        ...running,
-        status: "ready",
-        analysis: completedAnalysis,
-        error: null,
-        updatedAt: new Date().toISOString(),
-      };
-      commitProject(ready);
+      if (!mountedRef.current || abort.signal.aborted || deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      // Save rally evidence before specialists run; their failure cannot discard it.
+      commitProject({ ...running, analysis: result, scoreSpecialistErrors: {} });
+      await runScoreStages(projectIdToRun, opened, abort);
+      const latest = projectsRef.current.find((candidate) => candidate.id === projectIdToRun);
+      if (!latest || !mountedRef.current || deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      commitProject({ ...latest, status: "ready", error: null, updatedAt: new Date().toISOString() });
     } catch (cause) {
-      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      if (!mountedRef.current || deletedProjectIdsRef.current.has(projectIdToRun)) return;
       const failed: VolleySpliceProject = {
         ...running,
         status: "error",
@@ -1156,9 +1151,12 @@ function WebApp() {
     if (!next || activeJobRef.current) return;
     activeJobRef.current = next;
     setActiveJobId(next);
-    void runProject(next).finally(() => {
+    const recovery = scoreRecoveryIdsRef.current.has(next);
+    void (recovery ? runScoreRecovery(next) : runProject(next)).finally(() => {
+      scoreRecoveryIdsRef.current.delete(next);
       activeJobRef.current = null;
       if (mountedRef.current) {
+        setScoreJobs((current) => { const updated = { ...current }; delete updated[next]; return updated; });
         setQueueIds((current) => current.filter((id) => id !== next));
         setActiveJobId(null);
         setActiveProgress(null);
@@ -1191,14 +1189,15 @@ function WebApp() {
       );
       return;
     }
+    if (deletedProjectIdsRef.current.has(project.id) ||
+        !projectsRef.current.some((candidate) => candidate.id === project.id)) {
+      throw new Error("This project is no longer available. Open another project.");
+    }
     linkSourceFile(project.id, selected);
     setError(null);
-    if (
-      project.status !== "ready" ||
-      (!project.importedFeedback &&
-        !project.analysis?.suppression &&
-        (!project.analysis?.featureNames || !project.analysis?.featureValues))
-    ) {
+    // A ready project may need only score specialists. Reconnecting must never
+    // restart its rally model or replace its reviewed intervals.
+    if (project.status !== "ready") {
       queueAttachedProject(project);
     }
   }
@@ -1317,7 +1316,13 @@ function WebApp() {
       progress: job.progress,
       detail: job.detail,
     }));
-  const workActivity = [...analysisActivity, ...exportActivity];
+  const scoreActivity: DesignWorkActivity[] = Object.entries(scoreJobs).flatMap(([projectId, job]) => {
+    const project = projects.find((candidate) => candidate.id === projectId);
+    return project ? [{ projectId, name: project.source.name, kind: "analysis" as const,
+      status: job.status === "queued" ? "queued" as const : "analyzing" as const,
+      progress: projectId === activeJobId ? activePercent : null, detail: job.detail }] : [];
+  });
+  const workActivity = [...analysisActivity, ...scoreActivity, ...exportActivity];
   const projectHeader = (
     <>
       <MobileAppBanner />
@@ -1406,6 +1411,7 @@ function WebApp() {
       <ReadyProjectEditor
         key={productAnalysis.id}
         projectId={selectedProject.id}
+        storageError={error}
         projects={projects}
         workActivity={workActivity}
         exportJobs={designExportJobs}
@@ -1418,6 +1424,14 @@ function WebApp() {
           queueProjectVideoExport(selectedProject.id, request)
         }
         onDeleteProject={() => void removeSelectedProject()}
+        scoreRecovery={{
+          stages: scoreSpecialistReadiness(selectedProject),
+          status: scoreJobs[selectedProject.id]?.status ?? "idle",
+          detail: scoreJobs[selectedProject.id]?.detail ?? "",
+          steps: selectedProject.id === activeJobId && scoreRecoveryIdsRef.current.has(selectedProject.id) ? activeInferenceSteps : [],
+          retry: () => retryScoreSpecialists(selectedProject.id),
+          cancel: () => cancelScoreSpecialists(selectedProject.id),
+        }}
       />
     );
   }

@@ -42,7 +42,9 @@ export async function sampleSpecialistFramesSequentially(
   roi: NormalizedRoi,
   plan: SpecialistFramePlan,
   onProgress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<SampledSpecialistFrames> {
+  signal?.throwIfAborted();
   const servingTimestampByKey = new Map(
     (plan.servingSideTimes ?? []).map((timestamp) => [
       timestampKey(timestamp),
@@ -89,11 +91,12 @@ export async function sampleSpecialistFramesSequentially(
   const iterator = samplesAtTimestampsFromSequentialPass(
     sink,
     requested,
-    () => undefined,
+    () => signal?.throwIfAborted(),
   );
   let completed = 0;
   try {
     while (completed < requested.length) {
+      signal?.throwIfAborted();
       const next = await iterator.next();
       if (next.done) break;
       const sample = next.value;

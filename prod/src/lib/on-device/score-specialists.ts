@@ -43,7 +43,14 @@ export async function inferScoreSpecialists(
   media: OpenedMedia,
   roi: NormalizedRoi,
   request: ScoreSpecialistInferenceRequest,
+  options: {
+    signal?: AbortSignal;
+    /** Save each completed stage before another stage can fail. */
+    onOutput?: (output: ScoreSpecialistInferenceOutput) => void;
+  } = {},
 ): Promise<ScoreSpecialistInferenceOutput> {
+  const check = () => options.signal?.throwIfAborted();
+  check();
   if (!request.servingSide && !request.sideSwitch) return {};
   const loadingOwner = request.servingSide ?? request.sideSwitch;
   loadingOwner?.onProgress?.({
@@ -79,6 +86,7 @@ export async function inferScoreSpecialists(
       sideSwitchTimes: switchPlan?.requestedTimes,
     },
     (completed, total) => {
+      check();
       if (request.servingSide) {
         request.servingSide.onProgress?.({
           stage: "frames",
@@ -97,55 +105,75 @@ export async function inferScoreSpecialists(
         });
       }
     },
+    options.signal,
   );
   const output: ScoreSpecialistInferenceOutput = {};
+  const errors: string[] = [];
   if (request.servingSide) {
-    const artifacts = await evaluateServingSideFrames(
-      media.info.duration,
-      request.servingSide.analysis,
-      null,
-      frames.servingSide,
-      (completed, total) =>
-        request.servingSide?.onProgress?.({
-          stage: "features",
-          completed,
-          total,
-          detail: `Checking serve court sides · ${completed}/${total} rallies`,
-        }),
-    );
-    output.servingSide = neuralServingSelection(request.servingSide.analysis.modelId)
-      ? await (await import("./neural-serving")).inferNeuralServingSideOutput(
-          media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress,
-        )
-      : artifacts.output;
-    request.servingSide.onProgress?.({
-      stage: "complete",
-      completed: artifacts.output.candidates.length,
-      total: artifacts.output.candidates.length,
-      detail: `Serve markers ready · ${artifacts.output.candidates.length} rallies checked`,
-    });
+    try {
+      check();
+      const artifacts = await evaluateServingSideFrames(
+        media.info.duration,
+        request.servingSide.analysis,
+        null,
+        frames.servingSide,
+        (completed, total) =>
+          request.servingSide?.onProgress?.({
+            stage: "features",
+            completed,
+            total,
+            detail: `Checking serve court sides · ${completed}/${total} rallies`,
+          }),
+      );
+      output.servingSide = neuralServingSelection(request.servingSide.analysis.modelId)
+        ? await (await import("./neural-serving")).inferNeuralServingSideOutput(
+            media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress, options.signal,
+          )
+        : artifacts.output;
+      check();
+      options.onOutput?.({ servingSide: output.servingSide });
+      request.servingSide.onProgress?.({
+        stage: "complete",
+        completed: artifacts.output.candidates.length,
+        total: artifacts.output.candidates.length,
+        detail: `Serve markers ready · ${artifacts.output.candidates.length} rallies checked`,
+      });
+    } catch (cause) {
+      check();
+      errors.push(cause instanceof Error ? cause.message : String(cause));
+    }
   }
   if (request.sideSwitch) {
-    const artifacts = await evaluateSideSwitchFrames(
-      media.info.duration,
-      request.sideSwitch.analysis,
-      null,
-      frames.sideSwitch,
-      (completed, total) =>
-        request.sideSwitch?.onProgress?.({
-          stage: "features",
-          completed,
-          total,
-          detail: `Checking possible side switches · ${completed}/${total}`,
-        }),
-    );
-    output.sideSwitch = artifacts.output;
-    request.sideSwitch.onProgress?.({
-      stage: "complete",
-      completed: artifacts.output.candidates.length,
-      total: artifacts.output.candidates.length,
-      detail: `Side switches ready · ${artifacts.output.candidates.length} found`,
-    });
+    try {
+      check();
+      const artifacts = await evaluateSideSwitchFrames(
+        media.info.duration,
+        request.sideSwitch.analysis,
+        null,
+        frames.sideSwitch,
+        (completed, total) =>
+          request.sideSwitch?.onProgress?.({
+            stage: "features",
+            completed,
+            total,
+            detail: `Checking possible side switches · ${completed}/${total}`,
+          }),
+      );
+      output.sideSwitch = artifacts.output;
+      check();
+      options.onOutput?.({ sideSwitch: output.sideSwitch });
+      request.sideSwitch.onProgress?.({
+        stage: "complete",
+        completed: artifacts.output.candidates.length,
+        total: artifacts.output.candidates.length,
+        detail: `Side switches ready · ${artifacts.output.candidates.length} found`,
+      });
+    } catch (cause) {
+      check();
+      errors.push(cause instanceof Error ? cause.message : String(cause));
+    }
   }
+  check();
+  if (errors.length) throw new Error(errors.join(" "));
   return output;
 }

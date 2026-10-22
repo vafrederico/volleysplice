@@ -16,6 +16,8 @@ import {
   type EditableCut,
 } from "@/lib/cut-draft";
 import { isNeuralModelId } from "@/lib/on-device/rally-model";
+import { withModelScoreMarkers } from "@/lib/model-review-draft";
+import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { GOOGLE_PLAY_URL } from "@/lib/android-app";
 import { timelinePercent } from "@/lib/edit-list";
 import {
@@ -337,6 +339,7 @@ function usePrototype(
   );
   const [removedModelMarkerIds, setRemovedModelMarkerIds] = useState(review.draft.scoreTracking.removedModelMarkerIds);
   const [sideSwitchMarkers, setSideSwitchMarkers] = useState<DesignSideSwitchMarker[]>(review.draft.scoreTracking.sideSwitchMarkers);
+  const scoreOutputs = useRef({ servingSide: review.productAnalysis?.servingSide, sideSwitch: review.productAnalysis?.sideSwitch });
   const [selectedScoreMarkerId, setSelectedScoreMarkerId] = useState(
     review.draft.scoreTracking.serveMarkers.find((marker) => marker.side === "review")?.id ??
       review.draft.scoreTracking.serveMarkers[0]?.id ??
@@ -549,6 +552,19 @@ function usePrototype(
     setRemovedModelMarkerIds(draft.scoreTracking.removedModelMarkerIds);
     setSuppressionDecisions(cleanupAvailable ? cleanupReviewDecisions(draft, review.cleanupSuggestions) : {});
   }
+
+  // Merge only new model evidence into the current edits. Never remount or
+  // restore an old draft when a retry finishes while the user is reviewing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only new model outputs trigger a merge; the current render supplies the latest working draft.
+  useEffect(() => {
+    const servingSide = review.productAnalysis?.servingSide;
+    const sideSwitch = review.productAnalysis?.sideSwitch;
+    if (servingSide === scoreOutputs.current.servingSide && sideSwitch === scoreOutputs.current.sideSwitch) return;
+    scoreOutputs.current = { servingSide, sideSwitch };
+    const next = withModelScoreMarkers(workingDraft, { servingSide, sideSwitch });
+    setScoreMarkers(next.scoreTracking.serveMarkers);
+    setSideSwitchMarkers(next.scoreTracking.sideSwitchMarkers);
+  }, [review.productAnalysis?.servingSide, review.productAnalysis?.sideSwitch]);
 
   function restoreHistory(direction: "undo" | "redo") {
     const current = recordEdit(historyRef.current, workingDraft);
@@ -1352,6 +1368,7 @@ function usePrototype(
   }
 
   return {
+    scoreRecovery: review.scoreRecovery,
     stage, setStage, dark, setDark, helpOpen, setHelpOpen,
     fileName, expectedSourceName, needsSource, sourceStatus, gameStart, gameEnd,
     videoUrl,
@@ -1599,6 +1616,33 @@ function ReconnectNotice({ state }: { state: Prototype }) {
         Choose matching source
         <input type="file" accept="video/*,.mkv,.webm,.mov,.mp4,.m4v" onChange={state.chooseVideo} />
       </label>
+    </aside>
+  );
+}
+
+function ScoreRecoveryNotice({ state }: { state: Prototype }) {
+  const recovery = state.scoreRecovery;
+  if (!recovery) return null;
+  const pending = (["servingSide", "sideSwitch"] as const).filter((key) =>
+    recovery.stages[key].status !== "complete" && recovery.stages[key].status !== "disabled",
+  );
+  if (!pending.length) return null;
+  const busy = recovery.status !== "idle";
+  const canRetry = pending.some((key) => recovery.stages[key].status === "missing" || recovery.stages[key].status === "failed");
+  const failed = pending.some((key) => recovery.stages[key].status === "failed");
+  return (
+    <aside className="td-reconnect rd-score-recovery" aria-label="Score prediction recovery" aria-busy={busy}>
+      <div>
+        <strong>Score predictions are incomplete</strong>
+        <span role={failed && !busy ? "alert" : "status"} aria-live="polite">
+          {busy ? recovery.detail : pending.map((key) => `${key === "servingSide" ? "Serve sides" : "Side switches"}: ${recovery.stages[key].message}`).join(" ")}
+        </span>
+        <small>Your rally and score edits stay saved. Only missing predictions are generated.</small>
+        {busy && recovery.steps && recovery.steps.length > 0 && <InferenceProgressPanel steps={recovery.steps} />}
+      </div>
+      {busy ? <button className="td-secondary-button" type="button" disabled={recovery.status === "cancelling"} onClick={recovery.cancel}>Cancel score markers</button>
+        : canRetry && recovery.retry ? <button className="td-secondary-button" type="button" onClick={recovery.retry} disabled={state.needsSource}>{state.needsSource ? "Reconnect source for score markers" : "Generate missing score markers"}</button>
+        : canRetry ? <small>Open the live app to generate missing score markers.</small> : null}
     </aside>
   );
 }
@@ -2203,7 +2247,8 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
             <ul>
               <li data-ready={!state.needsSource || undefined}><strong>Source video</strong><span>{state.needsSource ? "Reconnect for playback and MP4" : "Connected locally"}</span></li>
               <li data-ready={state.remaining === 0 || undefined}><strong>Suggested clips</strong><span>{state.remaining === 0 ? "All included clips checked" : `${state.remaining} still need review`}</span></li>
-              <li data-ready={!state.scoreEnabled || state.serveReview === 0 || undefined}><strong>Score markers</strong><span>{!state.scoreEnabled ? "Score tracking is off" : state.serveReview === 0 ? "All serve sides checked" : `${state.serveReview} serve sides need review`}</span></li>
+              <li data-ready={!state.scoreEnabled || (state.scoreRecovery?.stages.servingSide.status === "complete" && state.serveReview === 0) || undefined}><strong>Score markers</strong><span>{!state.scoreEnabled ? "Score tracking is off" : state.scoreRecovery?.stages.servingSide.status !== "complete" ? "Serve predictions are incomplete" : state.scoreMarkers.length === 0 ? "Serve check complete; no serve markers found" : state.serveReview === 0 ? "All serve sides checked" : `${state.serveReview} serve sides need review`}</span></li>
+              {state.detectSwitches && <li data-ready={state.scoreRecovery?.stages.sideSwitch.status === "complete" || undefined}><strong>Side-switch predictions</strong><span>{state.scoreRecovery?.stages.sideSwitch.status === "complete" ? "Side-switch check complete" : "Side-switch predictions are incomplete"}</span></li>}
               {state.cleanupAvailable && <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} excluded suggestion needs review`}</span></li>}
               <li data-ready><strong>Final ranges</strong><span>{state.included.length} clips, {state.excludedRanges.length} excluded {state.excludedRanges.length === 1 ? "section" : "sections"}</span></li>
             </ul>
@@ -2857,6 +2902,7 @@ export function RallyDesk({
         <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
       </header>
       {state.draftSaveFailed && <p className="rd-storage-alert" role="alert">{state.storageMessage}</p>}
+      <ScoreRecoveryNotice state={state} />
       {state.stage === "review" ? (
         <ResizableWorkspace
           {...layoutPreferences}
