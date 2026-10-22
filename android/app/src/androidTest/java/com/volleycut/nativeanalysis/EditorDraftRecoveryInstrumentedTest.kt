@@ -18,6 +18,7 @@ import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -31,6 +32,71 @@ import java.util.concurrent.atomic.AtomicReference
 /** Mounts the production editor with synthetic local media and saved draft bytes. */
 class EditorDraftRecoveryInstrumentedTest {
     @get:Rule val compose = createEmptyComposeRule()
+
+    @Test fun editAndImmediateRecreationKeepLatestReview() = withProject { store, _, _ ->
+        launchEditor { scenario ->
+            val remove = removeAction()
+            // Execute the real UI edit and lifecycle change in one main-thread
+            // turn, before the former 200 ms autosave could start.
+            scenario.onActivity { activity ->
+                remove()
+                activity.recreate()
+            }
+            compose.waitUntil(10_000) {
+                (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+            }
+            compose.waitForIdle()
+            compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test fun editAndImmediateFinishPersistAfterCompositionIsGone() = withProject { store, _, _ ->
+        launchEditor { scenario ->
+            val remove = removeAction()
+            scenario.onActivity { activity ->
+                remove()
+                activity.finish()
+            }
+            compose.waitUntil(10_000) {
+                (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+            }
+        }
+        launchEditor {
+            compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+            assertFalse((store.load() as EditorDraftLoadResult.Restored).draft.cuts.first().included)
+        }
+    }
+
+    @Test fun editAndImmediateProjectNavigationPreserveReviewOnReturn() = withProject { store, _, project ->
+        launchEditor { scenario ->
+            val remove = removeAction()
+            compose.onNodeWithTag("project-selector").performScrollTo().performClick()
+            val startNew = checkNotNull(compose.onNodeWithTag("new-project").fetchSemanticsNode()
+                .config[SemanticsActions.OnClick].action)
+            scenario.onActivity {
+                remove()
+                startNew()
+            }
+            compose.waitForIdle()
+            compose.onNodeWithText("✓ Remove").assertDoesNotExist()
+            compose.waitUntil(10_000) {
+                (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+            }
+            compose.onNodeWithTag("project-selector").performScrollTo().performClick()
+            compose.onNodeWithText(project.source.name).performClick()
+            compose.waitForIdle()
+            compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    private fun removeAction(): () -> Boolean {
+        compose.waitForIdle()
+        if (compose.onAllNodesWithText("Not now").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithText("Not now").performClick()
+        }
+        return checkNotNull(compose.onNodeWithText("Remove").performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+    }
 
     @Test fun failedAutosaveShowsRetryAndPreservesLatestEditAfterRecovery() = withProject { store, target, _ ->
         val original = target.readBytes()
@@ -50,6 +116,11 @@ class EditorDraftRecoveryInstrumentedTest {
                 compose.waitForIdle()
                 compose.onNodeWithText("✓ Remove").assertExists()
                 SystemClock.sleep(500)
+                assertArrayEquals(original, target.readBytes())
+                scenario.recreate()
+                compose.waitForIdle()
+                compose.onNodeWithTag("draft-save-error").assertIsDisplayed()
+                compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
                 assertArrayEquals(original, target.readBytes())
                 assertTrue(blocker.delete())
                 compose.onNodeWithTag("draft-save-retry").performClick()
