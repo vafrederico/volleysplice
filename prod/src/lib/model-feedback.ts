@@ -150,6 +150,7 @@ export type ModelFeedbackBundle = {
   };
   corrections: {
     updatedAt: string;
+    suppressionInitialBehavior: CutDraft["suppressionInitialBehavior"];
     beforePaddingSeconds: number;
     afterPaddingSeconds: number;
     joinGapSeconds: number;
@@ -529,6 +530,7 @@ export function createModelFeedbackBundle(
     },
     corrections: {
       updatedAt: draft.updatedAt,
+      suppressionInitialBehavior: draft.suppressionInitialBehavior,
       beforePaddingSeconds: draft.beforePaddingSeconds,
       afterPaddingSeconds: draft.afterPaddingSeconds,
       joinGapSeconds: draft.joinGapSeconds,

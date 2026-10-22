@@ -348,6 +348,7 @@ function draftFromFeedback(
       feedback.editorPreferences?.renderScoreOnFinalVideo ?? base.renderScoreOnFinalVideo,
     selectedSuppressionPolicy:
       suppression?.selectedPolicy ?? base.selectedSuppressionPolicy,
+    suppressionInitialBehavior: feedback.corrections.suppressionInitialBehavior,
     suppressionDecisionOverrides: suppression?.decisionOverrides ?? {},
     suppressionScopeOverrides: suppression?.suppressionScopeOverrides ?? {},
     userTouchedCutIds: suppression?.userTouchedCutIds ?? [],

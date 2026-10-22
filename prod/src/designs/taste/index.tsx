@@ -319,6 +319,10 @@ function usePrototype(
   const [cleanup, setCleanup] = useState<CleanupStrength>(
     cleanupAvailable ? cleanupStrengthForPolicy(review.draft.selectedSuppressionPolicy) : "off",
   );
+  function selectCleanup(value: CleanupStrength) {
+    setCleanup(value);
+    if (value !== "off") setBaseDraft(current => ({ ...current, suppressionInitialBehavior: "disable-initially" }));
+  }
   const [reviewMessage, setReviewMessage] = useState(`${initialClips.filter((clip) => clip.included && !clip.reviewed && clipRequiresConfidenceReview(clip, review.draft.confidenceReviewThreshold)).length} clips remain to check in the current review.`);
   const [scoreEnabled, setScoreEnabled] = useState(review.draft.scoreTracking.enabled);
   const [previewScoreOverlay, setPreviewScoreOverlay] = useState(review.draft.renderScoreOverlay);
@@ -1370,7 +1374,7 @@ function usePrototype(
     playing, setPlaying, finalPreview, setFinalPreview,
     playbackRate, setPlaybackRate,
     beforePadding, setBeforePadding,
-    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup, cleanupAvailable, cleanupUnavailableReason,
+    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup: selectCleanup, cleanupAvailable, cleanupUnavailableReason,
     restoreHistory, historyStorageFailed, resetProjectChanges,
     reviewMessage, scoreEnabled, setScoreEnabled, previewScoreOverlay, setPreviewScoreOverlay,
     fadeScoreOverlay, setFadeScoreOverlay,

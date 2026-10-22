@@ -15,7 +15,7 @@ import {
   type ScoreTracking,
 } from "./score-tracking.ts";
 
-export const CUT_DRAFT_VERSION = 16 as const;
+export const CUT_DRAFT_VERSION = 17 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -65,6 +65,7 @@ export type CutDraft = {
   confidenceReviewThreshold: number;
   reviewedCutIds: string[];
   selectedSuppressionPolicy: SuppressionPolicyId;
+  suppressionInitialBehavior: "disable-initially" | "highlight-only";
   suppressionDecisionOverrides: Record<string, "keep" | "suppress">;
   suppressionScopeOverrides: Record<string, SuppressionScope>;
   userTouchedCutIds: string[];
@@ -200,7 +201,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:production-lab:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -232,6 +233,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     reviewedCutIds: [],
     selectedSuppressionPolicy: "aggressive",
     suppressionDecisionOverrides: {},
+    suppressionInitialBehavior: "disable-initially",
     suppressionScopeOverrides: {},
     userTouchedCutIds: [],
     suppressionContractVersion:
@@ -360,7 +362,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, CUT_DRAFT_VERSION].includes(
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, CUT_DRAFT_VERSION].includes(
         persistedVersion,
       )
     ) {
@@ -415,6 +417,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       suppressionDecisionOverrides: persistedVersion >= 9
         ? persisted.suppressionDecisionOverrides
         : {},
+      suppressionInitialBehavior: persistedVersion >= 17
+        ? persisted.suppressionInitialBehavior
+        : "disable-initially",
       suppressionScopeOverrides: persistedVersion >= 10
         ? persisted.suppressionScopeOverrides
         : {},
@@ -504,6 +509,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         value.selectedSuppressionPolicy as SuppressionPolicyId,
       ) ||
       !value.suppressionDecisionOverrides ||
+      !["disable-initially", "highlight-only"].includes(value.suppressionInitialBehavior ?? "") ||
       typeof value.suppressionDecisionOverrides !== "object" ||
       Array.isArray(value.suppressionDecisionOverrides) ||
       !Object.entries(value.suppressionDecisionOverrides).every(
@@ -759,7 +765,7 @@ export function suppressionSuggestionState(
   ) {
     return "edited-kept";
   }
-  return "suppressed";
+  return draft.suppressionInitialBehavior === "highlight-only" ? "kept" : "suppressed";
 }
 
 export function suppressionSuggestionScope(

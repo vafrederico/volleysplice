@@ -114,6 +114,7 @@ export type ParsedModelFeedback = {
   };
   corrections: {
     updatedAt: string;
+    suppressionInitialBehavior: "disable-initially" | "highlight-only";
     beforePaddingSeconds: number;
     afterPaddingSeconds: number;
     joinGapSeconds: number;
@@ -1535,6 +1536,10 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
     },
     corrections: {
       updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),
+      suppressionInitialBehavior: corrections.suppressionInitialBehavior === undefined
+        ? "disable-initially"
+        : choice(corrections.suppressionInitialBehavior, ["disable-initially", "highlight-only"] as const,
+            "bundle.corrections.suppressionInitialBehavior"),
       beforePaddingSeconds: nonNegative(
         corrections.beforePaddingSeconds,
         "bundle.corrections.beforePaddingSeconds",

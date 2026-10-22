@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ModelFeedbackValidationError } from "../../lib/model-feedback.ts";
-import { createCutDraft } from "../../prod/src/lib/cut-draft.ts";
+import { buildFinalCutIntervals, createCutDraft, cutDraftStorageKeys, parseCutDraft } from "../../prod/src/lib/cut-draft.ts";
 import {
   importModelFeedbackProject,
 } from "../../prod/src/lib/model-feedback-import.ts";
@@ -229,6 +229,53 @@ function feedbackText() {
   );
   return JSON.stringify(bundle);
 }
+
+test("native highlight-only cleanup preserves final footage and explicit decisions through exchange", () => {
+  for (const scope of ["whole-rally", "veto-region"] as const) {
+    const bundle = JSON.parse(feedbackText());
+    bundle.corrections.correctedRanges[0].included = true;
+    bundle.corrections.suppressionInitialBehavior = "highlight-only";
+    bundle.corrections.suppression.decisionOverrides = {};
+    bundle.corrections.suppression.suppressionScopeOverrides = { "logical-1": scope };
+    const imported = importModelFeedbackProject(JSON.stringify(bundle));
+    const draft = imported.project.importedFeedback!.initialDraft;
+    const suppression = imported.project.analysis!.suppression;
+    assert.equal(draft.suppressionInitialBehavior, "highlight-only");
+    assert.deepEqual(buildFinalCutIntervals(draft, suppression).map(({ start, end }) => [start, end]), [[3, 10]]);
+    assert.equal(parseCutDraft(JSON.stringify(draft), { analysisId: draft.analysisId, recordingId: draft.recordingId,
+      duration: analysis.duration, analysisStart: draft.analysisStart, analysisEnd: draft.analysisEnd,
+      rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals })?.suppressionInitialBehavior, "highlight-only");
+    const exported = createModelFeedbackBundle(analysis, draft, []);
+    assert.equal(exported.corrections.suppressionInitialBehavior, "highlight-only");
+    const second = importModelFeedbackProject(JSON.stringify(exported));
+    assert.deepEqual(buildFinalCutIntervals(second.project.importedFeedback!.initialDraft, second.project.analysis!.suppression), buildFinalCutIntervals(draft, suppression));
+    const explicit = { ...draft, suppressionDecisionOverrides: { "logical-1": "suppress" as const } };
+    assert.ok(buildFinalCutIntervals(explicit, suppression).reduce((sum, row) => sum + row.end - row.start, 0) < 7);
+    const kept = { ...draft, suppressionDecisionOverrides: { "logical-1": "keep" as const } };
+    assert.deepEqual(buildFinalCutIntervals(kept, suppression).map(({ start, end }) => [start, end]), [[3, 10]]);
+  }
+});
+
+test("older feedback keeps existing cleanup behavior and invalid behavior is rejected", () => {
+  const bundle = JSON.parse(feedbackText());
+  bundle.corrections.correctedRanges[0].included = true;
+  bundle.corrections.suppression.decisionOverrides = {};
+  delete bundle.corrections.suppressionInitialBehavior;
+  const imported = importModelFeedbackProject(JSON.stringify(bundle));
+  assert.equal(imported.project.importedFeedback!.initialDraft.suppressionInitialBehavior, "disable-initially");
+  assert.deepEqual(buildFinalCutIntervals(imported.project.importedFeedback!.initialDraft, imported.project.analysis!.suppression), []);
+  bundle.corrections.suppressionInitialBehavior = "unknown";
+  assert.throws(() => importModelFeedbackProject(JSON.stringify(bundle)), /suppressionInitialBehavior/);
+});
+
+test("version 16 browser reviews retain their original removal default and remain discoverable", () => {
+  const seed = { analysisId: analysis.id, recordingId: analysis.recordingId, duration: analysis.duration,
+    rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals };
+  const old = { ...createCutDraft(seed), version: 16 } as Record<string, unknown>;
+  delete old.suppressionInitialBehavior;
+  assert.equal(parseCutDraft(JSON.stringify(old), seed)?.suppressionInitialBehavior, "disable-initially");
+  assert.ok(cutDraftStorageKeys(analysis.id).some(key => key.includes(":v16:")));
+});
 
 test("imported moved serves survive the editor's model refresh in both directions", () => {
   for (const movedStart of [6, 4]) {

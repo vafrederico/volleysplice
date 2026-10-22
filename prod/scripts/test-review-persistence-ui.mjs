@@ -77,7 +77,7 @@ try {
   );
   const { putProject, listProjects, projectAnalysisId } =
     await server.ssrLoadModule("/src/lib/project-store.ts");
-  const { createCutDraft, cutDraftStorageKey } = await server.ssrLoadModule(
+  const { buildFinalCutIntervals, createCutDraft, cutDraftStorageKey } = await server.ssrLoadModule(
     "/src/lib/cut-draft.ts",
   );
   const project = {
@@ -287,6 +287,30 @@ try {
     document.querySelector(".rd-storage-alert").textContent,
     "Latest edit is not saved",
   );
+
+  // Imported highlight-only reviews must retain footage through the real editor's
+  // immediate autosave. A deliberate active-level change opts into removal.
+  const cleanupDraft = { ...createCutDraft(seed), suppressionInitialBehavior: "highlight-only",
+    cuts: createCutDraft(seed).cuts.map(cut => ({ ...cut, agreement: "both-models" })) };
+  const suggestion = { id: "cleanup-1", logicalId: "cleanup-1", suppressionEventId: "S1", start: 12, end: 13,
+    score: .95, sourceProductionIds: ["R001"], eligiblePolicyIds: ["conservative", "balanced", "aggressive"] };
+  const cleanupSuppression = { suggestions: [suggestion] };
+  let savedCleanup;
+  const cleanupReview = { ...readyReview, productAnalysis: null, draft: cleanupDraft, modelDraft: cleanupDraft,
+    suppression: cleanupSuppression, cleanupSuggestions: [{ ...suggestion, cutId: null, decision: "pending" }],
+    saveDraft: async draft => { savedCleanup = draft; return { saved: true, message: "Saved" }; } };
+  await act(async () => root.render(React.createElement(RallyDesk, { key: "highlight-only", review: cleanupReview })));
+  await waitFor(() => savedCleanup);
+  assert.equal(savedCleanup.suppressionInitialBehavior, "highlight-only");
+  assert.ok(buildFinalCutIntervals(savedCleanup, cleanupSuppression).length, "mount/autosave retains highlighted footage");
+  const settings = document.querySelector('button[aria-label="Final cut settings"]');
+  assert.ok(settings);
+  await act(async () => settings.click());
+  const cleanupSelect = [...document.querySelectorAll("label")].find(label => label.textContent.includes("Automatic cleanup"))?.querySelector("select");
+  assert.ok(cleanupSelect);
+  await act(async () => { cleanupSelect.value = "light"; cleanupSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
+  await waitFor(() => savedCleanup.suppressionInitialBehavior === "disable-initially");
+  assert.deepEqual(buildFinalCutIntervals(savedCleanup, cleanupSuppression), []);
 
   const invalid = {
     ...createCutDraft(seed),
