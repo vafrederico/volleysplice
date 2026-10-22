@@ -172,8 +172,18 @@ public enum EditorMath {
         return result
     }
     public static func nextId(prefix: String, ids: [String]) -> String {
-        let maximum = ids.filter { $0.hasPrefix(prefix) }.compactMap { Int($0.dropFirst(prefix.count)) }.max() ?? 0
-        return String(format: "%@%03d", prefix, maximum + 1)
+        let used = Set(ids)
+        let maximum = max(0, ids.filter { $0.hasPrefix(prefix) }.compactMap { Int($0.dropFirst(prefix.count)) }.max() ?? 0)
+        if maximum < Int.max {
+            let digits = String(maximum + 1)
+            let candidate = prefix + String(repeating: "0", count: max(0, 3 - digits.count)) + digits
+            if !used.contains(candidate) { return candidate }
+        }
+        // A retained ID can already occupy Int.max; never overflow or truncate it through %d.
+        while true {
+            let candidate = prefix + UUID().uuidString
+            if !used.contains(candidate) { return candidate }
+        }
     }
     public static func alignRallyServeMarkers(_ draft: EditorDraft) -> EditorDraft {
         guard let markers = draft.scoreTracking["serveMarkers"]?.array else { return draft }

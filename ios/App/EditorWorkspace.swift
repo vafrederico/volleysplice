@@ -932,7 +932,7 @@ struct EditorWorkspace: View {
                                     .id(cut.id)
                                 Divider()
                             } else {
-                                Button { seek(cut.coreStartMs) } label: {
+                                Button { selectRally(group, at: cut.coreStartMs) } label: {
                                     HStack {
                                         Image(systemName: included ? "checkmark.square.fill" : "xmark.square")
                                         VStack(alignment: .leading, spacing: 2) {

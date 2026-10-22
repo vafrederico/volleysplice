@@ -148,6 +148,13 @@ final class ChaptersTests: XCTestCase {
             positionMs: rallies[1].keepStartMs, playing: false)?.id, right)
         XCTAssertEqual(EditorMath.rallySelectionAtPlayhead(groups: rallies, selectedId: right,
             positionMs: 9000, playing: true)?.id, rallies[0].id)
+        let trimmed = EditorMath.setCoreStart(split, cutId: right, valueMs: 14000, minimumMs: 0)
+        let overlapping = groups(trimmed)
+        let selected = try XCTUnwrap(EditorMath.rallySelectionAtPlayhead(groups: overlapping, selectedId: right,
+            positionMs: 14000, playing: false))
+        XCTAssertEqual(selected.id, right)
+        let removed = EditorMath.setIncluded(trimmed, cutId: selected.id, included: false)
+        XCTAssertTrue(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
     }
     func testSplitLimitsAndCompleteDraftIdNamespaceAreCheckedBeforeMutation() throws {
         let bounds = TimeRange(startMs: 0, endMs: 40000)
@@ -174,5 +181,19 @@ final class ChaptersTests: XCTestCase {
             XCTAssertNotNil(EditorMath.splitCut(.init(sourceRevision: "boundary", cuts: [cut(id, 10000, 20000)]),
                 cutId: id, positionMs: 15000, bounds: bounds))
         }
+    }
+    func testSplitIdAllocationHandlesLargeAndOverflowingNumericSuffixesWithoutCollisions() throws {
+        for id in ["R4294967296", "R9223372036854775807", "R99999999999999999999999999999999999999"] {
+            var draft = EditorDraft(sourceRevision: "wide-id", cuts: [cut("R001", 10000, 20000)])
+            draft.ignoredIntervals = [.init(id: id, startMs: 1000, endMs: 2000)]
+            let split = try XCTUnwrap(EditorMath.splitCut(draft, cutId: "R001", positionMs: 15000,
+                bounds: .init(startMs: 0, endMs: 40000)))
+            XCTAssertEqual(split.cuts[0].id, "R001")
+            XCTAssertNotEqual(split.cuts[1].id, "R001"); XCTAssertNotEqual(split.cuts[1].id, id)
+            XCTAssertEqual(split.ignoredIntervals, draft.ignoredIntervals)
+            try split.validate(durationMs: 40000)
+        }
+        XCTAssertEqual(EditorMath.nextId(prefix: "R", ids: ["R001", "R4294967296"]), "R4294967297")
+        XCTAssertEqual(EditorMath.nextId(prefix: "R", ids: ["R001", "R009"]), "R010")
     }
 }
