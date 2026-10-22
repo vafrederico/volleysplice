@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.net.Uri
 import android.os.SystemClock
+import android.os.Environment
 import android.util.Base64
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -21,12 +22,18 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleCallback
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Until
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -36,6 +43,66 @@ import java.util.concurrent.atomic.AtomicReference
 /** Mounts the production editor with synthetic local media and saved draft bytes. */
 class EditorDraftRecoveryInstrumentedTest {
     @get:Rule val compose = createEmptyComposeRule()
+
+    @Test fun projectDestinationPickerRecreationExportsTheRequestedSnapshot() = withProject(uniqueVideo = true) { store, _, project ->
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
+        val filename = ModelFeedbackExporter.filename(project.source.name)
+        require(filename.matches(Regex("[A-Za-z0-9._-]+")))
+        val destination = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), filename)
+        require(destination.absolutePath.matches(Regex("[A-Za-z0-9/._-]+")))
+        val launched = AtomicReference<String?>()
+        val monitor = object : Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? {
+                if (intent.action == Intent.ACTION_CREATE_DOCUMENT) launched.set(intent.getStringExtra(Intent.EXTRA_TITLE))
+                return null
+            }
+        }
+        instrumentation.addMonitor(monitor)
+        try {
+            launchEditor { scenario ->
+                val originalActivity = AtomicReference<EditorActivity>()
+                scenario.onActivity { originalActivity.set(it) }
+                val replacement = AtomicReference<Activity?>()
+                val lifecycle = ActivityLifecycleCallback { activity, stage ->
+                    if (activity is EditorActivity && activity !== originalActivity.get() && stage == Stage.CREATED) replacement.set(activity)
+                }
+                ActivityLifecycleMonitorRegistry.getInstance().addLifecycleCallback(lifecycle)
+                try {
+                    val remove = removeAction()
+                    compose.onNodeWithText("Project options").performScrollTo().performClick()
+                    compose.onNodeWithText("Save project").performClick()
+                    compose.waitUntil(10_000) { launched.get() != null }
+                    assertEquals(filename, launched.get())
+                    assertNotNull(device.wait(Until.findObject(By.res("android", "button1")), 10_000))
+                    // The picker owns the foreground while the original review changes
+                    // and its activity is replaced. The returned file must use the
+                    // snapshot requested before either event.
+                    instrumentation.runOnMainSync { remove(); originalActivity.get().recreate() }
+                    compose.waitUntil(10_000) { replacement.get() != null }
+                    val save = device.wait(Until.findObject(By.res("android", "button1")), 10_000)
+                    assertNotNull("Destination picker disappeared during recreation", save)
+                    save.click()
+                    try { compose.waitUntil(15_000) {
+                        device.executeShellCommand("cat ${destination.absolutePath}").trimStart().startsWith("{") &&
+                            (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+                    } } catch (failure: Throwable) {
+                        screenshot("pending-export-picker")
+                        throw AssertionError("Destination: ${device.executeShellCommand("cat ${destination.absolutePath}")}; draft: ${store.load()}; UI: ${compose.onRoot().printToString()}", failure)
+                    }
+                    val exported = ModelFeedbackImporter.parse(device.executeShellCommand("cat ${destination.absolutePath}"))
+                    assertTrue("Export changed to edits made after opening the picker", exported.draft.cuts.first().included)
+                    compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+                    compose.onNodeWithText("Saved the detailed project file").assertExists()
+                } finally { ActivityLifecycleMonitorRegistry.getInstance().removeLifecycleCallback(lifecycle) }
+            }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+            device.pressBack()
+            // A unique synthetic filename prevents collisions with other exports.
+            device.executeShellCommand("rm -f ${destination.absolutePath}")
+        }
+    }
 
     @Test fun editAndImmediateRecreationKeepLatestReview() = withProject { store, _, _ ->
         launchEditor { scenario ->
@@ -624,11 +691,11 @@ class EditorDraftRecoveryInstrumentedTest {
         ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use(block)
     }
 
-    private fun withProject(block: (EditorDraftStore, File, NativeProject) -> Unit) {
+    private fun withProject(uniqueVideo: Boolean = false, block: (EditorDraftStore, File, NativeProject) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val previousSelection = NativeProjectStore.selectedId(context)
-        val video = File(context.filesDir, "draft-recovery-synthetic.mp4")
+        val video = File(context.filesDir, if (uniqueVideo) "pending-export-${UUID.randomUUID()}.mp4" else "draft-recovery-synthetic.mp4")
         // Color/overlay fixture plus synthetic AAC silence, so the source's audio
         // metadata round-trips without the separate legacy blank/null MIME issue.
         video.writeBytes(Base64.decode(instrumentation.context.assets.open("draft-recovery-fixture.mp4.b64")

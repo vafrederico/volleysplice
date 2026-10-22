@@ -2996,6 +2996,9 @@ private fun EditorScreen(
     val exportPreferences = remember(context) {
         context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
     }
+    val exportRequests = remember(activity) { ViewModelProvider(activity)[PendingEditorExports::class.java] }
+    val exportRequestStore = remember(context) { PendingEditorExportStore(context.filesDir) }
+    val exportContext = context.applicationContext
     val draft by persistence.draft
     var selectedId by remember { mutableStateOf(draft.cuts.firstOrNull()?.id.orEmpty()) }
     var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
@@ -3034,8 +3037,7 @@ private fun EditorScreen(
                 ?: project.persistedExportUiState(),
         )
     }
-    var pendingExportIntervals by remember { mutableStateOf<List<FinalCutInterval>?>(null) }
-    var feedbackExporting by remember { mutableStateOf(false) }
+    val feedbackExporting = exportRequests.busy
     var confirmReset by remember { mutableStateOf(false) }
     var showRatingPrompt by remember { mutableStateOf(AppRating.hasPendingPrompt(context)) }
     var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
@@ -3045,7 +3047,6 @@ private fun EditorScreen(
     var selectedScoreMarkerId by remember { mutableStateOf<String?>(null) }
     var showYouTubeChapters by remember { mutableStateOf(false) }
     var youtubeChaptersStatus by remember { mutableStateOf<String?>(null) }
-    var pendingYouTubeChaptersText by remember { mutableStateOf<String?>(null) }
     var desktopTab by remember(project.id) { mutableStateOf(DesktopEditorTab.REVIEW) }
     val desktopLayoutPreferences = remember(context) {
         context.getSharedPreferences(EDITOR_LAYOUT_PREFERENCES, Context.MODE_PRIVATE)
@@ -3422,83 +3423,103 @@ private fun EditorScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("video/mp4"),
     ) { uri ->
-        val requestedIntervals = pendingExportIntervals
-        pendingExportIntervals = null
-        if (uri != null && !requestedIntervals.isNullOrEmpty()) {
+        exportRequests.consume(EditorExportKind.VIDEO, project.id, uri, exportRequestStore) { request, destination ->
+            val video = request as PendingEditorExport.Video
             runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
+                exportContext.contentResolver.takePersistableUriPermission(
+                    destination,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
             }
-            if (Build.VERSION.SDK_INT >= 33 &&
-                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-            ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            val jobId = UUID.randomUUID().toString()
-            val exportIntent = Intent(context, ExportService::class.java).apply {
-                putExtra(ExportService.EXTRA_JOB_ID, jobId)
-                putExtra(ExportService.EXTRA_PROJECT_ID, project.id)
-                putExtra(ExportService.EXTRA_SOURCE_URI, seed.sourceUri)
-                putExtra(ExportService.EXTRA_SOURCE_NAME, seed.displayName)
-                putExtra(ExportService.EXTRA_SOURCE_DURATION_MS, seed.durationMs)
-                putExtra(ExportService.EXTRA_DESTINATION_URI, uri.toString())
-                putExtra(ExportService.EXTRA_INTERVAL_STARTS, requestedIntervals.map { it.startMs }.toLongArray())
-                putExtra(ExportService.EXTRA_INTERVAL_ENDS, requestedIntervals.map { it.endMs }.toLongArray())
-                putExtra(
-                    ExportService.EXTRA_SCORE_SNAPSHOT,
-                    ScoreExportSnapshotJson.encode(ScoreExportSnapshot(
-                        render = draft.renderScoreOverlay && draft.scoreTracking.enabled,
-                        renderPointTimeline = draft.renderScoreTimeline,
-                        fadeScoreOverlay = draft.fadeScoreOverlay,
-                        scoreTracking = draft.scoreTracking,
-                        ignoredIntervals = draft.ignoredIntervals,
-                        excludedRallyIds = excludedScoreRallyIds,
-                        rallyRanges = scoreRallyRanges,
-                        mergedRanges = requestedIntervals.map {
-                            ScoreMergedRange(it.startMs, it.endMs)
-                        },
-                    )),
-                )
+            val exportIntent = Intent(exportContext, ExportService::class.java).apply {
+                putExtra(ExportService.EXTRA_JOB_ID, video.jobId)
+                putExtra(ExportService.EXTRA_PROJECT_ID, video.projectId)
+                putExtra(ExportService.EXTRA_SOURCE_URI, video.sourceUri)
+                putExtra(ExportService.EXTRA_SOURCE_NAME, video.sourceName)
+                putExtra(ExportService.EXTRA_SOURCE_DURATION_MS, video.durationMs)
+                putExtra(ExportService.EXTRA_DESTINATION_URI, destination.toString())
+                putExtra(ExportService.EXTRA_INTERVAL_STARTS, video.startsMs.toLongArray())
+                putExtra(ExportService.EXTRA_INTERVAL_ENDS, video.endsMs.toLongArray())
+                putExtra(ExportService.EXTRA_SCORE_SNAPSHOT, video.scoreSnapshot)
             }
-            context.startForegroundService(exportIntent)
-            exportState = ExportUiState(jobId, "queued", 0, "Added to export queue")
+            exportContext.startForegroundService(exportIntent)
         }
     }
     val youtubeChaptersLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
-        val text = pendingYouTubeChaptersText
-        pendingYouTubeChaptersText = null
-        if (uri != null && text != null) runCatching {
-            context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
-                it.write(text)
-                it.newLine()
+        exportRequests.consume(EditorExportKind.CHAPTERS, project.id, uri, exportRequestStore) { request, destination ->
+            exportContext.contentResolver.openOutputStream(destination, "w")!!.bufferedWriter().use {
+                it.write((request as PendingEditorExport.Text).text)
             }
-        }.onSuccess {
-            youtubeChaptersStatus = "Saved the YouTube chapters text file."
-        }.onFailure {
-            youtubeChaptersStatus = it.message ?: "Could not save the chapters."
         }
     }
     val feedbackSaveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        if (uri != null) scope.launch {
-            feedbackExporting = true
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    val bundle = createModelFeedback(context, project, draft, finalIntervals)
-                    context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
-                        it.write(bundle)
-                    }
+        exportRequests.consume(EditorExportKind.PROJECT, project.id, uri, exportRequestStore) { request, destination ->
+            exportContext.contentResolver.openOutputStream(destination, "w")!!.bufferedWriter().use {
+                it.write((request as PendingEditorExport.Text).text)
+            }
+        }
+    }
+
+    fun requestVideoExport() {
+        val intervals = finalIntervals.toList()
+        if (intervals.isEmpty()) return
+        val snapshot = ScoreExportSnapshot(
+            render = draft.renderScoreOverlay && draft.scoreTracking.enabled,
+            renderPointTimeline = draft.renderScoreTimeline,
+            fadeScoreOverlay = draft.fadeScoreOverlay,
+            scoreTracking = draft.scoreTracking,
+            ignoredIntervals = draft.ignoredIntervals,
+            excludedRallyIds = excludedScoreRallyIds,
+            rallyRanges = scoreRallyRanges,
+            mergedRanges = intervals.map { ScoreMergedRange(it.startMs, it.endMs) },
+        )
+        exportRequests.prepare(EditorExportKind.VIDEO, project.id, exportRequestStore) {
+            PendingEditorExport.Video(UUID.randomUUID().toString(), project.id, exportFilename(seed.displayName),
+                seed.sourceUri, seed.displayName, seed.durationMs, intervals.map { it.startMs }, intervals.map { it.endMs },
+                ScoreExportSnapshotJson.encode(snapshot))
+        }
+    }
+
+    fun requestProjectBackup() {
+        val requestedDraft = draft
+        val intervals = finalIntervals.toList()
+        exportRequests.prepare(EditorExportKind.PROJECT, project.id, exportRequestStore) {
+            PendingEditorExport.Text(EditorExportKind.PROJECT, project.id, ModelFeedbackExporter.filename(seed.displayName),
+                createModelFeedback(exportContext, project, requestedDraft, intervals))
+        }
+    }
+
+    LaunchedEffect(exportRequests.ready.value?.id) {
+        exportRequests.ready.value?.let { request ->
+            try {
+                when (request.kind) {
+                    EditorExportKind.VIDEO -> exportLauncher.launch(request.filename)
+                    EditorExportKind.CHAPTERS -> youtubeChaptersLauncher.launch(request.filename)
+                    EditorExportKind.PROJECT -> feedbackSaveLauncher.launch(request.filename)
                 }
+                exportRequests.launched(request)
+            } catch (failure: Exception) { exportRequests.launchFailed(request, exportRequestStore, failure) }
+        }
+    }
+
+    LaunchedEffect(exportRequests.outcome.value?.sequence) {
+        exportRequests.outcome.value?.let { result ->
+            if (result.projectId == project.id) when (result.kind) {
+                EditorExportKind.CHAPTERS -> youtubeChaptersStatus = result.message
+                EditorExportKind.PROJECT -> message = result.message
+                EditorExportKind.VIDEO -> if (result.jobId != null) {
+                    exportState = ExportService.statusForProject(project.id)?.toUiState()
+                        ?: ExportUiState(result.jobId, "queued", 0, result.message)
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else message = result.message
             }
-            feedbackExporting = false
-            result.onSuccess {
-                message = "Saved the detailed project file"
-            }.onFailure {
-                message = it.message ?: "Could not save the detailed project file"
-            }
+            exportRequests.acknowledge(result)
         }
     }
 
@@ -3718,7 +3739,7 @@ private fun EditorScreen(
                         enabled = !feedbackExporting,
                         onClick = {
                             showProjectOptions = false
-                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                            requestProjectBackup()
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (feedbackExporting) "Saving project…" else "Save project") }
@@ -3775,7 +3796,7 @@ private fun EditorScreen(
                             TextButton(
                                 enabled = !feedbackExporting,
                                 onClick = {
-                                    feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                                    requestProjectBackup()
                                 },
                                 modifier = Modifier.testTag("draft-save-backup"),
                             ) { Text("Export backup") }
@@ -3850,10 +3871,9 @@ private fun EditorScreen(
                                         )
                                     }
                                     Button(
-                                        enabled = finalIntervals.isNotEmpty() && !exportPending,
+                                        enabled = finalIntervals.isNotEmpty() && !exportPending && !feedbackExporting,
                                         onClick = {
-                                            pendingExportIntervals = finalIntervals
-                                            exportLauncher.launch(exportFilename(seed.displayName))
+                                            requestVideoExport()
                                         },
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                                     ) {
@@ -3898,7 +3918,7 @@ private fun EditorScreen(
                                     Button(
                                         enabled = !feedbackExporting,
                                         onClick = {
-                                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                                            requestProjectBackup()
                                         },
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                                     ) {
@@ -4601,17 +4621,16 @@ private fun EditorScreen(
                     )
                 }
                 Button(
-                    enabled = finalIntervals.isNotEmpty() && !exportPending,
+                    enabled = finalIntervals.isNotEmpty() && !exportPending && !feedbackExporting,
                     onClick = {
-                        pendingExportIntervals = finalIntervals
-                        exportLauncher.launch(exportFilename(seed.displayName))
+                        requestVideoExport()
                     },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     Text(if (exportPending) "Creating your video…" else "Save final video", fontWeight = FontWeight.Bold)
                 }
                 OutlinedButton(
-                    enabled = finalIntervals.isNotEmpty(),
+                    enabled = finalIntervals.isNotEmpty() && !feedbackExporting,
                     onClick = {
                         youtubeChaptersStatus = null
                         showYouTubeChapters = true
@@ -5190,9 +5209,10 @@ private fun EditorScreen(
                     youtubeChaptersStatus = "Copied. Paste these chapters into your YouTube description."
                 },
                 onSaveTextFile = { text, filename ->
-                    pendingYouTubeChaptersText = text
                     youtubeChaptersStatus = null
-                    youtubeChaptersLauncher.launch(filename)
+                    exportRequests.prepare(EditorExportKind.CHAPTERS, project.id, exportRequestStore) {
+                        PendingEditorExport.Text(EditorExportKind.CHAPTERS, project.id, filename, "$text\n")
+                    }
                 },
                 onDismiss = {
                     showYouTubeChapters = false
