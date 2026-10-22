@@ -46,7 +46,8 @@ const key = async (key, options = {}) => act(async () => {
 try {
   const { RallyDesk } = await server.ssrLoadModule("/src/designs/taste/index.tsx");
   const { useDesignReview } = await server.ssrLoadModule("/src/designs/useDesignReview.ts");
-  const { createCutDraft, cutDraftStorageKey } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
+  const { createCutDraft, cutDraftStorageKey, parseCutDraft } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
+  const { editHistoryKey } = await server.ssrLoadModule("/src/designs/taste/edit-history.ts");
   const { putProject, listProjects, projectAnalysisId } = await server.ssrLoadModule("/src/lib/project-store.ts");
   const { importModelFeedbackProject } = await server.ssrLoadModule("/src/lib/model-feedback-import.ts");
   const { PRODUCTION_ENSEMBLE_MODEL_ID } = await server.ssrLoadModule("/src/lib/on-device/ensemble.ts");
@@ -79,9 +80,9 @@ try {
     sourceFilename: source.name, source, mediaInfo: info, roi: project.roi, runtimeVariant: "synthetic-component",
     videoUrl: null, rallies, ignoredIntervals: [], features: null, inferenceTimes: new Float64Array([0]),
     probabilities: { rally: new Float32Array([.5]), serve: new Float32Array([.5]), deadState: new Float32Array([.5]) } };
-  function Editor({ savedProject }) {
+  function Editor({ savedProject, productAnalysis = analysis }) {
     const projects = React.useMemo(() => [savedProject], [savedProject]);
-    const review = useDesignReview({ projects, projectId: savedProject.id, productAnalysis: analysis });
+    const review = useDesignReview({ projects, projectId: savedProject.id, productAnalysis });
     return review.state === "ready" ? React.createElement(RallyDesk, { review }) : React.createElement("p", null, review.message);
   }
   const storageKey = cutDraftStorageKey(seed.analysisId);
@@ -140,6 +141,96 @@ try {
   await waitFor(() => window.localStorage.getItem(importedKey));
   assert.deepEqual(JSON.parse(window.localStorage.getItem(importedKey)).cuts, splitCuts);
   console.log("Production RallyDesk: real split, stable IDs, metadata, IndexedDB/reopen, full confirmed reset, opaque UI, undo/redo, download and reimport passed.");
+
+  const limitCases = [
+    { name: "at-limit", assigned: 2048, targetAssigned: true, blocked: /2,048/ },
+    { name: "long-legacy-id", assigned: 2, targetAssigned: false, id: "L".repeat(257), blocked: /256/ },
+    { name: "one-below-limit", assigned: 2047, targetAssigned: true },
+    { name: "unassigned-adds-two", assigned: 2047, targetAssigned: false, blocked: /2,048/ },
+    { name: "many-unassigned", assigned: 0, targetAssigned: false, legacy: 2048 },
+    { name: "assigned-siblings", assigned: 2046, targetAssigned: false, legacy: 3, longSibling: true },
+  ];
+  const failures = [];
+  for (const scenario of limitCases) {
+    try {
+      const id = scenario.id ?? "R001";
+      const caseProject = structuredClone(project);
+      caseProject.id = `synthetic-split-${scenario.name}`;
+      const caseRallies = [{ ...rallies[0], id }, rallies[1]];
+      caseProject.analysis.intervals = caseRallies;
+      const caseSeed = { ...seed, analysisId: projectAnalysisId(caseProject), recordingId: caseProject.id, rallies: caseRallies };
+      caseProject.reviewDraft = createCutDraft(caseSeed);
+      const cut = caseProject.reviewDraft.cuts[0];
+      caseProject.reviewDraft.cuts = [
+        { ...cut, ...(scenario.targetAssigned ? { editableGroupId: "split:existing" } : {}) },
+        ...Array.from({ length: scenario.assigned - Number(scenario.targetAssigned) }, (_, index) => ({
+          ...cut, id: `S${index}`, included: index % 2 === 0, editableGroupId: "split:siblings",
+        })),
+        ...Array.from({ length: scenario.legacy ?? 0 }, (_, index) => ({ ...cut,
+          id: scenario.longSibling && index === 0 ? "L".repeat(257) : `L${index}` })),
+      ];
+      caseProject.reviewDraft.portableUi = futureUi;
+      assert.ok(parseCutDraft(JSON.stringify(caseProject.reviewDraft), caseSeed), `${scenario.name}: input must be valid`);
+      await act(async () => { await putProject(caseProject); });
+      await act(async () => root.render(React.createElement(Editor, { key: scenario.name, savedProject: caseProject,
+        productAnalysis: { ...analysis, id: caseSeed.analysisId, recordingId: caseProject.id, rallies: caseRallies } })));
+      const caseKey = cutDraftStorageKey(caseSeed.analysisId);
+      const historyKey = editHistoryKey(caseProject.id);
+      await waitFor(() => window.localStorage.getItem(caseKey));
+      await key("ArrowRight");
+      const draftBefore = window.localStorage.getItem(caseKey);
+      const historyBefore = window.localStorage.getItem(historyKey);
+      let projectBefore;
+      await act(async () => { projectBefore = (await listProjects()).find((item) => item.id === caseProject.id); });
+      await key("S", { shiftKey: true });
+      const expectedLength = caseProject.reviewDraft.cuts.length + Number(!scenario.blocked);
+      assert.equal(document.querySelector(".rd-register-list").children.length, expectedLength,
+        `${scenario.name}: rejected splits must not mutate the rendered working state`);
+      if (scenario.blocked) {
+        assert.match(document.querySelector(".rd-sidebar-tool-status").textContent, scenario.blocked,
+          `${scenario.name}: show the actual split limit`);
+        assert.equal(window.localStorage.getItem(caseKey), draftBefore, `${scenario.name}: cache must be unchanged`);
+        assert.equal(window.localStorage.getItem(historyKey), historyBefore, `${scenario.name}: history must be unchanged`);
+        let projectAfter;
+        await act(async () => { projectAfter = (await listProjects()).find((item) => item.id === caseProject.id); });
+        assert.deepEqual(projectAfter.reviewDraft, projectBefore.reviewDraft, `${scenario.name}: IndexedDB must be unchanged`);
+      } else {
+        await waitFor(() => JSON.parse(window.localStorage.getItem(caseKey)).cuts.length === expectedLength);
+        const cuts = JSON.parse(window.localStorage.getItem(caseKey)).cuts;
+        assert.equal(cuts[0].id, id, `${scenario.name}: existing IDs stay stable`);
+        assert.equal(cuts[1].id, "R002");
+        assert.ok(cuts[0].editableGroupId && cuts[1].editableGroupId);
+        assert.notEqual(cuts[0].editableGroupId, cuts[1].editableGroupId);
+        assert.deepEqual(cuts.slice(2), caseProject.reviewDraft.cuts.slice(1), `${scenario.name}: preserve assigned siblings and unassigned legacy cuts`);
+        assert.equal(cuts.filter((item) => item.editableGroupId !== undefined).length, Math.max(2, scenario.assigned + (scenario.targetAssigned ? 1 : 2)));
+      }
+      const saved = JSON.parse(window.localStorage.getItem(caseKey));
+      assert.ok(parseCutDraft(JSON.stringify(saved), caseSeed), `${scenario.name}: draft save remains valid`);
+      const downloadIndex = downloads.length;
+      await key("E", { shiftKey: true });
+      await clickNode(document.querySelector('input[name="taste-export-kind"][value="feedback"]'));
+      await clickNode(button("Save project"));
+      assert.equal(downloads.length, downloadIndex + 1);
+      let backup;
+      await act(async () => { backup = JSON.parse(await downloads[downloadIndex].text()); });
+      assert.deepEqual(backup.corrections.correctedRanges, saved.cuts);
+      assert.deepEqual(importModelFeedbackProject(JSON.stringify(backup)).project.importedFeedback.initialDraft.cuts, saved.cuts,
+        `${scenario.name}: the actual component backup must reimport`);
+      // Import validation stays strict even though the action now prevents creating these states.
+      if (scenario.name === "at-limit") {
+        backup.corrections.correctedRanges.push({ ...backup.corrections.correctedRanges[0], id: "extra-part" });
+        assert.throws(() => importModelFeedbackProject(JSON.stringify(backup)), /too many explicit rally members/);
+      } else if (scenario.name === "long-legacy-id") {
+        backup.corrections.correctedRanges[0].editableGroupId = "split:invalid-legacy";
+        assert.throws(() => importModelFeedbackProject(JSON.stringify(backup)), /stable cut identity/);
+      }
+      console.log(`Production RallyDesk split limit: ${scenario.name} passed.`);
+    } catch (error) {
+      failures.push(`${scenario.name}: ${error.message}`);
+      console.error(failures.at(-1));
+    }
+  }
+  assert.deepEqual(failures, [], "production split limit regressions");
 } finally {
   await act(async () => root.unmount());
   await server.close(); dom.window.close();

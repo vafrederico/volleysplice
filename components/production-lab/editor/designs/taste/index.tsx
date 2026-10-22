@@ -12,6 +12,7 @@ import {
   materializeFinalCutIntervals,
   resetProjectReview,
   splitCutAt,
+  splitCutValidationMessage,
   rallySuppressionDecisionKey,
   PLAYBACK_RATES,
   type CutDraft,
@@ -1075,6 +1076,11 @@ function usePrototype(
   function splitSelectedAtPlayhead() {
     if (!selected || playhead <= selected.start + 0.2 || playhead >= selected.end - 0.2) {
       setReviewMessage("Move the playhead inside the selected clip before splitting it.");
+      return;
+    }
+    const validationMessage = splitCutValidationMessage(workingDraft, selected.id);
+    if (validationMessage) {
+      setReviewMessage(validationMessage);
       return;
     }
     const split = splitCutAt(workingDraft, selected.id, playhead, gameStart, gameEnd);

@@ -23,6 +23,8 @@ export const MAX_CUT_PADDING_SECONDS = 10;
 export const MAX_JOIN_GAP_SECONDS = 10;
 export const MIN_CUT_SECONDS = 0.1;
 export const PLAYBACK_RATES = [1, 2, 4, 8] as const;
+const MAX_EXPLICIT_RALLY_MEMBERS = 2048;
+const MAX_EXPLICIT_CUT_ID_LENGTH = 256;
 
 export type CutOrigin = "cached-label" | "manual";
 
@@ -273,6 +275,10 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
   };
 }
 
+function validExplicitCutId(id: string): boolean {
+  return id.trim().length > 0 && id.length <= MAX_EXPLICIT_CUT_ID_LENGTH;
+}
+
 function validCut(
   value: unknown,
   minimum: number,
@@ -284,7 +290,7 @@ function validCut(
     typeof cut.id === "string" &&
     cut.id.length > 0 &&
     (!("editableGroupId" in cut) || (typeof cut.editableGroupId === "string" &&
-      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(cut.editableGroupId) && cut.id.trim().length > 0 && cut.id.length <= 256)) &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(cut.editableGroupId) && validExplicitCutId(cut.id))) &&
     finiteTime(cut.coreStart) &&
     finiteTime(cut.coreEnd) &&
     finiteTime(cut.keepStart) &&
@@ -542,7 +548,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       ...value.ignoredIntervals.map((interval) => interval.id),
     ];
     if (new Set(ids).size !== ids.length) return null;
-    if (value.cuts.filter((cut) => cut.editableGroupId !== undefined).length > 2048) return null;
+    if (value.cuts.filter((cut) => cut.editableGroupId !== undefined).length > MAX_EXPLICIT_RALLY_MEMBERS) return null;
     const cachedCutIds = new Set(
       value.cuts.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
     );
@@ -660,6 +666,26 @@ export function setCutCoreRange(
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
 }
 
+/** Check the resulting inline membership before changing geometry, IDs, or history. */
+export function splitCutValidationMessage(draft: CutDraft, cutId: string): string | null {
+  const target = draft.cuts.find((cut) => cut.id === cutId);
+  if (!target) return "Choose a clip before splitting.";
+  const participatingIds = draft.cuts
+    .filter((cut) => cut.editableGroupId !== undefined || cut === target)
+    .map((cut) => cut.id);
+  participatingIds.push(nextCutId(target.origin === "cached-label" ? "R" : "M", draft.cuts));
+  if (participatingIds.length > MAX_EXPLICIT_RALLY_MEMBERS) {
+    return "Cannot split: this project supports at most 2,048 independently editable parts.";
+  }
+  if (participatingIds.some((id) => !validExplicitCutId(id))) {
+    return "Cannot split this legacy clip: split parts need nonblank IDs of at most 256 characters.";
+  }
+  if (new Set(participatingIds).size !== participatingIds.length) {
+    return "Cannot split: split parts need unique clip IDs.";
+  }
+  return null;
+}
+
 export function splitCutAt(
   draft: CutDraft,
   cutId: string,
@@ -676,6 +702,7 @@ export function splitCutAt(
     position < cut.coreStart + MIN_CUT_SECONDS ||
     position > cut.coreEnd - MIN_CUT_SECONDS
   ) return null;
+  if (splitCutValidationMessage(draft, cutId)) return null;
 
   const beforePadding = cut.coreStart - cut.keepStart;
   const afterPadding = cut.keepEnd - cut.coreEnd;
