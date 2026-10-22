@@ -41,6 +41,8 @@ window.matchMedia = () => ({
 });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 dom.window.HTMLCanvasElement.prototype.getContext = () => null;
+dom.window.HTMLMediaElement.prototype.load = () => {};
+dom.window.HTMLMediaElement.prototype.pause = () => {};
 dom.window.HTMLDialogElement.prototype.showModal = function () {
   this.open = true;
 };
@@ -49,7 +51,7 @@ const realSetItem = dom.window.Storage.prototype.setItem;
 const database = globalThis.indexedDB;
 const button = (text) =>
   [...document.querySelectorAll("button")].find(
-    (node) => node.textContent === text,
+    (node) => node.textContent === text || node.querySelector("strong")?.textContent === text,
   );
 const click = async (text) => {
   const target = button(text);
@@ -130,10 +132,23 @@ try {
     ignoredIntervals: [],
   };
   const key = cutDraftStorageKey(seed.analysisId);
+  // A v15 draft never persisted the final-video choice. Preview off must not
+  // change its historical final-video default of on.
+  project.reviewDraft = { ...createCutDraft(seed), version: 15, renderScoreOverlay: false };
+  delete project.reviewDraft.renderScoreOnFinalVideo;
+  const sourceFile = new File([], "match.mp4", { type: "video/mp4" });
+  const exports = [];
+  const queueVideoExport = (request) => exports.push(request);
   let readyReview;
   function Editor({ savedProject }) {
     const projects = React.useMemo(() => [savedProject], [savedProject]);
-    const review = useDesignReview({ projects, projectId: savedProject.id });
+    const review = useDesignReview({
+      projects,
+      projectId: savedProject.id,
+      sourceFile,
+      videoUrl: "blob:synthetic-review-source",
+      onQueueVideoExport: queueVideoExport,
+    });
     if (review.state === "ready") readyReview = review;
     return review.state === "ready"
       ? React.createElement(RallyDesk, { review })
@@ -144,10 +159,54 @@ try {
         );
   }
   await putProject(project);
+  window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () =>
     root.render(React.createElement(Editor, { savedProject: project })),
   );
   await waitFor(() => window.localStorage.getItem(key));
+  const scoreCheckbox = (text) => {
+    const label = [...document.querySelectorAll("label")].find(
+      (node) => node.textContent.includes(text),
+    );
+    assert.ok(label, text);
+    return label.querySelector('input[type="checkbox"]');
+  };
+  await click("Export");
+  assert.equal(scoreCheckbox("Render score on final video").checked, true);
+  await click("Save MP4");
+  assert.ok(exports.at(-1).scoreOverlay, "legacy preview off still exports score");
+  await act(async () => scoreCheckbox("Render score on final video").click());
+  await waitFor(() => JSON.parse(window.localStorage.getItem(key)).renderScoreOnFinalVideo === false);
+  let savedScoreProject;
+  await act(async () => { [savedScoreProject] = await listProjects(); });
+  assert.equal(savedScoreProject.reviewDraft.renderScoreOnFinalVideo, false);
+  assert.equal(savedScoreProject.reviewDraft.renderScoreOverlay, false);
+
+  // Fully unmount and reopen from IndexedDB, with no local draft fallback.
+  await act(async () => root.render(null));
+  window.localStorage.clear();
+  window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
+  await act(async () => root.render(React.createElement(Editor, { savedProject: savedScoreProject })));
+  await waitFor(() => button("Export"));
+  assert.equal(scoreCheckbox("Preview score on video").checked, false);
+  await act(async () => scoreCheckbox("Preview score on video").click());
+  await click("Export");
+  assert.equal(scoreCheckbox("Render score on final video").checked, false);
+  await click("Save MP4");
+  assert.equal(exports.at(-1).scoreOverlay, undefined, "preview on cannot re-enable the final overlay");
+  await act(async () => scoreCheckbox("Render score on final video").click());
+  await click("Save MP4");
+  assert.ok(exports.at(-1).scoreOverlay, "checking the final-video option restores its export overlay");
+  // Final-video preferences participate in the editor's normal undo/redo.
+  await click("Review");
+  await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })));
+  await click("Export");
+  assert.equal(scoreCheckbox("Render score on final video").checked, false);
+  await click("Review");
+  await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "y", ctrlKey: true, bubbles: true })));
+  await click("Export");
+  assert.equal(scoreCheckbox("Render score on final video").checked, true);
+  await click("Review");
   await click("Remove rally");
   await waitFor(
     () =>
@@ -254,7 +313,7 @@ try {
     "No fresh editor may autosave over incompatible edits",
   );
   console.log(
-    "Review UI: reload, failed-save warning, close protection, recovery, stale acknowledgements and incompatible-draft preservation passed.",
+    "Review UI: legacy final-score default, final-score save/unmount/IndexedDB reopen, independent preview/export options, final-score undo/redo, rally reload, failed-save warning, close protection, recovery, stale acknowledgements and incompatible-draft preservation passed.",
   );
 } finally {
   dom.window.Storage.prototype.setItem = realSetItem;

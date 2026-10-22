@@ -328,7 +328,7 @@ function usePrototype(
     setReviewMessageValue(message);
   }
   const [scoreEnabled, setScoreEnabled] = useState(review.draft.scoreTracking.enabled);
-  const [scoreOverlay, setScoreOverlay] = useState(review.draft.renderScoreOverlay);
+  const [previewScoreOverlay, setPreviewScoreOverlay] = useState(review.draft.renderScoreOverlay);
   const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(() => readScoreVisibilityPreference(review.draft.fadeScoreOverlay));
   function setFadeScoreOverlay(fade: boolean) {
     setFadeScoreOverlayState(fade);
@@ -356,7 +356,7 @@ function usePrototype(
   const [localExportSpeed, setExportSpeed] = useState<number | null>(null);
   const [localExportEtaSeconds, setExportEtaSeconds] = useState<number | null>(null);
   const [localExportStatus, setExportStatus] = useState("Choose an output to preview with the current review data.");
-  const [includeScore, setIncludeScore] = useState(true);
+  const [renderScoreOnFinalVideo, setRenderScoreOnFinalVideo] = useState(review.draft.renderScoreOnFinalVideo);
   const [chapterScore, setChapterScore] = useState(true);
   const [chapterServer, setChapterServer] = useState(true);
   const [chapterCredit, setChapterCredit] = useState(true);
@@ -509,7 +509,8 @@ function usePrototype(
       pendingIgnoreStart: excludedStart,
       cutPreviewEnabled: finalPreview,
       playbackRate,
-      renderScoreOverlay: scoreOverlay,
+      renderScoreOverlay: previewScoreOverlay,
+      renderScoreOnFinalVideo,
       fadeScoreOverlay,
       selectedSuppressionPolicy: suppressionPolicyForCleanup(cleanup),
       suppressionDecisionOverrides,
@@ -593,7 +594,8 @@ function usePrototype(
     baseDraft,
     scoreEnabled,
     scoreMarkers,
-    scoreOverlay,
+    previewScoreOverlay,
+    renderScoreOnFinalVideo,
     fadeScoreOverlay,
     sideSwitchMarkers,
     removedModelMarkerIds,
@@ -638,7 +640,8 @@ function usePrototype(
     setJoinGap(draft.joinGapSeconds);
     setCleanup(cleanupStrengthForPolicy(draft.selectedSuppressionPolicy));
     setScoreEnabled(draft.scoreTracking.enabled);
-    setScoreOverlay(draft.renderScoreOverlay);
+    setPreviewScoreOverlay(draft.renderScoreOverlay);
+    setRenderScoreOnFinalVideo(draft.renderScoreOnFinalVideo);
     setTeamOne(draft.scoreTracking.team1Name);
     setTeamTwo(draft.scoreTracking.team2Name);
     setScoreMarkers(draft.scoreTracking.serveMarkers);
@@ -723,7 +726,7 @@ function usePrototype(
     setExportProgress(0);
     setExportSpeed(null);
     setExportEtaSeconds(null);
-  }, [exportKind, includeScore, workingDraft]);
+  }, [exportKind, renderScoreOnFinalVideo, workingDraft]);
 
   const included = clips.filter((clip) => clip.included);
   const finalMaterialization = useMemo(
@@ -1419,7 +1422,7 @@ function usePrototype(
     if (exportBusy) return;
     review.queueVideoExport({
       intervals: finalIntervals,
-      scoreOverlay: scoreEnabled && includeScore
+      scoreOverlay: scoreEnabled && renderScoreOnFinalVideo
         ? scoreOverlayOptions
         : undefined,
     });
@@ -1444,7 +1447,7 @@ function usePrototype(
     beforePadding, setBeforePadding,
     afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup,
     restoreHistory, historyStorageFailed, resetProjectChanges, applyReviewDraft, playSourceRange,
-    reviewMessage, scoreEnabled, setScoreEnabled, scoreOverlay, setScoreOverlay,
+    reviewMessage, scoreEnabled, setScoreEnabled, previewScoreOverlay, setPreviewScoreOverlay,
     fadeScoreOverlay, setFadeScoreOverlay,
     teamOne, setTeamOne, teamTwo, setTeamTwo, scoreOne: derivedScore.team1Score,
     scoreTwo: derivedScore.team2Score, servingTeam: derivedScore.servingTeamId,
@@ -1456,7 +1459,7 @@ function usePrototype(
     activeScoreTracking,
     scoreMessage, exportKind, setExportKind, exportProgress,
     setExportProgress, exportSpeed, exportEtaSeconds, exportStatus,
-    exportBusy, showExportProgress, includeScore, setIncludeScore, chapterScore,
+    exportBusy, showExportProgress, renderScoreOnFinalVideo, setRenderScoreOnFinalVideo, chapterScore,
     setChapterScore, chapterServer, setChapterServer, chapters, chapterText,
     chapterCredit, setChapterCredit,
     finalIntervals, workingDraft, effectiveKeptIds, reviewClipIds,
@@ -1871,7 +1874,7 @@ function VideoStage({
             <p>{state.fileName}</p>
           </>
         )}
-        {state.scoreEnabled && state.scoreOverlay && (
+        {state.scoreEnabled && state.previewScoreOverlay && (
           <ScoreOverlay
             prepared={state.preparedScoreOverlay}
             timestamp={state.playhead}
@@ -1910,11 +1913,11 @@ function VideoStage({
                   <label>
                     <input
                       type="checkbox"
-                      checked={state.scoreEnabled && state.scoreOverlay}
+                      checked={state.scoreEnabled && state.previewScoreOverlay}
                       disabled={!state.scoreEnabled}
-                      onChange={(event) => state.setScoreOverlay(event.currentTarget.checked)}
+                      onChange={(event) => state.setPreviewScoreOverlay(event.currentTarget.checked)}
                     />
-                    <span>Add score to video</span>
+                    <span>Preview score on video</span>
                   </label>
                   <label>
                     <input type="checkbox" checked={state.finalPreview} onChange={(event) => state.setFinalPreview(event.currentTarget.checked)} />
@@ -2200,7 +2203,7 @@ function ScorePanel({ state, compact = false }: { state: Prototype; compact?: bo
           )}
           <button className="td-replay-button" type="button" onClick={state.toggleLastPointReplay}>Toggle replay for previous rally</button>
           <p className="td-status-message" aria-live="polite">{state.scoreMessage}</p>
-          <label className="td-check-row"><input type="checkbox" checked={state.scoreOverlay} onChange={(event) => state.setScoreOverlay(event.currentTarget.checked)} /><span><strong>Preview score on video</strong><small>The same scoreboard can be burned into the final MP4.</small></span></label>
+          <label className="td-check-row"><input type="checkbox" checked={state.previewScoreOverlay} onChange={(event) => state.setPreviewScoreOverlay(event.currentTarget.checked)} /><span><strong>Preview score on video</strong><small>The same scoreboard can be burned into the final MP4.</small></span></label>
         </>
       )}
     </section>
@@ -2288,8 +2291,8 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
           </section>
           {state.exportKind === "video" && (
             <>
-              <label className="td-check-row"><input type="checkbox" checked={state.includeScore} disabled={!state.scoreEnabled} onChange={(event) => state.setIncludeScore(event.currentTarget.checked)} /><span><strong>Render score on final video</strong><small>Available after the serve and side markers are checked.</small></span></label>
-              {state.scoreEnabled && state.includeScore && (
+              <label className="td-check-row"><input type="checkbox" checked={state.renderScoreOnFinalVideo} disabled={!state.scoreEnabled} onChange={(event) => state.setRenderScoreOnFinalVideo(event.currentTarget.checked)} /><span><strong>Render score on final video</strong><small>Available after the serve and side markers are checked.</small></span></label>
+              {state.scoreEnabled && state.renderScoreOnFinalVideo && (
                 <ScoreVisibilitySelect fade={state.fadeScoreOverlay} onChange={state.setFadeScoreOverlay} />
               )}
               <p className="td-privacy-line">{state.labMode && !state.hasSourceFile ? "This lab plays the NAS source. MP4 rendering is not connected to the lab editor." : "The browser uses the original local video. Nothing is uploaded."}</p>

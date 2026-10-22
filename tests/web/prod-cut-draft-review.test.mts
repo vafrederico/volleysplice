@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {
+  createCutDraft as createLabCutDraft,
+  parseCutDraft as parseLabCutDraft,
+} from "../../components/production-lab/editor/lib/cut-draft.ts";
 
 import {
   applyPaddingToCachedCuts,
@@ -22,6 +26,34 @@ const seed: CutDraftSeed = {
   ],
   ignoredIntervals: [],
 };
+
+for (const [name, create, parse] of [
+  ["production", createCutDraft, parseCutDraft],
+  ["lab", createLabCutDraft, parseLabCutDraft],
+] as const) {
+  test(`${name} final-video score preference persists independently of preview`, () => {
+    assert.equal(create(seed).renderScoreOnFinalVideo, true);
+    for (const finalVideo of [false, true]) {
+      for (const preview of [false, true]) {
+        const draft = { ...create(seed), renderScoreOnFinalVideo: finalVideo, renderScoreOverlay: preview };
+        const restored = parse(JSON.stringify(draft), seed);
+        assert.equal(restored?.renderScoreOnFinalVideo, finalVideo);
+        assert.equal(restored?.renderScoreOverlay, preview);
+      }
+    }
+  });
+
+  test(`${name} migrates old final-video defaults and rejects malformed current preferences`, () => {
+    for (const version of [12, 13, 14, 15]) {
+      const legacy = { ...create(seed), version, renderScoreOverlay: false } as Record<string, unknown>;
+      delete legacy.renderScoreOnFinalVideo;
+      assert.equal(parse(JSON.stringify(legacy), seed)?.renderScoreOnFinalVideo, true);
+    }
+    for (const invalid of [undefined, null, "false", 0]) {
+      assert.equal(parse(JSON.stringify({ ...create(seed), renderScoreOnFinalVideo: invalid }), seed), null);
+    }
+  });
+}
 
 test("production drafts persist reviewed model ranges", () => {
   const draft = createCutDraft(seed);

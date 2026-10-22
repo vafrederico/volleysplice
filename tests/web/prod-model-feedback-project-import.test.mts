@@ -207,6 +207,7 @@ function feedbackText() {
     suppressionContractVersion: SUPPRESSION_POLICY_CONTRACT_VERSION,
   });
   draft.updatedAt = "2026-08-20T20:00:00.000Z";
+  draft.renderScoreOnFinalVideo = false;
   draft.cuts[0].included = false;
   draft.selectedSuppressionPolicy = "aggressive";
   draft.suppressionDecisionOverrides = { "logical-1": "suppress" };
@@ -287,7 +288,22 @@ test("model feedback imports as a distinct ready project with its editor state",
   assert.equal(imported.project.importedFeedback?.initialDraft.cuts[0].included, false);
   assert.equal(imported.project.importedFeedback?.initialDraft.selectedSuppressionPolicy, "aggressive");
   assert.equal(imported.project.importedFeedback?.initialDraft.scoreTracking.team1Name, "Falcons");
+  assert.equal(imported.project.importedFeedback?.initialDraft.renderScoreOnFinalVideo, false);
   assert.equal(normalizeStoredProject(imported.project), imported.project);
+});
+
+test("portable final-video score preference defaults on for old projects and validates booleans", () => {
+  const bundle = JSON.parse(feedbackText());
+  assert.equal(bundle.editorPreferences.renderScoreOnFinalVideo, false);
+  for (const preferences of [undefined, {}, { futurePreference: true }, { renderScoreOnFinalVideo: true }]) {
+    bundle.editorPreferences = preferences;
+    const { project } = importModelFeedbackProject(JSON.stringify(bundle));
+    assert.equal(project.importedFeedback?.initialDraft.renderScoreOnFinalVideo, true);
+  }
+  for (const preferences of [null, [], { renderScoreOnFinalVideo: "false" }, { renderScoreOnFinalVideo: null }]) {
+    bundle.editorPreferences = preferences;
+    assert.throws(() => importModelFeedbackProject(JSON.stringify(bundle)), ModelFeedbackValidationError);
+  }
 });
 
 test("reimporting the same feedback allocates a new project ID", () => {

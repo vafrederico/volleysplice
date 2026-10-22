@@ -47,6 +47,9 @@ export type ParsedModelFeedback = {
   schema: typeof MODEL_FEEDBACK_SCHEMA;
   schemaVersion: (typeof SUPPORTED_MODEL_FEEDBACK_SCHEMA_VERSIONS)[number];
   generatedAt: string;
+  editorPreferences?: {
+    renderScoreOnFinalVideo?: boolean;
+  };
   producer: FeedbackSource;
   source: {
     projectId: string;
@@ -1415,6 +1418,10 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       duration,
     );
   })();
+  const editorPreferences = root.editorPreferences === undefined
+    ? undefined
+    : object(root.editorPreferences, "bundle.editorPreferences");
+  const renderScoreOnFinalVideo = editorPreferences?.renderScoreOnFinalVideo;
   const finalValue = root.finalExportIntervals;
   if (!Array.isArray(finalValue))
     fail("bundle.finalExportIntervals", "must be an array");
@@ -1423,6 +1430,16 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
     schema: MODEL_FEEDBACK_SCHEMA,
     schemaVersion,
     generatedAt: date(root.generatedAt, "bundle.generatedAt"),
+    ...(editorPreferences ? {
+      editorPreferences: {
+        ...(renderScoreOnFinalVideo === undefined ? {} : {
+          renderScoreOnFinalVideo: boolean(
+            renderScoreOnFinalVideo,
+            "bundle.editorPreferences.renderScoreOnFinalVideo",
+          ),
+        }),
+      },
+    } : {}),
     producer: sourceProducer(runtimeVariant),
     source: {
       projectId: string(source.projectId, "bundle.source.projectId"),

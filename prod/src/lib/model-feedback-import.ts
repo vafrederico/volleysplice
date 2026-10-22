@@ -344,6 +344,8 @@ function draftFromFeedback(
     beforePaddingSeconds: feedback.corrections.beforePaddingSeconds,
     afterPaddingSeconds: feedback.corrections.afterPaddingSeconds,
     joinGapSeconds: feedback.corrections.joinGapSeconds,
+    renderScoreOnFinalVideo:
+      feedback.editorPreferences?.renderScoreOnFinalVideo ?? base.renderScoreOnFinalVideo,
     selectedSuppressionPolicy:
       suppression?.selectedPolicy ?? base.selectedSuppressionPolicy,
     suppressionDecisionOverrides: suppression?.decisionOverrides ?? {},

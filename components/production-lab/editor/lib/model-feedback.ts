@@ -52,6 +52,9 @@ export type ModelFeedbackBundle = {
   schema: typeof MODEL_FEEDBACK_SCHEMA;
   schemaVersion: typeof MODEL_FEEDBACK_SCHEMA_VERSION;
   generatedAt: string;
+  editorPreferences?: {
+    renderScoreOnFinalVideo?: boolean;
+  };
   source: {
     projectId: string;
     analysisId: string;
@@ -291,6 +294,9 @@ export function createModelFeedbackBundle(
     schema: MODEL_FEEDBACK_SCHEMA,
     schemaVersion: MODEL_FEEDBACK_SCHEMA_VERSION,
     generatedAt,
+    editorPreferences: {
+      renderScoreOnFinalVideo: draft.renderScoreOnFinalVideo,
+    },
     source: {
       projectId: analysis.recordingId,
       analysisId: analysis.id,

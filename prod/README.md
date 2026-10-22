@@ -82,12 +82,25 @@ error and still opens the editor with the completed rally/suppression analysis. 
 source and required retained production outputs are available, the score panel can rerun
 and save only the missing specialist work without repeating the main feature pipeline.
 
-The optional **Render score on final video** setting is available only while score
-tracking is enabled and defaults off per project. When enabled, the editor previews the
-source-timestamped score box over the video and the MP4 exporter burns the same Team 1 /
-Team 2 score into the top-left of every retained frame. The existing decode/AVC encode
+The **Render score on final video** setting is available while score tracking is
+enabled and defaults on per project, including drafts saved before this preference
+was persisted. The choice is saved with review edits and project backups. It controls
+whether the MP4 exporter burns the Team 1 / Team 2 score into the top-left of every
+retained frame. **Preview score on video** independently controls the editor preview.
+The existing decode/AVC encode
 path is used with or without the overlay; the enabled path additionally composites each
 frame through a reusable canvas.
+
+Project JSON includes the optional additive field
+`editorPreferences.renderScoreOnFinalVideo`. Missing preferences retain the default
+of `true`; an explicit `false` survives export/import. Other portable editor
+preferences can extend this block independently of score tracking and preview state.
+
+Run `npm run test:review-persistence` for storage regressions and the headless real
+editor regression, including score preference save, unmount, reopen, and export queue
+options. The UI harness uses JSDOM and Vite middleware without serving the app or
+encoding media. Run `npm run build` for type checking and the verified static build;
+run `npm run test:web` from the repository root for the shared web unit suite.
 
 ## Run locally
 
