@@ -38,22 +38,47 @@ runtime/model assets; it downloads no weights and accesses no private inputs.
 With `VOLLEYCUT_NEURAL_ASSETS_DIR` set to that output, the gate runs:
 
 ```sh
-cd android
-./gradlew --no-daemon --stacktrace --max-workers=1 \
-  :app:prepareNeuralAssets :app:prepareServingAssets :app:testDebugUnitTest
+python3 -m unittest discover -s scripts -p test_android_regression_gate.py -v
+python3 scripts/android-regression-gate.py
 ```
 
-Asset preparation is mandatory. Gradle rechecks manifests, hashes, sizes, and
-encoder/head pairing, plus the existing frozen JSON checks wired through
-`preBuild`. Missing or changed bundles fail the gate; there is no task exclusion
-or fallback. Reports remain in ignored `android/app/build` directories. This gate
+The runner calls the checked-in wrapper with `--no-daemon --stacktrace
+--console=plain --max-workers=1 --no-build-cache --no-configuration-cache` and the
+gate init script. Task-local `--rerun` forces `:app:prepareNeuralAssets`,
+`:app:prepareServingAssets`, and `:app:testDebugUnitTest` to execute while other
+compilation tasks can remain up to date. Asset preparation rechecks manifests,
+hashes, sizes, and encoder/head pairing. The three existing frozen JSON checks
+wired through `preBuild` are also mandatory.
+
+Each invocation allocates a new directory under ignored
+`android/build/regression-gate`. The init script routes JUnit XML there and records
+the six mandatory task outcomes with a unique run ID. The runner rejects missing,
+duplicate, skipped, `NO-SOURCE`, cached, up-to-date, failed, or no-work outcomes for
+those tasks. It also requires fresh, nonempty XML, a positive executed-case count,
+matching summary/case counts, and zero skips, errors, or failures in both summaries
+and case results. Stale file times and suite timestamps fail. Earlier reports in
+the default test directory cannot satisfy this run. Gradle exit code zero alone
+never passes the gate.
+
+The negative tests include four small projects executed by the pinned wrapper:
+empty test inputs, a disabled test task, disabled asset preparation, and excluded
+asset preparation. Each project exits Gradle successfully; the gate must still
+reject it, even with a prior passing report present. Separate report fixtures
+exercise missing/empty/stale reports, inaccurate counts, and failed/skipped cases.
+These probes use no Android plugins, test dependencies, media, or native builds.
+Missing or changed bundles fail without a task exclusion or fallback. This gate
 does not build APKs, run devices, sign, publish, or deploy anything.
 
 ## Forgejo qualification and security
 
 The workflow uses the same Linux runner label, checkout, Java, and Android action
 pins as the repository's existing workflows, plus a commit-pinned setup-node with
-Node 24. It avoids GitHub-only artifact wrappers, shared CI caches, release
+Node 24. All action origins are fully qualified: a short reference would depend
+on the host's action mirror, which does not contain every third-party action.
+See [Forgejo action resolution](https://forgejo.org/docs/v16.0/user/actions/actions/#using-actions).
+GitHub-specific actionlint needs these URL prefixes normalized in a temporary
+copy for its checks; validate the actual Forgejo YAML and pinned origins too.
+The workflow avoids GitHub-only artifact wrappers, shared CI caches, release
 environments, and credentials. Checkout does not persist its automatic token;
 shell steps unset automatic token variables before executing repository code.
 Forks use `pull_request`, subject to the host's trust approval, and never
