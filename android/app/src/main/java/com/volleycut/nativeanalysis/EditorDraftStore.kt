@@ -27,6 +27,9 @@ internal class EditorDraftStore(filesDir: File, private val seed: EditorSeed) {
 
     private val directory = File(filesDir, "editor-drafts")
     private val target = File(directory, "${seed.sourceRevision}.json")
+    // Include app storage: debug/release and test stores may share source hashes.
+    // Normalizing this identity does no disk IO.
+    val sessionKey: String = target.absoluteFile.normalize().path
 
     @Synchronized
     fun load(): EditorDraftLoadResult = try {

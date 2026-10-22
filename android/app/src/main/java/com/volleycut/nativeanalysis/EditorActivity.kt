@@ -870,7 +870,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                             else ServingSideAnalysisStatus.DISABLED,
                         ) ?: opened
                     }
-                    val savedReview = opened.editorSeed()?.sourceRevision?.let(draftSessions::save)
+                    val savedReview = opened.editorSeed()?.let { draftSessions.save(EditorDraftStore(context, it)) }
                     withContext(Dispatchers.IO) {
                         savedReview?.get()?.let { throw it }
                         setScoreTrackingPreference(context, opened, analyzeServingSide)
@@ -1050,7 +1050,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             confirmButton = {
                 TextButton(onClick = {
                     val nextId = projects.firstOrNull { it.id != deleting.id }?.id
-                    val settled = deleting.editorSeed()?.sourceRevision?.let(draftSessions::close)
+                    val settled = deleting.editorSeed()?.let { draftSessions.close(EditorDraftStore(context, it)) }
                     scope.launch {
                         withContext(NonCancellable + Dispatchers.IO) {
                             settled?.get()
@@ -1240,20 +1240,47 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 EditorDraftStore(context, currentSeed)
             }
             var restored by remember(selectedProject.id, currentSeed.sourceRevision) {
-                mutableStateOf(store.load())
+                mutableStateOf<EditorDraftLoadResult?>(null)
             }
+            var persistence by remember { mutableStateOf<EditorDraftSession?>(null) }
             var resetFailed by remember { mutableStateOf(false) }
-            if (restored == EditorDraftLoadResult.Unreadable) {
+            suspend fun openReview(retry: Boolean = false) {
+                val session = withContext(Dispatchers.IO) {
+                    if (retry) persistence?.retry()?.get()
+                    draftSessions.open(store, EditorMath.newDraft(currentSeed)) { draft ->
+                        draft.copy(fadeScoreOverlay = context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
+                            .getBoolean("fadeScoreOverlay", draft.fadeScoreOverlay))
+                    }
+                }
+                persistence = session
+                restored = if (session == null || session.failure.value is UnreadableEditorDraftException) {
+                    EditorDraftLoadResult.Unreadable
+                } else EditorDraftLoadResult.Restored(session.draft.value)
+            }
+            LaunchedEffect(store) { openReview() }
+            if (restored == null) {
+                ProjectShell(projectControls = { projectControls(null, null) }) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            } else if (restored == EditorDraftLoadResult.Unreadable) {
                 ProjectShell(projectControls = { projectControls(null, null) }) {
                     DraftRecoveryPanel(
-                        onRetry = { restored = store.load() },
+                        onRetry = { scope.launch { openReview(retry = true) } },
                         onImport = {
                             feedbackImportStatus = InferenceUiState()
                             feedbackImportPicker.launch(arrayOf("application/json", "text/json"))
                         },
                         onReset = {
-                            restored = store.resetUnreadable()
-                            resetFailed = restored == EditorDraftLoadResult.Unreadable
+                            scope.launch {
+                                val result = withContext(NonCancellable + Dispatchers.IO) {
+                                    draftSessions.resetUnreadable(store)
+                                }
+                                resetFailed = result == EditorDraftLoadResult.Unreadable
+                                if (!resetFailed) {
+                                    persistence = null
+                                    openReview()
+                                }
+                            }
                         },
                         resetFailed = resetFailed,
                         importing = feedbackImportStatus.running,
@@ -1274,9 +1301,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 activity = activity,
                 project = selectedProject,
                 seed = currentSeed,
-                store = store,
-                initialDraft = (restored as? EditorDraftLoadResult.Restored)?.draft
-                    ?: EditorMath.newDraft(currentSeed),
+                persistence = checkNotNull(persistence),
                 onDraftUnreadable = { restored = EditorDraftLoadResult.Unreadable },
                 analysisRunning = queueCount > 0,
                 displayAnalysisMeasurements = displayAnalysisMeasurements,
@@ -2909,8 +2934,7 @@ private fun EditorScreen(
     activity: ComponentActivity,
     project: NativeProject,
     seed: EditorSeed,
-    store: EditorDraftStore,
-    initialDraft: EditorDraft,
+    persistence: EditorDraftSession,
     onDraftUnreadable: () -> Unit,
     analysisRunning: Boolean,
     displayAnalysisMeasurements: Boolean,
@@ -2933,13 +2957,8 @@ private fun EditorScreen(
     val exportPreferences = remember(context) {
         context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
     }
-    val persistence = remember(activity, seed.sourceRevision) {
-        ViewModelProvider(activity)[EditorDraftSessions::class.java].open(store, initialDraft.copy(
-            fadeScoreOverlay = exportPreferences.getBoolean("fadeScoreOverlay", initialDraft.fadeScoreOverlay),
-        ))
-    }
     val draft by persistence.draft
-    var selectedId by remember { mutableStateOf(initialDraft.cuts.firstOrNull()?.id.orEmpty()) }
+    var selectedId by remember { mutableStateOf(draft.cuts.firstOrNull()?.id.orEmpty()) }
     var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
     var isPlaying by remember { mutableStateOf(false) }
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
@@ -2948,7 +2967,7 @@ private fun EditorScreen(
     var savingBeforeRelink by remember { mutableStateOf(false) }
 
     suspend fun saveReview(candidate: EditorDraft): Boolean {
-        val result = persistence.queue.request(candidate)
+        val result = persistence.request(candidate)
         val failure = withContext(Dispatchers.IO) { result.get() }
         if (failure is UnreadableEditorDraftException) onDraftUnreadable()
         return failure == null

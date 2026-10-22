@@ -27,6 +27,10 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicReference
 
 /** Mounts the production editor with synthetic local media and saved draft bytes. */
@@ -66,6 +70,124 @@ class EditorDraftRecoveryInstrumentedTest {
             assertFalse((store.load() as EditorDraftLoadResult.Restored).draft.cuts.first().included)
         }
     }
+
+    @Test fun blockedWriterAcrossActualFinishAndRelaunchCannotOverwriteRemove() = withProject { store, _, _ ->
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val settled = CountDownLatch(1)
+        // Block the production IO executor, not the UI or a replacement editor.
+        // The fallback field also permits running this regression on the old head.
+        val writer = draftWriter()
+        try {
+            launchEditor { scenario ->
+                val remove = removeAction()
+                writer.execute {
+                    entered.countDown()
+                    try { release.await(30, SECONDS) } finally { settled.countDown() }
+                }
+                assertTrue(entered.await(10, SECONDS))
+                scenario.onActivity { activity -> remove(); activity.finish() }
+            }
+            // Disk still contains Include. The new Activity must already show
+            // the pending Remove while the previous Activity's writer is blocked.
+            assertTrue((store.load() as EditorDraftLoadResult.Restored).draft.cuts.first().included)
+            launchEditor { scenario ->
+                compose.waitForIdle()
+                compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+                release.countDown()
+                assertTrue(settled.await(10, SECONDS))
+                val flushed = CountDownLatch(1)
+                writer.execute { flushed.countDown() }
+                assertTrue(flushed.await(10, SECONDS))
+                // Both the old activity's and reopened activity's queued work
+                // have now settled; a transient Remove on disk is insufficient.
+                compose.waitUntil(10_000) {
+                    (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+                }
+                scenario.recreate()
+                compose.waitForIdle()
+                compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+                assertFalse((store.load() as EditorDraftLoadResult.Restored).draft.cuts.first().included)
+            }
+        } finally {
+            release.countDown()
+            assertTrue(settled.await(10, SECONDS))
+        }
+    }
+
+    @Test fun validReviewBecomesUnreadableThenConfirmedResetAllowsEditSaveAndRecreate() =
+        withProject { store, target, _ ->
+            launchEditor { scenario ->
+                val remove = removeAction()
+                // Flush the opening write through the actual process IO queue.
+                val writer = draftWriter()
+                val opened = CountDownLatch(1)
+                writer.execute { opened.countDown() }
+                assertTrue(opened.await(10, SECONDS))
+                val original = "{saved review became unreadable".toByteArray()
+                target.writeBytes(original)
+                scenario.onActivity { remove() }
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithTag("draft-recovery-retry").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertRecoveryPreserves(target, original)
+                compose.onNodeWithTag("draft-recovery-reset").performScrollTo().performClick()
+                compose.onNodeWithText("Keep saved edits").performClick()
+                assertRecoveryPreserves(target, original)
+                compose.onNodeWithTag("draft-recovery-reset").performScrollTo().performClick()
+                assertArrayEquals(original, target.readBytes())
+                compose.onNodeWithTag("draft-recovery-confirm-reset").performClick()
+                compose.waitUntil(10_000) { store.load() is EditorDraftLoadResult.Restored }
+                compose.waitForIdle()
+                compose.onNodeWithTag("draft-recovery-retry").assertDoesNotExist()
+                compose.onNodeWithText("Remove").performScrollTo().performClick()
+                compose.waitUntil(10_000) {
+                    (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+                }
+                scenario.recreate()
+                compose.waitForIdle()
+                compose.onNodeWithTag("draft-recovery-retry").assertDoesNotExist()
+                compose.onNodeWithTag("draft-save-error").assertDoesNotExist()
+                compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+                assertFalse((store.load() as EditorDraftLoadResult.Restored).draft.cuts.first().included)
+            }
+        }
+
+    @Test fun failedRemoveSurvivesActualFinishAndRelaunchUntilRetry() = withProject { store, target, _ ->
+        val original = target.readBytes()
+        val blocker = File(target.parentFile, "${target.name}.tmp").apply { mkdirs() }
+        try {
+            launchEditor { scenario ->
+                val remove = removeAction()
+                scenario.onActivity { activity -> remove(); activity.finish() }
+            }
+            val drained = CountDownLatch(1)
+            draftWriter().execute { drained.countDown() }
+            assertTrue(drained.await(10, SECONDS))
+            assertArrayEquals(original, target.readBytes())
+            launchEditor { scenario ->
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithTag("draft-save-error").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+                assertArrayEquals(original, target.readBytes())
+                assertTrue(blocker.delete())
+                compose.onNodeWithTag("draft-save-retry").performClick()
+                compose.waitUntil(10_000) {
+                    (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+                }
+                scenario.recreate()
+                compose.waitForIdle()
+                compose.onNodeWithTag("draft-save-error").assertDoesNotExist()
+                compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+            }
+        } finally { blocker.delete() }
+    }
+
+    private fun draftWriter(): Executor =
+        sequenceOf(EditorDraftSessions::class.java, EditorDraftSession::class.java)
+            .mapNotNull { type -> runCatching { type.getDeclaredField("writer") }.getOrNull() }
+            .first().apply { isAccessible = true }.get(null) as Executor
 
     @Test fun editAndImmediateProjectNavigationPreserveReviewOnReturn() = withProject { store, _, project ->
         launchEditor { scenario ->
@@ -379,6 +501,11 @@ class EditorDraftRecoveryInstrumentedTest {
         try {
             block(store, target, project)
         } finally {
+            // Production deletion closes its session before deleting the files.
+            // Support both signatures so the regressions also run on the old head.
+            val close = EditorDraftSessions::class.java.declaredMethods.single { it.name == "close" }
+            val key = if (close.parameterTypes.single() == String::class.java) seed.sourceRevision else store
+            (close.invoke(EditorDraftSessions(), key) as CompletableFuture<*>).get(10, SECONDS)
             NativeProjectStore.delete(context, project)
             NativeProjectStore.setSelectedId(context, previousSelection)
             video.delete()
