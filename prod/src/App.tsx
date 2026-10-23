@@ -41,7 +41,6 @@ import {
   type VideoExportTarget,
 } from "@/lib/on-device/export-delivery";
 import { DEFAULT_ON_DEVICE_RUNTIME_VARIANT } from "@/lib/on-device/runtime-variants";
-import { prepareServiceWorkerStreamDownload } from "@/lib/on-device/stream-download";
 import type {
   AnalysisProgress,
   NormalizedRoi,
@@ -527,23 +526,10 @@ function WebApp() {
         };
         updateExportJob(startedJob);
         try {
-          if (!request.target) {
-            const workerUrl = new URL(
-              `${import.meta.env.BASE_URL}volleycut-export-sw.js`,
-              window.location.href,
-            ).href;
-            const readiness = await prepareServiceWorkerStreamDownload(workerUrl);
-            if (!readiness.ready) {
-              throw new Error(readiness.reason ?? "Direct video download is unavailable. Retry the export.");
-            }
-            // The project can be deleted while worker activation is pending.
-            if (wasDeleted(request.projectId, request.projectInstanceId) || !projectsRef.current.some((project) =>
-              project.id === request.projectId && project.instanceId === request.projectInstanceId)) continue;
-          }
           const { exportRawQualityReel } = await import(
             "@/lib/on-device/export"
           );
-          // Readiness and module loading can outlive the source proof or project
+          // Queue waits and module loading can outlive the source proof or project
           // generation captured when the export was queued. Keep its frozen cuts,
           // but confirm its immutable File against storage before encoding.
           await validateQueuedProject({ id: request.projectId,

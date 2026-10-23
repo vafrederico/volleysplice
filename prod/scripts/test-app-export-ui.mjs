@@ -6,10 +6,10 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { createServer } from "vite";
 
-// Real App, RallyDesk, project persistence and export queue. Only media opening,
-// worker readiness and encoding are controlled boundaries; no test prepares the
-// download itself. A held readiness promise catches missing awaits in App.
-const probe = { preparations: [], exports: [], nextPreparation: null, nextExport: null };
+// Real App, RallyDesk, project persistence and export queue. Only media opening
+// and encoding are controlled boundaries. Held encoding keeps later requests queued
+// while source, project lifetime and deletion races exercise real App/store code.
+const probe = { exports: [], nextExport: null };
 globalThis.__appExportProbe = probe;
 const server = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)),
@@ -25,11 +25,6 @@ const server = await createServer({
       export const DEFAULT_VIDEO_DECODE_STRATEGY = "synthetic";
       export const VIDEO_DECODER_HARDWARE_ACCELERATION = "synthetic";
       export async function analyzeOpenedMedia() { throw new Error("Unexpected rally inference"); }`;
-    if (id.endsWith("/src/lib/on-device/stream-download.ts")) return `
-      export async function prepareServiceWorkerStreamDownload(url) {
-        const p = globalThis.__appExportProbe; p.preparations.push(url);
-        return p.nextPreparation ? p.nextPreparation() : { ready: true, reason: null };
-      }`;
     if (id.endsWith("/src/lib/on-device/export.ts")) return `
       export async function exportRawQualityReel(...args) {
         const p = globalThis.__appExportProbe; p.exports.push(args);
@@ -117,56 +112,50 @@ try {
   await attach(first); await click("Export");
   assert.equal(window.showSaveFilePicker, undefined, "Exercise the API-absent fallback through App");
 
-  const activation = deferred(); probe.nextPreparation = () => activation.promise;
   const encoding = deferred(); probe.nextExport = () => encoding.promise;
-  await click("Save MP4"); await waitFor(() => probe.preparations.length === 1);
-  assert.equal(probe.preparations[0], "https://example.test/editor/volleycut-export-sw.js", "Resolve the worker under the app's deployment base");
-  assert.equal(probe.exports.length, 0, "Encoding must wait for worker activation");
-  await select(second.id); await attach(second); await click("Export"); await click("Save MP4");
-  assert.equal(probe.preparations.length, 1, "The second project stays queued during preparation");
-  probe.nextPreparation = () => ({ ready: true, reason: null });
-  await act(async () => activation.resolve({ ready: true, reason: null }));
-  await waitFor(() => probe.exports.length === 1);
+  await click("Save MP4"); await waitFor(() => probe.exports.length === 1);
   assert.equal(probe.exports[0][0].name, first.source.name);
   assert.equal(probe.exports[0][5], "stream-download");
   assert.equal(probe.exports[0][6].target, undefined);
+  await select(second.id); await attach(second); await click("Export"); await click("Save MP4");
+  assert.equal(probe.exports.length, 1, "The second project stays queued during encoding");
+  assert.match(document.body.textContent, /Waiting for the current video export/);
   probe.nextExport = null;
   await act(async () => encoding.resolve());
   await waitFor(() => probe.exports.length === 2);
   await waitFor(async () => (await store.listProjects()).filter(p => p.lastExportedAt).length === 2);
   assert.equal(probe.exports[1][0].name, second.source.name, "Queued exports retain their source project");
 
-  probe.nextPreparation = () => ({ ready: false, reason: "Synthetic worker registration failure" });
+  probe.nextExport = () => { throw new Error("Synthetic encoding failure"); };
   await waitFor(() => [...document.querySelectorAll("button")].some(b => b.textContent === "Save MP4" && !b.disabled));
   await click("Save MP4");
-  await waitFor(() => document.body.textContent.includes("Could not create the video: Synthetic worker registration failure"));
-  assert.equal(probe.exports.length, 2, "Failed readiness never invokes encoding");
-  probe.nextPreparation = null;
-  await click("Save MP4"); await waitFor(() => probe.exports.length === 3);
+  await waitFor(() => document.body.textContent.includes("Could not create the video: Synthetic encoding failure"));
+  probe.nextExport = null;
+  await click("Save MP4"); await waitFor(() => probe.exports.length === 4);
   await waitFor(() => document.body.textContent.includes("Your final MP4 was saved."));
 
   probe.nextExport = () => { throw new DOMException("Synthetic cancel", "AbortError"); };
   await click("Save MP4"); await waitFor(() => document.body.textContent.includes("Video export was canceled."));
   probe.nextExport = null;
-  const preparationsBeforePicker = probe.preparations.length;
   const target = { createWritable: async () => new WritableStream() };
   window.showSaveFilePicker = async () => target;
-  await click("Save MP4"); await waitFor(() => probe.exports.length === 5);
-  assert.equal(probe.preparations.length, preparationsBeforePicker, "Native picker exports skip streaming preparation");
+  await click("Save MP4"); await waitFor(() => probe.exports.length === 6);
   assert.equal(probe.exports.at(-1)[5], "compatible");
   assert.equal(probe.exports.at(-1)[6].target, target);
   await waitFor(() => document.body.textContent.includes("Your final MP4 was saved."));
 
   window.showSaveFilePicker = undefined;
-  await select(third.id); await attach(third); await click("Export");
-  const deletedActivation = deferred(); probe.nextPreparation = () => deletedActivation.promise;
-  await click("Save MP4"); await waitFor(() => probe.preparations.length === preparationsBeforePicker + 1);
+  const deletionHold = deferred(); probe.nextExport = () => deletionHold.promise;
+  await click("Save MP4"); await waitFor(() => probe.exports.length === 7);
+  await select(third.id); await attach(third); await click("Export"); await click("Save MP4");
+  assert.match(document.body.textContent, /Waiting for the current video export/);
   await click("Delete");
   await waitFor(async () => !(await store.listProjects()).some(p => p.id === third.id));
-  await act(async () => deletedActivation.resolve({ ready: true, reason: null }));
-  await select(second.id); await click("Export"); probe.nextPreparation = null;
-  await click("Save MP4"); await waitFor(() => probe.exports.length === 6);
-  assert.equal(probe.exports.at(-1)[0].name, second.source.name, "Deletion during activation skips encoding and drains the next export");
+  await select(first.id); await click("Export"); await click("Save MP4");
+  probe.nextExport = null;
+  await act(async () => deletionHold.resolve());
+  await waitFor(() => probe.exports.length === 8);
+  assert.equal(probe.exports.at(-1)[0].name, first.source.name, "Deleting a queued project skips its encoder and drains the next export");
   assert.equal(probe.exports.some(args => args[0].name === third.source.name), false);
   await waitFor(() => document.body.textContent.includes("Your final MP4 was saved."));
 
@@ -178,17 +167,24 @@ try {
       duration: project.info.duration, rallies: project.analysis.intervals, ignoredIntervals: [] });
     project.reviewDraft.updatedAt = new Date(Date.now() + 60000).toISOString();
     project.reviewDraft.reviewedCutIds = ["R001"];
-    Object.assign(project, await store.putProject(project, { expectedSource: null }));
-    window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
+    const blocker = fixture(`synthetic-export-${race}-blocker`);
+    for (const item of [project, blocker]) Object.assign(item, await store.putProject(item, { expectedSource: null }));
+    window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, blocker.id);
+    window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
     await act(async () => root.render(React.createElement(App)));
     await waitFor(() => document.querySelector(".taste-rally-desk"));
     const original = new File(["video"], project.source.name, { type: "video/mp4", lastModified: 100 });
     const cached = race === "fingerprint" ? new File(["wrong"], original.name, { type: original.type, lastModified: 100 }) : original;
-    await attach(project, cached); await click("Export");
-    const held = deferred(), before = probe.exports.length, preparations = probe.preparations.length;
-    probe.nextPreparation = () => held.promise;
+    const held = deferred(), started = probe.exports.length;
+    probe.nextExport = () => held.promise;
+    await attach(blocker); await click("Export"); await click("Save MP4");
+    await waitFor(() => probe.exports.length === started + 1);
+    const before = probe.exports.length;
+    await select(project.id); await attach(project, cached); await click("Export");
     try {
-      await click("Save MP4"); await waitFor(() => probe.preparations.length === preparations + 1);
+      await click("Save MP4");
+      assert.match(document.body.textContent, /Waiting for the current video export/);
+      assert.equal(probe.exports.length, before, "The source-race request must remain queued");
       const current = await store.getProject(project.id);
       if (race === "fingerprint") {
         await store.putProject({ ...current, source: { ...current.source, fingerprint: await store.sourceFileFingerprint(original) } }, { expectedSource: current.source });
@@ -200,18 +196,18 @@ try {
         await store.putProject(replacement, { expectedSource: null });
       }
       const expected = await store.getProject(project.id);
-      await act(async () => held.resolve({ ready: true, reason: null }));
+      probe.nextExport = null;
+      await act(async () => held.resolve());
       await waitFor(() => probe.exports.length > before || /does not match|instance changed/i.test(document.body.textContent));
-      assert.equal(probe.exports.length, before, `${race}: a stale export must be rejected BEFORE the encoder after worker readiness`);
+      assert.equal(probe.exports.length, before, `${race}: a stale queued export must be rejected BEFORE the encoder`);
       assert.match(document.body.textContent, /does not match|instance changed/i, "Source conflict must be visible");
       assert.ok(document.querySelector('.td-reconnect input[type="file"]'), "Conflicting source must be unlinked");
       assert.deepEqual(await store.getProject(project.id), expected, "Rejected export must preserve frozen analysis and reviews");
-      probe.nextPreparation = null;
       await attach(expected, original); await click("Export"); await click("Save MP4");
       await waitFor(() => probe.exports.length === before + 1 && document.body.textContent.includes("Your final MP4 was saved."));
       assert.equal(probe.exports.at(-1)[0], original, "The authoritative source remains exportable after reconnect");
       assert.deepEqual(probe.exports.at(-1)[1], [{ start: 0, end: 2, cutIds: ["R001"] }], "Source validation must preserve the frozen cut intervals");
-    } finally { held.resolve({ ready: true, reason: null }); }
+    } finally { probe.nextExport = null; held.resolve(); }
   }
   const staleStatusFailures = [];
   for (const failureMode of ["conflict", "storage"]) {
@@ -381,7 +377,7 @@ try {
     }
   }
   assert.deepEqual(staleDeleteFailures, [], "Late delete conflict, storage and success callbacks must belong to their captured instance");
-  console.log("App export: awaited readiness, project queue, failure/retry, cancellation, native target, deletion and source/instance races and delayed status/delete callbacks passed.");
+  console.log("App export: project queue, failure/retry, cancellation, native target, deletion and source/instance races and delayed status/delete callbacks passed.");
 } finally {
   await act(async () => root.unmount());
   await server.close(); dom.window.close();
