@@ -1325,6 +1325,9 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   const correctedValue = corrections.correctedRanges;
   if (!Array.isArray(correctedValue))
     fail("bundle.corrections.correctedRanges", "must be an array");
+  const correctedRanges = correctedValue.map((item, index) =>
+    correctedRange(item, `bundle.corrections.correctedRanges[${index}]`, duration),
+  );
   const ignoredValue = corrections.ignoredIntervals;
   if (!Array.isArray(ignoredValue))
     fail("bundle.corrections.ignoredIntervals", "must be an array");
@@ -1426,7 +1429,11 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   const renderScoreOnFinalVideo = editorPreferences?.renderScoreOnFinalVideo;
   let ui: FeedbackUi | undefined;
   if (corrections.ui !== undefined) {
-    try { ui = parseFeedbackUi(corrections.ui); }
+    try {
+      ui = parseFeedbackUi(corrections.ui, new Set(
+        correctedRanges.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
+      ));
+    }
     catch (error) { throw new ModelFeedbackValidationError(error instanceof Error ? error.message : "Invalid corrections.ui"); }
   }
   const finalValue = root.finalExportIntervals;
@@ -1555,13 +1562,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
         corrections.joinGapSeconds,
         "bundle.corrections.joinGapSeconds",
       ),
-      correctedRanges: correctedValue.map((item, index) =>
-        correctedRange(
-          item,
-          `bundle.corrections.correctedRanges[${index}]`,
-          duration,
-        ),
-      ),
+      correctedRanges,
       ignoredIntervals: ignoredValue.map((item, index) => {
         const ignored = object(
           item,

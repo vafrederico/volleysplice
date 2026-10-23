@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 import { ModelFeedbackValidationError } from "../../lib/model-feedback.ts";
+import { parseModelFeedbackText } from "../../prod/src/lib/model-feedback-validation.ts";
 import { createCutDraft, materializeFinalCutIntervals, parseCutDraft } from "../../prod/src/lib/cut-draft.ts";
 import {
   importModelFeedbackProject,
@@ -388,6 +389,62 @@ test("future UI versions remain opaque through web edits and re-export", () => {
   assert.deepEqual(reexported.corrections.ui, uiFixture.futureUi);
   const edited = createModelFeedbackBundle(analysis, { ...draft, playbackRate: 2 }, []);
   assert.deepEqual(edited.corrections.ui, uiFixture.futureUi, "never downgrade or overwrite a future envelope");
+});
+
+test("future reviewed IDs are validated without activation or changes, including absent IDs", () => {
+  for (const ids of [undefined, [], ["R001"]]) {
+    const ui = structuredClone(uiFixture.futureUi);
+    if (ids === undefined) delete ui.preferences.reviewedCutIds;
+    else ui.preferences.reviewedCutIds = ids;
+    const { draft, reexported, reimported } = portableRoundTrip(ui);
+    assert.deepEqual(draft.reviewedCutIds, [], "future preferences remain inactive");
+    assert.equal(draft.renderScoreOnFinalVideo, false, "the root alias still applies");
+    assert.deepEqual(reexported.corrections.ui, ui);
+    assert.deepEqual(reimported.portableUi, ui);
+    assert.deepEqual(reimported.reviewedCutIds, []);
+  }
+});
+
+test("wire parser and importer reject future missing, manual, removed and malformed review IDs", () => {
+  for (const ids of [["missing-cut"], ["manual-cut"], ["R001"], null, "R001", ["R001", "R001"], [1], [""]]) {
+    const bundle = JSON.parse(feedbackText(true));
+    const manual = { ...bundle.corrections.correctedRanges[0], id: "manual-cut", origin: "manual" };
+    bundle.corrections.correctedRanges.push(manual);
+    if (Array.isArray(ids) && ids.length === 1 && ids[0] === "R001") {
+      bundle.corrections.correctedRanges.shift(); // Still in initialInference, but removed from corrections.
+    }
+    bundle.corrections.ui = { ...uiFixture.futureUi,
+      preferences: { ...uiFixture.futureUi.preferences, reviewedCutIds: ids } };
+    for (const parse of [parseModelFeedbackText, importModelFeedbackProject]) {
+      assert.throws(() => parse(JSON.stringify(bundle)), (error: unknown) =>
+        error instanceof ModelFeedbackValidationError && /reviewedCutIds/.test(error.message));
+    }
+  }
+});
+
+test("export checks corrected inferred identities while stale opaque local drafts stay lossless", () => {
+  const { draft } = portableRoundTrip(uiFixture.futureUi);
+  const corrected = { ...draft.cuts[0], id: "corrected-only-cut" };
+  draft.cuts.push(corrected);
+  draft.portableUi = { ...uiFixture.futureUi,
+    preferences: { ...uiFixture.futureUi.preferences, reviewedCutIds: [corrected.id] } };
+  const original = createModelFeedbackBundle(analysis, draft, []);
+  const originalText = JSON.stringify(original);
+  assert.deepEqual(parseModelFeedbackText(originalText).corrections.ui, draft.portableUi);
+  assert.deepEqual(importModelFeedbackProject(originalText).project.importedFeedback!.initialDraft.portableUi, draft.portableUi);
+  for (const cuts of [draft.cuts.filter(cut => cut.id !== corrected.id),
+    draft.cuts.map(cut => cut.id === corrected.id ? { ...cut, origin: "manual" as const } : cut)]) {
+    const stale = { ...draft, cuts, playbackRate: 2 };
+    const seed = { analysisId: draft.analysisId, recordingId: draft.recordingId,
+      duration: analysis.duration, analysisStart: analysis.analysisWindow.start,
+      analysisEnd: analysis.analysisWindow.end, rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals };
+    const restored = parseCutDraft(JSON.stringify(stale), seed);
+    assert.ok(restored, "stale future IDs must not discard a local draft after reset");
+    const before = JSON.stringify(restored);
+    assert.throws(() => createModelFeedbackBundle(analysis, restored, []), /reviewedCutIds.*inferred cuts/);
+    assert.equal(JSON.stringify(restored), before, "failed export preserves edits and the opaque envelope");
+    assert.equal(JSON.stringify(original), originalText, "the prior export is untouched");
+  }
 });
 
 test("bounded playback multipliers activate exactly and timeline off remains off", () => {

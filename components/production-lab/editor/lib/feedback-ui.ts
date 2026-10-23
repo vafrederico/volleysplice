@@ -18,7 +18,7 @@ function object(value: UiJson, field: string): FeedbackUi {
 }
 
 /** Copy bounded JSON only; never spread an unvalidated extension into app state. */
-export function parseFeedbackUi(value: unknown): FeedbackUi {
+export function parseFeedbackUi(value: unknown, inferredCutIds?: ReadonlySet<string>): FeedbackUi {
   let nodes = 0;
   function copy(item: unknown, depth: number): UiJson {
     if (++nodes > 4096 || depth > 16) throw new Error("corrections.ui exceeds JSON limits");
@@ -68,6 +68,11 @@ export function parseFeedbackUi(value: unknown): FeedbackUi {
     new Set(ids).size !== ids.length)) {
     throw new Error("corrections.ui.preferences.reviewedCutIds must contain unique nonempty IDs");
   }
+  // Wire validation applies to reserved fields even when their version is opaque.
+  // Local drafts omit this context so stale opaque identities remain recoverable.
+  if (Array.isArray(ids) && inferredCutIds && ids.some((id) => !inferredCutIds.has(id as string))) {
+    throw new Error("corrections.ui.preferences.reviewedCutIds must reference inferred cuts still present in this project. Undo the rally changes, or open an unchanged copy in an app that supports these preferences");
+  }
   return ui;
 }
 
@@ -78,8 +83,11 @@ export function portablePreferences(ui?: FeedbackUi): Partial<PortablePreference
 }
 
 export function feedbackUiFromDraft(draft: CutDraft): FeedbackUi {
+  const inferredCutIds = new Set(draft.cuts.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id));
   const retained = draft.portableUi ? parseFeedbackUi(draft.portableUi) : {};
-  if (typeof retained.schemaVersion === "number" && retained.schemaVersion > FEEDBACK_UI_SCHEMA_VERSION) return retained;
+  if (typeof retained.schemaVersion === "number" && retained.schemaVersion > FEEDBACK_UI_SCHEMA_VERSION) {
+    return parseFeedbackUi(retained, inferredCutIds);
+  }
   return parseFeedbackUi({
     ...retained,
     schemaVersion: FEEDBACK_UI_SCHEMA_VERSION,
@@ -94,5 +102,5 @@ export function feedbackUiFromDraft(draft: CutDraft): FeedbackUi {
       confidenceReviewThreshold: draft.confidenceReviewThreshold,
       reviewedCutIds: [...draft.reviewedCutIds],
     },
-  });
+  }, inferredCutIds);
 }

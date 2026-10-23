@@ -1335,17 +1335,21 @@ function usePrototype(
         setExportStatus("This project cannot be saved in the current session.");
         return;
       }
-      const bundle = createModelFeedbackBundle(
-        review.productAnalysis,
-        workingDraft,
-        finalIntervals,
-      );
-      downloadBlob(
-        modelFeedbackBlob(bundle),
-        modelFeedbackFilename(review.sourceName),
-      );
-      setExportProgress(100);
-      setExportStatus("The current VolleySplice project was downloaded.");
+      try {
+        const bundle = createModelFeedbackBundle(
+          review.productAnalysis,
+          workingDraft,
+          finalIntervals,
+        );
+        downloadBlob(
+          modelFeedbackBlob(bundle),
+          modelFeedbackFilename(review.sourceName),
+        );
+        setExportProgress(100);
+        setExportStatus("The current VolleySplice project was downloaded.");
+      } catch (cause) {
+        setExportStatus(`Could not save the project: ${cause instanceof Error ? cause.message : String(cause)}. Your edits and imported preferences have been kept.`);
+      }
       return;
     }
     if (!review.sourceFile || finalIntervals.length === 0) return;
