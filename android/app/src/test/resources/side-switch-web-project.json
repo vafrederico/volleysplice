@@ -1,0 +1,678 @@
+{
+  "schema": "volleycut-model-feedback",
+  "schemaVersion": 3,
+  "generatedAt": "2026-01-01T02:00:00.000Z",
+  "source": {
+    "projectId": "synthetic-project",
+    "analysisId": "synthetic-analysis",
+    "timelineCoordinates": "seconds-from-start-of-source",
+    "file": {
+      "name": "synthetic-match.mp4",
+      "sizeBytes": 1000,
+      "lastModifiedMs": 100,
+      "mimeType": "video/mp4",
+      "sampledFingerprint": null
+    },
+    "media": {
+      "duration": 60,
+      "width": 640,
+      "height": 360,
+      "rotation": 0,
+      "mimeType": "video/mp4",
+      "videoCodec": "avc",
+      "videoCodecString": null,
+      "canDecodeVideo": true,
+      "hasAudio": false,
+      "audioCodec": null,
+      "sampleRate": null,
+      "channels": null,
+      "canDecodeAudio": false
+    },
+    "gameWindow": {
+      "start": 0,
+      "end": 60
+    },
+    "featureRoi": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "runtimeVariant": "synthetic-web-test",
+    "generateSideSwitchMarkers": true,
+    "videoBytesIncluded": false
+  },
+  "features": null,
+  "initialInference": {
+    "modelId": "ensemble-overlap-union-disagreement-v1-d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f-d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d",
+    "modelLabel": "Legacy model",
+    "modelSelection": "ensemble",
+    "componentsRole": "rally-and-score",
+    "components": [
+      {
+        "modelId": "model-1ca43e38eefc",
+        "bundleSha256": "d2c2c11e8fed8b6c6ad77d244b613e81d5bab101939a8f57be5166b45ebca78f"
+      },
+      {
+        "modelId": "model-9c92b8e9333f",
+        "bundleSha256": "d8cc42f70bc10576a5e03251b05981ceeee1a61a15c61cc5dfb68dd631e6f90d"
+      }
+    ],
+    "ensembleAlgorithmVersion": "overlap-union-disagreement-v1",
+    "ranges": [
+      {
+        "id": "R001",
+        "start": 10,
+        "end": 15,
+        "confidence": 0.9,
+        "included": true,
+        "agreement": "both-models"
+      },
+      {
+        "id": "R002",
+        "start": 20,
+        "end": 25,
+        "confidence": 0.9,
+        "included": true,
+        "agreement": "both-models"
+      },
+      {
+        "id": "R003",
+        "start": 30,
+        "end": 35,
+        "confidence": 0.9,
+        "included": true,
+        "agreement": "both-models"
+      },
+      {
+        "id": "R004",
+        "start": 50,
+        "end": 55,
+        "confidence": 0.9,
+        "included": true,
+        "agreement": "both-models"
+      }
+    ],
+    "probabilityModelId": "model-1ca43e38eefc",
+    "probabilityModelIds": {
+      "rally": "model-1ca43e38eefc",
+      "serve": "model-1ca43e38eefc",
+      "deadState": "model-1ca43e38eefc"
+    },
+    "neuralScores": null,
+    "timestamps": {
+      "encoding": "base64",
+      "byteOrder": "little-endian",
+      "dataType": "float64",
+      "shape": [
+        2
+      ],
+      "data": "AAAAAAAAAAAAAAAAAADwPw=="
+    },
+    "probabilities": {
+      "rally": {
+        "encoding": "base64",
+        "byteOrder": "little-endian",
+        "dataType": "float32",
+        "shape": [
+          2
+        ],
+        "data": "AAAAP2ZmZj8="
+      },
+      "serve": {
+        "encoding": "base64",
+        "byteOrder": "little-endian",
+        "dataType": "float32",
+        "shape": [
+          2
+        ],
+        "data": "zcxMPs3MTD8="
+      },
+      "deadState": {
+        "encoding": "base64",
+        "byteOrder": "little-endian",
+        "dataType": "float32",
+        "shape": [
+          2
+        ],
+        "data": "AAAAP83MzD0="
+      }
+    },
+    "servingSide": {
+      "modelId": "serving-side-fixed-flight-v3",
+      "modelFingerprint": "85bc3325fbd43abba6ba3726ac091dc6a3a1eafc68d63d979cb2a7450eb49e06",
+      "featureVersion": "SERVSIDE237-FLIGHT",
+      "anchorContract": "merged-production-interval-start-v1",
+      "features": {
+        "rows": 4,
+        "columns": 237,
+        "values": {
+          "encoding": "base64",
+          "byteOrder": "little-endian",
+          "dataType": "float64",
+          "shape": [
+            4,
+            237
+          ],
+          "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "candidates": [
+        {
+          "id": "R001",
+          "anchor": 10,
+          "interval": {
+            "start": 10,
+            "end": 15,
+            "agreement": "both-models"
+          },
+          "nearProbability": 0.9,
+          "side": "near",
+          "verdict": "near",
+          "serveDecisionSource": "serve-head",
+          "reviewReasons": [],
+          "serveEvidence": {
+            "allLabelsV2": {
+              "modelId": "model-1ca43e38eefc",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 10,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            },
+            "previousProduction": {
+              "modelId": "model-9c92b8e9333f",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 10,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            }
+          }
+        },
+        {
+          "id": "R002",
+          "anchor": 20,
+          "interval": {
+            "start": 20,
+            "end": 25,
+            "agreement": "both-models"
+          },
+          "nearProbability": 0.1,
+          "side": "far",
+          "verdict": "far",
+          "serveDecisionSource": "serve-head",
+          "reviewReasons": [],
+          "serveEvidence": {
+            "allLabelsV2": {
+              "modelId": "model-1ca43e38eefc",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 20,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            },
+            "previousProduction": {
+              "modelId": "model-9c92b8e9333f",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 20,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            }
+          }
+        },
+        {
+          "id": "R003",
+          "anchor": 30,
+          "interval": {
+            "start": 30,
+            "end": 35,
+            "agreement": "both-models"
+          },
+          "nearProbability": 0.9,
+          "side": "near",
+          "verdict": "near",
+          "serveDecisionSource": "serve-head",
+          "reviewReasons": [],
+          "serveEvidence": {
+            "allLabelsV2": {
+              "modelId": "model-1ca43e38eefc",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 30,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            },
+            "previousProduction": {
+              "modelId": "model-9c92b8e9333f",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 30,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            }
+          }
+        },
+        {
+          "id": "R004",
+          "anchor": 50,
+          "interval": {
+            "start": 50,
+            "end": 55,
+            "agreement": "both-models"
+          },
+          "nearProbability": 0.1,
+          "side": "far",
+          "verdict": "far",
+          "serveDecisionSource": "serve-head",
+          "reviewReasons": [],
+          "serveEvidence": {
+            "allLabelsV2": {
+              "modelId": "model-1ca43e38eefc",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 50,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            },
+            "previousProduction": {
+              "modelId": "model-9c92b8e9333f",
+              "threshold": 0.85,
+              "peakProbability": 0.9,
+              "peakTime": 50,
+              "crossesThreshold": true,
+              "nearestDetection": null
+            }
+          }
+        }
+      ]
+    },
+    "sideSwitch": {
+      "modelId": "side-switch-hard-negative-mining-v1/union34-top2-x2",
+      "modelFingerprint": "sha256:c2570481c30dec62f56ac3284cd4028763ffd8e72a9ad07e9908fec10df387e3",
+      "featureVersion": "SIDE-SWITCH-UNION34-V1",
+      "candidateContract": "range-boundaries-dead-peaks-v1",
+      "features": {
+        "rows": 3,
+        "columns": 34,
+        "values": {
+          "encoding": "base64",
+          "byteOrder": "little-endian",
+          "dataType": "float64",
+          "shape": [
+            3,
+            34
+          ],
+          "data": "AAAAAAAAGcAAAAAAAIAYwAAAAAAAABjAAAAAAACAF8AAAAAAAAAXwAAAAAAAgBbAAAAAAAAAFsAAAAAAAIAVwAAAAAAAABXAAAAAAACAFMAAAAAAAAAUwAAAAAAAgBPAAAAAAAAAE8AAAAAAAIASwAAAAAAAABLAAAAAAACAEcAAAAAAAAARwAAAAAAAgBDAAAAAAAAAEMAAAAAAAAAPwAAAAAAAAA7AAAAAAAAADcAAAAAAAAAMwAAAAAAAAAvAAAAAAAAACsAAAAAAAAAJwAAAAAAAAAjAAAAAAAAAB8AAAAAAAAAGwAAAAAAAAAXAAAAAAAAABMAAAAAAAAADwAAAAAAAAALAAAAAAAAAAcAAAAAAAAAAwAAAAAAAAP6/AAAAAAAA/L8AAAAAAAD6vwAAAAAAAPi/AAAAAAAA9r8AAAAAAAD0vwAAAAAAAPK/AAAAAAAA8L8AAAAAAADsvwAAAAAAAOi/AAAAAAAA5L8AAAAAAADgvwAAAAAAANi/AAAAAAAA0L8AAAAAAADAvwAAAAAAAAAAAAAAAAAAwD8AAAAAAADQPwAAAAAAANg/AAAAAAAA4D8AAAAAAADkPwAAAAAAAOg/AAAAAAAA7D8AAAAAAADwPwAAAAAAAPI/AAAAAAAA9D8AAAAAAAD2PwAAAAAAAPg/AAAAAAAA+j8AAAAAAAD8PwAAAAAAAP4/AAAAAAAAAEAAAAAAAAABQAAAAAAAAAJAAAAAAAAAA0AAAAAAAAAEQAAAAAAAAAVAAAAAAAAABkAAAAAAAAAHQAAAAAAAAAhAAAAAAAAACUAAAAAAAAAKQAAAAAAAAAtAAAAAAAAADEAAAAAAAAANQAAAAAAAAA5AAAAAAAAAD0AAAAAAAAAQQAAAAAAAgBBAAAAAAAAAEUAAAAAAAIARQAAAAAAAABJAAAAAAACAEkAAAAAAAAATQAAAAAAAgBNAAAAAAAAAFEAAAAAAAIAUQAAAAAAAABVAAAAAAACAFUAAAAAAAAAWQAAAAAAAgBZAAAAAAAAAF0AAAAAAAIAXQAAAAAAAABhAAAAAAACAGEAAAAAAAAAZQAAAAAAAgBlA"
+        }
+      },
+      "candidates": [
+        {
+          "id": "boundary-1",
+          "timestamp": 25,
+          "probability": 0.95,
+          "kind": "adjacent-rally-boundary",
+          "sourceRangeIds": [
+            "R002",
+            "R003"
+          ]
+        },
+        {
+          "id": "internal-2",
+          "timestamp": 45,
+          "probability": 0.87,
+          "kind": "internal-dead-state-peak",
+          "sourceRangeIds": [
+            "R003"
+          ]
+        }
+      ]
+    },
+    "suppression": null
+  },
+  "corrections": {
+    "updatedAt": "2026-01-01T01:00:00.000Z",
+    "beforePaddingSeconds": 2,
+    "afterPaddingSeconds": 2,
+    "joinGapSeconds": 3,
+    "correctedRanges": [
+      {
+        "id": "R001",
+        "coreStart": 10,
+        "coreEnd": 15,
+        "keepStart": 8,
+        "keepEnd": 17,
+        "confidence": 0.9,
+        "included": true,
+        "origin": "cached-label",
+        "agreement": "both-models"
+      },
+      {
+        "id": "R002",
+        "coreStart": 20,
+        "coreEnd": 25,
+        "keepStart": 18,
+        "keepEnd": 27,
+        "confidence": 0.9,
+        "included": true,
+        "origin": "cached-label",
+        "agreement": "both-models"
+      },
+      {
+        "id": "R003",
+        "coreStart": 30,
+        "coreEnd": 35,
+        "keepStart": 28,
+        "keepEnd": 37,
+        "confidence": 0.9,
+        "included": true,
+        "origin": "cached-label",
+        "agreement": "both-models"
+      },
+      {
+        "id": "R004",
+        "coreStart": 50,
+        "coreEnd": 55,
+        "keepStart": 48,
+        "keepEnd": 57,
+        "confidence": 0.9,
+        "included": true,
+        "origin": "cached-label",
+        "agreement": "both-models"
+      }
+    ],
+    "ignoredIntervals": [],
+    "suppression": {
+      "selectedPolicy": "aggressive",
+      "decisionOverrides": {},
+      "defaultSuppressionScope": "whole-rally",
+      "suppressionScopeOverrides": {},
+      "userTouchedCutIds": [],
+      "decisions": []
+    },
+    "scoreTracking": {
+      "state": {
+        "version": 3,
+        "enabled": true,
+        "team1Name": "Team A",
+        "team2Name": "Team B",
+        "serveMarkers": [
+          {
+            "id": "serve-R001",
+            "timestamp": 10,
+            "side": "near",
+            "origin": "model",
+            "modelSide": "near",
+            "ignorePreviousPoint": false,
+            "rallyId": "R001"
+          },
+          {
+            "id": "serve-R002",
+            "timestamp": 20,
+            "side": "far",
+            "origin": "model",
+            "modelSide": "far",
+            "ignorePreviousPoint": false,
+            "rallyId": "R002"
+          },
+          {
+            "id": "serve-R003",
+            "timestamp": 30,
+            "side": "near",
+            "origin": "model",
+            "modelSide": "near",
+            "ignorePreviousPoint": false,
+            "rallyId": "R003"
+          },
+          {
+            "id": "serve-R004",
+            "timestamp": 50,
+            "side": "far",
+            "origin": "model",
+            "modelSide": "far",
+            "ignorePreviousPoint": false,
+            "rallyId": "R004"
+          }
+        ],
+        "sideSwitchMarkers": [
+          {
+            "id": "switch-boundary-1",
+            "timestamp": 35,
+            "origin": "model",
+            "modelConfidence": 0.95,
+            "modelEventId": "boundary-1",
+            "rallyIds": [
+              "R002",
+              "R003"
+            ]
+          },
+          {
+            "id": "manual-switch",
+            "timestamp": 40,
+            "origin": "manual"
+          }
+        ],
+        "removedModelMarkerIds": [
+          "switch-internal-2"
+        ]
+      },
+      "excludedRallyIds": [],
+      "derivedFinalScore": {
+        "team1Score": 1,
+        "team2Score": 2,
+        "servingTeamId": "team-2",
+        "servingSide": "far",
+        "points": [
+          {
+            "serveMarkerId": "serve-R002",
+            "timestamp": 20,
+            "servingSide": "far",
+            "winnerTeamId": "team-2",
+            "status": "counted",
+            "team1ScoreAfter": 0,
+            "team2ScoreAfter": 1
+          },
+          {
+            "serveMarkerId": "serve-R003",
+            "timestamp": 30,
+            "servingSide": "near",
+            "winnerTeamId": "team-1",
+            "status": "counted",
+            "team1ScoreAfter": 1,
+            "team2ScoreAfter": 1
+          },
+          {
+            "serveMarkerId": "serve-R004",
+            "timestamp": 50,
+            "servingSide": "far",
+            "winnerTeamId": "team-2",
+            "status": "counted",
+            "team1ScoreAfter": 1,
+            "team2ScoreAfter": 2
+          }
+        ],
+        "ignoredPointCount": 0,
+        "reviewPointCount": 0
+      }
+    },
+    "labels": {
+      "falsePositives": [],
+      "falseNegatives": [],
+      "confirmedModelRanges": [
+        {
+          "id": "R001",
+          "start": 10,
+          "end": 15,
+          "confidence": 0.9,
+          "agreement": "both-models"
+        },
+        {
+          "id": "R002",
+          "start": 20,
+          "end": 25,
+          "confidence": 0.9,
+          "agreement": "both-models"
+        },
+        {
+          "id": "R003",
+          "start": 30,
+          "end": 35,
+          "confidence": 0.9,
+          "agreement": "both-models"
+        },
+        {
+          "id": "R004",
+          "start": 50,
+          "end": 55,
+          "confidence": 0.9,
+          "agreement": "both-models"
+        }
+      ],
+      "discardedManualRanges": []
+    }
+  },
+  "finalExportIntervals": [
+    {
+      "start": 8,
+      "end": 37,
+      "cutIds": [
+        "R001",
+        "R002",
+        "R003"
+      ],
+      "joinedGaps": [
+        {
+          "start": 17,
+          "end": 18
+        },
+        {
+          "start": 27,
+          "end": 28
+        }
+      ]
+    },
+    {
+      "start": 48,
+      "end": 57,
+      "cutIds": [
+        "R004"
+      ]
+    }
+  ],
+  "finalExportProvenance": [
+    {
+      "start": 10,
+      "end": 15,
+      "kind": "inferred-core",
+      "cutIds": [
+        "R001"
+      ]
+    },
+    {
+      "start": 8,
+      "end": 10,
+      "kind": "padding",
+      "cutIds": [
+        "R001"
+      ]
+    },
+    {
+      "start": 15,
+      "end": 17,
+      "kind": "padding",
+      "cutIds": [
+        "R001"
+      ]
+    },
+    {
+      "start": 20,
+      "end": 25,
+      "kind": "inferred-core",
+      "cutIds": [
+        "R002"
+      ]
+    },
+    {
+      "start": 18,
+      "end": 20,
+      "kind": "padding",
+      "cutIds": [
+        "R002"
+      ]
+    },
+    {
+      "start": 25,
+      "end": 27,
+      "kind": "padding",
+      "cutIds": [
+        "R002"
+      ]
+    },
+    {
+      "start": 30,
+      "end": 35,
+      "kind": "inferred-core",
+      "cutIds": [
+        "R003"
+      ]
+    },
+    {
+      "start": 28,
+      "end": 30,
+      "kind": "padding",
+      "cutIds": [
+        "R003"
+      ]
+    },
+    {
+      "start": 35,
+      "end": 37,
+      "kind": "padding",
+      "cutIds": [
+        "R003"
+      ]
+    },
+    {
+      "start": 50,
+      "end": 55,
+      "kind": "inferred-core",
+      "cutIds": [
+        "R004"
+      ]
+    },
+    {
+      "start": 48,
+      "end": 50,
+      "kind": "padding",
+      "cutIds": [
+        "R004"
+      ]
+    },
+    {
+      "start": 55,
+      "end": 57,
+      "kind": "padding",
+      "cutIds": [
+        "R004"
+      ]
+    },
+    {
+      "start": 17,
+      "end": 18,
+      "kind": "joined-gap",
+      "cutIds": []
+    },
+    {
+      "start": 27,
+      "end": 28,
+      "kind": "joined-gap",
+      "cutIds": []
+    }
+  ],
+  "warnings": [
+    "Base features are unavailable because this analysis predates model-feedback capture; inference and corrections are still included.",
+    "Per-component serve-head outputs are unavailable because this analysis predates their retention; the V2 probability trace remains included.",
+    "Synthetic retained warning"
+  ]
+}
