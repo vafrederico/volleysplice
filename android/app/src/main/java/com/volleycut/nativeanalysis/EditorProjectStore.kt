@@ -166,9 +166,9 @@ internal object EditorProjectStore {
             File(directory, FILE_NAME),
             File(directory, "$FILE_NAME.tmp"),
         ).forEach { target ->
-            if (target.exists() && !target.delete()) {
-                Log.w(TAG, "Could not delete ${target.name}")
-            }
+            // This is authoritative recovery metadata, not optional cache data.
+            // Report failure so the owner can restore the project and pending edits.
+            Files.deleteIfExists(target.toPath())
         }
     }
 }

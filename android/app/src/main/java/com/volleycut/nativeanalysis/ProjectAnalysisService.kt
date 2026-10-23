@@ -12,6 +12,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Bundle
+import android.os.ResultReceiver
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -232,9 +234,13 @@ class ProjectAnalysisService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (timedOut) return START_NOT_STICKY
+        val deletionResult = intent?.getParcelableExtra(EXTRA_DELETE_RESULT, ResultReceiver::class.java)
+        if (timedOut) {
+            deletionResult?.send(1, Bundle().apply { putString("error", "Processing stopped. Please retry deleting the project.") })
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
-            ACTION_DELETE -> intent.getStringExtra(EXTRA_PROJECT_ID)?.let(::deleteProject)
+            ACTION_DELETE -> intent.getStringExtra(EXTRA_PROJECT_ID)?.let { deleteProject(it, deletionResult) }
             ACTION_ENQUEUE -> intent.getStringExtra(EXTRA_PROJECT_ID)?.let(::enqueueProject)
             ACTION_ENQUEUE_SERVING_SIDE -> intent.getStringExtra(EXTRA_PROJECT_ID)
                 ?.let(::enqueueServingSideProject)
@@ -294,15 +300,20 @@ class ProjectAnalysisService : Service() {
     }
 
     @Synchronized
-    private fun deleteProject(projectId: String) {
+    private fun deleteProject(projectId: String, result: ResultReceiver?) {
         queue.removeAll { it.projectId == projectId }
         queuedIds -= projectId
         if (activeProjectId == projectId) activeCancellation?.set(true)
-        NativeProjectStore.get(this, projectId)?.let {
-            if (activeProjectId == projectId) deletingProjects[projectId] = it
-            NativeProjectStore.delete(this, it)
+        try {
+            NativeProjectStore.get(this, projectId)?.let {
+                if (activeProjectId == projectId) deletingProjects[projectId] = it
+                NativeProjectStore.delete(this, it)
+            }
+            result?.send(0, null)
+        } catch (error: Exception) {
+            deletingProjects.remove(projectId)
+            result?.send(1, Bundle().apply { putString("error", error.message ?: "Project could not be deleted. Please retry.") })
         }
-        broadcast(projectId, null, 0.0, "deleted", "Project deleted")
         if (!workerRunning && queue.isEmpty()) finishForeground()
     }
 
@@ -870,6 +881,7 @@ class ProjectAnalysisService : Service() {
         const val ACTION_DELETE = "com.volleycut.nativeanalysis.DELETE_PROJECT"
         const val ACTION_UPDATE = "com.volleycut.nativeanalysis.PROJECT_UPDATE"
         const val EXTRA_PROJECT_ID = "project_id"
+        private const val EXTRA_DELETE_RESULT = "delete_result"
         const val EXTRA_STATUS = "project_status"
         const val EXTRA_PROGRESS = "project_progress"
         const val EXTRA_STAGE = "project_stage"
@@ -903,11 +915,12 @@ class ProjectAnalysisService : Service() {
             )
         }
 
-        fun delete(context: Context, projectId: String) {
+        fun delete(context: Context, projectId: String, result: ResultReceiver? = null) {
             context.startService(
                 Intent(context, ProjectAnalysisService::class.java)
                     .setAction(ACTION_DELETE)
-                    .putExtra(EXTRA_PROJECT_ID, projectId),
+                    .putExtra(EXTRA_PROJECT_ID, projectId)
+                    .putExtra(EXTRA_DELETE_RESULT, result),
             )
         }
 

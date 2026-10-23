@@ -139,6 +139,7 @@ import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -147,8 +148,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -251,7 +251,8 @@ class EditorActivity : ComponentActivity() {
             val selected = NativeProjectStore.selectedId(context)
                 ?.let { id -> projects.firstOrNull { it.id == id } }
             return (selected?.editorSeed() ?: projects.firstNotNullOfOrNull { it.editorSeed() }
-                ?: EditorProjectStore.load(context))?.let { intentFromSeed(context, it) }
+                ?: EditorProjectStore.load(context)?.takeUnless { EditorDraftSessions.isDeleting(context, it) })
+                ?.let { intentFromSeed(context, it) }
         }
 
         private fun intentFromSeed(context: Context, seed: EditorSeed) =
@@ -562,16 +563,10 @@ private fun setShowAnalysisMeasurements(context: Context, enabled: Boolean) {
 private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val draftSessions = remember(activity) { ViewModelProvider(activity)[EditorDraftSessions::class.java] }
     val initialProjects = remember {
-        var stored = NativeProjectStore.list(context)
+        NativeProjectStore.list(context)
             .map { NativeProjectStore.repairLegacyMetadata(context, it) }
-        if (initialSeed != null && stored.none { it.source.uri == initialSeed.sourceUri }) {
-            NativeProjectStore.fromSeed(context, initialSeed).also {
-                NativeProjectStore.save(context, it)
-                stored = NativeProjectStore.list(context)
-            }
-        }
-        stored
     }
     var projects by remember { mutableStateOf(initialProjects) }
     var selectedProjectId by remember {
@@ -597,6 +592,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             .getString("rally-model", RallyModels.DEFAULT)?.takeIf(RallyModels::isSupported) ?: RallyModels.DEFAULT)
     }
     var confirmDelete by remember { mutableStateOf<NativeProject?>(null) }
+    var deleteFailure by remember { mutableStateOf<String?>(null) }
     var gameStartMs by remember { mutableLongStateOf(0L) }
     var gameEndMs by remember { mutableLongStateOf(0L) }
     val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
@@ -638,6 +634,29 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             ?: projects.firstOrNull()?.id
         NativeProjectStore.setSelectedId(context, selectedProjectId)
         if (selectedProjectId != null) creatingNew = false
+    }
+
+    LaunchedEffect(initialSeed) {
+        if (initialSeed != null && initialProjects.none { it.source.uri == initialSeed.sourceUri }) {
+            val recovered = withContext(Dispatchers.IO) {
+                // Intent extras alone cannot recreate a deleted project. Only
+                // the matching, still-authoritative legacy record may bootstrap.
+                if (EditorDraftSessions.isDeleting(context, initialSeed) ||
+                    EditorProjectStore.load(context)?.sourceRevision != initialSeed.sourceRevision
+                ) null else {
+                    if (NativeProjectStore.list(context).none { it.source.uri == initialSeed.sourceUri }) {
+                        NativeProjectStore.save(context, NativeProjectStore.fromSeed(context, initialSeed))
+                    }
+                    NativeProjectStore.list(context)
+                }
+            }
+            if (recovered != null) {
+                projects = recovered
+                selectedProjectId = recovered.firstOrNull { it.source.uri == initialSeed.sourceUri }?.id
+                NativeProjectStore.setSelectedId(context, selectedProjectId)
+                creatingNew = selectedProjectId == null
+            }
+        }
     }
 
     val sourcePicker = rememberLauncherForActivityResult(
@@ -869,7 +888,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                             else ServingSideAnalysisStatus.DISABLED,
                         ) ?: opened
                     }
+                    val savedReview = opened.editorSeed()?.let { draftSessions.save(EditorDraftStore(context, it)) }
                     withContext(Dispatchers.IO) {
+                        savedReview?.get()?.let { throw it }
                         setScoreTrackingPreference(context, opened, analyzeServingSide)
                     }
                     selectedProjectId = opened.id
@@ -969,6 +990,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 }
                 if (intent?.action != ProjectAnalysisService.ACTION_UPDATE) return
                 val projectId = intent.getStringExtra(ProjectAnalysisService.EXTRA_PROJECT_ID) ?: return
+                if (intent.getStringExtra(ProjectAnalysisService.EXTRA_STAGE) == "delete-failed") {
+                    deleteFailure = intent.getStringExtra(ProjectAnalysisService.EXTRA_DETAIL) ?: "Please retry deleting the project."
+                }
                 if (intent.getBooleanExtra(ProjectAnalysisService.EXTRA_PERFORMANCE, false)) {
                     if (projectId == selectedProjectId) {
                         inference = inference.copy(
@@ -1047,7 +1071,16 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             confirmButton = {
                 TextButton(onClick = {
                     val nextId = projects.firstOrNull { it.id != deleting.id }?.id
-                    ProjectAnalysisService.delete(context, deleting.id)
+                    // Marks the project before any lifecycle reload and owns the
+                    // fence until the service acknowledges actual deletion.
+                    val deletion = draftSessions.deleteProject(context, deleting)
+                    scope.launch {
+                        val error = withContext(Dispatchers.IO) { deletion.get() }
+                        if (error != null) {
+                            deleteFailure = error.message ?: "Please retry deleting the project."
+                            reloadProjects(deleting.id, preserveNewProject = false)
+                        }
+                    }
                     projects = projects.filterNot { it.id == deleting.id }
                     selectedProjectId = nextId
                     NativeProjectStore.setSelectedId(context, nextId)
@@ -1057,6 +1090,15 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 }) { Text("Delete", color = Danger) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+        )
+    }
+
+    deleteFailure?.let { detail ->
+        AlertDialog(
+            onDismissRequest = { deleteFailure = null },
+            title = { Text("Project could not be deleted") },
+            text = { Text(detail) },
+            confirmButton = { TextButton(onClick = { deleteFailure = null }) { Text("Close") } },
         )
     }
 
@@ -1231,20 +1273,53 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 EditorDraftStore(context, currentSeed)
             }
             var restored by remember(selectedProject.id, currentSeed.sourceRevision) {
-                mutableStateOf(store.load())
+                mutableStateOf<EditorDraftLoadResult?>(null)
             }
+            var persistence by remember { mutableStateOf<EditorDraftSession?>(null) }
             var resetFailed by remember { mutableStateOf(false) }
-            if (restored == EditorDraftLoadResult.Unreadable) {
+            suspend fun openReview(retry: Boolean = false) {
+                val session = withContext(Dispatchers.IO) {
+                    if (retry) persistence?.retry()?.get()
+                    draftSessions.openProject(context, selectedProject, store, EditorMath.newDraft(currentSeed)) { draft ->
+                        draft.copy(fadeScoreOverlay = context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
+                            .getBoolean("fadeScoreOverlay", draft.fadeScoreOverlay))
+                    }
+                }
+                if (session == null && withContext(Dispatchers.IO) {
+                    EditorDraftSessions.isDeleting(context, selectedProject.id) || !NativeProjectStore.exists(context, selectedProject.id)
+                }) {
+                    reloadProjects(preserveNewProject = false)
+                    return
+                }
+                persistence = session
+                restored = if (session == null || session.failure.value is UnreadableEditorDraftException) {
+                    EditorDraftLoadResult.Unreadable
+                } else EditorDraftLoadResult.Restored(session.draft.value)
+            }
+            LaunchedEffect(store) { openReview() }
+            if (restored == null) {
+                ProjectShell(projectControls = { projectControls(null, null) }) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            } else if (restored == EditorDraftLoadResult.Unreadable) {
                 ProjectShell(projectControls = { projectControls(null, null) }) {
                     DraftRecoveryPanel(
-                        onRetry = { restored = store.load() },
+                        onRetry = { scope.launch { openReview(retry = true) } },
                         onImport = {
                             feedbackImportStatus = InferenceUiState()
                             feedbackImportPicker.launch(arrayOf("application/json", "text/json"))
                         },
                         onReset = {
-                            restored = store.resetUnreadable()
-                            resetFailed = restored == EditorDraftLoadResult.Unreadable
+                            scope.launch {
+                                val result = withContext(NonCancellable + Dispatchers.IO) {
+                                    draftSessions.resetUnreadable(store)
+                                }
+                                resetFailed = result == EditorDraftLoadResult.Unreadable
+                                if (!resetFailed) {
+                                    persistence = null
+                                    openReview()
+                                }
+                            }
                         },
                         resetFailed = resetFailed,
                         importing = feedbackImportStatus.running,
@@ -1265,9 +1340,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 activity = activity,
                 project = selectedProject,
                 seed = currentSeed,
-                store = store,
-                initialDraft = (restored as? EditorDraftLoadResult.Restored)?.draft
-                    ?: EditorMath.newDraft(currentSeed),
+                persistence = checkNotNull(persistence),
                 onDraftUnreadable = { restored = EditorDraftLoadResult.Unreadable },
                 analysisRunning = queueCount > 0,
                 displayAnalysisMeasurements = displayAnalysisMeasurements,
@@ -1421,7 +1494,7 @@ private fun ProjectHeaderBar(
                             )
                             OutlinedButton(
                                 onClick = { expanded = true },
-                                modifier = Modifier.fillMaxWidth().height(32.dp),
+                                modifier = Modifier.fillMaxWidth().height(32.dp).testTag("project-selector"),
                                 shape = RoundedCornerShape(5.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             ) {
@@ -1435,6 +1508,7 @@ private fun ProjectHeaderBar(
                         }
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             DropdownMenuItem(
+                                modifier = Modifier.testTag("new-project"),
                                 text = { Text("＋ Start a new video…") },
                                 onClick = { expanded = false; onNew() },
                             )
@@ -1576,7 +1650,7 @@ private fun ProjectHeaderBar(
                         )
                         OutlinedButton(
                             onClick = { expanded = true },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("project-selector"),
                             shape = RoundedCornerShape(6.dp),
                         ) {
                             Text(
@@ -1589,6 +1663,7 @@ private fun ProjectHeaderBar(
                     }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         DropdownMenuItem(
+                            modifier = Modifier.testTag("new-project"),
                             text = { Text("＋ Start a new video…") },
                             onClick = { expanded = false; onNew() },
                         )
@@ -2898,8 +2973,7 @@ private fun EditorScreen(
     activity: ComponentActivity,
     project: NativeProject,
     seed: EditorSeed,
-    store: EditorDraftStore,
-    initialDraft: EditorDraft,
+    persistence: EditorDraftSession,
     onDraftUnreadable: () -> Unit,
     analysisRunning: Boolean,
     displayAnalysisMeasurements: Boolean,
@@ -2922,33 +2996,20 @@ private fun EditorScreen(
     val exportPreferences = remember(context) {
         context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
     }
-    var draft by remember {
-        mutableStateOf(initialDraft.copy(
-            fadeScoreOverlay = exportPreferences.getBoolean("fadeScoreOverlay", initialDraft.fadeScoreOverlay),
-        ))
-    }
-    var selectedId by remember { mutableStateOf(initialDraft.cuts.firstOrNull()?.id.orEmpty()) }
+    val draft by persistence.draft
+    var selectedId by remember { mutableStateOf(draft.cuts.firstOrNull()?.id.orEmpty()) }
     var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
     var isPlaying by remember { mutableStateOf(false) }
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
     var message by remember { mutableStateOf("") }
-    var draftSaveError by remember { mutableStateOf<String?>(null) }
-    var draftSaveAttempt by remember { mutableIntStateOf(0) }
+    val draftSaveError = persistence.failure.value?.message
     var savingBeforeRelink by remember { mutableStateOf(false) }
-    val draftSaveMutex = remember(store) { Mutex() }
 
-    suspend fun saveReview(candidate: EditorDraft): Boolean = try {
-        draftSaveMutex.withLock { withContext(Dispatchers.IO) { store.save(candidate) } }
-        if (draft == candidate) draftSaveError = null
-        true
-    } catch (error: CancellationException) {
-        throw error
-    } catch (_: UnreadableEditorDraftException) {
-        onDraftUnreadable()
-        false
-    } catch (error: EditorDraftSaveException) {
-        if (draft == candidate) draftSaveError = error.message
-        false
+    suspend fun saveReview(candidate: EditorDraft): Boolean {
+        val result = persistence.request(candidate)
+        val failure = withContext(Dispatchers.IO) { result.get() }
+        if (failure is UnreadableEditorDraftException) onDraftUnreadable()
+        return failure == null
     }
 
     fun saveAndRelink() {
@@ -3183,8 +3244,8 @@ private fun EditorScreen(
     )
 
     fun updateDraft(mutate: (EditorDraft) -> EditorDraft) {
-        draft = EditorMath.reconcileTouchedCuts(mutate(draft), seed)
-            .copy(updatedAtMs = System.currentTimeMillis())
+        persistence.update(EditorMath.reconcileTouchedCuts(mutate(draft), seed)
+            .copy(updatedAtMs = System.currentTimeMillis()))
     }
 
     LaunchedEffect(
@@ -3515,9 +3576,8 @@ private fun EditorScreen(
         )
     }
 
-    LaunchedEffect(draft, draftSaveAttempt) {
-        delay(200)
-        saveReview(draft)
+    LaunchedEffect(persistence.failure.value) {
+        if (persistence.failure.value is UnreadableEditorDraftException) onDraftUnreadable()
     }
 
     LaunchedEffect(draft.playbackRate) {
@@ -3578,8 +3638,7 @@ private fun EditorScreen(
             text = { Text("All clip boundaries, included or excluded choices, score markers, added clips, and omitted sections will be discarded.") },
             confirmButton = {
                 TextButton(onClick = {
-                    store.clear()
-                    draft = EditorMath.newDraft(seed)
+                    persistence.update(EditorMath.newDraft(seed))
                     selectedId = draft.cuts.firstOrNull()?.id.orEmpty()
                     selectedSuggestionId = null
                     confirmReset = false
@@ -3710,7 +3769,7 @@ private fun EditorScreen(
                         Text(error, fontSize = 13.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedButton(
-                                onClick = { draftSaveAttempt++ },
+                                onClick = { persistence.retry() },
                                 modifier = Modifier.testTag("draft-save-retry"),
                             ) { Text("Retry save") }
                             TextButton(

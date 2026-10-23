@@ -132,8 +132,14 @@ internal object NativeProjectStore {
                     .onFailure { Log.w(TAG, "Could not read ${file.name}", it) }
                     .getOrNull()
             }
+            .filterNot { EditorDraftSessions.isDeleting(context, it.id) }
             .sortedByDescending { it.updatedAtMs }
     }
+
+    // These two accessors deliberately do not take the project-store monitor:
+    // draft opening checks availability under the session registry's lock.
+    fun identity(context: Context, id: String): String = projectFile(context, id).absoluteFile.normalize().path
+    fun exists(context: Context, id: String): Boolean = projectFile(context, id).isFile
 
     @Synchronized
     fun get(context: Context, id: String): NativeProject? = runCatching {
@@ -338,7 +344,7 @@ internal object NativeProjectStore {
         // Delete authoritative and recovery metadata before optional artifact cleanup. A missing
         // source or a cache cleanup failure must never leave (or recreate) a visible project.
         val target = projectFile(context, project.id)
-        if (target.exists() && !target.delete()) Log.w(TAG, "Could not delete ${target.name}")
+        Files.deleteIfExists(target.toPath())
         if (selectedId(context) == project.id) setSelectedId(context, null)
         project.editorSeed()?.let { seed ->
             EditorProjectStore.clearIfMatches(context, seed)
