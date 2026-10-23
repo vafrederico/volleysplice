@@ -89,6 +89,51 @@ public enum ProjectArchive {
         guard let id = bundle?["initialInference"]?["modelId"]?.string else { return .legacy }
         return RallyModel(rawValue: id) ?? .legacy
     }
+    /// Restoring boundaries retains the immutable IDs used by existing score-marker links.
+    /// Only older ranges with no ID use the historical position-based R… fallback.
+    public static func restoredModelDraft(_ project: ProjectDocument) throws -> EditorDraft {
+        guard let ranges = project.feedback?["initialInference"]?["ranges"]?.array else {
+            throw ProjectError.invalid("This project has no retained original analysis.")
+        }
+        guard project.durationMs > 0, project.gameWindow.startMs >= 0,
+              project.gameWindow.endMs > project.gameWindow.startMs,
+              project.gameWindow.endMs <= project.durationMs else {
+            throw ProjectError.invalid("Invalid source bounds for restoring model ranges")
+        }
+        var ids = Set<String>()
+        let cuts = try ranges.enumerated().map { index, range -> EditableCut in
+            let id: String
+            if let value = range["id"] {
+                guard let retained = value.string, !retained.isEmpty else {
+                    throw ProjectError.invalid("Invalid original rally identity")
+                }
+                id = retained
+            } else { id = String(format: "R%03d", index + 1) }
+            guard ids.insert(id).inserted else { throw ProjectError.invalid("Duplicate original rally identity") }
+            let start = try number(range["start"], "original rally start")
+            let end = try number(range["end"], "original rally end")
+            let startMs = try ms(.number(start), "original rally start")
+            let endMs = try ms(.number(end), "original rally end")
+            let confidence = try number(range["confidence"] ?? .number(1), "original rally confidence")
+            let agreement = range["agreement"]?.string
+            guard end > start, endMs > startMs, endMs <= project.durationMs,
+                  (0...1).contains(confidence),
+                  agreement == nil || ["both-models", "all-labels-v2-only", "previous-production-only", "neural"].contains(agreement!) else {
+                throw ProjectError.invalid("Invalid original model range")
+            }
+            return .init(id: id, coreStartMs: startMs, coreEndMs: endMs,
+                         confidence: Float(confidence), agreement: agreement)
+        }
+        var value = EditorMath.newDraft(ranges: cuts, durationMs: project.durationMs,
+            gameWindow: project.gameWindow, sourceRevision: project.draft.sourceRevision, preserveRangeIds: true)
+        value.scoreTracking = project.draft.scoreTracking
+        value.renderScoreOverlay = project.draft.renderScoreOverlay
+        value.renderScoreTimeline = project.draft.renderScoreTimeline
+        value.fadeScoreOverlay = project.draft.fadeScoreOverlay
+        value = EditorMath.alignRallyServeMarkers(value)
+        try value.validate(durationMs: project.durationMs)
+        return value
+    }
     static func required(_ value: JSONValue?, _ field: String) throws -> JSONValue {
         guard let value = value else { throw ProjectError.invalid("Missing \(field)") }; return value
     }

@@ -1297,15 +1297,12 @@ struct EditorWorkspace: View {
         } else { player.pause(); playing = false }
     }
     private func resetRanges() {
-        guard let ranges = project.feedback?["initialInference"]?["ranges"]?.array else { message = "This project has no retained original analysis."; return }
-        let cuts = ranges.enumerated().compactMap { index, range -> EditableCut? in
-            guard let start = range["start"]?.double, let end = range["end"]?.double else { return nil }
-            return .init(id: String(format: "R%03d", index + 1), coreStartMs: Int64((start * 1_000).rounded()), coreEndMs: Int64((end * 1_000).rounded()), confidence: Float(range["confidence"]?.double ?? 1), agreement: range["agreement"]?.string)
+        do {
+            replaceDraft(try ProjectArchive.restoredModelDraft(project))
+            setTrimWindow()
+        } catch {
+            message = error.localizedDescription
         }
-        var value = EditorMath.newDraft(ranges: cuts, durationMs: project.durationMs, gameWindow: bounds, sourceRevision: draft.sourceRevision)
-        value.scoreTracking = draft.scoreTracking; value.renderScoreOverlay = draft.renderScoreOverlay; value.renderScoreTimeline = draft.renderScoreTimeline
-        value.fadeScoreOverlay = draft.fadeScoreOverlay
-        replaceDraft(EditorMath.alignRallyServeMarkers(value)); setTrimWindow()
     }
     private func time(_ value: Int64, precise: Bool = false) -> String {
         let seconds = max(0, value) / 1_000
