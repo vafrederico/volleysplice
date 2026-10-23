@@ -64,6 +64,7 @@
     "preferences": {
       "renderScoreOnPreviewVideo": false,
       "playbackRate": 1.5,
+      "reviewedCutIds": ["R001"],
       "futureControl": {
         "level": 2
       }
@@ -74,6 +75,8 @@
     ]
   },
   "invalidUi": [
+    { "schemaVersion": 2, "preferences": { "reviewedCutIds": ["missing-cut"] } },
+    { "schemaVersion": 2, "preferences": { "reviewedCutIds": null } },
     [],
     null,
     {

@@ -50,11 +50,19 @@ internal object PortableReviewPreferences {
             val seen = mutableSetOf<String>()
             repeat(ids.length()) {
                 val id = ids.get(it)
-                require(id is String && id.isNotEmpty() && id.length <= 256 && seen.add(id) &&
-                    (!checkIdentities || cuts.any { cut -> cut.id == id && cut.origin == CutOrigin.INFERRED })) { "Invalid reviewed cut identity" }
+                require(id is String && id.isNotEmpty() && id.length <= 256 && seen.add(id)) { "Invalid reviewed cut identity" }
             }
         }
+        if (checkIdentities) requireReviewedIdentities(value, cuts, "Invalid reviewed cut identity")
         return value
+    }
+
+    // Call only after validating the reserved list's wire shape. Local drafts deliberately
+    // skip this check so reset can retain an opaque future envelope without data loss.
+    private fun requireReviewedIdentities(ui: JSONObject, cuts: List<EditableCut>, message: String) {
+        val ids = ui.optJSONObject("preferences")?.optJSONArray("reviewedCutIds") ?: return
+        val inferredIds = cuts.filter { it.origin == CutOrigin.INFERRED }.mapTo(hashSetOf()) { it.id }
+        require((0 until ids.length()).all { ids.getString(it) in inferredIds }) { message }
     }
 
     fun isFuture(ui: JSONObject): Boolean = ui.has("schemaVersion") && ui.getDouble("schemaVersion") > 1
@@ -91,7 +99,12 @@ internal object PortableReviewPreferences {
 
     fun export(draft: EditorDraft): JSONObject {
         val ui = draft.portableUi?.let { validate(JSONObject(it), draft.cuts, false) } ?: JSONObject()
-        if (isFuture(ui)) return ui
+        if (isFuture(ui)) {
+            requireReviewedIdentities(ui, draft.cuts,
+                "Cannot export: newer project preferences refer to rallies changed or removed. " +
+                    "Open an unchanged copy, or export with an app that supports this preferences version. Your local project is preserved.")
+            return ui
+        }
         val prefs = ui.optJSONObject("preferences") ?: JSONObject()
         // The confidence slider uses floats. Retain its exact imported JSON number until changed.
         fun wireNumber(key: String, active: Float): Double =

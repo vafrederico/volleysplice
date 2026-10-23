@@ -16,7 +16,7 @@ It contains no source media. Overlay `correctedRanges` on a synthetic v3 archive
 all four ranges must remain independently selectable even when their padded output
 is one interval. The invalid values must fail import, including explicit null.
 
-## Wire rules for the later iOS port
+## Wire rules
 
 - Absence means legacy grouping. Never infer explicit boundaries from touched,
   reviewed, excluded, trimmed, or manually created cuts in old drafts.
@@ -87,6 +87,23 @@ opaque. Unknown UI extension objects, arrays and nulls remain unchanged.
 Consumers predating this extension may drop it. Web in this change preserves it
 through corrected-range import/export and production editor reconstruction; it
 does not adopt Android's connectivity-based editor grouping. The shared fixture
-and production round-trip tests are the port contract. The later iOS implementation,
-physical-device playback, source-provider permission/relink, and encoded MP4
-verification remain integration/release checks.
+and production round-trip tests are the port contract. Physical-device playback,
+source-provider permission/relink, and encoded MP4 verification remain
+integration/release checks.
+
+## iOS relay
+
+iOS local draft version 8 stores the optional inline field without changing old
+draft defaults: absence remains legacy grouping, and a present invalid value
+(including null) fails decoding. Project import/export uses the same strict token,
+member-count and UTF-16 ID limits. Splitting allocates new clip IDs against both
+cuts and ignored intervals. Model-range restore clears explicit groups and manual
+additions while retaining immutable original IDs and existing score corrections.
+
+Paused explicit selection survives overlapping padding; selecting a rally clears
+cleanup selection. Automatic cleanup suggestions do not replace explicit rally
+Keep/Remove controls. Choosing Review cleanup explicitly still opens its separately
+labelled cleanup controls. Portable core tests cover grouping, repeated splits,
+removal, trimming, archive and local persistence, chapters, reset and limits.
+Native Xcode compilation and the SwiftUI interaction require separate Apple
+runtime qualification when the Mac lab is available.

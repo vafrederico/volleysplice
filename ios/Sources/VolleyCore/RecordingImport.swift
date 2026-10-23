@@ -52,7 +52,9 @@ public enum RecordingImport {
         let files = FileManager.default
         let directory = documents.resolvingSymlinksInPath().standardizedFileURL
         let resolvedSource = source.resolvingSymlinksInPath().standardizedFileURL
-        if resolvedSource.deletingLastPathComponent() == directory {
+        // Foundation on Linux can retain different directory/trailing-slash
+        // hints for URLs with the same resolved filesystem path.
+        if resolvedSource.deletingLastPathComponent().path == directory.path {
             // Includes /private/var aliases and a picker URL resolving to an
             // already managed local movie. No digest or byte comparison needed.
             return Result(url: resolvedSource, identity: nil)

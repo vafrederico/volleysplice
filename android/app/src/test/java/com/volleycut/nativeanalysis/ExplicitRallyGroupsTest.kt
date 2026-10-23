@@ -113,11 +113,11 @@ class ExplicitRallyGroupsTest {
                 val d = split(draft()).copy(portableUi = ui.toString())
                 val store = EditorDraftStore(directory, seed)
                 store.save(d)
-                val reopened = requireNotNull(store.load())
+                val reopened = (store.load() as EditorDraftLoadResult.Restored).draft
                 assertEquals(d.cuts, reopened.cuts)
                 val relinkedSeed = seed.copy(sourceUri = "content://fixture/relinked")
                 EditorDraftStore(directory, relinkedSeed).save(reopened.copy(sourceRevision = relinkedSeed.sourceRevision))
-                assertEquals(d.cuts, requireNotNull(EditorDraftStore(directory, relinkedSeed).load()).cuts)
+                assertEquals(d.cuts, (EditorDraftStore(directory, relinkedSeed).load() as EditorDraftLoadResult.Restored).draft.cuts)
                 val imported = ModelFeedbackImporter.parse(bundle(reopened).toString())
                 assertEquals(reopened.cuts, imported.draft.cuts)
                 assertEquals(2, groups(imported.draft).size)
@@ -129,7 +129,7 @@ class ExplicitRallyGroupsTest {
                 val reset = PortableReviewPreferences.reset(seed, reopened)
                 assertEquals(EditorMath.newDraft(seed).cuts, reset.cuts)
                 store.save(reset)
-                assertEquals(1, groups(requireNotNull(store.load())).size)
+                assertEquals(1, groups((store.load() as EditorDraftLoadResult.Restored).draft).size)
                 val resetUi = PortableReviewPreferences.export(reset)
                 assertEquals(ui.getJSONObject("preferences").getJSONObject("chapterOptions").toString(),
                     resetUi.getJSONObject("preferences").getJSONObject("chapterOptions").toString())
@@ -196,11 +196,11 @@ class ExplicitRallyGroupsTest {
         try {
             val store = EditorDraftStore(directory, seed)
             store.save(draft())
-            val file = File(directory, "${seed.sourceRevision}.json")
+            val file = File(directory, "editor-drafts/${seed.sourceRevision}.json")
             val json = JSONObject(file.readText()).put("version", 9)
             assertFalse(json.getJSONArray("cuts").getJSONObject(0).has("editableGroupId"))
             file.writeText(json.toString())
-            assertEquals(draft().cuts, requireNotNull(store.load()).cuts)
+            assertEquals(draft().cuts, (store.load() as EditorDraftLoadResult.Restored).draft.cuts)
             assertEquals(EditorMath.newDraft(seed).cuts, PortableReviewPreferences.reset(seed, draft()).cuts)
         } finally { directory.deleteRecursively() }
     }

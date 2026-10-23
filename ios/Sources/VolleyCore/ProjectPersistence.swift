@@ -121,6 +121,7 @@ public enum ProjectPersistence {
         // Parse large feature payloads outside the lock, on the caller's worker.
         var project = try JSONDecoder().decode(ProjectDocument.self, from: data)
         if let entry = try decodeJournal(checkpointData)?.entries.last(where: { $0.matches(project, version: baseVersion) }) { entry.apply(to: &project) }
+        project = project.migratingLegacyLocalReviewIds()
         try project.validate()
         state.lock.lock(); defer { state.lock.unlock() }
         if let baseVersion, try version(url) == baseVersion { state.knownBases[url.standardizedFileURL.path] = (baseVersion, project.persistenceRevision, Identity(project)) }
