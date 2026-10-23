@@ -144,7 +144,9 @@ internal object ModelFeedbackImporter {
         } ?: AnalysisTypes.ProductionServeOutputs.empty()
         val servingSide = inference.optJSONObject("servingSide")?.let(::decodeServingSide)
         val sideSwitchEnabled = inference.optJSONObject("sideSwitch") != null
-        val suppression = inference.optJSONObject("suppression")?.let(::decodeSuppression)
+        val suppression = inference.optJSONObject("suppression")
+            ?.takeUnless { RallyModels.isNeural(inference.getString("modelId")) }
+            ?.let(::decodeSuppression)
         val id = "import-${UUID.randomUUID()}"
         val projectSource = ProjectSource(
             uri = "content://com.volleycut.nativeanalysis.import/$id",
@@ -260,7 +262,7 @@ internal object ModelFeedbackImporter {
             probabilities.getJSONObject("deadState"),
             intArrayOf(rows),
         ).toProbabilityFloats("Feedback dead-state probabilities")
-        inference.optJSONObject("suppression")?.let { suppression ->
+        inference.optJSONObject("suppression")?.takeIf { project.suppression != null }?.let { suppression ->
             require(decodeNumeric(
                 suppression.getJSONObject("timestamps"),
                 intArrayOf(rows),
@@ -425,6 +427,13 @@ internal object ModelFeedbackImporter {
         require(selectedPolicyName in SuppressionPolicyEngine.Policy.entries.map { it.wireName }) {
             "Invalid suppression policy"
         }
+        val initialBehavior = if (corrections.has("suppressionInitialBehavior")) {
+            val raw = corrections.get("suppressionInitialBehavior")
+            require(raw is String) { "Invalid suppression initial behavior" }
+            requireNotNull(SuppressionInitialBehavior.entries.firstOrNull { it.wireName == raw }) {
+                "Invalid suppression initial behavior"
+            }
+        } else SuppressionInitialBehavior.DISABLE_INITIALLY
         val draft = EditorDraft(
             sourceRevision = seed.sourceRevision,
             updatedAtMs = runCatching {
@@ -456,6 +465,7 @@ internal object ModelFeedbackImporter {
             selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.fromWireName(
                 selectedPolicyName,
             ),
+            suppressionInitialBehavior = initialBehavior,
             suppressionDecisionOverrides = decisionOverrides,
             suppressionScopeOverrides = scopeOverrides,
             userTouchedCutIds = buildSet {
@@ -578,13 +588,22 @@ internal object ModelFeedbackImporter {
         require(json.optInt("policyContractVersion") == 1)
         val timestamps = decodeNumeric(json.getJSONObject("timestamps"))
         val probabilities = decodeNumeric(json.getJSONObject("probabilities"))
-            .map(Double::toFloat).toFloatArray()
+            .toProbabilityFloats("Feedback suppression probabilities")
         require(probabilities.size == timestamps.size)
+        val retainedProbabilities = json.optJSONObject("retainedProbabilities")?.let { retained ->
+            require(timestamps.isEmpty() && probabilities.isEmpty()) {
+                "Retained suppression probabilities require an absent trace timeline"
+            }
+            val shape = retained.getJSONArray("shape")
+            require(shape.length() == 1)
+            decodeNumeric(retained, intArrayOf(shape.getInt(0)))
+                .toProbabilityFloats("Retained suppression probabilities")
+        } ?: probabilities
         val suggestions = json.getJSONArray("suggestions")
         return AnalysisTypes.SuppressionAnalysis(
             json.getString("modelId"), json.getString("artifactSha256"),
             json.getString("weightsSha256"), json.getString("decoderVersion"),
-            probabilities,
+            retainedProbabilities,
             decodeIntervals(json.getJSONArray("decodedIntervals")),
             List(suggestions.length()) { index -> suggestions.getJSONObject(index).let { item ->
                 AnalysisTypes.SuppressionSuggestion(
