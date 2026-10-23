@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 
 /** Stores only enough metadata to reopen the most recent editor after process death. */
 internal object EditorProjectStore {
-    private const val VERSION = 7
+    private const val VERSION = 8
     private const val TAG = "VolleySpliceEditor"
     private const val FILE_NAME = "latest-editor-project.json"
 
@@ -44,6 +44,7 @@ internal object EditorProjectStore {
     internal fun encode(seed: EditorSeed) = JSONObject().apply {
         put("version", VERSION)
         put("sourceUri", seed.sourceUri)
+        put("draftNamespace", seed.draftNamespace ?: JSONObject.NULL)
         put("displayName", seed.displayName)
         put("durationMs", seed.durationMs)
         put("width", seed.width)
@@ -79,6 +80,7 @@ internal object EditorProjectStore {
         put("sideSwitch", seed.sideSwitch?.let(SideSwitchJson::encodeOutput) ?: JSONObject.NULL)
         put("sideSwitchError", seed.sideSwitchError ?: JSONObject.NULL)
         put("sideSwitchEnabled", seed.sideSwitchEnabled)
+        put("warnings", JSONArray(seed.feedbackWarnings))
         put("scoreTrackingInitiallyEnabled", seed.scoreTrackingInitiallyEnabled)
     }
 
@@ -100,6 +102,7 @@ internal object EditorProjectStore {
         }
         return EditorSeed(
             sourceUri = json.getString("sourceUri"),
+            draftNamespace = if (json.isNull("draftNamespace")) null else json.getString("draftNamespace"),
             displayName = json.getString("displayName"),
             durationMs = durationMs,
             width = json.optInt("width"),
@@ -123,6 +126,7 @@ internal object EditorProjectStore {
             sideSwitchEnabled = if (json.has("sideSwitchEnabled")) {
                 json.getBoolean("sideSwitchEnabled")
             } else json.optJSONObject("sideSwitch") != null,
+            feedbackWarnings = SideSwitchJson.decodeWarnings(json),
             scoreTrackingInitiallyEnabled = json.optBoolean("scoreTrackingInitiallyEnabled", false),
             audioExtractorVersion = json.optString("audioExtractorVersion", "legacy"),
             visualExtractorVersion = json.optString("visualExtractorVersion", "legacy"),
@@ -164,9 +168,9 @@ internal object EditorProjectStore {
             File(directory, FILE_NAME),
             File(directory, "$FILE_NAME.tmp"),
         ).forEach { target ->
-            if (target.exists() && !target.delete()) {
-                Log.w(TAG, "Could not delete ${target.name}")
-            }
+            // This is authoritative recovery metadata, not optional cache data.
+            // Report failure so the owner can restore the project and pending edits.
+            Files.deleteIfExists(target.toPath())
         }
     }
 }

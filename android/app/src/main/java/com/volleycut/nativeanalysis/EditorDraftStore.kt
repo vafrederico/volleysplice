@@ -8,17 +8,52 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-internal class EditorDraftStore(context: Context, private val seed: EditorSeed) {
-    private val directory = File(context.filesDir, "editor-drafts")
-    private val target = File(directory, "${seed.sourceRevision}.json")
+internal sealed interface EditorDraftLoadResult {
+    data object Missing : EditorDraftLoadResult
+    data class Restored(val draft: EditorDraft) : EditorDraftLoadResult
+    data object Unreadable : EditorDraftLoadResult
+}
 
-    fun load(): EditorDraft? = runCatching {
-        if (!target.isFile) return null
-        decode(JSONObject(target.readText()))?.takeIf { it.sourceRevision == seed.sourceRevision }
-    }.onFailure { Log.w(TAG, "Could not restore editor draft", it) }.getOrNull()
+internal class UnreadableEditorDraftException : IllegalStateException(
+    "Saved edits could not be restored. They have been preserved. Recover or reset the review before replacing them.",
+)
+
+internal class EditorDraftSaveException(cause: Throwable) : java.io.IOException(
+    "Edits could not be saved. Free device storage and retry, or export a project backup before leaving this review.", cause,
+)
+
+internal class EditorDraftStore(filesDir: File, private val seed: EditorSeed) {
+    constructor(context: Context, seed: EditorSeed) : this(context.filesDir, seed)
+
+    private val directory = File(filesDir, "editor-drafts")
+    private val target = File(directory, "${seed.sourceRevision}.json")
+    // Include app storage: debug/release and test stores may share source hashes.
+    // Normalizing this identity does no disk IO.
+    val sessionKey: String = target.absoluteFile.normalize().path
+
+    @Synchronized
+    fun load(): EditorDraftLoadResult = try {
+        // notExists fails closed when existence cannot be determined (for example,
+        // a permission error). A non-directory parent is not a missing draft.
+        if (directory.exists() && !directory.isDirectory) {
+            EditorDraftLoadResult.Unreadable
+        } else if (Files.notExists(target.toPath())) {
+            EditorDraftLoadResult.Missing
+        } else {
+            decode(JSONObject(target.readText()))
+                ?.takeIf { it.sourceRevision == seed.sourceRevision }
+                ?.let(EditorDraftLoadResult::Restored)
+                ?: EditorDraftLoadResult.Unreadable
+        }
+    } catch (_: Exception) {
+        EditorDraftLoadResult.Unreadable
+    }
 
     @Synchronized
     fun save(draft: EditorDraft) {
+        // Check on disk even for a new store instance (imports and relinking also
+        // write drafts). Only an explicit reset may discard an unreadable record.
+        if (load() == EditorDraftLoadResult.Unreadable) throw UnreadableEditorDraftException()
         runCatching {
             directory.mkdirs()
             val temporary = File(directory, "${target.name}.tmp")
@@ -32,14 +67,25 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             } catch (_: Exception) {
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
-        }.onFailure { Log.e(TAG, "Could not persist editor draft", it) }
+        }.onFailure { throw EditorDraftSaveException(it) }
     }
 
     fun clear() {
         if (target.exists() && !target.delete()) Log.w(TAG, "Could not delete ${target.name}")
     }
 
+    /** Called only after the user confirms discarding the unreadable review. */
+    @Synchronized
+    fun resetUnreadable(): EditorDraftLoadResult = try {
+        // A retry may now succeed; do not discard edits that can be restored.
+        if (load() == EditorDraftLoadResult.Unreadable) Files.deleteIfExists(target.toPath())
+        load()
+    } catch (_: Exception) {
+        EditorDraftLoadResult.Unreadable
+    }
+
     private fun encode(draft: EditorDraft) = JSONObject().apply {
+        ExplicitRallyGroups.validate(draft.cuts)
         put("version", draft.version)
         put("sourceRevision", draft.sourceRevision)
         put("updatedAtMs", draft.updatedAtMs)
@@ -71,6 +117,8 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         put("renderScoreOverlay", draft.renderScoreOverlay)
         put("renderScoreTimeline", draft.renderScoreTimeline)
         put("fadeScoreOverlay", draft.fadeScoreOverlay)
+        put("fadeScoreOverlayExplicit", draft.fadeScoreOverlayExplicit)
+        draft.portableUi?.let { put("portableUi", PortableReviewPreferences.validate(JSONObject(it), draft.cuts, false)) }
         put("cuts", JSONArray().apply {
             draft.cuts.forEach { cut -> put(JSONObject().apply {
                 put("id", cut.id)
@@ -82,6 +130,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
                 put("included", cut.included)
                 put("origin", cut.origin.name)
                 put("agreement", cut.agreement ?: JSONObject.NULL)
+                cut.editableGroupId?.let { put("editableGroupId", it) }
             }) }
         })
         put("ignoredIntervals", JSONArray().apply {
@@ -111,9 +160,11 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
                     included = item.getBoolean("included"),
                     origin = CutOrigin.valueOf(item.getString("origin")),
                     agreement = item.optNullableString("agreement"),
+                    editableGroupId = ExplicitRallyGroups.decode(item),
                 ))
             }
         }
+        ExplicitRallyGroups.validate(cuts)
         val ignoredJson = json.optJSONArray("ignoredIntervals") ?: JSONArray()
         val ignored = buildList {
             for (index in 0 until ignoredJson.length()) {
@@ -163,7 +214,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             pendingIgnoreStartMs = json.optNullableLong("pendingIgnoreStartMs"),
             ignoreReason = json.optString("ignoreReason", "non-game-content"),
             finalPreviewEnabled = json.optBoolean("finalPreviewEnabled"),
-            playbackRate = json.optDouble("playbackRate", 1.0).toFloat(),
+            playbackRate = json.optDouble("playbackRate", 1.0),
             confidenceReviewThreshold = json.optDouble("confidenceReviewThreshold", .7).toFloat(),
             reviewedCutIds = buildSet {
                 for (index in 0 until reviewedJson.length()) add(reviewedJson.getString(index))
@@ -187,6 +238,10 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             ),
             scoreTracking = scoreTracking,
             fadeScoreOverlay = json.optBoolean("fadeScoreOverlay", false),
+            fadeScoreOverlayExplicit = json.optBoolean("fadeScoreOverlayExplicit", json.has("fadeScoreOverlay")),
+            portableUi = if (json.has("portableUi")) {
+                PortableReviewPreferences.validate(json.get("portableUi"), cuts, false).toString()
+            } else null,
             renderScoreOverlay = if (persistedVersion >= 6) {
                 json.optBoolean("renderScoreOverlay", true)
             } else true,
@@ -203,7 +258,7 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         draft.beforePaddingMs in 0..MAX_PADDING_MS &&
             draft.afterPaddingMs in 0..MAX_PADDING_MS &&
             draft.joinGapMs in 0..MAX_JOIN_GAP_MS &&
-            draft.playbackRate in setOf(1f, 2f, 4f, 8f) &&
+            draft.playbackRate.isFinite() && draft.playbackRate in .25..8.0 &&
             draft.confidenceReviewThreshold in 0f..1f &&
             draft.suppressionContractVersion == FeatureSchema.SUPPRESSION_POLICY_CONTRACT_VERSION &&
             ScoreTrackingJson.validate(draft.scoreTracking, seed.durationMs) &&
@@ -228,8 +283,18 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         private const val TAG = "VolleySpliceEditor"
 
         fun relink(context: Context, oldSeed: EditorSeed, newSeed: EditorSeed) {
-            val oldDraft = EditorDraftStore(context, oldSeed).load() ?: return
-            EditorDraftStore(context, newSeed).save(oldDraft.copy(
+            relink(context.filesDir, oldSeed, newSeed)
+        }
+
+        internal fun relink(filesDir: File, oldSeed: EditorSeed, newSeed: EditorSeed) {
+            val oldDraft = when (val restored = EditorDraftStore(filesDir, oldSeed).load()) {
+                EditorDraftLoadResult.Missing -> return
+                is EditorDraftLoadResult.Restored -> restored.draft
+                EditorDraftLoadResult.Unreadable -> error(
+                    "Saved edits could not be restored. They have been preserved. Recover or reset the review before re-linking the video.",
+                )
+            }
+            EditorDraftStore(filesDir, newSeed).save(oldDraft.copy(
                 sourceRevision = newSeed.sourceRevision,
                 updatedAtMs = System.currentTimeMillis(),
             ))

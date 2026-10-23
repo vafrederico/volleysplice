@@ -2,7 +2,8 @@ import { parseCutDraft, type CutDraft, type CutDraftSeed } from "../../lib/cut-d
 
 export const HISTORY_LIMIT = 30;
 export type EditHistory = { past: CutDraft[]; present: CutDraft; future: CutDraft[] };
-export const editHistoryKey = (projectId: string) => `volleycut:edit-history:v1:${encodeURIComponent(projectId)}`;
+export const editHistoryKey = (projectId: string, instanceId?: string) =>
+  `volleycut:edit-history:v1:${encodeURIComponent(projectId)}${instanceId ? `:instance:${instanceId}` : ""}`;
 
 // Playback preferences and save timestamps are not review edits.
 export function editFingerprint(draft: CutDraft): string {

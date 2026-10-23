@@ -90,7 +90,7 @@ try {
     draft.scoreTracking.serveMarkers = project.analysis.intervals.map(r => ({ id: `serve-${r.id}`, rallyId: r.id, timestamp: r.start,
       side: "near", origin: "manual", ignorePreviousPoint: false }));
     project.reviewDraft = draft;
-    await store.putProject(project);
+    Object.assign(project, await store.putProject(project, { expectedSource: null }));
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
     await act(async () => root.render(React.createElement(App)));
     await waitFor(() => document.querySelector(".taste-rally-desk"));

@@ -37,7 +37,22 @@ with WebGPU where available and a WASM fallback. The ensemble uses its existing
 CPU classifiers. Visual checkpoints, completed audio features, project metadata,
 and finalized inference results use local IndexedDB; edit drafts use local storage. Source
 video bytes are not copied into project storage, so a browser restart only requires
-reconnecting the exact local file for playback or export—not rerunning inference. Deleting
+reconnecting the exact local file for playback or export—not rerunning inference.
+Reconnection uses the saved sampled fingerprint whenever one exists, even when a
+replacement file has identical name, size and modification time. Identical
+transferred bytes can have a different filename or timestamp. Legacy projects
+without a fingerprint retain exact metadata matching. Starting a new analysis
+that would reuse a saved project verifies the same source identity before linking
+the video or reopening its review. Once recorded, the source fingerprint survives
+requeue, read failures and retries; later metadata updates cannot replace or remove
+it. Attachment and setup reuse read the latest persisted identity and confirm it
+transactionally before linking. Source-bound queue and inference writes reject
+concurrent identity changes; ordinary review and background updates retain the
+latest identity. Recreating a deleted project also creates a fresh browser-local instance token.
+Source-bound work, review saves and export status updates keep that token; work
+from a deleted instance cannot overwrite its replacement even for the same video.
+Legacy records acquire a stable token atomically. Draft and undo storage is scoped
+to the instance, with legacy restore retained for migrated records. Deleting
 a project also deletes its cached features, inference, and edit draft. The editor exports
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
@@ -88,12 +103,29 @@ error and still opens the editor with the completed rally/suppression analysis. 
 source and required retained production outputs are available, the score panel can rerun
 and save only the missing specialist work without repeating the main feature pipeline.
 
-The optional **Render score on final video** setting is available only while score
-tracking is enabled and defaults off per project. When enabled, the editor previews the
-source-timestamped score box over the video and the MP4 exporter burns the same Team 1 /
-Team 2 score into the top-left of every retained frame. The existing decode/AVC encode
+The **Render score on final video** setting is available while score tracking is
+enabled and defaults on per project, including drafts saved before this preference
+was persisted. The choice is saved with review edits and project backups. It controls
+whether the MP4 exporter burns the Team 1 / Team 2 score into the top-left of every
+retained frame. **Preview score on video** independently controls the editor preview.
+The existing decode/AVC encode
 path is used with or without the overlay; the enabled path additionally composites each
 frame through a reusable canvas.
+
+Project JSON includes the optional additive field
+`corrections.ui` with its own `schemaVersion: 1` and portable review/output
+preferences. Unknown extensions (including iOS chapter options) survive import and
+re-export. The root `editorPreferences.renderScoreOnFinalVideo` remains a
+compatibility alias; the canonical UI field wins if both are present. Missing
+legacy preferences retain historical defaults. See the
+[shared contract](../docs/portable-review-preferences.md) for exact keys, units,
+defaults, validation limits, and the native-port fixture.
+
+Run `npm run test:review-persistence` for storage regressions and the headless real
+editor regression, including score preference save, unmount, reopen, and export queue
+options. The UI harness uses JSDOM and Vite middleware without serving the app or
+encoding media. Run `npm run build` for type checking and the verified static build;
+run `npm run test:web` from the repository root for the shared web unit suite.
 
 ## Run locally
 

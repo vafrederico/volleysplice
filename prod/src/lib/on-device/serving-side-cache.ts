@@ -32,6 +32,7 @@ export function isReusableServingSideOutput(
     output.features.columns !== SERVING_SIDE_FEATURE_COLUMNS ||
     !(output.features.values instanceof Float64Array) ||
     output.features.values.length !== output.features.rows * output.features.columns ||
+    output.features.values.some((value) => !Number.isFinite(value)) ||
     !Array.isArray(output.candidates)
   ) return false;
 

@@ -3,6 +3,56 @@ import XCTest
 @testable import VolleyCore
 
 final class ProjectContractTests: XCTestCase {
+    private func explicitGroupFixture() throws -> JSONValue {
+        let fixtures = ProcessInfo.processInfo.environment["VOLLEY_FIXTURES"].map { URL(fileURLWithPath: $0) } ??
+            URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Fixtures")
+        return try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: fixtures.appendingPathComponent("explicit-rally-groups.json")))
+    }
+    func testSharedExplicitGroupArchiveFixtureRoundTripResetAndInvalidTokens() throws {
+        let fixture = try explicitGroupFixture()
+        var archive = try bundle()
+        archive["source"]?["media"]?["duration"] = .number(40)
+        archive["source"]?["gameWindow"]?["end"] = .number(40)
+        archive["corrections"]?["correctedRanges"] = fixture["correctedRanges"]
+        let imported = try ProjectArchive.importBundle(archive)
+        let expected = try XCTUnwrap(fixture["correctedRanges"]?.array)
+        XCTAssertEqual(imported.draft.cuts.map(\.editableGroupId), expected.map { $0["editableGroupId"]?.string })
+        XCTAssertEqual(EditorPresentation(draft: imported.draft, suggestions: [], bounds: imported.gameWindow,
+            durationMs: imported.durationMs).groups.count, 4)
+        let reopened = try JSONDecoder().decode(ProjectDocument.self, from: JSONEncoder().encode(imported))
+        try ProjectArchive.updateCorrections(&archive, draft: reopened.draft)
+        XCTAssertEqual(try ProjectArchive.importBundle(archive).draft.cuts, imported.draft.cuts)
+        for invalid in try XCTUnwrap(fixture["invalidGroupIds"]?.array) + [.string("valid\n"), .string(String(repeating: "a", count: 129))] {
+            var value = archive
+            var cuts = expected; cuts[0]["editableGroupId"] = invalid
+            value["corrections"]?["correctedRanges"] = .array(cuts)
+            XCTAssertThrowsError(try ProjectArchive.importBundle(value), "\(invalid)")
+        }
+        var resetArchive = archive
+        resetArchive["initialInference"]?["ranges"] = fixture["fullReset"]?["modelRanges"]
+        resetArchive["corrections"]?["correctedRanges"] = fixture["fullReset"]?["correctedRanges"]
+        let changed = try ProjectArchive.importBundle(resetArchive)
+        let restored = try ProjectArchive.restoredModelDraft(changed)
+        XCTAssertEqual(restored.cuts.map(\.id), ["R001", "R009"])
+        XCTAssertEqual(restored.cuts.map { [$0.coreStartMs, $0.coreEndMs] }, [[10000, 20000], [30000, 35000]])
+        XCTAssertTrue(restored.cuts.allSatisfy { $0.editableGroupId == nil && $0.included })
+        XCTAssertEqual(restored.scoreTracking, changed.draft.scoreTracking)
+    }
+    func testExplicitMetadataAbsentInLegacyDraftsAndPresentNullRejected() throws {
+        let original = EditorDraft(sourceRevision: "legacy", cuts: [
+            .init(id: "R001", coreStartMs: 1000, coreEndMs: 2000)])
+        let encoded = try JSONEncoder().encode(original)
+        let legacy = try JSONDecoder().decode(EditorDraft.self, from: encoded)
+        XCTAssertNil(legacy.cuts[0].editableGroupId)
+        var value = try JSONDecoder().decode(JSONValue.self, from: encoded)
+        var cuts = try XCTUnwrap(value["cuts"]?.array)
+        cuts[0]["editableGroupId"] = .null; value["cuts"] = .array(cuts)
+        XCTAssertThrowsError(try JSONDecoder().decode(EditorDraft.self, from: JSONEncoder().encode(value)))
+        var explicitCut = original.cuts[0]; explicitCut.editableGroupId = "opaque"
+        var explicit = original; explicit.cuts = [explicitCut]
+        XCTAssertEqual(try JSONDecoder().decode(EditorDraft.self, from: JSONEncoder().encode(explicit)), explicit)
+    }
     func testNewDraftUsesAutomaticDefaultsWithScoreTrackingDisabled() throws {
         // Android EditorMathTest.newDraftUsesSimpleAutomaticDefaults and the
         // skipped-serving branch. Core newDraft has no initially-enabled input.
