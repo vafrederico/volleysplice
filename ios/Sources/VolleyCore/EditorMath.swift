@@ -134,16 +134,24 @@ public enum EditorMath {
         return result
     }
     public static func splitCut(_ draft: EditorDraft, cutId: String, positionMs: Int64,
-                                bounds: TimeRange) -> EditorDraft? {
+                                bounds: TimeRange, groupCutIds: Set<String>? = nil) -> EditorDraft? {
         guard let i = draft.cuts.firstIndex(where: { $0.id == cutId }) else { return nil }
         let cut = draft.cuts[i]
         guard positionMs >= cut.coreStartMs + minimumMarkMs, positionMs <= cut.coreEndMs - minimumMarkMs else { return nil }
         var result = draft; var left = cut; var right = cut
+        let leftGroup = "split:" + UUID().uuidString, rightGroup = "split:" + UUID().uuidString
+        let members = cut.editableGroupId.map { token in Set(draft.cuts.filter { $0.editableGroupId == token }.map(\.id)) } ??
+            (groupCutIds ?? [cutId])
+        for index in result.cuts.indices where members.contains(result.cuts[index].id) {
+            result.cuts[index].editableGroupId = result.cuts[index].coreStartMs < positionMs ? leftGroup : rightGroup
+        }
         left.coreEndMs = positionMs; left.keepEndMs = min(bounds.endMs, positionMs + cut.keepEndMs - cut.coreEndMs)
-        right.id = nextId(prefix: cut.origin == .inferred ? "R" : "M", ids: draft.cuts.map(\.id))
+        left.editableGroupId = leftGroup; right.editableGroupId = rightGroup
+        right.id = nextId(prefix: cut.origin == .inferred ? "R" : "M", ids: draft.cuts.map(\.id) + draft.ignoredIntervals.map(\.id))
         right.coreStartMs = positionMs; right.keepStartMs = max(bounds.startMs, positionMs - cut.coreStartMs + cut.keepStartMs)
         result.cuts[i] = left; result.cuts.insert(right, at: i + 1)
         result.userTouchedCutIds.formUnion([left.id, right.id])
+        guard (try? ExplicitRallyGroups.validate(result.cuts)) != nil else { return nil }
         return result
     }
     public static func addManual(_ draft: EditorDraft, startMs: Int64, endMs: Int64, bounds: TimeRange) -> EditorDraft {
@@ -164,8 +172,18 @@ public enum EditorMath {
         return result
     }
     public static func nextId(prefix: String, ids: [String]) -> String {
-        let maximum = ids.filter { $0.hasPrefix(prefix) }.compactMap { Int($0.dropFirst(prefix.count)) }.max() ?? 0
-        return String(format: "%@%03d", prefix, maximum + 1)
+        let used = Set(ids)
+        let maximum = max(0, ids.filter { $0.hasPrefix(prefix) }.compactMap { Int($0.dropFirst(prefix.count)) }.max() ?? 0)
+        if maximum < Int.max {
+            let digits = String(maximum + 1)
+            let candidate = prefix + String(repeating: "0", count: max(0, 3 - digits.count)) + digits
+            if !used.contains(candidate) { return candidate }
+        }
+        // A retained ID can already occupy Int.max; never overflow or truncate it through %d.
+        while true {
+            let candidate = prefix + UUID().uuidString
+            if !used.contains(candidate) { return candidate }
+        }
     }
     public static func alignRallyServeMarkers(_ draft: EditorDraft) -> EditorDraft {
         guard let markers = draft.scoreTracking["serveMarkers"]?.array else { return draft }
