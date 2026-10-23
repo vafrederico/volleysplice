@@ -111,6 +111,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -138,7 +140,11 @@ import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -195,6 +201,7 @@ class EditorActivity : ComponentActivity() {
         if (durationMs <= 0 || starts.size != ends.size || starts.size != confidence.size) return null
         return EditorSeed(
             sourceUri = sourceUri,
+            draftNamespace = intent.getStringExtra(EXTRA_DRAFT_NAMESPACE),
             displayName = intent.getStringExtra(EXTRA_DISPLAY_NAME) ?: "recording.mp4",
             durationMs = durationMs,
             width = intent.getIntExtra(EXTRA_WIDTH, 0),
@@ -213,6 +220,7 @@ class EditorActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_SOURCE_URI = "editor_source_uri"
+        private const val EXTRA_DRAFT_NAMESPACE = "editor_draft_namespace"
         private const val EXTRA_DISPLAY_NAME = "editor_display_name"
         private const val EXTRA_DURATION_MS = "editor_duration_ms"
         private const val EXTRA_WIDTH = "editor_width"
@@ -247,6 +255,7 @@ class EditorActivity : ComponentActivity() {
         private fun intentFromSeed(context: Context, seed: EditorSeed) =
             Intent(context, EditorActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE_URI, seed.sourceUri)
+                putExtra(EXTRA_DRAFT_NAMESPACE, seed.draftNamespace)
                 putExtra(EXTRA_DISPLAY_NAME, seed.displayName)
                 putExtra(EXTRA_DURATION_MS, seed.durationMs)
                 putExtra(EXTRA_WIDTH, seed.width)
@@ -492,7 +501,11 @@ private fun setScoreTrackingPreference(
 ) {
     val seed = project.editorSeed() ?: return
     val store = EditorDraftStore(context, seed)
-    val draft = store.load() ?: EditorMath.newDraft(seed)
+    val draft = when (val restored = store.load()) {
+        EditorDraftLoadResult.Missing -> EditorMath.newDraft(seed)
+        is EditorDraftLoadResult.Restored -> restored.draft
+        EditorDraftLoadResult.Unreadable -> return
+    }
     store.save(draft.copy(
         scoreTracking = draft.scoreTracking.copy(enabled = enabled),
         updatedAtMs = System.currentTimeMillis(),
@@ -570,6 +583,8 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
     var selectedSource by remember { mutableStateOf<SourceSelection?>(null) }
     var preparingSource by remember { mutableStateOf(false) }
     var inference by remember { mutableStateOf(InferenceUiState()) }
+    var feedbackImportStatus by remember { mutableStateOf(InferenceUiState()) }
+    var feedbackImportJob by remember { mutableStateOf<Job?>(null) }
     val useCache = true
     // Match the web app: prepare serve markers with every project so the
     // optional scoreboard is ready when the user turns it on in the editor.
@@ -677,22 +692,27 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
         if (uris.isNotEmpty()) {
             preparingSource = true
             inference = InferenceUiState(
+                running = true,
                 stage = "importing",
                 detail = "Opening ${if (uris.size == 1) "your saved project" else "${uris.size} saved projects"}",
             )
-            scope.launch {
+            feedbackImportStatus = inference
+            feedbackImportJob = scope.launch {
                 val results = uris.mapIndexed { index, uri ->
                     inference = InferenceUiState(
+                        running = true,
                         stage = "importing",
                         detail = "Importing ${index + 1} of ${uris.size} · ${sourceDisplayName(context, uri)}",
                     )
+                    feedbackImportStatus = inference
                     uri to withContext(Dispatchers.IO) {
                         runCatching {
                             val text = context.contentResolver.openInputStream(uri)
                                 ?.bufferedReader()?.use { it.readText() }
                                 ?: error("Could not open that saved project")
+                            currentCoroutineContext().ensureActive()
                             ModelFeedbackImporter.import(context, text)
-                        }
+                        }.onFailure { if (it is CancellationException) throw it }
                     }
                 }
                 preparingSource = false
@@ -733,7 +753,10 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         },
                     )
                 }
+                feedbackImportStatus = inference
             }
+        } else {
+            feedbackImportStatus = InferenceUiState(detail = "Project backup import cancelled. Your saved edits are unchanged.")
         }
     }
     val relinkPicker = rememberLauncherForActivityResult(
@@ -1205,13 +1228,45 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
             val store = remember(selectedProject.id, currentSeed.sourceRevision) {
                 EditorDraftStore(context, currentSeed)
             }
-            val restored = remember(selectedProject.id, currentSeed.sourceRevision) { store.load() }
-            EditorScreen(
+            var restored by remember(selectedProject.id, currentSeed.sourceRevision) {
+                mutableStateOf(store.load())
+            }
+            var resetFailed by remember { mutableStateOf(false) }
+            if (restored == EditorDraftLoadResult.Unreadable) {
+                ProjectShell(projectControls = { projectControls(null, null) }) {
+                    DraftRecoveryPanel(
+                        onRetry = { restored = store.load() },
+                        onImport = {
+                            feedbackImportStatus = InferenceUiState()
+                            feedbackImportPicker.launch(arrayOf("application/json", "text/json"))
+                        },
+                        onReset = {
+                            restored = store.resetUnreadable()
+                            resetFailed = restored == EditorDraftLoadResult.Unreadable
+                        },
+                        resetFailed = resetFailed,
+                        importing = feedbackImportStatus.running,
+                        importMessage = feedbackImportStatus.detail.takeIf(String::isNotBlank),
+                        importError = feedbackImportStatus.error,
+                        onCancelImport = {
+                            feedbackImportJob?.cancel()
+                            preparingSource = false
+                            feedbackImportStatus = InferenceUiState(
+                                detail = "Project backup import cancelled. Your saved edits are unchanged. Backups already imported remain in the project list.",
+                            )
+                            inference = feedbackImportStatus
+                            reloadProjects(selectedProject.id, preserveNewProject = false)
+                        },
+                    )
+                }
+            } else EditorScreen(
                 activity = activity,
                 project = selectedProject,
                 seed = currentSeed,
                 store = store,
-                initialDraft = restored ?: EditorMath.newDraft(currentSeed),
+                initialDraft = (restored as? EditorDraftLoadResult.Restored)?.draft
+                    ?: EditorMath.newDraft(currentSeed),
+                onDraftUnreadable = { restored = EditorDraftLoadResult.Unreadable },
                 analysisRunning = queueCount > 0,
                 displayAnalysisMeasurements = displayAnalysisMeasurements,
                 onDisplayAnalysisMeasurements = { enabled ->
@@ -1243,6 +1298,69 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 guidedTourRestartSignal = guidedTourRestartSignal,
             )
         }
+    }
+}
+
+@Composable
+internal fun DraftRecoveryPanel(
+    onRetry: () -> Unit,
+    onImport: () -> Unit,
+    onReset: () -> Unit,
+    resetFailed: Boolean,
+    importing: Boolean,
+    importMessage: String?,
+    importError: String?,
+    onCancelImport: () -> Unit,
+) {
+    var confirmReset by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Saved edits could not be opened", style = MaterialTheme.typography.titleLarge)
+        Text("Your saved edits are unchanged. Try again, or import an exported project backup to recover your review as a separate project.")
+        if (resetFailed) Text("The saved review could not be removed. It is still protected. Try again when device storage is available.", color = Danger)
+        if (importMessage != null) Text(
+            importMessage,
+            modifier = Modifier.testTag("draft-recovery-import-status").semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        if (importError != null) Text(
+            "Project backup could not be imported: $importError",
+            color = Danger,
+            modifier = Modifier.testTag("draft-recovery-import-error").semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        if (importing) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().testTag("draft-recovery-import-progress"))
+            OutlinedButton(onClick = onCancelImport, modifier = Modifier.testTag("draft-recovery-cancel-import")) {
+                Text("Cancel import")
+            }
+        }
+        OutlinedButton(onClick = onRetry, enabled = !importing, modifier = Modifier.testTag("draft-recovery-retry")) {
+            Text("Try again")
+        }
+        OutlinedButton(onClick = onImport, enabled = !importing, modifier = Modifier.testTag("draft-recovery-import")) {
+            Text("Import project backup")
+        }
+        OutlinedButton(
+            onClick = { confirmReset = true },
+            enabled = !importing,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+            modifier = Modifier.testTag("draft-recovery-reset"),
+        ) { Text("Reset saved review") }
+    }
+    if (confirmReset) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("Discard saved edits?") },
+            text = { Text("This permanently removes the unreadable review and starts from the original analysis. Keep it if you want to recover it with a compatible app version or a backup.") },
+            confirmButton = {
+                TextButton(
+                    onClick = { confirmReset = false; onReset() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Danger),
+                    modifier = Modifier.testTag("draft-recovery-confirm-reset"),
+                ) { Text("Discard edits and reset") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmReset = false }) { Text("Keep saved edits") }
+            },
+        )
     }
 }
 
@@ -2780,6 +2898,7 @@ private fun EditorScreen(
     seed: EditorSeed,
     store: EditorDraftStore,
     initialDraft: EditorDraft,
+    onDraftUnreadable: () -> Unit,
     analysisRunning: Boolean,
     displayAnalysisMeasurements: Boolean,
     onDisplayAnalysisMeasurements: (Boolean) -> Unit,
@@ -3361,7 +3480,11 @@ private fun EditorScreen(
 
     LaunchedEffect(draft) {
         delay(200)
-        withContext(Dispatchers.IO) { store.save(draft) }
+        try {
+            withContext(Dispatchers.IO) { store.save(draft) }
+        } catch (_: UnreadableEditorDraftException) {
+            onDraftUnreadable()
+        }
     }
 
     LaunchedEffect(draft.playbackRate) {

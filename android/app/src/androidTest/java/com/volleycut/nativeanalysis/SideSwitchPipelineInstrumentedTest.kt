@@ -96,7 +96,11 @@ class SideSwitchPipelineInstrumentedTest {
             )
             assertNotNull(completed)
             val seed = checkNotNull(completed?.editorSeed())
-            val draft = EditorDraftStore(context, seed).load() ?: EditorMath.newDraft(seed)
+            val draft = when (val restored = EditorDraftStore(context, seed).load()) {
+                EditorDraftLoadResult.Missing -> EditorMath.newDraft(seed)
+                is EditorDraftLoadResult.Restored -> restored.draft
+                EditorDraftLoadResult.Unreadable -> error("Saved review could not be restored")
+            }
             assertEquals(
                 sideSwitch.candidates.size,
                 draft.scoreTracking.sideSwitchMarkers.count {

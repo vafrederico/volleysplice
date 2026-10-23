@@ -81,6 +81,7 @@ internal data class NativeProject(
     val lastExportedAtMs: Long? = null,
     val createdAtMs: Long,
     val updatedAtMs: Long,
+    val draftNamespace: String? = null,
 ) {
     fun editorSeed(): EditorSeed? = if (status == ProjectStatus.READY) {
         EditorSeed(
@@ -107,6 +108,7 @@ internal data class NativeProject(
             audioExtractorVersion = audioExtractorVersion,
             visualExtractorVersion = visualExtractorVersion,
             rallyModelId = modelId,
+            draftNamespace = draftNamespace,
         )
     } else null
 }
@@ -114,7 +116,7 @@ internal data class NativeProject(
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
     // Keep reading projects saved by the retired paired-inference experiment.
-    private const val VERSION = 12
+    private const val VERSION = 13
     private const val TAG = "VolleySpliceProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -381,7 +383,9 @@ internal object NativeProjectStore {
             "That file has different video dimensions or rotation from the original recording."
         project.media.videoMime() != replacementMedia.videoMime() ->
             "That file uses a different video codec from the original recording."
-        project.media.audioMime() != replacementMedia.audioMime() ->
+        // Probing a video-only file returns null; older saved projects use an
+        // empty string for the same absence. Keep real codec checks exact.
+        project.media.audioMime().orEmpty() != replacementMedia.audioMime().orEmpty() ->
             "That file has a different audio track from the original recording."
         else -> null
     }
@@ -407,6 +411,9 @@ internal object NativeProjectStore {
         }
         val oldSeed = project.editorSeed()
         val updated = project.copy(
+            // Pre-namespace imports keep their old draft readable until this
+            // explicit relink, then move into their own review identity too.
+            draftNamespace = project.draftNamespace ?: project.id.takeIf { it.startsWith("import-") },
             source = replacement.copy(
                 sampledFingerprint = project.source.sampledFingerprint
                     ?: replacement.sampledFingerprint,
@@ -606,6 +613,7 @@ internal object NativeProjectStore {
             sideSwitchError = seed.sideSwitchError,
             suppression = seed.suppression,
             modelId = seed.rallyModelId,
+            draftNamespace = seed.draftNamespace,
             createdAtMs = now,
             updatedAtMs = now,
         ).withServingSideCacheIdentity()
@@ -657,6 +665,7 @@ internal object NativeProjectStore {
     internal fun encode(project: NativeProject) = JSONObject().apply {
         put("version", VERSION)
         put("id", project.id)
+        put("draftNamespace", project.draftNamespace ?: JSONObject.NULL)
         put("source", JSONObject().apply {
             put("uri", project.source.uri)
             put("name", project.source.name)
@@ -737,6 +746,7 @@ internal object NativeProjectStore {
         )
         val project = NativeProject(
             id = json.getString("id"),
+            draftNamespace = if (json.isNull("draftNamespace")) null else json.getString("draftNamespace"),
             source = ProjectSource(
                 uri = sourceJson.getString("uri"),
                 name = sourceJson.getString("name"),
