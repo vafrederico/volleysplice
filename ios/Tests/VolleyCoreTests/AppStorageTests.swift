@@ -115,6 +115,33 @@ final class AppStorageTests: XCTestCase {
         try AppStorageInventory.remove(before, roots: afterCreation, protection: .init())
         XCTAssertFalse(FileManager.default.fileExists(atPath: movie.path))
     }
+    func testReplacedRootCannotScanOrDeleteExternalFiles() throws {
+        let (root, roots) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        try write(roots.documents.appendingPathComponent("match.mp4"), "owned")
+        let items = try AppStorageInventory.scan(roots: roots)
+        XCTAssertEqual(items.count, 1)
+        let external = root.appendingPathComponent("External")
+        let externalMovie = external.appendingPathComponent("match.mp4")
+        try write(externalMovie, "external")
+        try FileManager.default.moveItem(at: roots.documents, to: root.appendingPathComponent("RetainedDocuments"))
+        try FileManager.default.createSymbolicLink(atPath: roots.documents.path, withDestinationPath: external.path)
+        XCTAssertTrue(try AppStorageInventory.scan(roots: roots).isEmpty)
+        XCTAssertThrowsError(try AppStorageInventory.remove(items, roots: roots, protection: .init()))
+        XCTAssertEqual(try String(contentsOf: externalMovie, encoding: .utf8), "external")
+    }
+    func testMissingRootDoesNotAdoptSymlinkCreatedLater() throws {
+        let (root, existing) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appendingPathComponent("NotCreated/Documents")
+        let roots = AppStorageInventory.Roots(documents: documents, features: existing.features,
+            queue: existing.queue, temporary: existing.temporary)
+        let external = root.appendingPathComponent("External")
+        let externalMovie = external.appendingPathComponent("match.mp4")
+        try write(externalMovie, "external")
+        try FileManager.default.createDirectory(at: documents.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: documents.path, withDestinationPath: external.path)
+        XCTAssertTrue(try AppStorageInventory.scan(roots: roots).isEmpty)
+        XCTAssertEqual(try String(contentsOf: externalMovie, encoding: .utf8), "external")
+    }
     func testRecentlyDeletedSeparatesHiddenCopiesAndRemovalPreservesCurrentRecording() throws {
         let (root, roots) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
         let current = roots.documents.appendingPathComponent("match.mp4")

@@ -5,7 +5,7 @@ import { GuidedTour } from "@/components/GuidedTour";
 import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { SiteFooter } from "@/components/SiteFooter";
-import { cutDraftStorageKeys } from "@/lib/cut-draft";
+import { projectDraftStorageKeys } from "@/lib/review-draft-persistence";
 import {
   CORE_INFERENCE_STEP_IDS,
   createInferenceProgressSteps,
@@ -62,15 +62,21 @@ import {
 } from "@/designs/useDesignReview";
 import {
   deleteProject,
+  confirmProjectSource,
+  getProject,
   listProjects,
   markProjectExported,
   projectAnalysisId,
   projectId,
   projectSource,
+  ProjectSourceConflictError,
   putProject,
+  retainProjectSource,
+  sameProjectSource,
   SELECTED_PROJECT_STORAGE_KEY,
   sourceCanReconnectFile,
   sourceFileFingerprint,
+  type ProjectSource,
   type VolleySpliceProject,
 } from "@/lib/project-store";
 
@@ -80,11 +86,12 @@ type WorkState = "empty" | "opening" | "ready" | "error";
 
 const FULL_FRAME_ROI: NormalizedRoi = { x: 0, y: 0, width: 1, height: 1 };
 
-type AppExportJob = DesignExportJob;
+type AppExportJob = DesignExportJob & { projectInstanceId: string };
 
 type QueuedVideoExport = DesignVideoExportRequest & {
   projectId: string;
   projectName: string;
+  projectInstanceId: string;
   sourceFile: File;
   duration: number;
   target: VideoExportTarget | null;
@@ -102,6 +109,7 @@ function ReadyProjectEditor({
   onAttachSource,
   onQueueVideoExport,
   onDeleteProject,
+  sourceError,
 }: {
   projectId: string;
   projects: VolleySpliceProject[];
@@ -114,6 +122,7 @@ function ReadyProjectEditor({
   onAttachSource: (file: File) => void | Promise<void>;
   onQueueVideoExport: (request: DesignVideoExportRequest) => void;
   onDeleteProject: () => void;
+  sourceError: string | null;
 }) {
   const review = useDesignReview({
     projectId: readyProjectId,
@@ -129,12 +138,13 @@ function ReadyProjectEditor({
   });
 
   if (review.state === "ready") {
-    return (
+    return (<>
+      {sourceError && <p className={styles.error} role="alert">{sourceError}</p>}
       <RallyDesk
         review={review}
         onDeleteProject={onDeleteProject}
       />
-    );
+    </>);
   }
 
   return (
@@ -285,10 +295,12 @@ function WebApp() {
     useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedbackImporting, setFeedbackImporting] = useState(false);
+  const [checkingProjectSource, setCheckingProjectSource] = useState(false);
   const [exportJobs, setExportJobs] = useState<AppExportJob[]>([]);
 
   const projectsRef = useRef<VolleySpliceProject[]>([]);
   const filesRef = useRef(new Map<string, File>());
+  const validatedSourcesRef = useRef(new Map<string, { source: ProjectSource; instanceId?: string }>());
   const videoUrlsRef = useRef(new Map<string, string>());
   const exportJobsRef = useRef(new Map<string, AppExportJob>());
   const exportQueueRef = useRef<QueuedVideoExport[]>([]);
@@ -300,12 +312,14 @@ function WebApp() {
     projectId: string;
     media: OpenedMedia;
   } | null>(null);
-  const deletedProjectIdsRef = useRef(new Set<string>());
+  const deletedProjectInstancesRef = useRef(new Set<string>());
   const previewUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const resumePreviewAfterSeek = useRef(false);
   const candidateVideoRef = useRef<HTMLVideoElement>(null);
   const suppressionAugmentingRef = useRef(new Set<string>());
+  const checkingProjectSourceRef = useRef(false);
+  const candidateRevisionRef = useRef(0);
 
   const safariUnsupported = isUnsupportedSafariBrowser();
   const webCodecsReady =
@@ -314,7 +328,7 @@ function WebApp() {
     "AudioDecoder" in window &&
     "VideoFrame" in window;
   const secureContext = window.isSecureContext;
-  const busy = workState === "opening" || feedbackImporting;
+  const busy = workState === "opening" || feedbackImporting || checkingProjectSource;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedSourceFile = selectedProjectId
@@ -330,16 +344,96 @@ function WebApp() {
     setProjects(sorted);
   }
 
+  function wasDeleted(id: string, instanceId = projectsRef.current.find((project) => project.id === id)?.instanceId) {
+    return !!instanceId && deletedProjectInstancesRef.current.has(instanceId);
+  }
+
+  function replaceProject(project: VolleySpliceProject) {
+    replaceProjects(projectsRef.current.some((candidate) => candidate.id === project.id)
+      ? projectsRef.current.map((candidate) => candidate.id === project.id ? project : candidate)
+      : [...projectsRef.current, project]);
+  }
+
+  function unlinkSourceFile(id: string) {
+    filesRef.current.delete(id);
+    validatedSourcesRef.current.delete(id);
+    const url = videoUrlsRef.current.get(id);
+    if (url) URL.revokeObjectURL(url);
+    videoUrlsRef.current.delete(id);
+    setFilesRevision((current) => current + 1);
+  }
+
+  function reconcileProject(project: VolleySpliceProject) {
+    if (!mountedRef.current || wasDeleted(project.id, project.instanceId)) return;
+    const current = projectsRef.current.find((candidate) => candidate.id === project.id);
+    if (current && (current.instanceId !== project.instanceId || !sameProjectSource(current.source, project.source))) unlinkSourceFile(project.id);
+    if (current && current.instanceId !== project.instanceId) {
+      exportJobsRef.current.delete(project.id);
+      exportTargetRequestsRef.current.delete(project.id);
+      exportQueueRef.current = exportQueueRef.current.filter((job) => job.projectId !== project.id || job.projectInstanceId === project.instanceId);
+      setExportJobs([...exportJobsRef.current.values()]);
+      if (activeMediaRef.current?.projectId === project.id) activeAbortRef.current?.abort();
+    }
+    replaceProject(project);
+  }
+
+  function sourceFailure(id: string, cause: unknown) {
+    if (!mountedRef.current) return;
+    unlinkSourceFile(id);
+    if (cause instanceof ProjectSourceConflictError) {
+      if (cause.project) reconcileProject(cause.project);
+      else replaceProjects(projectsRef.current.filter((project) => project.id !== id));
+    }
+    setError(cause instanceof Error ? cause.message : String(cause));
+  }
+
+  async function validateStoredSource(id: string, selected: File, expectedInstanceId: string | undefined, approved?: { source: ProjectSource; instanceId?: string }) {
+    const latest = await getProject(id);
+    if (!latest) throw new ProjectSourceConflictError(null);
+    if (!expectedInstanceId || latest.instanceId !== expectedInstanceId) throw new ProjectSourceConflictError(latest, "This project instance changed. Reopen it before reconnecting.");
+    if ((!approved || approved.instanceId !== latest.instanceId || !sameProjectSource(latest.source, approved.source)) &&
+        !(await sourceCanReconnectFile(latest.source, selected))) {
+      throw new ProjectSourceConflictError(latest,
+        `Choose the original ${latest.source.name} file (${compactBytes(latest.source.size)}). The selected file does not match this project.`);
+    }
+    return latest;
+  }
+
+  async function commitSourceProject(project: VolleySpliceProject, expectedSource: ProjectSource | null) {
+    const persisted = await putProject(project, { expectedSource });
+    if (wasDeleted(project.id, project.instanceId)) throw new ProjectSourceConflictError(null);
+    if (mountedRef.current) {
+      replaceProject(persisted);
+      if (filesRef.current.has(project.id)) validatedSourcesRef.current.set(project.id, { source: persisted.source, instanceId: persisted.instanceId });
+    }
+    return persisted;
+  }
+
   function commitProject(project: VolleySpliceProject) {
-    const next = projectsRef.current.some(
+    const existing = projectsRef.current.find(
       (candidate) => candidate.id === project.id,
-    )
-      ? projectsRef.current.map((candidate) =>
-          candidate.id === project.id ? project : candidate,
-        )
-      : [...projectsRef.current, project];
-    replaceProjects(next);
-    void putProject(project).catch(() => {
+    );
+    if (existing && existing.instanceId !== project.instanceId) {
+      sourceFailure(project.id, new ProjectSourceConflictError(existing, "This project instance changed. Reopen it before saving."));
+      return;
+    }
+    project = {
+      ...project,
+      source: retainProjectSource(project.source, existing?.source),
+    };
+    replaceProject(project);
+    void putProject(project).then((persisted) => {
+      const current = projectsRef.current.find((candidate) => candidate.id === project.id);
+      if (mountedRef.current && !wasDeleted(project.id, project.instanceId) && current &&
+          current.instanceId === project.instanceId &&
+          sameProjectSource(current.source, project.source) && !sameProjectSource(current.source, persisted.source)) {
+        reconcileProject({ ...current, source: persisted.source });
+      }
+    }).catch((cause) => {
+      if (cause instanceof ProjectSourceConflictError) {
+        sourceFailure(project.id, cause);
+        return;
+      }
       if (mountedRef.current) {
         setError(
           "Browser project storage is unavailable. This project will last for this tab only.",
@@ -348,10 +442,11 @@ function WebApp() {
     });
   }
 
-  function linkSourceFile(projectIdToLink: string, sourceFile: File) {
+  function linkSourceFile(projectIdToLink: string, sourceFile: File, project: VolleySpliceProject) {
     const previousUrl = videoUrlsRef.current.get(projectIdToLink);
     if (previousUrl) URL.revokeObjectURL(previousUrl);
     filesRef.current.set(projectIdToLink, sourceFile);
+    validatedSourcesRef.current.set(projectIdToLink, { source: project.source, instanceId: project.instanceId });
     videoUrlsRef.current.set(
       projectIdToLink,
       URL.createObjectURL(sourceFile),
@@ -361,8 +456,8 @@ function WebApp() {
 
   const updateExportJob = useCallback((job: AppExportJob) => {
     if (
-      deletedProjectIdsRef.current.has(job.projectId) ||
-      !projectsRef.current.some((project) => project.id === job.projectId)
+      wasDeleted(job.projectId, job.projectInstanceId) ||
+      !projectsRef.current.some((project) => project.id === job.projectId && project.instanceId === job.projectInstanceId)
     ) {
       return;
     }
@@ -373,7 +468,8 @@ function WebApp() {
       replaceProjects(projectsRef.current.map((project) =>
         project.id === job.projectId ? { ...project, lastExportedAt } : project,
       ));
-      void markProjectExported(job.projectId, lastExportedAt).catch(() => {
+      void markProjectExported(job.projectId, lastExportedAt, job.projectInstanceId).catch((cause) => {
+        if (cause instanceof ProjectSourceConflictError) { sourceFailure(job.projectId, cause); return; }
         if (mountedRef.current) setError("The video was exported, but its exported status could not be saved in browser storage.");
       });
     }
@@ -387,9 +483,9 @@ function WebApp() {
         const request = exportQueueRef.current.shift();
         if (
           !request ||
-          deletedProjectIdsRef.current.has(request.projectId) ||
+          wasDeleted(request.projectId, request.projectInstanceId) ||
           !projectsRef.current.some(
-            (project) => project.id === request.projectId,
+            (project) => project.id === request.projectId && project.instanceId === request.projectInstanceId,
           )
         ) {
           continue;
@@ -397,6 +493,7 @@ function WebApp() {
         const startedJob: AppExportJob = {
           projectId: request.projectId,
           projectName: request.projectName,
+          projectInstanceId: request.projectInstanceId,
           status: "exporting",
           progress: 1,
           speed: null,
@@ -486,12 +583,13 @@ function WebApp() {
         (candidate) => candidate.id === projectIdToExport,
       );
       const sourceFile = filesRef.current.get(projectIdToExport);
-      if (!project || !sourceFile) return;
+      if (!project?.instanceId || !sourceFile) return;
       const enqueueWithTarget = (target: VideoExportTarget | null) => {
         exportTargetRequestsRef.current.delete(projectIdToExport);
         const latest = exportJobsRef.current.get(projectIdToExport);
         if (
-          deletedProjectIdsRef.current.has(projectIdToExport) ||
+          wasDeleted(projectIdToExport, project.instanceId) ||
+          projectsRef.current.find((candidate) => candidate.id === project.id)?.instanceId !== project.instanceId ||
           latest?.status === "queued" ||
           latest?.status === "exporting"
         ) {
@@ -503,6 +601,7 @@ function WebApp() {
           ...request,
           projectId: project.id,
           projectName: project.source.name,
+          projectInstanceId: project.instanceId!,
           sourceFile,
           duration: project.info.duration,
           target,
@@ -510,6 +609,7 @@ function WebApp() {
         updateExportJob({
           projectId: project.id,
           projectName: project.source.name,
+          projectInstanceId: project.instanceId!,
           status: "queued",
           progress: 0,
           speed: null,
@@ -538,6 +638,7 @@ function WebApp() {
             updateExportJob({
               projectId: project.id,
               projectName: project.source.name,
+          projectInstanceId: project.instanceId!,
               status: "error",
               progress: 0,
               speed: null,
@@ -550,6 +651,7 @@ function WebApp() {
         updateExportJob({
           projectId: project.id,
           projectName: project.source.name,
+          projectInstanceId: project.instanceId!,
           status: "error",
           progress: 0,
           speed: null,
@@ -599,6 +701,7 @@ function WebApp() {
   }
 
   function resetCandidate() {
+    candidateRevisionRef.current += 1;
     replacePreviewUrl(null);
     setFile(null);
     setInfo(null);
@@ -612,6 +715,7 @@ function WebApp() {
   }
 
   function selectProject(projectIdToSelect: string | null) {
+    candidateRevisionRef.current += 1;
     setSelectedProjectId(projectIdToSelect);
     setError(null);
     if (projectIdToSelect === null) resetCandidate();
@@ -743,6 +847,7 @@ function WebApp() {
 
   async function chooseFile(selected: File | null) {
     if (!selected) return;
+    candidateRevisionRef.current += 1;
     if (safariUnsupported) {
       setError(
         "Safari is not supported. Open VolleySplice in Google Chrome on your desktop computer instead.",
@@ -802,8 +907,9 @@ function WebApp() {
         ),
       });
       resetCandidate();
-      commitProject(project);
-      setSelectedProjectId(project.id);
+      const saved = await putProject(project, { expectedSource: null });
+      reconcileProject(saved);
+      setSelectedProjectId(saved.id);
     } catch (cause) {
       setError(
         `Could not open that saved project: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -855,8 +961,8 @@ function WebApp() {
     setGameBoundary(side, candidateVideoRef.current?.currentTime ?? 0);
   }
 
-  function createAndQueueProject() {
-    if (!file || !info) return;
+  async function createAndQueueProject() {
+    if (!file || !info || checkingProjectSourceRef.current) return;
     const normalizedWindow = normalizeAnalysisWindow(
       analysisWindow,
       info.duration,
@@ -872,36 +978,61 @@ function WebApp() {
     }
     const source = projectSource(file);
     const id = projectId(source, info, normalizedWindow, rallyModel);
-    const existing = projectsRef.current.find((project) => project.id === id);
-    linkSourceFile(id, file);
-
-    if (existing?.status === "ready" && existing.analysis) {
+    const revision = candidateRevisionRef.current;
+    checkingProjectSourceRef.current = true;
+    setCheckingProjectSource(true);
+    try {
+      let existing = await getProject(id);
+      const captured = projectsRef.current.find((project) => project.id === id);
+      if (existing && captured && existing.instanceId !== captured.instanceId) {
+        throw new ProjectSourceConflictError(existing, "This project instance changed. Reopen it before reusing its saved analysis.");
+      }
+      if (existing) {
+        if (!(await sourceCanReconnectFile(existing.source, file))) {
+          throw new ProjectSourceConflictError(existing,
+            `This video does not match ${existing.source.name}. Choose the original video to reuse its saved analysis.`);
+        }
+        existing = await confirmProjectSource(id, existing.source, existing.instanceId);
+      }
+      if (!mountedRef.current || revision !== candidateRevisionRef.current) return;
+      if (existing && wasDeleted(id, existing.instanceId)) throw new ProjectSourceConflictError(null);
+      if (existing?.status === "ready" && existing.analysis) {
+        reconcileProject(existing);
+        linkSourceFile(id, file, existing);
+        setSelectedProjectId(id);
+        resetCandidate();
+        return;
+      }
+      const now = new Date().toISOString();
+      const project: VolleySpliceProject = {
+        schemaVersion: 1,
+        id,
+        instanceId: existing?.instanceId,
+        source: existing?.source ?? source,
+        info,
+        analysisWindow: normalizedWindow,
+        roi,
+        servingSideEnabled: true,
+        sideSwitchEnabled,
+        rallyModel,
+        status: "queued",
+        analysis: null,
+        error: null,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      const queued = await commitSourceProject(project, existing?.source ?? null);
+      if (!mountedRef.current || revision !== candidateRevisionRef.current) return;
+      linkSourceFile(id, file, queued);
       setSelectedProjectId(id);
+      enqueueProject(id);
       resetCandidate();
-      return;
+    } catch (cause) {
+      if (revision === candidateRevisionRef.current) sourceFailure(id, cause);
+    } finally {
+      checkingProjectSourceRef.current = false;
+      if (mountedRef.current) setCheckingProjectSource(false);
     }
-
-    const now = new Date().toISOString();
-    const project: VolleySpliceProject = {
-      schemaVersion: 1,
-      id,
-      source,
-      info,
-      analysisWindow: normalizedWindow,
-      roi,
-      servingSideEnabled: true,
-      sideSwitchEnabled,
-      rallyModel,
-      status: "queued",
-      analysis: null,
-      error: null,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    commitProject(project);
-    setSelectedProjectId(id);
-    enqueueProject(id);
-    resetCandidate();
   }
 
   async function runProject(projectIdToRun: string) {
@@ -912,27 +1043,29 @@ function WebApp() {
     if (
       !project ||
       !sourceFile ||
-      deletedProjectIdsRef.current.has(projectIdToRun)
+      wasDeleted(projectIdToRun, project.instanceId)
     )
       return;
 
-    const source = project.source.fingerprint
+    const source = project.source.fingerprint !== undefined
       ? project.source
-      : {
-          ...project.source,
-          fingerprint: await sourceFileFingerprint(sourceFile).catch(
-            () => undefined,
-          ),
-        };
-    if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
-    const running: VolleySpliceProject = {
-      ...project,
-      source,
-      status: "analyzing",
-      error: null,
-      updatedAt: new Date().toISOString(),
-    };
-    commitProject(running);
+      : await sourceFileFingerprint(sourceFile)
+          .then((fingerprint) => ({ ...project.source, fingerprint }))
+          .catch(() => project.source);
+    if (wasDeleted(projectIdToRun, project.instanceId)) return;
+    let running: VolleySpliceProject;
+    try {
+      running = await commitSourceProject({
+        ...project,
+        source,
+        status: "analyzing",
+        error: null,
+        updatedAt: new Date().toISOString(),
+      }, project.source);
+    } catch (cause) {
+      sourceFailure(projectIdToRun, cause);
+      return;
+    }
     setActiveInferenceSteps(
       createInferenceProgressSteps([
         ...CORE_INFERENCE_STEP_IDS,
@@ -961,7 +1094,7 @@ function WebApp() {
         DEFAULT_ON_DEVICE_RUNTIME_VARIANT,
         (nextProgress) => {
           if (
-            !deletedProjectIdsRef.current.has(projectIdToRun) &&
+            !wasDeleted(projectIdToRun, project.instanceId) &&
             mountedRef.current
           ) {
             setActiveProgress(nextProgress);
@@ -989,7 +1122,7 @@ function WebApp() {
           analysisWindow: running.analysisWindow,
         },
       );
-      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      if (wasDeleted(projectIdToRun, project.instanceId)) return;
       let completedAnalysis = result;
       const shouldInferServing = Boolean(result.productionServeOutputs);
       const shouldInferSwitches = Boolean(
@@ -1011,7 +1144,7 @@ function WebApp() {
                     analysis: result,
                     onProgress: (progress) => {
                       if (
-                        !deletedProjectIdsRef.current.has(projectIdToRun) &&
+                        !wasDeleted(projectIdToRun, project.instanceId) &&
                         mountedRef.current
                       ) {
                         setActiveProgress({
@@ -1043,7 +1176,7 @@ function WebApp() {
                     },
                     onProgress: (progress) => {
                       if (
-                        !deletedProjectIdsRef.current.has(projectIdToRun) &&
+                        !wasDeleted(projectIdToRun, project.instanceId) &&
                         mountedRef.current
                       ) {
                         setActiveProgress({
@@ -1109,7 +1242,7 @@ function WebApp() {
           }
         }
       }
-      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      if (wasDeleted(projectIdToRun, project.instanceId)) return;
       const ready: VolleySpliceProject = {
         ...running,
         status: "ready",
@@ -1117,16 +1250,24 @@ function WebApp() {
         error: null,
         updatedAt: new Date().toISOString(),
       };
-      commitProject(ready);
+      await commitSourceProject(ready, running.source);
     } catch (cause) {
-      if (deletedProjectIdsRef.current.has(projectIdToRun)) return;
+      if (wasDeleted(projectIdToRun, project.instanceId)) return;
+      if (cause instanceof ProjectSourceConflictError) {
+        sourceFailure(projectIdToRun, cause);
+        return;
+      }
       const failed: VolleySpliceProject = {
         ...running,
         status: "error",
         error: cause instanceof Error ? cause.message : String(cause),
         updatedAt: new Date().toISOString(),
       };
-      commitProject(failed);
+      try {
+        await commitSourceProject(failed, running.source);
+      } catch (writeFailure) {
+        sourceFailure(projectIdToRun, writeFailure);
+      }
     } finally {
       opened?.input.dispose();
       if (activeMediaRef.current?.projectId === projectIdToRun) {
@@ -1134,7 +1275,7 @@ function WebApp() {
         activeAbortRef.current = null;
       }
       await releaseWakeLock();
-      if (deletedProjectIdsRef.current.has(projectIdToRun)) {
+      if (wasDeleted(projectIdToRun, project.instanceId)) {
         await deleteNeuralEmbeddingsForSource(running.source).catch(() => undefined);
         await deleteFeatureCachesForSource(running.source).catch(
           () => undefined,
@@ -1162,37 +1303,38 @@ function WebApp() {
   }, [queueIds]);
 
   function queueAttachedProject(project: VolleySpliceProject) {
-    if (!filesRef.current.has(project.id)) return;
-    const queued: VolleySpliceProject = {
-      ...project,
-      status: "queued",
-      error: null,
-      updatedAt: new Date().toISOString(),
-    };
-    commitProject(queued);
-    enqueueProject(project.id);
+    const selected = filesRef.current.get(project.id);
+    if (selected) void attachSource(project, selected, true).catch(() => undefined);
   }
 
   async function attachSource(
     project: VolleySpliceProject,
     selected: File | null,
+    forceQueue = false,
   ) {
     if (!selected) return;
-    if (!(await sourceCanReconnectFile(project.source, selected))) {
-      setError(
-        `Choose the original ${project.source.name} file (${compactBytes(project.source.size)}). The selected file does not match this project.`,
-      );
-      return;
-    }
-    linkSourceFile(project.id, selected);
-    setError(null);
-    if (
-      project.status !== "ready" ||
-      (!project.importedFeedback &&
-        !project.analysis?.suppression &&
-        (!project.analysis?.featureNames || !project.analysis?.featureValues))
-    ) {
-      queueAttachedProject(project);
+    try {
+      // File bytes are immutable; a retry can reuse its proof only while the
+      // persisted source identity still matches the identity validated at link.
+      const approved = forceQueue && filesRef.current.get(project.id) === selected
+        ? validatedSourcesRef.current.get(project.id) : undefined;
+      const checked = await validateStoredSource(project.id, selected, project.instanceId, approved);
+      let attached = await confirmProjectSource(project.id, checked.source, checked.instanceId);
+      const queue = forceQueue || attached.status !== "ready" ||
+        (!attached.importedFeedback && !attached.analysis?.suppression &&
+          (!attached.analysis?.featureNames || !attached.analysis?.featureValues));
+      if (queue) {
+        attached = await commitSourceProject({ ...attached, status: "queued", error: null,
+          updatedAt: new Date().toISOString() }, attached.source);
+      }
+      if (!mountedRef.current || wasDeleted(project.id, project.instanceId)) throw new ProjectSourceConflictError(null);
+      reconcileProject(attached);
+      linkSourceFile(project.id, selected, attached);
+      setError(null);
+      if (queue) enqueueProject(project.id);
+    } catch (cause) {
+      sourceFailure(project.id, cause);
+      throw cause;
     }
   }
 
@@ -1205,7 +1347,13 @@ function WebApp() {
     )
       return;
 
-    deletedProjectIdsRef.current.add(selectedProject.id);
+    try {
+      await deleteProject(selectedProject.id, selectedProject.instanceId);
+    } catch (cause) {
+      sourceFailure(selectedProject.id, cause);
+      return;
+    }
+    deletedProjectInstancesRef.current.add(selectedProject.instanceId ?? "");
     if (activeMediaRef.current?.projectId === selectedProject.id) {
       activeAbortRef.current?.abort();
       activeMediaRef.current.media.input.dispose();
@@ -1218,6 +1366,7 @@ function WebApp() {
     exportJobsRef.current.delete(selectedProject.id);
     setExportJobs([...exportJobsRef.current.values()]);
     filesRef.current.delete(selectedProject.id);
+    validatedSourcesRef.current.delete(selectedProject.id);
     const linkedVideoUrl = videoUrlsRef.current.get(selectedProject.id);
     if (linkedVideoUrl) URL.revokeObjectURL(linkedVideoUrl);
     videoUrlsRef.current.delete(selectedProject.id);
@@ -1233,15 +1382,15 @@ function WebApp() {
     const analysisId = projectAnalysisId(selectedProject);
     if (analysisId) {
       try {
-        window.localStorage.removeItem(editHistoryKey(selectedProject.id));
-        for (const key of cutDraftStorageKeys(analysisId))
+        window.localStorage.removeItem(editHistoryKey(selectedProject.id, selectedProject.instanceId));
+        if (selectedProject.legacyDraftStorage) window.localStorage.removeItem(editHistoryKey(selectedProject.id));
+        for (const key of projectDraftStorageKeys(selectedProject, analysisId))
           window.localStorage.removeItem(key);
       } catch {
         // IndexedDB deletion remains useful if localStorage is restricted.
       }
     }
     await Promise.allSettled([
-      deleteProject(selectedProject.id),
       deleteFeatureCachesForSource(selectedProject.source),
       deleteNeuralEmbeddingsForSource(selectedProject.source),
     ]);
@@ -1397,7 +1546,8 @@ function WebApp() {
   if (selectedProject && productAnalysis) {
     return (
       <ReadyProjectEditor
-        key={productAnalysis.id}
+        key={`${productAnalysis.id}:${selectedProject.instanceId}`}
+        sourceError={error}
         projectId={selectedProject.id}
         projects={projects}
         workActivity={workActivity}
@@ -1755,6 +1905,7 @@ function WebApp() {
                 : (selectedProject.error ??
                   "Choose the original video again so you can continue.")}
           </p>
+          {error && <p className={styles.error} role="alert">{error}</p>}
           {(selectedProject.status === "waiting" ||
             selectedProject.status === "error") &&
             (selectedSourceFile ? (
@@ -1775,7 +1926,11 @@ function WebApp() {
                     void attachSource(
                       selectedProject,
                       event.currentTarget.files?.[0] ?? null,
-                    )
+                    ).catch((cause) => {
+                      setError(
+                        `Could not reconnect the video: ${cause instanceof Error ? cause.message : String(cause)}`,
+                      );
+                    })
                   }
                 />
               </label>

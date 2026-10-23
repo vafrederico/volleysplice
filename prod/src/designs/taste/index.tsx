@@ -509,7 +509,10 @@ function usePrototype(
 
   const [initialHistory] = useState(() => {
     let raw: string | null = null;
-    try { raw = window.localStorage.getItem(editHistoryKey(review.projectId)); } catch { /* Keep history in memory. */ }
+    try {
+      raw = window.localStorage.getItem(editHistoryKey(review.projectId, review.projectInstanceId));
+      if (!raw && review.legacyDraftStorage) raw = window.localStorage.getItem(editHistoryKey(review.projectId));
+    } catch { /* Keep history in memory. */ }
     return readEditHistory(raw, workingDraft, review.draftSeed,
       (draft) => normalizeCleanupDecisions(draft, cleanupSuggestions));
   });
@@ -518,7 +521,7 @@ function usePrototype(
 
   function persistHistory() {
     let saved = false;
-    try { saved = writeEditHistory(window.localStorage, editHistoryKey(review.projectId), historyRef.current); } catch { /* Storage may be disabled. */ }
+    try { saved = writeEditHistory(window.localStorage, editHistoryKey(review.projectId, review.projectInstanceId), historyRef.current); } catch { /* Storage may be disabled. */ }
     setHistoryStorageFailed(!saved);
   }
 
