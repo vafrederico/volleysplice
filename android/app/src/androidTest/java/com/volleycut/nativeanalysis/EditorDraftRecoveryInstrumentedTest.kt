@@ -6,6 +6,7 @@ import android.app.Instrumentation
 import android.net.Uri
 import android.os.SystemClock
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.util.Base64
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -134,7 +135,13 @@ class EditorDraftRecoveryInstrumentedTest {
         val launched = AtomicReference<String?>()
         val monitor = object : Instrumentation.ActivityMonitor() {
             override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? {
-                if (intent.action == Intent.ACTION_CREATE_DOCUMENT) launched.set(intent.getStringExtra(Intent.EXTRA_TITLE))
+                if (intent.action == Intent.ACTION_CREATE_DOCUMENT) {
+                    // Keep the real picker and result callback, but do not inherit
+                    // DocumentsUI's last visited folder from another device workflow.
+                    intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:${Environment.DIRECTORY_DOWNLOADS}"))
+                    launched.set(intent.getStringExtra(Intent.EXTRA_TITLE))
+                }
                 return null
             }
         }
@@ -770,8 +777,29 @@ class EditorDraftRecoveryInstrumentedTest {
     }
 
     private fun launchEditor(block: (ActivityScenario<EditorActivity>) -> Unit) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use(block)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val arguments = InstrumentationRegistry.getArguments()
+        val orientation = arguments.getString("editorOrientation")
+        require(orientation == null || orientation == "landscape") { "Unsupported editorOrientation: $orientation" }
+        // Connecting UiAutomation can reset an external rotation lock. Create
+        // that session and set its rotation before the editor obtains its layout.
+        val device = if (orientation == "landscape") UiDevice.getInstance(instrumentation) else null
+        try {
+            device?.setOrientationLeft()
+            device?.waitForIdle()
+            val context = instrumentation.targetContext
+            ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use { scenario ->
+                arguments.getString("expectedEditorLayout")?.let { expected ->
+                    scenario.onActivity { activity ->
+                        val config = activity.resources.configuration
+                        assertEquals(expected, editorLayoutMode(config.screenWidthDp, config.screenHeightDp).name)
+                    }
+                }
+                block(scenario)
+            }
+        } finally {
+            device?.unfreezeRotation()
+        }
     }
 
     private fun withProject(uniqueVideo: Boolean = false, silentVideo: Boolean = false, block: (EditorDraftStore, File, NativeProject) -> Unit) {
