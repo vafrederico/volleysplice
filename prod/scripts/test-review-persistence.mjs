@@ -4,15 +4,21 @@ import { IDBFactory } from "fake-indexeddb";
 import { createCutDraft, cutDraftStorageKey } from "../src/lib/cut-draft.ts";
 import {
   deleteProject,
+  confirmProjectSource,
+  getProject,
   listProjects,
   markProjectExported,
   projectAnalysisId,
   putProject,
   putProjectReviewDraft,
+  sourceFileFingerprint,
+  projectSource,
+  ProjectSourceConflictError,
 } from "../src/lib/project-store.ts";
 import {
   restoreProjectReviewDraft,
   saveProjectReviewDraft,
+  projectDraftStorageKey,
 } from "../src/lib/review-draft-persistence.ts";
 
 beforeEach(() => {
@@ -96,11 +102,91 @@ export function fixture() {
   return { project, seed, edited, storage, values };
 }
 
+test("a legacy source can acquire a fingerprint without a later stale write downgrading it", async () => {
+  const { project } = fixture();
+  const file = new File(["original"], "synthetic-source.mp4", { type: "video/mp4", lastModified: 100 });
+  project.source = projectSource(file);
+  Object.assign(project, await putProject(project));
+  const stale = structuredClone((await listProjects())[0]);
+  const verified = { ...project.source, fingerprint: await sourceFileFingerprint(file) };
+  await putProject({ ...project, source: verified });
+  await putProject({ ...stale, status: "error", error: "Synthetic read failure" });
+  const restored = (await listProjects())[0];
+  assert.deepEqual(restored.source, verified);
+  assert.equal(restored.status, "error");
+  assert.equal(restored.error, "Synthetic read failure");
+});
+
+test("status and metadata updates cannot remove or replace a recorded source identity", async () => {
+  const { project } = fixture();
+  const original = new File(["original"], "synthetic-source.mp4", { type: "video/mp4", lastModified: 100 });
+  const replacement = new File(["replaced"], original.name, { type: original.type, lastModified: original.lastModified });
+  const verified = { ...projectSource(original), fingerprint: await sourceFileFingerprint(original) };
+  project.source = verified;
+  Object.assign(project, await putProject(project));
+  const attempts = [
+    { status: "queued", source: projectSource(original), normalizedStatus: "waiting" },
+    { status: "analyzing", source: { ...verified, fingerprint: undefined }, normalizedStatus: "waiting" },
+    { status: "error", source: { ...projectSource(replacement), fingerprint: await sourceFileFingerprint(replacement) }, conflict: true },
+    { status: "ready", source: { ...verified, name: "synthetic-transfer.mp4", lastModified: 999, type: "application/octet-stream" }, normalizedStatus: "ready" },
+  ];
+  for (const { status, source, normalizedStatus, conflict } of attempts) {
+    const previous = (await listProjects())[0];
+    if (conflict) await assert.rejects(putProject({ ...project, status, source }), ProjectSourceConflictError);
+    else await putProject({ ...project, status, source });
+    const restored = (await listProjects())[0];
+    assert.deepEqual(restored.source, verified, `The ${status} update must retain the recorded source identity`);
+    assert.equal(restored.id, project.id);
+    assert.equal(restored.status, conflict ? previous.status : normalizedStatus);
+  }
+});
+
+test("source confirmations and bound writes reject an upgrade after validation and return current identity", async () => {
+  const { project } = fixture();
+  Object.assign(project, await putProject(project));
+  const checked = await getProject(project.id);
+  const source = { ...project.source, fingerprint: `sampled-sha256-v1:${"1".repeat(64)}` };
+  await putProject({ ...project, source });
+  for (const operation of [
+    () => confirmProjectSource(project.id, checked.source, checked.instanceId),
+    () => putProject({ ...checked, status: "queued" }, { expectedSource: checked.source }),
+  ]) {
+    await assert.rejects(operation(), cause => cause instanceof ProjectSourceConflictError &&
+      cause.project.source.fingerprint === source.fingerprint);
+    assert.equal((await getProject(project.id)).status, "ready");
+  }
+  const saved = await putProject({ ...checked, updatedAt: "2026-01-04T00:00:00.000Z" });
+  assert.deepEqual(saved.source, source, "Ordinary background writes return the authoritative persisted source");
+  assert.deepEqual((await confirmProjectSource(project.id, source, project.instanceId)).source, source);
+});
+
+test("source CAS permits unrelated concurrent review and export writes", async () => {
+  const { project, edited } = fixture();
+  Object.assign(project, await putProject(project));
+  const checked = await getProject(project.id);
+  await putProjectReviewDraft(project.id, edited, project.instanceId);
+  await markProjectExported(project.id, "2026-01-05T00:00:00.000Z", project.instanceId);
+  const queued = await putProject({ ...checked, status: "queued" }, { expectedSource: checked.source });
+  assert.deepEqual(queued.reviewDraft, edited);
+  assert.equal(queued.lastExportedAt, "2026-01-05T00:00:00.000Z");
+  assert.equal(queued.status, "queued");
+});
+
+test("source CAS prevents conflicting creation and resurrection after deletion", async () => {
+  const { project } = fixture();
+  Object.assign(project, await putProject(project, { expectedSource: null }));
+  await assert.rejects(putProject(project, { expectedSource: null }), ProjectSourceConflictError);
+  await deleteProject(project.id, project.instanceId);
+  await assert.rejects(putProject(project, { expectedSource: project.source }), ProjectSourceConflictError);
+  await assert.rejects(confirmProjectSource(project.id, project.source, project.instanceId), ProjectSourceConflictError);
+  assert.equal(await getProject(project.id), null);
+});
+
 test("rally, review, serve and exclusion edits survive a complete project reload", async () => {
   const { project, seed, edited, storage } = fixture();
-  await putProject(project);
+  Object.assign(project, await putProject(project));
   assert.equal(
-    (await saveProjectReviewDraft(project.id, seed, edited, storage)).saved,
+    (await saveProjectReviewDraft(project.id, seed, edited, storage, project.instanceId)).saved,
     true,
   );
   const [reloaded] = await listProjects();
@@ -115,16 +201,79 @@ test("rally, review, serve and exclusion edits survive a complete project reload
   }
 });
 
+test("same-source recreation rejects old source-bound completions and neutral writes without touching the new instance", async () => {
+  const { project, edited } = fixture();
+  project.source.fingerprint = `sampled-sha256-v1:${"a".repeat(64)}`;
+  Object.assign(project, await putProject(project));
+  const old = structuredClone(project);
+  await deleteProject(old.id, old.instanceId);
+  const fresh = await putProject({ ...project, reviewDraft: undefined,
+    createdAt: "2026-02-01T00:00:00.000Z", updatedAt: "2026-02-01T00:00:00.000Z" }, { expectedSource: null });
+  assert.notEqual(fresh.instanceId, old.instanceId);
+  for (const operation of [
+    ...["analyzing", "ready", "error"].map(status => () => putProject({ ...old, status,
+      analysis: status === "error" ? null : old.analysis, reviewDraft: edited }, { expectedSource: old.source })),
+    () => putProject({ ...old, reviewDraft: edited }),
+    () => confirmProjectSource(old.id, old.source, old.instanceId),
+    () => putProjectReviewDraft(old.id, edited, old.instanceId),
+    () => markProjectExported(old.id, "2026-03-01T00:00:00.000Z", old.instanceId),
+    () => deleteProject(old.id, old.instanceId),
+  ]) {
+    await assert.rejects(operation(), ProjectSourceConflictError);
+    assert.deepEqual(await getProject(fresh.id), fresh);
+  }
+  await putProject({ ...fresh, sideSwitchEnabled: false });
+  await putProjectReviewDraft(fresh.id, edited, fresh.instanceId);
+  await markProjectExported(fresh.id, "2026-03-01T00:00:00.000Z", fresh.instanceId);
+  const updated = await getProject(fresh.id);
+  assert.equal(updated.instanceId, fresh.instanceId);
+  assert.equal(updated.createdAt, fresh.createdAt);
+  assert.equal(updated.sideSwitchEnabled, false);
+  assert.deepEqual(updated.reviewDraft, edited);
+  assert.equal(updated.lastExportedAt, "2026-03-01T00:00:00.000Z");
+});
+
+test("legacy migration assigns one atomic instance and recreated projects never restore deleted local drafts", async () => {
+  const { project, seed, edited, storage, values } = fixture();
+  const request = indexedDB.open("volleycut-projects", 1);
+  request.onupgradeneeded = () => request.result.createObjectStore("projects", { keyPath: "id" });
+  const db = await new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+  const transaction = db.transaction("projects", "readwrite");
+  transaction.objectStore("projects").put(project);
+  await new Promise((resolve, reject) => { transaction.oncomplete = resolve; transaction.onerror = () => reject(transaction.error); });
+  db.close();
+  storage.setItem(cutDraftStorageKey(seed.analysisId), JSON.stringify(edited));
+  const [first, listed, second] = await Promise.all([getProject(project.id), listProjects(), getProject(project.id)]);
+  assert.ok(first.instanceId);
+  assert.equal(first.instanceId, listed[0].instanceId); assert.equal(first.instanceId, second.instanceId);
+  assert.equal(first.legacyDraftStorage, true);
+  assert.deepEqual(restoreProjectReviewDraft(first, seed, storage).cuts, edited.cuts);
+  const same = await putProject({ ...first, sideSwitchEnabled: false });
+  assert.equal(same.instanceId, first.instanceId);
+  await deleteProject(first.id, first.instanceId);
+  const recreated = await putProject({ ...project }, { expectedSource: null });
+  assert.notEqual(recreated.instanceId, first.instanceId);
+  assert.equal(recreated.legacyDraftStorage, false);
+  assert.ok(restoreProjectReviewDraft(recreated, seed, storage).cuts.every(cut => cut.included));
+  const late = await saveProjectReviewDraft(first.id, seed, edited, storage, first.instanceId);
+  assert.equal(late.saved, false);
+  assert.match(late.message, /instance.*changed/);
+  assert.ok(values.has(projectDraftStorageKey(seed.analysisId, first.instanceId)));
+  assert.equal(values.has(projectDraftStorageKey(seed.analysisId, recreated.instanceId)), false);
+  assert.deepEqual(await getProject(recreated.id), recreated);
+  assert.ok(restoreProjectReviewDraft(recreated, seed, storage).cuts.every(cut => cut.included));
+});
+
 test("a full localStorage falls back to the project record", async () => {
   const { project, seed, edited } = fixture();
-  await putProject(project);
+  Object.assign(project, await putProject(project));
   const full = {
     setItem() {
       throw new DOMException("Full", "QuotaExceededError");
     },
   };
   assert.equal(
-    (await saveProjectReviewDraft(project.id, seed, edited, full)).saved,
+    (await saveProjectReviewDraft(project.id, seed, edited, full, project.instanceId)).saved,
     true,
   );
   const [reloaded] = await listProjects();
@@ -144,7 +293,7 @@ test("a failed database write falls back to the synchronous draft", async () => 
   };
   try {
     assert.equal(
-      (await saveProjectReviewDraft(project.id, seed, edited, storage)).saved,
+      (await saveProjectReviewDraft(project.id, seed, edited, storage, project.instanceId)).saved,
       true,
     );
     assert.deepEqual(
@@ -158,8 +307,8 @@ test("a failed database write falls back to the synchronous draft", async () => 
 
 test("failure of both storage writes is reported and preserves the last successful save", async () => {
   const { project, seed, edited, storage, values } = fixture();
-  await putProject(project);
-  await saveProjectReviewDraft(project.id, seed, edited, storage);
+  Object.assign(project, await putProject(project));
+  await saveProjectReviewDraft(project.id, seed, edited, storage, project.instanceId);
   const before = [...values];
   const database = globalThis.indexedDB;
   globalThis.indexedDB = {
@@ -189,15 +338,15 @@ test("failure of both storage writes is reported and preserves the last successf
 
 test("invalid edits cannot overwrite either previously saved copy", async () => {
   const { project, seed, edited, storage, values } = fixture();
-  await putProject(project);
-  await saveProjectReviewDraft(project.id, seed, edited, storage);
+  Object.assign(project, await putProject(project));
+  await saveProjectReviewDraft(project.id, seed, edited, storage, project.instanceId);
   const before = [...values];
   const invalid = {
     ...edited,
     ignoredIntervals: [...edited.ignoredIntervals, ...edited.ignoredIntervals],
   };
   assert.equal(
-    (await saveProjectReviewDraft(project.id, seed, invalid, storage)).saved,
+    (await saveProjectReviewDraft(project.id, seed, invalid, storage, project.instanceId)).saved,
     false,
   );
   assert.deepEqual([...values], before);
@@ -259,10 +408,10 @@ test("an older valid draft cannot overwrite a newer incompatible review", () => 
 
 test("background project updates cannot overwrite newer reviews or export metadata", async () => {
   const { project, seed, edited } = fixture();
-  await putProject(project);
+  Object.assign(project, await putProject(project));
   edited.updatedAt = "2026-01-03T00:00:00.000Z";
-  await putProjectReviewDraft(project.id, edited);
-  await markProjectExported(project.id, "2026-01-03T01:00:00.000Z");
+  await putProjectReviewDraft(project.id, edited, project.instanceId);
+  await markProjectExported(project.id, "2026-01-03T01:00:00.000Z", project.instanceId);
   for (const stale of [
     project,
     { ...project, reviewDraft: createCutDraft(seed) },
@@ -276,22 +425,22 @@ test("background project updates cannot overwrite newer reviews or export metada
 
 test("late review saves cannot replace newer edits or attach to another analysis", async () => {
   const { project, seed, edited } = fixture();
-  await putProject(project);
+  Object.assign(project, await putProject(project));
   edited.updatedAt = "2026-01-03T00:00:00.000Z";
-  await putProjectReviewDraft(project.id, edited);
-  await putProjectReviewDraft(project.id, createCutDraft(seed));
+  await putProjectReviewDraft(project.id, edited, project.instanceId);
+  await putProjectReviewDraft(project.id, createCutDraft(seed), project.instanceId);
   assert.deepEqual((await listProjects())[0].reviewDraft, edited);
   await assert.rejects(
     putProjectReviewDraft(project.id, {
       ...edited,
       analysisId: "other-analysis",
-    }),
+    }, project.instanceId),
     /does not belong/,
   );
   assert.deepEqual((await listProjects())[0].reviewDraft, edited);
-  await deleteProject(project.id);
+  await deleteProject(project.id, project.instanceId);
   await assert.rejects(
-    putProjectReviewDraft(project.id, edited),
+    putProjectReviewDraft(project.id, edited, project.instanceId),
     /unavailable/,
   );
   assert.deepEqual(await listProjects(), []);

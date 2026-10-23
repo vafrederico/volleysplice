@@ -9,10 +9,22 @@ import {
 import { withModelScoreMarkers } from "./model-review-draft.ts";
 import {
   putProjectReviewDraft,
+  ProjectSourceConflictError,
   type VolleySpliceProject,
 } from "./project-store.ts";
 
 export type DraftSaveResult = { saved: boolean; message: string };
+
+export function projectDraftStorageKey(analysisId: string, instanceId?: string): string {
+  const key = cutDraftStorageKey(analysisId);
+  return instanceId ? `${key}:instance:${instanceId}` : key;
+}
+
+export function projectDraftStorageKeys(project: Pick<VolleySpliceProject, "instanceId" | "legacyDraftStorage">, analysisId: string): string[] {
+  const scoped = project.instanceId ? [projectDraftStorageKey(analysisId, project.instanceId)] : [];
+  return !project.instanceId || project.legacyDraftStorage
+    ? [...scoped, ...cutDraftStorageKeys(analysisId)] : scoped;
+}
 
 // Accessing localStorage itself can throw when browser storage is restricted.
 export function browserDraftStorage(): Storage | null {
@@ -29,7 +41,7 @@ export function restoreProjectReviewDraft(
   storage: Pick<Storage, "getItem"> | null,
 ): CutDraft {
   const candidates: string[] = [];
-  for (const key of cutDraftStorageKeys(seed.analysisId)) {
+  for (const key of projectDraftStorageKeys(project, seed.analysisId)) {
     try {
       const raw = storage?.getItem(key);
       if (raw !== null && raw !== undefined) candidates.push(raw);
@@ -93,6 +105,7 @@ export async function saveProjectReviewDraft(
   seed: CutDraftSeed,
   draft: CutDraft,
   storage: Pick<Storage, "setItem"> | null,
+  instanceId?: string,
 ): Promise<DraftSaveResult> {
   const persisted = { ...draft, updatedAt: new Date().toISOString() };
   const raw = JSON.stringify(persisted);
@@ -106,7 +119,7 @@ export async function saveProjectReviewDraft(
   let localSaved = false;
   try {
     if (storage) {
-      storage.setItem(cutDraftStorageKey(seed.analysisId), raw);
+      storage.setItem(projectDraftStorageKey(seed.analysisId, instanceId), raw);
       localSaved = true;
     }
   } catch {
@@ -114,9 +127,10 @@ export async function saveProjectReviewDraft(
   }
   let projectSaved = false;
   try {
-    await putProjectReviewDraft(projectId, persisted);
+    await putProjectReviewDraft(projectId, persisted, instanceId);
     projectSaved = true;
-  } catch {
+  } catch (cause) {
+    if (cause instanceof ProjectSourceConflictError) return { saved: false, message: cause.message };
     // A successful synchronous write is sufficient to restore after reload.
   }
   return localSaved || projectSaved
