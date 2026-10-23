@@ -1,19 +1,30 @@
 # Automatic app regression gates
 
-`.github/workflows/app-regression.yml` runs on every branch push and on PR open,
-reopen, and synchronization. It deliberately has no path filters, so changes to
+`.github/workflows/app-regression.yml` runs on main pushes, PR open, reopen and
+synchronization, and manual dispatch. A feature update runs through the PR event
+once instead of running identical push and PR jobs. It has no path filters, so changes to
 shared runtime code, fixtures, build helpers, or workflows receive the same gates.
 New runs cancel older runs for the same event and PR/branch; unrelated branches
 and the existing manual release workflows have separate concurrency groups.
 
-The web job installs both npm lockfiles and runs:
+The web job restores installed dependencies only for an exact match of OS,
+architecture, Node 24.15.0, both manifests/lockfiles, npm configuration, and the
+workflow/install helper. It checks both installations with `npm ls --all`.
+Missing or invalid installations fall back independently to `npm ci`. Cached npm
+downloads also accelerate that fallback; `node_modules` has no prefix restore.
+The job then runs:
 
 ```sh
-npm ci --no-audit --no-fund
-npm --prefix prod ci --no-audit --no-fund
+bash scripts/ci-web-dependencies.sh
 npm run test:web
 node --test scripts/browser-distilled-large-contract.test.mjs
 npm --prefix prod run test:review-persistence
+npm --prefix prod run test:app-export
+npm --prefix prod run test:score-recovery
+npm --prefix prod run test:score-source-integration
+npm --prefix prod run test:side-switch-import
+npm --prefix prod run test:project-roundtrip
+npm --prefix prod run test:reconnect-ui
 npm --prefix prod run test:inference-ui
 npm --prefix prod run test:youtube-ui
 npm --prefix prod run build
@@ -29,7 +40,7 @@ when it is absent; they are outside this public gate. No ledger or media is need
 
 The Android job uses JDK 17, the checked-in Gradle wrapper, Android platform 37.0,
 and build tools 37.0.0. Python 3 with venv support and pip is required on the Linux
-runner. It installs `onnx==1.23.0` in a job-local environment, runs bootstrap rejection
+runner. It installs `onnx==1.23.0` from cached pip downloads in a job-local environment, runs bootstrap rejection
 tests, and calls `scripts/prepare-android-neural-assets.py --output <job-temp-dir>`.
 That existing helper reverses only the qualified web pooling rewrite and verifies
 every output byte against the Android manifest. All inputs are checked-in public
@@ -43,12 +54,19 @@ python3 scripts/android-regression-gate.py
 ```
 
 The runner calls the checked-in wrapper with `--no-daemon --stacktrace
---console=plain --max-workers=1 --no-build-cache --no-configuration-cache` and the
+--console=plain --max-workers=2 --build-cache --no-configuration-cache` and the
 gate init script. Task-local `--rerun` forces `:app:prepareNeuralAssets`,
 `:app:prepareServingAssets`, and `:app:testDebugUnitTest` to execute while other
 compilation tasks can remain up to date. Asset preparation rechecks manifests,
 hashes, sizes, and encoder/head pairing. The three existing frozen JSON checks
 wired through `preBuild` are also mandatory.
+
+`VOLLEYCUT_GRADLE_WORKERS` can select 1–8 workers; the default is two. This controls
+Gradle task workers, not the number of Forgejo jobs the host can run. Compilation
+and dependency outputs can use Gradle's build cache. All six mandatory tasks also
+disable up-to-date and build-cache reuse explicitly. Configuration caching remains
+off because the task-outcome listener uses Gradle's task graph API. Its receipt
+appends are synchronized for parallel execution.
 
 Each invocation allocates a new directory under ignored
 `android/build/regression-gate`. The init script routes JUnit XML there and records
@@ -66,6 +84,9 @@ asset preparation. Each project exits Gradle successfully; the gate must still
 reject it, even with a prior passing report present. Separate report fixtures
 exercise missing/empty/stale reports, inaccurate counts, and failed/skipped cases.
 These probes use no Android plugins, test dependencies, media, or native builds.
+An additional real Java/JUnit probe removes its compiled outputs, restores them
+from Gradle's build cache, and verifies that all six mandatory tasks and the test
+execute again with fresh reports. That positive probe uses pinned JUnit 4.13.2.
 Missing or changed bundles fail without a task exclusion or fallback. This gate
 does not build APKs, run devices, sign, publish, or deploy anything.
 
@@ -78,12 +99,30 @@ on the host's action mirror, which does not contain every third-party action.
 See [Forgejo action resolution](https://forgejo.org/docs/v16.0/user/actions/actions/#using-actions).
 GitHub-specific actionlint needs these URL prefixes normalized in a temporary
 copy for its checks; validate the actual Forgejo YAML and pinned origins too.
-The workflow avoids GitHub-only artifact wrappers, shared CI caches, release
-environments, and credentials. Checkout does not persist its automatic token;
+The workflow avoids GitHub-only artifact wrappers and release environments.
+Checkout does not persist its automatic token;
 shell steps unset automatic token variables before executing repository code.
 Forks use `pull_request`, subject to the host's trust approval, and never
 `pull_request_target`. The existing standalone Gitleaks workflow remains separate
 and unchanged; release/promotion workflows remain manual.
+
+Optional commit-pinned Forgejo cache actions retain Node, JDK, the Android SDK,
+npm/pip downloads, installed npm dependencies, and Gradle downloads/compilation.
+The Android SDK is checked before skipping setup; the cold path installs platform
+37.0, build tools 36.0.0/37.0.0, and the project's NDK 29.0.14206865. Python virtual
+environments, model-bootstrap output, JVM reports, and mandatory task receipts are
+never restored. Bootstrap reconstruction and asset-integrity checks always run.
+
+Only successful main pushes or manually dispatched runs save caches. PR runs
+restore them read-only. Gradle restore prefixes are limited to the same OS,
+architecture and Gradle build configuration. Exact keys use source inputs instead
+of commit IDs, avoiding duplicate archives for source-identical merges. Toolchain
+keys include the workflow, platform, versions and Python ABI.
+An unavailable cache backend or failed cache transfer falls back to cold setup;
+it does not replace or waive any regression check. Forgejo needs a configured
+[cache service](https://forgejo.org/docs/v16.0/user/actions/advanced-features/#cache).
+Toolchain/dependency cache hit rates and cold/warm timings must be verified on the
+actual host. A locally passing gate does not establish those results.
 
 The declared permission is `contents: read`. Forgejo's permission semantics differ
 from GitHub's, so that declaration alone is not proof of a read-only token on every

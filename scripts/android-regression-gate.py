@@ -74,6 +74,9 @@ def verify_reports(directory: Path, started_ns: int) -> dict:
 
 
 def run_gate(project: Path, wrapper: Path) -> dict:
+    workers = os.environ.get("VOLLEYCUT_GRADLE_WORKERS", "2")
+    require(workers.isascii() and workers.isdecimal() and 1 <= int(workers) <= 8,
+            "VOLLEYCUT_GRADLE_WORKERS must be an integer from 1 to 8")
     output = project / "build" / "regression-gate"
     output.mkdir(parents=True, exist_ok=True)
     # Never accept, delete, or reuse an earlier run's report directory.
@@ -83,8 +86,8 @@ def run_gate(project: Path, wrapper: Path) -> dict:
     environment.update(VOLLEYCUT_REGRESSION_RUN_DIR=str(run_directory), VOLLEYCUT_REGRESSION_RUN_ID=run_id)
     for key in ("GITHUB_TOKEN", "FORGEJO_TOKEN", "GITEA_TOKEN"):
         environment.pop(key, None)
-    command = [str(wrapper), "--no-daemon", "--stacktrace", "--console=plain", "--max-workers=1",
-               "--no-build-cache", "--no-configuration-cache", "--init-script",
+    command = [str(wrapper), "--no-daemon", "--stacktrace", "--console=plain", f"--max-workers={workers}",
+               "--build-cache", "--no-configuration-cache", "--init-script",
                str(REPOSITORY / "android" / "scripts" / "regression-gate.init.gradle"),
                ":app:prepareNeuralAssets", "--rerun", ":app:prepareServingAssets", "--rerun",
                ":app:testDebugUnitTest", "--rerun"]

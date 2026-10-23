@@ -10,8 +10,16 @@ def mandatory = [
     ':app:verifySuppressionAsset', ':app:verifyServingSideAsset',
     ':app:verifySideSwitchAsset', ':app:testDebugUnitTest',
 ] as Set
+def receiptLock = new Object()
 
 gradle.projectsEvaluated {
+    // Reuse compilation outputs, never a mandatory verification/test result.
+    gradle.rootProject.allprojects.each { project ->
+        project.tasks.matching { mandatory.contains(it.path) }.configureEach {
+            outputs.upToDateWhen { false }
+            outputs.doNotCacheIf('The regression gate requires fresh execution') { true }
+        }
+    }
     gradle.rootProject.project(':app').tasks.named('testDebugUnitTest', Test) {
         reports.junitXml.required.set(true)
         reports.junitXml.outputLocation.set(new File(runDirectory, 'junit'))
@@ -26,6 +34,8 @@ gradle.taskGraph.afterTask { task, state ->
             upToDate: state.upToDate, skipMessage: state.skipMessage,
             failed: state.failure != null,
         ]
-        new File(runDirectory, 'tasks.jsonl').append(JsonOutput.toJson(receipt) + '\n', 'UTF-8')
+        synchronized (receiptLock) {
+            new File(runDirectory, 'tasks.jsonl').append(JsonOutput.toJson(receipt) + '\n', 'UTF-8')
+        }
     }
 }
