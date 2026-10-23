@@ -130,6 +130,7 @@ public enum ProjectArchive {
         value.renderScoreOverlay = project.draft.renderScoreOverlay
         value.renderScoreTimeline = project.draft.renderScoreTimeline
         value.fadeScoreOverlay = project.draft.fadeScoreOverlay
+        value.portableUi = try PortableReviewPreferences.retainingForReset(project.draft, retained: project.feedback?["corrections"]?["ui"])
         value = EditorMath.alignRallyServeMarkers(value)
         try value.validate(durationMs: project.durationMs)
         return value
@@ -287,13 +288,11 @@ public enum ProjectArchive {
         let visibleScore = ScoreReducer.visibleTracking(score, ignoredIntervals: draft.ignoredIntervals, excludedRallyIds: Set(excluded))
         let computedScore = ScoreReducer.deriveAt(visibleScore).jsonValue()
         var corrections = bundle["corrections"] ?? .object([:])
-        // Additive UI extension: preserve unrelated preferences from imported bundles.
-        var ui = corrections["ui"] ?? .object([:])
-        var preferences = ui["preferences"] ?? .object([:])
-        preferences["chapterOptions"] = try draft.chapterOptions.map {
-            try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode($0))
-        }
-        ui["preferences"] = preferences; corrections["ui"] = ui
+        if let retained = corrections["ui"] { try PortableReviewPreferences.validate(retained, cuts: draft.cuts, checkIdentities: false) }
+        try PortableReviewPreferences.finalScoreAlias(bundle)
+        corrections["ui"] = try PortableReviewPreferences.compose(draft, retained: corrections["ui"])
+        var aliases = bundle["editorPreferences"] ?? .object([:])
+        aliases["renderScoreOnFinalVideo"] = .bool(draft.renderScoreOverlay)
         corrections["updatedAt"] = .string(ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: Double(draft.updatedAtMs) / 1_000)))
         corrections["beforePaddingSeconds"] = .number(Double(draft.beforePaddingMs) / 1_000)
         corrections["afterPaddingSeconds"] = .number(Double(draft.afterPaddingMs) / 1_000)
@@ -339,6 +338,7 @@ public enum ProjectArchive {
             "confirmedModelRanges": .array(draft.cuts.filter { $0.origin == .inferred && $0.included }.map(wireRange)),
             "discardedManualRanges": .array(draft.cuts.filter { $0.origin == .manual && !$0.included }.map(wireRange))])
         bundle["corrections"] = corrections
+        bundle["editorPreferences"] = aliases
         bundle["finalExportIntervals"] = .array(intervals.map { .object(["start": .number(Double($0.startMs) / 1_000),
             "end": .number(Double($0.endMs) / 1_000), "cutIds": strings($0.cutIds),
             "joinedGaps": .array($0.joinedGaps.map { .object(["start": .number(Double($0.startMs) / 1_000), "end": .number(Double($0.endMs) / 1_000)]) })]) })
@@ -411,9 +411,6 @@ public enum ProjectArchive {
         let corrections = try required(bundle["corrections"], "corrections")
         guard let cuts = corrections["correctedRanges"]?.array else { throw ProjectError.invalid("Missing corrected ranges") }
         var draft = EditorDraft(sourceRevision: source["analysisId"]?.string ?? UUID().uuidString)
-        if let options = corrections["ui"]?["preferences"]?["chapterOptions"], options != .null {
-            draft.chapterOptions = try JSONDecoder().decode(YouTubeChapterOptions.self, from: JSONEncoder().encode(options))
-        }
         draft.cuts = try cuts.map { cut in
             guard let id = cut["id"]?.string, let origin = cut["origin"]?.string.flatMap(CutOrigin.init(rawValue:)), let included = cut["included"]?.bool else { throw ProjectError.invalid("Invalid corrected range identity or origin") }
             return EditableCut(id: id, coreStartMs: try ms(cut["coreStart"], "core start"), coreEndMs: try ms(cut["coreEnd"], "core end"),
@@ -436,6 +433,7 @@ public enum ProjectArchive {
         draft.userTouchedCutIds = Set(suppression?["userTouchedCutIds"]?.array?.compactMap(\.string) ?? [])
         draft.scoreTracking = try required(corrections["scoreTracking"]?["state"], "score tracking state")
         draft.scoreTracking = try ScoreTracking.fromJSON(draft.scoreTracking, durationMs: ms(.number(duration), "duration")).jsonValue()
+        draft = try PortableReviewPreferences.applying(corrections["ui"], alias: PortableReviewPreferences.finalScoreAlias(bundle), to: draft)
         if let updated = corrections["updatedAt"]?.string, let date = ISO8601DateFormatter().date(from: updated) { draft.updatedAtMs = Int64((date.timeIntervalSince1970 * 1_000).rounded()) }
         draft = EditorMath.alignRallyServeMarkers(draft)
         let document = ProjectDocument(sourceName: source["file"]?["name"]?.string ?? "imported-recording.mp4",
