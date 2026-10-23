@@ -10,7 +10,9 @@ import {
   scoreTrackingWithSideSwitchOutput,
 } from "./score-tracking-inference.ts";
 
-type ModelScoreResults = Pick<OnDeviceAnalysis, "servingSide" | "sideSwitch">;
+type ModelScoreResults = Pick<OnDeviceAnalysis, "servingSide" | "sideSwitch"> & {
+  sideSwitchEnabled?: boolean;
+};
 
 export function withModelScoreMarkers(
   draft: CutDraft,
@@ -40,7 +42,7 @@ export function withModelScoreMarkers(
         ? { ...generated, serveMarkers, enabled: true }
         : { ...generated, serveMarkers };
   }
-  if (analysis.sideSwitch) {
+  if (analysis.sideSwitch && analysis.sideSwitchEnabled !== false) {
     const generated = scoreTrackingWithSideSwitchOutput(
       scoreTracking,
       analysis.sideSwitch,

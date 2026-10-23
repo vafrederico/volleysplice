@@ -67,6 +67,7 @@ export type ModelFeedbackBundle = {
     gameWindow: ProductAnalysis["analysisWindow"];
     featureRoi: ProductAnalysis["roi"];
     runtimeVariant: ProductAnalysis["runtimeVariant"];
+    generateSideSwitchMarkers: boolean;
     videoBytesIncluded: false;
   };
   features: {
@@ -306,6 +307,7 @@ export function createModelFeedbackBundle(
       gameWindow: analysis.analysisWindow,
       featureRoi: analysis.roi,
       runtimeVariant: analysis.runtimeVariant,
+      generateSideSwitchMarkers: analysis.sideSwitchEnabled !== false,
       videoBytesIncluded: false,
     },
     features: analysis.features

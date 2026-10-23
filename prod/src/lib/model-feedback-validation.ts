@@ -1,4 +1,9 @@
-import type { NeuralRallyScores } from "./on-device/types";
+import type { NeuralRallyScores, OnDeviceSideSwitchOutput } from "./on-device/types";
+import {
+  SIDE_SWITCH_CANDIDATE_CONTRACT,
+  SIDE_SWITCH_FEATURE_NAMES,
+  SIDE_SWITCH_FEATURE_VERSION,
+} from "./on-device/side-switch-model.ts";
 
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
 export const MODEL_FEEDBACK_SCHEMA_VERSION = 3 as const;
@@ -77,6 +82,7 @@ export type ParsedModelFeedback = {
     gameWindow: { start: number; end: number };
     featureRoi: { x: number; y: number; width: number; height: number };
     runtimeVariant: string;
+    generateSideSwitchMarkers: boolean;
   };
   features: {
     analysisFps: number;
@@ -107,6 +113,7 @@ export type ParsedModelFeedback = {
       previousProduction: ParsedServeOutput;
     };
     servingSide: ParsedServingSideOutput | null;
+    sideSwitch: OnDeviceSideSwitchOutput | null;
     suppression: ParsedSuppressionOutput | null;
   };
   corrections: {
@@ -687,6 +694,87 @@ function parseServingSideOutput(
     ),
     featureVersion: string(output.featureVersion, `${field}.featureVersion`),
     anchorContract: string(output.anchorContract, `${field}.anchorContract`),
+    features: { rows, columns, values },
+    candidates,
+  };
+}
+
+function parseSideSwitchOutput(
+  value: unknown,
+  field: string,
+  duration: number,
+): OnDeviceSideSwitchOutput | null {
+  // Older feedback bundles did not carry this specialist's raw evidence.
+  if (value === undefined || value === null) return null;
+  const output = object(value, field);
+  if (output.featureVersion !== SIDE_SWITCH_FEATURE_VERSION) {
+    fail(
+      `${field}.featureVersion`,
+      "uses an unsupported side-switch feature contract",
+    );
+  }
+  if (output.candidateContract !== SIDE_SWITCH_CANDIDATE_CONTRACT) {
+    fail(
+      `${field}.candidateContract`,
+      "uses an unsupported side-switch candidate contract",
+    );
+  }
+  const features = object(output.features, `${field}.features`);
+  const rows = integer(features.rows, `${field}.features.rows`);
+  const columns = integer(features.columns, `${field}.features.columns`);
+  if (columns !== SIDE_SWITCH_FEATURE_NAMES.length) {
+    fail(`${field}.features.columns`, `must be ${SIDE_SWITCH_FEATURE_NAMES.length}`);
+  }
+  const values = decodeNumericArray(
+    features.values,
+    `${field}.features.values`,
+    "float64",
+    [rows, columns],
+  ) as Float64Array;
+  if (!Array.isArray(output.candidates)) {
+    fail(`${field}.candidates`, "must be an array");
+  }
+  // Rows describe every proposal; candidates are the decoder's selected subset.
+  if (output.candidates.length > rows) {
+    fail(`${field}.candidates`, "must not exceed feature rows");
+  }
+  const ids = new Set<string>();
+  const candidates = output.candidates.map((value, index) => {
+    const candidateField = `${field}.candidates[${index}]`;
+    const candidate = object(value, candidateField);
+    const id = string(candidate.id, `${candidateField}.id`);
+    if (ids.has(id)) fail(`${candidateField}.id`, "must be unique");
+    ids.add(id);
+    return {
+      id,
+      timestamp: sourceTime(
+        candidate.timestamp,
+        `${candidateField}.timestamp`,
+        duration,
+      ),
+      probability: probability(
+        candidate.probability,
+        `${candidateField}.probability`,
+      ),
+      kind: choice(
+        candidate.kind,
+        ["adjacent-rally-boundary", "internal-dead-state-peak"] as const,
+        `${candidateField}.kind`,
+      ),
+      sourceRangeIds: stringArray(
+        candidate.sourceRangeIds,
+        `${candidateField}.sourceRangeIds`,
+      ),
+    };
+  });
+  return {
+    modelId: string(output.modelId, `${field}.modelId`),
+    modelFingerprint: string(
+      output.modelFingerprint,
+      `${field}.modelFingerprint`,
+    ),
+    featureVersion: SIDE_SWITCH_FEATURE_VERSION,
+    candidateContract: SIDE_SWITCH_CANDIDATE_CONTRACT,
     features: { rows, columns, values },
     candidates,
   };
@@ -1487,6 +1575,13 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       gameWindow: { start: windowStart, end: windowEnd },
       featureRoi: roi,
       runtimeVariant,
+      generateSideSwitchMarkers:
+        source.generateSideSwitchMarkers === undefined
+          ? true
+          : boolean(
+              source.generateSideSwitchMarkers,
+              "bundle.source.generateSideSwitchMarkers",
+            ),
     },
     features,
     initialInference: {
@@ -1514,6 +1609,11 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       productionComponents,
       componentServeOutputs,
       servingSide,
+      sideSwitch: parseSideSwitchOutput(
+        inference.sideSwitch,
+        "bundle.initialInference.sideSwitch",
+        duration,
+      ),
       suppression,
     },
     corrections: {

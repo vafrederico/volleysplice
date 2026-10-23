@@ -13,6 +13,7 @@
     "test:inference-ui": "node scripts/test-inference-progress-ui.mjs",
     "test:reconnect-ui": "node scripts/test-app-reconnect-ui.mjs && node scripts/test-app-source-reuse-ui.mjs && node scripts/test-app-source-race-ui.mjs",
     "test:review-persistence": "node --experimental-strip-types scripts/test-review-persistence.mjs && node scripts/test-review-persistence-ui.mjs",
+    "test:side-switch-import": "node scripts/test-side-switch-import-ui.mjs",
     "prebuild": "npm run prepare-assets",
     "build": "npm run check && vite build",
     "postbuild": "node scripts/verify-build.mjs",

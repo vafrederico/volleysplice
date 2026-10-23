@@ -2,7 +2,9 @@ import { alignRallyServeMarkers, createCutDraft, type CutDraft, type CutDraftSee
 import type { OnDeviceAnalysis } from "./on-device/types.ts";
 import { scoreTrackingWithServingSideOutput, scoreTrackingWithSideSwitchOutput } from "./score-tracking-inference.ts";
 
-type ModelScoreResults = Pick<OnDeviceAnalysis, "servingSide" | "sideSwitch">;
+type ModelScoreResults = Pick<OnDeviceAnalysis, "servingSide" | "sideSwitch"> & {
+  sideSwitchEnabled?: boolean;
+};
 
 export function withModelScoreMarkers(draft: CutDraft, analysis: ModelScoreResults): CutDraft {
   let scoreTracking = draft.scoreTracking;
@@ -12,7 +14,7 @@ export function withModelScoreMarkers(draft: CutDraft, analysis: ModelScoreResul
     scoreTracking = !hadServeMarkers && generated.serveMarkers.length > 0
       ? { ...generated, enabled: true } : generated;
   }
-  if (analysis.sideSwitch) scoreTracking = scoreTrackingWithSideSwitchOutput(scoreTracking, analysis.sideSwitch);
+  if (analysis.sideSwitch && analysis.sideSwitchEnabled !== false) scoreTracking = scoreTrackingWithSideSwitchOutput(scoreTracking, analysis.sideSwitch);
   return alignRallyServeMarkers({ ...draft, scoreTracking });
 }
 
