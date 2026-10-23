@@ -129,7 +129,7 @@ try {
     rallies: project.analysis.intervals,
     ignoredIntervals: [],
   };
-  const key = cutDraftStorageKey(seed.analysisId);
+  let key;
   let readyReview;
   function Editor({ savedProject }) {
     const projects = React.useMemo(() => [savedProject], [savedProject]);
@@ -143,7 +143,9 @@ try {
           review.message ?? "Loading",
         );
   }
-  await putProject(project);
+  Object.assign(project, await putProject(project));
+  const { projectDraftStorageKey } = await server.ssrLoadModule("/src/lib/review-draft-persistence.ts");
+  key = projectDraftStorageKey(seed.analysisId, project.instanceId);
   await act(async () =>
     root.render(React.createElement(Editor, { savedProject: project })),
   );

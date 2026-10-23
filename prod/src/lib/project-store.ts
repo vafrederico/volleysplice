@@ -47,6 +47,10 @@ export type ProjectStatus =
 export type VolleySpliceProject = {
   schemaVersion: 1;
   id: string;
+  /** Browser-local lifetime identity; absent only in legacy records before migration. */
+  instanceId?: string;
+  /** Only migrated records may restore pre-instance local draft/history keys. */
+  legacyDraftStorage?: boolean;
   source: ProjectSource;
   info: OnDeviceMediaInfo;
   analysisWindow: AnalysisWindow;
@@ -77,6 +81,14 @@ export type VolleySpliceProject = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type StoredProject = VolleySpliceProject & { instanceId: string };
+
+function migrateProjectInstance(project: VolleySpliceProject): StoredProject {
+  return project.instanceId ? project as StoredProject : {
+    ...project, instanceId: crypto.randomUUID(), legacyDraftStorage: true,
+  };
+}
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -131,6 +143,34 @@ export function projectSource(file: File): ProjectSource {
     lastModified: file.lastModified,
     type: file.type,
   };
+}
+
+/** A project's recorded fingerprint cannot be removed or replaced by a stale update. */
+export function retainProjectSource(
+  source: ProjectSource,
+  existing?: ProjectSource,
+): ProjectSource {
+  return existing?.fingerprint !== undefined ? existing : source;
+}
+
+export function sameProjectSource(left: ProjectSource, right: ProjectSource): boolean {
+  return left.name === right.name && left.size === right.size &&
+    left.lastModified === right.lastModified && left.type === right.type &&
+    left.fingerprint === right.fingerprint;
+}
+
+export class ProjectSourceConflictError extends Error {
+  readonly project: VolleySpliceProject | null;
+  constructor(
+    project: VolleySpliceProject | null,
+    message = project
+      ? "The saved video identity changed in another tab. Choose the original video and retry."
+      : "This saved project is no longer available. Open another project.",
+  ) {
+    super(message);
+    this.name = "ProjectSourceConflictError";
+    this.project = project ? normalizeStoredProject(project) : null;
+  }
 }
 
 const SOURCE_FINGERPRINT_SAMPLE_BYTES = 1024 * 1024;
@@ -214,8 +254,10 @@ export async function sourceCanReconnectFile(
   source: ProjectSource,
   file: File,
 ): Promise<boolean> {
-  if (sourceMatchesFile(source, file)) return true;
-  if (!source.fingerprint || source.size !== file.size) return false;
+  // Legacy projects have only metadata. Once a fingerprint exists it is the
+  // authority, even when all metadata still matches a replaced local file.
+  if (source.fingerprint === undefined) return sourceMatchesFile(source, file);
+  if (source.size !== file.size) return false;
   try {
     return source.fingerprint === (await sourceFileFingerprint(file));
   } catch {
@@ -523,6 +565,9 @@ function validProject(value: unknown): value is VolleySpliceProject {
     project.schemaVersion === 1 &&
     typeof project.id === "string" &&
     project.id.length > 0 &&
+    (project.instanceId === undefined || (typeof project.instanceId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(project.instanceId))) &&
+    (project.legacyDraftStorage === undefined || typeof project.legacyDraftStorage === "boolean") &&
     Boolean(project.source) &&
     typeof project.source?.name === "string" &&
     finite(project.source?.size) &&
@@ -638,25 +683,77 @@ export function normalizeStoredProject(
   return normalizedProject;
 }
 
-export async function listProjects(): Promise<VolleySpliceProject[]> {
+export async function listProjects(): Promise<StoredProject[]> {
   const database = await openProjectDatabase();
   try {
-    const transaction = database.transaction(PROJECT_STORE, "readonly");
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
     const complete = transactionComplete(transaction);
     const values = await requestResult(
       transaction.objectStore(PROJECT_STORE).getAll() as IDBRequest<unknown[]>,
     );
+    const projects = values.filter(validProject).map((project) => {
+      const migrated = migrateProjectInstance(project);
+      if (!project.instanceId) transaction.objectStore(PROJECT_STORE).put(migrated);
+      return normalizeStoredProject(migrated) as StoredProject;
+    });
     await complete;
-    return values
-      .filter(validProject)
-      .map(normalizeStoredProject)
+    return projects
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   } finally {
     database.close();
   }
 }
 
-export async function putProject(project: VolleySpliceProject): Promise<void> {
+export async function getProject(id: string): Promise<StoredProject | null> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    const stored = await requestResult(transaction.objectStore(PROJECT_STORE).get(id) as IDBRequest<unknown>);
+    if (!validProject(stored)) {
+      await complete;
+      if (stored === undefined) return null;
+      throw new Error("The saved project is invalid. Open another project.");
+    }
+    const migrated = migrateProjectInstance(stored);
+    if (!stored.instanceId) transaction.objectStore(PROJECT_STORE).put(migrated);
+    await complete;
+    return normalizeStoredProject(migrated) as StoredProject;
+  } finally {
+    database.close();
+  }
+}
+
+/** Linearize a source validation without holding an IDB transaction open during file I/O. */
+export async function confirmProjectSource(id: string, expected: ProjectSource, expectedInstanceId: string | undefined): Promise<StoredProject> {
+  const database = await openProjectDatabase();
+  try {
+    const transaction = database.transaction(PROJECT_STORE, "readwrite");
+    const complete = transactionComplete(transaction);
+    const store = transaction.objectStore(PROJECT_STORE);
+    const raw = await requestResult(store.get(id) as IDBRequest<unknown>);
+    const stored = validProject(raw) ? migrateProjectInstance(raw) : null;
+    if (stored && validProject(raw) && !raw.instanceId) store.put(stored);
+    if (!stored || !expectedInstanceId || stored.instanceId !== expectedInstanceId || !sameProjectSource(stored.source, expected)) {
+      await complete;
+      throw new ProjectSourceConflictError(stored,
+        stored && stored.instanceId !== expectedInstanceId
+          ? "This project instance changed in another tab. Reopen it and choose the original video again." : undefined);
+    }
+    await complete;
+    return normalizeStoredProject(stored) as StoredProject;
+  } finally {
+    database.close();
+  }
+}
+
+/** Updates require the persisted instanceId; explicit creation mints a fresh one.
+ * Source-bound writes also require expectedSource (null requires an absent ID).
+ * Same-instance background writes may omit expectedSource and retain current identity. */
+export async function putProject(
+  project: VolleySpliceProject,
+  options: { expectedSource?: ProjectSource | null } = {},
+): Promise<StoredProject> {
   if (!validProject(project)) throw new Error("The project record is invalid.");
   const database = await openProjectDatabase();
   try {
@@ -664,26 +761,52 @@ export async function putProject(project: VolleySpliceProject): Promise<void> {
     const complete = transactionComplete(transaction);
     const store = transaction.objectStore(PROJECT_STORE);
     const stored = await requestResult(store.get(project.id) as IDBRequest<unknown>);
+    const existing = validProject(stored) ? migrateProjectInstance(stored) : null;
+    if (existing && validProject(stored) && !stored.instanceId) store.put(existing);
+    const expected = options.expectedSource;
+    const wrongInstance = existing
+      ? (project.instanceId !== existing.instanceId &&
+          !(project.instanceId === undefined && validProject(stored) && stored.instanceId === undefined && expected === undefined))
+      : project.instanceId !== undefined && expected !== null;
+    if (wrongInstance || (expected !== undefined && (expected === null
+        ? stored !== undefined
+        : !existing || !sameProjectSource(existing.source, expected))) ||
+        (existing?.source.fingerprint !== undefined && project.source.fingerprint !== undefined &&
+          existing.source.fingerprint !== project.source.fingerprint)) {
+      await complete;
+      throw new ProjectSourceConflictError(existing, wrongInstance && existing
+        ? "This project instance changed in another tab. Reopen it before saving or retrying." : undefined);
+    }
     // Analysis/source updates use the app's project snapshot, which may predate
     // editor saves. Merge the latest review in the same transaction as the put.
-    if (validProject(stored)) {
-      const storedDraft = stored.reviewDraft;
+    if (existing) {
+      project = {
+        ...project,
+        instanceId: existing.instanceId,
+        legacyDraftStorage: existing.legacyDraftStorage,
+        createdAt: existing.createdAt,
+        source: retainProjectSource(project.source, existing.source),
+      };
+      const storedDraft = existing.reviewDraft;
       if (storedDraft && (!project.reviewDraft ||
           (Date.parse(storedDraft.updatedAt) || 0) >= (Date.parse(project.reviewDraft.updatedAt) || 0))) {
         project = { ...project, reviewDraft: storedDraft };
       }
-      if (stored.lastExportedAt && (!project.lastExportedAt || stored.lastExportedAt > project.lastExportedAt)) {
-        project = { ...project, lastExportedAt: stored.lastExportedAt };
+      if (existing.lastExportedAt && (!project.lastExportedAt || existing.lastExportedAt > project.lastExportedAt)) {
+        project = { ...project, lastExportedAt: existing.lastExportedAt };
       }
+    } else {
+      project = { ...project, instanceId: crypto.randomUUID(), legacyDraftStorage: false };
     }
     store.put(project);
     await complete;
+    return project as StoredProject;
   } finally {
     database.close();
   }
 }
 
-export async function markProjectExported(projectIdToUpdate: string, exportedAt: string): Promise<void> {
+export async function markProjectExported(projectIdToUpdate: string, exportedAt: string, expectedInstanceId: string | undefined): Promise<void> {
   const database = await openProjectDatabase();
   try {
     const transaction = database.transaction(PROJECT_STORE, "readwrite");
@@ -692,7 +815,12 @@ export async function markProjectExported(projectIdToUpdate: string, exportedAt:
     const stored = await requestResult(store.get(projectIdToUpdate) as IDBRequest<unknown>);
     // Update the latest record atomically, preserving concurrent review edits.
     // An export finishing after deletion must not recreate the project.
-    if (validProject(stored)) store.put({ ...stored, lastExportedAt: exportedAt });
+    if (!validProject(stored) || !expectedInstanceId || stored.instanceId !== expectedInstanceId) {
+      await complete;
+      throw new ProjectSourceConflictError(validProject(stored) ? stored : null,
+        "This project instance is unavailable or changed. Reopen it before saving export status.");
+    }
+    store.put({ ...stored, lastExportedAt: exportedAt });
     await complete;
   } finally {
     database.close();
@@ -702,6 +830,7 @@ export async function markProjectExported(projectIdToUpdate: string, exportedAt:
 export async function putProjectReviewDraft(
   projectIdToUpdate: string,
   reviewDraft: CutDraft,
+  expectedInstanceId: string | undefined,
 ): Promise<void> {
   const database = await openProjectDatabase();
   try {
@@ -711,8 +840,10 @@ export async function putProjectReviewDraft(
     const stored = await requestResult(
       store.get(projectIdToUpdate) as IDBRequest<unknown>,
     );
-    if (!validProject(stored)) {
-      throw new Error("The project record is unavailable or invalid.");
+    if (!validProject(stored) || !expectedInstanceId || stored.instanceId !== expectedInstanceId) {
+      await complete;
+      throw new ProjectSourceConflictError(validProject(stored) ? stored : null,
+        "This project instance is unavailable or changed. Reopen it before saving edits.");
     }
     if (reviewDraft.recordingId !== stored.id || reviewDraft.analysisId !== projectAnalysisId(stored)) {
       throw new Error("The review does not belong to this project's analysis.");
@@ -728,12 +859,19 @@ export async function putProjectReviewDraft(
   }
 }
 
-export async function deleteProject(projectIdToDelete: string): Promise<void> {
+export async function deleteProject(projectIdToDelete: string, expectedInstanceId: string | undefined): Promise<void> {
   const database = await openProjectDatabase();
   try {
     const transaction = database.transaction(PROJECT_STORE, "readwrite");
     const complete = transactionComplete(transaction);
-    transaction.objectStore(PROJECT_STORE).delete(projectIdToDelete);
+    const store = transaction.objectStore(PROJECT_STORE);
+    const stored = await requestResult(store.get(projectIdToDelete) as IDBRequest<unknown>);
+    if (!validProject(stored) || !expectedInstanceId || stored.instanceId !== expectedInstanceId) {
+      await complete;
+      throw new ProjectSourceConflictError(validProject(stored) ? stored : null,
+        "This project instance is unavailable or changed. Reopen it before deleting.");
+    }
+    store.delete(projectIdToDelete);
     await complete;
   } finally {
     database.close();
