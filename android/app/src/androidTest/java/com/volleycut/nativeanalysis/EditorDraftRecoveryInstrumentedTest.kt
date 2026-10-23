@@ -32,6 +32,55 @@ import java.util.concurrent.atomic.AtomicReference
 class EditorDraftRecoveryInstrumentedTest {
     @get:Rule val compose = createEmptyComposeRule()
 
+    @Test fun failedAutosaveShowsRetryAndPreservesLatestEditAfterRecovery() = withProject { store, target, _ ->
+        val original = target.readBytes()
+        val blocker = File(target.parentFile, "${target.name}.tmp").apply { mkdirs() }
+        try {
+            launchEditor { scenario ->
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("draft-save-error").fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithTag("draft-save-error").assertIsDisplayed()
+                compose.onNodeWithTag("draft-save-retry").assertIsEnabled()
+                compose.onNodeWithTag("draft-save-backup").assertIsEnabled()
+                // Export tests can leave a Play rating prompt pending in this
+                // shared debug install; dismiss it through the normal UI.
+                if (compose.onAllNodesWithText("Not now").fetchSemanticsNodes().isNotEmpty()) {
+                    compose.onNodeWithText("Not now").performClick()
+                }
+                compose.onNodeWithText("Remove").performScrollTo().performClick()
+                compose.waitForIdle()
+                compose.onNodeWithText("✓ Remove").assertExists()
+                SystemClock.sleep(500)
+                assertArrayEquals(original, target.readBytes())
+                assertTrue(blocker.delete())
+                compose.onNodeWithTag("draft-save-retry").performClick()
+                compose.waitForIdle()
+                compose.waitUntil(10_000) {
+                    (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+                }
+                compose.onNodeWithTag("draft-save-error").assertDoesNotExist()
+                scenario.recreate()
+                compose.waitForIdle()
+                assertFalse((store.load() as EditorDraftLoadResult.Restored).draft.cuts.first().included)
+            }
+        } finally { blocker.delete() }
+    }
+
+    @Test fun failedImportedDraftWriteDoesNotPublishOrSelectProject() = withProject { store, target, project ->
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val draft = (store.load() as EditorDraftLoadResult.Restored).draft
+        val text = ModelFeedbackExporter.createBundle(project, draft, EditorMath.finalIntervals(draft), null, null).toString()
+        val beforeIds = NativeProjectStore.list(context).map { it.id }.toSet()
+        val selection = NativeProjectStore.selectedId(context)
+        val directory = checkNotNull(target.parentFile)
+        val mode = android.system.Os.stat(directory.absolutePath).st_mode and 0xFFF
+        try {
+            android.system.Os.chmod(directory.absolutePath, mode and android.system.OsConstants.S_IWUSR.inv())
+            assertThrows(EditorDraftSaveException::class.java) { ModelFeedbackImporter.import(context, text) }
+            assertEquals(beforeIds, NativeProjectStore.list(context).map { it.id }.toSet())
+            assertEquals(selection, NativeProjectStore.selectedId(context))
+        } finally { android.system.Os.chmod(directory.absolutePath, mode) }
+    }
+
     @Test fun truncatedDraftSurvivesMountRecreationAndCancelledReset() = withProject { store, target, _ ->
         val original = "{\"version\":8,\"cuts\":[".toByteArray()
         target.writeBytes(original)

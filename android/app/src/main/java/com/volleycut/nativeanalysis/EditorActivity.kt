@@ -147,6 +147,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -2930,6 +2932,41 @@ private fun EditorScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
     var message by remember { mutableStateOf("") }
+    var draftSaveError by remember { mutableStateOf<String?>(null) }
+    var draftSaveAttempt by remember { mutableIntStateOf(0) }
+    var savingBeforeRelink by remember { mutableStateOf(false) }
+    val draftSaveMutex = remember(store) { Mutex() }
+
+    suspend fun saveReview(candidate: EditorDraft): Boolean = try {
+        draftSaveMutex.withLock { withContext(Dispatchers.IO) { store.save(candidate) } }
+        if (draft == candidate) draftSaveError = null
+        true
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: UnreadableEditorDraftException) {
+        onDraftUnreadable()
+        false
+    } catch (error: EditorDraftSaveException) {
+        if (draft == candidate) draftSaveError = error.message
+        false
+    }
+
+    fun saveAndRelink() {
+        if (savingBeforeRelink) return
+        savingBeforeRelink = true
+        scope.launch {
+            try {
+                // Edits can continue while the disk write is running. Relink
+                // only after the most recent review has actually been saved.
+                while (true) {
+                    val candidate = draft
+                    if (!saveReview(candidate)) return@launch
+                    if (candidate == draft) break
+                }
+                onRelink()
+            } finally { savingBeforeRelink = false }
+        }
+    }
     var exportState by remember(project.id) {
         mutableStateOf(
             ExportService.statusForProject(project.id)?.toUiState()
@@ -3478,13 +3515,9 @@ private fun EditorScreen(
         )
     }
 
-    LaunchedEffect(draft) {
+    LaunchedEffect(draft, draftSaveAttempt) {
         delay(200)
-        try {
-            withContext(Dispatchers.IO) { store.save(draft) }
-        } catch (_: UnreadableEditorDraftException) {
-            onDraftUnreadable()
-        }
+        saveReview(draft)
     }
 
     LaunchedEffect(draft.playbackRate) {
@@ -3660,7 +3693,38 @@ private fun EditorScreen(
     )
 
     Box(Modifier.fillMaxSize()) {
-        Scaffold(containerColor = Paper) { scaffoldPadding ->
+        // This warning persists until a successful save. Reserve layout space
+        // so review controls remain reachable while storage is unavailable.
+        Scaffold(containerColor = Paper, bottomBar = {
+            draftSaveError?.let { error ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp).testTag("draft-save-error")
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                    color = Paper,
+                    border = BorderStroke(1.dp, Danger),
+                    shape = RoundedCornerShape(12.dp),
+                    shadowElevation = 6.dp,
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Edits are not saved", fontWeight = FontWeight.Bold, color = Danger)
+                        Text(error, fontSize = 13.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(
+                                onClick = { draftSaveAttempt++ },
+                                modifier = Modifier.testTag("draft-save-retry"),
+                            ) { Text("Retry save") }
+                            TextButton(
+                                enabled = !feedbackExporting,
+                                onClick = {
+                                    feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                                },
+                                modifier = Modifier.testTag("draft-save-backup"),
+                            ) { Text("Export backup") }
+                        }
+                    }
+                }
+            }
+        }) { scaffoldPadding ->
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
             ) {
@@ -3879,9 +3943,9 @@ private fun EditorScreen(
                                     )
                                     if (sourceAvailable == false) {
                                         Button(
-                                            enabled = !relinkingSource,
-                                            onClick = { store.save(draft); onRelink() },
-                                        ) { Text(if (relinkingSource) "Validating…" else "Re-link video") }
+                                            enabled = !relinkingSource && !savingBeforeRelink,
+                                            onClick = { saveAndRelink() },
+                                        ) { Text(if (savingBeforeRelink) "Saving edits…" else if (relinkingSource) "Validating…" else "Re-link video") }
                                     }
                                 }
                             }
@@ -4358,13 +4422,12 @@ private fun EditorScreen(
                     )
                     if (sourceAvailable == false) {
                         Button(
-                            enabled = !relinkingSource,
+                            enabled = !relinkingSource && !savingBeforeRelink,
                             onClick = {
-                                store.save(draft)
-                                onRelink()
+                                saveAndRelink()
                             },
                         ) {
-                            Text(if (relinkingSource) "Validating…" else "Re-link video")
+                            Text(if (savingBeforeRelink) "Saving edits…" else if (relinkingSource) "Validating…" else "Re-link video")
                         }
                     }
                 }
