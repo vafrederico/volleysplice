@@ -789,10 +789,39 @@ class EditorDraftRecoveryInstrumentedTest {
             device?.waitForIdle()
             val context = instrumentation.targetContext
             ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use { scenario ->
-                arguments.getString("expectedEditorLayout")?.let { expected ->
+                val expected = arguments.getString("expectedEditorLayout")
+                if (orientation == "landscape" || expected != null) {
+                    var observed = "activity configuration not available"
+                    try {
+                        compose.waitUntil(10_000) {
+                            var ready = false
+                            try {
+                                scenario.onActivity { activity ->
+                                    val config = activity.resources.configuration
+                                    val layout = editorLayoutMode(config.screenWidthDp, config.screenHeightDp)
+                                    observed = "widthDp=${config.screenWidthDp}, heightDp=${config.screenHeightDp}, " +
+                                        "rotation=${activity.display?.rotation}, layout=${layout.name}"
+                                    ready = (orientation != "landscape" || config.screenWidthDp > config.screenHeightDp) &&
+                                        (expected == null || layout.name == expected)
+                                }
+                            } catch (recreating: IllegalStateException) {
+                                observed = "activity recreating: ${recreating.message}; last $observed"
+                            }
+                            ready
+                        }
+                    } catch (failure: Throwable) {
+                        throw AssertionError("Editor configuration did not become ready within 10s: " +
+                            "orientation=$orientation, expectedLayout=$expected; observed $observed", failure)
+                    }
                     scenario.onActivity { activity ->
                         val config = activity.resources.configuration
-                        assertEquals(expected, editorLayoutMode(config.screenWidthDp, config.screenHeightDp).name)
+                        if (orientation == "landscape") {
+                            assertTrue("Expected landscape after readiness wait; observed $observed",
+                                config.screenWidthDp > config.screenHeightDp)
+                        }
+                        if (expected != null) {
+                            assertEquals(expected, editorLayoutMode(config.screenWidthDp, config.screenHeightDp).name)
+                        }
                     }
                 }
                 block(scenario)
