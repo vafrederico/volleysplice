@@ -74,6 +74,8 @@ internal data class NativeProject(
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
     val modelId: String = FeatureSchema.MODEL_ID,
     val neuralScores: NeuralRallyScores? = null,
+    /** Warnings retained from a portable backup, independently of local cache availability. */
+    val feedbackWarnings: List<String> = emptyList(),
     val cacheMode: String = NativeFeatureCache.Mode.USE.wireName(),
     val analysisMeasurements: List<AnalysisRunMeasurements> = emptyList(),
     val error: String? = null,
@@ -81,6 +83,7 @@ internal data class NativeProject(
     val lastExportedAtMs: Long? = null,
     val createdAtMs: Long,
     val updatedAtMs: Long,
+    val draftNamespace: String? = null,
 ) {
     fun editorSeed(): EditorSeed? = if (status == ProjectStatus.READY) {
         EditorSeed(
@@ -101,12 +104,14 @@ internal data class NativeProject(
             sideSwitch = sideSwitch,
             sideSwitchError = sideSwitchError,
             sideSwitchEnabled = sideSwitchEnabled,
+            feedbackWarnings = feedbackWarnings,
             scoreTrackingInitiallyEnabled = servingSideStatus != ServingSideAnalysisStatus.DISABLED,
             suppression = suppression,
             analysisRoi = roi.takeIf { analysisRoiKnown },
             audioExtractorVersion = audioExtractorVersion,
             visualExtractorVersion = visualExtractorVersion,
             rallyModelId = modelId,
+            draftNamespace = draftNamespace,
         )
     } else null
 }
@@ -114,7 +119,7 @@ internal data class NativeProject(
 /** Atomic, process-safe-enough project records. Analysis itself is serialized by the service. */
 internal object NativeProjectStore {
     // Keep reading projects saved by the retired paired-inference experiment.
-    private const val VERSION = 12
+    private const val VERSION = 13
     private const val TAG = "VolleySpliceProjects"
     private const val DIRECTORY = "native-projects"
     private const val PREFERENCES = "native-project-selection"
@@ -130,8 +135,14 @@ internal object NativeProjectStore {
                     .onFailure { Log.w(TAG, "Could not read ${file.name}", it) }
                     .getOrNull()
             }
+            .filterNot { EditorDraftSessions.isDeleting(context, it.id) }
             .sortedByDescending { it.updatedAtMs }
     }
+
+    // These two accessors deliberately do not take the project-store monitor:
+    // draft opening checks availability under the session registry's lock.
+    fun identity(context: Context, id: String): String = projectFile(context, id).absoluteFile.normalize().path
+    fun exists(context: Context, id: String): Boolean = projectFile(context, id).isFile
 
     @Synchronized
     fun get(context: Context, id: String): NativeProject? = runCatching {
@@ -336,7 +347,7 @@ internal object NativeProjectStore {
         // Delete authoritative and recovery metadata before optional artifact cleanup. A missing
         // source or a cache cleanup failure must never leave (or recreate) a visible project.
         val target = projectFile(context, project.id)
-        if (target.exists() && !target.delete()) Log.w(TAG, "Could not delete ${target.name}")
+        Files.deleteIfExists(target.toPath())
         if (selectedId(context) == project.id) setSelectedId(context, null)
         project.editorSeed()?.let { seed ->
             EditorProjectStore.clearIfMatches(context, seed)
@@ -381,7 +392,9 @@ internal object NativeProjectStore {
             "That file has different video dimensions or rotation from the original recording."
         project.media.videoMime() != replacementMedia.videoMime() ->
             "That file uses a different video codec from the original recording."
-        project.media.audioMime() != replacementMedia.audioMime() ->
+        // Probing a video-only file returns null; older saved projects use an
+        // empty string for the same absence. Keep real codec checks exact.
+        project.media.audioMime().orEmpty() != replacementMedia.audioMime().orEmpty() ->
             "That file has a different audio track from the original recording."
         else -> null
     }
@@ -407,6 +420,9 @@ internal object NativeProjectStore {
         }
         val oldSeed = project.editorSeed()
         val updated = project.copy(
+            // Pre-namespace imports keep their old draft readable until this
+            // explicit relink, then move into their own review identity too.
+            draftNamespace = project.draftNamespace ?: project.id.takeIf { it.startsWith("import-") },
             source = replacement.copy(
                 sampledFingerprint = project.source.sampledFingerprint
                     ?: replacement.sampledFingerprint,
@@ -493,6 +509,9 @@ internal object NativeProjectStore {
 
     internal fun matchesAnalysis(existing: NativeProject, candidate: NativeProject): Boolean =
         existing.modelId == candidate.modelId &&
+            // Missing output still follows deferred score preparation; archived output is evidence only.
+            (!candidate.sideSwitchEnabled || existing.sideSwitch == null ||
+                SideSwitchJson.isCurrentOutput(existing.sideSwitch)) &&
             existing.analysisRoiKnown && candidate.analysisRoiKnown &&
             existing.audioExtractorVersion == candidate.audioExtractorVersion &&
             existing.visualExtractorVersion == candidate.visualExtractorVersion &&
@@ -593,6 +612,7 @@ internal object NativeProjectStore {
             servingSide = seed.servingSide,
             sideSwitch = seed.sideSwitch,
             sideSwitchEnabled = seed.sideSwitchEnabled,
+            feedbackWarnings = seed.feedbackWarnings,
             servingSideStatus = when {
                 !seed.scoreTrackingInitiallyEnabled -> ServingSideAnalysisStatus.DISABLED
                 seed.servingSide != null &&
@@ -606,6 +626,7 @@ internal object NativeProjectStore {
             sideSwitchError = seed.sideSwitchError,
             suppression = seed.suppression,
             modelId = seed.rallyModelId,
+            draftNamespace = seed.draftNamespace,
             createdAtMs = now,
             updatedAtMs = now,
         ).withServingSideCacheIdentity()
@@ -657,6 +678,7 @@ internal object NativeProjectStore {
     internal fun encode(project: NativeProject) = JSONObject().apply {
         put("version", VERSION)
         put("id", project.id)
+        put("draftNamespace", project.draftNamespace ?: JSONObject.NULL)
         put("source", JSONObject().apply {
             put("uri", project.source.uri)
             put("name", project.source.name)
@@ -718,6 +740,7 @@ internal object NativeProjectStore {
         put("servingSideError", project.servingSideError ?: JSONObject.NULL)
         put("sideSwitchError", project.sideSwitchError ?: JSONObject.NULL)
         put("sideSwitchEnabled", project.sideSwitchEnabled)
+        put("warnings", JSONArray(project.feedbackWarnings))
         put("suppression", project.suppression?.let(::encodeSuppression) ?: JSONObject.NULL)
     }
 
@@ -737,6 +760,7 @@ internal object NativeProjectStore {
         )
         val project = NativeProject(
             id = json.getString("id"),
+            draftNamespace = if (json.isNull("draftNamespace")) null else json.getString("draftNamespace"),
             source = ProjectSource(
                 uri = sourceJson.getString("uri"),
                 name = sourceJson.getString("name"),
@@ -807,6 +831,7 @@ internal object NativeProjectStore {
             sideSwitchEnabled = if (json.has("sideSwitchEnabled")) {
                 json.getBoolean("sideSwitchEnabled")
             } else json.optJSONObject("sideSwitch") != null,
+            feedbackWarnings = SideSwitchJson.decodeWarnings(json),
             suppression = json.optJSONObject("suppression")?.let(::decodeSuppression),
             modelId = json.optString("modelId"),
             neuralScores = json.optJSONObject("neuralScores")?.let {

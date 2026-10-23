@@ -8,6 +8,7 @@ import {
 import { samplesAtTimestampsFromSequentialPass } from "./sequential-samples.ts";
 import type { NormalizedRoi } from "./types.ts";
 import { loadOpenCv } from "./visual-features.ts";
+import { awaitWithAbort } from "./abortable.ts";
 
 const SIDE_SWITCH_WIDTH = 256;
 const SIDE_SWITCH_HEIGHT = 144;
@@ -42,7 +43,9 @@ export async function sampleSpecialistFramesSequentially(
   roi: NormalizedRoi,
   plan: SpecialistFramePlan,
   onProgress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<SampledSpecialistFrames> {
+  signal?.throwIfAborted();
   const servingTimestampByKey = new Map(
     (plan.servingSideTimes ?? []).map((timestamp) => [
       timestampKey(timestamp),
@@ -66,7 +69,8 @@ export async function sampleSpecialistFramesSequentially(
     return { servingSide: new Map(), sideSwitch: new Map() };
   }
 
-  const cv = await loadOpenCv();
+  const cv = await awaitWithAbort(loadOpenCv(), signal);
+  signal?.throwIfAborted();
   const left = Math.round(roi.x * media.info.width);
   const top = Math.round(roi.y * media.info.height);
   const right = Math.round((roi.x + roi.width) * media.info.width);
@@ -89,11 +93,12 @@ export async function sampleSpecialistFramesSequentially(
   const iterator = samplesAtTimestampsFromSequentialPass(
     sink,
     requested,
-    () => undefined,
+    () => signal?.throwIfAborted(),
   );
   let completed = 0;
   try {
     while (completed < requested.length) {
+      signal?.throwIfAborted();
       const next = await iterator.next();
       if (next.done) break;
       const sample = next.value;

@@ -43,6 +43,20 @@ final class RecordingImportTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: source), Data("local movie".utf8))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dirs.documents.path), ["match.mp4"])
     }
+    func testLocalMovieIsReusedWithEitherDirectoryURLHint() async throws {
+        let dirs = try folders(); defer { try? FileManager.default.removeItem(at: dirs.root) }
+        let source = dirs.documents.appendingPathComponent("match.mp4")
+        try Data("local movie".utf8).write(to: source)
+        for isDirectory in [false, true] {
+            let documents = URL(fileURLWithPath: dirs.documents.path, isDirectory: isDirectory)
+            let imported = try await RecordingImport.prepare(source: source, documents: documents)
+            XCTAssertFalse(imported.createdCopy)
+            XCTAssertEqual(imported.url.path, source.resolvingSymlinksInPath().standardizedFileURL.path)
+            await RecordingImport.discard(imported)
+            XCTAssertEqual(try Data(contentsOf: source), Data("local movie".utf8))
+        }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dirs.documents.path), ["match.mp4"])
+    }
     func testCancellationDrainsDetachedWriterAndRemovesOnlyOwnedStage() async throws {
         let dirs = try folders(); defer { try? FileManager.default.removeItem(at: dirs.root) }
         let existing = dirs.documents.appendingPathComponent("match.mp4")
