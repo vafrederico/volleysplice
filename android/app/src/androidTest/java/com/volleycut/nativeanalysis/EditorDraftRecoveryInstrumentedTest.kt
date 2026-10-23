@@ -1,6 +1,7 @@
 package com.volleycut.nativeanalysis
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.app.Activity
 import android.app.Instrumentation
 import android.net.Uri
@@ -94,14 +95,7 @@ class EditorDraftRecoveryInstrumentedTest {
                 repeat(2) { attempt ->
                     // The expanded export tab and compact project menu call the same
                     // production save path; run this test at both device sizes.
-                    if (expanded) {
-                        compose.onNodeWithText("Export").performClick()
-                    } else {
-                        compose.onNodeWithText("Project options").performScrollTo().performClick()
-                    }
-                    val save = compose.onNodeWithText("Save project")
-                    if (expanded) save.performScrollTo()
-                    save.performClick()
+                    saveProject(scenario)
                     compose.waitUntil(10_000) { compose.onAllNodesWithText("Could not save project").fetchSemanticsNodes().isNotEmpty() }
                     compose.onNodeWithText("Could not save project").assertIsDisplayed()
                     compose.onNode(hasText("Cannot export: newer project preferences refer to rallies changed or removed. " +
@@ -157,8 +151,7 @@ class EditorDraftRecoveryInstrumentedTest {
                 ActivityLifecycleMonitorRegistry.getInstance().addLifecycleCallback(lifecycle)
                 try {
                     val remove = removeAction()
-                    compose.onNodeWithText("Project options").performScrollTo().performClick()
-                    compose.onNodeWithText("Save project").performClick()
+                    saveProject(scenario)
                     compose.waitUntil(10_000) { launched.get() != null }
                     assertEquals(filename, launched.get())
                     assertNotNull(device.wait(Until.findObject(By.res("android", "button1")), 10_000))
@@ -179,6 +172,7 @@ class EditorDraftRecoveryInstrumentedTest {
                     }
                     val exported = ModelFeedbackImporter.parse(device.executeShellCommand("cat ${destination.absolutePath}"))
                     assertTrue("Export changed to edits made after opening the picker", exported.draft.cuts.first().included)
+                    if (isDesktopEditor(scenario)) compose.onNodeWithText("Review").performClick()
                     compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
                     compose.onNodeWithText("Saved the detailed project file").assertExists()
                 } finally { ActivityLifecycleMonitorRegistry.getInstance().removeLifecycleCallback(lifecycle) }
@@ -776,58 +770,75 @@ class EditorDraftRecoveryInstrumentedTest {
         assertArrayEquals(original, target.readBytes())
     }
 
+    private fun isDesktopEditor(scenario: ActivityScenario<EditorActivity>): Boolean {
+        var expanded = false
+        scenario.onActivity { activity ->
+            val config = activity.resources.configuration
+            expanded = editorLayoutMode(config.screenWidthDp, config.screenHeightDp) == EditorLayoutMode.DESKTOP
+        }
+        return expanded
+    }
+
+    private fun saveProject(scenario: ActivityScenario<EditorActivity>) {
+        val expanded = isDesktopEditor(scenario)
+        if (expanded) {
+            compose.onNodeWithText("Export").performClick()
+        } else {
+            compose.onNodeWithText("Project options").performScrollTo().performClick()
+        }
+        val save = compose.onNodeWithText("Save project")
+        if (expanded) save.performScrollTo()
+        save.performClick()
+    }
+
     private fun launchEditor(block: (ActivityScenario<EditorActivity>) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val arguments = InstrumentationRegistry.getArguments()
         val orientation = arguments.getString("editorOrientation")
         require(orientation == null || orientation == "landscape") { "Unsupported editorOrientation: $orientation" }
-        // Connecting UiAutomation can reset an external rotation lock. Create
-        // that session and set its rotation before the editor obtains its layout.
-        val device = if (orientation == "landscape") UiDevice.getInstance(instrumentation) else null
-        try {
-            device?.setOrientationLeft()
-            device?.waitForIdle()
-            val context = instrumentation.targetContext
-            ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use { scenario ->
-                val expected = arguments.getString("expectedEditorLayout")
-                if (orientation == "landscape" || expected != null) {
-                    var observed = "activity configuration not available"
-                    try {
-                        compose.waitUntil(10_000) {
-                            var ready = false
-                            try {
-                                scenario.onActivity { activity ->
-                                    val config = activity.resources.configuration
-                                    val layout = editorLayoutMode(config.screenWidthDp, config.screenHeightDp)
-                                    observed = "widthDp=${config.screenWidthDp}, heightDp=${config.screenHeightDp}, " +
-                                        "rotation=${activity.display?.rotation}, layout=${layout.name}"
-                                    ready = (orientation != "landscape" || config.screenWidthDp > config.screenHeightDp) &&
-                                        (expected == null || layout.name == expected)
-                                }
-                            } catch (recreating: IllegalStateException) {
-                                observed = "activity recreating: ${recreating.message}; last $observed"
+        val context = instrumentation.targetContext
+        ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use { scenario ->
+            if (orientation == "landscape") {
+                // UiAutomation may reset a global rotation lock between tests.
+                // Request orientation on this owned activity; use closes it after the test.
+                scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            }
+            val expected = arguments.getString("expectedEditorLayout")
+            if (orientation == "landscape" || expected != null) {
+                var observed = "activity configuration not available"
+                try {
+                    compose.waitUntil(10_000) {
+                        var ready = false
+                        try {
+                            scenario.onActivity { activity ->
+                                val config = activity.resources.configuration
+                                val layout = editorLayoutMode(config.screenWidthDp, config.screenHeightDp)
+                                observed = "widthDp=${config.screenWidthDp}, heightDp=${config.screenHeightDp}, " +
+                                    "rotation=${activity.display?.rotation}, layout=${layout.name}"
+                                ready = (orientation != "landscape" || config.screenWidthDp > config.screenHeightDp) &&
+                                    (expected == null || layout.name == expected)
                             }
-                            ready
+                        } catch (recreating: IllegalStateException) {
+                            observed = "activity recreating: ${recreating.message}; last $observed"
                         }
-                    } catch (failure: Throwable) {
-                        throw AssertionError("Editor configuration did not become ready within 10s: " +
-                            "orientation=$orientation, expectedLayout=$expected; observed $observed", failure)
+                        ready
                     }
-                    scenario.onActivity { activity ->
-                        val config = activity.resources.configuration
-                        if (orientation == "landscape") {
-                            assertTrue("Expected landscape after readiness wait; observed $observed",
-                                config.screenWidthDp > config.screenHeightDp)
-                        }
-                        if (expected != null) {
-                            assertEquals(expected, editorLayoutMode(config.screenWidthDp, config.screenHeightDp).name)
-                        }
+                } catch (failure: Throwable) {
+                    throw AssertionError("Editor configuration did not become ready within 10s: " +
+                        "orientation=$orientation, expectedLayout=$expected; observed $observed", failure)
+                }
+                scenario.onActivity { activity ->
+                    val config = activity.resources.configuration
+                    if (orientation == "landscape") {
+                        assertTrue("Expected landscape after readiness wait; observed $observed",
+                            config.screenWidthDp > config.screenHeightDp)
+                    }
+                    if (expected != null) {
+                        assertEquals(expected, editorLayoutMode(config.screenWidthDp, config.screenHeightDp).name)
                     }
                 }
-                block(scenario)
             }
-        } finally {
-            device?.unfreezeRotation()
+            block(scenario)
         }
     }
 
