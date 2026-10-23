@@ -91,7 +91,7 @@ class RallyStartMarkerInstrumentedTest {
 
             scenario.recreate()
             compose.waitForIdle()
-            val restored = checkNotNull(store.load())
+            val restored = (store.load() as EditorDraftLoadResult.Restored).draft
             assertEquals(start, restored.scoreTracking.serveMarkers.single().timestampMs)
             val bundle = ModelFeedbackExporter.createBundle(
                 project, restored, EditorMath.finalIntervals(restored),
@@ -130,7 +130,7 @@ class RallyStartMarkerInstrumentedTest {
             store.save(restored.copy(scoreTracking = restored.scoreTracking.copy(
                 serveMarkers = restored.scoreTracking.serveMarkers.map { it.copy(timestampMs = 500) },
             )))
-            assertEquals(start, checkNotNull(store.load()).scoreTracking.serveMarkers.single().timestampMs)
+            assertEquals(start, (store.load() as EditorDraftLoadResult.Restored).draft.scoreTracking.serveMarkers.single().timestampMs)
         }
     }
 }

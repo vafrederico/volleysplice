@@ -634,6 +634,7 @@ export function isReusableSideSwitchOutput(
     output.featureVersion === SIDE_SWITCH_FEATURE_VERSION &&
     output.candidateContract === SIDE_SWITCH_CANDIDATE_CONTRACT &&
     Boolean(output.features) &&
+    Array.isArray(output.candidates) &&
     output.features!.columns === SIDE_SWITCH_FEATURE_NAMES.length &&
     Number.isInteger(output.features!.rows) &&
     output.features!.rows >= 0 &&

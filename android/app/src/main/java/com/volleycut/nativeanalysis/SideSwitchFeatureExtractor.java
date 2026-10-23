@@ -621,6 +621,8 @@ final class SideSwitchFeatureExtractor {
                     edges, lines, 1, Math.PI / 180,
                     Math.max(24, WIDTH / 10), WIDTH * .32, WIDTH * .12
             );
+            // An empty Hough result has no integer backing data; use the no-evidence fallback.
+            if (lines.empty()) return null;
             int[] data = new int[(int) (lines.total() * lines.channels())];
             lines.get(0, 0, data);
             double[] best = null;

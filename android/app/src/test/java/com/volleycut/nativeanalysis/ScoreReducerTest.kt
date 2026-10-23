@@ -192,7 +192,7 @@ class ScoreReducerTest {
     }
 
     @Test
-    fun disabledSwitchInferenceRemovesModelMarkersButPreservesManualMarkers() {
+    fun disabledSwitchInferencePreservesSavedCorrectionsUntilReset() {
         val tracking = ScoreTracking(sideSwitchMarkers = listOf(
             SideSwitchMarker("manual", 1_000),
             SideSwitchMarker(
@@ -205,7 +205,7 @@ class ScoreReducerTest {
             tracking, null, null, sideSwitchEnabled = false,
         )
 
-        assertEquals(listOf("manual"), seeded.sideSwitchMarkers.map { it.id })
+        assertEquals(tracking, seeded)
     }
 
     @Test

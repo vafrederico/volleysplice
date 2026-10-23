@@ -28,6 +28,7 @@ function withoutThen(candidate: CvThenable): CvRuntime {
 }
 
 export function loadOpenCv(): Promise<CvRuntime> {
+  let pendingScript: HTMLScriptElement | null = null;
   runtimePromise ??= new Promise<CvRuntime>((resolve, reject) => {
     const finish = () => {
       const candidate = (window as unknown as { cv?: CvThenable }).cv;
@@ -43,6 +44,7 @@ export function loadOpenCv(): Promise<CvRuntime> {
       'script[data-volleycut-opencv="true"]',
     );
     if (existing) {
+      pendingScript = existing;
       if ((window as unknown as { cv?: CvThenable }).cv) finish();
       else {
         existing.addEventListener("load", finish, { once: true });
@@ -55,6 +57,7 @@ export function loadOpenCv(): Promise<CvRuntime> {
       return;
     }
     const script = document.createElement("script");
+    pendingScript = script;
     script.src = runtimeAssetUrl("opencv.js");
     script.async = true;
     script.dataset.volleycutOpencv = "true";
@@ -65,6 +68,11 @@ export function loadOpenCv(): Promise<CvRuntime> {
       { once: true },
     );
     document.head.append(script);
+  }).catch((cause) => {
+    // A retry must insert a new script, not wait on a failed element's events.
+    pendingScript?.remove();
+    runtimePromise = null;
+    throw cause;
   });
   return runtimePromise;
 }

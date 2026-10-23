@@ -1,4 +1,10 @@
-import type { NeuralRallyScores } from "./on-device/types";
+import type { NeuralRallyScores, OnDeviceSideSwitchOutput } from "./on-device/types";
+import { parseFeedbackUi, type FeedbackUi } from "./feedback-ui.ts";
+import {
+  SIDE_SWITCH_CANDIDATE_CONTRACT,
+  SIDE_SWITCH_FEATURE_NAMES,
+  SIDE_SWITCH_FEATURE_VERSION,
+} from "./on-device/side-switch-model.ts";
 
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
 export const MODEL_FEEDBACK_SCHEMA_VERSION = 3 as const;
@@ -27,6 +33,7 @@ export type CorrectedFeedbackRange = {
   included: boolean;
   origin: "cached-label" | "manual";
   agreement?: string;
+  editableGroupId?: string;
 };
 
 export type IgnoredFeedbackRange = {
@@ -80,6 +87,7 @@ export type ParsedModelFeedback = {
     gameWindow: { start: number; end: number };
     featureRoi: { x: number; y: number; width: number; height: number };
     runtimeVariant: string;
+    generateSideSwitchMarkers: boolean;
   };
   features: {
     analysisFps: number;
@@ -110,9 +118,11 @@ export type ParsedModelFeedback = {
       previousProduction: ParsedServeOutput;
     };
     servingSide: ParsedServingSideOutput | null;
+    sideSwitch: OnDeviceSideSwitchOutput | null;
     suppression: ParsedSuppressionOutput | null;
   };
   corrections: {
+    ui?: FeedbackUi;
     updatedAt: string;
     suppressionInitialBehavior: "disable-initially" | "highlight-only";
     beforePaddingSeconds: number;
@@ -464,6 +474,11 @@ function correctedRange(
   if (item.origin !== "cached-label" && item.origin !== "manual") {
     fail(`${field}.origin`, "must be cached-label or manual");
   }
+  if ("editableGroupId" in item && (typeof item.editableGroupId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(item.editableGroupId) ||
+      typeof item.id !== "string" || item.id.trim().length === 0 || item.id.length > 256)) {
+    fail(`${field}.editableGroupId`, "must be a bounded group token on a stable cut identity");
+  }
   return {
     id: string(item.id, `${field}.id`),
     coreStart,
@@ -473,6 +488,7 @@ function correctedRange(
     confidence,
     included: boolean(item.included, `${field}.included`),
     origin: item.origin,
+    ...("editableGroupId" in item ? { editableGroupId: item.editableGroupId as string } : {}),
     ...(item.agreement === undefined
       ? {}
       : { agreement: string(item.agreement, `${field}.agreement`) }),
@@ -691,6 +707,87 @@ function parseServingSideOutput(
     ),
     featureVersion: string(output.featureVersion, `${field}.featureVersion`),
     anchorContract: string(output.anchorContract, `${field}.anchorContract`),
+    features: { rows, columns, values },
+    candidates,
+  };
+}
+
+function parseSideSwitchOutput(
+  value: unknown,
+  field: string,
+  duration: number,
+): OnDeviceSideSwitchOutput | null {
+  // Older feedback bundles did not carry this specialist's raw evidence.
+  if (value === undefined || value === null) return null;
+  const output = object(value, field);
+  if (output.featureVersion !== SIDE_SWITCH_FEATURE_VERSION) {
+    fail(
+      `${field}.featureVersion`,
+      "uses an unsupported side-switch feature contract",
+    );
+  }
+  if (output.candidateContract !== SIDE_SWITCH_CANDIDATE_CONTRACT) {
+    fail(
+      `${field}.candidateContract`,
+      "uses an unsupported side-switch candidate contract",
+    );
+  }
+  const features = object(output.features, `${field}.features`);
+  const rows = integer(features.rows, `${field}.features.rows`);
+  const columns = integer(features.columns, `${field}.features.columns`);
+  if (columns !== SIDE_SWITCH_FEATURE_NAMES.length) {
+    fail(`${field}.features.columns`, `must be ${SIDE_SWITCH_FEATURE_NAMES.length}`);
+  }
+  const values = decodeNumericArray(
+    features.values,
+    `${field}.features.values`,
+    "float64",
+    [rows, columns],
+  ) as Float64Array;
+  if (!Array.isArray(output.candidates)) {
+    fail(`${field}.candidates`, "must be an array");
+  }
+  // Rows describe every proposal; candidates are the decoder's selected subset.
+  if (output.candidates.length > rows) {
+    fail(`${field}.candidates`, "must not exceed feature rows");
+  }
+  const ids = new Set<string>();
+  const candidates = output.candidates.map((value, index) => {
+    const candidateField = `${field}.candidates[${index}]`;
+    const candidate = object(value, candidateField);
+    const id = string(candidate.id, `${candidateField}.id`);
+    if (ids.has(id)) fail(`${candidateField}.id`, "must be unique");
+    ids.add(id);
+    return {
+      id,
+      timestamp: sourceTime(
+        candidate.timestamp,
+        `${candidateField}.timestamp`,
+        duration,
+      ),
+      probability: probability(
+        candidate.probability,
+        `${candidateField}.probability`,
+      ),
+      kind: choice(
+        candidate.kind,
+        ["adjacent-rally-boundary", "internal-dead-state-peak"] as const,
+        `${candidateField}.kind`,
+      ),
+      sourceRangeIds: stringArray(
+        candidate.sourceRangeIds,
+        `${candidateField}.sourceRangeIds`,
+      ),
+    };
+  });
+  return {
+    modelId: string(output.modelId, `${field}.modelId`),
+    modelFingerprint: string(
+      output.modelFingerprint,
+      `${field}.modelFingerprint`,
+    ),
+    featureVersion: SIDE_SWITCH_FEATURE_VERSION,
+    candidateContract: SIDE_SWITCH_CANDIDATE_CONTRACT,
     features: { rows, columns, values },
     candidates,
   };
@@ -1324,6 +1421,11 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   const correctedValue = corrections.correctedRanges;
   if (!Array.isArray(correctedValue))
     fail("bundle.corrections.correctedRanges", "must be an array");
+  if (correctedValue.filter((cut) => cut && typeof cut === "object" && "editableGroupId" in cut).length > 2048)
+    fail("bundle.corrections.correctedRanges", "too many explicit rally members");
+  const correctedRanges = correctedValue.map((item, index) =>
+    correctedRange(item, `bundle.corrections.correctedRanges[${index}]`, duration),
+  );
   const ignoredValue = corrections.ignoredIntervals;
   if (!Array.isArray(ignoredValue))
     fail("bundle.corrections.ignoredIntervals", "must be an array");
@@ -1423,6 +1525,15 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
     ? undefined
     : object(root.editorPreferences, "bundle.editorPreferences");
   const renderScoreOnFinalVideo = editorPreferences?.renderScoreOnFinalVideo;
+  let ui: FeedbackUi | undefined;
+  if (corrections.ui !== undefined) {
+    try {
+      ui = parseFeedbackUi(corrections.ui, new Set(
+        correctedRanges.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
+      ));
+    }
+    catch (error) { throw new ModelFeedbackValidationError(error instanceof Error ? error.message : "Invalid corrections.ui"); }
+  }
   const finalValue = root.finalExportIntervals;
   if (!Array.isArray(finalValue))
     fail("bundle.finalExportIntervals", "must be an array");
@@ -1505,6 +1616,13 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       gameWindow: { start: windowStart, end: windowEnd },
       featureRoi: roi,
       runtimeVariant,
+      generateSideSwitchMarkers:
+        source.generateSideSwitchMarkers === undefined
+          ? true
+          : boolean(
+              source.generateSideSwitchMarkers,
+              "bundle.source.generateSideSwitchMarkers",
+            ),
     },
     features,
     initialInference: {
@@ -1532,9 +1650,15 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       productionComponents,
       componentServeOutputs,
       servingSide,
+      sideSwitch: parseSideSwitchOutput(
+        inference.sideSwitch,
+        "bundle.initialInference.sideSwitch",
+        duration,
+      ),
       suppression,
     },
     corrections: {
+      ...(ui === undefined ? {} : { ui }),
       updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),
       suppressionInitialBehavior: corrections.suppressionInitialBehavior === undefined
         ? "disable-initially"
@@ -1552,13 +1676,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
         corrections.joinGapSeconds,
         "bundle.corrections.joinGapSeconds",
       ),
-      correctedRanges: correctedValue.map((item, index) =>
-        correctedRange(
-          item,
-          `bundle.corrections.correctedRanges[${index}]`,
-          duration,
-        ),
-      ),
+      correctedRanges,
       ignoredIntervals: ignoredValue.map((item, index) => {
         const ignored = object(
           item,

@@ -10,6 +10,9 @@ import {
 
 import {
   materializeFinalCutIntervals,
+  resetProjectReview,
+  splitCutAt,
+  splitCutValidationMessage,
   rallySuppressionDecisionKey,
   PLAYBACK_RATES,
   type CutDraft,
@@ -42,7 +45,7 @@ import {
   modelFeedbackFilename,
 } from "../../lib/model-feedback";
 import { prepareScoreOverlay, scorePointTimelineSnapshot } from "../../lib/score-overlay";
-import { readScoreVisibilityPreference, saveScoreVisibilityPreference } from "../../lib/score-visibility-preference";
+import { saveScoreVisibilityPreference } from "../../lib/score-visibility-preference";
 import { ScoreVisibilitySelect } from "../../components/ScoreVisibilitySelect";
 import { runtimeAssetUrl } from "../../lib/runtime-assets";
 import { scrollElementIntoContainer } from "../../lib/scroll-container";
@@ -107,6 +110,7 @@ type Clip = {
   reviewed: boolean;
   origin: "model" | "manual";
   agreement?: EditableCut["agreement"];
+  editableGroupId?: string;
 };
 
 type DesignServeMarker = {
@@ -184,6 +188,7 @@ function clipsFromReview(review: ReadyDesignReview): Clip[] {
     reviewed: reviewed.has(cut.id),
     origin: cut.origin === "manual" ? "manual" : "model",
     agreement: cut.agreement,
+    editableGroupId: cut.editableGroupId,
   }));
 }
 
@@ -314,7 +319,7 @@ function usePrototype(
   const [playing, setPlaying] = useState(false);
   const sourceRangeSequence = useRef(0);
   const [sourceRange, setSourceRange] = useState<{ id: number; start: number; end: number } | null>(null);
-  const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(review.draft.playbackRate);
+  const [playbackRate, setPlaybackRate] = useState(review.draft.playbackRate);
   const [finalPreview, setFinalPreview] = useState(review.draft.cutPreviewEnabled);
   const [beforePadding, setBeforePadding] = useState(review.draft.beforePaddingSeconds);
   const [afterPadding, setAfterPadding] = useState(review.draft.afterPaddingSeconds);
@@ -333,7 +338,7 @@ function usePrototype(
   }
   const [scoreEnabled, setScoreEnabled] = useState(review.draft.scoreTracking.enabled);
   const [previewScoreOverlay, setPreviewScoreOverlay] = useState(review.draft.renderScoreOverlay);
-  const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(() => readScoreVisibilityPreference(review.draft.fadeScoreOverlay));
+  const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(review.draft.fadeScoreOverlay);
   function setFadeScoreOverlay(fade: boolean) {
     setFadeScoreOverlayState(fade);
     saveScoreVisibilityPreference(fade);
@@ -543,6 +548,7 @@ function usePrototype(
           included: clip.included,
           origin: clip.origin === "manual" ? "manual" : "cached-label",
           ...(clip.agreement ? { agreement: clip.agreement } : {}),
+          ...(clip.editableGroupId ? { editableGroupId: clip.editableGroupId } : {}),
         };
       }),
       ignoredIntervals: excludedRanges.map((interval) => ({
@@ -635,6 +641,7 @@ function usePrototype(
     setBaseDraft(draft);
     setFinalPreview(draft.cutPreviewEnabled);
     setPlaybackRate(draft.playbackRate);
+    setFadeScoreOverlay(draft.fadeScoreOverlay);
     setClips(clipsFromReview({ ...review, draft }));
     setExcludedRanges(excludedFromReview({ ...review, draft }));
     setManualStart(draft.pendingManualStart);
@@ -646,6 +653,7 @@ function usePrototype(
     setScoreEnabled(draft.scoreTracking.enabled);
     setPreviewScoreOverlay(draft.renderScoreOverlay);
     setRenderScoreOnFinalVideo(draft.renderScoreOnFinalVideo);
+    setFadeScoreOverlay(draft.fadeScoreOverlay);
     setTeamOne(draft.scoreTracking.team1Name);
     setTeamTwo(draft.scoreTracking.team2Name);
     setScoreMarkers(draft.scoreTracking.serveMarkers);
@@ -663,13 +671,13 @@ function usePrototype(
     }
     historyRef.current = next;
     const draft = next.present;
-    applyReviewDraft(draft);
+    applyReviewDraft({ ...draft, playbackRate, cutPreviewEnabled: finalPreview });
     setReviewMessage(direction === "undo" ? "Last edit undone." : "Edit restored.");
     persistHistory();
   }
 
   function resetProjectChanges() {
-    applyReviewDraft(review.modelDraft);
+    applyReviewDraft(resetProjectReview(review.modelDraft, workingDraft));
     setPlaying(false);
     setFinalPreview(review.modelDraft.cutPreviewEnabled);
     setPlaybackRate(review.modelDraft.playbackRate);
@@ -821,7 +829,7 @@ function usePrototype(
   const scoreOverlayOptions = useMemo(
     () => ({
       scoreTracking: workingDraft.scoreTracking,
-      renderPointTimeline: true,
+      renderPointTimeline: workingDraft.renderScoreTimeline,
       fadeScoreOverlay,
       excludedRallyIds: [...excludedRallyIds],
       ignoredIntervals: workingDraft.ignoredIntervals,
@@ -1078,15 +1086,20 @@ function usePrototype(
       setReviewMessage("Move the playhead inside the selected clip before splitting it.");
       return;
     }
-    const used = new Set(clips.map((clip) => clip.id));
-    let leftId = `${selected.id}A`;
-    let rightId = `${selected.id}B`;
-    while (used.has(leftId) || used.has(rightId)) {
-      leftId += "A";
-      rightId += "B";
+    const validationMessage = splitCutValidationMessage(workingDraft, selected.id);
+    if (validationMessage) {
+      setReviewMessage(validationMessage);
+      return;
     }
-    const left: Clip = { ...selected, id: leftId, end: playhead, label: `${selected.label}, first part`, reviewed: true };
-    const right: Clip = { ...selected, id: rightId, start: playhead, label: `${selected.label}, second part`, reviewed: true };
+    const split = splitCutAt(workingDraft, selected.id, playhead, gameStart, gameEnd);
+    if (!split) return;
+    const leftRange = split.draft.cuts.find((cut) => cut.id === selected.id)!;
+    const leftId = leftRange.id;
+    const rightId = split.newCut.id;
+    const left: Clip = { ...selected, id: leftId, end: playhead, editableGroupId: leftRange.editableGroupId,
+      label: `${selected.label}, first part`, reviewed: true };
+    const right: Clip = { ...selected, id: rightId, start: playhead, editableGroupId: split.newCut.editableGroupId,
+      label: `${selected.label}, second part`, reviewed: true };
     setClips((current) => current.flatMap((clip) => clip.id === selected.id ? [left, right] : [clip]));
     const splitScores = splitLabServeMarkers(workingDraft.scoreTracking, selected.id, left, right);
     setScoreMarkers(splitScores.serveMarkers);
@@ -1412,17 +1425,21 @@ function usePrototype(
         setExportStatus("This project cannot be saved in the current session.");
         return;
       }
-      const bundle = createModelFeedbackBundle(
-        review.productAnalysis,
-        workingDraft,
-        finalIntervals,
-      );
-      downloadBlob(
-        modelFeedbackBlob(bundle),
-        modelFeedbackFilename(review.sourceName),
-      );
-      setExportProgress(100);
-      setExportStatus("The current VolleySplice project was downloaded.");
+      try {
+        const bundle = createModelFeedbackBundle(
+          review.productAnalysis,
+          workingDraft,
+          finalIntervals,
+        );
+        downloadBlob(
+          modelFeedbackBlob(bundle),
+          modelFeedbackFilename(review.sourceName),
+        );
+        setExportProgress(100);
+        setExportStatus("The current VolleySplice project was downloaded.");
+      } catch (cause) {
+        setExportStatus(`Could not save the project: ${cause instanceof Error ? cause.message : String(cause)}. Your edits and imported preferences have been kept.`);
+      }
       return;
     }
     if (!review.sourceFile || finalIntervals.length === 0) return;
@@ -1911,9 +1928,9 @@ function VideoStage({
                   <select
                     aria-label="Playback speed"
                     value={state.playbackRate}
-                    onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value) as (typeof PLAYBACK_RATES)[number])}
+                    onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value))}
                   >
-                    {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+                    {[...new Set<number>([...PLAYBACK_RATES, state.playbackRate])].sort((a, b) => a - b).map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
                   </select>
                 </label>
                 <div className="td-transport-toggles">
@@ -2893,8 +2910,9 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           break;
         case "faster":
         case "slower": {
-          const index = PLAYBACK_RATES.indexOf(state.playbackRate);
-          state.setPlaybackRate(PLAYBACK_RATES[Math.max(0, Math.min(PLAYBACK_RATES.length - 1,
+          const rates = [...new Set<number>([...PLAYBACK_RATES, state.playbackRate])].sort((a, b) => a - b);
+          const index = rates.indexOf(state.playbackRate);
+          state.setPlaybackRate(rates[Math.max(0, Math.min(rates.length - 1,
             index + (action === "faster" ? 1 : -1)))]);
           break;
         }

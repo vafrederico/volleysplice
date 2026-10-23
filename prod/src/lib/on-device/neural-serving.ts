@@ -15,12 +15,13 @@ import type { NormalizedRoi, OnDeviceServingSideOutput } from "./types";
 /** Replace only side evidence; retain the independent production serve gate. */
 export async function inferNeuralServingSideOutput(media: OpenedMedia, roi: NormalizedRoi,
   analysis: ServingSideAnalysisInput, specialist: OnDeviceServingSideOutput,
-  onProgress?: (progress: ServingSideProgress) => void): Promise<OnDeviceServingSideOutput> {
+  onProgress?: (progress: ServingSideProgress) => void, signal?: AbortSignal): Promise<OnDeviceServingSideOutput> {
+  signal?.throwIfAborted();
   const selection = neuralServingSelection(analysis.modelId);
   if (!selection) throw new Error("The selected rally model has no neural serving-side pairing.");
   const rallyUrl = runtimeAssetUrl("rally-models/manifest.json");
   const [rallyResponse, servingResponse] = await Promise.all([
-    fetch(rallyUrl), fetch(runtimeAssetUrl("serving-models/manifest.json")),
+    fetch(rallyUrl, { signal }), fetch(runtimeAssetUrl("serving-models/manifest.json"), { signal }),
   ]);
   if (!rallyResponse.ok || !servingResponse.ok) throw new Error("The selected serving-side model is unavailable.");
   const rally = parseNeuralManifest(await rallyResponse.json()).variants[selection];
@@ -31,7 +32,7 @@ export async function inferNeuralServingSideOutput(media: OpenedMedia, roi: Norm
   const config = parseNeuralConfig(JSON.parse(new TextDecoder().decode(await verifiedAsset(
     new URL(rally.files.pipeline.name, baseUrl).href, rally.files.pipeline))), selection);
   let embedding = takeServingEmbeddings(analysis);
-  const worker = new NeuralWorkerClient();
+  const worker = new NeuralWorkerClient(signal);
   try {
     await worker.request({ type: "initialize", baseUrl, bundle: rally, config, selection, needEncoder: !embedding,
       ortBaseUrl: new URL("ort/", runtimeAssetUrl("opencv-worker.js")).href,
@@ -41,7 +42,7 @@ export async function inferNeuralServingSideOutput(media: OpenedMedia, roi: Norm
       embedding = { times, tokens: new Float32Array(times.length * 3840), quality: new Float32Array(times.length * 6) } satisfies EmbeddingSequence;
       const sink = new VideoSampleSink(media.videoTrack, { hardwareAcceleration: "prefer-hardware" });
       let row = 0;
-      for await (const sample of nearestSamplesAtTimestampsFromSequentialPass(sink, Array.from(times), () => {}, media.info.duration)) {
+      for await (const sample of nearestSamplesAtTimestampsFromSequentialPass(sink, Array.from(times), () => signal?.throwIfAborted(), media.info.duration)) {
         if (!sample) throw new Error("The video decoder omitted a serving-side image sample.");
         try {
           if (Math.abs(sample.timestamp - times[row]) > .25 + 1e-9) throw new Error("Serving-side image timing is too sparse.");
@@ -65,6 +66,7 @@ export async function inferNeuralServingSideOutput(media: OpenedMedia, roi: Norm
     const allFeatures = neuralServingFeatures(values, rows);
     const candidates = [...specialist.candidates];
     for (let start = 0; start < rows; start += 8) {
+      signal?.throwIfAborted();
       const count = Math.min(8, rows - start);
       const windows = new Float32Array(count * 13 * 3843), features = new Float32Array(count * 249);
       for (let row = 0; row < count; row++) {

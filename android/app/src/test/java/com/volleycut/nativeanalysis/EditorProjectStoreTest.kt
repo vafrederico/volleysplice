@@ -5,6 +5,19 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class EditorProjectStoreTest {
+    @Test fun importedDraftNamespaceSurvivesRecoveryAndLegacyRecordsKeepTheirIdentity() {
+        val imported = seed.copy(draftNamespace = "synthetic-import")
+        val restored = requireNotNull(EditorProjectStore.decode(EditorProjectStore.encode(imported)))
+        assertEquals(imported.draftNamespace, restored.draftNamespace)
+        assertEquals(imported.sourceRevision, restored.sourceRevision)
+        val legacy = EditorProjectStore.encode(seed).apply {
+            put("version", 7)
+            remove("draftNamespace")
+        }
+        val old = requireNotNull(EditorProjectStore.decode(legacy))
+        assertNull(old.draftNamespace)
+        assertEquals(seed.sourceRevision, old.sourceRevision)
+    }
     private val seed = EditorSeed(
         sourceUri = "content://recordings/match.mp4",
         displayName = "match.mp4",

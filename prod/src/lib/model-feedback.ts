@@ -18,6 +18,7 @@ import {
 import { ANALYSIS_FPS } from "./on-device/feature-schema.ts";
 import { RALLY_MODEL_OPTIONS, isNeuralModelId } from "./on-device/rally-model.ts";
 import type { ProductAnalysis } from "./product-analysis";
+import { feedbackUiFromDraft, type FeedbackUi } from "./feedback-ui.ts";
 import {
   deriveScoreAt,
   scoreTrackingOutsideExcludedRallies,
@@ -72,6 +73,7 @@ export type ModelFeedbackBundle = {
     gameWindow: ProductAnalysis["analysisWindow"];
     featureRoi: ProductAnalysis["roi"];
     runtimeVariant: ProductAnalysis["runtimeVariant"];
+    generateSideSwitchMarkers: boolean;
     videoBytesIncluded: false;
   };
   features: {
@@ -149,6 +151,7 @@ export type ModelFeedbackBundle = {
     };
   };
   corrections: {
+    ui?: FeedbackUi;
     updatedAt: string;
     suppressionInitialBehavior: CutDraft["suppressionInitialBehavior"];
     beforePaddingSeconds: number;
@@ -340,6 +343,7 @@ export function createModelFeedbackBundle(
       gameWindow: analysis.analysisWindow,
       featureRoi: analysis.roi,
       runtimeVariant: analysis.runtimeVariant,
+      generateSideSwitchMarkers: analysis.sideSwitchEnabled !== false,
       videoBytesIncluded: false,
     },
     features: analysis.features
@@ -529,6 +533,7 @@ export function createModelFeedbackBundle(
         : null,
     },
     corrections: {
+      ui: feedbackUiFromDraft(draft),
       updatedAt: draft.updatedAt,
       suppressionInitialBehavior: draft.suppressionInitialBehavior,
       beforePaddingSeconds: draft.beforePaddingSeconds,

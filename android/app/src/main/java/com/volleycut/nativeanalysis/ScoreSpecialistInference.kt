@@ -77,17 +77,18 @@ internal object ScoreSpecialistInference {
             uri, media, roi, servingPlan.requestedTimes, switchPlan?.requestedTimes ?: doubleArrayOf(), progress, cancelled,
         )
         val servingStarted = System.nanoTime()
+        val neuralProgress = if (RallyModels.isNeural(modelId)) NeuralServingProgress(progress) else null
         val specialist = ServingSideInference.evaluate(
             context,
             duration,
             servingPlan.candidates,
             serveOutputs,
             sampled.servingGray(),
-            progress,
+            neuralProgress?.specialist ?: progress,
             cancelled,
         )
         val serving = if (RallyModels.isNeural(modelId)) NeuralServingRuntime.run(
-            context, uri, media, roi, modelId, specialist, pipeline, progress, cancelled,
+            context, uri, media, roi, modelId, specialist, pipeline, neuralProgress!!.neural, cancelled,
         ) else specialist
         val servingEvaluationMilliseconds = elapsedMilliseconds(servingStarted)
         val sideSwitchStarted = System.nanoTime()
