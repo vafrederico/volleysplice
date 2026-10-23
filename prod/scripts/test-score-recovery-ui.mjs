@@ -94,8 +94,8 @@ try {
     if (root) await act(async () => { root.unmount(); await new Promise((resolve) => setTimeout(resolve, 30)); });
     if (reset) {
       globalThis.indexedDB = new IDBFactory(); window.localStorage.clear();
-      await store.putProject(project);
-      for (const extra of extras) await store.putProject(extra);
+      Object.assign(project, await store.putProject(project, { expectedSource: null }));
+      for (const extra of extras) Object.assign(extra, await store.putProject(extra, { expectedSource: null }));
       window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
     }
     harness.info = project.info; harness.analysis = project.analysis;
@@ -123,7 +123,7 @@ try {
   await waitFor(() => document.querySelector(".taste-rally-desk") && text().includes("Synthetic initial specialist failure"));
   await waitFor(async () => (await read()).status === "ready" && (await read()).scoreSpecialistErrors?.servingSide);
   assert.equal(harness.rallyRuns, 1);
-  harness.behavior = async (request, options) => { const result = output(request); options.onOutput(result); return result; };
+  harness.behavior = async (request, options) => { const result = output(request); await options.onOutput(result); return result; };
   await generate(); await waitFor(() => !document.querySelector('[aria-label="Score prediction recovery"]'));
   assert.equal(harness.rallyRuns, 1, "Initial score failure retry must reuse rally output");
   harness.rallyRuns = 0;
@@ -140,6 +140,7 @@ try {
   assert.doesNotMatch(text(), /All serve sides checked/);
   await click("Review");
   await inputFile(document.querySelector('.td-reconnect input[type="file"]'), new File(["wrong"], "other.mp4", { lastModified: 100 }));
+  await waitFor(() => /does not match/.test(text()));
   assert.match(text(), /does not match/);
   assert.equal(button("Reconnect source for score markers").disabled, true);
   await attach();
@@ -154,7 +155,7 @@ try {
   harness.behavior = async (request, options) => {
     request.servingSide.onProgress({ stage: "frames", completed: 1, total: 2, detail: "Synthetic serve check halfway" });
     await gate.promise; options.signal.throwIfAborted();
-    const result = output(request); options.onOutput(result); return result;
+    const result = output(request); await options.onOutput(result); return result;
   };
   await generate();
   await waitFor(() => text().includes("Synthetic serve check halfway"));
@@ -191,7 +192,7 @@ try {
   await mount(project);
   assert.equal((await read()).analysis.servingSide, undefined);
   await attach();
-  harness.behavior = async (request, options) => { const result = output(request); options.onOutput(result); return result; };
+  harness.behavior = async (request, options) => { const result = output(request); await options.onOutput(result); return result; };
   await generate();
   await waitFor(() => !document.querySelector('[aria-label="Score prediction recovery"]'));
   assert.deepEqual(harness.requests.at(-1), ["servingSide"]);
@@ -210,13 +211,13 @@ try {
   // only the failed stage; a real zero-candidate switch output is successful.
   project = recoveryFixture({ switches: true });
   await mount(project); await attach();
-  harness.behavior = async (request, options) => { options.onOutput({ servingSide: output(request).servingSide }); throw new Error("Synthetic switch failure"); };
+  harness.behavior = async (request, options) => { await options.onOutput({ servingSide: output(request).servingSide }); throw new Error("Synthetic switch failure"); };
   await generate();
   await waitFor(() => text().includes("Synthetic switch failure") && button("Generate missing score markers"));
   await waitFor(async () => (await read()).analysis.servingSide && (await read()).scoreSpecialistErrors.sideSwitch);
   assert.equal((await read()).scoreSpecialistErrors.servingSide, undefined);
   await mount(await read(), false); await attach();
-  harness.behavior = async (request, options) => { const result = output(request); options.onOutput(result); return result; };
+  harness.behavior = async (request, options) => { const result = output(request); await options.onOutput(result); return result; };
   await generate();
   await waitFor(() => !document.querySelector('[aria-label="Score prediction recovery"]'));
   assert.deepEqual(harness.requests.at(-1), ["sideSwitch"]);
@@ -226,13 +227,13 @@ try {
   project = recoveryFixture();
   await mount(project); await attach();
   const cancelled = deferred();
-  harness.behavior = async (request, options) => { await cancelled.promise; const result = output(request); options.onOutput(result); return result; };
+  harness.behavior = async (request, options) => { await cancelled.promise; const result = output(request); await options.onOutput(result); return result; };
   await generate(); await waitFor(() => button("Cancel score markers"));
   await click("Cancel score markers");
   await act(async () => cancelled.resolve());
   await waitFor(() => text().includes("Score markers cancelled") && button("Generate missing score markers"));
   assert.equal((await read()).analysis.servingSide, undefined);
-  harness.behavior = async (request, options) => { const result = output(request); options.onOutput(result); return result; };
+  harness.behavior = async (request, options) => { const result = output(request); await options.onOutput(result); return result; };
   await generate(); await waitFor(() => !document.querySelector('[aria-label="Score prediction recovery"]'));
 
   // Two ready-project recoveries share the App queue. A queued cancellation
@@ -245,7 +246,7 @@ try {
   let entered = 0;
   harness.behavior = async (request, options) => {
     if (entered++ === 0) await queueGate.promise;
-    const result = output(request); options.onOutput(result); return result;
+    const result = output(request); await options.onOutput(result); return result;
   };
   await generate(); await waitFor(() => entered === 1);
   const selectProject = async (id) => {
@@ -270,7 +271,7 @@ try {
   for (const modelId of [PRODUCTION_ENSEMBLE_MODEL_ID, "distilled-large-f1-v1"]) {
     project = recoveryFixture({ modelId });
     await mount(project); await attach();
-    harness.behavior = async (request, options) => { const result = output(request); options.onOutput(result); return result; };
+    harness.behavior = async (request, options) => { const result = output(request); await options.onOutput(result); return result; };
     await generate(); await waitFor(() => !document.querySelector('[aria-label="Score prediction recovery"]'));
     await waitFor(async () => (await read()).analysis.servingSide?.modelId === servingFixture(project.analysis, serving, neural).modelId);
   }
@@ -312,7 +313,7 @@ try {
   // A deleted project cannot be recreated by late callbacks or queued writes.
   project = recoveryFixture(); await mount(project); await attach();
   const deleted = deferred(); let started = false;
-  harness.behavior = async (request, options) => { started = true; await deleted.promise; const result = output(request); options.onOutput(result); return result; };
+  harness.behavior = async (request, options) => { started = true; await deleted.promise; const result = output(request); await options.onOutput(result); return result; };
   await generate(); await waitFor(() => started);
   await act(async () => document.querySelector(".rd-delete-project").click());
   await act(async () => deleted.resolve());

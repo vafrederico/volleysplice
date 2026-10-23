@@ -88,6 +88,8 @@ export type DesignScoreRecovery = {
 export type ReadyDesignReview = {
   state: "ready";
   projectId: string;
+  projectInstanceId?: string;
+  legacyDraftStorage?: boolean;
   projectName: string;
   sourceName: string;
   sourceSize: number;
@@ -261,6 +263,7 @@ type DesignReviewOptions = {
   videoUrl?: string | null;
   productAnalysis?: ProductAnalysis | null;
   onSelectProject?: (projectId: string | null) => void;
+  /** The owner validates and links once; it must reject if attachment fails. */
   onAttachSource?: (file: File) => void | Promise<void>;
   onQueueVideoExport?: (request: DesignVideoExportRequest) => void;
   scoreRecovery?: DesignScoreRecovery;
@@ -307,17 +310,31 @@ export function useDesignReview(
         }
         const draft = restoreProjectReviewDraft(project, seed, browserDraftStorage());
         const attachSource = async (file: File) => {
-          if (!(await sourceCanReconnectFile(project.source, file))) {
+          try {
+            if (options.onAttachSource) {
+              // App owns both validation and linking. Rechecking here creates
+              // a second fallible read whose rejection must not be ignored.
+              await options.onAttachSource(file);
+            } else if (!(await sourceCanReconnectFile(project.source, file))) {
+              return {
+                ok: false,
+                message: `That file does not match ${project.source.name}. Choose the original video used by this project.`,
+                videoUrl: null,
+              };
+            }
+          } catch (cause) {
             return {
               ok: false,
-              message: `That file does not match ${project.source.name}. Choose the original video used by this project.`,
+              message: `Could not reconnect the video: ${cause instanceof Error ? cause.message : String(cause)}`,
               videoUrl: null,
             };
           }
-          try {
-            await options.onAttachSource?.(file);
-          } catch (cause) {
-            return { ok: false, message: cause instanceof Error ? cause.message : String(cause), videoUrl: null };
+          if (canceled) {
+            return {
+              ok: false,
+              message: "This review is no longer open. Open the project again to reconnect its source.",
+              videoUrl: null,
+            };
           }
           const videoUrl = URL.createObjectURL(file);
           if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
@@ -339,10 +356,12 @@ export function useDesignReview(
           };
         };
         const saveDraft = (next: CutDraft) =>
-          saveProjectReviewDraft(project.id, seed, next, browserDraftStorage());
+          saveProjectReviewDraft(project.id, seed, next, browserDraftStorage(), project.instanceId);
         setReview({
           state: "ready",
           projectId: project.id,
+          projectInstanceId: project.instanceId,
+          legacyDraftStorage: project.legacyDraftStorage,
           projectName: project.source.name.replace(/\.[^.]+$/, ""),
           sourceName: project.source.name,
           sourceSize: project.source.size,
@@ -365,7 +384,10 @@ export function useDesignReview(
           projectStatus: project.status,
           draft,
           draftSeed: seed,
-          modelDraft: createModelReviewDraft(seed, { ...project.analysis, sideSwitchEnabled: project.sideSwitchEnabled }),
+          modelDraft: createModelReviewDraft(seed, {
+            ...project.analysis,
+            sideSwitchEnabled: project.sideSwitchEnabled,
+          }),
           suppression: project.analysis.suppression,
           cleanupSuggestions: cleanupSuggestions(project, draft),
           projects: projectChoices,

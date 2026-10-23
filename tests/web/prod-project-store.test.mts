@@ -275,6 +275,27 @@ test("sampled source fingerprints reconnect identical transferred files", async 
   assert.equal(await sourceCanReconnectFile(fingerprintSource, changed), false);
 });
 
+test("a stored fingerprint wins over identical metadata and read failures stay disconnected", async () => {
+  const original = new File(["original"], "synthetic-reconnect.mp4", { type: "video/mp4", lastModified: 100 });
+  const source = { name: original.name, size: original.size, lastModified: original.lastModified,
+    type: original.type, fingerprint: await sourceFileFingerprint(original) };
+  const replacement = new File(["replaced"], original.name, { type: original.type, lastModified: original.lastModified });
+  assert.equal(sourceMatchesFile(source, replacement), true, "The replacement deliberately collides on every metadata field");
+  assert.equal(await sourceCanReconnectFile(source, replacement), false);
+  assert.equal(await sourceCanReconnectFile(source, original), true);
+  const unreadable = new File(["original"], original.name, { type: original.type, lastModified: original.lastModified });
+  Object.defineProperty(unreadable, "slice", { value: () => { throw new Error("Synthetic read failure"); } });
+  assert.equal(await sourceCanReconnectFile(source, unreadable), false);
+  assert.equal(await sourceCanReconnectFile({ ...source, fingerprint: "" }, original), false, "An invalid present fingerprint cannot enable metadata fallback");
+});
+
+test("legacy projects without fingerprints retain exact metadata reconnection", async () => {
+  const file = new File(["legacy"], "synthetic-legacy.mp4", { type: "video/mp4", lastModified: 100 });
+  const source = { name: file.name, size: file.size, lastModified: file.lastModified, type: file.type };
+  assert.equal(await sourceCanReconnectFile(source, file), true);
+  assert.equal(await sourceCanReconnectFile(source, new File(["legacy"], file.name, { lastModified: 101 })), false);
+});
+
 test("audio feature caches are isolated by source and analysis timestamps", () => {
   const localSource = {
     name: source.name,

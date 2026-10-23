@@ -205,7 +205,8 @@ class ServingSidePersistenceTest {
 
         val imported = ModelFeedbackImporter.parse(bundle.toString(), 1234)
         assertEquals(ProjectStatus.READY, imported.project.status)
-        assertTrue(imported.project.sideSwitchEnabled)
+        assertEquals(project.sideSwitchEnabled, imported.project.sideSwitchEnabled)
+        assertEquals(project.sideSwitch, imported.project.sideSwitch)
         assertEquals(
             "sampled-sha256-v1:" + "a".repeat(64),
             imported.project.source.sampledFingerprint,
@@ -219,8 +220,8 @@ class ServingSidePersistenceTest {
         )
         assertNotNull(imported.project.suppression)
         assertEquals(setOf("serve-R999"), imported.draft.scoreTracking.removedModelMarkerIds)
-        assertFalse(imported.draft.renderScoreOverlay)
-        assertFalse(imported.draft.renderScoreTimeline)
+        assertEquals(draft.renderScoreOverlay, imported.draft.renderScoreOverlay)
+        assertEquals(draft.renderScoreTimeline, imported.draft.renderScoreTimeline)
         assertEquals(ServingSide.FAR, imported.draft.scoreTracking.serveMarkers.first().side)
         assertTrue(imported.draft.scoreTracking.serveMarkers.first().ignorePreviousPoint)
         assertArrayEquals(

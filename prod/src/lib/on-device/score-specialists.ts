@@ -47,7 +47,7 @@ export async function inferScoreSpecialists(
   options: {
     signal?: AbortSignal;
     /** Save each completed stage before another stage can fail. */
-    onOutput?: (output: ScoreSpecialistInferenceOutput) => void;
+    onOutput?: (output: ScoreSpecialistInferenceOutput) => void | Promise<void>;
   } = {},
 ): Promise<ScoreSpecialistInferenceOutput> {
   const check = () => options.signal?.throwIfAborted();
@@ -148,17 +148,21 @@ export async function inferScoreSpecialists(
           media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress, options.signal,
         ), options.signal);
       } else output.servingSide = artifacts.output;
-      check();
-      options.onOutput?.({ servingSide: output.servingSide });
-      request.servingSide.onProgress?.({
-        stage: "complete",
-        completed: artifacts.output.candidates.length,
-        total: artifacts.output.candidates.length,
-        detail: `Serve markers ready · ${artifacts.output.candidates.length} rallies checked`,
-      });
     } catch (cause) {
       check();
       errors.push(cause instanceof Error ? cause.message : String(cause));
+    }
+    if (output.servingSide) {
+      check();
+      // Persistence failures retain their original type (including source/instance
+      // conflicts) and stop this job rather than becoming a model-stage error.
+      await options.onOutput?.({ servingSide: output.servingSide });
+      request.servingSide.onProgress?.({
+        stage: "complete",
+        completed: output.servingSide.candidates.length,
+        total: output.servingSide.candidates.length,
+        detail: `Serve markers ready · ${output.servingSide.candidates.length} rallies checked`,
+      });
     }
   }
   if (switchPlan && request.sideSwitch) {
@@ -179,17 +183,19 @@ export async function inferScoreSpecialists(
         options.signal,
       );
       output.sideSwitch = artifacts.output;
-      check();
-      options.onOutput?.({ sideSwitch: output.sideSwitch });
-      request.sideSwitch.onProgress?.({
-        stage: "complete",
-        completed: artifacts.output.candidates.length,
-        total: artifacts.output.candidates.length,
-        detail: `Side switches ready · ${artifacts.output.candidates.length} found`,
-      });
     } catch (cause) {
       check();
       errors.push(cause instanceof Error ? cause.message : String(cause));
+    }
+    if (output.sideSwitch) {
+      check();
+      await options.onOutput?.({ sideSwitch: output.sideSwitch });
+      request.sideSwitch.onProgress?.({
+        stage: "complete",
+        completed: output.sideSwitch.candidates.length,
+        total: output.sideSwitch.candidates.length,
+        detail: `Side switches ready · ${output.sideSwitch.candidates.length} found`,
+      });
     }
   }
   check();

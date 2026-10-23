@@ -23,9 +23,25 @@ public enum AppStorageInventory {
         public let documents: URL, features: URL, queue: URL, temporary: URL
         public let support: URL?, caches: URL?
         public init(documents: URL, features: URL, queue: URL, temporary: URL, support: URL? = nil, caches: URL? = nil) {
-            self.documents = documents.resolvingSymlinksInPath().standardizedFileURL; self.features = features.resolvingSymlinksInPath().standardizedFileURL
-            self.queue = queue.resolvingSymlinksInPath().standardizedFileURL; self.temporary = temporary.resolvingSymlinksInPath().standardizedFileURL
-            self.support = support?.resolvingSymlinksInPath().standardizedFileURL; self.caches = caches?.resolvingSymlinksInPath().standardizedFileURL
+            self.documents = Self.canonicalDirectory(documents); self.features = Self.canonicalDirectory(features)
+            self.queue = Self.canonicalDirectory(queue); self.temporary = Self.canonicalDirectory(temporary)
+            self.support = support.map(Self.canonicalDirectory); self.caches = caches.map(Self.canonicalDirectory)
+        }
+        private static func canonicalDirectory(_ url: URL) -> URL {
+            // Resolving a nonexistent path on iOS can retain /private/var while
+            // the same path resolves to /var after creation. Resolve an existing
+            // ancestor first, then append the missing directory names.
+            var ancestor = url
+            var missing: [String] = []
+            while !FileManager.default.fileExists(atPath: ancestor.path) {
+                let parent = ancestor.deletingLastPathComponent()
+                guard parent.path != ancestor.path else { break }
+                missing.append(ancestor.lastPathComponent)
+                ancestor = parent
+            }
+            return missing.reversed().reduce(ancestor.resolvingSymlinksInPath().standardizedFileURL) {
+                $0.appendingPathComponent($1, isDirectory: true)
+            }
         }
         // Specific managed directories take precedence over their broader
         // accounting-only parents. Traversal deduplicates overlapping roots.

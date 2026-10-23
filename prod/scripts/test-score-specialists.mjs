@@ -41,6 +41,25 @@ try {
   await inferScoreSpecialists(media, roi, request, { onOutput: capture });
   assert.equal(harness.samples, 1);
   assert.deepEqual(saved, ["servingSide", "sideSwitch"], "Genuine empty outputs are still checkpointed");
+  // The next specialist must wait for the previous stage's durable checkpoint.
+  let releaseCheckpoint, checkpointStarted;
+  const checkpointGate = new Promise(resolve => { releaseCheckpoint = resolve; });
+  const checkpointEntry = new Promise(resolve => { checkpointStarted = resolve; });
+  harness.stages = [];
+  const ordered = inferScoreSpecialists(media, roi, request, { onOutput: async output => {
+    if (output.servingSide) { checkpointStarted(); await checkpointGate; }
+  } });
+  try {
+    await checkpointEntry;
+    assert.deepEqual(harness.stages, ["servingSide"], "A pending checkpoint must fence the next stage");
+  } finally { releaseCheckpoint(); }
+  await ordered;
+  assert.deepEqual(harness.stages, ["servingSide", "sideSwitch"]);
+  const conflict = new Error("Synthetic checkpoint conflict");
+  harness.stages = [];
+  await assert.rejects(inferScoreSpecialists(media, roi, request, { onOutput: async () => { throw conflict; } }),
+    cause => cause === conflict, "Checkpoint rejection must retain its identity for App conflict handling");
+  assert.deepEqual(harness.stages, ["servingSide"], "A rejected checkpoint must stop the next stage");
   for (const fail of ["servingSide", "sideSwitch"]) {
     saved.length = 0; harness.fail = fail; harness.stages = [];
     await assert.rejects(inferScoreSpecialists(media, roi, request, { onOutput: capture }), /Synthetic/);

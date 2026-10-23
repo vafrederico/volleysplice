@@ -118,7 +118,7 @@ try {
   saved.reviewDraft = createCutDraft(seed);
   saved.reviewDraft.cuts[0].included = false;
   saved.reviewDraft.reviewedCutIds = ["R001"];
-  await store.putProject(saved);
+  Object.assign(saved, await store.putProject(saved, { expectedSource: null }));
   const original = (await store.listProjects())[0];
   const { App } = await server.ssrLoadModule("/src/App.tsx");
   await act(async () => root.render(React.createElement(App)));

@@ -80,7 +80,7 @@ async function withApp(test) {
     const fixture = (switchesEnabled = false) => recoveryFixture({ empty: true, switches: switchesEnabled, modelId: PRODUCTION_ENSEMBLE_MODEL_ID });
     const read = async (id) => (await store.listProjects()).find((project) => project.id === id);
     const mount = async (projects) => {
-      for (const project of projects) await store.putProject(project);
+      for (const project of projects) Object.assign(project, await store.putProject(project, { expectedSource: null }));
       harness.info = projects[0].info;
       window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, projects[0].id);
       await act(async () => root.render(React.createElement(App)));
