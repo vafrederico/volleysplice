@@ -12,6 +12,7 @@ import {
 import type { SideSwitchAnalysisInput } from "./side-switch-model.ts";
 import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
 import { neuralServingSelection } from "./neural-serving-model.ts";
+import { awaitWithAbort } from "./abortable.ts";
 import type { OpenedMedia } from "./media.ts";
 import type {
   NormalizedRoi,
@@ -43,7 +44,14 @@ export async function inferScoreSpecialists(
   media: OpenedMedia,
   roi: NormalizedRoi,
   request: ScoreSpecialistInferenceRequest,
+  options: {
+    signal?: AbortSignal;
+    /** Save each completed stage before another stage can fail. */
+    onOutput?: (output: ScoreSpecialistInferenceOutput) => void | Promise<void>;
+  } = {},
 ): Promise<ScoreSpecialistInferenceOutput> {
+  const check = () => options.signal?.throwIfAborted();
+  check();
   if (!request.servingSide && !request.sideSwitch) return {};
   const loadingOwner = request.servingSide ?? request.sideSwitch;
   loadingOwner?.onProgress?.({
@@ -57,20 +65,35 @@ export async function inferScoreSpecialists(
           ? "Getting serve markers ready"
           : "Getting side-switch markers ready",
   });
-  const [servingPlan, switchPlan] = await Promise.all([
-    request.servingSide
-      ? Promise.resolve(
-          servingSideFramePlan(
+  // Planning can itself load a model or reject invalid candidate identity.
+  // Capture synchronous and asynchronous failures per stage before building
+  // the shared decode schedule, so one failed plan cannot discard the other.
+  const [servingResult, switchResult] = await awaitWithAbort(Promise.allSettled([
+    Promise.resolve().then(() =>
+      request.servingSide
+        ? servingSideFramePlan(
             request.servingSide.analysis,
             media.info.duration,
             null,
-          ),
-        )
-      : Promise.resolve(null),
-    request.sideSwitch
-      ? sideSwitchFramePlan(request.sideSwitch.analysis, media.info.duration)
-      : Promise.resolve(null),
-  ]);
+          )
+        : null,
+    ),
+    Promise.resolve().then(() =>
+      request.sideSwitch
+        ? sideSwitchFramePlan(request.sideSwitch.analysis, media.info.duration)
+        : null,
+    ),
+  ]), options.signal);
+  check();
+  const errors: string[] = [];
+  const planned = <T>(result: PromiseSettledResult<T>): T | null => {
+    if (result.status === "fulfilled") return result.value;
+    errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+    return null;
+  };
+  const servingPlan = planned(servingResult);
+  const switchPlan = planned(switchResult);
+  if (!servingPlan && !switchPlan) throw new Error(errors.join(" "));
   const frames = await sampleSpecialistFramesSequentially(
     media,
     roi,
@@ -79,16 +102,17 @@ export async function inferScoreSpecialists(
       sideSwitchTimes: switchPlan?.requestedTimes,
     },
     (completed, total) => {
-      if (request.servingSide) {
+      check();
+      if (servingPlan && request.servingSide) {
         request.servingSide.onProgress?.({
           stage: "frames",
           completed,
           total,
-          detail: request.sideSwitch
+          detail: switchPlan
             ? `Checking serves and side switches · ${completed}/${total}`
             : `Checking serve court sides · ${completed}/${total}`,
         });
-      } else {
+      } else if (switchPlan) {
         request.sideSwitch?.onProgress?.({
           stage: "frames",
           completed,
@@ -97,55 +121,84 @@ export async function inferScoreSpecialists(
         });
       }
     },
+    options.signal,
   );
   const output: ScoreSpecialistInferenceOutput = {};
-  if (request.servingSide) {
-    const artifacts = await evaluateServingSideFrames(
-      media.info.duration,
-      request.servingSide.analysis,
-      null,
-      frames.servingSide,
-      (completed, total) =>
-        request.servingSide?.onProgress?.({
-          stage: "features",
-          completed,
-          total,
-          detail: `Checking serve court sides · ${completed}/${total} rallies`,
-        }),
-    );
-    output.servingSide = neuralServingSelection(request.servingSide.analysis.modelId)
-      ? await (await import("./neural-serving")).inferNeuralServingSideOutput(
-          media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress,
-        )
-      : artifacts.output;
-    request.servingSide.onProgress?.({
-      stage: "complete",
-      completed: artifacts.output.candidates.length,
-      total: artifacts.output.candidates.length,
-      detail: `Serve markers ready · ${artifacts.output.candidates.length} rallies checked`,
-    });
+  if (servingPlan && request.servingSide) {
+    try {
+      check();
+      const artifacts = await evaluateServingSideFrames(
+        media.info.duration,
+        request.servingSide.analysis,
+        null,
+        frames.servingSide,
+        (completed, total) =>
+          request.servingSide?.onProgress?.({
+            stage: "features",
+            completed,
+            total,
+            detail: `Checking serve court sides · ${completed}/${total} rallies`,
+          }),
+        options.signal,
+      );
+      if (neuralServingSelection(request.servingSide.analysis.modelId)) {
+        const { inferNeuralServingSideOutput } = await awaitWithAbort(import("./neural-serving"), options.signal);
+        check();
+        output.servingSide = await awaitWithAbort(inferNeuralServingSideOutput(
+          media, roi, request.servingSide.analysis, artifacts.output, request.servingSide.onProgress, options.signal,
+        ), options.signal);
+      } else output.servingSide = artifacts.output;
+    } catch (cause) {
+      check();
+      errors.push(cause instanceof Error ? cause.message : String(cause));
+    }
+    if (output.servingSide) {
+      check();
+      // Persistence failures retain their original type (including source/instance
+      // conflicts) and stop this job rather than becoming a model-stage error.
+      await options.onOutput?.({ servingSide: output.servingSide });
+      request.servingSide.onProgress?.({
+        stage: "complete",
+        completed: output.servingSide.candidates.length,
+        total: output.servingSide.candidates.length,
+        detail: `Serve markers ready · ${output.servingSide.candidates.length} rallies checked`,
+      });
+    }
   }
-  if (request.sideSwitch) {
-    const artifacts = await evaluateSideSwitchFrames(
-      media.info.duration,
-      request.sideSwitch.analysis,
-      null,
-      frames.sideSwitch,
-      (completed, total) =>
-        request.sideSwitch?.onProgress?.({
-          stage: "features",
-          completed,
-          total,
-          detail: `Checking possible side switches · ${completed}/${total}`,
-        }),
-    );
-    output.sideSwitch = artifacts.output;
-    request.sideSwitch.onProgress?.({
-      stage: "complete",
-      completed: artifacts.output.candidates.length,
-      total: artifacts.output.candidates.length,
-      detail: `Side switches ready · ${artifacts.output.candidates.length} found`,
-    });
+  if (switchPlan && request.sideSwitch) {
+    try {
+      check();
+      const artifacts = await evaluateSideSwitchFrames(
+        media.info.duration,
+        request.sideSwitch.analysis,
+        null,
+        frames.sideSwitch,
+        (completed, total) =>
+          request.sideSwitch?.onProgress?.({
+            stage: "features",
+            completed,
+            total,
+            detail: `Checking possible side switches · ${completed}/${total}`,
+          }),
+        options.signal,
+      );
+      output.sideSwitch = artifacts.output;
+    } catch (cause) {
+      check();
+      errors.push(cause instanceof Error ? cause.message : String(cause));
+    }
+    if (output.sideSwitch) {
+      check();
+      await options.onOutput?.({ sideSwitch: output.sideSwitch });
+      request.sideSwitch.onProgress?.({
+        stage: "complete",
+        completed: output.sideSwitch.candidates.length,
+        total: output.sideSwitch.candidates.length,
+        detail: `Side switches ready · ${output.sideSwitch.candidates.length} found`,
+      });
+    }
   }
+  check();
+  if (errors.length) throw new Error(errors.join(" "));
   return output;
 }

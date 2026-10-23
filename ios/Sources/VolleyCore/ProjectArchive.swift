@@ -89,6 +89,52 @@ public enum ProjectArchive {
         guard let id = bundle?["initialInference"]?["modelId"]?.string else { return .legacy }
         return RallyModel(rawValue: id) ?? .legacy
     }
+    /// Restoring boundaries retains the immutable IDs used by existing score-marker links.
+    /// Only older ranges with no ID use the historical position-based R… fallback.
+    public static func restoredModelDraft(_ project: ProjectDocument) throws -> EditorDraft {
+        guard let ranges = project.feedback?["initialInference"]?["ranges"]?.array else {
+            throw ProjectError.invalid("This project has no retained original analysis.")
+        }
+        guard project.durationMs > 0, project.gameWindow.startMs >= 0,
+              project.gameWindow.endMs > project.gameWindow.startMs,
+              project.gameWindow.endMs <= project.durationMs else {
+            throw ProjectError.invalid("Invalid source bounds for restoring model ranges")
+        }
+        var ids = Set<String>()
+        let cuts = try ranges.enumerated().map { index, range -> EditableCut in
+            let id: String
+            if let value = range["id"] {
+                guard let retained = value.string, !retained.isEmpty else {
+                    throw ProjectError.invalid("Invalid original rally identity")
+                }
+                id = retained
+            } else { id = String(format: "R%03d", index + 1) }
+            guard ids.insert(id).inserted else { throw ProjectError.invalid("Duplicate original rally identity") }
+            let start = try number(range["start"], "original rally start")
+            let end = try number(range["end"], "original rally end")
+            let startMs = try ms(.number(start), "original rally start")
+            let endMs = try ms(.number(end), "original rally end")
+            let confidence = try number(range["confidence"] ?? .number(1), "original rally confidence")
+            let agreement = range["agreement"]?.string
+            guard end > start, endMs > startMs, endMs <= project.durationMs,
+                  (0...1).contains(confidence),
+                  agreement == nil || ["both-models", "all-labels-v2-only", "previous-production-only", "neural"].contains(agreement!) else {
+                throw ProjectError.invalid("Invalid original model range")
+            }
+            return .init(id: id, coreStartMs: startMs, coreEndMs: endMs,
+                         confidence: Float(confidence), agreement: agreement)
+        }
+        var value = EditorMath.newDraft(ranges: cuts, durationMs: project.durationMs,
+            gameWindow: project.gameWindow, sourceRevision: project.draft.sourceRevision, preserveRangeIds: true)
+        value.scoreTracking = project.draft.scoreTracking
+        value.renderScoreOverlay = project.draft.renderScoreOverlay
+        value.renderScoreTimeline = project.draft.renderScoreTimeline
+        value.fadeScoreOverlay = project.draft.fadeScoreOverlay
+        value.portableUi = try PortableReviewPreferences.retainingForReset(project.draft, retained: project.feedback?["corrections"]?["ui"])
+        value = EditorMath.alignRallyServeMarkers(value)
+        try value.validate(durationMs: project.durationMs)
+        return value
+    }
     static func required(_ value: JSONValue?, _ field: String) throws -> JSONValue {
         guard let value = value else { throw ProjectError.invalid("Missing \(field)") }; return value
     }
@@ -242,13 +288,11 @@ public enum ProjectArchive {
         let visibleScore = ScoreReducer.visibleTracking(score, ignoredIntervals: draft.ignoredIntervals, excludedRallyIds: Set(excluded))
         let computedScore = ScoreReducer.deriveAt(visibleScore).jsonValue()
         var corrections = bundle["corrections"] ?? .object([:])
-        // Additive UI extension: preserve unrelated preferences from imported bundles.
-        var ui = corrections["ui"] ?? .object([:])
-        var preferences = ui["preferences"] ?? .object([:])
-        preferences["chapterOptions"] = try draft.chapterOptions.map {
-            try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode($0))
-        }
-        ui["preferences"] = preferences; corrections["ui"] = ui
+        if let retained = corrections["ui"] { try PortableReviewPreferences.validate(retained, cuts: draft.cuts, checkIdentities: false) }
+        try PortableReviewPreferences.finalScoreAlias(bundle)
+        corrections["ui"] = try PortableReviewPreferences.compose(draft, retained: corrections["ui"])
+        var aliases = bundle["editorPreferences"] ?? .object([:])
+        aliases["renderScoreOnFinalVideo"] = .bool(draft.renderScoreOverlay)
         corrections["updatedAt"] = .string(ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: Double(draft.updatedAtMs) / 1_000)))
         corrections["beforePaddingSeconds"] = .number(Double(draft.beforePaddingMs) / 1_000)
         corrections["afterPaddingSeconds"] = .number(Double(draft.afterPaddingMs) / 1_000)
@@ -281,7 +325,9 @@ public enum ProjectArchive {
                 "coreEnd": .number(Double(cut.coreEndMs) / 1_000), "keepStart": .number(Double(cut.keepStartMs) / 1_000),
                 "keepEnd": .number(Double(cut.keepEndMs) / 1_000), "confidence": .number(Double(cut.confidence)),
                 "included": .bool(cut.included), "origin": .string(cut.origin.rawValue)])
-            if let agreement = cut.agreement { value["agreement"] = .string(agreement) }; return value
+            if let agreement = cut.agreement { value["agreement"] = .string(agreement) }
+            if let group = cut.editableGroupId { value["editableGroupId"] = .string(group) }
+            return value
         })
         corrections["ignoredIntervals"] = .array(draft.ignoredIntervals.map { .object(["id": .string($0.id),
             "start": .number(Double($0.startMs) / 1_000), "end": .number(Double($0.endMs) / 1_000), "reason": .string($0.reason)]) })
@@ -292,6 +338,7 @@ public enum ProjectArchive {
             "confirmedModelRanges": .array(draft.cuts.filter { $0.origin == .inferred && $0.included }.map(wireRange)),
             "discardedManualRanges": .array(draft.cuts.filter { $0.origin == .manual && !$0.included }.map(wireRange))])
         bundle["corrections"] = corrections
+        bundle["editorPreferences"] = aliases
         bundle["finalExportIntervals"] = .array(intervals.map { .object(["start": .number(Double($0.startMs) / 1_000),
             "end": .number(Double($0.endMs) / 1_000), "cutIds": strings($0.cutIds),
             "joinedGaps": .array($0.joinedGaps.map { .object(["start": .number(Double($0.startMs) / 1_000), "end": .number(Double($0.endMs) / 1_000)]) })]) })
@@ -364,14 +411,12 @@ public enum ProjectArchive {
         let corrections = try required(bundle["corrections"], "corrections")
         guard let cuts = corrections["correctedRanges"]?.array else { throw ProjectError.invalid("Missing corrected ranges") }
         var draft = EditorDraft(sourceRevision: source["analysisId"]?.string ?? UUID().uuidString)
-        if let options = corrections["ui"]?["preferences"]?["chapterOptions"], options != .null {
-            draft.chapterOptions = try JSONDecoder().decode(YouTubeChapterOptions.self, from: JSONEncoder().encode(options))
-        }
         draft.cuts = try cuts.map { cut in
             guard let id = cut["id"]?.string, let origin = cut["origin"]?.string.flatMap(CutOrigin.init(rawValue:)), let included = cut["included"]?.bool else { throw ProjectError.invalid("Invalid corrected range identity or origin") }
             return EditableCut(id: id, coreStartMs: try ms(cut["coreStart"], "core start"), coreEndMs: try ms(cut["coreEnd"], "core end"),
                                keepStartMs: try ms(cut["keepStart"], "keep start"), keepEndMs: try ms(cut["keepEnd"], "keep end"),
-                               confidence: Float(try number(cut["confidence"], "confidence")), included: included, origin: origin, agreement: cut["agreement"]?.string)
+                               confidence: Float(try number(cut["confidence"], "confidence")), included: included, origin: origin,
+                               agreement: cut["agreement"]?.string, editableGroupId: try ExplicitRallyGroups.decode(cut["editableGroupId"]))
         }
         draft.beforePaddingMs = try ms(corrections["beforePaddingSeconds"] ?? .number(2), "before padding")
         draft.afterPaddingMs = try ms(corrections["afterPaddingSeconds"] ?? .number(2), "after padding")
@@ -388,6 +433,7 @@ public enum ProjectArchive {
         draft.userTouchedCutIds = Set(suppression?["userTouchedCutIds"]?.array?.compactMap(\.string) ?? [])
         draft.scoreTracking = try required(corrections["scoreTracking"]?["state"], "score tracking state")
         draft.scoreTracking = try ScoreTracking.fromJSON(draft.scoreTracking, durationMs: ms(.number(duration), "duration")).jsonValue()
+        draft = try PortableReviewPreferences.applying(corrections["ui"], alias: PortableReviewPreferences.finalScoreAlias(bundle), to: draft)
         if let updated = corrections["updatedAt"]?.string, let date = ISO8601DateFormatter().date(from: updated) { draft.updatedAtMs = Int64((date.timeIntervalSince1970 * 1_000).rounded()) }
         draft = EditorMath.alignRallyServeMarkers(draft)
         let document = ProjectDocument(sourceName: source["file"]?["name"]?.string ?? "imported-recording.mp4",

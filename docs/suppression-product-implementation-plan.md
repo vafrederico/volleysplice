@@ -1,6 +1,13 @@
 # Suppression product implementation plan
 
-Status: production web implementation completed; native Android remains planned.
+Status: historical implementation plan. Production web and native Android now
+implement cleanup. The default and control descriptions below record the original
+plan and are not the current product settings contract.
+
+Current Legacy editors default to aggressive cleanup with disable-initially
+behavior when cleanup output is available. Android labels the settings **Off /
+Light / Recommended / Strong**; neural rally models do not apply Legacy cleanup.
+See [the current Android editor documentation](../android/README.md#native-editor-and-export).
 
 ## Outcome
 
@@ -363,6 +370,6 @@ Required automated coverage:
 - The v3 candidates and re-tuned decoder are absent from production assets and code
   paths.
 
-The canonical model/policy decision and evaluated metrics remain in
-`/mnt/freenas/llmvault/memories/VolleyCut Suppression Product Options.md`; this plan is
-the implementation handoff for that decision.
+The canonical model/policy decision and evaluated metrics remain in the approved
+shared-memory note **VolleyCut Suppression Product Options**; this historical plan
+records the implementation handoff for that decision.

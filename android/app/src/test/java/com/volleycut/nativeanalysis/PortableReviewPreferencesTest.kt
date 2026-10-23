@@ -193,7 +193,7 @@ class PortableReviewPreferencesTest {
         val store = EditorDraftStore(directory, importedSeed)
         try {
             store.save(imported.draft)
-            var current = requireNotNull(store.load())
+            var current = (store.load() as EditorDraftLoadResult.Restored).draft
             assertJson(JSONObject(requireNotNull(imported.draft.portableUi)), wire(bundle(current, imported.project)))
             repeat(2) {
                 current = PortableReviewPreferences.reset(importedSeed, current)
@@ -201,18 +201,18 @@ class PortableReviewPreferencesTest {
                 assertTrue(current.reviewedCutIds.isEmpty())
                 assertEquals(imported.draft.portableUi, current.portableUi)
                 store.save(current)
-                val reopened = requireNotNull(EditorDraftStore(directory, importedSeed).load())
+                val reopened = (EditorDraftStore(directory, importedSeed).load() as EditorDraftLoadResult.Restored).draft
                 assertEquals(current, reopened)
                 assertEquals(futureIdentityError, assertThrows(IllegalArgumentException::class.java) {
                     bundle(reopened, imported.project)
                 }.message)
-                assertEquals(current, requireNotNull(store.load()))
+                assertEquals(current, (store.load() as EditorDraftLoadResult.Restored).draft)
                 assertEquals(imported.draft.portableUi, reopened.portableUi)
                 current = reopened
             }
         } finally {
-            Files.deleteIfExists(File(directory, "${importedSeed.sourceRevision}.json").toPath())
-            Files.deleteIfExists(File(directory, "${importedSeed.sourceRevision}.json.tmp").toPath())
+            store.clear()
+            Files.delete(File(directory, "editor-drafts").toPath())
             Files.delete(directory.toPath())
         }
     }
@@ -381,19 +381,19 @@ class PortableReviewPreferencesTest {
             val importedSeed = requireNotNull(imported.project.editorSeed())
             val store = EditorDraftStore(directory, importedSeed)
             store.save(imported.draft)
-            val reopened = requireNotNull(EditorDraftStore(directory, importedSeed).load())
+            val reopened = (EditorDraftStore(directory, importedSeed).load() as EditorDraftLoadResult.Restored).draft
             assertEquals(imported.draft, reopened)
             assertTrue(PortableReviewPreferences.onOpen(reopened, false).fadeScoreOverlay)
             assertFalse(PortableReviewPreferences.onOpen(reopened.copy(fadeScoreOverlay = false), true).fadeScoreOverlay)
             assertTrue(PortableReviewPreferences.onOpen(EditorMath.newDraft(seed), true).fadeScoreOverlay)
             val relinked = reopened.copy(sourceRevision = seed.sourceRevision)
             EditorDraftStore(directory, seed).save(relinked)
-            assertEquals(reopened.portableUi, requireNotNull(EditorDraftStore(directory, seed).load()).portableUi)
+            assertEquals(reopened.portableUi, (EditorDraftStore(directory, seed).load() as EditorDraftLoadResult.Restored).draft.portableUi)
             val reset = PortableReviewPreferences.reset(importedSeed, reopened)
             val defaults = EditorMath.newDraft(importedSeed)
             assertEquals(defaults, reset.copy(portableUi = null, fadeScoreOverlayExplicit = false))
             store.save(reset)
-            val restoredReset = requireNotNull(EditorDraftStore(directory, importedSeed).load())
+            val restoredReset = (EditorDraftStore(directory, importedSeed).load() as EditorDraftLoadResult.Restored).draft
             assertFalse(PortableReviewPreferences.onOpen(restoredReset, true).fadeScoreOverlay)
             val exported = PortableReviewPreferences.export(restoredReset)
             val prefs = exported.getJSONObject("preferences")
@@ -407,7 +407,7 @@ class PortableReviewPreferencesTest {
             val futureSeed = requireNotNull(parse(fixture().getJSONObject("futureUi")).project.editorSeed())
             val futureStore = EditorDraftStore(directory, futureSeed)
             futureStore.save(future.copy(sourceRevision = futureSeed.sourceRevision))
-            val futureRestored = requireNotNull(futureStore.load())
+            val futureRestored = (futureStore.load() as EditorDraftLoadResult.Restored).draft
             assertJson(fixture().getJSONObject("futureUi"), PortableReviewPreferences.export(futureRestored))
             assertEquals(1.0, futureRestored.playbackRate, 0.0)
         } finally { directory.deleteRecursively() }
@@ -418,14 +418,14 @@ class PortableReviewPreferencesTest {
         try {
             val store = EditorDraftStore(directory, seed)
             store.save(EditorMath.newDraft(seed))
-            val file = File(directory, "${seed.sourceRevision}.json")
+            val file = File(directory, "editor-drafts/${seed.sourceRevision}.json")
             val json = JSONObject(file.readText()).put("version", 8)
             json.remove("portableUi"); json.remove("fadeScoreOverlayExplicit")
             json.put("fadeScoreOverlay", false)
             file.writeText(json.toString())
-            assertFalse(PortableReviewPreferences.onOpen(requireNotNull(store.load()), true).fadeScoreOverlay)
+            assertFalse(PortableReviewPreferences.onOpen((store.load() as EditorDraftLoadResult.Restored).draft, true).fadeScoreOverlay)
             json.remove("fadeScoreOverlay"); file.writeText(json.toString())
-            assertTrue(PortableReviewPreferences.onOpen(requireNotNull(store.load()), true).fadeScoreOverlay)
+            assertTrue(PortableReviewPreferences.onOpen((store.load() as EditorDraftLoadResult.Restored).draft, true).fadeScoreOverlay)
         } finally { directory.deleteRecursively() }
     }
 }

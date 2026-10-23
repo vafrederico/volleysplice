@@ -54,12 +54,55 @@ public struct EditableCut: Codable, Equatable, Identifiable, Sendable {
     public var included: Bool
     public var origin: CutOrigin
     public var agreement: String?
+    public var editableGroupId: String?
     public init(id: String, coreStartMs: Int64, coreEndMs: Int64, keepStartMs: Int64? = nil,
                 keepEndMs: Int64? = nil, confidence: Float = 1, included: Bool = true,
-                origin: CutOrigin = .inferred, agreement: String? = nil) {
+                origin: CutOrigin = .inferred, agreement: String? = nil, editableGroupId: String? = nil) {
         self.id = id; self.coreStartMs = coreStartMs; self.coreEndMs = coreEndMs
         self.keepStartMs = keepStartMs ?? coreStartMs; self.keepEndMs = keepEndMs ?? coreEndMs
         self.confidence = confidence; self.included = included; self.origin = origin; self.agreement = agreement
+        self.editableGroupId = editableGroupId
+    }
+    enum CodingKeys: String, CodingKey {
+        case id, coreStartMs, coreEndMs, keepStartMs, keepEndMs, confidence, included, origin, agreement, editableGroupId
+    }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        coreStartMs = try values.decode(Int64.self, forKey: .coreStartMs)
+        coreEndMs = try values.decode(Int64.self, forKey: .coreEndMs)
+        keepStartMs = try values.decode(Int64.self, forKey: .keepStartMs)
+        keepEndMs = try values.decode(Int64.self, forKey: .keepEndMs)
+        confidence = try values.decode(Float.self, forKey: .confidence)
+        included = try values.decode(Bool.self, forKey: .included)
+        origin = try values.decode(CutOrigin.self, forKey: .origin)
+        agreement = try values.decodeIfPresent(String.self, forKey: .agreement)
+        editableGroupId = values.contains(.editableGroupId) ? try values.decode(String.self, forKey: .editableGroupId) : nil
+        try ExplicitRallyGroups.validate([self])
+    }
+}
+
+/// Additive feedback-v3 metadata; absent values preserve legacy automatic grouping.
+public enum ExplicitRallyGroups {
+    public static func decode(_ value: JSONValue?) throws -> String? {
+        guard let value else { return nil }
+        guard let token = value.string,
+              token.range(of: "[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", options: .regularExpression) == token.startIndex..<token.endIndex else {
+            throw ProjectError.invalid("Invalid explicit rally group")
+        }
+        return token
+    }
+    public static func validate(_ cuts: [EditableCut]) throws {
+        guard Set(cuts.map(\.id)).count == cuts.count,
+              cuts.filter({ $0.editableGroupId != nil }).count <= 2048 else {
+            throw ProjectError.invalid("Duplicate clip IDs or more than 2,048 explicit rally members")
+        }
+        for cut in cuts where cut.editableGroupId != nil {
+            guard !cut.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, cut.id.utf16.count <= 256 else {
+                throw ProjectError.invalid("Explicit rally clip IDs must be nonblank and at most 256 characters")
+            }
+            _ = try decode(cut.editableGroupId.map(JSONValue.string))
+        }
     }
 }
 public struct IgnoredSourceInterval: Codable, Equatable, Identifiable, Sendable {
@@ -82,7 +125,7 @@ public struct EditorDraft: Codable, Equatable, Sendable {
     public var pendingIgnoreStartMs: Int64?
     public var ignoreReason = "non-game-content"
     public var finalPreviewEnabled = false
-    public var playbackRate: Float = 1
+    public var playbackRate: Double = 1
     public var confidenceReviewThreshold: Float = 0.7
     public var reviewedCutIds: Set<String> = []
     public var cuts: [EditableCut]
@@ -104,8 +147,11 @@ public struct EditorDraft: Codable, Equatable, Sendable {
     public var fadeScoreOverlay: Bool?
     /// Nil keeps the score-aware defaults for projects saved before chapter preferences existed.
     public var chapterOptions: YouTubeChapterOptions?
+    /// Optional in version 8 so legacy synthesized Codable drafts still decode.
+    public var portableUi: JSONValue?
     public init(sourceRevision: String, cuts: [EditableCut] = []) { self.sourceRevision = sourceRevision; self.cuts = cuts }
     public func validate(durationMs: Int64) throws {
+        try ExplicitRallyGroups.validate(cuts)
         guard durationMs > 0, version == 8, (0...10_000).contains(beforePaddingMs),
               (0...10_000).contains(afterPaddingMs), (0...10_000).contains(joinGapMs),
               Set(cuts.map(\.id)).count == cuts.count,
@@ -123,6 +169,15 @@ public struct EditorDraft: Codable, Equatable, Sendable {
             throw ProjectError.invalid("Invalid editor draft or source-time bounds")
         }
         _ = try ScoreTracking.fromJSON(scoreTracking, durationMs: durationMs)
+        guard playbackRate.isFinite, (0.25...8).contains(playbackRate),
+              confidenceReviewThreshold.isFinite, (0...1).contains(confidenceReviewThreshold),
+              reviewedCutIds.count <= 2048,
+              reviewedCutIds.allSatisfy({ !$0.isEmpty && $0.utf16.count <= 256 }),
+              reviewedCutIds.isSubset(of: Set(cuts.filter { $0.origin == .inferred }.map(\.id))) else {
+            throw ProjectError.invalid("Invalid active review preferences")
+        }
+        // The retained IDs may predate a local cut deletion/reset; active IDs are checked above.
+        if let portableUi { try PortableReviewPreferences.validate(portableUi, cuts: cuts, checkIdentities: false) }
     }
 }
 
@@ -151,6 +206,20 @@ public struct ProjectDocument: Codable, Equatable, Sendable {
               gameWindow.startMs >= 0, gameWindow.endMs <= durationMs,
               gameWindow.endMs > gameWindow.startMs else { throw ProjectError.invalid("Invalid project schema or game window") }
         try draft.validate(durationMs: durationMs)
+        if let ui = feedback?["corrections"]?["ui"] {
+            try PortableReviewPreferences.validate(ui, cuts: draft.cuts, checkIdentities: false)
+        }
+        if let feedback { try PortableReviewPreferences.finalScoreAlias(feedback) }
+    }
+    /// Local v8 inclusion toggles used to mark manual cuts reviewed. Remove only
+    /// those redundant IDs on upgrade; never sanitize wire UI or unknown IDs.
+    /// Apply after checkpoint recovery, before validating the recovered draft.
+    public func migratingLegacyLocalReviewIds() -> Self {
+        guard schema == "volleycut-ios-project", schemaVersion == 1,
+              draft.version == 8, draft.portableUi == nil else { return self }
+        var project = self
+        project.draft.reviewedCutIds.subtract(draft.cuts.filter { $0.origin == .manual }.map(\.id))
+        return project
     }
     public func save(to url: URL) throws {
         try validate()

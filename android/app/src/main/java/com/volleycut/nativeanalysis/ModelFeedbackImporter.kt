@@ -39,10 +39,11 @@ internal object ModelFeedbackImporter {
 
     fun import(context: Context, text: String): NativeProject {
         val imported = parse(text)
+        val seed = checkNotNull(imported.project.editorSeed())
+        // Refuse an unreadable target before publishing an imported project.
+        EditorDraftStore(context, seed).save(imported.draft)
         imported.featureCache?.let { hydrateFeatureCache(context, imported.project, it) }
         NativeProjectStore.save(context, imported.project)
-        val seed = checkNotNull(imported.project.editorSeed())
-        EditorDraftStore(context, seed).save(imported.draft)
         EditorProjectStore.save(context, seed)
         NativeProjectStore.setSelectedId(context, imported.project.id)
         return imported.project
@@ -142,7 +143,13 @@ internal object ModelFeedbackImporter {
             }
         } ?: AnalysisTypes.ProductionServeOutputs.empty()
         val servingSide = inference.optJSONObject("servingSide")?.let(::decodeServingSide)
-        val sideSwitchEnabled = inference.optJSONObject("sideSwitch") != null
+        val sideSwitch = if (inference.isNull("sideSwitch")) null else
+            SideSwitchJson.decodeFeedback(inference.getJSONObject("sideSwitch"), duration)
+        val sideSwitchEnabled = if (source.has("generateSideSwitchMarkers")) {
+            source.get("generateSideSwitchMarkers").also {
+                require(it is Boolean) { "source.generateSideSwitchMarkers must be a boolean" }
+            } as Boolean
+        } else true // Historical web preference; independent of retained output presence.
         val suppression = inference.optJSONObject("suppression")
             ?.takeUnless { RallyModels.isNeural(inference.getString("modelId")) }
             ?.let(::decodeSuppression)
@@ -158,6 +165,7 @@ internal object ModelFeedbackImporter {
         )
         val projectWithoutCacheIdentity = NativeProject(
             id = id,
+            draftNamespace = id,
             source = projectSource,
             media = AnalysisTypes.MediaInfo(
                 duration, mediaJson.optInt("width"), mediaJson.optInt("height"),
@@ -179,8 +187,9 @@ internal object ModelFeedbackImporter {
             } ?: AnalysisTypes.ProductionComponents.empty(),
             productionServeOutputs = serveOutputs,
             servingSide = servingSide,
+            sideSwitch = sideSwitch,
             sideSwitchEnabled = sideSwitchEnabled,
-            servingSideStatus = if (servingSide == null) {
+            servingSideStatus = if (servingSide == null || (sideSwitchEnabled && sideSwitch == null)) {
                 ServingSideAnalysisStatus.NOT_RUN
             } else ServingSideAnalysisStatus.READY,
             servingSideError = if (servingSide == null) "Imported bundle has no serving-side output" else null,
@@ -191,6 +200,7 @@ internal object ModelFeedbackImporter {
             },
             createdAtMs = nowMs,
             updatedAtMs = nowMs,
+            feedbackWarnings = SideSwitchJson.decodeWarnings(bundle),
         )
         val project = projectWithoutCacheIdentity.copy(
             servingSideCacheIdentity = servingSide?.let {
@@ -452,6 +462,7 @@ internal object ModelFeedbackImporter {
                     it.optBoolean("included", true),
                     if (origin == "manual") CutOrigin.MANUAL else CutOrigin.INFERRED,
                     if (it.isNull("agreement")) null else it.optString("agreement"),
+                    ExplicitRallyGroups.decode(it),
                 )
             } },
             ignoredIntervals = List(ignored.length()) { index -> ignored.getJSONObject(index).let {
@@ -490,6 +501,7 @@ internal object ModelFeedbackImporter {
                 it.id.isNotBlank() && it.startMs in 0 until it.endMs && it.endMs <= durationMs
             } && draft.userTouchedCutIds.all { touched -> draft.cuts.any { it.id == touched } }
         ) { "Feedback corrections are not compatible with this editor version" }
+        ExplicitRallyGroups.validate(draft.cuts)
         return EditorMath.alignRallyServeMarkers(draft)
     }
 

@@ -39,7 +39,7 @@ class PortableReviewPreferencesInstrumentedTest {
         val store = EditorDraftStore(context, seed)
         try {
             store.save(draft)
-            val reopened = requireNotNull(EditorDraftStore(context, seed).load())
+            val reopened = (EditorDraftStore(context, seed).load() as EditorDraftLoadResult.Restored).draft
             assertTrue(PortableReviewPreferences.onOpen(reopened, false).fadeScoreOverlay)
             assertEquals(ui.toString(), reopened.portableUi)
             assertTrue(reopened.renderScoreOverlay)
@@ -67,11 +67,11 @@ class PortableReviewPreferencesInstrumentedTest {
                 compose.runOnIdle {
                     assertEquals(1.5f, player.playbackParameters.speed, 0f)
                     store.save(reopened.copy(playbackRate = rate))
-                    assertEquals(1.5, requireNotNull(store.load()).playbackRate, 0.0)
+                    assertEquals(1.5, (store.load() as EditorDraftLoadResult.Restored).draft.playbackRate, 0.0)
                 }
                 val reset = PortableReviewPreferences.reset(seed, reopened)
                 store.save(reset)
-                val resetReopened = requireNotNull(store.load())
+                val resetReopened = (store.load() as EditorDraftLoadResult.Restored).draft
                 assertFalse(PortableReviewPreferences.onOpen(resetReopened, true).fadeScoreOverlay)
                 assertTrue(PortableReviewPreferences.export(resetReopened).getJSONObject("preferences").has("chapterOptions"))
             } finally { compose.runOnUiThread { player.release() } }
@@ -124,8 +124,9 @@ class PortableReviewPreferencesInstrumentedTest {
                 compose.runOnIdle {
                     assertFalse(opened)
                     assertEquals("previous archive", destination.readText())
-                    assertEquals(reset, requireNotNull(store.load()))
-                    assertEquals(ui.toString(), requireNotNull(store.load()).portableUi)
+                    val restored = (store.load() as EditorDraftLoadResult.Restored).draft
+                    assertEquals(reset, restored)
+                    assertEquals(ui.toString(), restored.portableUi)
                 }
                 compose.onNodeWithText("Close").performClick()
                 compose.onNodeWithText("Could not save project").assertDoesNotExist()
@@ -133,6 +134,7 @@ class PortableReviewPreferencesInstrumentedTest {
         } finally {
             store.clear()
             check(destination.delete())
+            check(File(directory, "editor-drafts").delete())
             check(directory.delete())
         }
     }

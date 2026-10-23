@@ -19,6 +19,7 @@ import {
 } from "./side-switch-model.ts";
 import type { NormalizedRoi, OnDeviceSideSwitchOutput } from "./types.ts";
 import { loadOpenCv, phaseCorrelate } from "./visual-features.ts";
+import { awaitWithAbort } from "./abortable.ts";
 
 type CvRuntime = typeof import("@techstark/opencv-js");
 type ColorFrame = Uint8Array;
@@ -1075,8 +1076,11 @@ export async function evaluateSideSwitchFrames(
   candidateLimit: number | null,
   sampled: ReadonlyMap<string, Uint8Array>,
   onProgress?: (completed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<SideSwitchFrameEvaluation> {
-  const runtime = await loadSideSwitchRuntime();
+  signal?.throwIfAborted();
+  const runtime = await awaitWithAbort(loadSideSwitchRuntime(), signal);
+  signal?.throwIfAborted();
   const candidates = sideSwitchCandidates(analysis, runtime, candidateLimit);
   if (candidates.length === 0) {
     return {
@@ -1084,7 +1088,8 @@ export async function evaluateSideSwitchFrames(
       candidateProbabilities: new Float64Array(0),
     };
   }
-  const cv = await loadOpenCv();
+  const cv = await awaitWithAbort(loadOpenCv(), signal);
+  signal?.throwIfAborted();
   return await sideSwitchOutputFromLoadedFrames(
     cv,
     runtime,

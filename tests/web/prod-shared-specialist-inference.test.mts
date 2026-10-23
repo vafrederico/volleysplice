@@ -42,7 +42,8 @@ test("production score specialists share one sequential video decode", async () 
   );
   // New projects always generate serve markers; the legacy preference is retained only for storage compatibility.
   assert.match(app, /servingSideEnabled:\s*true/);
-  assert.match(app, /const shouldInferServing = Boolean\(result\.productionServeOutputs\)/);
+  assert.match(app, /missingScoreStages\(project\)/);
+  assert.match(app, /runScoreStages\(checkpoint, opened, abort\)/);
   assert.match(editor, /VolleySplice builds the score from serve markers/);
   assert.match(editor, />\s*Save project\s*</);
   assert.doesNotMatch(editor, /downloadEditList|Save a review copy/);
