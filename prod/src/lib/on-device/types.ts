@@ -246,7 +246,8 @@ export type OnDeviceAnalysis = {
   };
   productionServeOutputs?: ProductionServeOutputs;
   productionStateOutputs?: ProductionStateOutputs;
-  servingSide?: OnDeviceServingSideOutput;
-  sideSwitch?: OnDeviceSideSwitchOutput;
+  /** null/undefined mean absent, never a completed zero-candidate run. */
+  servingSide?: OnDeviceServingSideOutput | null;
+  sideSwitch?: OnDeviceSideSwitchOutput | null;
   suppression?: OnDeviceSuppression;
 };

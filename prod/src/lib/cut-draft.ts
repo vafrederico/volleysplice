@@ -1,4 +1,5 @@
 import type { Rally } from "./edit-list.ts";
+import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE, parseFeedbackUi, type FeedbackUi } from "./feedback-ui.ts";
 import {
   SUPPRESSION_POLICY_CONTRACT_VERSION,
   SUPPRESSION_POLICY_IDS,
@@ -15,14 +16,14 @@ import {
   type ScoreTracking,
 } from "./score-tracking.ts";
 
-export const CUT_DRAFT_VERSION = 15 as const;
+export const CUT_DRAFT_VERSION = 17 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const MAX_CUT_PADDING_SECONDS = 10;
 export const MAX_JOIN_GAP_SECONDS = 10;
 export const MIN_CUT_SECONDS = 0.1;
-export const PLAYBACK_RATES = [1, 2, 4, 8] as const;
+export const PLAYBACK_RATES = [1, 1.5, 2, 4, 8] as const;
 const MAX_EXPLICIT_RALLY_MEMBERS = 2048;
 const MAX_EXPLICIT_CUT_ID_LENGTH = 256;
 
@@ -61,12 +62,16 @@ export type CutDraft = {
   ignoreReason: string;
   cutPreviewEnabled: boolean;
   renderScoreOverlay: boolean;
+  renderScoreOnFinalVideo: boolean;
   renderScoreTimeline: boolean;
   fadeScoreOverlay: boolean;
-  playbackRate: (typeof PLAYBACK_RATES)[number];
+  playbackRate: number;
+  /** Retained portable UI extensions; active preferences live in the fields above. */
+  portableUi?: FeedbackUi;
   confidenceReviewThreshold: number;
   reviewedCutIds: string[];
   selectedSuppressionPolicy: SuppressionPolicyId;
+  suppressionInitialBehavior: "disable-initially" | "highlight-only";
   suppressionDecisionOverrides: Record<string, "keep" | "suppress">;
   suppressionScopeOverrides: Record<string, SuppressionScope>;
   userTouchedCutIds: string[];
@@ -216,7 +221,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -240,6 +245,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     ignoreReason: "non-game-content",
     cutPreviewEnabled: false,
     renderScoreOverlay: true,
+    renderScoreOnFinalVideo: true,
     renderScoreTimeline: false,
     fadeScoreOverlay: false,
     playbackRate: 1,
@@ -247,6 +253,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     reviewedCutIds: [],
     selectedSuppressionPolicy: "aggressive",
     suppressionDecisionOverrides: {},
+    suppressionInitialBehavior: "disable-initially",
     suppressionScopeOverrides: {},
     userTouchedCutIds: [],
     suppressionContractVersion:
@@ -350,16 +357,16 @@ function inferLegacyTouchedCutIds(
     .filter((cut) => {
       const rally = rallies.get(cut.id);
       if (!rally) return true;
-      const expectedStart = roundTime(clamp(
+      const expectedStart = roundTimeWithin(
         rally.start - beforePaddingSeconds,
         bounds.start,
         bounds.end,
-      ));
-      const expectedEnd = roundTime(clamp(
+      );
+      const expectedEnd = roundTimeWithin(
         rally.end + afterPaddingSeconds,
         bounds.start,
         bounds.end,
-      ));
+      );
       return (
         cut.included !== rally.included ||
         Math.abs(cut.coreStart - rally.start) > 0.000_5 ||
@@ -381,7 +388,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, CUT_DRAFT_VERSION].includes(
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, CUT_DRAFT_VERSION].includes(
         persistedVersion,
       )
     ) {
@@ -389,6 +396,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     }
     const value: Partial<CutDraft> = {
       ...persisted,
+      ...(persisted.portableUi === undefined ? {} : { portableUi: parseFeedbackUi(persisted.portableUi) }),
       version: CUT_DRAFT_VERSION,
       analysisStart: persistedVersion >= 9 ? persisted.analysisStart : bounds.start,
       analysisEnd: persistedVersion >= 9 ? persisted.analysisEnd : bounds.end,
@@ -414,6 +422,11 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       renderScoreOverlay: persistedVersion >= 13
         ? persisted.renderScoreOverlay
         : false,
+      // Final-video rendering was always enabled on mount before version 16,
+      // independently of the preview overlay preference.
+      renderScoreOnFinalVideo: persistedVersion >= 16
+        ? persisted.renderScoreOnFinalVideo
+        : true,
       fadeScoreOverlay: persistedVersion >= 15 ? persisted.fadeScoreOverlay : false,
       renderScoreTimeline: persistedVersion >= 14
         ? persisted.renderScoreTimeline
@@ -431,6 +444,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       suppressionDecisionOverrides: persistedVersion >= 9
         ? persisted.suppressionDecisionOverrides
         : {},
+      suppressionInitialBehavior: persistedVersion >= 17
+        ? persisted.suppressionInitialBehavior
+        : "disable-initially",
       suppressionScopeOverrides: persistedVersion >= 10
         ? persisted.suppressionScopeOverrides
         : {},
@@ -506,9 +522,12 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       value.ignoreReason.length === 0 ||
       typeof value.cutPreviewEnabled !== "boolean" ||
       typeof value.renderScoreOverlay !== "boolean" ||
+      typeof value.renderScoreOnFinalVideo !== "boolean" ||
       typeof value.renderScoreTimeline !== "boolean" ||
       typeof value.fadeScoreOverlay !== "boolean" ||
-      !PLAYBACK_RATES.includes(value.playbackRate as (typeof PLAYBACK_RATES)[number]) ||
+      !finiteTime(value.playbackRate) ||
+      value.playbackRate < MIN_PLAYBACK_RATE ||
+      value.playbackRate > MAX_PLAYBACK_RATE ||
       !finiteTime(value.confidenceReviewThreshold) ||
       value.confidenceReviewThreshold < 0 ||
       value.confidenceReviewThreshold > 1 ||
@@ -519,6 +538,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         value.selectedSuppressionPolicy as SuppressionPolicyId,
       ) ||
       !value.suppressionDecisionOverrides ||
+      !["disable-initially", "highlight-only"].includes(value.suppressionInitialBehavior ?? "") ||
       typeof value.suppressionDecisionOverrides !== "object" ||
       Array.isArray(value.suppressionDecisionOverrides) ||
       !Object.entries(value.suppressionDecisionOverrides).every(
@@ -582,12 +602,8 @@ export function applyPaddingToCachedCuts(
       cut.origin === "cached-label"
         ? {
             ...cut,
-            keepStart: roundTime(
-              clamp(cut.coreStart - before, analysisStart, analysisEnd),
-            ),
-            keepEnd: roundTime(
-              clamp(cut.coreEnd + after, analysisStart, analysisEnd),
-            ),
+            keepStart: roundTimeWithin(cut.coreStart - before, analysisStart, cut.coreStart),
+            keepEnd: roundTimeWithin(cut.coreEnd + after, cut.coreEnd, analysisEnd),
           }
         : cut,
     ),
@@ -605,12 +621,12 @@ export function setCutCoreStart(
     if (cut.id !== cutId) return cut;
     const maximumStart = cut.coreEnd - MIN_CUT_SECONDS;
     if (maximumStart < minimum) return cut;
-    const start = roundTime(clamp(value, minimum, maximumStart));
+    const start = roundTimeWithin(value, minimum, maximumStart);
     const beforePadding = cut.coreStart - cut.keepStart;
     return {
       ...cut,
       coreStart: start,
-      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
+      keepStart: roundTimeWithin(start - beforePadding, minimum, start),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -627,12 +643,12 @@ export function setCutCoreEnd(
     if (cut.id !== cutId) return cut;
     const minimumEnd = cut.coreStart + MIN_CUT_SECONDS;
     if (minimumEnd > maximum) return cut;
-    const end = roundTime(clamp(value, minimumEnd, maximum));
+    const end = roundTimeWithin(value, minimumEnd, maximum);
     const afterPadding = cut.keepEnd - cut.coreEnd;
     return {
       ...cut,
       coreEnd: end,
-      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+      keepEnd: roundTimeWithin(end + afterPadding, end, maximum),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -653,16 +669,16 @@ export function setCutCoreRange(
   ) return draft;
   const cuts = draft.cuts.map((cut) => {
     if (cut.id !== cutId) return cut;
-    const start = roundTime(clamp(startValue, minimum, maximum - MIN_CUT_SECONDS));
-    const end = roundTime(clamp(endValue, start + MIN_CUT_SECONDS, maximum));
+    const start = roundTimeWithin(startValue, minimum, maximum - MIN_CUT_SECONDS);
+    const end = roundTimeWithin(endValue, start + MIN_CUT_SECONDS, maximum);
     const beforePadding = cut.coreStart - cut.keepStart;
     const afterPadding = cut.keepEnd - cut.coreEnd;
     return {
       ...cut,
       coreStart: start,
       coreEnd: end,
-      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
-      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+      keepStart: roundTimeWithin(start - beforePadding, minimum, start),
+      keepEnd: roundTimeWithin(end + afterPadding, end, maximum),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -715,13 +731,13 @@ export function splitCutAt(
     ...cut,
     editableGroupId: `split:${crypto.randomUUID()}`,
     coreEnd: position,
-    keepEnd: roundTime(Math.min(maximum, position + afterPadding)),
+    keepEnd: roundTimeWithin(position + afterPadding, position, maximum),
   };
   const right: EditableCut = {
     ...cut,
     id: nextCutId(prefix, draft),
     coreStart: position,
-    keepStart: roundTime(Math.max(minimum, position - beforePadding)),
+    keepStart: roundTimeWithin(position - beforePadding, minimum, position),
     editableGroupId: `split:${crypto.randomUUID()}`,
   };
   const cuts = [...draft.cuts];
@@ -749,6 +765,11 @@ export function playbackFocusCut(
 
 function roundTime(seconds: number): number {
   return Math.round(seconds * 1000) / 1000;
+}
+
+function roundTimeWithin(seconds: number, minimum: number, maximum: number): number {
+  // Preserve millisecond rounding except where an exact source/core bound wins.
+  return clamp(roundTime(seconds), minimum, maximum);
 }
 
 function mergeIgnoredIntervals(
@@ -797,7 +818,7 @@ export function suppressionSuggestionState(
   ) {
     return "edited-kept";
   }
-  return "suppressed";
+  return draft.suppressionInitialBehavior === "highlight-only" ? "kept" : "suppressed";
 }
 
 export function suppressionSuggestionScope(
@@ -913,16 +934,16 @@ export function materializeFinalCutIntervals(
     for (const fragment of fragments) {
       const outerStart = Math.abs(fragment.start - cut.coreStart) < 0.000_5;
       const outerEnd = Math.abs(fragment.end - cut.coreEnd) < 0.000_5;
-      const paddedStart = roundTime(clamp(
+      // Rounded padding may extend a surviving core, never trim or erase it.
+      // Veto and ignored ranges are still subtracted at their exact boundaries.
+      const paddedStart = roundTimeWithin(
         outerStart ? cut.keepStart : fragment.start - draft.beforePaddingSeconds,
-        draft.analysisStart,
-        draft.analysisEnd,
-      ));
-      const paddedEnd = roundTime(clamp(
+        draft.analysisStart, fragment.start,
+      );
+      const paddedEnd = roundTimeWithin(
         outerEnd ? cut.keepEnd : fragment.end + draft.afterPaddingSeconds,
-        draft.analysisStart,
-        draft.analysisEnd,
-      ));
+        fragment.end, draft.analysisEnd,
+      );
       if (paddedEnd <= paddedStart) continue;
       const hardClipped = subtractRanges(
         { start: paddedStart, end: paddedEnd },

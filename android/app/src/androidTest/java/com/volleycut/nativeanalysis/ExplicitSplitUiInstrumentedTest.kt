@@ -51,7 +51,7 @@ class ExplicitSplitUiInstrumentedTest {
         val store = EditorDraftStore(context, seed)
         store.save(EditorMath.applyPadding(EditorMath.newDraft(seed), 0, 0, 1_000)
             .copy(suppressionInitialBehavior = SuppressionInitialBehavior.HIGHLIGHT_ONLY))
-        fun saved() = requireNotNull(store.load())
+        fun saved() = (store.load() as EditorDraftLoadResult.Restored).draft
         val device = UiDevice.getInstance(instrumentation)
         device.wakeUp()
         val evidence = File(context.getExternalFilesDir(null), "explicit-split-cleanup-$nextPart").apply { mkdirs() }
@@ -111,7 +111,7 @@ class ExplicitSplitUiInstrumentedTest {
         val device = UiDevice.getInstance(instrumentation)
         device.wakeUp()
         val evidence = File(context.getExternalFilesDir(null), "explicit-split-$kind").apply { mkdirs() }
-        fun saved() = requireNotNull(store.load())
+        fun saved() = (store.load() as EditorDraftLoadResult.Restored).draft
         fun seek(fraction: Float) {
             // The phone overview has one canvas per half of the source timeline.
             val half = if (fraction >= .5f) 1 else 0
@@ -165,7 +165,7 @@ class ExplicitSplitUiInstrumentedTest {
             compose.onNodeWithText("Start this review over").performClick()
             compose.onNodeWithText("Reset").performClick()
             val modelCuts = EditorMath.newDraft(seed).cuts
-            compose.waitUntil(10_000) { store.load()?.cuts == modelCuts }
+            compose.waitUntil(10_000) { (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts == modelCuts }
             assertTrue(saved().cuts.all { it.editableGroupId == null && it.origin == CutOrigin.INFERRED })
             scenario.recreate()
             compose.waitForIdle()

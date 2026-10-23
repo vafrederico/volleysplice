@@ -1,3 +1,4 @@
+import { portablePreferences } from "./feedback-ui.ts";
 import {
   type CutDraft,
   type CutDraftSeed,
@@ -257,6 +258,9 @@ function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {
     ...(feedback.initialInference.servingSide
       ? { servingSide: servingSideOutput(feedback) }
       : {}),
+    ...(feedback.initialInference.sideSwitch
+      ? { sideSwitch: feedback.initialInference.sideSwitch }
+      : {}),
     ...(suppression
       ? {
           suppression: {
@@ -338,14 +342,26 @@ function draftFromFeedback(
     );
   }
   const suppression = feedback.corrections.suppression;
+  const preferences = portablePreferences(feedback.corrections.ui);
   const candidate: CutDraft = {
     ...base,
     updatedAt: feedback.corrections.updatedAt,
     beforePaddingSeconds: feedback.corrections.beforePaddingSeconds,
     afterPaddingSeconds: feedback.corrections.afterPaddingSeconds,
     joinGapSeconds: feedback.corrections.joinGapSeconds,
+    portableUi: feedback.corrections.ui,
+    cutPreviewEnabled: preferences.cutPreviewEnabled ?? base.cutPreviewEnabled,
+    renderScoreOverlay: preferences.renderScoreOnPreviewVideo ?? base.renderScoreOverlay,
+    renderScoreOnFinalVideo:
+      preferences.renderScoreOnFinalVideo ?? feedback.editorPreferences?.renderScoreOnFinalVideo ?? base.renderScoreOnFinalVideo,
+    renderScoreTimeline: preferences.renderScoreTimeline ?? base.renderScoreTimeline,
+    fadeScoreOverlay: preferences.fadeScoreOverlay ?? base.fadeScoreOverlay,
+    playbackRate: preferences.playbackRate ?? base.playbackRate,
+    confidenceReviewThreshold: preferences.confidenceReviewThreshold ?? base.confidenceReviewThreshold,
+    reviewedCutIds: preferences.reviewedCutIds ?? base.reviewedCutIds,
     selectedSuppressionPolicy:
       suppression?.selectedPolicy ?? base.selectedSuppressionPolicy,
+    suppressionInitialBehavior: feedback.corrections.suppressionInitialBehavior,
     suppressionDecisionOverrides: suppression?.decisionOverrides ?? {},
     suppressionScopeOverrides: suppression?.suppressionScopeOverrides ?? {},
     userTouchedCutIds: suppression?.userTouchedCutIds ?? [],
@@ -404,6 +420,7 @@ export function importModelFeedbackProject(
     info: mediaInfo(feedback),
     analysisWindow: { ...feedback.source.gameWindow },
     roi: { ...feedback.source.featureRoi },
+    sideSwitchEnabled: feedback.source.generateSideSwitchMarkers,
     status: "ready",
     analysis,
     error: null,

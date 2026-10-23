@@ -46,9 +46,10 @@ const key = async (key, options = {}) => act(async () => {
 try {
   const { RallyDesk } = await server.ssrLoadModule("/src/designs/taste/index.tsx");
   const { useDesignReview } = await server.ssrLoadModule("/src/designs/useDesignReview.ts");
-  const { createCutDraft, cutDraftStorageKey, parseCutDraft } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
+  const { createCutDraft, parseCutDraft } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
   const { editHistoryKey } = await server.ssrLoadModule("/src/designs/taste/edit-history.ts");
   const { putProject, listProjects, projectAnalysisId } = await server.ssrLoadModule("/src/lib/project-store.ts");
+  const { projectDraftStorageKey } = await server.ssrLoadModule("/src/lib/review-draft-persistence.ts");
   const { importModelFeedbackProject } = await server.ssrLoadModule("/src/lib/model-feedback-import.ts");
   const { PRODUCTION_ENSEMBLE_MODEL_ID } = await server.ssrLoadModule("/src/lib/on-device/ensemble.ts");
   const source = { name: "synthetic-component.mp4", size: 1024, lastModified: 100, type: "video/mp4" };
@@ -85,9 +86,9 @@ try {
     const review = useDesignReview({ projects, projectId: savedProject.id, productAnalysis });
     return review.state === "ready" ? React.createElement(RallyDesk, { review }) : React.createElement("p", null, review.message);
   }
-  const storageKey = cutDraftStorageKey(seed.analysisId);
+  Object.assign(project, await putProject(project, { expectedSource: null }));
+  const storageKey = projectDraftStorageKey(seed.analysisId, project.instanceId);
   const current = () => JSON.parse(window.localStorage.getItem(storageKey));
-  await putProject(project);
   await act(async () => root.render(React.createElement(Editor, { savedProject: project })));
   await waitFor(() => window.localStorage.getItem(storageKey));
   await key("ArrowRight"); // The real transport action seeks from trimmed start 12 to 17.
@@ -132,12 +133,12 @@ try {
   await act(async () => {
     exported = JSON.parse(await downloads[0].text());
     imported = importModelFeedbackProject(JSON.stringify(exported));
-    await putProject(imported.project);
+    Object.assign(imported.project, await putProject(imported.project, { expectedSource: null }));
   });
   assert.deepEqual(exported.corrections.correctedRanges, splitCuts);
   assert.deepEqual(imported.project.importedFeedback.initialDraft.cuts, splitCuts);
   await act(async () => root.render(React.createElement(Editor, { key: "reimport", savedProject: imported.project })));
-  const importedKey = cutDraftStorageKey(projectAnalysisId(imported.project));
+  const importedKey = projectDraftStorageKey(projectAnalysisId(imported.project), imported.project.instanceId);
   await waitFor(() => window.localStorage.getItem(importedKey));
   assert.deepEqual(JSON.parse(window.localStorage.getItem(importedKey)).cuts, splitCuts);
   console.log("Production RallyDesk: real split, stable IDs, metadata, IndexedDB/reopen, full confirmed reset, opaque UI, undo/redo, download and reimport passed.");
@@ -174,11 +175,11 @@ try {
       caseProject.reviewDraft.portableUi = futureUi;
       caseProject.reviewDraft.ignoredIntervals = scenario.ignoredIntervals ?? [];
       assert.ok(parseCutDraft(JSON.stringify(caseProject.reviewDraft), caseSeed), `${scenario.name}: input must be valid`);
-      await act(async () => { await putProject(caseProject); });
+      await act(async () => { Object.assign(caseProject, await putProject(caseProject, { expectedSource: null })); });
       await act(async () => root.render(React.createElement(Editor, { key: scenario.name, savedProject: caseProject,
         productAnalysis: { ...analysis, id: caseSeed.analysisId, recordingId: caseProject.id, rallies: caseRallies } })));
-      const caseKey = cutDraftStorageKey(caseSeed.analysisId);
-      const historyKey = editHistoryKey(caseProject.id);
+      const caseKey = projectDraftStorageKey(caseSeed.analysisId, caseProject.instanceId);
+      const historyKey = editHistoryKey(caseProject.id, caseProject.instanceId);
       await waitFor(() => window.localStorage.getItem(caseKey));
       await key("ArrowRight");
       const draftBefore = window.localStorage.getItem(caseKey);

@@ -40,7 +40,7 @@ public enum EditorReview {
                                      keep: Bool, reviewedCutIds: Set<String>) -> EditorDraft {
         var result = draft
         result.suppressionDecisionOverrides[suggestion.logicalId] = keep ? "keep" : "suppress"
-        result.reviewedCutIds.formUnion(reviewedCutIds)
+        result.reviewedCutIds.formUnion(reviewedCutIds.intersection(Set(draft.cuts.filter { $0.origin == .inferred }.map(\.id))))
         return result
     }
 }

@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.FileInputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -26,6 +27,12 @@ internal data class ModelFeedbackAnalysis(
 internal object ModelFeedbackExporter {
     private const val SAMPLE_BYTES = 1024 * 1024
     private const val RUNTIME_VARIANT = "native-android-dsp-v1"
+
+    /** Validate and serialize completely before opening a potentially existing destination. */
+    fun writeArchive(buildArchive: () -> String, openDestination: () -> OutputStream) {
+        val archive = buildArchive()
+        openDestination().bufferedWriter().use { it.write(archive) }
+    }
 
     fun loadAnalysis(context: Context, project: NativeProject): ModelFeedbackAnalysis? {
         val requestedTimes = AnalysisEngine.analysisTimes(
@@ -88,7 +95,7 @@ internal object ModelFeedbackExporter {
         require(analysis == null || suppression == null ||
             suppression.probabilities().size == analysis.timestamps.size
         ) { "Suppression probabilities do not match the retained feature-cache timeline" }
-        val warnings = JSONArray()
+        val warnings = JSONArray(project.feedbackWarnings.distinct())
         if (RallyModels.isNeural(project.modelId) && project.neuralScores == null) {
             warnings.put("Neural scores were not retained by this older analysis; saved rally ranges and corrections are still included.")
         }
@@ -172,6 +179,7 @@ internal object ModelFeedbackExporter {
                     put("height", project.roi.height())
                 })
                 put("runtimeVariant", RUNTIME_VARIANT)
+                put("generateSideSwitchMarkers", project.sideSwitchEnabled)
                 put("videoBytesIncluded", false)
             })
             put("features", analysis?.let { retained -> JSONObject().apply {
@@ -366,7 +374,7 @@ internal object ModelFeedbackExporter {
                     })
                 }
             })
-            put("warnings", warnings)
+            put("warnings", JSONArray(List(warnings.length()) { warnings.getString(it) }.distinct()))
         }
     }
 

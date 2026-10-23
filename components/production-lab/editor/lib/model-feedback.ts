@@ -16,6 +16,7 @@ import {
 } from "./on-device/ensemble.ts";
 import { ANALYSIS_FPS } from "./on-device/feature-schema.ts";
 import type { ProductAnalysis } from "./product-analysis";
+import { feedbackUiFromDraft, type FeedbackUi } from "./feedback-ui.ts";
 import {
   deriveScoreAt,
   scoreTrackingOutsideExcludedRallies,
@@ -52,6 +53,9 @@ export type ModelFeedbackBundle = {
   schema: typeof MODEL_FEEDBACK_SCHEMA;
   schemaVersion: typeof MODEL_FEEDBACK_SCHEMA_VERSION;
   generatedAt: string;
+  editorPreferences?: {
+    renderScoreOnFinalVideo?: boolean;
+  };
   source: {
     projectId: string;
     analysisId: string;
@@ -67,6 +71,7 @@ export type ModelFeedbackBundle = {
     gameWindow: ProductAnalysis["analysisWindow"];
     featureRoi: ProductAnalysis["roi"];
     runtimeVariant: ProductAnalysis["runtimeVariant"];
+    generateSideSwitchMarkers: boolean;
     videoBytesIncluded: false;
   };
   features: {
@@ -134,7 +139,9 @@ export type ModelFeedbackBundle = {
     };
   };
   corrections: {
+    ui?: FeedbackUi;
     updatedAt: string;
+    suppressionInitialBehavior: CutDraft["suppressionInitialBehavior"];
     beforePaddingSeconds: number;
     afterPaddingSeconds: number;
     joinGapSeconds: number;
@@ -291,6 +298,9 @@ export function createModelFeedbackBundle(
     schema: MODEL_FEEDBACK_SCHEMA,
     schemaVersion: MODEL_FEEDBACK_SCHEMA_VERSION,
     generatedAt,
+    editorPreferences: {
+      renderScoreOnFinalVideo: draft.renderScoreOnFinalVideo,
+    },
     source: {
       projectId: analysis.recordingId,
       analysisId: analysis.id,
@@ -306,6 +316,7 @@ export function createModelFeedbackBundle(
       gameWindow: analysis.analysisWindow,
       featureRoi: analysis.roi,
       runtimeVariant: analysis.runtimeVariant,
+      generateSideSwitchMarkers: analysis.sideSwitchEnabled !== false,
       videoBytesIncluded: false,
     },
     features: analysis.features
@@ -485,7 +496,9 @@ export function createModelFeedbackBundle(
         : null,
     },
     corrections: {
+      ui: feedbackUiFromDraft(draft),
       updatedAt: draft.updatedAt,
+      suppressionInitialBehavior: draft.suppressionInitialBehavior,
       beforePaddingSeconds: draft.beforePaddingSeconds,
       afterPaddingSeconds: draft.afterPaddingSeconds,
       joinGapSeconds: draft.joinGapSeconds,

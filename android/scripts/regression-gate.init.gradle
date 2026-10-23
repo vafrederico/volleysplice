@@ -1,0 +1,31 @@
+import groovy.json.JsonOutput
+import org.gradle.api.tasks.testing.Test
+
+// This listener is deliberately run without Gradle configuration caching.
+// It records real task outcomes, including disabled, cached, and NO-SOURCE tasks.
+def runDirectory = new File(System.getenv('VOLLEYCUT_REGRESSION_RUN_DIR'))
+def runId = System.getenv('VOLLEYCUT_REGRESSION_RUN_ID')
+def mandatory = [
+    ':app:prepareNeuralAssets', ':app:prepareServingAssets',
+    ':app:verifySuppressionAsset', ':app:verifyServingSideAsset',
+    ':app:verifySideSwitchAsset', ':app:testDebugUnitTest',
+] as Set
+
+gradle.projectsEvaluated {
+    gradle.rootProject.project(':app').tasks.named('testDebugUnitTest', Test) {
+        reports.junitXml.required.set(true)
+        reports.junitXml.outputLocation.set(new File(runDirectory, 'junit'))
+    }
+}
+
+gradle.taskGraph.afterTask { task, state ->
+    if (mandatory.contains(task.path)) {
+        def receipt = [
+            runId: runId, task: task.path, executed: state.executed,
+            didWork: state.didWork, skipped: state.skipped, noSource: state.noSource,
+            upToDate: state.upToDate, skipMessage: state.skipMessage,
+            failed: state.failure != null,
+        ]
+        new File(runDirectory, 'tasks.jsonl').append(JsonOutput.toJson(receipt) + '\n', 'UTF-8')
+    }
+}
