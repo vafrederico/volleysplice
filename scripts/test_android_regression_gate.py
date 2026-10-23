@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
 import time
 import unittest
@@ -82,6 +83,13 @@ class JvmReportGateTest(unittest.TestCase):
 
 
 class TaskEvidenceGateTest(unittest.TestCase):
+    def test_invalid_worker_limits_fail_before_launching_gradle(self):
+        from unittest.mock import patch
+        for value in ("0", "9", "-1", "two", "", "２"):
+            with self.subTest(value=value), patch.dict(os.environ, VOLLEYCUT_GRADLE_WORKERS=value):
+                with self.assertRaisesRegex(gate.GateFailure, "integer from 1 to 8"):
+                    gate.run_gate(Path("unused"), Path("unused"))
+
     def test_missing_stale_duplicate_or_skipped_task_outcomes_are_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "tasks.jsonl"
@@ -113,6 +121,57 @@ class TaskEvidenceGateTest(unittest.TestCase):
 
 
 class PinnedGradleFalseSuccessTest(unittest.TestCase):
+    def test_cached_compilation_still_runs_tests_and_all_asset_checks(self):
+        parent = gate.REPOSITORY / "android" / "build" / "regression-probes"
+        parent.mkdir(parents=True, exist_ok=True)
+        wrapper = gate.REPOSITORY / "android" / ("gradlew.bat" if os.name == "nt" else "gradlew")
+        with tempfile.TemporaryDirectory(dir=parent) as temporary:
+            project = Path(temporary).resolve()
+            (project / "settings.gradle").write_text("rootProject.name = 'cached-gate-probe'\ninclude ':app'\n")
+            (project / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx256m\n")
+            app = project / "app"
+            sources = app / "src" / "test" / "java"
+            sources.mkdir(parents=True)
+            (sources / "FreshExecutionTest.java").write_text('''
+import org.junit.Test;
+import static org.junit.Assert.assertTrue;
+public class FreshExecutionTest {
+    @Test public void executes() { assertTrue(System.nanoTime() > 0); }
+}
+''')
+            (app / "build.gradle").write_text('''
+plugins { id 'java' }
+repositories { mavenCentral() }
+dependencies { testImplementation 'junit:junit:4.13.2' }
+['prepareNeuralAssets', 'prepareServingAssets', 'verifySuppressionAsset',
+ 'verifyServingSideAsset', 'verifySideSwitchAsset'].each { name ->
+    tasks.register(name) {
+        outputs.file(layout.buildDirectory.file(name + '.txt'))
+        doLast { outputs.files.singleFile.text = 'verified again' }
+    }
+}
+tasks.register('testDebugUnitTest', Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnit()
+    dependsOn 'verifySuppressionAsset', 'verifyServingSideAsset', 'verifySideSwitchAsset'
+}
+''')
+            self.assertEqual(gate.run_gate(project, wrapper)["tests"], 1)
+            # Remove only this temporary project's outputs, retaining Gradle's
+            # build cache. The next run must restore compilation, not test results.
+            self.assertTrue(app.resolve().is_relative_to(parent.resolve()))
+            shutil.rmtree(app / "build")
+            self.assertEqual(gate.run_gate(project, wrapper)["tests"], 1)
+            logs = [(path / "gradle.log").read_text(encoding="utf-8")
+                    for path in sorted((project / "build" / "regression-gate").glob("jvm-*"),
+                                       key=lambda path: path.stat().st_mtime_ns)]
+            self.assertIn(":app:compileTestJava FROM-CACHE", logs[-1])
+            for path in (project / "build" / "regression-gate").glob("jvm-*"):
+                receipts = [json.loads(row) for row in (path / "tasks.jsonl").read_text().splitlines()]
+                self.assertEqual(len(receipts), 6)
+                self.assertTrue(all(row["didWork"] and not row["skipped"] for row in receipts))
+
     def test_real_no_source_disabled_and_excluded_tasks_fail_the_gate(self):
         # Tiny Gradle projects reproduce successful Gradle exit codes;
         # they do not load Android plugins, dependencies, sources, or native builds.

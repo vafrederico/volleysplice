@@ -2,9 +2,10 @@ name: App regression
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,7 +14,8 @@ concurrency:
   group: app-regression-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# No release environments, secrets, shared caches, or artifact API dependencies.
+# Caches are optional accelerators. Only main pushes and manual runs save them;
+# PRs restore them read-only. No release environments or artifact API dependencies.
 # Forgejo's github context aliases its native context. Token permissions still
 # depend on the host; remove automatic tokens from every shell command below.
 defaults:
@@ -30,18 +32,54 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Configure optional CI caches
+        run: |
+          set -euo pipefail
+          echo "RUNNER_TOOL_CACHE=$HOME/.cache/volleycut-ci/web-tools" >> "$GITHUB_ENV"
+          if test -n "${ACTIONS_CACHE_URL:-}"; then
+            echo "CI_CACHE_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo 'Cache backend unavailable; using a cold setup.'
+          fi
+
+      - name: Restore Node and npm downloads
+        id: web-cache
+        if: env.CI_CACHE_AVAILABLE == 'true'
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/volleycut-ci/web-tools
+            ~/.npm
+          key: web-v1-${{ runner.os }}-${{ runner.arch }}-node24.15.0-${{ hashFiles('.github/workflows/app-regression.yml', 'package-lock.json', 'prod/package-lock.json') }}
+
       - uses: https://github.com/actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '24.15.0'
           package-manager-cache: false
           token: ''
 
+      - name: Restore installed npm dependencies
+        id: npm-modules
+        if: env.CI_CACHE_AVAILABLE == 'true'
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            node_modules
+            prod/node_modules
+          # No prefix fallback: native modules and install scripts must match.
+          key: npm-modules-v1-${{ runner.os }}-${{ runner.arch }}-node24.15.0-${{ hashFiles('.github/workflows/app-regression.yml', 'scripts/ci-web-dependencies.sh', 'package.json', 'package-lock.json', 'prod/package.json', 'prod/package-lock.json', '.npmrc', 'prod/.npmrc') }}
+
+      - name: Verify restored dependencies or install from lockfiles
+        env:
+          MODULES_CACHE_HIT: ${{ steps.npm-modules.outputs.cache-hit }}
+        run: bash scripts/ci-web-dependencies.sh
+
       - name: Run public web regression gates
         run: |
           set -euo pipefail
           unset GITHUB_TOKEN FORGEJO_TOKEN GITEA_TOKEN
-          npm ci --no-audit --no-fund
-          npm --prefix prod ci --no-audit --no-fund
           npm run test:web
           node --test scripts/browser-distilled-large-contract.test.mjs
           npm --prefix prod run test:review-persistence
@@ -56,6 +94,26 @@ jobs:
           # Includes asset preparation, tsc, Vite static export, and verify-build.
           npm --prefix prod run build
 
+      - name: Save installed npm dependencies from a trusted run
+        if: success() && env.CI_CACHE_AVAILABLE == 'true' && steps.npm-modules.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            node_modules
+            prod/node_modules
+          key: ${{ steps.npm-modules.outputs.cache-primary-key }}
+
+      - name: Save Node and npm downloads from a trusted run
+        if: success() && env.CI_CACHE_AVAILABLE == 'true' && steps.web-cache.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/volleycut-ci/web-tools
+            ~/.npm
+          key: ${{ steps.web-cache.outputs.cache-primary-key }}
+
   android-jvm:
     name: Android JVM contracts with verified packaged assets
     runs-on: ubuntu-latest
@@ -65,16 +123,71 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Configure optional CI caches
+        id: cache-environment
+        run: |
+          set -euo pipefail
+          echo "RUNNER_TOOL_CACHE=$HOME/.cache/volleycut-ci/android-tools" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$HOME/.cache/volleycut-ci/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/.cache/volleycut-ci/android-sdk" >> "$GITHUB_ENV"
+          echo "python-abi=$(python3 -c 'import sys; print(sys.implementation.cache_tag)')" >> "$GITHUB_OUTPUT"
+          if test -n "${ACTIONS_CACHE_URL:-}"; then
+            echo "CI_CACHE_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo 'Cache backend unavailable; using a cold setup.'
+          fi
+
+      - name: Restore Android toolchains and Python downloads
+        id: android-tools
+        if: env.CI_CACHE_AVAILABLE == 'true'
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/volleycut-ci/android-tools
+            ~/.cache/volleycut-ci/android-sdk
+            ~/.cache/pip
+          key: android-tools-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.cache-environment.outputs.python-abi }}-${{ hashFiles('.github/workflows/app-regression.yml', 'android/build.gradle.kts', 'android/app/build.gradle.kts') }}
+
       - uses: https://github.com/actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '17'
           overwrite-settings: false
 
+      - name: Check restored Android SDK
+        id: sdk
+        run: |
+          set -euo pipefail
+          if test -x "$ANDROID_HOME/cmdline-tools/15859902/bin/sdkmanager" \
+            && test -s "$ANDROID_HOME/platforms/android-37.0/android.jar" \
+            && test -x "$ANDROID_HOME/build-tools/36.0.0/aapt2" \
+            && test -x "$ANDROID_HOME/build-tools/37.0.0/aapt2" \
+            && test -s "$ANDROID_HOME/ndk/29.0.14206865/source.properties" \
+            && test -x "$ANDROID_HOME/platform-tools/adb"; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: https://github.com/android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        if: steps.sdk.outputs.ready != 'true'
         with:
-          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+          cmdline-tools-version: '15859902'
+          packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0 build-tools;37.0.0 ndk;29.0.14206865'
           log-accepted-android-sdk-licenses: false
+
+      - name: Restore Gradle dependencies and compilation cache
+        id: gradle-cache
+        if: env.CI_CACHE_AVAILABLE == 'true'
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          # Content identity avoids another full cache archive for no-code merges.
+          key: gradle-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/*.gradle.kts', 'android/gradle.properties', 'android/app/build.gradle.kts') }}-${{ hashFiles('android/**', 'tests/fixtures/**', 'scripts/android-regression-gate.py') }}
+          restore-keys: |
+            gradle-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/*.gradle.kts', 'android/gradle.properties', 'android/app/build.gradle.kts') }}-
 
       - name: Prepare and test public Android model bootstrap
         run: |
@@ -102,3 +215,24 @@ jobs:
           chmod +x ./gradlew
           python3 -m unittest discover -s ../scripts -p test_android_regression_gate.py -v
           python3 ../scripts/android-regression-gate.py
+
+      - name: Save Android toolchains from a trusted run
+        if: success() && env.CI_CACHE_AVAILABLE == 'true' && steps.android-tools.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/volleycut-ci/android-tools
+            ~/.cache/volleycut-ci/android-sdk
+            ~/.cache/pip
+          key: ${{ steps.android-tools.outputs.cache-primary-key }}
+
+      - name: Save Gradle downloads and compilation cache from a trusted run
+        if: success() && env.CI_CACHE_AVAILABLE == 'true' && steps.gradle-cache.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
