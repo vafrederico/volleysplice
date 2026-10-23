@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -37,7 +39,9 @@ import java.io.File
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
+import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicInteger
 
 internal data class ExportJobStatus(
@@ -76,6 +80,7 @@ class ExportService : Service() {
     private var outputWriteMode = "uninitialized"
     private var wakeLock: PowerManager.WakeLock? = null
     private var foreground = false
+    private var sourcePreparation: FutureTask<Unit>? = null
     private val publicationWorker = Executors.newSingleThreadExecutor { task -> Thread(task, "VolleySpliceExportPublication") }
     private var publication: ExportFilePublication? = null
     @Volatile private var destroyed = false
@@ -156,11 +161,59 @@ class ExportService : Service() {
                 null, null, cleanDestinationOnFailure = false)
             return
         }
-        runCatching { startTransformer(job.source, job.sourceDurationMs, job.intervals, job.scoreSnapshot) }
-            .onFailure { error ->
-                Log.e(TAG, "Could not start native export", error)
-                finishExport("failed", error.message ?: "Could not start export", null, error)
+        runCatching {
+            lateinit var preparation: FutureTask<Unit>
+            preparation = FutureTask {
+                val sourceInfo = runCatching {
+                    if (preparation.isCancelled) throw CancellationException("Export preparation cancelled")
+                    val colorPolicy = ExportColorPolicy.read(this, job.source)
+                    // A provider may ignore interruption. Do not open another extractor after it returns.
+                    if (preparation.isCancelled) throw CancellationException("Export preparation cancelled")
+                    colorPolicy to sourceHasAudio(job.source)
+                }
+                if (!preparation.isCancelled && !destroyed && !timedOut) handler.post {
+                    // A cancelled/timed-out job must not start encoding or fail its successor.
+                    if (destroyed || timedOut || currentJob !== job || sourcePreparation !== preparation) return@post
+                    sourcePreparation = null
+                    sourceInfo.mapCatching { (colorPolicy, hasAudio) ->
+                        startTransformer(job.source, job.sourceDurationMs, job.intervals, job.scoreSnapshot, colorPolicy, hasAudio)
+                    }.onFailure(::failToStartExport)
+                }
+                Unit
             }
+            sourcePreparation = preparation
+            // Each job owns its thread: an unresponsive cancelled provider cannot starve the next job.
+            Thread(preparation, "VolleySpliceExportSource").start()
+        }.onFailure(::failToStartExport)
+    }
+
+    private fun cancelSourcePreparation() {
+        val preparation = sourcePreparation
+        sourcePreparation = null
+        preparation?.cancel(true)
+    }
+
+    private fun failToStartExport(error: Throwable) {
+        Log.e(TAG, "Could not start native export", error)
+        finishExport("failed", error.message ?: "Could not start export", null, error)
+    }
+
+    /** Inspect actual tracks, including audio/unknown; container MIME/analysis metadata cannot prove absence. */
+    private fun sourceHasAudio(source: Uri): Boolean {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(this, source, null)
+            check(extractor.trackCount > 0) { "The recording has no readable tracks." }
+            var hasAudio = false
+            for (index in 0 until extractor.trackCount) {
+                val mime = checkNotNull(extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)
+                    ?.takeIf(String::isNotBlank)) { "Could not identify a recording track." }
+                if (mime.startsWith("audio/")) hasAudio = true
+            }
+            return hasAudio
+        } finally {
+            extractor.release()
+        }
     }
 
     private fun startTransformer(
@@ -168,9 +221,10 @@ class ExportService : Service() {
         sourceDurationMs: Long,
         intervals: List<FinalCutInterval>,
         scoreSnapshot: ScoreExportSnapshot?,
+        colorPolicy: ExportColorPolicy,
+        hasAudio: Boolean,
     ) {
         val jobId = currentJob?.id ?: error("Export job missing")
-        val colorPolicy = ExportColorPolicy.read(this, source)
         if (scoreSnapshot?.render == true) colorPolicy.requireHdrEncoder()
         var compositionStartUs = 0L
         val editedItems = intervals.map { interval ->
@@ -199,7 +253,9 @@ class ExportService : Service() {
                 }
             }.build()
         }
-        val sequence = EditedMediaItemSequence.withAudioAndVideoFrom(editedItems)
+        // Requesting audio for a video-only source makes Media3 synthesize silence.
+        val sequence = if (hasAudio) EditedMediaItemSequence.withAudioAndVideoFrom(editedItems)
+            else EditedMediaItemSequence.withVideoFrom(editedItems)
         val composition = Composition.Builder(sequence).setHdrMode(Composition.HDR_MODE_KEEP_HDR).build()
         val target = checkNotNull(destination) { "Destination missing" }
         val directMuxerFactory = DirectUriMp4MuxerFactory(this, target)
@@ -352,6 +408,7 @@ class ExportService : Service() {
         cleanDestinationOnFailure: Boolean = true,
     ) {
         val finishedJob = currentJob ?: return
+        cancelSourcePreparation()
         handler.removeCallbacks(progressPoll)
         val metrics = resultJson(status, detail, result, error)
         Log.i(TAG, metrics.toString())
@@ -564,6 +621,7 @@ class ExportService : Service() {
 
     override fun onDestroy() {
         destroyed = true
+        cancelSourcePreparation()
         val publishing = publication != null
         publication?.cancel()
         publicationWorker.shutdown()
@@ -595,6 +653,7 @@ class ExportService : Service() {
 
     override fun onTimeout(startId: Int, fgsType: Int) {
         timedOut = true
+        cancelSourcePreparation()
         val publishing = publication != null
         publication?.cancel()
         val affectedJobs = buildList {
