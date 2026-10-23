@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 /** The activity registry restores its launcher; this restores the matching request. */
 internal class PendingEditorExports(private val state: SavedStateHandle) : ViewModel() {
     data class Ready(val kind: EditorExportKind, val id: String, val filename: String, val projectId: String)
-    data class Outcome(val sequence: Long, val kind: EditorExportKind, val projectId: String, val message: String, val jobId: String? = null)
+    data class Outcome(val sequence: Long, val kind: EditorExportKind, val projectId: String, val message: String, val jobId: String? = null, val failed: Boolean = false)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var sequence = 0L
@@ -39,7 +39,7 @@ internal class PendingEditorExports(private val state: SavedStateHandle) : ViewM
                 state[READY] = arrayListOf(kind.name, prepared.id, prepared.filename, prepared.projectId)
                 ready.value = prepared
             } catch (failure: Exception) {
-                report(kind, projectId, failure.message ?: "Could not prepare the export. Try again.")
+                report(kind, projectId, failure.message ?: "Could not prepare the export. Try again.", failed = true)
             } finally { preparing.value = false }
         }
     }
@@ -55,7 +55,7 @@ internal class PendingEditorExports(private val state: SavedStateHandle) : ViewM
         launched(request)
         if (state.get<String>(key(request.kind)) == request.id) state.remove<String>(key(request.kind))
         scope.launch(Dispatchers.IO) { runCatching { store.remove(request.id) } }
-        report(request.kind, request.projectId, failure.message ?: "Could not open the save dialog. Try again.")
+        report(request.kind, request.projectId, failure.message ?: "Could not open the save dialog. Try again.", failed = true)
     }
 
     fun consume(
@@ -67,7 +67,7 @@ internal class PendingEditorExports(private val state: SavedStateHandle) : ViewM
     ) {
         val id = state.remove<String>(key(kind))
         if (id == null) {
-            if (uri != null) report(kind, currentProjectId, "The destination returned without an export request. Save again from the review.")
+            if (uri != null) report(kind, currentProjectId, "The destination returned without an export request. Save again from the review.", failed = true)
             return
         }
         activeWrites.value++
@@ -87,7 +87,7 @@ internal class PendingEditorExports(private val state: SavedStateHandle) : ViewM
                     }, (request as? PendingEditorExport.Video)?.jobId)
                 }
             } catch (failure: Exception) {
-                report(kind, requestedProject, failure.message ?: "Could not save the export. Try again.")
+                report(kind, requestedProject, failure.message ?: "Could not save the export. Try again.", failed = true)
             } finally {
                 withContext(Dispatchers.IO) { runCatching { store.remove(id) } }
                 activeWrites.value--
@@ -97,8 +97,8 @@ internal class PendingEditorExports(private val state: SavedStateHandle) : ViewM
 
     fun acknowledge(result: Outcome) { if (outcome.value == result) outcome.value = null }
 
-    private fun report(kind: EditorExportKind, projectId: String, text: String, jobId: String? = null) {
-        outcome.value = Outcome(++sequence, kind, projectId, text, jobId)
+    private fun report(kind: EditorExportKind, projectId: String, text: String, jobId: String? = null, failed: Boolean = false) {
+        outcome.value = Outcome(++sequence, kind, projectId, text, jobId, failed)
     }
 
     private fun key(kind: EditorExportKind) = "pending-editor-export-${kind.name}"

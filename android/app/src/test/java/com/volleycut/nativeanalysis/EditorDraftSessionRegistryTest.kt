@@ -100,7 +100,7 @@ class EditorDraftSessionRegistryTest {
         assertNotSame(old, fresh)
         while (callbacks.isNotEmpty()) callbacks.removeFirst()()
         assertNull(fresh.failure.value)
-        fresh.update(removed.copy(playbackRate = 2f))
+        fresh.update(removed.copy(playbackRate = 2.0))
         executor.runAll()
         while (callbacks.isNotEmpty()) callbacks.removeFirst()()
         assertNull(fresh.failure.value)
@@ -190,7 +190,7 @@ class EditorDraftSessionRegistryTest {
         val registry = EditorDraftSessionRegistry(executor) { it() }
         val old = checkNotNull(registry.open(store(), initial))
         executor.runAll()
-        val imported = EditorMath.reconcileTouchedCuts(initial.copy(playbackRate = 2f, beforePaddingMs = 0), seed)
+        val imported = EditorMath.reconcileTouchedCuts(initial.copy(playbackRate = 2.0, beforePaddingMs = 0), seed)
         store().save(imported)
         assertEquals(imported, checkNotNull(registry.open(store(), initial)).draft.value)
         old.update(removed)

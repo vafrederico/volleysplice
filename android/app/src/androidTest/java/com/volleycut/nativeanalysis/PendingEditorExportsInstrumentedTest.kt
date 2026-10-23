@@ -14,6 +14,68 @@ import java.util.concurrent.atomic.AtomicReference
 class PendingEditorExportsInstrumentedTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
+    @Test fun preparationFailuresPublishNoRequestAndAllowAcknowledgedRetry() = withStore { store ->
+        val state = SavedStateHandle()
+        val requests = onMain { PendingEditorExports(state) }
+        val request = PendingEditorExport.Text(EditorExportKind.PROJECT, "synthetic", "review.json", "original snapshot")
+        var previousSequence = 0L
+        repeat(2) {
+            onMain { requests.prepare(request.kind, request.projectId, store) {
+                throw IllegalArgumentException("Synthetic archive validation failure")
+            } }
+            await { !requests.preparing.value && requests.outcome.value != null }
+            onMain {
+                val failure = checkNotNull(requests.outcome.value)
+                assertTrue(failure.failed)
+                assertEquals(request.kind, failure.kind)
+                assertEquals(request.projectId, failure.projectId)
+                assertEquals("Synthetic archive validation failure", failure.message)
+                assertTrue(failure.sequence > previousSequence)
+                previousSequence = failure.sequence
+                assertNull(requests.ready.value)
+                assertFalse(requests.busy)
+                assertTrue(state.keys().isEmpty())
+                requests.acknowledge(failure)
+                assertNull(requests.outcome.value)
+            }
+        }
+        onMain { requests.prepare(request.kind, request.projectId, store) { request } }
+        await { requests.ready.value != null }
+        val ready = checkNotNull(requests.ready.value)
+        assertEquals(request, store.load(ready.id))
+        onMain { requests.launched(ready) }
+        onMain { requests.consume(request.kind, request.projectId, Uri.parse("content://synthetic/destination"), store) { payload, _ ->
+            assertEquals(request, payload)
+        } }
+        await { requests.outcome.value != null && requests.activeWrites.value == 0 }
+        assertFalse(checkNotNull(requests.outcome.value).failed)
+    }
+
+    @Test fun failedRequestStorageDoesNotLeaveAReadyOrRestorablePickerRequest() = withStore { store ->
+        val state = SavedStateHandle()
+        val requests = onMain { PendingEditorExports(state) }
+        val blockedRoot = File(instrumentation.targetContext.cacheDir, "blocked-export-test-${UUID.randomUUID()}")
+            .apply { writeText("preserved blocker") }
+        try {
+            onMain { requests.prepare(EditorExportKind.PROJECT, "synthetic", PendingEditorExportStore(blockedRoot)) {
+                PendingEditorExport.Text(EditorExportKind.PROJECT, "synthetic", "review.json", "{}")
+            } }
+            await { !requests.preparing.value && requests.outcome.value != null }
+            onMain {
+                assertTrue(checkNotNull(requests.outcome.value).failed)
+                assertNull(requests.ready.value)
+                assertFalse(requests.busy)
+                assertTrue(state.keys().isEmpty())
+            }
+            assertEquals("preserved blocker", blockedRoot.readText())
+            val restored = onMain { PendingEditorExports(SavedStateHandle.createHandle(state.savedStateProvider().saveState(), null)) }
+            onMain { restored.consume(EditorExportKind.PROJECT, "synthetic", Uri.parse("content://synthetic/preserved"), store) { _, _ ->
+                fail("Failed preparation left a writable request")
+            } }
+            assertTrue(checkNotNull(restored.outcome.value).failed)
+        } finally { check(blockedRoot.delete()) }
+    }
+
     @Test fun savedActivityStateRestoresLargeRequestedPayloadWithoutPuttingItInTheBundle() = withStore { store ->
         val text = "{\"synthetic\":\"" + "large-review".repeat(200_000) + "\"}"
         val request = PendingEditorExport.Text(EditorExportKind.PROJECT, "synthetic-project", "review.json", text)

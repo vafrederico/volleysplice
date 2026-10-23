@@ -22,6 +22,27 @@ Embeddings remain temporary and are not exported. Import restores saved results
 without rerunning video inference; older projects without retained neural scores
 remain usable and export an explicit warning about that missing payload.
 
+Legacy cleanup events, policy-eligible suggestions, and review decisions survive
+feedback export/import even after the AV feature cache is evicted. Schema v3's
+aligned inference and suppression traces remain empty without that cache; the
+optional `initialInference.suppression.retainedProbabilities` array archives the
+saved native suppression values without claiming an available sample timeline.
+Native import restores those values for later reexport. Missing-feature warnings
+remain, and the project stays editable with its original cuts, cleanup scopes,
+overrides, touched IDs, and materialized export union. Neural rally imports ignore
+the legacy cleanup layer.
+
+Feedback import accepts a present `corrections.suppressionInitialBehavior` only
+when it is a JSON string equal to `highlight-only` or `disable-initially`.
+Unknown names, empty strings, other JSON types, and explicit null fail parsing
+before caches or project records are published. Only an absent field uses the
+legacy `disable-initially` default.
+
+The current web import/reexport path drops the native `retainedProbabilities`
+extension. Web schema acceptance does not establish preservation of those values
+through web interchange; the cleanup suggestions and final cut union are separate
+from this native probability archive.
+
 ```text
 video URI
   -> MediaExtractor presentation-order sample plan
@@ -203,7 +224,7 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
 - a game-window timeline and a focused range timeline with draggable handles;
 - exact source seeking, 1x/2x/4x/8x playback, and final-cut-only preview;
 - keep/remove review, mandatory single-model disagreement review, confidence review, 0.1/1 second nudges, and per-range reset;
-- optional suppression suggestions (off by default), selectable Conservative/Balanced/Aggressive levels, persisted Highlight-only/Disable-initially behavior, whole-rally suppression by default with per-suggestion veto-region scope, red timeline overlays, Keep/Suppress overrides, and suppression navigation beside confidence review;
+- automatic cleanup for Legacy model projects, initially **Strong** when cleanup output is available, with **Off / Light / Recommended / Strong** settings, whole-rally removal, red timeline overlays, Keep/Remove overrides, and cleanup review beside confidence review;
 - manual missed cuts and ignored source sections;
 - serving-side score tracking with editable near/far/review serves, replay points, manual serves,
   side switches, source-timestamped timeline markers, and reversible model corrections;
@@ -222,6 +243,19 @@ activity state contains only request IDs. Returning after activity recreation
 uses the original source, cut intervals, score options or text, even if the
 review changed while the picker was open. Cancelling removes the request. A
 missing or unreadable request reports an error before opening the destination.
+
+The cleanup settings map to the stored policies `none`, `conservative`, `balanced`,
+and `aggressive`. New drafts use `aggressive` with `disable-initially`: untouched
+eligible suggestions are removed, while manual cuts and previously edited rallies
+retain their protections. **Off** makes suggestions dormant without clearing saved
+review choices. Older projects can retain `highlight-only` behavior or per-suggestion
+`veto-region` scope; these remain stored compatibility settings, rather than
+separate controls in the current settings dialog. Selecting an active cleanup level
+uses `disable-initially`.
+
+Balanced and Maximum coverage neural rally models do not apply Legacy cleanup and
+do not show its controls. A Legacy project without retained cleanup output shows
+**Not added** and offers **Add automatic cleanup** before the level can be adjusted.
 
 The player is Media3 ExoPlayer. Export builds a Media3 `Composition` from the final merged ranges after ignored sections are subtracted, then uses Transformer to encode AVC video and AAC audio into MP4. Export runs as an Android `mediaProcessing` foreground service. A custom Media3 muxer factory writes directly to the seekable file descriptor returned for the document selected with Android's system picker, so normal local exports do not need duplicate temporary storage. Streaming-only document providers automatically retain the app-cache-and-copy fallback. Failed, cancelled, or abandoned exports remove their incomplete destination document. The service logs a `VolleySpliceExport` JSON record containing the selected `outputWriteMode`, wall time, real-time ratio, frame rate, encoder names, bitrates, output geometry, file size, conversion modes, and failures.
 

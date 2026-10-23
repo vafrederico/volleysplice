@@ -23,7 +23,7 @@ class EditorDraftSaveQueueTest {
         val saved = mutableListOf<EditorDraft>()
         val queue = EditorDraftSaveQueue(executor, saved::add)
         val first = queue.request(initial)
-        val latest = initial.copy(cuts = initial.cuts.map { it.copy(included = false) }, playbackRate = 2f)
+        val latest = initial.copy(cuts = initial.cuts.map { it.copy(included = false) }, playbackRate = 2.0)
         val second = queue.request(latest)
         // No composition scope or activity is required to finish queued work.
         assertFalse(second.isDone)
@@ -124,7 +124,7 @@ class EditorDraftSaveQueueTest {
         val first = EditorDraftSaveQueue(executor, { throw IOException("first project unavailable") })
         val second = EditorDraftSaveQueue(executor, saved::add)
         val failed = first.request(initial)
-        val other = initial.copy(sourceRevision = "another-synthetic-review", playbackRate = 1.5f)
+        val other = initial.copy(sourceRevision = "another-synthetic-review", playbackRate = 1.5)
         val success = second.request(other)
         executor.runAll()
         assertTrue(failed.get() is IOException)

@@ -143,8 +143,16 @@ internal object ModelFeedbackImporter {
             }
         } ?: AnalysisTypes.ProductionServeOutputs.empty()
         val servingSide = inference.optJSONObject("servingSide")?.let(::decodeServingSide)
-        val sideSwitchEnabled = inference.optJSONObject("sideSwitch") != null
-        val suppression = inference.optJSONObject("suppression")?.let(::decodeSuppression)
+        val sideSwitch = if (inference.isNull("sideSwitch")) null else
+            SideSwitchJson.decodeFeedback(inference.getJSONObject("sideSwitch"), duration)
+        val sideSwitchEnabled = if (source.has("generateSideSwitchMarkers")) {
+            source.get("generateSideSwitchMarkers").also {
+                require(it is Boolean) { "source.generateSideSwitchMarkers must be a boolean" }
+            } as Boolean
+        } else true // Historical web preference; independent of retained output presence.
+        val suppression = inference.optJSONObject("suppression")
+            ?.takeUnless { RallyModels.isNeural(inference.getString("modelId")) }
+            ?.let(::decodeSuppression)
         val id = "import-${UUID.randomUUID()}"
         val projectSource = ProjectSource(
             uri = "content://com.volleycut.nativeanalysis.import/$id",
@@ -179,8 +187,9 @@ internal object ModelFeedbackImporter {
             } ?: AnalysisTypes.ProductionComponents.empty(),
             productionServeOutputs = serveOutputs,
             servingSide = servingSide,
+            sideSwitch = sideSwitch,
             sideSwitchEnabled = sideSwitchEnabled,
-            servingSideStatus = if (servingSide == null) {
+            servingSideStatus = if (servingSide == null || (sideSwitchEnabled && sideSwitch == null)) {
                 ServingSideAnalysisStatus.NOT_RUN
             } else ServingSideAnalysisStatus.READY,
             servingSideError = if (servingSide == null) "Imported bundle has no serving-side output" else null,
@@ -191,6 +200,7 @@ internal object ModelFeedbackImporter {
             },
             createdAtMs = nowMs,
             updatedAtMs = nowMs,
+            feedbackWarnings = SideSwitchJson.decodeWarnings(bundle),
         )
         val project = projectWithoutCacheIdentity.copy(
             servingSideCacheIdentity = servingSide?.let {
@@ -202,7 +212,7 @@ internal object ModelFeedbackImporter {
         }
         val seed = checkNotNull(project.editorSeed())
         val corrections = bundle.getJSONObject("corrections")
-        val draft = decodeDraft(corrections, seed, durationMs)
+        val draft = PortableReviewPreferences.import(decodeDraft(corrections, seed, durationMs), corrections, bundle)
         val featureCache = decodeFeatureCache(bundle.optJSONObject("features"), inference, project)
         return Imported(project, draft, featureCache)
     }
@@ -260,7 +270,7 @@ internal object ModelFeedbackImporter {
             probabilities.getJSONObject("deadState"),
             intArrayOf(rows),
         ).toProbabilityFloats("Feedback dead-state probabilities")
-        inference.optJSONObject("suppression")?.let { suppression ->
+        inference.optJSONObject("suppression")?.takeIf { project.suppression != null }?.let { suppression ->
             require(decodeNumeric(
                 suppression.getJSONObject("timestamps"),
                 intArrayOf(rows),
@@ -425,6 +435,13 @@ internal object ModelFeedbackImporter {
         require(selectedPolicyName in SuppressionPolicyEngine.Policy.entries.map { it.wireName }) {
             "Invalid suppression policy"
         }
+        val initialBehavior = if (corrections.has("suppressionInitialBehavior")) {
+            val raw = corrections.get("suppressionInitialBehavior")
+            require(raw is String) { "Invalid suppression initial behavior" }
+            requireNotNull(SuppressionInitialBehavior.entries.firstOrNull { it.wireName == raw }) {
+                "Invalid suppression initial behavior"
+            }
+        } else SuppressionInitialBehavior.DISABLE_INITIALLY
         val draft = EditorDraft(
             sourceRevision = seed.sourceRevision,
             updatedAtMs = runCatching {
@@ -445,6 +462,7 @@ internal object ModelFeedbackImporter {
                     it.optBoolean("included", true),
                     if (origin == "manual") CutOrigin.MANUAL else CutOrigin.INFERRED,
                     if (it.isNull("agreement")) null else it.optString("agreement"),
+                    ExplicitRallyGroups.decode(it),
                 )
             } },
             ignoredIntervals = List(ignored.length()) { index -> ignored.getJSONObject(index).let {
@@ -456,6 +474,7 @@ internal object ModelFeedbackImporter {
             selectedSuppressionPolicy = SuppressionPolicyEngine.Policy.fromWireName(
                 selectedPolicyName,
             ),
+            suppressionInitialBehavior = initialBehavior,
             suppressionDecisionOverrides = decisionOverrides,
             suppressionScopeOverrides = scopeOverrides,
             userTouchedCutIds = buildSet {
@@ -482,6 +501,7 @@ internal object ModelFeedbackImporter {
                 it.id.isNotBlank() && it.startMs in 0 until it.endMs && it.endMs <= durationMs
             } && draft.userTouchedCutIds.all { touched -> draft.cuts.any { it.id == touched } }
         ) { "Feedback corrections are not compatible with this editor version" }
+        ExplicitRallyGroups.validate(draft.cuts)
         return EditorMath.alignRallyServeMarkers(draft)
     }
 
@@ -578,13 +598,22 @@ internal object ModelFeedbackImporter {
         require(json.optInt("policyContractVersion") == 1)
         val timestamps = decodeNumeric(json.getJSONObject("timestamps"))
         val probabilities = decodeNumeric(json.getJSONObject("probabilities"))
-            .map(Double::toFloat).toFloatArray()
+            .toProbabilityFloats("Feedback suppression probabilities")
         require(probabilities.size == timestamps.size)
+        val retainedProbabilities = json.optJSONObject("retainedProbabilities")?.let { retained ->
+            require(timestamps.isEmpty() && probabilities.isEmpty()) {
+                "Retained suppression probabilities require an absent trace timeline"
+            }
+            val shape = retained.getJSONArray("shape")
+            require(shape.length() == 1)
+            decodeNumeric(retained, intArrayOf(shape.getInt(0)))
+                .toProbabilityFloats("Retained suppression probabilities")
+        } ?: probabilities
         val suggestions = json.getJSONArray("suggestions")
         return AnalysisTypes.SuppressionAnalysis(
             json.getString("modelId"), json.getString("artifactSha256"),
             json.getString("weightsSha256"), json.getString("decoderVersion"),
-            probabilities,
+            retainedProbabilities,
             decodeIntervals(json.getJSONArray("decodedIntervals")),
             List(suggestions.length()) { index -> suggestions.getJSONObject(index).let { item ->
                 AnalysisTypes.SuppressionSuggestion(

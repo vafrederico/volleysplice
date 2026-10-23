@@ -74,6 +74,8 @@ internal data class NativeProject(
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
     val modelId: String = FeatureSchema.MODEL_ID,
     val neuralScores: NeuralRallyScores? = null,
+    /** Warnings retained from a portable backup, independently of local cache availability. */
+    val feedbackWarnings: List<String> = emptyList(),
     val cacheMode: String = NativeFeatureCache.Mode.USE.wireName(),
     val analysisMeasurements: List<AnalysisRunMeasurements> = emptyList(),
     val error: String? = null,
@@ -102,6 +104,7 @@ internal data class NativeProject(
             sideSwitch = sideSwitch,
             sideSwitchError = sideSwitchError,
             sideSwitchEnabled = sideSwitchEnabled,
+            feedbackWarnings = feedbackWarnings,
             scoreTrackingInitiallyEnabled = servingSideStatus != ServingSideAnalysisStatus.DISABLED,
             suppression = suppression,
             analysisRoi = roi.takeIf { analysisRoiKnown },
@@ -389,7 +392,9 @@ internal object NativeProjectStore {
             "That file has different video dimensions or rotation from the original recording."
         project.media.videoMime() != replacementMedia.videoMime() ->
             "That file uses a different video codec from the original recording."
-        project.media.audioMime() != replacementMedia.audioMime() ->
+        // Probing a video-only file returns null; older saved projects use an
+        // empty string for the same absence. Keep real codec checks exact.
+        project.media.audioMime().orEmpty() != replacementMedia.audioMime().orEmpty() ->
             "That file has a different audio track from the original recording."
         else -> null
     }
@@ -504,6 +509,9 @@ internal object NativeProjectStore {
 
     internal fun matchesAnalysis(existing: NativeProject, candidate: NativeProject): Boolean =
         existing.modelId == candidate.modelId &&
+            // Missing output still follows deferred score preparation; archived output is evidence only.
+            (!candidate.sideSwitchEnabled || existing.sideSwitch == null ||
+                SideSwitchJson.isCurrentOutput(existing.sideSwitch)) &&
             existing.analysisRoiKnown && candidate.analysisRoiKnown &&
             existing.audioExtractorVersion == candidate.audioExtractorVersion &&
             existing.visualExtractorVersion == candidate.visualExtractorVersion &&
@@ -604,6 +612,7 @@ internal object NativeProjectStore {
             servingSide = seed.servingSide,
             sideSwitch = seed.sideSwitch,
             sideSwitchEnabled = seed.sideSwitchEnabled,
+            feedbackWarnings = seed.feedbackWarnings,
             servingSideStatus = when {
                 !seed.scoreTrackingInitiallyEnabled -> ServingSideAnalysisStatus.DISABLED
                 seed.servingSide != null &&
@@ -731,6 +740,7 @@ internal object NativeProjectStore {
         put("servingSideError", project.servingSideError ?: JSONObject.NULL)
         put("sideSwitchError", project.sideSwitchError ?: JSONObject.NULL)
         put("sideSwitchEnabled", project.sideSwitchEnabled)
+        put("warnings", JSONArray(project.feedbackWarnings))
         put("suppression", project.suppression?.let(::encodeSuppression) ?: JSONObject.NULL)
     }
 
@@ -821,6 +831,7 @@ internal object NativeProjectStore {
             sideSwitchEnabled = if (json.has("sideSwitchEnabled")) {
                 json.getBoolean("sideSwitchEnabled")
             } else json.optJSONObject("sideSwitch") != null,
+            feedbackWarnings = SideSwitchJson.decodeWarnings(json),
             suppression = json.optJSONObject("suppression")?.let(::decodeSuppression),
             modelId = json.optString("modelId"),
             neuralScores = json.optJSONObject("neuralScores")?.let {

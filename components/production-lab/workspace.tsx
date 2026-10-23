@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabConfiguration, ProductionEditorLabTask } from "@/lib/production-editor-lab";
-import { addMissingLabServeMarkers, hasVisibleTime, initialLabDraft, labSeed, labStorageKey, type LabDraft } from "@/lib/production-editor-lab-draft";
+import { hasVisibleTime, initialLabDraft, labSeed, labStorageKey } from "@/lib/production-editor-lab-draft";
+import { restoreLabDraft, startNewLabReview, type LabDraftRestore } from "@/lib/production-editor-lab-persistence";
 import { RallyDesk } from "./editor/designs/taste";
-import { editHistoryKey, readEditHistory, writeEditHistory } from "./editor/designs/taste/edit-history";
-import { parseCutDraft, type CutDraft } from "./editor/lib/cut-draft";
+import type { CutDraft } from "./editor/lib/cut-draft";
 import type { ReadyDesignReview } from "./editor/designs/useDesignReview";
 import type { OnDeviceSuppression } from "./editor/lib/on-device/types";
 import { ReviewTools } from "./review-tools";
@@ -14,43 +14,32 @@ import styles from "./lab.module.css";
 import { canCombineSuppression, LAB_SUPPRESSION_OPTIONS, withLabSuppression, type LabSuppressionMode } from "@/lib/production-editor-lab-suppression";
 
 function saveJson(value: unknown, filename: string) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
+  saveText(JSON.stringify(value, null, 2), filename);
+}
+
+function saveText(value: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([value], { type: "application/json" }));
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename;
   anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function Trial({ task, configuration, reportSave }: { task: ProductionEditorLabTask; configuration: LabConfiguration; reportSave: (message: string) => void }) {
+export function Trial({ task, configuration, reportSave }: { task: ProductionEditorLabTask; configuration: LabConfiguration; reportSave: (message: string) => void }) {
   const storageKey = labStorageKey(task, configuration);
   const seed = useMemo(() => labSeed(task, configuration), [task, configuration]);
   const modelDraft = useMemo(() => initialLabDraft(task, configuration), [task, configuration]);
-  const [initial] = useState<LabDraft>(() => {
-    try { const raw = localStorage.getItem(storageKey); const saved = raw && parseCutDraft(raw, seed);
-      if (!saved) return modelDraft;
-      const merged = addMissingLabServeMarkers(saved, modelDraft);
-      if (JSON.stringify(saved.scoreTracking.serveMarkers) !== JSON.stringify(merged.scoreTracking.serveMarkers)) {
-        try {
-          const key = editHistoryKey(storageKey);
-          const rawHistory = localStorage.getItem(key);
-          // React may repeat initialization before the draft is persisted. Do
-          // not replace an already migrated history with a fresh empty one.
-          const migrated = readEditHistory(rawHistory, merged, seed);
-          if (!migrated.past.length && !migrated.future.length) {
-            const history = readEditHistory(rawHistory, saved, seed);
-            const refresh = (draft: CutDraft) => addMissingLabServeMarkers(draft, modelDraft);
-            writeEditHistory(localStorage, key, { past: history.past.map(refresh), present: merged, future: history.future.map(refresh) });
-          }
-        }
-        catch { /* The current draft remains usable if browser storage is full. */ }
-      }
-      return merged; }
-    catch { return modelDraft; }
-  });
+  const restore = (): LabDraftRestore => {
+    try { return restoreLabDraft(window.localStorage, storageKey, seed, modelDraft); }
+    catch { return { status: "blocked", raw: null, message: "Browser storage could not be read. Your saved edits have not been changed. Allow storage access and try again." }; }
+  };
+  const [restoration, setRestoration] = useState<LabDraftRestore>(restore);
+  const initial = restoration.status === "ready" ? restoration.draft : modelDraft;
   const latest = useRef<CutDraft>(initial);
   const saveDraft = useCallback((draft: CutDraft) => {
+    if (restoration.status !== "ready") return;
     latest.current = draft;
     try { localStorage.setItem(storageKey, JSON.stringify(draft)); reportSave("This mode’s edits are saved in this browser."); }
     catch { reportSave("Browser storage is unavailable. Download lab edits to keep this session."); }
-  }, [storageKey, reportSave]);
+  }, [storageKey, reportSave, restoration.status]);
   const download = useCallback(() => saveJson({ kind: "volleycut-editor-lab-review", schemaVersion: 1,
     recordingId: task.id, configurationId: configuration.id, sourceRevision: configuration.humanReference?.revision ?? configuration.sourceRevision ?? task.sourceRevision,
     savedAt: new Date().toISOString(), draft: latest.current }, `${task.name.replace(/\.[^.]+$/, "")}-${configuration.id}-lab.json`), [task, configuration]);
@@ -73,6 +62,18 @@ function Trial({ task, configuration, reportSave }: { task: ProductionEditorLabT
     selectProject: () => {}, attachSource: async () => ({ ok: false, message: "This lab recording is served directly from the NAS.", videoUrl: task.mediaUrl }),
     queueVideoExport: () => {}, saveDraft,
   }), [storageKey, task, initial, modelDraft, seed, suppression, saveDraft]);
+  if (restoration.status === "blocked") return <section className={styles.error} role="alert">
+    <p>{restoration.message}</p>
+    <button type="button" onClick={() => setRestoration(restore())}>Try restoring again</button>{" "}
+    {restoration.raw !== null && <><button type="button" onClick={() => saveText(restoration.raw!, "unrestored-lab-edits.json")}>Download preserved edits</button>{" "}
+      <button type="button" onClick={() => {
+        if (!window.confirm("Start a new review for this mode? The old draft and undo history will be kept as a separate browser backup. Download the preserved edits first to keep an independent copy.")) return;
+        let next: LabDraftRestore;
+        try { next = startNewLabReview(window.localStorage, storageKey, modelDraft); }
+        catch { next = { status: "blocked", raw: restoration.raw, message: "Browser storage is unavailable. Your saved edits have not been changed." }; }
+        setRestoration(next.status === "blocked" ? { ...next, raw: restoration.raw } : next);
+      }}>Start new review</button></>}
+  </section>;
   return <RallyDesk review={review} labTools={tools => <ReviewTools task={task} configuration={configuration} tools={tools} download={download} />}
     labComparison={tools => <ComparisonRail task={task} configuration={configuration} tools={tools} />} />;
 }
