@@ -1,4 +1,5 @@
 import type { NeuralRallyScores, OnDeviceSideSwitchOutput } from "./on-device/types";
+import { parseFeedbackUi, type FeedbackUi } from "./feedback-ui.ts";
 import {
   SIDE_SWITCH_CANDIDATE_CONTRACT,
   SIDE_SWITCH_FEATURE_NAMES,
@@ -32,6 +33,7 @@ export type CorrectedFeedbackRange = {
   included: boolean;
   origin: "cached-label" | "manual";
   agreement?: string;
+  editableGroupId?: string;
 };
 
 export type IgnoredFeedbackRange = {
@@ -52,6 +54,9 @@ export type ParsedModelFeedback = {
   schema: typeof MODEL_FEEDBACK_SCHEMA;
   schemaVersion: (typeof SUPPORTED_MODEL_FEEDBACK_SCHEMA_VERSIONS)[number];
   generatedAt: string;
+  editorPreferences?: {
+    renderScoreOnFinalVideo?: boolean;
+  };
   producer: FeedbackSource;
   source: {
     projectId: string;
@@ -117,7 +122,9 @@ export type ParsedModelFeedback = {
     suppression: ParsedSuppressionOutput | null;
   };
   corrections: {
+    ui?: FeedbackUi;
     updatedAt: string;
+    suppressionInitialBehavior: "disable-initially" | "highlight-only";
     beforePaddingSeconds: number;
     afterPaddingSeconds: number;
     joinGapSeconds: number;
@@ -467,6 +474,11 @@ function correctedRange(
   if (item.origin !== "cached-label" && item.origin !== "manual") {
     fail(`${field}.origin`, "must be cached-label or manual");
   }
+  if ("editableGroupId" in item && (typeof item.editableGroupId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(item.editableGroupId) ||
+      typeof item.id !== "string" || item.id.trim().length === 0 || item.id.length > 256)) {
+    fail(`${field}.editableGroupId`, "must be a bounded group token on a stable cut identity");
+  }
   return {
     id: string(item.id, `${field}.id`),
     coreStart,
@@ -476,6 +488,7 @@ function correctedRange(
     confidence,
     included: boolean(item.included, `${field}.included`),
     origin: item.origin,
+    ...("editableGroupId" in item ? { editableGroupId: item.editableGroupId as string } : {}),
     ...(item.agreement === undefined
       ? {}
       : { agreement: string(item.agreement, `${field}.agreement`) }),
@@ -1408,6 +1421,11 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   const correctedValue = corrections.correctedRanges;
   if (!Array.isArray(correctedValue))
     fail("bundle.corrections.correctedRanges", "must be an array");
+  if (correctedValue.filter((cut) => cut && typeof cut === "object" && "editableGroupId" in cut).length > 2048)
+    fail("bundle.corrections.correctedRanges", "too many explicit rally members");
+  const correctedRanges = correctedValue.map((item, index) =>
+    correctedRange(item, `bundle.corrections.correctedRanges[${index}]`, duration),
+  );
   const ignoredValue = corrections.ignoredIntervals;
   if (!Array.isArray(ignoredValue))
     fail("bundle.corrections.ignoredIntervals", "must be an array");
@@ -1503,6 +1521,19 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       duration,
     );
   })();
+  const editorPreferences = root.editorPreferences === undefined
+    ? undefined
+    : object(root.editorPreferences, "bundle.editorPreferences");
+  const renderScoreOnFinalVideo = editorPreferences?.renderScoreOnFinalVideo;
+  let ui: FeedbackUi | undefined;
+  if (corrections.ui !== undefined) {
+    try {
+      ui = parseFeedbackUi(corrections.ui, new Set(
+        correctedRanges.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
+      ));
+    }
+    catch (error) { throw new ModelFeedbackValidationError(error instanceof Error ? error.message : "Invalid corrections.ui"); }
+  }
   const finalValue = root.finalExportIntervals;
   if (!Array.isArray(finalValue))
     fail("bundle.finalExportIntervals", "must be an array");
@@ -1511,6 +1542,16 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
     schema: MODEL_FEEDBACK_SCHEMA,
     schemaVersion,
     generatedAt: date(root.generatedAt, "bundle.generatedAt"),
+    ...(editorPreferences ? {
+      editorPreferences: {
+        ...(renderScoreOnFinalVideo === undefined ? {} : {
+          renderScoreOnFinalVideo: boolean(
+            renderScoreOnFinalVideo,
+            "bundle.editorPreferences.renderScoreOnFinalVideo",
+          ),
+        }),
+      },
+    } : {}),
     producer: sourceProducer(runtimeVariant),
     source: {
       projectId: string(source.projectId, "bundle.source.projectId"),
@@ -1617,7 +1658,12 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       suppression,
     },
     corrections: {
+      ...(ui === undefined ? {} : { ui }),
       updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),
+      suppressionInitialBehavior: corrections.suppressionInitialBehavior === undefined
+        ? "disable-initially"
+        : choice(corrections.suppressionInitialBehavior, ["disable-initially", "highlight-only"] as const,
+            "bundle.corrections.suppressionInitialBehavior"),
       beforePaddingSeconds: nonNegative(
         corrections.beforePaddingSeconds,
         "bundle.corrections.beforePaddingSeconds",
@@ -1630,13 +1676,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
         corrections.joinGapSeconds,
         "bundle.corrections.joinGapSeconds",
       ),
-      correctedRanges: correctedValue.map((item, index) =>
-        correctedRange(
-          item,
-          `bundle.corrections.correctedRanges[${index}]`,
-          duration,
-        ),
-      ),
+      correctedRanges,
       ignoredIntervals: ignoredValue.map((item, index) => {
         const ignored = object(
           item,

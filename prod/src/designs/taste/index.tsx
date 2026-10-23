@@ -10,12 +10,17 @@ import {
 
 import {
   materializeFinalCutIntervals,
+  resetProjectReview,
+  splitCutAt,
+  splitCutValidationMessage,
   rallySuppressionDecisionKey,
   PLAYBACK_RATES,
   type CutDraft,
   type EditableCut,
 } from "@/lib/cut-draft";
 import { isNeuralModelId } from "@/lib/on-device/rally-model";
+import { withModelScoreMarkers } from "@/lib/model-review-draft";
+import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { GOOGLE_PLAY_URL } from "@/lib/android-app";
 import { timelinePercent } from "@/lib/edit-list";
 import {
@@ -41,7 +46,7 @@ import {
   modelFeedbackFilename,
 } from "@/lib/model-feedback";
 import { prepareScoreOverlay, scorePointTimelineSnapshot } from "@/lib/score-overlay";
-import { readScoreVisibilityPreference, saveScoreVisibilityPreference } from "@/lib/score-visibility-preference";
+import { saveScoreVisibilityPreference } from "@/lib/score-visibility-preference";
 import { ScoreVisibilitySelect } from "@/components/ScoreVisibilitySelect";
 import { runtimeAssetUrl } from "@/lib/runtime-assets";
 import { scrollElementIntoContainer } from "@/lib/scroll-container";
@@ -105,6 +110,7 @@ type Clip = {
   reviewed: boolean;
   origin: "model" | "manual";
   agreement?: EditableCut["agreement"];
+  editableGroupId?: string;
 };
 
 type DesignServeMarker = {
@@ -180,6 +186,7 @@ function clipsFromReview(review: ReadyDesignReview): Clip[] {
     reviewed: reviewed.has(cut.id),
     origin: cut.origin === "manual" ? "manual" : "model",
     agreement: cut.agreement,
+    editableGroupId: cut.editableGroupId,
   }));
 }
 
@@ -311,7 +318,7 @@ function usePrototype(
   const [playhead, setPlayheadValue] = useState(initialPlayhead);
   const [seekRequest, setSeekRequest] = useState({ revision: 0, target: initialPlayhead });
   const [playing, setPlaying] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(review.draft.playbackRate);
+  const [playbackRate, setPlaybackRate] = useState(review.draft.playbackRate);
   const [finalPreview, setFinalPreview] = useState(review.draft.cutPreviewEnabled);
   const [beforePadding, setBeforePadding] = useState(review.draft.beforePaddingSeconds);
   const [afterPadding, setAfterPadding] = useState(review.draft.afterPaddingSeconds);
@@ -319,10 +326,14 @@ function usePrototype(
   const [cleanup, setCleanup] = useState<CleanupStrength>(
     cleanupAvailable ? cleanupStrengthForPolicy(review.draft.selectedSuppressionPolicy) : "off",
   );
+  function selectCleanup(value: CleanupStrength) {
+    setCleanup(value);
+    if (value !== "off") setBaseDraft(current => ({ ...current, suppressionInitialBehavior: "disable-initially" }));
+  }
   const [reviewMessage, setReviewMessage] = useState(`${initialClips.filter((clip) => clip.included && !clip.reviewed && clipRequiresConfidenceReview(clip, review.draft.confidenceReviewThreshold)).length} clips remain to check in the current review.`);
   const [scoreEnabled, setScoreEnabled] = useState(review.draft.scoreTracking.enabled);
-  const [scoreOverlay, setScoreOverlay] = useState(review.draft.renderScoreOverlay);
-  const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(() => readScoreVisibilityPreference(review.draft.fadeScoreOverlay));
+  const [previewScoreOverlay, setPreviewScoreOverlay] = useState(review.draft.renderScoreOverlay);
+  const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(review.draft.fadeScoreOverlay);
   function setFadeScoreOverlay(fade: boolean) {
     setFadeScoreOverlayState(fade);
     saveScoreVisibilityPreference(fade);
@@ -337,6 +348,7 @@ function usePrototype(
   );
   const [removedModelMarkerIds, setRemovedModelMarkerIds] = useState(review.draft.scoreTracking.removedModelMarkerIds);
   const [sideSwitchMarkers, setSideSwitchMarkers] = useState<DesignSideSwitchMarker[]>(review.draft.scoreTracking.sideSwitchMarkers);
+  const scoreOutputs = useRef({ servingSide: review.productAnalysis?.servingSide, sideSwitch: review.productAnalysis?.sideSwitch });
   const [selectedScoreMarkerId, setSelectedScoreMarkerId] = useState(
     review.draft.scoreTracking.serveMarkers.find((marker) => marker.side === "review")?.id ??
       review.draft.scoreTracking.serveMarkers[0]?.id ??
@@ -349,7 +361,7 @@ function usePrototype(
   const [localExportSpeed, setExportSpeed] = useState<number | null>(null);
   const [localExportEtaSeconds, setExportEtaSeconds] = useState<number | null>(null);
   const [localExportStatus, setExportStatus] = useState("Choose an output to preview with the current review data.");
-  const [includeScore, setIncludeScore] = useState(true);
+  const [renderScoreOnFinalVideo, setRenderScoreOnFinalVideo] = useState(review.draft.renderScoreOnFinalVideo);
   const [chapterScore, setChapterScore] = useState(true);
   const [chapterServer, setChapterServer] = useState(true);
   const [chapterCredit, setChapterCredit] = useState(true);
@@ -413,7 +425,8 @@ function usePrototype(
       pendingIgnoreStart: excludedStart,
       cutPreviewEnabled: finalPreview,
       playbackRate,
-      renderScoreOverlay: scoreOverlay,
+      renderScoreOverlay: previewScoreOverlay,
+      renderScoreOnFinalVideo,
       fadeScoreOverlay,
       selectedSuppressionPolicy: cleanupAvailable ? suppressionPolicyForCleanup(cleanup) : "none",
       suppressionDecisionOverrides,
@@ -442,6 +455,7 @@ function usePrototype(
           included: clip.included,
           origin: clip.origin === "manual" ? "manual" : "cached-label",
           ...(clip.agreement ? { agreement: clip.agreement } : {}),
+          ...(clip.editableGroupId ? { editableGroupId: clip.editableGroupId } : {}),
         };
       }),
       ignoredIntervals: excludedRanges.map((interval) => ({
@@ -498,7 +512,8 @@ function usePrototype(
     baseDraft,
     scoreEnabled,
     scoreMarkers,
-    scoreOverlay,
+    previewScoreOverlay,
+    renderScoreOnFinalVideo,
     fadeScoreOverlay,
     sideSwitchMarkers,
     removedModelMarkerIds,
@@ -535,6 +550,9 @@ function usePrototype(
 
   function applyReviewDraft(draft: CutDraft) {
     setBaseDraft(draft);
+    setFinalPreview(draft.cutPreviewEnabled);
+    setPlaybackRate(draft.playbackRate);
+    setFadeScoreOverlay(draft.fadeScoreOverlay);
     setClips(clipsFromReview({ ...review, draft }));
     setExcludedRanges(excludedFromReview({ ...review, draft }));
     setManualStart(draft.pendingManualStart);
@@ -544,7 +562,9 @@ function usePrototype(
     setJoinGap(draft.joinGapSeconds);
     setCleanup(cleanupAvailable ? cleanupStrengthForPolicy(draft.selectedSuppressionPolicy) : "off");
     setScoreEnabled(draft.scoreTracking.enabled);
-    setScoreOverlay(draft.renderScoreOverlay);
+    setPreviewScoreOverlay(draft.renderScoreOverlay);
+    setRenderScoreOnFinalVideo(draft.renderScoreOnFinalVideo);
+    setFadeScoreOverlay(draft.fadeScoreOverlay);
     setTeamOne(draft.scoreTracking.team1Name);
     setTeamTwo(draft.scoreTracking.team2Name);
     setScoreMarkers(draft.scoreTracking.serveMarkers);
@@ -552,6 +572,19 @@ function usePrototype(
     setRemovedModelMarkerIds(draft.scoreTracking.removedModelMarkerIds);
     setSuppressionDecisions(cleanupAvailable ? cleanupReviewDecisions(draft, review.cleanupSuggestions) : {});
   }
+
+  // Merge only new model evidence into the current edits. Never remount or
+  // restore an old draft when a retry finishes while the user is reviewing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only new model outputs trigger a merge; the current render supplies the latest working draft.
+  useEffect(() => {
+    const servingSide = review.productAnalysis?.servingSide;
+    const sideSwitch = review.productAnalysis?.sideSwitch;
+    if (servingSide === scoreOutputs.current.servingSide && sideSwitch === scoreOutputs.current.sideSwitch) return;
+    scoreOutputs.current = { servingSide, sideSwitch };
+    const next = withModelScoreMarkers(workingDraft, { servingSide, sideSwitch, sideSwitchEnabled: review.sideSwitchEnabled });
+    setScoreMarkers(next.scoreTracking.serveMarkers);
+    setSideSwitchMarkers(next.scoreTracking.sideSwitchMarkers);
+  }, [review.productAnalysis?.servingSide, review.productAnalysis?.sideSwitch]);
 
   function restoreHistory(direction: "undo" | "redo") {
     const current = recordEdit(historyRef.current, workingDraft);
@@ -562,13 +595,13 @@ function usePrototype(
     }
     historyRef.current = next;
     const draft = next.present;
-    applyReviewDraft(draft);
+    applyReviewDraft({ ...draft, playbackRate, cutPreviewEnabled: finalPreview });
     setReviewMessage(direction === "undo" ? "Last edit undone." : "Edit restored.");
     persistHistory();
   }
 
   function resetProjectChanges() {
-    applyReviewDraft(review.modelDraft);
+    applyReviewDraft(resetProjectReview(review.modelDraft, workingDraft));
     setPlaying(false);
     setFinalPreview(review.modelDraft.cutPreviewEnabled);
     setPlaybackRate(review.modelDraft.playbackRate);
@@ -655,7 +688,7 @@ function usePrototype(
     setExportProgress(0);
     setExportSpeed(null);
     setExportEtaSeconds(null);
-  }, [exportKind, includeScore, workingDraft]);
+  }, [exportKind, renderScoreOnFinalVideo, workingDraft]);
 
   const included = clips.filter((clip) => clip.included);
   const finalMaterialization = useMemo(
@@ -746,7 +779,7 @@ function usePrototype(
   const scoreOverlayOptions = useMemo(
     () => ({
       scoreTracking: workingDraft.scoreTracking,
-      renderPointTimeline: true,
+      renderPointTimeline: workingDraft.renderScoreTimeline,
       fadeScoreOverlay,
       excludedRallyIds: [...excludedRallyIds],
       ignoredIntervals: workingDraft.ignoredIntervals,
@@ -1003,15 +1036,20 @@ function usePrototype(
       setReviewMessage("Move the playhead inside the selected clip before splitting it.");
       return;
     }
-    const used = new Set(clips.map((clip) => clip.id));
-    let leftId = `${selected.id}A`;
-    let rightId = `${selected.id}B`;
-    while (used.has(leftId) || used.has(rightId)) {
-      leftId += "A";
-      rightId += "B";
+    const validationMessage = splitCutValidationMessage(workingDraft, selected.id);
+    if (validationMessage) {
+      setReviewMessage(validationMessage);
+      return;
     }
-    const left: Clip = { ...selected, id: leftId, end: playhead, label: `${selected.label}, first part`, reviewed: true };
-    const right: Clip = { ...selected, id: rightId, start: playhead, label: `${selected.label}, second part`, reviewed: true };
+    const split = splitCutAt(workingDraft, selected.id, playhead, gameStart, gameEnd);
+    if (!split) return;
+    const leftRange = split.draft.cuts.find((cut) => cut.id === selected.id)!;
+    const leftId = leftRange.id;
+    const rightId = split.newCut.id;
+    const left: Clip = { ...selected, id: leftId, end: playhead, editableGroupId: leftRange.editableGroupId,
+      label: `${selected.label}, first part`, reviewed: true };
+    const right: Clip = { ...selected, id: rightId, start: playhead, editableGroupId: split.newCut.editableGroupId,
+      label: `${selected.label}, second part`, reviewed: true };
     setClips((current) => current.flatMap((clip) => clip.id === selected.id ? [left, right] : [clip]));
     const suppression = suppressionDecisions[selected.id];
     if (suppression) {
@@ -1111,7 +1149,10 @@ function usePrototype(
     const nextId = pendingIds[(currentIndex + 1) % pendingIds.length];
     setFinalPreview(false);
     selectClip(nextId);
-    setReviewMessage(`${nextId} was excluded by automatic cleanup. Watch it, then keep it or confirm the exclusion.`);
+    const disposition = effectiveKeptIds.has(nextId)
+      ? "has footage retained in the final cut"
+      : "is currently excluded from the final cut";
+    setReviewMessage(`${nextId} is flagged for automatic cleanup review and ${disposition}. Watch it, then choose Keep or Remove.`);
   }
 
   function applySuppressionToSimilar() {
@@ -1331,30 +1372,35 @@ function usePrototype(
         setExportStatus("This project cannot be saved in the current session.");
         return;
       }
-      const bundle = createModelFeedbackBundle(
-        review.productAnalysis,
-        workingDraft,
-        finalIntervals,
-      );
-      downloadBlob(
-        modelFeedbackBlob(bundle),
-        modelFeedbackFilename(review.sourceName),
-      );
-      setExportProgress(100);
-      setExportStatus("The current VolleySplice project was downloaded.");
+      try {
+        const bundle = createModelFeedbackBundle(
+          review.productAnalysis,
+          workingDraft,
+          finalIntervals,
+        );
+        downloadBlob(
+          modelFeedbackBlob(bundle),
+          modelFeedbackFilename(review.sourceName),
+        );
+        setExportProgress(100);
+        setExportStatus("The current VolleySplice project was downloaded.");
+      } catch (cause) {
+        setExportStatus(`Could not save the project: ${cause instanceof Error ? cause.message : String(cause)}. Your edits and imported preferences have been kept.`);
+      }
       return;
     }
     if (!review.sourceFile || finalIntervals.length === 0) return;
     if (exportBusy) return;
     review.queueVideoExport({
       intervals: finalIntervals,
-      scoreOverlay: scoreEnabled && includeScore
+      scoreOverlay: scoreEnabled && renderScoreOnFinalVideo
         ? scoreOverlayOptions
         : undefined,
     });
   }
 
   return {
+    scoreRecovery: review.scoreRecovery,
     stage, setStage, dark, setDark, helpOpen, setHelpOpen,
     fileName, expectedSourceName, needsSource, sourceStatus, gameStart, gameEnd,
     videoUrl,
@@ -1370,9 +1416,9 @@ function usePrototype(
     playing, setPlaying, finalPreview, setFinalPreview,
     playbackRate, setPlaybackRate,
     beforePadding, setBeforePadding,
-    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup, cleanupAvailable, cleanupUnavailableReason,
+    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup: selectCleanup, cleanupAvailable, cleanupUnavailableReason,
     restoreHistory, historyStorageFailed, resetProjectChanges,
-    reviewMessage, scoreEnabled, setScoreEnabled, scoreOverlay, setScoreOverlay,
+    reviewMessage, scoreEnabled, setScoreEnabled, previewScoreOverlay, setPreviewScoreOverlay,
     fadeScoreOverlay, setFadeScoreOverlay,
     teamOne, setTeamOne, teamTwo, setTeamTwo, scoreOne: derivedScore.team1Score,
     scoreTwo: derivedScore.team2Score, servingTeam: derivedScore.servingTeamId,
@@ -1384,7 +1430,7 @@ function usePrototype(
     activeScoreTracking,
     scoreMessage, exportKind, setExportKind, exportProgress,
     setExportProgress, exportSpeed, exportEtaSeconds, exportStatus,
-    exportBusy, showExportProgress, includeScore, setIncludeScore, chapterScore,
+    exportBusy, showExportProgress, renderScoreOnFinalVideo, setRenderScoreOnFinalVideo, chapterScore,
     setChapterScore, chapterServer, setChapterServer, chapters, chapterText,
     chapterCredit, setChapterCredit,
     finalIntervals, workingDraft, effectiveKeptIds, reviewClipIds,
@@ -1606,6 +1652,33 @@ function ReconnectNotice({ state }: { state: Prototype }) {
   );
 }
 
+function ScoreRecoveryNotice({ state }: { state: Prototype }) {
+  const recovery = state.scoreRecovery;
+  if (!recovery) return null;
+  const pending = (["servingSide", "sideSwitch"] as const).filter((key) =>
+    recovery.stages[key].status !== "complete" && recovery.stages[key].status !== "disabled",
+  );
+  if (!pending.length) return null;
+  const busy = recovery.status !== "idle";
+  const canRetry = pending.some((key) => recovery.stages[key].status === "missing" || recovery.stages[key].status === "failed");
+  const failed = pending.some((key) => recovery.stages[key].status === "failed");
+  return (
+    <aside className="td-reconnect rd-score-recovery" aria-label="Score prediction recovery" aria-busy={busy}>
+      <div>
+        <strong>Score predictions are incomplete</strong>
+        <span role={failed && !busy ? "alert" : "status"} aria-live="polite">
+          {busy ? recovery.detail : pending.map((key) => `${key === "servingSide" ? "Serve sides" : "Side switches"}: ${recovery.stages[key].message}`).join(" ")}
+        </span>
+        <small>Your rally and score edits stay saved. Only missing predictions are generated.</small>
+        {busy && recovery.steps && recovery.steps.length > 0 && <InferenceProgressPanel steps={recovery.steps} />}
+      </div>
+      {busy ? <button className="td-secondary-button" type="button" disabled={recovery.status === "cancelling"} onClick={recovery.cancel}>Cancel score markers</button>
+        : canRetry && recovery.retry ? <button className="td-secondary-button" type="button" onClick={recovery.retry} disabled={state.needsSource}>{state.needsSource ? "Reconnect source for score markers" : "Generate missing score markers"}</button>
+        : canRetry ? <small>Open the live app to generate missing score markers.</small> : null}
+    </aside>
+  );
+}
+
 function SourceSetup({ state, intro }: { state: Prototype; intro?: ReactNode }) {
   return (
     <section className="td-source-panel" aria-labelledby="td-source-title">
@@ -1799,7 +1872,7 @@ function VideoStage({
             <p>{state.fileName}</p>
           </>
         )}
-        {state.scoreEnabled && state.scoreOverlay && (
+        {state.scoreEnabled && state.previewScoreOverlay && (
           <ScoreOverlay
             prepared={state.preparedScoreOverlay}
             timestamp={state.playhead}
@@ -1829,20 +1902,20 @@ function VideoStage({
                   <select
                     aria-label="Playback speed"
                     value={state.playbackRate}
-                    onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value) as (typeof PLAYBACK_RATES)[number])}
+                    onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value))}
                   >
-                    {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+                    {[...new Set<number>([...PLAYBACK_RATES, state.playbackRate])].sort((a, b) => a - b).map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
                   </select>
                 </label>
                 <div className="td-transport-toggles">
                   <label>
                     <input
                       type="checkbox"
-                      checked={state.scoreEnabled && state.scoreOverlay}
+                      checked={state.scoreEnabled && state.previewScoreOverlay}
                       disabled={!state.scoreEnabled}
-                      onChange={(event) => state.setScoreOverlay(event.currentTarget.checked)}
+                      onChange={(event) => state.setPreviewScoreOverlay(event.currentTarget.checked)}
                     />
-                    <span>Add score to video</span>
+                    <span>Preview score on video</span>
                   </label>
                   <label>
                     <input type="checkbox" checked={state.finalPreview} onChange={(event) => state.setFinalPreview(event.currentTarget.checked)} />
@@ -2130,7 +2203,7 @@ function ScorePanel({ state, compact = false }: { state: Prototype; compact?: bo
           )}
           <button className="td-replay-button" type="button" onClick={state.toggleLastPointReplay}>Toggle replay for previous rally</button>
           <p className="td-status-message" aria-live="polite">{state.scoreMessage}</p>
-          <label className="td-check-row"><input type="checkbox" checked={state.scoreOverlay} onChange={(event) => state.setScoreOverlay(event.currentTarget.checked)} /><span><strong>Preview score on video</strong><small>The same scoreboard can be burned into the final MP4.</small></span></label>
+          <label className="td-check-row"><input type="checkbox" checked={state.previewScoreOverlay} onChange={(event) => state.setPreviewScoreOverlay(event.currentTarget.checked)} /><span><strong>Preview score on video</strong><small>The same scoreboard can be burned into the final MP4.</small></span></label>
         </>
       )}
     </section>
@@ -2153,7 +2226,7 @@ function ReviewSummary({
         <nav className="td-review-shortcuts" aria-label="Items needing review">
           {state.scoreEnabled && <button type="button" disabled={state.serveReview === 0} onClick={state.openServeReview}><strong>{state.serveReview}</strong><span>Review serves</span></button>}
           <button type="button" disabled={clipReviewCount === 0} onClick={state.openClipReview}><strong>{clipReviewCount}</strong><span>Review clips</span></button>
-          {state.cleanupAvailable && <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleaned up</span></button>}
+          {state.cleanupAvailable && <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleanup flags</span></button>}
         </nav>
       )}
       <div><strong>{state.included.length}</strong><span>clips included</span></div>
@@ -2206,16 +2279,17 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
             <ul>
               <li data-ready={!state.needsSource || undefined}><strong>Source video</strong><span>{state.needsSource ? "Reconnect for playback and MP4" : "Connected locally"}</span></li>
               <li data-ready={state.remaining === 0 || undefined}><strong>Suggested clips</strong><span>{state.remaining === 0 ? "All included clips checked" : `${state.remaining} still need review`}</span></li>
-              <li data-ready={!state.scoreEnabled || state.serveReview === 0 || undefined}><strong>Score markers</strong><span>{!state.scoreEnabled ? "Score tracking is off" : state.serveReview === 0 ? "All serve sides checked" : `${state.serveReview} serve sides need review`}</span></li>
-              {state.cleanupAvailable && <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} excluded suggestion needs review`}</span></li>}
+              <li data-ready={!state.scoreEnabled || (state.scoreRecovery?.stages.servingSide.status === "complete" && state.serveReview === 0) || undefined}><strong>Score markers</strong><span>{!state.scoreEnabled ? "Score tracking is off" : state.scoreRecovery?.stages.servingSide.status !== "complete" ? "Serve predictions are incomplete" : state.scoreMarkers.length === 0 ? "Serve check complete; no serve markers found" : state.serveReview === 0 ? "All serve sides checked" : `${state.serveReview} serve sides need review`}</span></li>
+              {state.detectSwitches && <li data-ready={state.scoreRecovery?.stages.sideSwitch.status === "complete" || undefined}><strong>Side-switch predictions</strong><span>{state.scoreRecovery?.stages.sideSwitch.status === "complete" ? "Side-switch check complete" : "Side-switch predictions are incomplete"}</span></li>}
+              {state.cleanupAvailable && <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} flagged ${state.suppressionPending === 1 ? "suggestion awaits" : "suggestions await"} review`}</span></li>}
               <li data-ready><strong>Final ranges</strong><span>{state.included.length} clips, {state.excludedRanges.length} excluded {state.excludedRanges.length === 1 ? "section" : "sections"}</span></li>
             </ul>
             {(state.remaining > 0 || state.serveReview > 0 || state.suppressionPending > 0 || state.needsSource) && <p>You can still prepare any available output. MP4 alone requires the matching source. Unresolved items remain in the saved review.</p>}
           </section>
           {state.exportKind === "video" && (
             <>
-              <label className="td-check-row"><input type="checkbox" checked={state.includeScore} disabled={!state.scoreEnabled} onChange={(event) => state.setIncludeScore(event.currentTarget.checked)} /><span><strong>Render score on final video</strong><small>Available after the serve and side markers are checked.</small></span></label>
-              {state.scoreEnabled && state.includeScore && (
+              <label className="td-check-row"><input type="checkbox" checked={state.renderScoreOnFinalVideo} disabled={!state.scoreEnabled} onChange={(event) => state.setRenderScoreOnFinalVideo(event.currentTarget.checked)} /><span><strong>Render score on final video</strong><small>Available after the serve and side markers are checked.</small></span></label>
+              {state.scoreEnabled && state.renderScoreOnFinalVideo && (
                 <ScoreVisibilitySelect fade={state.fadeScoreOverlay} onChange={state.setFadeScoreOverlay} />
               )}
               <p className="td-privacy-line">The browser uses the original local video. Nothing is uploaded.</p>
@@ -2807,8 +2881,9 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           break;
         case "faster":
         case "slower": {
-          const index = PLAYBACK_RATES.indexOf(state.playbackRate);
-          state.setPlaybackRate(PLAYBACK_RATES[Math.max(0, Math.min(PLAYBACK_RATES.length - 1,
+          const rates = [...new Set<number>([...PLAYBACK_RATES, state.playbackRate])].sort((a, b) => a - b);
+          const index = rates.indexOf(state.playbackRate);
+          state.setPlaybackRate(rates[Math.max(0, Math.min(rates.length - 1,
             index + (action === "faster" ? 1 : -1)))]);
           break;
         }
@@ -2860,6 +2935,7 @@ export function RallyDesk({
         <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
       </header>
       {state.draftSaveFailed && <p className="rd-storage-alert" role="alert">{state.storageMessage}</p>}
+      <ScoreRecoveryNotice state={state} />
       {state.stage === "review" ? (
         <ResizableWorkspace
           {...layoutPreferences}

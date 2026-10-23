@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.PowerManager
 import android.os.SystemClock
@@ -60,9 +61,9 @@ class ExportServiceQueueInstrumentedTest {
         var service: ExportService? = null
         try {
             scenario.onActivity { it.startService(Intent(it, ExportService::class.java)) }
-            instrumentation.waitForIdleSync()
+            service = awaitRunningService()
             instrumentation.runOnMainSync {
-                val running = runningService().also { service = it }
+                val running = checkNotNull(service)
                 // Use the framework-created service and its real queue/callbacks.
                 // Only substitute the document provider and an already encoded job;
                 // no codec run or production test hook is needed for this race.
@@ -165,11 +166,33 @@ class ExportServiceQueueInstrumentedTest {
 
     private fun cancel(id: String) = Intent(ExportService.ACTION_CANCEL).putExtra(ExportService.EXTRA_JOB_ID, id)
 
-    private fun runningService(): ExportService {
+    private fun awaitRunningService(): ExportService {
+        check(Looper.myLooper() != Looper.getMainLooper()) { "Service registration must be awaited off main" }
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activityThread = Class.forName("android.app.ActivityThread")
-        val thread = activityThread.getDeclaredMethod("currentActivityThread").invoke(null)
-        val services = activityThread.getDeclaredField("mServices").apply { isAccessible = true }.get(thread) as Map<*, *>
-        return services.values.filterIsInstance<ExportService>().single()
+        val currentThread = activityThread.getDeclaredMethod("currentActivityThread")
+        val servicesField = activityThread.getDeclaredField("mServices").apply { isAccessible = true }
+        val deadline = SystemClock.elapsedRealtime() + 10_000
+        var matches = emptyList<ExportService>()
+        var registered = emptyList<String>()
+        do {
+            // Framework creation is asynchronous even after waitForIdleSync.
+            // Inspect its real instances on main, then leave main free to create them.
+            instrumentation.runOnMainSync {
+                val thread = currentThread.invoke(null)
+                val services = servicesField.get(thread) as Map<*, *>
+                matches = services.values.filterIsInstance<ExportService>()
+                registered = services.values.map { it?.javaClass?.name ?: "null" }
+            }
+            if (matches.size == 1) return matches.single()
+            if (matches.size > 1) {
+                throw AssertionError("Expected one framework-registered ExportService, found ${matches.size}; " +
+                    "registered service classes=$registered")
+            }
+            SystemClock.sleep(25)
+        } while (SystemClock.elapsedRealtime() < deadline)
+        throw AssertionError("Timed out after 10s awaiting one framework-registered ExportService; " +
+            "matches=${matches.size}, registered service classes=$registered")
     }
 
     private fun ExportService.field(name: String) = ExportService::class.java.getDeclaredField(name)

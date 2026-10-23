@@ -237,6 +237,13 @@ Run full inference, then tap **Open native cut editor**. The editor uses the unp
   features, both production serve outputs, raw serving-side features/evidence, original inference,
   corrections, score state, ignored intervals, and final export ranges, without raw video bytes.
 
+MP4, project and chapter saves capture the requested contents before opening the
+system destination picker. Pending payloads live in private app files; saved
+activity state contains only request IDs. Returning after activity recreation
+uses the original source, cut intervals, score options or text, even if the
+review changed while the picker was open. Cancelling removes the request. A
+missing or unreadable request reports an error before opening the destination.
+
 The cleanup settings map to the stored policies `none`, `conservative`, `balanced`,
 and `aggressive`. New drafts use `aggressive` with `disable-initially`: untouched
 eligible suggestions are removed, while manual cuts and previously edited rallies

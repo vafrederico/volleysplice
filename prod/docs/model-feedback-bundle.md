@@ -34,6 +34,9 @@ The bundle contains:
 - the untouched raw ranges from both production models, plus the held suppression artifact
   identity, probability trace, decoded events, and policy-eligible suggestion spans;
 - the full corrected editor ranges and ignored intervals;
+- portable preview, output, playback, and review preferences in the additive
+  `corrections.ui` envelope, with unknown UI extensions retained (see the
+  [shared UI contract](../../docs/portable-review-preferences.md));
 - the selected suppression policy, explicit and dormant decisions, touched inferred ranges, the
   default whole-rally suppression scope plus any per-suggestion veto-region overrides, and the
   effective state and scope of every suggestion;

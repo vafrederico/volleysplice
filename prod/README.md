@@ -57,6 +57,12 @@ a project also deletes its cached features, inference, and edit draft. The edito
 its final padded and corrected intervals as an MP4 at the
 source dimensions, encoded directly from the original local video into a user-selected
 file. JSON edit-list export is also available.
+Review edits and export ranges round ordinary time boundaries to milliseconds.
+Exact fractional source, game-window, and core bounds take precedence over that
+rounding, so padding cannot introduce footage outside the selected recording or
+trim a surviving rally core, including a core shorter than a millisecond. Saved
+corrected ranges remain valid on import. Fractional veto and ignored boundaries
+remain exact barriers.
 For model improvement, the editor can additionally download a versioned model-feedback JSON
 containing the retained 104-column base feature matrix, source timestamps, probability traces,
 untouched initial inference ranges, corrected ranges, explicit false-positive and false-negative
@@ -97,12 +103,29 @@ error and still opens the editor with the completed rally/suppression analysis. 
 source and required retained production outputs are available, the score panel can rerun
 and save only the missing specialist work without repeating the main feature pipeline.
 
-The optional **Render score on final video** setting is available only while score
-tracking is enabled and defaults off per project. When enabled, the editor previews the
-source-timestamped score box over the video and the MP4 exporter burns the same Team 1 /
-Team 2 score into the top-left of every retained frame. The existing decode/AVC encode
+The **Render score on final video** setting is available while score tracking is
+enabled and defaults on per project, including drafts saved before this preference
+was persisted. The choice is saved with review edits and project backups. It controls
+whether the MP4 exporter burns the Team 1 / Team 2 score into the top-left of every
+retained frame. **Preview score on video** independently controls the editor preview.
+The existing decode/AVC encode
 path is used with or without the overlay; the enabled path additionally composites each
 frame through a reusable canvas.
+
+Project JSON includes the optional additive field
+`corrections.ui` with its own `schemaVersion: 1` and portable review/output
+preferences. Unknown extensions (including iOS chapter options) survive import and
+re-export. The root `editorPreferences.renderScoreOnFinalVideo` remains a
+compatibility alias; the canonical UI field wins if both are present. Missing
+legacy preferences retain historical defaults. See the
+[shared contract](../docs/portable-review-preferences.md) for exact keys, units,
+defaults, validation limits, and the native-port fixture.
+
+Run `npm run test:review-persistence` for storage regressions and the headless real
+editor regression, including score preference save, unmount, reopen, and export queue
+options. The UI harness uses JSDOM and Vite middleware without serving the app or
+encoding media. Run `npm run build` for type checking and the verified static build;
+run `npm run test:web` from the repository root for the shared web unit suite.
 
 ## Run locally
 

@@ -35,6 +35,7 @@ import {
   projectAnalysisId,
   projectDisplayName,
   projectId,
+  resolveProjectSetup,
   sourceCanReconnectFile,
   sourceFileFingerprint,
   sourceMatchesFile,
@@ -108,7 +109,7 @@ function storedProject(analysis: OnDeviceAnalysis): VolleySpliceProject {
 
 test("project IDs are stable for the same local source fingerprint", () => {
   assert.equal(projectId(source, info), projectId({ ...source }, { ...info }));
-  assert.match(projectId(source, info), /^project-[a-z0-9]+$/);
+  assert.match(projectId(source, info), /^project-v2-[a-z0-9]+$/);
 });
 
 test("project IDs change when source identity or timeline changes", () => {
@@ -121,6 +122,79 @@ test("project IDs change when source identity or timeline changes", () => {
     id,
     projectId(source, { ...info, duration: info.duration + 0.001 }),
   );
+});
+
+test("setup resolution preserves legacy identity and compares every inference input", () => {
+  const saved = { ...storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true)),
+    id: "project-1v8p28b", sideSwitchEnabled: false };
+  const setup = { source, info, analysisWindow: saved.analysisWindow,
+    roi: saved.roi, rallyModel: "ensemble" as const, sideSwitchEnabled: false };
+  assert.equal(resolveProjectSetup([saved], setup).existing, saved);
+  assert.equal(resolveProjectSetup([saved], setup).id, saved.id);
+  assert.notEqual(projectId(source, info), saved.id, "New full-frame IDs use a separate namespace");
+
+  for (const change of [
+    { roi: { ...saved.roi, x: 0.1, width: 0.9 } },
+    { roi: { ...saved.roi, y: 0.1, height: 0.9 } },
+    { roi: { ...saved.roi, width: 0.9 } },
+    { roi: { ...saved.roi, height: 0.9 } },
+    { sideSwitchEnabled: true },
+    { analysisWindow: { start: 1, end: 90 } },
+    { analysisWindow: { start: 0, end: 89 } },
+    { rallyModel: "high-f1" as const },
+    { source: { ...source, size: source.size + 1 } },
+    { info: { ...info, rotation: 90 as const } },
+    { info: { ...info, width: 1280 } },
+    { info: { ...info, hasAudio: false } },
+  ]) {
+    const changed = resolveProjectSetup([saved], { ...setup, ...change });
+    assert.equal(changed.existing, undefined, JSON.stringify(change));
+    assert.notEqual(changed.id, resolveProjectSetup([], setup).id, JSON.stringify(change));
+  }
+
+  assert.equal(resolveProjectSetup([saved], {
+    ...setup, analysisWindow: { start: -1, end: 100 },
+    roi: { height: 1, width: 1, y: 0, x: 0 },
+  }).existing, saved, "Equivalent normalized windows and ROI field order reuse safely");
+});
+
+test("legacy defaults, source fingerprints and changed saved settings resolve safely", () => {
+  const saved = storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true));
+  const setup = { source, info, analysisWindow: saved.analysisWindow,
+    roi: saved.roi, rallyModel: "ensemble" as const, sideSwitchEnabled: true };
+  assert.equal(resolveProjectSetup([saved], setup).existing, saved,
+    "Missing side-switch preference means enabled, as in runProject");
+  assert.equal(resolveProjectSetup([saved], { ...setup, sideSwitchEnabled: false }).existing, undefined);
+  const fingerprinted = { ...saved, source: { ...source, fingerprint: "sampled-sha256-v1:fixture" } };
+  assert.equal(resolveProjectSetup([fingerprinted], setup).existing, fingerprinted);
+
+  const baseId = resolveProjectSetup([], setup).id;
+  const changed = { ...saved, id: baseId, sideSwitchEnabled: false };
+  assert.deepEqual(resolveProjectSetup([changed], setup), { id: `${baseId}-2` });
+  assert.deepEqual(resolveProjectSetup([changed, { ...changed, id: `${baseId}-2` }], setup),
+    { id: `${baseId}-3` });
+  assert.equal(resolveProjectSetup([{ ...changed, sideSwitchEnabled: true }], setup).id, baseId);
+});
+
+test("ROI matching and hashing share canonical precision for requested and saved values", () => {
+  const saved = { ...storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true)),
+    roi: { x: 0.7, y: 0.7, width: 1 - 0.7, height: 1 - 0.7 }, sideSwitchEnabled: false };
+  const setup = { source, info, analysisWindow: saved.analysisWindow,
+    roi: { x: 0.7, y: 0.7, width: 0.3, height: 0.3 },
+    rallyModel: "ensemble" as const, sideSwitchEnabled: false };
+  const id = projectId(source, info, setup.analysisWindow, setup.rallyModel, setup);
+  assert.equal(id, projectId(source, info, setup.analysisWindow, setup.rallyModel,
+    { ...setup, roi: saved.roi }));
+  assert.equal(resolveProjectSetup([saved], setup).existing, saved);
+  assert.equal(resolveProjectSetup([{ ...saved, roi: setup.roi }], { ...setup, roi: saved.roi }).id, saved.id);
+  assert.equal(resolveProjectSetup([], setup).id, id);
+  for (const field of ["x", "y", "width", "height"] as const) {
+    const different = { ...setup, roi: { ...setup.roi, [field]: setup.roi[field] - 1e-8 } };
+    assert.equal(resolveProjectSetup([saved], different).existing, undefined, field);
+    assert.notEqual(projectId(source, info, setup.analysisWindow, setup.rallyModel, different), id, field);
+  }
+  assert.deepEqual(saved.roi, { x: 0.7, y: 0.7, width: 1 - 0.7, height: 1 - 0.7 },
+    "Canonical comparisons never rewrite existing analysis metadata");
 });
 
 test("project IDs and visual caches are isolated by marked game window", () => {
@@ -373,10 +447,23 @@ test("project picker distinguishes recall and F1 without changing source or save
   const f1 = storedProject(cachedAnalysis("distilled-large-f1-v1"));
   const originalSource = { ...recall.source };
   const originalId = recall.id;
-  assert.equal(projectDisplayName(recall), "match.mp4 - Maximum coverage · BETA");
-  assert.equal(projectDisplayName(f1), "match.mp4 - Balanced · BETA");
-  assert.equal(projectDisplayName({ ...recall, analysis: null, rallyModel: "high-f1" }), "match.mp4 - Balanced · BETA");
-  assert.equal(projectDisplayName(storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true))), "match.mp4 - Legacy model");
+  const setupLabel = " · Full frame · Full video · Court switches on";
+  assert.equal(projectDisplayName(recall), `match.mp4 - Maximum coverage · BETA${setupLabel}`);
+  assert.equal(projectDisplayName(f1), `match.mp4 - Balanced · BETA${setupLabel}`);
+  assert.equal(projectDisplayName({ ...recall, analysis: null, rallyModel: "high-f1" }), `match.mp4 - Balanced · BETA${setupLabel}`);
+  assert.equal(projectDisplayName(storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true))), `match.mp4 - Legacy model${setupLabel}`);
   assert.deepEqual(recall.source, originalSource);
   assert.equal(recall.id, originalId);
+});
+
+test("display labels use canonical crops and preserve the saved configuration", () => {
+  const saved = { ...storedProject(cachedAnalysis(PRODUCTION_ENSEMBLE_MODEL_ID, true)),
+    roi: { x: 0.7, y: 0, width: 1 - 0.7, height: 1 },
+    analysisWindow: { start: 10, end: 80 }, sideSwitchEnabled: false };
+  const before = structuredClone(saved);
+  assert.equal(projectDisplayName(saved),
+    "match.mp4 - Legacy model · Crop x 70%, y 0%, 30% × 100% · Game 10–80 s · Court switches off");
+  assert.equal(projectDisplayName(saved), projectDisplayName({ ...saved, roi: { ...saved.roi, width: 0.3 } }));
+  assert.notEqual(projectDisplayName(saved), projectDisplayName({ ...saved, roi: { ...saved.roi, width: 0.3 - 1e-8 } }));
+  assert.deepEqual(saved, before);
 });

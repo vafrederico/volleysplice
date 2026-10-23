@@ -212,7 +212,7 @@ internal object ModelFeedbackImporter {
         }
         val seed = checkNotNull(project.editorSeed())
         val corrections = bundle.getJSONObject("corrections")
-        val draft = decodeDraft(corrections, seed, durationMs)
+        val draft = PortableReviewPreferences.import(decodeDraft(corrections, seed, durationMs), corrections, bundle)
         val featureCache = decodeFeatureCache(bundle.optJSONObject("features"), inference, project)
         return Imported(project, draft, featureCache)
     }
@@ -462,6 +462,7 @@ internal object ModelFeedbackImporter {
                     it.optBoolean("included", true),
                     if (origin == "manual") CutOrigin.MANUAL else CutOrigin.INFERRED,
                     if (it.isNull("agreement")) null else it.optString("agreement"),
+                    ExplicitRallyGroups.decode(it),
                 )
             } },
             ignoredIntervals = List(ignored.length()) { index -> ignored.getJSONObject(index).let {
@@ -500,6 +501,7 @@ internal object ModelFeedbackImporter {
                 it.id.isNotBlank() && it.startMs in 0 until it.endMs && it.endMs <= durationMs
             } && draft.userTouchedCutIds.all { touched -> draft.cuts.any { it.id == touched } }
         ) { "Feedback corrections are not compatible with this editor version" }
+        ExplicitRallyGroups.validate(draft.cuts)
         return EditorMath.alignRallyServeMarkers(draft)
     }
 

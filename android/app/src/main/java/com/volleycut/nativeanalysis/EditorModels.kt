@@ -1,11 +1,12 @@
 package com.volleycut.nativeanalysis
 
 import java.security.MessageDigest
+import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
-internal const val EDITOR_DRAFT_VERSION = 8
+internal const val EDITOR_DRAFT_VERSION = 10
 internal const val DEFAULT_BEFORE_PADDING_MS = 2_000L
 internal const val DEFAULT_AFTER_PADDING_MS = 2_000L
 internal const val DEFAULT_JOIN_GAP_MS = 3_000L
@@ -115,6 +116,8 @@ internal data class EditableCut(
     val included: Boolean,
     val origin: CutOrigin,
     val agreement: String? = null,
+    /** Explicit editor identity; never changes export connectivity or the immutable cut ID. */
+    val editableGroupId: String? = null,
 )
 
 internal data class IgnoredSourceInterval(
@@ -135,7 +138,7 @@ internal data class EditorDraft(
     val pendingIgnoreStartMs: Long? = null,
     val ignoreReason: String = "non-game-content",
     val finalPreviewEnabled: Boolean = false,
-    val playbackRate: Float = 1f,
+    val playbackRate: Double = 1.0,
     val confidenceReviewThreshold: Float = .7f,
     val reviewedCutIds: Set<String> = emptySet(),
     val cuts: List<EditableCut>,
@@ -152,6 +155,8 @@ internal data class EditorDraft(
     val renderScoreOverlay: Boolean = true,
     val renderScoreTimeline: Boolean = true,
     val fadeScoreOverlay: Boolean = false,
+    val fadeScoreOverlayExplicit: Boolean = false,
+    val portableUi: String? = null,
 )
 
 internal data class JoinedGap(val startMs: Long, val endMs: Long)
@@ -333,6 +338,7 @@ internal object EditorMath {
         positionMs: Long,
         minimumMs: Long,
         maximumMs: Long,
+        groupCutIds: Set<String> = setOf(cutId),
     ): CutSplitResult? {
         val cutIndex = draft.cuts.indexOfFirst { it.id == cutId }
         if (cutIndex < 0) return null
@@ -344,19 +350,31 @@ internal object EditorMath {
         val beforePadding = cut.coreStartMs - cut.keepStartMs
         val afterPadding = cut.keepEndMs - cut.coreEndMs
         val prefix = if (cut.origin == CutOrigin.INFERRED) "R" else "M"
+        val leftGroup = "split:${UUID.randomUUID()}"
+        val rightGroup = "split:${UUID.randomUUID()}"
+        val memberIds = cut.editableGroupId?.let { group ->
+            draft.cuts.filter { it.editableGroupId == group }.mapTo(hashSetOf()) { it.id }
+        } ?: groupCutIds
         val left = cut.copy(
             coreEndMs = positionMs,
             keepEndMs = (positionMs + afterPadding).coerceAtMost(maximumMs),
+            editableGroupId = leftGroup,
         )
         val right = cut.copy(
             id = nextId(prefix, draft.cuts.map { it.id }),
             coreStartMs = positionMs,
             keepStartMs = (positionMs - beforePadding).coerceAtLeast(minimumMs),
+            editableGroupId = rightGroup,
         )
-        val updatedCuts = draft.cuts.toMutableList().apply {
+        val updatedCuts = draft.cuts.map { member ->
+            if (member.id !in memberIds) member else member.copy(
+                editableGroupId = if (member.coreStartMs < positionMs) leftGroup else rightGroup,
+            )
+        }.toMutableList().apply {
             this[cutIndex] = left
             add(cutIndex + 1, right)
         }
+        if (runCatching { ExplicitRallyGroups.validate(updatedCuts) }.isFailure) return null
         return CutSplitResult(draft.copy(cuts = updatedCuts), right)
     }
 
@@ -379,7 +397,15 @@ internal object EditorMath {
             }
         }
         val groups = mutableListOf<EditableRallyGroup>()
+        val explicitGroups = cuts.filter { it.editableGroupId != null }.groupBy { it.editableGroupId }
+        val emittedGroups = hashSetOf<String>()
         cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs }).forEach { cut ->
+            cut.editableGroupId?.let { group ->
+                if (emittedGroups.add(group)) groups += EditableRallyGroup(
+                    explicitGroups.getValue(group).sortedWith(compareBy<EditableCut> { it.coreStartMs }.thenBy { it.id }),
+                )
+                return@forEach
+            }
             val previous = groups.lastOrNull()
             val previousTail = previous?.cuts?.lastOrNull()
             val sharesOutputInterval = previous != null &&
@@ -392,13 +418,25 @@ internal object EditorMath {
             }
             val separatedByHardBoundary = cut.id in hardBoundaryCutIds ||
                 previous?.cutIds?.any { it in hardBoundaryCutIds } == true
-            if (previous == null || !sharesOutputInterval || separatedByServe || separatedByHardBoundary) {
+            if (previous == null || previousTail?.editableGroupId != null || !sharesOutputInterval || separatedByServe || separatedByHardBoundary) {
                 groups += EditableRallyGroup(listOf(cut))
             } else {
                 groups[groups.lastIndex] = EditableRallyGroup(previous.cuts + cut)
             }
         }
         return groups
+    }
+
+    /** A paused playhead must not take selection away from an explicitly split part. */
+    fun rallySelectionAtPlayhead(
+        groups: List<EditableRallyGroup>,
+        selectedId: String,
+        positionMs: Long,
+        playing: Boolean,
+    ): String? {
+        val selected = groups.firstOrNull { selectedId in it.cutIds }
+        if (!playing && selected?.cuts?.any { it.editableGroupId != null } == true) return selected.id
+        return groups.filter { it.keepStartMs <= positionMs }.maxByOrNull { it.keepStartMs }?.id
     }
 
     fun materialize(

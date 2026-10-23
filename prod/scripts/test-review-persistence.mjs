@@ -125,8 +125,8 @@ test("status and metadata updates cannot remove or replace a recorded source ide
   project.source = verified;
   Object.assign(project, await putProject(project));
   const attempts = [
-    { status: "queued", source: projectSource(original), normalizedStatus: "waiting" },
-    { status: "analyzing", source: { ...verified, fingerprint: undefined }, normalizedStatus: "waiting" },
+    { status: "queued", source: projectSource(original), normalizedStatus: "ready" },
+    { status: "analyzing", source: { ...verified, fingerprint: undefined }, normalizedStatus: "ready" },
     { status: "error", source: { ...projectSource(replacement), fingerprint: await sourceFileFingerprint(replacement) }, conflict: true },
     { status: "ready", source: { ...verified, name: "synthetic-transfer.mp4", lastModified: 999, type: "application/octet-stream" }, normalizedStatus: "ready" },
   ];
@@ -138,6 +138,7 @@ test("status and metadata updates cannot remove or replace a recorded source ide
     assert.deepEqual(restored.source, verified, `The ${status} update must retain the recorded source identity`);
     assert.equal(restored.id, project.id);
     assert.equal(restored.status, conflict ? previous.status : normalizedStatus);
+    assert.deepEqual(restored.analysis, project.analysis, "Checkpointed rally evidence remains ready under PR13 recovery");
   }
 });
 

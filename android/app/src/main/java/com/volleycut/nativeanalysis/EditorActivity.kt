@@ -1281,8 +1281,9 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                 val session = withContext(Dispatchers.IO) {
                     if (retry) persistence?.retry()?.get()
                     draftSessions.openProject(context, selectedProject, store, EditorMath.newDraft(currentSeed)) { draft ->
-                        draft.copy(fadeScoreOverlay = context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
-                            .getBoolean("fadeScoreOverlay", draft.fadeScoreOverlay))
+                        PortableReviewPreferences.onOpen(draft,
+                            context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
+                                .getBoolean("fadeScoreOverlay", draft.fadeScoreOverlay))
                     }
                 }
                 if (session == null && withContext(Dispatchers.IO) {
@@ -2996,12 +2997,15 @@ private fun EditorScreen(
     val exportPreferences = remember(context) {
         context.getSharedPreferences("video-export-settings", Context.MODE_PRIVATE)
     }
+    val exportRequests = remember(activity) { ViewModelProvider(activity)[PendingEditorExports::class.java] }
+    val exportRequestStore = remember(context) { PendingEditorExportStore(context.filesDir) }
+    val exportContext = context.applicationContext
     val draft by persistence.draft
     var selectedId by remember { mutableStateOf(draft.cuts.firstOrNull()?.id.orEmpty()) }
     var playbackPositionMs by remember { mutableLongStateOf(seed.gameStartMs) }
     var isPlaying by remember { mutableStateOf(false) }
     var previewEndMs by remember { mutableStateOf<Long?>(null) }
-    var message by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf(PortableReviewPreferences.notice(draft)) }
     val draftSaveError = persistence.failure.value?.message
     var savingBeforeRelink by remember { mutableStateOf(false) }
 
@@ -3034,8 +3038,8 @@ private fun EditorScreen(
                 ?: project.persistedExportUiState(),
         )
     }
-    var pendingExportIntervals by remember { mutableStateOf<List<FinalCutInterval>?>(null) }
-    var feedbackExporting by remember { mutableStateOf(false) }
+    val feedbackExporting = exportRequests.busy
+    var feedbackSaveError by remember { mutableStateOf<String?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
     var showRatingPrompt by remember { mutableStateOf(AppRating.hasPendingPrompt(context)) }
     var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
@@ -3045,7 +3049,6 @@ private fun EditorScreen(
     var selectedScoreMarkerId by remember { mutableStateOf<String?>(null) }
     var showYouTubeChapters by remember { mutableStateOf(false) }
     var youtubeChaptersStatus by remember { mutableStateOf<String?>(null) }
-    var pendingYouTubeChaptersText by remember { mutableStateOf<String?>(null) }
     var desktopTab by remember(project.id) { mutableStateOf(DesktopEditorTab.REVIEW) }
     val desktopLayoutPreferences = remember(context) {
         context.getSharedPreferences(EDITOR_LAYOUT_PREFERENCES, Context.MODE_PRIVATE)
@@ -3192,7 +3195,10 @@ private fun EditorScreen(
         suggestion.logicalId() !in draft.suppressionDecisionOverrides
     }
     val selectedSuggestion = activeSuggestions.firstOrNull { it.fragmentId() == selectedSuggestionId }
-    val selectedClipSuggestion = selectedSuggestion ?: selectedRally?.let { rally ->
+        .takeIf { selectedRally?.cuts?.none { it.editableGroupId != null } != false }
+    val selectedClipSuggestion = selectedSuggestion ?: selectedRally?.takeIf { rally ->
+        rally.cuts.none { it.editableGroupId != null }
+    }?.let { rally ->
         activeSuggestions.firstOrNull { suggestion ->
             rally.cuts.any { cut ->
                 cut.coreStartMs < suggestion.endMs() && suggestion.startMs() < cut.coreEndMs
@@ -3244,7 +3250,9 @@ private fun EditorScreen(
     )
 
     fun updateDraft(mutate: (EditorDraft) -> EditorDraft) {
-        persistence.update(EditorMath.reconcileTouchedCuts(mutate(draft), seed)
+        val changed = mutate(draft)
+        val reviewableIds = changed.cuts.filter { it.origin == CutOrigin.INFERRED }.mapTo(hashSetOf()) { it.id }
+        persistence.update(EditorMath.reconcileTouchedCuts(changed.copy(reviewedCutIds = changed.reviewedCutIds.intersect(reviewableIds)), seed)
             .copy(updatedAtMs = System.currentTimeMillis()))
     }
 
@@ -3278,6 +3286,12 @@ private fun EditorScreen(
         val target = positionMs.coerceIn(seed.gameStartMs, seed.gameEndMs)
         playbackPositionMs = target
         player.seekTo(target)
+    }
+
+    fun selectRally(id: String, positionMs: Long? = null) {
+        selectedSuggestionId = null
+        selectedId = id
+        positionMs?.let(::seekTo)
     }
 
     fun togglePlayback() {
@@ -3357,6 +3371,7 @@ private fun EditorScreen(
                 playbackPositionMs,
                 seed.gameStartMs,
                 seed.gameEndMs,
+                groupCutIds = selectedRally?.cutIds.orEmpty(),
             )?.also { split = it }?.draft?.copy(
                 reviewedCutIds = current.reviewedCutIds - cut.id,
             ) ?: current
@@ -3366,7 +3381,7 @@ private fun EditorScreen(
             message = "Move the playhead inside the rally before splitting"
         } else {
             selectedSuggestionId = null
-            selectedId = created.id
+            selectRally(created.id)
             message = "Split ${cut.id} at ${preciseTime(playbackPositionMs)}; both parts can now be trimmed independently"
         }
     }
@@ -3422,83 +3437,107 @@ private fun EditorScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("video/mp4"),
     ) { uri ->
-        val requestedIntervals = pendingExportIntervals
-        pendingExportIntervals = null
-        if (uri != null && !requestedIntervals.isNullOrEmpty()) {
+        exportRequests.consume(EditorExportKind.VIDEO, project.id, uri, exportRequestStore) { request, destination ->
+            val video = request as PendingEditorExport.Video
             runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
+                exportContext.contentResolver.takePersistableUriPermission(
+                    destination,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
             }
-            if (Build.VERSION.SDK_INT >= 33 &&
-                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-            ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            val jobId = UUID.randomUUID().toString()
-            val exportIntent = Intent(context, ExportService::class.java).apply {
-                putExtra(ExportService.EXTRA_JOB_ID, jobId)
-                putExtra(ExportService.EXTRA_PROJECT_ID, project.id)
-                putExtra(ExportService.EXTRA_SOURCE_URI, seed.sourceUri)
-                putExtra(ExportService.EXTRA_SOURCE_NAME, seed.displayName)
-                putExtra(ExportService.EXTRA_SOURCE_DURATION_MS, seed.durationMs)
-                putExtra(ExportService.EXTRA_DESTINATION_URI, uri.toString())
-                putExtra(ExportService.EXTRA_INTERVAL_STARTS, requestedIntervals.map { it.startMs }.toLongArray())
-                putExtra(ExportService.EXTRA_INTERVAL_ENDS, requestedIntervals.map { it.endMs }.toLongArray())
-                putExtra(
-                    ExportService.EXTRA_SCORE_SNAPSHOT,
-                    ScoreExportSnapshotJson.encode(ScoreExportSnapshot(
-                        render = draft.renderScoreOverlay && draft.scoreTracking.enabled,
-                        renderPointTimeline = draft.renderScoreTimeline,
-                        fadeScoreOverlay = draft.fadeScoreOverlay,
-                        scoreTracking = draft.scoreTracking,
-                        ignoredIntervals = draft.ignoredIntervals,
-                        excludedRallyIds = excludedScoreRallyIds,
-                        rallyRanges = scoreRallyRanges,
-                        mergedRanges = requestedIntervals.map {
-                            ScoreMergedRange(it.startMs, it.endMs)
-                        },
-                    )),
-                )
+            val exportIntent = Intent(exportContext, ExportService::class.java).apply {
+                putExtra(ExportService.EXTRA_JOB_ID, video.jobId)
+                putExtra(ExportService.EXTRA_PROJECT_ID, video.projectId)
+                putExtra(ExportService.EXTRA_SOURCE_URI, video.sourceUri)
+                putExtra(ExportService.EXTRA_SOURCE_NAME, video.sourceName)
+                putExtra(ExportService.EXTRA_SOURCE_DURATION_MS, video.durationMs)
+                putExtra(ExportService.EXTRA_DESTINATION_URI, destination.toString())
+                putExtra(ExportService.EXTRA_INTERVAL_STARTS, video.startsMs.toLongArray())
+                putExtra(ExportService.EXTRA_INTERVAL_ENDS, video.endsMs.toLongArray())
+                putExtra(ExportService.EXTRA_SCORE_SNAPSHOT, video.scoreSnapshot)
             }
-            context.startForegroundService(exportIntent)
-            exportState = ExportUiState(jobId, "queued", 0, "Added to export queue")
+            exportContext.startForegroundService(exportIntent)
         }
     }
     val youtubeChaptersLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
-        val text = pendingYouTubeChaptersText
-        pendingYouTubeChaptersText = null
-        if (uri != null && text != null) runCatching {
-            context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
-                it.write(text)
-                it.newLine()
+        exportRequests.consume(EditorExportKind.CHAPTERS, project.id, uri, exportRequestStore) { request, destination ->
+            exportContext.contentResolver.openOutputStream(destination, "w")!!.bufferedWriter().use {
+                it.write((request as PendingEditorExport.Text).text)
             }
-        }.onSuccess {
-            youtubeChaptersStatus = "Saved the YouTube chapters text file."
-        }.onFailure {
-            youtubeChaptersStatus = it.message ?: "Could not save the chapters."
         }
     }
     val feedbackSaveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        if (uri != null) scope.launch {
-            feedbackExporting = true
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    val bundle = createModelFeedback(context, project, draft, finalIntervals)
-                    context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use {
-                        it.write(bundle)
-                    }
+        exportRequests.consume(EditorExportKind.PROJECT, project.id, uri, exportRequestStore) { request, destination ->
+            exportContext.contentResolver.openOutputStream(destination, "w")!!.bufferedWriter().use {
+                it.write((request as PendingEditorExport.Text).text)
+            }
+        }
+    }
+
+    fun requestVideoExport() {
+        val intervals = finalIntervals.toList()
+        if (intervals.isEmpty()) return
+        val snapshot = ScoreExportSnapshot(
+            render = draft.renderScoreOverlay && draft.scoreTracking.enabled,
+            renderPointTimeline = draft.renderScoreTimeline,
+            fadeScoreOverlay = draft.fadeScoreOverlay,
+            scoreTracking = draft.scoreTracking,
+            ignoredIntervals = draft.ignoredIntervals,
+            excludedRallyIds = excludedScoreRallyIds,
+            rallyRanges = scoreRallyRanges,
+            mergedRanges = intervals.map { ScoreMergedRange(it.startMs, it.endMs) },
+        )
+        exportRequests.prepare(EditorExportKind.VIDEO, project.id, exportRequestStore) {
+            PendingEditorExport.Video(UUID.randomUUID().toString(), project.id, exportFilename(seed.displayName),
+                seed.sourceUri, seed.displayName, seed.durationMs, intervals.map { it.startMs }, intervals.map { it.endMs },
+                ScoreExportSnapshotJson.encode(snapshot))
+        }
+    }
+
+    fun requestProjectBackup() {
+        feedbackSaveError = null
+        val requestedDraft = draft
+        val intervals = finalIntervals.toList()
+        exportRequests.prepare(EditorExportKind.PROJECT, project.id, exportRequestStore) {
+            PendingEditorExport.Text(EditorExportKind.PROJECT, project.id, ModelFeedbackExporter.filename(seed.displayName),
+                createModelFeedback(exportContext, project, requestedDraft, intervals))
+        }
+    }
+
+    LaunchedEffect(exportRequests.ready.value?.id) {
+        exportRequests.ready.value?.let { request ->
+            try {
+                when (request.kind) {
+                    EditorExportKind.VIDEO -> exportLauncher.launch(request.filename)
+                    EditorExportKind.CHAPTERS -> youtubeChaptersLauncher.launch(request.filename)
+                    EditorExportKind.PROJECT -> feedbackSaveLauncher.launch(request.filename)
                 }
+                exportRequests.launched(request)
+            } catch (failure: Exception) { exportRequests.launchFailed(request, exportRequestStore, failure) }
+        }
+    }
+
+    LaunchedEffect(exportRequests.outcome.value?.sequence) {
+        exportRequests.outcome.value?.let { result ->
+            if (result.projectId == project.id) when (result.kind) {
+                EditorExportKind.CHAPTERS -> youtubeChaptersStatus = result.message
+                EditorExportKind.PROJECT -> {
+                    message = result.message
+                    if (result.failed) feedbackSaveError = result.message
+                }
+                EditorExportKind.VIDEO -> if (result.jobId != null) {
+                    exportState = ExportService.statusForProject(project.id)?.toUiState()
+                        ?: ExportUiState(result.jobId, "queued", 0, result.message)
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else message = result.message
             }
-            feedbackExporting = false
-            result.onSuccess {
-                message = "Saved the detailed project file"
-            }.onFailure {
-                message = it.message ?: "Could not save the detailed project file"
-            }
+            exportRequests.acknowledge(result)
         }
     }
 
@@ -3581,7 +3620,7 @@ private fun EditorScreen(
     }
 
     LaunchedEffect(draft.playbackRate) {
-        player.playbackParameters = PlaybackParameters(draft.playbackRate)
+        player.playbackParameters = PlaybackParameters(draft.playbackRate.toFloat())
     }
 
     LaunchedEffect(player, draft.finalPreviewEnabled, finalIntervals, editableRallies, previewEndMs) {
@@ -3601,8 +3640,8 @@ private fun EditorScreen(
                 continue
             }
             playbackPositionMs = position
-            editableRallies.filter { it.keepStartMs <= position }.maxByOrNull { it.keepStartMs }?.let { reached ->
-                if (reached.id != selectedId) selectedId = reached.id
+            EditorMath.rallySelectionAtPlayhead(editableRallies, selectedId, position, player.isPlaying)?.let { reached ->
+                if (reached != selectedId) selectRally(reached)
             }
             previewEndMs?.let { end ->
                 if (player.isPlaying && position >= end) {
@@ -3631,14 +3670,18 @@ private fun EditorScreen(
         onDispose { }
     }
 
+    feedbackSaveError?.let { error ->
+        ProjectSaveErrorDialog(error, onDismiss = { feedbackSaveError = null })
+    }
+
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset this edit?") },
-            text = { Text("All clip boundaries, included or excluded choices, score markers, added clips, and omitted sections will be discarded.") },
+            text = { Text("All clip boundaries, splits, included or excluded choices, score markers, added clips, and omitted sections will be discarded.") },
             confirmButton = {
                 TextButton(onClick = {
-                    persistence.update(EditorMath.newDraft(seed))
+                    persistence.update(PortableReviewPreferences.reset(seed, draft))
                     selectedId = draft.cuts.firstOrNull()?.id.orEmpty()
                     selectedSuggestionId = null
                     confirmReset = false
@@ -3718,7 +3761,7 @@ private fun EditorScreen(
                         enabled = !feedbackExporting,
                         onClick = {
                             showProjectOptions = false
-                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                            requestProjectBackup()
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (feedbackExporting) "Saving project…" else "Save project") }
@@ -3775,7 +3818,7 @@ private fun EditorScreen(
                             TextButton(
                                 enabled = !feedbackExporting,
                                 onClick = {
-                                    feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                                    requestProjectBackup()
                                 },
                                 modifier = Modifier.testTag("draft-save-backup"),
                             ) { Text("Export backup") }
@@ -3820,7 +3863,6 @@ private fun EditorScreen(
                                                     updateDraft {
                                                         it.copy(
                                                             renderScoreOverlay = enabled,
-                                                            renderScoreTimeline = if (enabled) it.renderScoreTimeline else false,
                                                         )
                                                     }
                                                 },
@@ -3850,10 +3892,9 @@ private fun EditorScreen(
                                         )
                                     }
                                     Button(
-                                        enabled = finalIntervals.isNotEmpty() && !exportPending,
+                                        enabled = finalIntervals.isNotEmpty() && !exportPending && !feedbackExporting,
                                         onClick = {
-                                            pendingExportIntervals = finalIntervals
-                                            exportLauncher.launch(exportFilename(seed.displayName))
+                                            requestVideoExport()
                                         },
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                                     ) {
@@ -3898,7 +3939,7 @@ private fun EditorScreen(
                                     Button(
                                         enabled = !feedbackExporting,
                                         onClick = {
-                                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+                                            requestProjectBackup()
                                         },
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                                     ) {
@@ -4212,14 +4253,12 @@ private fun EditorScreen(
                                     }
                                     SmallButton("‹", enabled = selectedIndex > 0) {
                                         editableRallies.getOrNull(selectedIndex - 1)?.let {
-                                            selectedId = it.id
-                                            seekTo(it.keepStartMs)
+                                            selectRally(it.id, it.keepStartMs)
                                         }
                                     }
                                     SmallButton("›", enabled = selectedIndex in 0..<editableRallies.lastIndex) {
                                         editableRallies.getOrNull(selectedIndex + 1)?.let {
-                                            selectedId = it.id
-                                            seekTo(it.keepStartMs)
+                                            selectRally(it.id, it.keepStartMs)
                                         }
                                     }
                                 },
@@ -4336,7 +4375,7 @@ private fun EditorScreen(
                                 flat = true,
                                 onDraft = ::updateDraft,
                                 onManualCompleted = { cut ->
-                                    selectedId = cut.id
+                                    selectRally(cut.id)
                                     message = "Added ${cut.id} from ${preciseTime(cut.keepStartMs)} to ${preciseTime(cut.keepEndMs)}"
                                 },
                                 onMessage = { message = it },
@@ -4408,11 +4447,6 @@ private fun EditorScreen(
                                             updateDraft {
                                                 it.copy(
                                                     renderScoreOverlay = enabled,
-                                                    renderScoreTimeline = if (enabled) {
-                                                        it.renderScoreTimeline
-                                                    } else {
-                                                        false
-                                                    },
                                                 )
                                             }
                                         },
@@ -4433,7 +4467,7 @@ private fun EditorScreen(
                                         enabled = draft.scoreTracking.enabled && draft.renderScoreOverlay,
                                         onCheckedChange = { enabled ->
                                             updateDraft {
-                                                it.copy(renderScoreTimeline = it.renderScoreOverlay && enabled)
+                                                it.copy(renderScoreTimeline = enabled)
                                             }
                                         },
                                     )
@@ -4546,7 +4580,6 @@ private fun EditorScreen(
                                 updateDraft {
                                     it.copy(
                                         renderScoreOverlay = enabled,
-                                        renderScoreTimeline = if (enabled) it.renderScoreTimeline else false,
                                     )
                                 }
                             },
@@ -4577,7 +4610,7 @@ private fun EditorScreen(
                                 checked = draft.renderScoreTimeline,
                                 onCheckedChange = { enabled ->
                                     updateDraft {
-                                        it.copy(renderScoreTimeline = it.renderScoreOverlay && enabled)
+                                        it.copy(renderScoreTimeline = enabled)
                                     }
                                 },
                             )
@@ -4601,17 +4634,16 @@ private fun EditorScreen(
                     )
                 }
                 Button(
-                    enabled = finalIntervals.isNotEmpty() && !exportPending,
+                    enabled = finalIntervals.isNotEmpty() && !exportPending && !feedbackExporting,
                     onClick = {
-                        pendingExportIntervals = finalIntervals
-                        exportLauncher.launch(exportFilename(seed.displayName))
+                        requestVideoExport()
                     },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     Text(if (exportPending) "Creating your video…" else "Save final video", fontWeight = FontWeight.Bold)
                 }
                 OutlinedButton(
-                    enabled = finalIntervals.isNotEmpty(),
+                    enabled = finalIntervals.isNotEmpty() && !feedbackExporting,
                     onClick = {
                         youtubeChaptersStatus = null
                         showYouTubeChapters = true
@@ -4867,8 +4899,7 @@ private fun EditorScreen(
                 headerActions = {
                     SmallButton("Previous", enabled = selectedIndex > 0) {
                         editableRallies.getOrNull(selectedIndex - 1)?.let {
-                            selectedId = it.id
-                            seekTo(it.keepStartMs)
+                            selectRally(it.id, it.keepStartMs)
                         }
                     }
                     Text(
@@ -4881,8 +4912,7 @@ private fun EditorScreen(
                     )
                     SmallButton("Next", enabled = selectedIndex in 0..<editableRallies.lastIndex) {
                         editableRallies.getOrNull(selectedIndex + 1)?.let {
-                            selectedId = it.id
-                            seekTo(it.keepStartMs)
+                            selectRally(it.id, it.keepStartMs)
                         }
                     }
                 },
@@ -5045,7 +5075,7 @@ private fun EditorScreen(
                                     cuts = it.cuts.filterNot { cut -> cut.id in selectedRally.cutIds },
                                     reviewedCutIds = it.reviewedCutIds - selectedRally.cutIds,
                                 ) }
-                                selectedId = remaining.getOrNull((selectedIndex - 1).coerceAtLeast(0))?.id.orEmpty()
+                                selectRally(remaining.getOrNull((selectedIndex - 1).coerceAtLeast(0))?.id.orEmpty())
                             }) { Text("Delete", color = Danger) }
                         }
                     }
@@ -5058,7 +5088,7 @@ private fun EditorScreen(
                 playbackPositionMs = playbackPositionMs,
                 onDraft = ::updateDraft,
                 onManualCompleted = { cut ->
-                    selectedId = cut.id
+                    selectRally(cut.id)
                     message = "Added ${cut.id} from ${preciseTime(cut.keepStartMs)} to ${preciseTime(cut.keepEndMs)}"
                 },
                 onMessage = { message = it },
@@ -5119,7 +5149,8 @@ private fun EditorScreen(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (rally.id == selectedRally?.id) Color(0xFFFFEEE8) else Color.Transparent)
-                                .clickable { selectedId = rally.id; seekTo(rally.keepStartMs) }
+                                .clickable { selectRally(rally.id, rally.keepStartMs) }
+                                .testTag("rally-row-${rally.id}")
                                 .padding(vertical = 7.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -5190,9 +5221,10 @@ private fun EditorScreen(
                     youtubeChaptersStatus = "Copied. Paste these chapters into your YouTube description."
                 },
                 onSaveTextFile = { text, filename ->
-                    pendingYouTubeChaptersText = text
                     youtubeChaptersStatus = null
-                    youtubeChaptersLauncher.launch(filename)
+                    exportRequests.prepare(EditorExportKind.CHAPTERS, project.id, exportRequestStore) {
+                        PendingEditorExport.Text(EditorExportKind.CHAPTERS, project.id, filename, "$text\n")
+                    }
                 },
                 onDismiss = {
                     showYouTubeChapters = false
@@ -5389,6 +5421,16 @@ private fun ScoreVisibilityOptions(
 }
 
 @Composable
+internal fun ProjectSaveErrorDialog(message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Could not save project") },
+        text = { Text(message) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+@Composable
 private fun LargeScreenExportLayout(
     header: @Composable () -> Unit,
     mp4Option: @Composable ColumnScope.() -> Unit,
@@ -5499,6 +5541,7 @@ private fun DesktopRallyLedger(
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (rally.id == selectedId) Acid.copy(alpha = .5f) else Color.Transparent)
                         .clickable { onSelect(rally) }
+                        .testTag("rally-row-${rally.id}")
                         .padding(horizontal = 7.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -6428,14 +6471,14 @@ private fun SectionCard(
 }
 
 @Composable
-private fun PlayerControls(
+internal fun PlayerControls(
     playing: Boolean,
     positionMs: Long,
     durationMs: Long,
-    playbackRate: Float,
+    playbackRate: Double,
     desktop: Boolean = false,
     onToggle: () -> Unit,
-    onRate: (Float) -> Unit,
+    onRate: (Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var rateExpanded by remember { mutableStateOf(false) }
@@ -6463,14 +6506,14 @@ private fun PlayerControls(
                     onClick = { rateExpanded = true },
                     modifier = Modifier.fillMaxWidth().height(34.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                ) { Text("Speed · ${playbackRate.toInt()}x", fontSize = 10.sp, maxLines = 1) }
+                ) { Text("Speed · ${PortableReviewPreferences.playbackRateLabel(playbackRate)}", fontSize = 10.sp, maxLines = 1) }
                 DropdownMenu(
                     expanded = rateExpanded,
                     onDismissRequest = { rateExpanded = false },
                 ) {
-                    listOf(1f, 2f, 4f, 8f).forEach { rate ->
+                    PortableReviewPreferences.playbackRates(playbackRate).forEach { rate ->
                         DropdownMenuItem(
-                            text = { Text("${rate.toInt()}x") },
+                            text = { Text("${PortableReviewPreferences.playbackRateLabel(rate)}") },
                             onClick = {
                                 rateExpanded = false
                                 onRate(rate)
@@ -6502,14 +6545,14 @@ private fun PlayerControls(
                     OutlinedButton(
                         onClick = { rateExpanded = true },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text("Speed · ${playbackRate.toInt()}x") }
+                    ) { Text("Speed · ${PortableReviewPreferences.playbackRateLabel(playbackRate)}") }
                     DropdownMenu(
                         expanded = rateExpanded,
                         onDismissRequest = { rateExpanded = false },
                     ) {
-                        listOf(1f, 2f, 4f, 8f).forEach { rate ->
+                        PortableReviewPreferences.playbackRates(playbackRate).forEach { rate ->
                             DropdownMenuItem(
-                                text = { Text("${rate.toInt()}x") },
+                                text = { Text("${PortableReviewPreferences.playbackRateLabel(rate)}") },
                                 onClick = {
                                     rateExpanded = false
                                     onRate(rate)
@@ -7446,6 +7489,7 @@ internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<
                 put("confidence", cut.confidence.toDouble())
                 put("included", cut.included)
                 put("origin", cut.origin.name.lowercase())
+                cut.editableGroupId?.let { put("editableGroupId", it) }
                 put("agreement", cut.agreement ?: JSONObject.NULL)
             }) }
         })

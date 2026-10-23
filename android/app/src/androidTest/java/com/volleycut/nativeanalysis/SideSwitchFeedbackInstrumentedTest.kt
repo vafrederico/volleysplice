@@ -31,7 +31,7 @@ class SideSwitchFeedbackInstrumentedTest {
                     assertEquals(enabled, project.sideSwitchEnabled)
                     assertEquals(ServingSideAnalysisStatus.READY, project.servingSideStatus)
                     val seed = requireNotNull(project.editorSeed())
-                    val draft = requireNotNull(EditorDraftStore(context, seed).load())
+                    val draft = (EditorDraftStore(context, seed).load() as EditorDraftLoadResult.Restored).draft
                     assertReview(draft)
                     assertEquals(project.sideSwitch, requireNotNull(EditorProjectStore.load(context)).sideSwitch)
 
@@ -43,7 +43,7 @@ class SideSwitchFeedbackInstrumentedTest {
                     assertEquals(enabled, project.sideSwitchEnabled)
                     assertEquals(imported.sideSwitch, project.sideSwitch)
                     val relinkedSeed = requireNotNull(project.editorSeed())
-                    val restored = requireNotNull(EditorDraftStore(context, relinkedSeed).load())
+                    val restored = (EditorDraftStore(context, relinkedSeed).load() as EditorDraftLoadResult.Restored).draft
                     assertReview(restored)
                     val reexport = ModelFeedbackExporter.createBundle(
                         project, restored, EditorMath.finalIntervals(restored), null, null,
@@ -55,7 +55,7 @@ class SideSwitchFeedbackInstrumentedTest {
 
                     val reset = EditorMath.newDraft(relinkedSeed)
                     EditorDraftStore(context, relinkedSeed).save(reset)
-                    val resetFromDisk = requireNotNull(EditorDraftStore(context, relinkedSeed).load())
+                    val resetFromDisk = (EditorDraftStore(context, relinkedSeed).load() as EditorDraftLoadResult.Restored).draft
                     assertTrue(resetFromDisk.scoreTracking.removedModelMarkerIds.isEmpty())
                     assertEquals(if (enabled) listOf(25_000L, 45_000L) else emptyList<Long>(),
                         resetFromDisk.scoreTracking.sideSwitchMarkers.map { it.timestampMs })

@@ -1,13 +1,19 @@
 package com.volleycut.nativeanalysis
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.app.Activity
 import android.app.Instrumentation
 import android.net.Uri
 import android.os.SystemClock
+import android.os.Environment
+import android.provider.DocumentsContract
 import android.util.Base64
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -21,21 +27,163 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleCallback
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Until
 import org.json.JSONObject
+import org.json.JSONArray
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Mounts the production editor with synthetic local media and saved draft bytes. */
 class EditorDraftRecoveryInstrumentedTest {
     @get:Rule val compose = createEmptyComposeRule()
+
+    @Test fun futurePreferenceResetRejectsActualProjectSaveBeforePickerAndPreservesPayloads() = withProject(uniqueVideo = true) { store, target, project ->
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val seed = checkNotNull(project.editorSeed())
+        val ui = JSONObject().put("schemaVersion", 2).put("preferences", JSONObject()
+            .put("reviewedCutIds", JSONArray().put("R002"))
+            .put("futureControl", JSONObject().put("nested", JSONArray().put(JSONObject.NULL))))
+        val initial = EditorMath.newDraft(seed)
+        val corrected = initial.copy(cuts = initial.cuts.map { it.copy(id = "R002") }, portableUi = ui.toString())
+        val reset = PortableReviewPreferences.reset(seed, corrected)
+        store.save(reset)
+        val destination = File(context.cacheDir, "future-guard-${UUID.randomUUID()}.json")
+            .apply { writeText("previous archive") }
+        val pending = File(context.filesDir, "pending-editor-exports")
+        fun pendingBytes() = pending.listFiles().orEmpty().associate { it.name to it.readBytes().toList() }
+        val pendingBefore = pendingBytes()
+        val launches = AtomicInteger()
+        val monitor = object : Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? =
+                if (intent.action == Intent.ACTION_CREATE_DOCUMENT) {
+                    launches.incrementAndGet()
+                    Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.fromFile(destination)))
+                } else null
+        }
+        instrumentation.addMonitor(monitor)
+        try {
+            launchEditor { scenario ->
+                var expanded = false
+                scenario.onActivity { activity ->
+                    val config = activity.resources.configuration
+                    val layout = editorLayoutMode(config.screenWidthDp, config.screenHeightDp)
+                    InstrumentationRegistry.getArguments().getString("expectedEditorLayout")?.let {
+                        assertEquals(it, layout.name)
+                    }
+                    expanded = layout == EditorLayoutMode.DESKTOP
+                }
+                compose.waitForIdle()
+                assertEquals(listOf("R001"), reset.cuts.map { it.id })
+                assertEquals(reset, (store.load() as EditorDraftLoadResult.Restored).draft)
+                assertEquals(ui.toString(), reset.portableUi)
+                val preserved = target.readBytes()
+                repeat(2) { attempt ->
+                    // The expanded export tab and compact project menu call the same
+                    // production save path; run this test at both device sizes.
+                    saveProject(scenario)
+                    compose.waitUntil(10_000) { compose.onAllNodesWithText("Could not save project").fetchSemanticsNodes().isNotEmpty() }
+                    compose.onNodeWithText("Could not save project").assertIsDisplayed()
+                    compose.onNode(hasText("Cannot export: newer project preferences refer to rallies changed or removed. " +
+                        "Open an unchanged copy, or export with an app that supports this preferences version. Your local project is preserved.")
+                        and hasAnyAncestor(isDialog()))
+                        .assertIsDisplayed()
+                    screenshot("future-guard-${if (expanded) "desktop" else "compact"}-$attempt")
+                    assertEquals("Invalid archive opened the destination picker", 0, launches.get())
+                    assertEquals("previous archive", destination.readText())
+                    assertEquals(pendingBefore, pendingBytes())
+                    assertArrayEquals(preserved, target.readBytes())
+                    assertEquals(reset, (store.load() as EditorDraftLoadResult.Restored).draft)
+                    compose.onNodeWithText("Close").performClick()
+                    compose.onNodeWithText("Could not save project").assertDoesNotExist()
+                    if (attempt == 0) scenario.recreate()
+                }
+            }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+            check(destination.delete())
+        }
+    }
+
+    @Test fun projectDestinationPickerRecreationExportsTheRequestedSnapshot() = withProject(uniqueVideo = true) { store, _, project ->
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
+        val filename = ModelFeedbackExporter.filename(project.source.name)
+        require(filename.matches(Regex("[A-Za-z0-9._-]+")))
+        val destination = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), filename)
+        require(destination.absolutePath.matches(Regex("[A-Za-z0-9/._-]+")))
+        val launched = AtomicReference<String?>()
+        val monitor = object : Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? {
+                if (intent.action == Intent.ACTION_CREATE_DOCUMENT) {
+                    // Keep the real picker and result callback, but do not inherit
+                    // DocumentsUI's last visited folder from another device workflow.
+                    intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:${Environment.DIRECTORY_DOWNLOADS}"))
+                    launched.set(intent.getStringExtra(Intent.EXTRA_TITLE))
+                }
+                return null
+            }
+        }
+        instrumentation.addMonitor(monitor)
+        try {
+            launchEditor { scenario ->
+                val originalActivity = AtomicReference<EditorActivity>()
+                scenario.onActivity { originalActivity.set(it) }
+                val replacement = AtomicReference<Activity?>()
+                val lifecycle = ActivityLifecycleCallback { activity, stage ->
+                    if (activity is EditorActivity && activity !== originalActivity.get() && stage == Stage.CREATED) replacement.set(activity)
+                }
+                ActivityLifecycleMonitorRegistry.getInstance().addLifecycleCallback(lifecycle)
+                try {
+                    val remove = removeAction()
+                    saveProject(scenario)
+                    compose.waitUntil(10_000) { launched.get() != null }
+                    assertEquals(filename, launched.get())
+                    assertNotNull(device.wait(Until.findObject(By.res("android", "button1")), 10_000))
+                    // The picker owns the foreground while the original review changes
+                    // and its activity is replaced. The returned file must use the
+                    // snapshot requested before either event.
+                    instrumentation.runOnMainSync { remove(); originalActivity.get().recreate() }
+                    compose.waitUntil(10_000) { replacement.get() != null }
+                    val save = device.wait(Until.findObject(By.res("android", "button1")), 10_000)
+                    assertNotNull("Destination picker disappeared during recreation", save)
+                    save.click()
+                    try { compose.waitUntil(15_000) {
+                        device.executeShellCommand("cat ${destination.absolutePath}").trimStart().startsWith("{") &&
+                            (store.load() as? EditorDraftLoadResult.Restored)?.draft?.cuts?.firstOrNull()?.included == false
+                    } } catch (failure: Throwable) {
+                        screenshot("pending-export-picker")
+                        throw AssertionError("Destination: ${device.executeShellCommand("cat ${destination.absolutePath}")}; draft: ${store.load()}; UI: ${compose.onRoot().printToString()}", failure)
+                    }
+                    val exported = ModelFeedbackImporter.parse(device.executeShellCommand("cat ${destination.absolutePath}"))
+                    assertTrue("Export changed to edits made after opening the picker", exported.draft.cuts.first().included)
+                    if (isDesktopEditor(scenario)) compose.onNodeWithText("Review").performClick()
+                    compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
+                    compose.onNodeWithText("Saved the detailed project file").assertExists()
+                } finally { ActivityLifecycleMonitorRegistry.getInstance().removeLifecycleCallback(lifecycle) }
+            }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+            device.pressBack()
+            // A unique synthetic filename prevents collisions with other exports.
+            device.executeShellCommand("rm -f ${destination.absolutePath}")
+        }
+    }
 
     @Test fun editAndImmediateRecreationKeepLatestReview() = withProject { store, _, _ ->
         launchEditor { scenario ->
@@ -622,16 +770,83 @@ class EditorDraftRecoveryInstrumentedTest {
         assertArrayEquals(original, target.readBytes())
     }
 
-    private fun launchEditor(block: (ActivityScenario<EditorActivity>) -> Unit) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use(block)
+    private fun isDesktopEditor(scenario: ActivityScenario<EditorActivity>): Boolean {
+        var expanded = false
+        scenario.onActivity { activity ->
+            val config = activity.resources.configuration
+            expanded = editorLayoutMode(config.screenWidthDp, config.screenHeightDp) == EditorLayoutMode.DESKTOP
+        }
+        return expanded
     }
 
-    private fun withProject(silentVideo: Boolean = false, block: (EditorDraftStore, File, NativeProject) -> Unit) {
+    private fun saveProject(scenario: ActivityScenario<EditorActivity>) {
+        val expanded = isDesktopEditor(scenario)
+        if (expanded) {
+            compose.onNodeWithText("Export").performClick()
+        } else {
+            compose.onNodeWithText("Project options").performScrollTo().performClick()
+        }
+        val save = compose.onNodeWithText("Save project")
+        if (expanded) save.performScrollTo()
+        save.performClick()
+    }
+
+    private fun launchEditor(block: (ActivityScenario<EditorActivity>) -> Unit) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val arguments = InstrumentationRegistry.getArguments()
+        val orientation = arguments.getString("editorOrientation")
+        require(orientation == null || orientation == "landscape") { "Unsupported editorOrientation: $orientation" }
+        val context = instrumentation.targetContext
+        ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use { scenario ->
+            if (orientation == "landscape") {
+                // UiAutomation may reset a global rotation lock between tests.
+                // Request orientation on this owned activity; use closes it after the test.
+                scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            }
+            val expected = arguments.getString("expectedEditorLayout")
+            if (orientation == "landscape" || expected != null) {
+                var observed = "activity configuration not available"
+                try {
+                    compose.waitUntil(10_000) {
+                        var ready = false
+                        try {
+                            scenario.onActivity { activity ->
+                                val config = activity.resources.configuration
+                                val layout = editorLayoutMode(config.screenWidthDp, config.screenHeightDp)
+                                observed = "widthDp=${config.screenWidthDp}, heightDp=${config.screenHeightDp}, " +
+                                    "rotation=${activity.display?.rotation}, layout=${layout.name}"
+                                ready = (orientation != "landscape" || config.screenWidthDp > config.screenHeightDp) &&
+                                    (expected == null || layout.name == expected)
+                            }
+                        } catch (recreating: IllegalStateException) {
+                            observed = "activity recreating: ${recreating.message}; last $observed"
+                        }
+                        ready
+                    }
+                } catch (failure: Throwable) {
+                    throw AssertionError("Editor configuration did not become ready within 10s: " +
+                        "orientation=$orientation, expectedLayout=$expected; observed $observed", failure)
+                }
+                scenario.onActivity { activity ->
+                    val config = activity.resources.configuration
+                    if (orientation == "landscape") {
+                        assertTrue("Expected landscape after readiness wait; observed $observed",
+                            config.screenWidthDp > config.screenHeightDp)
+                    }
+                    if (expected != null) {
+                        assertEquals(expected, editorLayoutMode(config.screenWidthDp, config.screenHeightDp).name)
+                    }
+                }
+            }
+            block(scenario)
+        }
+    }
+
+    private fun withProject(uniqueVideo: Boolean = false, silentVideo: Boolean = false, block: (EditorDraftStore, File, NativeProject) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val previousSelection = NativeProjectStore.selectedId(context)
-        val video = File(context.filesDir, "draft-recovery-synthetic.mp4")
+        val video = File(context.filesDir, if (uniqueVideo) "pending-export-${UUID.randomUUID()}.mp4" else "draft-recovery-synthetic.mp4")
         // Exercise both synthetic AAC and video-only source metadata through
         // persistence, feedback import and the actual source-picker relink.
         val fixture = if (silentVideo) "overlay-fixture.mp4.b64" else "draft-recovery-fixture.mp4.b64"

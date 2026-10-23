@@ -61,7 +61,7 @@ try {
   const { RallyDesk } = await server.ssrLoadModule("/src/designs/taste/index.tsx");
   const { importModelFeedbackProject } = await server.ssrLoadModule("/src/lib/model-feedback-import.ts");
   const { listProjects, putProject, projectAnalysisId } = await server.ssrLoadModule("/src/lib/project-store.ts");
-  const { cutDraftStorageKey } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
+  const { projectDraftStorageKey } = await server.ssrLoadModule("/src/lib/review-draft-persistence.ts");
   const { deriveScoreAt } = await server.ssrLoadModule("/src/lib/score-tracking.ts");
   const fixturePath = fileURLToPath(new URL("../../tests/fixtures/web-side-switch-project.ts", import.meta.url)).replaceAll("\\", "/");
   const { sideSwitchProjectFixture } = await server.ssrLoadModule(`/@fs/${fixturePath}`);
@@ -87,9 +87,9 @@ try {
     if (scenario === "empty") bundle.initialInference.sideSwitch.candidates = [];
     const { project } = importModelFeedbackProject(JSON.stringify(bundle), { occupiedProjectIds });
     occupiedProjectIds.add(project.id);
-    const key = cutDraftStorageKey(projectAnalysisId(project));
+    await act(async () => { Object.assign(project, await putProject(project, { expectedSource: null })); });
+    const key = projectDraftStorageKey(projectAnalysisId(project), project.instanceId);
     const saved = () => JSON.parse(window.localStorage.getItem(key));
-    await act(async () => { await putProject(project); });
     await act(async () => root.render(React.createElement(Editor, { key: scenario, project, originalAnalysis: analysis })));
     await waitFor(() => window.localStorage.getItem(key));
     assert.equal(readyReview.sideSwitchEnabled, scenario !== "disabled");

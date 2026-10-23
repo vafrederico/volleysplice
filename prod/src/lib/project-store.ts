@@ -1,7 +1,6 @@
 import {
   type AnalysisWindow,
   fullAnalysisWindow,
-  isFullAnalysisWindow,
   normalizeAnalysisWindow,
 } from "./on-device/analysis-window.ts";
 import { isNeuralModelId, isRallyModelSelection, RALLY_MODEL_OPTIONS, type RallyModelSelection } from "./on-device/rally-model.ts";
@@ -22,6 +21,7 @@ import type {
   OnDeviceMediaInfo,
 } from "./on-device/types.ts";
 import type { CutDraft } from "./cut-draft.ts";
+import type { ScoreSpecialistErrors } from "./score-specialist-state.ts";
 
 const DATABASE_NAME = "volleycut-projects";
 const DATABASE_VERSION = 1;
@@ -64,6 +64,8 @@ export type VolleySpliceProject = {
   status: ProjectStatus;
   analysis: OnDeviceAnalysis | null;
   error: string | null;
+  /** Failures are independent of rally readiness and survive closing the tab. */
+  scoreSpecialistErrors?: ScoreSpecialistErrors;
   importedFeedback?: {
     schemaVersion: 1 | 2 | 3;
     generatedAt: string;
@@ -207,33 +209,107 @@ export async function sourceFileFingerprint(file: File): Promise<string> {
   return `sampled-sha256-v1:${hex(digest)}`;
 }
 
+type ProjectSetupOptions = {
+  roi: NormalizedRoi;
+  sideSwitchEnabled: boolean;
+};
+
+type ProjectSetup = ProjectSetupOptions & {
+  source: ProjectSource;
+  info: OnDeviceMediaInfo;
+  analysisWindow: AnalysisWindow;
+  rallyModel: RallyModelSelection;
+};
+
+const DEFAULT_PROJECT_SETUP: ProjectSetupOptions = {
+  roi: { x: 0, y: 0, width: 1, height: 1 },
+  sideSwitchEnabled: false,
+};
+
+function canonicalProjectRoi(roi: NormalizedRoi): NormalizedRoi {
+  // Remove control-order arithmetic noise while retaining subpixel differences:
+  // one unit at this precision is less than 0.00002 pixel even at 16K.
+  const round = (value: number) => Math.round(value * 1e9) / 1e9;
+  return { x: round(roi.x), y: round(roi.y), width: round(roi.width), height: round(roi.height) };
+}
+
+function projectSetupIdentity(setup: ProjectSetup): string {
+  const { source, info, rallyModel, sideSwitchEnabled } = setup;
+  const roi = canonicalProjectRoi(setup.roi);
+  const window = normalizeAnalysisWindow(setup.analysisWindow, info.duration);
+  // Fixed field order also ignores optional source fingerprints acquired later.
+  return JSON.stringify([
+    source.name, source.size, source.lastModified, source.type,
+    info.duration, info.width, info.height, info.rotation ?? 0,
+    info.mimeType, info.videoCodec, info.videoCodecString ?? null,
+    info.canDecodeVideo, info.hasAudio, info.audioCodec ?? null,
+    info.sampleRate ?? null, info.channels ?? null, info.canDecodeAudio,
+    window.start, window.end, rallyModel,
+    roi.x, roi.y, roi.width, roi.height, sideSwitchEnabled,
+  ]);
+}
+
 export function projectId(
   source: ProjectSource,
   info: OnDeviceMediaInfo,
   requestedWindow: AnalysisWindow = fullAnalysisWindow(info.duration),
   rallyModel: RallyModelSelection = "ensemble",
+  options: ProjectSetupOptions = DEFAULT_PROJECT_SETUP,
 ): string {
-  const analysisWindow = normalizeAnalysisWindow(
-    requestedWindow,
-    info.duration,
+  // A separate namespace prevents collisions with any legacy full-frame ID.
+  return `project-v2-${hashText(projectSetupIdentity({
+    ...options, source, info, analysisWindow: requestedWindow, rallyModel,
+  }))}`;
+}
+
+/** Resolve legacy and current projects by their saved inputs, without renaming
+ * IDs that also own review drafts, edit history, source links and selection. */
+export function resolveProjectSetup(
+  projects: VolleySpliceProject[],
+  setup: ProjectSetup,
+): { id: string; existing?: VolleySpliceProject } {
+  const identity = projectSetupIdentity(setup);
+  const existing = projects.find((project) =>
+    !project.importedFeedback && projectSetupIdentity({
+      ...project,
+      rallyModel: project.rallyModel ?? "ensemble",
+      // This is the same legacy default used by runProject.
+      sideSwitchEnabled: project.sideSwitchEnabled !== false,
+    }) === identity,
   );
-  const windowIdentity = isFullAnalysisWindow(analysisWindow, info.duration)
-    ? ""
-    : `\u0000${analysisWindow.start}\u0000${analysisWindow.end}`;
-  const modelIdentity = rallyModel === "ensemble" ? "" : `\u0000${rallyModel}`;
-  return `project-${hashText(
-    `${source.name}\u0000${source.size}\u0000${source.lastModified}\u0000${info.duration}${windowIdentity}${modelIdentity}`,
-  )}`;
+  if (existing) return { id: existing.id, existing };
+
+  const baseId = projectId(
+    setup.source, setup.info, setup.analysisWindow, setup.rallyModel, setup,
+  );
+  let id = baseId;
+  // Hashes are only a storage key. A collision or an edited saved configuration
+  // must never overwrite another project's analysis or review.
+  for (let suffix = 2; projects.some((project) => project.id === id); suffix += 1) {
+    id = `${baseId}-${suffix}`;
+  }
+  return { id };
 }
 
 /** Display-only identity: never change filenames, source fingerprints or project IDs. */
-export function projectDisplayName(project: Pick<VolleySpliceProject, "source" | "analysis" | "rallyModel">): string {
+export function projectDisplayName(project: Pick<VolleySpliceProject,
+  "source" | "analysis" | "rallyModel" | "info" | "analysisWindow" | "roi" | "sideSwitchEnabled"
+>): string {
   const model = project.analysis
     ? RALLY_MODEL_OPTIONS.find(option => option.id === project.analysis!.modelId)
     : RALLY_MODEL_OPTIONS.find(option => option.value === (project.rallyModel ?? "ensemble"));
   const label = model?.label ?? (project.analysis?.modelId === PRODUCTION_ENSEMBLE_MODEL_ID
     ? "Legacy model" : "Saved model");
-  return `${project.source.name} - ${label}`;
+  const roi = canonicalProjectRoi(project.roi);
+  const percent = (value: number) => `${Number((value * 100).toFixed(7))}%`;
+  const crop = roi.x === 0 && roi.y === 0 && roi.width === 1 && roi.height === 1
+    ? "Full frame"
+    : `Crop x ${percent(roi.x)}, y ${percent(roi.y)}, ${percent(roi.width)} × ${percent(roi.height)}`;
+  const window = normalizeAnalysisWindow(project.analysisWindow, project.info.duration);
+  const game = window.start === 0 && window.end === project.info.duration
+    ? "Full video" : `Game ${window.start}–${window.end} s`;
+  const switches = `Court switches ${project.sideSwitchEnabled !== false ? "on" : "off"}`;
+  return `${project.source.name} - ${label} · ${crop} · ${game} · ${switches}`;
 }
 
 export function projectAnalysisId(project: VolleySpliceProject): string | null {
@@ -497,7 +573,7 @@ function validAnalysis(
         analysis.productionStateOutputs,
         analysis.times.length,
       )) &&
-    (analysis.sideSwitch === undefined ||
+    (analysis.sideSwitch == null ||
       (analysis.sideSwitch !== null &&
         typeof analysis.sideSwitch === "object")) &&
     (analysis.suppression === undefined ||
@@ -590,6 +666,11 @@ function validProject(value: unknown): value is VolleySpliceProject {
     (project.analysis === null ||
       validAnalysis(project.analysis, importedFeedbackPresent)) &&
     (project.error === null || typeof project.error === "string") &&
+    (project.scoreSpecialistErrors === undefined ||
+      (project.scoreSpecialistErrors !== null &&
+        typeof project.scoreSpecialistErrors === "object" &&
+        Object.entries(project.scoreSpecialistErrors).every(([key, message]) =>
+          (key === "servingSide" || key === "sideSwitch") && typeof message === "string"))) &&
     (!importedFeedbackPresent ||
       validImportedFeedback(
         project.importedFeedback,
@@ -607,7 +688,8 @@ function validProject(value: unknown): value is VolleySpliceProject {
 export function normalizeStoredProject(
   project: VolleySpliceProject,
 ): VolleySpliceProject {
-  if (project.analysis?.servingSide) {
+  if (project.analysis?.servingSide && Array.isArray(project.analysis.servingSide.candidates) &&
+      project.analysis.servingSide.candidates.every((candidate) => candidate && candidate.interval && Array.isArray(candidate.reviewReasons))) {
     const servingSide = retainNeuralServeCandidates(project.analysis.servingSide);
     if (servingSide !== project.analysis.servingSide) {
       project = { ...project, analysis: { ...project.analysis, servingSide } };
@@ -674,6 +756,11 @@ export function normalizeStoredProject(
     normalizedProject.status === "queued" ||
     normalizedProject.status === "analyzing"
   ) {
+    if (normalizedProject.analysis) {
+      // Rally evidence was checkpointed before score specialists. Reopening can
+      // recover missing specialists without decoding the rally model again.
+      return { ...normalizedProject, status: "ready", error: null };
+    }
     return {
       ...normalizedProject,
       status: "waiting",

@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.FileInputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -26,6 +27,12 @@ internal data class ModelFeedbackAnalysis(
 internal object ModelFeedbackExporter {
     private const val SAMPLE_BYTES = 1024 * 1024
     private const val RUNTIME_VARIANT = "native-android-dsp-v1"
+
+    /** Validate and serialize completely before opening a potentially existing destination. */
+    fun writeArchive(buildArchive: () -> String, openDestination: () -> OutputStream) {
+        val archive = buildArchive()
+        openDestination().bufferedWriter().use { it.write(archive) }
+    }
 
     fun loadAnalysis(context: Context, project: NativeProject): ModelFeedbackAnalysis? {
         val requestedTimes = AnalysisEngine.analysisTimes(
@@ -74,6 +81,7 @@ internal object ModelFeedbackExporter {
         sampledFingerprint: String?,
         generatedAt: Instant = Instant.now(),
     ): JSONObject {
+        ExplicitRallyGroups.validate(draft.cuts)
         if (analysis != null) {
             val rows = analysis.timestamps.size
             require(analysis.baseFeatures.size == rows * FeatureSchema.BASE.size)
@@ -133,6 +141,7 @@ internal object ModelFeedbackExporter {
             put("schema", MODEL_FEEDBACK_SCHEMA)
             put("schemaVersion", MODEL_FEEDBACK_SCHEMA_VERSION)
             put("generatedAt", generatedAt.toString())
+            put("editorPreferences", JSONObject().put("renderScoreOnFinalVideo", draft.renderScoreOverlay))
             put("source", JSONObject().apply {
                 put("projectId", project.id)
                 put("analysisId", "${project.id}-${project.modelId}-native-source")
@@ -296,6 +305,7 @@ internal object ModelFeedbackExporter {
                 put("sideSwitch", project.sideSwitch?.let(::sideSwitchFeedback) ?: JSONObject.NULL)
             })
             put("corrections", JSONObject().apply {
+                put("ui", PortableReviewPreferences.export(draft))
                 put("updatedAt", Instant.ofEpochMilli(updatedAtMs).toString())
                 put("beforePaddingSeconds", draft.beforePaddingMs / 1_000.0)
                 put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)
@@ -455,6 +465,7 @@ internal object ModelFeedbackExporter {
     }
 
     private fun correctedRange(cut: EditableCut) = JSONObject().apply {
+        cut.editableGroupId?.let { put("editableGroupId", it) }
         put("id", cut.id)
         put("coreStart", cut.coreStartMs / 1_000.0)
         put("coreEnd", cut.coreEndMs / 1_000.0)

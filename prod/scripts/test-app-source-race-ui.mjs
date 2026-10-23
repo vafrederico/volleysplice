@@ -88,7 +88,7 @@ try {
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, legacy.id);
     window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
     await act(async () => root.render(React.createElement(App)));
-    await waitFor(() => status === "ready" ? document.querySelector(".td-reconnect") : document.body.textContent.includes("Choose original video"));
+    await waitFor(() => status === "ready" ? document.querySelector('.td-reconnect:has(input[type="file"])') : document.body.textContent.includes("Choose original video"));
     const upgraded = { ...legacy, source: { ...source, fingerprint } };
     let raceWrite;
     const replacement = file(changed);
@@ -120,7 +120,7 @@ try {
     assert.deepEqual(persisted.analysis, legacy.analysis);
     assert.deepEqual(persisted.reviewDraft.reviewedCutIds, ["R001"]);
     if (status === "ready" && path === "attach") {
-      assert.ok(document.querySelector(".td-reconnect"));
+      assert.ok(document.querySelector('.td-reconnect:has(input[type="file"])'));
       await act(async () => document.querySelector(".td-stages button:last-child").click());
       assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
     }
@@ -132,7 +132,7 @@ try {
       await act(async () => document.querySelector('[data-tour="source-create"]').click());
     } else await choose(original);
     await waitFor(() => status === "ready"
-      ? document.querySelector(".taste-rally-desk") && !document.querySelector(".td-reconnect")
+      ? document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect:has(input[type="file"])')
       : [...document.querySelectorAll("button")].some(b => b.textContent === "Try again"));
     if (status === "ready") {
       await act(async () => document.querySelector(".td-stages button:last-child").click());
@@ -149,7 +149,7 @@ try {
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, legacy.id);
     window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
     await act(async () => root.render(React.createElement(App)));
-    await waitFor(() => status === "ready" ? document.querySelector(".td-reconnect") : document.body.textContent.includes("Choose original video"));
+    await waitFor(() => status === "ready" ? document.querySelector('.td-reconnect:has(input[type="file"])') : document.body.textContent.includes("Choose original video"));
     const candidate = file(bytes);
     if (path === "setup") {
       await selectNew(); await choose(candidate);
@@ -170,7 +170,7 @@ try {
     codecSupported = false;
     if (path === "setup") await act(async () => document.querySelector('[data-tour="source-create"]').click());
     else await choose(candidate);
-    await waitFor(() => status === "ready" ? document.querySelector(".taste-rally-desk") && !document.querySelector(".td-reconnect")
+    await waitFor(() => status === "ready" ? document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect:has(input[type="file"])')
       : [...document.querySelectorAll("button")].some(b => b.textContent === "Try again"));
     assert.ok(raceWrite, "An unrelated write must actually occur during validation");
     await act(async () => raceWrite);
@@ -266,7 +266,7 @@ try {
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, captured.id);
     window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
     await act(async () => root.render(React.createElement(App)));
-    await waitFor(() => status === "ready" ? document.querySelector(".td-reconnect") : document.body.textContent.includes("Choose original video"));
+    await waitFor(() => status === "ready" ? document.querySelector('.td-reconnect:has(input[type="file"])') : document.body.textContent.includes("Choose original video"));
     const candidate = file(bytes);
     if (path === "setup") {
       await selectNew(); await choose(candidate);

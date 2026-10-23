@@ -45,6 +45,12 @@ jobs:
           npm run test:web
           node --test scripts/browser-distilled-large-contract.test.mjs
           npm --prefix prod run test:review-persistence
+          npm --prefix prod run test:app-export
+          npm --prefix prod run test:score-recovery
+          npm --prefix prod run test:score-source-integration
+          npm --prefix prod run test:side-switch-import
+          npm --prefix prod run test:project-roundtrip
+          npm --prefix prod run test:reconnect-ui
           npm --prefix prod run test:inference-ui
           npm --prefix prod run test:youtube-ui
           # Includes asset preparation, tsc, Vite static export, and verify-build.

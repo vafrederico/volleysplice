@@ -92,7 +92,7 @@ try {
   window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () => root.render(React.createElement(App)));
-  await waitFor(() => document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
   await select("__new__"); await waitFor(() => document.querySelector('input[type="file"][accept^="video/"]'));
   const immutableBefore = await savedProject(project.id);
   await choose(replacement);
@@ -102,14 +102,14 @@ try {
   assert.equal(document.querySelector('select[aria-label="Selected project"]').value, "__new__");
   assert.equal(urls.length, beforeRejectedReuse, "Rejected setup reuse must not link the candidate to the saved project");
   assert.deepEqual(await savedProject(project.id), immutableBefore, "Rejected setup reuse must not overwrite saved identity, analysis or review");
-  await select(project.id); await waitFor(() => document.querySelector(".td-reconnect"));
+  await select(project.id); await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
   await act(async () => document.querySelector(".td-stages button:last-child").click());
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
 
   // The same setup with verified bytes reopens the immutable project, without inference.
   await select("__new__"); await waitFor(() => document.querySelector('input[type="file"][accept^="video/"]'));
   await choose(original); await find();
-  await waitFor(() => document.querySelector('select[aria-label="Current review project"]')?.value === project.id && !document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector('select[aria-label="Current review project"]')?.value === project.id && !document.querySelector('.td-reconnect:has(input[type="file"])'));
   const verifiedSaved = await savedProject(project.id);
   assert.deepEqual(verifiedSaved.analysis, project.analysis);
   assert.deepEqual(verifiedSaved.reviewDraft.reviewedCutIds, ["R001"]);
@@ -123,10 +123,10 @@ try {
   await store.deleteProject(project.id, (await store.getProject(project.id)).instanceId);
   Object.assign(legacy, await store.putProject(legacy, { expectedSource: null }));
   await act(async () => root.render(React.createElement(App)));
-  await waitFor(() => document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
   await select("__new__"); await waitFor(() => document.querySelector('input[type="file"][accept^="video/"]'));
   await choose(original); await find();
-  await waitFor(() => document.querySelector('select[aria-label="Current review project"]')?.value === project.id && !document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector('select[aria-label="Current review project"]')?.value === project.id && !document.querySelector('.td-reconnect:has(input[type="file"])'));
   assert.equal((await savedProject(project.id)).source.fingerprint, undefined);
 
   // Requeue a saved fingerprinted waiting project through real setup. The

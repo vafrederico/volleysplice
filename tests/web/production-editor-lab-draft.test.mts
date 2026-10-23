@@ -6,7 +6,7 @@ import {
   currentLabDecision, draftLabEvents, draftWithLabEvents, initialLabDraft, labSeed, labStorageKey, recordLabDecision,
 } from "../../lib/production-editor-lab-draft.ts";
 import { deriveLabRemovals, restoreLabRemoval, type LabConfiguration, type LabEvent, type ProductionEditorLabTask } from "../../lib/production-editor-lab.ts";
-import { materializeFinalCutIntervals, parseCutDraft, rallySuppressionDecisionKey, type CutDraft } from "../../components/production-lab/editor/lib/cut-draft.ts";
+import { materializeFinalCutIntervals, parseCutDraft, rallySuppressionDecisionKey, splitCutAt, type CutDraft } from "../../components/production-lab/editor/lib/cut-draft.ts";
 import { moveHistory, readEditHistory, recordEdit } from "../../components/production-lab/editor/designs/taste/edit-history.ts";
 
 function fixture() {
@@ -22,6 +22,32 @@ function fixture() {
     signals: { times: [0], live: [0], serve: [0], end: [0], keep: [0] }, serving: [], provenance: { labelBlind: true, sourceHashes: {} } };
   return { task, configuration, events };
 }
+
+test("lab boundary tools preserve explicit membership on retained clip identities", () => {
+  const { task, configuration } = fixture();
+  const seed = labSeed(task, configuration);
+  const original = initialLabDraft(task, configuration);
+  const result = splitCutAt(original, "P", 15, 5, 60);
+  assert.ok(result);
+  const split = result.draft;
+  const groups = split.cuts.map(cut => [cut.id, cut.editableGroupId]);
+  const unchanged = draftWithLabEvents(split, draftLabEvents(split, configuration));
+  assert.deepEqual(JSON.parse(JSON.stringify(unchanged.cuts)), JSON.parse(JSON.stringify(split.cuts)),
+    "a no-op lab-event roundtrip must retain explicit groups");
+  const events = draftLabEvents(split, configuration).map(event => event.id === "P" ? { ...event, start: 11 } : event);
+  events.push({ id: "new-proposal", parentId: "new-proposal", start: 45, end: 48 });
+  const changed = draftWithLabEvents(split, events);
+  assert.deepEqual(changed.cuts.filter(cut => cut.id !== "new-proposal").map(cut => [cut.id, cut.editableGroupId]), groups);
+  assert.equal(changed.cuts.find(cut => cut.id === "new-proposal")!.editableGroupId, undefined,
+    "unrelated replacement identities must not inherit membership");
+  const persisted = parseCutDraft(JSON.stringify(changed), seed)!;
+  assert.ok(persisted);
+  assert.deepEqual(JSON.parse(JSON.stringify(persisted.cuts)), JSON.parse(JSON.stringify(changed.cuts)));
+  const history = recordEdit({ past: [], present: split, future: [] }, changed);
+  const undo = moveHistory(history, "undo");
+  assert.deepEqual(undo.present.cuts, split.cuts);
+  assert.deepEqual(moveHistory(undo, "redo").present.cuts, changed.cuts);
+});
 
 test("human reference preserves exact markers, replay decisions and ignored spans without resetting model drafts", () => {
   const { task, configuration } = fixture();

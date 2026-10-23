@@ -17,7 +17,7 @@ class EditorDraftStoreTest {
     private fun store() = EditorDraftStore(temporary.root, seed)
 
     private fun goodBytes(): ByteArray {
-        store().save(EditorMath.newDraft(seed).copy(beforePaddingMs = 1_000, playbackRate = 2f))
+        store().save(EditorMath.newDraft(seed).copy(beforePaddingMs = 1_000, playbackRate = 2.0))
         return target.readBytes()
     }
 
@@ -41,7 +41,7 @@ class EditorDraftStoreTest {
         goodBytes()
         val restored = (store().load() as EditorDraftLoadResult.Restored).draft
         assertEquals(1_000L, restored.beforePaddingMs)
-        assertEquals(2f, restored.playbackRate)
+        assertEquals(2.0, restored.playbackRate, 0.0)
         store().save(restored.copy(beforePaddingMs = 500))
         assertEquals(500L, (store().load() as EditorDraftLoadResult.Restored).draft.beforePaddingMs)
     }

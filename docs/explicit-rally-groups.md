@@ -27,6 +27,17 @@ is one interval. The invalid values must fail import, including explicit null.
   have a nonblank ID of at most 256 UTF-16 code units. Cut IDs must be unique.
   Existing range origins remain strictly `cached-label` or `manual`; Android maps
   `cached-label` to `INFERRED`. Mixed-origin members of one explicit group are valid.
+  Web draft parsing requires uniqueness across **all cuts and ignored intervals**.
+  Split allocation and preflight use that complete namespace, including unassigned
+  and excluded cuts, and skip occupied numbered IDs without a timestamp fallback.
+  Score-marker IDs (including their removal tombstones) have their own namespace;
+  they and opaque group tokens do not reserve cut/ignored-range IDs.
+  Web split actions check the resulting member count and participating IDs before
+  changing working state, history or persistence, and explain a rejected split.
+  Splitting an assigned cut adds one member; an unassigned cut adds two. Excluded
+  members still count. Unassigned legacy cuts may exceed these bounds until an
+  action would assign them explicit identity; their IDs must never be shortened
+  or renumbered to make a split fit.
 - Same nonempty group token means the same editable group, irrespective of current
   inclusion, padding, trimmed position, confidence, review state, or score markers.
   Different tokens, or explicit versus absent tokens, must never auto-merge.

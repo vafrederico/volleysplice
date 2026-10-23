@@ -73,20 +73,20 @@ try {
   window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, first.id);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () => root.render(React.createElement(App)));
-  await waitFor(() => document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
   await click(".td-stages button:last-child");
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
   await waitFor(async () => (await store.listProjects()).find(p => p.id === first.id).reviewDraft);
   const saved = JSON.stringify((await store.listProjects()).find(p => p.id === first.id).reviewDraft);
   assert.equal(store.sourceMatchesFile(first.source, replacement), true);
   await attach(replacement);
-  await waitFor(() => document.querySelector(".td-reconnect")?.textContent.includes("does not match"));
+  await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])')?.textContent.includes("does not match"));
   assert.equal(linkedFiles.length, 0, "Metadata collision must never link the wrong bytes");
   assert.equal(JSON.stringify((await store.listProjects()).find(p => p.id === first.id).reviewDraft), saved);
   const unreadable = new File(["original"], original.name, { type: original.type, lastModified: original.lastModified });
   Object.defineProperty(unreadable, "slice", { value: () => { throw new Error("Synthetic read failure"); } });
   await attach(unreadable);
-  await waitFor(() => document.querySelector(".td-reconnect")?.textContent.includes("Could not reconnect"));
+  await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])')?.textContent.includes("Could not reconnect"));
   assert.equal(linkedFiles.length, 0);
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
   assert.equal(JSON.stringify((await store.listProjects()).find(p => p.id === first.id).reviewDraft), saved);
@@ -100,7 +100,7 @@ try {
     return original.slice(...args);
   } });
   await attach(oneRead);
-  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect:has(input[type="file"])'));
   assert.equal(reads, 1, "App must authoritatively validate once before the hook links a source");
   await click(".td-stages button:last-child");
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Save MP4").disabled, false);
@@ -110,19 +110,19 @@ try {
   // still connects by its persisted fingerprint and leaves analysis/review intact.
   await act(async () => root.render(null));
   await act(async () => root.render(React.createElement(App)));
-  await waitFor(() => document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
   const transferred = new File(["original"], "synthetic-transferred.mp4", { type: "video/mp4", lastModified: 999 });
   await attach(transferred);
-  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect:has(input[type="file"])'));
   assert.equal((await store.listProjects()).find(p => p.id === first.id).source.fingerprint, fingerprint);
   assert.deepEqual((await store.listProjects()).find(p => p.id === first.id).analysis, first.analysis);
 
-  await select(legacy.id); await waitFor(() => document.querySelector(".td-reconnect"));
+  await select(legacy.id); await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
   const beforeLegacy = linkedFiles.length;
   await attach(new File(["original"], legacy.source.name, { type: "video/mp4", lastModified: 999 }));
-  assert.ok(document.querySelector(".td-reconnect")); assert.equal(linkedFiles.length, beforeLegacy);
+  assert.ok(document.querySelector('.td-reconnect:has(input[type="file"])')); assert.equal(linkedFiles.length, beforeLegacy);
   await attach(new File(["original"], legacy.source.name, { type: "video/mp4", lastModified: 100 }));
-  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector(".td-reconnect"));
+  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect:has(input[type="file"])'));
   console.log("App reconnect: fingerprint beats metadata, wrong/unreadable bytes remain disconnected, exact/transfer/legacy matches reconnect and enable MP4.");
 } finally {
   await act(async () => root.unmount()); await server.close(); dom.window.close();
