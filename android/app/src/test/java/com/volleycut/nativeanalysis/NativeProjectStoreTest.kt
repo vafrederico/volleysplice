@@ -469,6 +469,33 @@ class NativeProjectStoreTest {
     }
 
     @Test
+    fun absentAudioMimeMatchesAcrossSavedAndImportedRepresentations() {
+        for (savedMime in listOf(null, "")) {
+            val media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", savedMime)
+            val project = readyProject().copy(media = media)
+            val persisted = requireNotNull(NativeProjectStore.decode(NativeProjectStore.encode(project)))
+            for (original in listOf(project, persisted)) {
+                for (replacementMime in listOf(null, "")) {
+                    val replacementMedia = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", replacementMime)
+                    assertEquals(null, NativeProjectStore.replacementMismatch(original, source, replacementMedia))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun absentAudioDoesNotMatchAddedRemovedOrDifferentAudioCodecs() {
+        val mimes = listOf(null, "", "audio/mp4a-latm", "audio/opus")
+        for (savedMime in mimes) for (replacementMime in mimes) {
+            if (savedMime.orEmpty() == replacementMime.orEmpty()) continue
+            val project = readyProject().copy(media = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", savedMime))
+            val replacementMedia = AnalysisTypes.MediaInfo(12.5, 1920, 1080, 0, "video/avc", replacementMime)
+            assertEquals("That file has a different audio track from the original recording.",
+                NativeProjectStore.replacementMismatch(project, source, replacementMedia))
+        }
+    }
+
+    @Test
     fun replacementWithDifferentContentIdentityIsRejected() {
         val project = readyProject()
 
