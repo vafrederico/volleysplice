@@ -100,11 +100,11 @@ class ExportServiceTracksInstrumentedTest {
             instrumentation.runOnMainSync {
                 running = runningService()
                 installResolver(running, ContentResolver.wrap(provider))
-                running.onStartCommand(fullExportRequest(context, blockedId, source, Uri.fromFile(blockedOutput)), 0, 1)
+                running.onStartCommand(twoCutExportRequest(context, blockedId, source, Uri.fromFile(blockedOutput)), 0, 1)
             }
             assertTrue("Blocked source read did not start", entered.await(5, TimeUnit.SECONDS))
             instrumentation.runOnMainSync {
-                running.onStartCommand(fullExportRequest(context, nextId, Uri.fromFile(input), Uri.fromFile(nextOutput)), 0, 2)
+                running.onStartCommand(twoCutExportRequest(context, nextId, Uri.fromFile(input), Uri.fromFile(nextOutput)), 0, 2)
                 assertEquals("queued", ExportService.statusForProject(nextId)?.status)
                 running.onStartCommand(Intent(ExportService.ACTION_CANCEL).putExtra(ExportService.EXTRA_JOB_ID, blockedId), 0, 3)
                 assertEquals("cancelled", ExportService.statusForProject(blockedId)?.status)
@@ -251,15 +251,17 @@ class ExportServiceTracksInstrumentedTest {
             })
     }
 
-    private fun fullExportRequest(context: Context, id: String, source: Uri, target: Uri) = Intent(context, ExportService::class.java).apply {
+    private fun twoCutExportRequest(context: Context, id: String, source: Uri, target: Uri) = Intent(context, ExportService::class.java).apply {
         putExtra(ExportService.EXTRA_JOB_ID, id)
         putExtra(ExportService.EXTRA_PROJECT_ID, id)
         putExtra(ExportService.EXTRA_SOURCE_URI, source.toString())
         putExtra(ExportService.EXTRA_SOURCE_NAME, "source-$id.mp4")
         putExtra(ExportService.EXTRA_SOURCE_DURATION_MS, 1_000L)
         putExtra(ExportService.EXTRA_DESTINATION_URI, target.toString())
-        putExtra(ExportService.EXTRA_INTERVAL_STARTS, longArrayOf(0))
-        putExtra(ExportService.EXTRA_INTERVAL_ENDS, longArrayOf(1_000))
+        // Use the same proven cut sequence as the export cases; a full-clip transmux
+        // of this untagged fixture can independently fail the production color guard.
+        putExtra(ExportService.EXTRA_INTERVAL_STARTS, longArrayOf(0, 600))
+        putExtra(ExportService.EXTRA_INTERVAL_ENDS, longArrayOf(400, 1_000))
     }
 
     private fun export(asset: String, hasAudio: Boolean, scores: Boolean) {
