@@ -39,7 +39,9 @@ import java.io.File
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
+import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicInteger
 
 internal data class ExportJobStatus(
@@ -78,7 +80,7 @@ class ExportService : Service() {
     private var outputWriteMode = "uninitialized"
     private var wakeLock: PowerManager.WakeLock? = null
     private var foreground = false
-    private val sourceWorker = Executors.newSingleThreadExecutor { task -> Thread(task, "VolleySpliceExportSource") }
+    private var sourcePreparation: FutureTask<Unit>? = null
     private val publicationWorker = Executors.newSingleThreadExecutor { task -> Thread(task, "VolleySpliceExportPublication") }
     private var publication: ExportFilePublication? = null
     @Volatile private var destroyed = false
@@ -160,17 +162,35 @@ class ExportService : Service() {
             return
         }
         runCatching {
-            sourceWorker.execute {
-                val sourceInfo = runCatching { ExportColorPolicy.read(this, job.source) to sourceHasAudio(job.source) }
-                handler.post {
+            lateinit var preparation: FutureTask<Unit>
+            preparation = FutureTask {
+                val sourceInfo = runCatching {
+                    if (preparation.isCancelled) throw CancellationException("Export preparation cancelled")
+                    val colorPolicy = ExportColorPolicy.read(this, job.source)
+                    // A provider may ignore interruption. Do not open another extractor after it returns.
+                    if (preparation.isCancelled) throw CancellationException("Export preparation cancelled")
+                    colorPolicy to sourceHasAudio(job.source)
+                }
+                if (!preparation.isCancelled && !destroyed && !timedOut) handler.post {
                     // A cancelled/timed-out job must not start encoding or fail its successor.
-                    if (destroyed || timedOut || currentJob !== job) return@post
+                    if (destroyed || timedOut || currentJob !== job || sourcePreparation !== preparation) return@post
+                    sourcePreparation = null
                     sourceInfo.mapCatching { (colorPolicy, hasAudio) ->
                         startTransformer(job.source, job.sourceDurationMs, job.intervals, job.scoreSnapshot, colorPolicy, hasAudio)
                     }.onFailure(::failToStartExport)
                 }
+                Unit
             }
+            sourcePreparation = preparation
+            // Each job owns its thread: an unresponsive cancelled provider cannot starve the next job.
+            Thread(preparation, "VolleySpliceExportSource").start()
         }.onFailure(::failToStartExport)
+    }
+
+    private fun cancelSourcePreparation() {
+        val preparation = sourcePreparation
+        sourcePreparation = null
+        preparation?.cancel(true)
     }
 
     private fun failToStartExport(error: Throwable) {
@@ -388,6 +408,7 @@ class ExportService : Service() {
         cleanDestinationOnFailure: Boolean = true,
     ) {
         val finishedJob = currentJob ?: return
+        cancelSourcePreparation()
         handler.removeCallbacks(progressPoll)
         val metrics = resultJson(status, detail, result, error)
         Log.i(TAG, metrics.toString())
@@ -600,7 +621,7 @@ class ExportService : Service() {
 
     override fun onDestroy() {
         destroyed = true
-        sourceWorker.shutdownNow()
+        cancelSourcePreparation()
         val publishing = publication != null
         publication?.cancel()
         publicationWorker.shutdown()
@@ -632,6 +653,7 @@ class ExportService : Service() {
 
     override fun onTimeout(startId: Int, fgsType: Int) {
         timedOut = true
+        cancelSourcePreparation()
         val publishing = publication != null
         publication?.cancel()
         val affectedJobs = buildList {
