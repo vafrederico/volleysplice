@@ -325,7 +325,9 @@ public enum ProjectArchive {
                 "coreEnd": .number(Double(cut.coreEndMs) / 1_000), "keepStart": .number(Double(cut.keepStartMs) / 1_000),
                 "keepEnd": .number(Double(cut.keepEndMs) / 1_000), "confidence": .number(Double(cut.confidence)),
                 "included": .bool(cut.included), "origin": .string(cut.origin.rawValue)])
-            if let agreement = cut.agreement { value["agreement"] = .string(agreement) }; return value
+            if let agreement = cut.agreement { value["agreement"] = .string(agreement) }
+            if let group = cut.editableGroupId { value["editableGroupId"] = .string(group) }
+            return value
         })
         corrections["ignoredIntervals"] = .array(draft.ignoredIntervals.map { .object(["id": .string($0.id),
             "start": .number(Double($0.startMs) / 1_000), "end": .number(Double($0.endMs) / 1_000), "reason": .string($0.reason)]) })
@@ -413,7 +415,8 @@ public enum ProjectArchive {
             guard let id = cut["id"]?.string, let origin = cut["origin"]?.string.flatMap(CutOrigin.init(rawValue:)), let included = cut["included"]?.bool else { throw ProjectError.invalid("Invalid corrected range identity or origin") }
             return EditableCut(id: id, coreStartMs: try ms(cut["coreStart"], "core start"), coreEndMs: try ms(cut["coreEnd"], "core end"),
                                keepStartMs: try ms(cut["keepStart"], "keep start"), keepEndMs: try ms(cut["keepEnd"], "keep end"),
-                               confidence: Float(try number(cut["confidence"], "confidence")), included: included, origin: origin, agreement: cut["agreement"]?.string)
+                               confidence: Float(try number(cut["confidence"], "confidence")), included: included, origin: origin,
+                               agreement: cut["agreement"]?.string, editableGroupId: try ExplicitRallyGroups.decode(cut["editableGroupId"]))
         }
         draft.beforePaddingMs = try ms(corrections["beforePaddingSeconds"] ?? .number(2), "before padding")
         draft.afterPaddingMs = try ms(corrections["afterPaddingSeconds"] ?? .number(2), "after padding")

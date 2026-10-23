@@ -257,6 +257,9 @@ function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {
     ...(feedback.initialInference.servingSide
       ? { servingSide: servingSideOutput(feedback) }
       : {}),
+    ...(feedback.initialInference.sideSwitch
+      ? { sideSwitch: feedback.initialInference.sideSwitch }
+      : {}),
     ...(suppression
       ? {
           suppression: {
@@ -404,6 +407,7 @@ export function importModelFeedbackProject(
     info: mediaInfo(feedback),
     analysisWindow: { ...feedback.source.gameWindow },
     roi: { ...feedback.source.featureRoi },
+    sideSwitchEnabled: feedback.source.generateSideSwitchMarkers,
     status: "ready",
     analysis,
     error: null,

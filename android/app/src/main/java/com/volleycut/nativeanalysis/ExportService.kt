@@ -37,6 +37,7 @@ import java.io.File
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 internal data class ExportJobStatus(
@@ -75,6 +76,9 @@ class ExportService : Service() {
     private var outputWriteMode = "uninitialized"
     private var wakeLock: PowerManager.WakeLock? = null
     private var foreground = false
+    private val publicationWorker = Executors.newSingleThreadExecutor { task -> Thread(task, "VolleySpliceExportPublication") }
+    private var publication: ExportFilePublication? = null
+    @Volatile private var destroyed = false
     @Volatile private var timedOut = false
 
     override fun onCreate() {
@@ -147,6 +151,11 @@ class ExportService : Service() {
         if (wakeLock?.isHeld != true) wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
         broadcast("running", 0, "Preparing hardware encoder", null)
         publishQueuedStatuses()
+        if (ExportPublicationDestinations.isInUse(job.destination.toString())) {
+            finishExport("failed", "The previous file save is still stopping. Retry this destination after it finishes.",
+                null, null, cleanDestinationOnFailure = false)
+            return
+        }
         runCatching { startTransformer(job.source, job.sourceDurationMs, job.intervals, job.scoreSnapshot) }
             .onFailure { error ->
                 Log.e(TAG, "Could not start native export", error)
@@ -239,7 +248,7 @@ class ExportService : Service() {
                     exportResult: ExportResult,
                     exportException: ExportException,
                 ) {
-                    if (currentJob?.id != jobId) return
+                    if (currentJob?.id != jobId || publication != null) return
                     Log.e(TAG, "Native export failed", exportException)
                     finishExport("failed", exportException.message ?: "Export failed", exportResult, exportException)
                 }
@@ -256,15 +265,15 @@ class ExportService : Service() {
             val state = active.getProgress(holder)
             if (state != Transformer.PROGRESS_STATE_NOT_STARTED) {
                 val progress = if (state == Transformer.PROGRESS_STATE_AVAILABLE) holder.progress else -1
-                if (progress >= 0) lastProgress = progress
+                if (progress >= 0) lastProgress = if (outputWriteMode == "temporary_then_copy") progress * 90 / 100 else progress
                 val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
                 val processedMs = if (progress > 0) outputDurationMs * progress / 100 else 0
                 val realtime = if (elapsedMs > 0) processedMs.toDouble() / elapsedMs else 0.0
                 val detail = if (progress >= 0) {
                     String.format(Locale.US, "%d%% · %.2fx real time", progress, realtime)
                 } else "Encoding · ${compactTime(elapsedMs)}"
-                updateNotification(progress.coerceAtLeast(0), detail)
-                broadcast("running", progress, detail, null)
+                updateNotification(currentProgress(), detail)
+                broadcast("running", if (progress >= 0) currentProgress() else -1, detail, null)
             }
             handler.postDelayed(this, 500)
         }
@@ -279,25 +288,58 @@ class ExportService : Service() {
             finishExport("complete", "Saved $displayName", result, null, displayName)
             return
         }
-        publishTemporaryOutput(result)
+        publishTemporaryOutput(jobId, result)
     }
 
-    private fun publishTemporaryOutput(result: ExportResult) {
+    private fun publishTemporaryOutput(jobId: String, result: ExportResult) {
         handler.removeCallbacks(progressPoll)
-        updateNotification(100, "Finalizing file")
-        broadcast("running", 100, "Finalizing file", null)
+        transformer = null
+        lastProgress = 90
+        updateNotification(90, "Saving encoded file")
+        broadcast("running", 90, "Saving encoded file", null)
         val file = temporaryFile ?: return finishExport("failed", "Temporary export missing", result, null)
         val target = destination ?: return finishExport("failed", "Destination missing", result, null)
-        runCatching {
-            contentResolver.openOutputStream(target, "w")!!.use { output ->
-                file.inputStream().use { input -> input.copyTo(output, 4 * 1_024 * 1_024) }
-            }
-        }.onSuccess {
-            val displayName = destinationDisplayName(target)
-            finishExport("complete", "Saved $displayName", result, null, displayName)
-        }.onFailure { error ->
-            Log.e(TAG, "Could not publish export", error)
-            finishExport("failed", error.message ?: "Could not save export", result, error)
+        val fallbackName = sourceName.substringBeforeLast('.', sourceName).ifBlank { "VolleySplice" } + "-final.mp4"
+        val owner = Any()
+        val targetKey = target.toString()
+        if (!ExportPublicationDestinations.claim(targetKey, owner)) {
+            finishExport("failed", "This destination is still being saved by another export. Retry after it finishes.",
+                result, null, cleanDestinationOnFailure = false)
+            return
+        }
+        lateinit var task: ExportFilePublication
+        task = ExportFilePublication(
+            worker = publicationWorker,
+            dispatch = { callback -> if (!destroyed) handler.post(callback) },
+            openInput = { file.inputStream() },
+            openOutput = { checkNotNull(contentResolver.openOutputStream(target, "w")) { "Document provider returned no output stream" } },
+            totalBytes = file.length(),
+            displayName = { destinationDisplayName(target, fallbackName) },
+            removeTemporary = { file.delete(); Unit },
+            removeIncomplete = { deleteIncompleteDestination(target) },
+            isCurrent = { !destroyed && !timedOut && currentJob?.id == jobId && publication === task },
+            onProgress = { bytes, total ->
+                lastProgress = 90 + (bytes.coerceAtMost(total) * 9 / total).toInt()
+                val detail = "Saving file · ${bytes / 1_024 / 1_024} / ${total / 1_024 / 1_024} MiB"
+                updateNotification(lastProgress, detail)
+                broadcast("running", lastProgress, detail, null)
+            },
+            onSuccess = { name ->
+                ExportPublicationDestinations.release(targetKey, owner)
+                finishExport("complete", "Saved $name", result, null, name)
+            },
+            onFailure = { error, cancelled ->
+                if (!cancelled) Log.e(TAG, "Could not publish export", error)
+                finishExport(if (cancelled) "cancelled" else "failed",
+                    if (cancelled) "Export cancelled" else error.message ?: "Could not save export",
+                    result, if (cancelled) null else error, cleanDestinationOnFailure = false)
+            },
+            onSettled = { ExportPublicationDestinations.release(targetKey, owner) },
+        )
+        publication = task
+        runCatching { task.start() }.onFailure { error ->
+            ExportPublicationDestinations.release(targetKey, owner)
+            finishExport("failed", error.message ?: "Could not start file save", result, error, cleanDestinationOnFailure = false)
         }
     }
 
@@ -307,15 +349,17 @@ class ExportService : Service() {
         result: ExportResult?,
         error: Throwable?,
         savedDisplayName: String? = null,
+        cleanDestinationOnFailure: Boolean = true,
     ) {
         val finishedJob = currentJob ?: return
         handler.removeCallbacks(progressPoll)
         val metrics = resultJson(status, detail, result, error)
         Log.i(TAG, metrics.toString())
         transformer = null
+        publication = null
         temporaryFile?.delete()
         temporaryFile = null
-        if (status != "complete") deleteIncompleteDestination()
+        if (status != "complete" && cleanDestinationOnFailure) deleteIncompleteDestination()
         currentJob = null
         if (status == "complete") {
             NativeProjectStore.recordSuccessfulExport(
@@ -338,7 +382,7 @@ class ExportService : Service() {
         } else startNextExport()
     }
 
-    private fun destinationDisplayName(target: Uri): String {
+    private fun destinationDisplayName(target: Uri, fallback: String? = null): String {
         val queriedName = runCatching {
             contentResolver.query(
                 target,
@@ -350,7 +394,7 @@ class ExportService : Service() {
                 if (!cursor.moveToFirst()) null else cursor.getString(0)
             }
         }.getOrNull()?.takeIf(String::isNotBlank)
-        return queriedName ?: sourceName.substringBeforeLast('.', sourceName)
+        return queriedName ?: fallback ?: sourceName.substringBeforeLast('.', sourceName)
             .ifBlank { "VolleySplice" }
             .let { "$it-final.mp4" }
     }
@@ -452,13 +496,20 @@ class ExportService : Service() {
     private fun cancelExport(requestedJobId: String?) {
         val active = currentJob
         if (active != null && (requestedJobId == null || requestedJobId == active.id)) {
+            publication?.let {
+                it.cancel()
+                updateNotification(currentProgress(), "Cancelling file save")
+                broadcast("running", currentProgress(), "Cancelling file save", null)
+                return
+            }
             transformer?.cancel()
             finishExport("cancelled", "Export cancelled", null, null)
             return
         }
         val queued = queue.firstOrNull { it.id == requestedJobId } ?: return
         queue.remove(queued)
-        deleteIncompleteDestination(queued.destination)
+        // Queued jobs have never opened their destination. It may already
+        // contain a user's file or belong to a still-running publication.
         broadcast(queued, "cancelled", 0, "Queued export cancelled", null)
         publishQueuedStatuses()
         currentJob?.let { updateNotification(currentProgress(), activeNotificationDetail()) }
@@ -512,6 +563,10 @@ class ExportService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        val publishing = publication != null
+        publication?.cancel()
+        publicationWorker.shutdown()
         val abandoned = buildList {
             currentJob?.let(::add)
             addAll(queue)
@@ -519,14 +574,14 @@ class ExportService : Service() {
         val activeId = currentJob?.id
         handler.removeCallbacksAndMessages(null)
         transformer?.cancel()
-        temporaryFile?.delete()
+        if (!publishing) temporaryFile?.delete()
         transformer = null
         currentJob = null
         queue.clear()
         abandoned.forEach { job ->
             // A queued job has not opened its destination and must not delete
             // a pre-existing document selected by the user.
-            if (job.id == activeId) deleteIncompleteDestination(job.destination)
+            if (job.id == activeId && !publishing) deleteIncompleteDestination(job.destination)
             broadcast(job, "cancelled", 0, "Export service stopped", null)
         }
         pendingJobs.set(0)
@@ -540,6 +595,8 @@ class ExportService : Service() {
 
     override fun onTimeout(startId: Int, fgsType: Int) {
         timedOut = true
+        val publishing = publication != null
+        publication?.cancel()
         val affectedJobs = buildList {
             currentJob?.let(::add)
             addAll(queue)
@@ -548,7 +605,7 @@ class ExportService : Service() {
         val detail = "Android stopped video export after its background time limit. Queue the export again when the app is ready."
         handler.removeCallbacks(progressPoll)
         transformer?.cancel()
-        temporaryFile?.delete()
+        if (!publishing) temporaryFile?.delete()
         temporaryFile = null
         transformer = null
         currentJob = null
@@ -557,7 +614,7 @@ class ExportService : Service() {
         affectedJobs.forEach { job ->
             // Queued jobs have not opened their destination yet; only remove
             // the active job's partially written document.
-            if (job.id == active?.id) deleteIncompleteDestination(job.destination)
+            if (job.id == active?.id && !publishing) deleteIncompleteDestination(job.destination)
             broadcast(job, "failed", 0, detail, null)
         }
         pendingJobs.set(0)

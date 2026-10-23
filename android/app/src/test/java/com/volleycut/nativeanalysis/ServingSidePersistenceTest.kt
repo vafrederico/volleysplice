@@ -205,7 +205,8 @@ class ServingSidePersistenceTest {
 
         val imported = ModelFeedbackImporter.parse(bundle.toString(), 1234)
         assertEquals(ProjectStatus.READY, imported.project.status)
-        assertTrue(imported.project.sideSwitchEnabled)
+        assertEquals(project.sideSwitchEnabled, imported.project.sideSwitchEnabled)
+        assertEquals(project.sideSwitch, imported.project.sideSwitch)
         assertEquals(
             "sampled-sha256-v1:" + "a".repeat(64),
             imported.project.source.sampledFingerprint,

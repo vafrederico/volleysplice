@@ -8,17 +8,52 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-internal class EditorDraftStore(context: Context, private val seed: EditorSeed) {
-    private val directory = File(context.filesDir, "editor-drafts")
-    private val target = File(directory, "${seed.sourceRevision}.json")
+internal sealed interface EditorDraftLoadResult {
+    data object Missing : EditorDraftLoadResult
+    data class Restored(val draft: EditorDraft) : EditorDraftLoadResult
+    data object Unreadable : EditorDraftLoadResult
+}
 
-    fun load(): EditorDraft? = runCatching {
-        if (!target.isFile) return null
-        decode(JSONObject(target.readText()))?.takeIf { it.sourceRevision == seed.sourceRevision }
-    }.onFailure { Log.w(TAG, "Could not restore editor draft", it) }.getOrNull()
+internal class UnreadableEditorDraftException : IllegalStateException(
+    "Saved edits could not be restored. They have been preserved. Recover or reset the review before replacing them.",
+)
+
+internal class EditorDraftSaveException(cause: Throwable) : java.io.IOException(
+    "Edits could not be saved. Free device storage and retry, or export a project backup before leaving this review.", cause,
+)
+
+internal class EditorDraftStore(filesDir: File, private val seed: EditorSeed) {
+    constructor(context: Context, seed: EditorSeed) : this(context.filesDir, seed)
+
+    private val directory = File(filesDir, "editor-drafts")
+    private val target = File(directory, "${seed.sourceRevision}.json")
+    // Include app storage: debug/release and test stores may share source hashes.
+    // Normalizing this identity does no disk IO.
+    val sessionKey: String = target.absoluteFile.normalize().path
+
+    @Synchronized
+    fun load(): EditorDraftLoadResult = try {
+        // notExists fails closed when existence cannot be determined (for example,
+        // a permission error). A non-directory parent is not a missing draft.
+        if (directory.exists() && !directory.isDirectory) {
+            EditorDraftLoadResult.Unreadable
+        } else if (Files.notExists(target.toPath())) {
+            EditorDraftLoadResult.Missing
+        } else {
+            decode(JSONObject(target.readText()))
+                ?.takeIf { it.sourceRevision == seed.sourceRevision }
+                ?.let(EditorDraftLoadResult::Restored)
+                ?: EditorDraftLoadResult.Unreadable
+        }
+    } catch (_: Exception) {
+        EditorDraftLoadResult.Unreadable
+    }
 
     @Synchronized
     fun save(draft: EditorDraft) {
+        // Check on disk even for a new store instance (imports and relinking also
+        // write drafts). Only an explicit reset may discard an unreadable record.
+        if (load() == EditorDraftLoadResult.Unreadable) throw UnreadableEditorDraftException()
         runCatching {
             directory.mkdirs()
             val temporary = File(directory, "${target.name}.tmp")
@@ -32,11 +67,21 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
             } catch (_: Exception) {
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
-        }.onFailure { Log.e(TAG, "Could not persist editor draft", it) }
+        }.onFailure { throw EditorDraftSaveException(it) }
     }
 
     fun clear() {
         if (target.exists() && !target.delete()) Log.w(TAG, "Could not delete ${target.name}")
+    }
+
+    /** Called only after the user confirms discarding the unreadable review. */
+    @Synchronized
+    fun resetUnreadable(): EditorDraftLoadResult = try {
+        // A retry may now succeed; do not discard edits that can be restored.
+        if (load() == EditorDraftLoadResult.Unreadable) Files.deleteIfExists(target.toPath())
+        load()
+    } catch (_: Exception) {
+        EditorDraftLoadResult.Unreadable
     }
 
     private fun encode(draft: EditorDraft) = JSONObject().apply {
@@ -228,8 +273,18 @@ internal class EditorDraftStore(context: Context, private val seed: EditorSeed) 
         private const val TAG = "VolleySpliceEditor"
 
         fun relink(context: Context, oldSeed: EditorSeed, newSeed: EditorSeed) {
-            val oldDraft = EditorDraftStore(context, oldSeed).load() ?: return
-            EditorDraftStore(context, newSeed).save(oldDraft.copy(
+            relink(context.filesDir, oldSeed, newSeed)
+        }
+
+        internal fun relink(filesDir: File, oldSeed: EditorSeed, newSeed: EditorSeed) {
+            val oldDraft = when (val restored = EditorDraftStore(filesDir, oldSeed).load()) {
+                EditorDraftLoadResult.Missing -> return
+                is EditorDraftLoadResult.Restored -> restored.draft
+                EditorDraftLoadResult.Unreadable -> error(
+                    "Saved edits could not be restored. They have been preserved. Recover or reset the review before re-linking the video.",
+                )
+            }
+            EditorDraftStore(filesDir, newSeed).save(oldDraft.copy(
                 sourceRevision = newSeed.sourceRevision,
                 updatedAtMs = System.currentTimeMillis(),
             ))

@@ -63,6 +63,7 @@ with tarfile.open(args.output, 'w:gz') as archive:
     archive.add(root.parent / 'tests/fixtures/on-device-y9-golden.json', arcname='Fixtures/golden.json')
     archive.add(root.parent / 'tests/fixtures/suppression-policy-golden.json', arcname='Fixtures/suppression-policy-golden.json')
     archive.add(root.parent / 'tests/fixtures/portable-review-preferences.json', arcname='Fixtures/portable-review-preferences.json')
+    archive.add(root.parent / 'tests/fixtures/explicit-rally-groups.json', arcname='Fixtures/explicit-rally-groups.json')
     # Exact tiny media fixtures from Android's rotation/export instrumentation.
     fixture_root = root.parent / 'android/app/src/androidTest/assets'
     for name in ('overlay-fixture', 'overlay-fixture-90', 'overlay-fixture-180', 'overlay-fixture-270'):

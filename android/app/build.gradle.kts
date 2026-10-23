@@ -88,6 +88,7 @@ android {
 
     sourceSets.getByName("main").java.srcDir("../video-common/src/main/java")
     sourceSets.getByName("main").java.srcDir("../neural-runtime/src/main/java")
+    sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
     sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("../ios/Tests/Fixtures"))
 
     buildFeatures {

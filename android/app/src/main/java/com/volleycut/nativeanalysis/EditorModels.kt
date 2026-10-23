@@ -63,6 +63,7 @@ internal data class EditorSeed(
     val sideSwitch: SideSwitchOutput? = null,
     val sideSwitchError: String? = null,
     val sideSwitchEnabled: Boolean = false,
+    val feedbackWarnings: List<String> = emptyList(),
     val scoreTrackingInitiallyEnabled: Boolean = false,
     val suppression: AnalysisTypes.SuppressionAnalysis? = null,
     /** Null for legacy recovery records that did not retain extraction geometry. */
@@ -70,9 +71,12 @@ internal data class EditorSeed(
     val audioExtractorVersion: String = "legacy",
     val visualExtractorVersion: String = "legacy",
     val rallyModelId: String = FeatureSchema.MODEL_ID,
+    /** Imported reviews stay independent when re-linked to the same source video. */
+    val draftNamespace: String? = null,
 ) {
     val sourceRevision: String by lazy {
         val canonical = buildString {
+            draftNamespace?.let { append("draft=").append(it).append('|') }
             append(sourceUri).append('|').append(displayName).append('|').append(durationMs).append('|')
             append(width).append('x').append(height).append('@').append(rotation).append('|')
             if (gameStartMs != 0L || gameEndMs != durationMs) {
