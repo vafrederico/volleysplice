@@ -92,9 +92,13 @@ path is used with or without the overlay; the enabled path additionally composit
 frame through a reusable canvas.
 
 Project JSON includes the optional additive field
-`editorPreferences.renderScoreOnFinalVideo`. Missing preferences retain the default
-of `true`; an explicit `false` survives export/import. Other portable editor
-preferences can extend this block independently of score tracking and preview state.
+`corrections.ui` with its own `schemaVersion: 1` and portable review/output
+preferences. Unknown extensions (including iOS chapter options) survive import and
+re-export. The root `editorPreferences.renderScoreOnFinalVideo` remains a
+compatibility alias; the canonical UI field wins if both are present. Missing
+legacy preferences retain historical defaults. See the
+[shared contract](../docs/portable-review-preferences.md) for exact keys, units,
+defaults, validation limits, and the native-port fixture.
 
 Run `npm run test:review-persistence` for storage regressions and the headless real
 editor regression, including score preference save, unmount, reopen, and export queue

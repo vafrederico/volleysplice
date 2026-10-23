@@ -42,7 +42,7 @@ import {
   modelFeedbackFilename,
 } from "../../lib/model-feedback";
 import { prepareScoreOverlay, scorePointTimelineSnapshot } from "../../lib/score-overlay";
-import { readScoreVisibilityPreference, saveScoreVisibilityPreference } from "../../lib/score-visibility-preference";
+import { saveScoreVisibilityPreference } from "../../lib/score-visibility-preference";
 import { ScoreVisibilitySelect } from "../../components/ScoreVisibilitySelect";
 import { runtimeAssetUrl } from "../../lib/runtime-assets";
 import { scrollElementIntoContainer } from "../../lib/scroll-container";
@@ -314,7 +314,7 @@ function usePrototype(
   const [playing, setPlaying] = useState(false);
   const sourceRangeSequence = useRef(0);
   const [sourceRange, setSourceRange] = useState<{ id: number; start: number; end: number } | null>(null);
-  const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(review.draft.playbackRate);
+  const [playbackRate, setPlaybackRate] = useState(review.draft.playbackRate);
   const [finalPreview, setFinalPreview] = useState(review.draft.cutPreviewEnabled);
   const [beforePadding, setBeforePadding] = useState(review.draft.beforePaddingSeconds);
   const [afterPadding, setAfterPadding] = useState(review.draft.afterPaddingSeconds);
@@ -329,7 +329,7 @@ function usePrototype(
   }
   const [scoreEnabled, setScoreEnabled] = useState(review.draft.scoreTracking.enabled);
   const [previewScoreOverlay, setPreviewScoreOverlay] = useState(review.draft.renderScoreOverlay);
-  const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(() => readScoreVisibilityPreference(review.draft.fadeScoreOverlay));
+  const [fadeScoreOverlay, setFadeScoreOverlayState] = useState(review.draft.fadeScoreOverlay);
   function setFadeScoreOverlay(fade: boolean) {
     setFadeScoreOverlayState(fade);
     saveScoreVisibilityPreference(fade);
@@ -631,6 +631,7 @@ function usePrototype(
     setBaseDraft(draft);
     setFinalPreview(draft.cutPreviewEnabled);
     setPlaybackRate(draft.playbackRate);
+    setFadeScoreOverlay(draft.fadeScoreOverlay);
     setClips(clipsFromReview({ ...review, draft }));
     setExcludedRanges(excludedFromReview({ ...review, draft }));
     setManualStart(draft.pendingManualStart);
@@ -659,13 +660,14 @@ function usePrototype(
     }
     historyRef.current = next;
     const draft = next.present;
-    applyReviewDraft(draft);
+    applyReviewDraft({ ...draft, playbackRate, cutPreviewEnabled: finalPreview });
     setReviewMessage(direction === "undo" ? "Last edit undone." : "Edit restored.");
     persistHistory();
   }
 
   function resetProjectChanges() {
-    applyReviewDraft(review.modelDraft);
+    // Reset supported review settings, retaining imported transport extensions.
+    applyReviewDraft({ ...review.modelDraft, portableUi: workingDraft.portableUi });
     setPlaying(false);
     setFinalPreview(review.modelDraft.cutPreviewEnabled);
     setPlaybackRate(review.modelDraft.playbackRate);
@@ -817,7 +819,7 @@ function usePrototype(
   const scoreOverlayOptions = useMemo(
     () => ({
       scoreTracking: workingDraft.scoreTracking,
-      renderPointTimeline: true,
+      renderPointTimeline: workingDraft.renderScoreTimeline,
       fadeScoreOverlay,
       excludedRallyIds: [...excludedRallyIds],
       ignoredIntervals: workingDraft.ignoredIntervals,
@@ -1405,17 +1407,21 @@ function usePrototype(
         setExportStatus("This project cannot be saved in the current session.");
         return;
       }
-      const bundle = createModelFeedbackBundle(
-        review.productAnalysis,
-        workingDraft,
-        finalIntervals,
-      );
-      downloadBlob(
-        modelFeedbackBlob(bundle),
-        modelFeedbackFilename(review.sourceName),
-      );
-      setExportProgress(100);
-      setExportStatus("The current VolleySplice project was downloaded.");
+      try {
+        const bundle = createModelFeedbackBundle(
+          review.productAnalysis,
+          workingDraft,
+          finalIntervals,
+        );
+        downloadBlob(
+          modelFeedbackBlob(bundle),
+          modelFeedbackFilename(review.sourceName),
+        );
+        setExportProgress(100);
+        setExportStatus("The current VolleySplice project was downloaded.");
+      } catch (cause) {
+        setExportStatus(`Could not save the project: ${cause instanceof Error ? cause.message : String(cause)}. Your edits and imported preferences have been kept.`);
+      }
       return;
     }
     if (!review.sourceFile || finalIntervals.length === 0) return;
@@ -1904,9 +1910,9 @@ function VideoStage({
                   <select
                     aria-label="Playback speed"
                     value={state.playbackRate}
-                    onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value) as (typeof PLAYBACK_RATES)[number])}
+                    onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value))}
                   >
-                    {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+                    {[...new Set<number>([...PLAYBACK_RATES, state.playbackRate])].sort((a, b) => a - b).map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
                   </select>
                 </label>
                 <div className="td-transport-toggles">
@@ -2886,8 +2892,9 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           break;
         case "faster":
         case "slower": {
-          const index = PLAYBACK_RATES.indexOf(state.playbackRate);
-          state.setPlaybackRate(PLAYBACK_RATES[Math.max(0, Math.min(PLAYBACK_RATES.length - 1,
+          const rates = [...new Set<number>([...PLAYBACK_RATES, state.playbackRate])].sort((a, b) => a - b);
+          const index = rates.indexOf(state.playbackRate);
+          state.setPlaybackRate(rates[Math.max(0, Math.min(rates.length - 1,
             index + (action === "faster" ? 1 : -1)))]);
           break;
         }

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import { ModelFeedbackValidationError } from "../../lib/model-feedback.ts";
-import { createCutDraft } from "../../prod/src/lib/cut-draft.ts";
+import { parseModelFeedbackText } from "../../prod/src/lib/model-feedback-validation.ts";
+import { createCutDraft, materializeFinalCutIntervals, parseCutDraft } from "../../prod/src/lib/cut-draft.ts";
 import {
   importModelFeedbackProject,
 } from "../../prod/src/lib/model-feedback-import.ts";
@@ -195,7 +197,7 @@ const analysis: ProductAnalysis = {
   },
 };
 
-function feedbackText() {
+function feedbackText(keepRally = false) {
   const draft = createCutDraft({
     analysisId: analysis.id,
     recordingId: analysis.recordingId,
@@ -208,8 +210,8 @@ function feedbackText() {
   });
   draft.updatedAt = "2026-08-20T20:00:00.000Z";
   draft.renderScoreOnFinalVideo = false;
-  draft.cuts[0].included = false;
-  draft.selectedSuppressionPolicy = "aggressive";
+  draft.cuts[0].included = keepRally;
+  draft.selectedSuppressionPolicy = keepRally ? "none" : "aggressive";
   draft.suppressionDecisionOverrides = { "logical-1": "suppress" };
   draft.scoreTracking = {
     ...addServeMarker(draft.scoreTracking, 5, "near", {
@@ -224,7 +226,7 @@ function feedbackText() {
   const bundle = createModelFeedbackBundle(
     analysis,
     draft,
-    [],
+    materializeFinalCutIntervals(draft, analysis.suppression).intervals,
     "2026-08-20T21:00:00.000Z",
   );
   return JSON.stringify(bundle);
@@ -295,6 +297,7 @@ test("model feedback imports as a distinct ready project with its editor state",
 test("portable final-video score preference defaults on for old projects and validates booleans", () => {
   const bundle = JSON.parse(feedbackText());
   assert.equal(bundle.editorPreferences.renderScoreOnFinalVideo, false);
+  delete bundle.corrections.ui;
   for (const preferences of [undefined, {}, { futurePreference: true }, { renderScoreOnFinalVideo: true }]) {
     bundle.editorPreferences = preferences;
     const { project } = importModelFeedbackProject(JSON.stringify(bundle));
@@ -304,6 +307,176 @@ test("portable final-video score preference defaults on for old projects and val
     bundle.editorPreferences = preferences;
     assert.throws(() => importModelFeedbackProject(JSON.stringify(bundle)), ModelFeedbackValidationError);
   }
+});
+
+const uiFixture = JSON.parse(readFileSync(
+  new URL("../fixtures/portable-review-preferences.json", import.meta.url), "utf8",
+));
+
+function portableRoundTrip(ui: unknown, alias = false) {
+  const bundle = JSON.parse(feedbackText(true));
+  if (ui === undefined) delete bundle.corrections.ui;
+  else bundle.corrections.ui = ui;
+  bundle.editorPreferences = { renderScoreOnFinalVideo: alias };
+  const project = normalizeStoredProject(importModelFeedbackProject(JSON.stringify(bundle)).project);
+  const draft = project.importedFeedback!.initialDraft;
+  const seed = { analysisId: draft.analysisId, recordingId: draft.recordingId,
+    duration: analysis.duration, analysisStart: analysis.analysisWindow.start,
+    analysisEnd: analysis.analysisWindow.end, rallies: analysis.rallies,
+    ignoredIntervals: analysis.ignoredIntervals };
+  const restored = parseCutDraft(JSON.stringify(draft), seed);
+  assert.ok(restored, "the imported UI envelope survives local draft validation");
+  const intervals = materializeFinalCutIntervals(restored, analysis.suppression).intervals;
+  const reexported = createModelFeedbackBundle(analysis, restored, intervals);
+  const reimported = importModelFeedbackProject(JSON.stringify(reexported)).project.importedFeedback!.initialDraft;
+  return { bundle, project, draft: restored, reexported, reimported };
+}
+
+test("full feedback import, draft restore, export and reimport retain portable UI and unknown nested extensions", () => {
+  for (const preview of [false, true]) for (const final of [false, true]) {
+    const ui = structuredClone(uiFixture.portableUi);
+    ui.preferences.renderScoreOnPreviewVideo = preview;
+    ui.preferences.renderScoreOnFinalVideo = final;
+    const { bundle, draft, reexported, reimported } = portableRoundTrip(ui, !final);
+    for (const value of [draft, reimported]) {
+      assert.equal(value.renderScoreOverlay, preview);
+      assert.equal(value.renderScoreOnFinalVideo, final, "canonical UI wins over the PR8 alias");
+      assert.equal(value.renderScoreTimeline, true);
+      assert.equal(value.fadeScoreOverlay, true);
+      assert.equal(value.cutPreviewEnabled, true);
+      assert.equal(value.playbackRate, 1.5);
+      assert.equal(value.confidenceReviewThreshold, .73);
+      assert.deepEqual(value.reviewedCutIds, ["R001"]);
+    }
+    assert.deepEqual(reexported.corrections.ui, ui);
+    assert.equal(reexported.editorPreferences?.renderScoreOnFinalVideo, final);
+    assert.deepEqual(reexported.corrections.correctedRanges, bundle.corrections.correctedRanges);
+    assert.deepEqual(reexported.corrections.scoreTracking, bundle.corrections.scoreTracking);
+    assert.deepEqual(reexported.finalExportIntervals, bundle.finalExportIntervals);
+    assert.deepEqual(reexported.finalExportProvenance, bundle.finalExportProvenance);
+    // Export current edits while retaining unknown preferences and siblings.
+    const edited = createModelFeedbackBundle(analysis, { ...draft, renderScoreOverlay: !preview,
+      renderScoreOnFinalVideo: !final, playbackRate: 1.75, reviewedCutIds: [] }, []);
+    const expected = structuredClone(ui);
+    Object.assign(expected.preferences, { renderScoreOnPreviewVideo: !preview,
+      renderScoreOnFinalVideo: !final, playbackRate: 1.75, reviewedCutIds: [] });
+    assert.deepEqual(edited.corrections.ui, expected);
+    assert.equal(edited.editorPreferences?.renderScoreOnFinalVideo, !final);
+  }
+});
+
+test("legacy absent UI retains historical web defaults and unversioned iOS chapter options survive", () => {
+  for (const ui of [undefined, {}, uiFixture.legacyIosUi]) {
+    const { draft, reexported } = portableRoundTrip(ui, true);
+    assert.equal(draft.renderScoreOverlay, true);
+    assert.equal(draft.renderScoreOnFinalVideo, true);
+    assert.equal(draft.renderScoreTimeline, false);
+    assert.equal(draft.fadeScoreOverlay, false);
+    assert.equal(draft.cutPreviewEnabled, false);
+    assert.equal(draft.playbackRate, 1);
+    assert.equal(draft.confidenceReviewThreshold, .7);
+    assert.deepEqual(draft.reviewedCutIds, []);
+    if (ui?.preferences) assert.deepEqual(
+      (reexported.corrections.ui!.preferences as any).chapterOptions, ui.preferences.chapterOptions,
+    );
+  }
+});
+
+test("future UI versions remain opaque through web edits and re-export", () => {
+  const { draft, reexported } = portableRoundTrip(uiFixture.futureUi);
+  assert.equal(draft.playbackRate, 1);
+  assert.equal(draft.renderScoreOverlay, true);
+  assert.deepEqual(reexported.corrections.ui, uiFixture.futureUi);
+  const edited = createModelFeedbackBundle(analysis, { ...draft, playbackRate: 2 }, []);
+  assert.deepEqual(edited.corrections.ui, uiFixture.futureUi, "never downgrade or overwrite a future envelope");
+});
+
+test("future reviewed IDs are validated without activation or changes, including absent IDs", () => {
+  for (const ids of [undefined, [], ["R001"]]) {
+    const ui = structuredClone(uiFixture.futureUi);
+    if (ids === undefined) delete ui.preferences.reviewedCutIds;
+    else ui.preferences.reviewedCutIds = ids;
+    const { draft, reexported, reimported } = portableRoundTrip(ui);
+    assert.deepEqual(draft.reviewedCutIds, [], "future preferences remain inactive");
+    assert.equal(draft.renderScoreOnFinalVideo, false, "the root alias still applies");
+    assert.deepEqual(reexported.corrections.ui, ui);
+    assert.deepEqual(reimported.portableUi, ui);
+    assert.deepEqual(reimported.reviewedCutIds, []);
+  }
+});
+
+test("wire parser and importer reject future missing, manual, removed and malformed review IDs", () => {
+  for (const ids of [["missing-cut"], ["manual-cut"], ["R001"], null, "R001", ["R001", "R001"], [1], [""]]) {
+    const bundle = JSON.parse(feedbackText(true));
+    const manual = { ...bundle.corrections.correctedRanges[0], id: "manual-cut", origin: "manual" };
+    bundle.corrections.correctedRanges.push(manual);
+    if (Array.isArray(ids) && ids.length === 1 && ids[0] === "R001") {
+      bundle.corrections.correctedRanges.shift(); // Still in initialInference, but removed from corrections.
+    }
+    bundle.corrections.ui = { ...uiFixture.futureUi,
+      preferences: { ...uiFixture.futureUi.preferences, reviewedCutIds: ids } };
+    for (const parse of [parseModelFeedbackText, importModelFeedbackProject]) {
+      assert.throws(() => parse(JSON.stringify(bundle)), (error: unknown) =>
+        error instanceof ModelFeedbackValidationError && /reviewedCutIds/.test(error.message));
+    }
+  }
+});
+
+test("export checks corrected inferred identities while stale opaque local drafts stay lossless", () => {
+  const { draft } = portableRoundTrip(uiFixture.futureUi);
+  const corrected = { ...draft.cuts[0], id: "corrected-only-cut" };
+  draft.cuts.push(corrected);
+  draft.portableUi = { ...uiFixture.futureUi,
+    preferences: { ...uiFixture.futureUi.preferences, reviewedCutIds: [corrected.id] } };
+  const original = createModelFeedbackBundle(analysis, draft, []);
+  const originalText = JSON.stringify(original);
+  assert.deepEqual(parseModelFeedbackText(originalText).corrections.ui, draft.portableUi);
+  assert.deepEqual(importModelFeedbackProject(originalText).project.importedFeedback!.initialDraft.portableUi, draft.portableUi);
+  for (const cuts of [draft.cuts.filter(cut => cut.id !== corrected.id),
+    draft.cuts.map(cut => cut.id === corrected.id ? { ...cut, origin: "manual" as const } : cut)]) {
+    const stale = { ...draft, cuts, playbackRate: 2 };
+    const seed = { analysisId: draft.analysisId, recordingId: draft.recordingId,
+      duration: analysis.duration, analysisStart: analysis.analysisWindow.start,
+      analysisEnd: analysis.analysisWindow.end, rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals };
+    const restored = parseCutDraft(JSON.stringify(stale), seed);
+    assert.ok(restored, "stale future IDs must not discard a local draft after reset");
+    const before = JSON.stringify(restored);
+    assert.throws(() => createModelFeedbackBundle(analysis, restored, []), /reviewedCutIds.*inferred cuts/);
+    assert.equal(JSON.stringify(restored), before, "failed export preserves edits and the opaque envelope");
+    assert.equal(JSON.stringify(original), originalText, "the prior export is untouched");
+  }
+});
+
+test("bounded playback multipliers activate exactly and timeline off remains off", () => {
+  for (const rate of [.25, 1, 1.5, 1.75, 8]) {
+    const ui = structuredClone(uiFixture.portableUi);
+    ui.preferences.playbackRate = rate;
+    ui.preferences.renderScoreTimeline = false;
+    const { draft, reimported } = portableRoundTrip(ui);
+    assert.equal(draft.playbackRate, rate);
+    assert.equal(reimported.playbackRate, rate);
+    assert.equal(reimported.renderScoreTimeline, false);
+  }
+});
+
+test("invalid known values and unsafe or unbounded UI fail before project creation", () => {
+  let deep: any = {};
+  for (let index = 0; index < 17; index++) deep = { child: deep };
+  const invalid = [...uiFixture.invalidUi,
+    { preferences: { reviewedCutIds: ["missing-cut"] } },
+    { preferences: { reviewedCutIds: ["x".repeat(257)] } },
+    { preferences: { confidenceReviewThreshold: -.1 } },
+    { schemaVersion: 2, preferences: { playbackRate: "fast" } },
+    { extension: deep }, { extension: Array(4096).fill(null) },
+    { extension: "x".repeat(16385) },
+    { extension: Array(5).fill("x".repeat(16384)) },
+  ];
+  for (const ui of invalid) {
+    const bundle = JSON.parse(feedbackText());
+    bundle.corrections.ui = ui;
+    assert.throws(() => importModelFeedbackProject(JSON.stringify(bundle)), ModelFeedbackValidationError);
+  }
+  assert.equal(({} as any).polluted, undefined);
 });
 
 test("reimporting the same feedback allocates a new project ID", () => {

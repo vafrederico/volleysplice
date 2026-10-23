@@ -1,4 +1,5 @@
 import type { Rally } from "./edit-list.ts";
+import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE, parseFeedbackUi, type FeedbackUi } from "./feedback-ui.ts";
 import {
   SUPPRESSION_POLICY_CONTRACT_VERSION,
   SUPPRESSION_POLICY_IDS,
@@ -22,7 +23,7 @@ export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const MAX_CUT_PADDING_SECONDS = 10;
 export const MAX_JOIN_GAP_SECONDS = 10;
 export const MIN_CUT_SECONDS = 0.1;
-export const PLAYBACK_RATES = [1, 2, 4, 8] as const;
+export const PLAYBACK_RATES = [1, 1.5, 2, 4, 8] as const;
 
 export type CutOrigin = "cached-label" | "manual";
 
@@ -61,7 +62,9 @@ export type CutDraft = {
   renderScoreOnFinalVideo: boolean;
   renderScoreTimeline: boolean;
   fadeScoreOverlay: boolean;
-  playbackRate: (typeof PLAYBACK_RATES)[number];
+  playbackRate: number;
+  /** Retained portable UI extensions; active preferences live in the fields above. */
+  portableUi?: FeedbackUi;
   confidenceReviewThreshold: number;
   reviewedCutIds: string[];
   selectedSuppressionPolicy: SuppressionPolicyId;
@@ -368,6 +371,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     }
     const value: Partial<CutDraft> = {
       ...persisted,
+      ...(persisted.portableUi === undefined ? {} : { portableUi: parseFeedbackUi(persisted.portableUi) }),
       version: CUT_DRAFT_VERSION,
       analysisStart: persistedVersion >= 9 ? persisted.analysisStart : bounds.start,
       analysisEnd: persistedVersion >= 9 ? persisted.analysisEnd : bounds.end,
@@ -493,7 +497,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       typeof value.renderScoreOnFinalVideo !== "boolean" ||
       typeof value.renderScoreTimeline !== "boolean" ||
       typeof value.fadeScoreOverlay !== "boolean" ||
-      !PLAYBACK_RATES.includes(value.playbackRate as (typeof PLAYBACK_RATES)[number]) ||
+      !finiteTime(value.playbackRate) ||
+      value.playbackRate < MIN_PLAYBACK_RATE ||
+      value.playbackRate > MAX_PLAYBACK_RATE ||
       !finiteTime(value.confidenceReviewThreshold) ||
       value.confidenceReviewThreshold < 0 ||
       value.confidenceReviewThreshold > 1 ||

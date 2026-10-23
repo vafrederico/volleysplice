@@ -1,4 +1,5 @@
 import type { NeuralRallyScores } from "./on-device/types";
+import { parseFeedbackUi, type FeedbackUi } from "./feedback-ui.ts";
 
 export const MODEL_FEEDBACK_SCHEMA = "volleycut-model-feedback" as const;
 export const MODEL_FEEDBACK_SCHEMA_VERSION = 3 as const;
@@ -113,6 +114,7 @@ export type ParsedModelFeedback = {
     suppression: ParsedSuppressionOutput | null;
   };
   corrections: {
+    ui?: FeedbackUi;
     updatedAt: string;
     beforePaddingSeconds: number;
     afterPaddingSeconds: number;
@@ -1323,6 +1325,9 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
   const correctedValue = corrections.correctedRanges;
   if (!Array.isArray(correctedValue))
     fail("bundle.corrections.correctedRanges", "must be an array");
+  const correctedRanges = correctedValue.map((item, index) =>
+    correctedRange(item, `bundle.corrections.correctedRanges[${index}]`, duration),
+  );
   const ignoredValue = corrections.ignoredIntervals;
   if (!Array.isArray(ignoredValue))
     fail("bundle.corrections.ignoredIntervals", "must be an array");
@@ -1422,6 +1427,15 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
     ? undefined
     : object(root.editorPreferences, "bundle.editorPreferences");
   const renderScoreOnFinalVideo = editorPreferences?.renderScoreOnFinalVideo;
+  let ui: FeedbackUi | undefined;
+  if (corrections.ui !== undefined) {
+    try {
+      ui = parseFeedbackUi(corrections.ui, new Set(
+        correctedRanges.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
+      ));
+    }
+    catch (error) { throw new ModelFeedbackValidationError(error instanceof Error ? error.message : "Invalid corrections.ui"); }
+  }
   const finalValue = root.finalExportIntervals;
   if (!Array.isArray(finalValue))
     fail("bundle.finalExportIntervals", "must be an array");
@@ -1534,6 +1548,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
       suppression,
     },
     corrections: {
+      ...(ui === undefined ? {} : { ui }),
       updatedAt: date(corrections.updatedAt, "bundle.corrections.updatedAt"),
       beforePaddingSeconds: nonNegative(
         corrections.beforePaddingSeconds,
@@ -1547,13 +1562,7 @@ export function parseModelFeedback(value: unknown): ParsedModelFeedback {
         corrections.joinGapSeconds,
         "bundle.corrections.joinGapSeconds",
       ),
-      correctedRanges: correctedValue.map((item, index) =>
-        correctedRange(
-          item,
-          `bundle.corrections.correctedRanges[${index}]`,
-          duration,
-        ),
-      ),
+      correctedRanges,
       ignoredIntervals: ignoredValue.map((item, index) => {
         const ignored = object(
           item,

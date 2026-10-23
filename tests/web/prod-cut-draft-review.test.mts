@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { feedbackUiFromDraft, parseFeedbackUi } from "../../prod/src/lib/feedback-ui.ts";
+import { feedbackUiFromDraft as labFeedbackUiFromDraft, parseFeedbackUi as parseLabFeedbackUi } from "../../components/production-lab/editor/lib/feedback-ui.ts";
 import {
   createCutDraft as createLabCutDraft,
   parseCutDraft as parseLabCutDraft,
@@ -26,11 +29,27 @@ const seed: CutDraftSeed = {
   ],
   ignoredIntervals: [],
 };
+const portableUi = JSON.parse(readFileSync(
+  new URL("../fixtures/portable-review-preferences.json", import.meta.url), "utf8",
+)).portableUi;
 
 for (const [name, create, parse] of [
   ["production", createCutDraft, parseCutDraft],
   ["lab", createLabCutDraft, parseLabCutDraft],
 ] as const) {
+  test(`${name} v16 drafts retain bounded UI extensions and exact imported playback rates`, () => {
+    const draft = { ...create(seed), portableUi, playbackRate: 1.75 };
+    const restored = parse(JSON.stringify(draft), seed);
+    assert.equal(restored?.version, 16);
+    assert.equal(restored?.playbackRate, 1.75);
+    assert.deepEqual(restored?.portableUi, portableUi);
+    for (const invalid of [null, [], { preferences: [] }, { preferences: { playbackRate: "fast" } }]) {
+      assert.equal(parse(JSON.stringify({ ...draft, portableUi: invalid }), seed), null);
+    }
+    for (const invalid of [0, 8.01, null, "1.5"]) {
+      assert.equal(parse(JSON.stringify({ ...draft, playbackRate: invalid }), seed), null);
+    }
+  });
   test(`${name} final-video score preference persists independently of preview`, () => {
     assert.equal(create(seed).renderScoreOnFinalVideo, true);
     for (const finalVideo of [false, true]) {
@@ -52,6 +71,41 @@ for (const [name, create, parse] of [
     for (const invalid of [undefined, null, "false", 0]) {
       assert.equal(parse(JSON.stringify({ ...create(seed), renderScoreOnFinalVideo: invalid }), seed), null);
     }
+  });
+}
+
+test("retained UI accepts only safe JSON, even before serialization", () => {
+  for (const invalid of [NaN, Infinity, () => {}, new Date(), new Map(), new Uint8Array([1])]) {
+    assert.throws(() => parseFeedbackUi({ extension: invalid }));
+  }
+  assert.throws(() => parseFeedbackUi({ schemaVersion: 1.5 }));
+  assert.throws(() => parseFeedbackUi({ schemaVersion: Number.MAX_SAFE_INTEGER + 1 }));
+  const original = structuredClone(portableUi);
+  const copied = parseFeedbackUi(original);
+  (copied.preferences as Record<string, unknown>).playbackRate = 2;
+  assert.equal(original.preferences.playbackRate, 1.5, "retention never aliases untrusted objects");
+});
+
+for (const [name, parse, compose] of [
+  ["production", parseFeedbackUi, feedbackUiFromDraft],
+  ["lab", parseLabFeedbackUi, labFeedbackUiFromDraft],
+] as const) {
+  test(`${name} future UI distinguishes absent IDs from malformed or stale wire IDs`, () => {
+    const inferred = new Set(["R001"]);
+    for (const preferences of [undefined, {}, { reviewedCutIds: [] }, { reviewedCutIds: ["R001"] }]) {
+      const ui = { schemaVersion: 2, ...(preferences === undefined ? {} : { preferences }) };
+      assert.deepEqual(parse(ui, inferred), ui);
+    }
+    for (const ids of [null, "R001", {}, [false], [""], ["R001", "R001"]]) {
+      assert.throws(() => parse({ schemaVersion: 2, preferences: { reviewedCutIds: ids } }), /reviewedCutIds/);
+    }
+    const opaque = { schemaVersion: 2, preferences: { reviewedCutIds: ["missing-cut"],
+      chapterOptions: { future: [null, { retained: true }] } }, extension: "unchanged" };
+    assert.deepEqual(parse(opaque), opaque, "local retention has no wire identity context");
+    const draft = { ...createCutDraft(seed), portableUi: opaque, playbackRate: 1.75 };
+    const before = JSON.stringify(draft);
+    assert.throws(() => compose(draft), /reviewedCutIds.*inferred cuts/);
+    assert.equal(JSON.stringify(draft), before);
   });
 }
 
