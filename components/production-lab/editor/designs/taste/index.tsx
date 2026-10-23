@@ -10,6 +10,9 @@ import {
 
 import {
   materializeFinalCutIntervals,
+  resetProjectReview,
+  splitCutAt,
+  splitCutValidationMessage,
   rallySuppressionDecisionKey,
   PLAYBACK_RATES,
   type CutDraft,
@@ -107,6 +110,7 @@ type Clip = {
   reviewed: boolean;
   origin: "model" | "manual";
   agreement?: EditableCut["agreement"];
+  editableGroupId?: string;
 };
 
 type DesignServeMarker = {
@@ -184,6 +188,7 @@ function clipsFromReview(review: ReadyDesignReview): Clip[] {
     reviewed: reviewed.has(cut.id),
     origin: cut.origin === "manual" ? "manual" : "model",
     agreement: cut.agreement,
+    editableGroupId: cut.editableGroupId,
   }));
 }
 
@@ -322,6 +327,10 @@ function usePrototype(
   const [cleanup, setCleanup] = useState<CleanupStrength>(
     cleanupStrengthForPolicy(review.draft.selectedSuppressionPolicy),
   );
+  function selectCleanup(value: CleanupStrength) {
+    setCleanup(value);
+    if (value !== "off") setBaseDraft(current => ({ ...current, suppressionInitialBehavior: "disable-initially" }));
+  }
   const [reviewMessage, setReviewMessageValue] = useState(`${initialClips.filter((clip) => clip.included && !clip.reviewed && clipRequiresConfidenceReview(clip, review.draft.confidenceReviewThreshold)).length} clips remain to check in the current review.`);
   function setReviewMessage(message: string) {
     if (review.labMode) for (const [id, label] of [...displayLabels].sort((a, b) => b[0].length - a[0].length)) message = message.replaceAll(id, label);
@@ -539,6 +548,7 @@ function usePrototype(
           included: clip.included,
           origin: clip.origin === "manual" ? "manual" : "cached-label",
           ...(clip.agreement ? { agreement: clip.agreement } : {}),
+          ...(clip.editableGroupId ? { editableGroupId: clip.editableGroupId } : {}),
         };
       }),
       ignoredIntervals: excludedRanges.map((interval) => ({
@@ -643,6 +653,7 @@ function usePrototype(
     setScoreEnabled(draft.scoreTracking.enabled);
     setPreviewScoreOverlay(draft.renderScoreOverlay);
     setRenderScoreOnFinalVideo(draft.renderScoreOnFinalVideo);
+    setFadeScoreOverlay(draft.fadeScoreOverlay);
     setTeamOne(draft.scoreTracking.team1Name);
     setTeamTwo(draft.scoreTracking.team2Name);
     setScoreMarkers(draft.scoreTracking.serveMarkers);
@@ -666,8 +677,7 @@ function usePrototype(
   }
 
   function resetProjectChanges() {
-    // Reset supported review settings, retaining imported transport extensions.
-    applyReviewDraft({ ...review.modelDraft, portableUi: workingDraft.portableUi });
+    applyReviewDraft(resetProjectReview(review.modelDraft, workingDraft));
     setPlaying(false);
     setFinalPreview(review.modelDraft.cutPreviewEnabled);
     setPlaybackRate(review.modelDraft.playbackRate);
@@ -1076,15 +1086,20 @@ function usePrototype(
       setReviewMessage("Move the playhead inside the selected clip before splitting it.");
       return;
     }
-    const used = new Set(clips.map((clip) => clip.id));
-    let leftId = `${selected.id}A`;
-    let rightId = `${selected.id}B`;
-    while (used.has(leftId) || used.has(rightId)) {
-      leftId += "A";
-      rightId += "B";
+    const validationMessage = splitCutValidationMessage(workingDraft, selected.id);
+    if (validationMessage) {
+      setReviewMessage(validationMessage);
+      return;
     }
-    const left: Clip = { ...selected, id: leftId, end: playhead, label: `${selected.label}, first part`, reviewed: true };
-    const right: Clip = { ...selected, id: rightId, start: playhead, label: `${selected.label}, second part`, reviewed: true };
+    const split = splitCutAt(workingDraft, selected.id, playhead, gameStart, gameEnd);
+    if (!split) return;
+    const leftRange = split.draft.cuts.find((cut) => cut.id === selected.id)!;
+    const leftId = leftRange.id;
+    const rightId = split.newCut.id;
+    const left: Clip = { ...selected, id: leftId, end: playhead, editableGroupId: leftRange.editableGroupId,
+      label: `${selected.label}, first part`, reviewed: true };
+    const right: Clip = { ...selected, id: rightId, start: playhead, editableGroupId: split.newCut.editableGroupId,
+      label: `${selected.label}, second part`, reviewed: true };
     setClips((current) => current.flatMap((clip) => clip.id === selected.id ? [left, right] : [clip]));
     const splitScores = splitLabServeMarkers(workingDraft.scoreTracking, selected.id, left, right);
     setScoreMarkers(splitScores.serveMarkers);
@@ -1187,7 +1202,10 @@ function usePrototype(
     const nextId = pendingIds[(currentIndex + 1) % pendingIds.length];
     setFinalPreview(false);
     selectClip(nextId);
-    setReviewMessage(`${nextId} was excluded by automatic cleanup. Watch it, then keep it or confirm the exclusion.`);
+    const disposition = effectiveKeptIds.has(nextId)
+      ? "has footage retained in the final cut"
+      : "is currently excluded from the final cut";
+    setReviewMessage(`${nextId} is flagged for automatic cleanup review and ${disposition}. Watch it, then choose Keep or Remove.`);
   }
 
   function applySuppressionToSimilar() {
@@ -1451,7 +1469,7 @@ function usePrototype(
     playing, setPlaying, finalPreview, setFinalPreview,
     playbackRate, setPlaybackRate,
     beforePadding, setBeforePadding,
-    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup,
+    afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup: selectCleanup,
     restoreHistory, historyStorageFailed, resetProjectChanges, applyReviewDraft, playSourceRange,
     reviewMessage, scoreEnabled, setScoreEnabled, previewScoreOverlay, setPreviewScoreOverlay,
     fadeScoreOverlay, setFadeScoreOverlay,
@@ -2232,7 +2250,7 @@ function ReviewSummary({
         <nav className="td-review-shortcuts" aria-label="Items needing review">
           {state.scoreEnabled && <button type="button" disabled={state.serveReview === 0} onClick={state.openServeReview}><strong>{state.serveReview}</strong><span>Review serves</span></button>}
           <button type="button" disabled={clipReviewCount === 0} onClick={state.openClipReview}><strong>{clipReviewCount}</strong><span>Review clips</span></button>
-          <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleaned up</span></button>
+          <button type="button" disabled={state.suppressionPending === 0} onClick={state.reviewNextSuppression}><strong>{state.suppressionPending}</strong><span>Review cleanup flags</span></button>
         </nav>
       )}
       <div><strong>{state.included.length}</strong><span>clips included</span></div>
@@ -2290,7 +2308,7 @@ function ExportWorkspace({ state, compact = false }: { state: Prototype; compact
               <li data-ready={!state.needsSource || undefined}><strong>Source video</strong><span>{state.labMode && !state.hasSourceFile ? "NAS video connected for playback" : state.needsSource ? "Reconnect for playback and MP4" : "Connected locally"}</span></li>
               <li data-ready={state.remaining === 0 || undefined}><strong>Suggested clips</strong><span>{state.remaining === 0 ? "All included clips checked" : `${state.remaining} still need review`}</span></li>
               <li data-ready={!state.scoreEnabled || state.serveReview === 0 || undefined}><strong>Score markers</strong><span>{!state.scoreEnabled ? "Score tracking is off" : state.serveReview === 0 ? "All serve sides checked" : `${state.serveReview} serve sides need review`}</span></li>
-              <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} excluded suggestion needs review`}</span></li>
+              <li data-ready={state.suppressionPending === 0 || undefined}><strong>Automatic cleanup</strong><span>{state.suppressionPending === 0 ? "Every suggestion reviewed" : `${state.suppressionPending} flagged ${state.suppressionPending === 1 ? "suggestion awaits" : "suggestions await"} review`}</span></li>
               <li data-ready><strong>Final ranges</strong><span>{state.included.length} clips, {state.excludedRanges.length} excluded {state.excludedRanges.length === 1 ? "section" : "sections"}</span></li>
             </ul>
             {(state.remaining > 0 || state.serveReview > 0 || state.suppressionPending > 0 || state.needsSource) && <p>You can still prepare any available output. MP4 alone requires the matching source. Unresolved items remain in the saved review.</p>}

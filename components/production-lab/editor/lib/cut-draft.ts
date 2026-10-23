@@ -16,7 +16,7 @@ import {
   type ScoreTracking,
 } from "./score-tracking.ts";
 
-export const CUT_DRAFT_VERSION = 16 as const;
+export const CUT_DRAFT_VERSION = 17 as const;
 export const DEFAULT_CUT_PADDING = { before: 2, after: 2 } as const;
 export const DEFAULT_JOIN_GAP_SECONDS = 3;
 export const DEFAULT_CONFIDENCE_REVIEW_THRESHOLD = 0.7;
@@ -24,6 +24,8 @@ export const MAX_CUT_PADDING_SECONDS = 10;
 export const MAX_JOIN_GAP_SECONDS = 10;
 export const MIN_CUT_SECONDS = 0.1;
 export const PLAYBACK_RATES = [1, 1.5, 2, 4, 8] as const;
+const MAX_EXPLICIT_RALLY_MEMBERS = 2048;
+const MAX_EXPLICIT_CUT_ID_LENGTH = 256;
 
 export type CutOrigin = "cached-label" | "manual";
 
@@ -37,6 +39,7 @@ export type EditableCut = {
   included: boolean;
   origin: CutOrigin;
   agreement?: Rally["agreement"];
+  editableGroupId?: string;
 };
 
 export type IgnoredSourceInterval = IgnoredInterval & {
@@ -68,6 +71,7 @@ export type CutDraft = {
   confidenceReviewThreshold: number;
   reviewedCutIds: string[];
   selectedSuppressionPolicy: SuppressionPolicyId;
+  suppressionInitialBehavior: "disable-initially" | "highlight-only";
   suppressionDecisionOverrides: Record<string, "keep" | "suppress">;
   suppressionScopeOverrides: Record<string, SuppressionScope>;
   userTouchedCutIds: string[];
@@ -88,6 +92,15 @@ export type CutSplitResult = {
   draft: CutDraft;
   newCut: EditableCut;
 };
+
+/** Full confirmed reset returns model geometry and retains only the opaque UI transport. */
+export function resetProjectReview(defaults: CutDraft, current: CutDraft): CutDraft {
+  return {
+    ...defaults,
+    // PR14's transport envelope stays opaque, including future UI versions.
+    ...("portableUi" in current ? { portableUi: current.portableUi } : {}),
+  };
+}
 
 export type FinalCutProvenanceSegment = {
   start: number;
@@ -143,13 +156,18 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function nextCutId(prefix: string, cuts: readonly EditableCut[]): string {
-  const used = new Set(cuts.map((cut) => cut.id));
-  for (let index = 1; index < 10_000; index += 1) {
+/** Cuts and ignored intervals share one namespace; score IDs and group tokens do not. */
+function draftRangeIds(draft: Pick<CutDraft, "cuts" | "ignoredIntervals">): string[] {
+  return [...draft.cuts.map((cut) => cut.id), ...draft.ignoredIntervals.map((interval) => interval.id)];
+}
+
+function nextCutId(prefix: string, draft: Pick<CutDraft, "cuts" | "ignoredIntervals">): string {
+  const used = new Set(draftRangeIds(draft));
+  // A finite namespace always leaves a free numbered ID within used.size + 1.
+  for (let index = 1; ; index += 1) {
     const candidate = `${prefix}${String(index).padStart(3, "0")}`;
     if (!used.has(candidate)) return candidate;
   }
-  return `${prefix}${Date.now()}`;
 }
 
 function withTouchedCachedCuts(draft: CutDraft, ids: readonly string[]): CutDraft {
@@ -203,7 +221,7 @@ export function cutDraftStorageKey(analysisId: string): string {
 }
 
 export function cutDraftStorageKeys(analysisId: string): string[] {
-  return [CUT_DRAFT_VERSION, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
+  return [CUT_DRAFT_VERSION, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(
     (version) => `volleycut:production-lab:cut-draft:v${version}:${encodeURIComponent(analysisId)}`,
   );
 }
@@ -235,6 +253,7 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
     reviewedCutIds: [],
     selectedSuppressionPolicy: "aggressive",
     suppressionDecisionOverrides: {},
+    suppressionInitialBehavior: "disable-initially",
     suppressionScopeOverrides: {},
     userTouchedCutIds: [],
     suppressionContractVersion:
@@ -268,6 +287,10 @@ export function createCutDraft(seed: CutDraftSeed): CutDraft {
   };
 }
 
+function validExplicitCutId(id: string): boolean {
+  return id.trim().length > 0 && id.length <= MAX_EXPLICIT_CUT_ID_LENGTH;
+}
+
 function validCut(
   value: unknown,
   minimum: number,
@@ -278,6 +301,8 @@ function validCut(
   return (
     typeof cut.id === "string" &&
     cut.id.length > 0 &&
+    (!("editableGroupId" in cut) || (typeof cut.editableGroupId === "string" &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(cut.editableGroupId) && validExplicitCutId(cut.id))) &&
     finiteTime(cut.coreStart) &&
     finiteTime(cut.coreEnd) &&
     finiteTime(cut.keepStart) &&
@@ -332,16 +357,16 @@ function inferLegacyTouchedCutIds(
     .filter((cut) => {
       const rally = rallies.get(cut.id);
       if (!rally) return true;
-      const expectedStart = roundTime(clamp(
+      const expectedStart = roundTimeWithin(
         rally.start - beforePaddingSeconds,
         bounds.start,
         bounds.end,
-      ));
-      const expectedEnd = roundTime(clamp(
+      );
+      const expectedEnd = roundTimeWithin(
         rally.end + afterPaddingSeconds,
         bounds.start,
         bounds.end,
-      ));
+      );
       return (
         cut.included !== rally.included ||
         Math.abs(cut.coreStart - rally.start) > 0.000_5 ||
@@ -363,7 +388,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     const persistedVersion = persisted.version;
     if (
       typeof persistedVersion !== "number" ||
-      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, CUT_DRAFT_VERSION].includes(
+      ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, CUT_DRAFT_VERSION].includes(
         persistedVersion,
       )
     ) {
@@ -419,6 +444,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
       suppressionDecisionOverrides: persistedVersion >= 9
         ? persisted.suppressionDecisionOverrides
         : {},
+      suppressionInitialBehavior: persistedVersion >= 17
+        ? persisted.suppressionInitialBehavior
+        : "disable-initially",
       suppressionScopeOverrides: persistedVersion >= 10
         ? persisted.suppressionScopeOverrides
         : {},
@@ -510,6 +538,7 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
         value.selectedSuppressionPolicy as SuppressionPolicyId,
       ) ||
       !value.suppressionDecisionOverrides ||
+      !["disable-initially", "highlight-only"].includes(value.suppressionInitialBehavior ?? "") ||
       typeof value.suppressionDecisionOverrides !== "object" ||
       Array.isArray(value.suppressionDecisionOverrides) ||
       !Object.entries(value.suppressionDecisionOverrides).every(
@@ -539,11 +568,9 @@ export function parseCutDraft(raw: string, seed: CutDraftSeed): CutDraft | null 
     ) {
       return null;
     }
-    const ids = [
-      ...value.cuts.map((cut) => cut.id),
-      ...value.ignoredIntervals.map((interval) => interval.id),
-    ];
+    const ids = draftRangeIds({ cuts: value.cuts, ignoredIntervals: value.ignoredIntervals });
     if (new Set(ids).size !== ids.length) return null;
+    if (value.cuts.filter((cut) => cut.editableGroupId !== undefined).length > MAX_EXPLICIT_RALLY_MEMBERS) return null;
     const cachedCutIds = new Set(
       value.cuts.filter((cut) => cut.origin === "cached-label").map((cut) => cut.id),
     );
@@ -575,12 +602,8 @@ export function applyPaddingToCachedCuts(
       cut.origin === "cached-label"
         ? {
             ...cut,
-            keepStart: roundTime(
-              clamp(cut.coreStart - before, analysisStart, analysisEnd),
-            ),
-            keepEnd: roundTime(
-              clamp(cut.coreEnd + after, analysisStart, analysisEnd),
-            ),
+            keepStart: roundTimeWithin(cut.coreStart - before, analysisStart, cut.coreStart),
+            keepEnd: roundTimeWithin(cut.coreEnd + after, cut.coreEnd, analysisEnd),
           }
         : cut,
     ),
@@ -598,12 +621,12 @@ export function setCutCoreStart(
     if (cut.id !== cutId) return cut;
     const maximumStart = cut.coreEnd - MIN_CUT_SECONDS;
     if (maximumStart < minimum) return cut;
-    const start = roundTime(clamp(value, minimum, maximumStart));
+    const start = roundTimeWithin(value, minimum, maximumStart);
     const beforePadding = cut.coreStart - cut.keepStart;
     return {
       ...cut,
       coreStart: start,
-      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
+      keepStart: roundTimeWithin(start - beforePadding, minimum, start),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -620,12 +643,12 @@ export function setCutCoreEnd(
     if (cut.id !== cutId) return cut;
     const minimumEnd = cut.coreStart + MIN_CUT_SECONDS;
     if (minimumEnd > maximum) return cut;
-    const end = roundTime(clamp(value, minimumEnd, maximum));
+    const end = roundTimeWithin(value, minimumEnd, maximum);
     const afterPadding = cut.keepEnd - cut.coreEnd;
     return {
       ...cut,
       coreEnd: end,
-      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+      keepEnd: roundTimeWithin(end + afterPadding, end, maximum),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
@@ -646,19 +669,41 @@ export function setCutCoreRange(
   ) return draft;
   const cuts = draft.cuts.map((cut) => {
     if (cut.id !== cutId) return cut;
-    const start = roundTime(clamp(startValue, minimum, maximum - MIN_CUT_SECONDS));
-    const end = roundTime(clamp(endValue, start + MIN_CUT_SECONDS, maximum));
+    const start = roundTimeWithin(startValue, minimum, maximum - MIN_CUT_SECONDS);
+    const end = roundTimeWithin(endValue, start + MIN_CUT_SECONDS, maximum);
     const beforePadding = cut.coreStart - cut.keepStart;
     const afterPadding = cut.keepEnd - cut.coreEnd;
     return {
       ...cut,
       coreStart: start,
       coreEnd: end,
-      keepStart: roundTime(Math.max(minimum, start - beforePadding)),
-      keepEnd: roundTime(Math.min(maximum, end + afterPadding)),
+      keepStart: roundTimeWithin(start - beforePadding, minimum, start),
+      keepEnd: roundTimeWithin(end + afterPadding, end, maximum),
     };
   });
   return alignRallyServeMarkers(withTouchedCachedCuts({ ...draft, cuts }, [cutId]));
+}
+
+/** Check the resulting inline membership before changing geometry, IDs, or history. */
+export function splitCutValidationMessage(draft: CutDraft, cutId: string): string | null {
+  const target = draft.cuts.find((cut) => cut.id === cutId);
+  if (!target) return "Choose a clip before splitting.";
+  const newCutId = nextCutId(target.origin === "cached-label" ? "R" : "M", draft);
+  const participatingIds = draft.cuts
+    .filter((cut) => cut.editableGroupId !== undefined || cut === target)
+    .map((cut) => cut.id);
+  participatingIds.push(newCutId);
+  if (participatingIds.length > MAX_EXPLICIT_RALLY_MEMBERS) {
+    return "Cannot split: this project supports at most 2,048 independently editable parts.";
+  }
+  if (participatingIds.some((id) => !validExplicitCutId(id))) {
+    return "Cannot split this legacy clip: split parts need nonblank IDs of at most 256 characters.";
+  }
+  const resultingIds = [...draftRangeIds(draft), newCutId];
+  if (new Set(resultingIds).size !== resultingIds.length) {
+    return "Cannot split: clip and excluded-range IDs must be unique.";
+  }
+  return null;
 }
 
 export function splitCutAt(
@@ -677,20 +722,23 @@ export function splitCutAt(
     position < cut.coreStart + MIN_CUT_SECONDS ||
     position > cut.coreEnd - MIN_CUT_SECONDS
   ) return null;
+  if (splitCutValidationMessage(draft, cutId)) return null;
 
   const beforePadding = cut.coreStart - cut.keepStart;
   const afterPadding = cut.keepEnd - cut.coreEnd;
   const prefix = cut.origin === "cached-label" ? "R" : "M";
   const left: EditableCut = {
     ...cut,
+    editableGroupId: `split:${crypto.randomUUID()}`,
     coreEnd: position,
-    keepEnd: roundTime(Math.min(maximum, position + afterPadding)),
+    keepEnd: roundTimeWithin(position + afterPadding, position, maximum),
   };
   const right: EditableCut = {
     ...cut,
-    id: nextCutId(prefix, draft.cuts),
+    id: nextCutId(prefix, draft),
     coreStart: position,
-    keepStart: roundTime(Math.max(minimum, position - beforePadding)),
+    keepStart: roundTimeWithin(position - beforePadding, minimum, position),
+    editableGroupId: `split:${crypto.randomUUID()}`,
   };
   const cuts = [...draft.cuts];
   cuts.splice(cutIndex, 1, left, right);
@@ -717,6 +765,11 @@ export function playbackFocusCut(
 
 function roundTime(seconds: number): number {
   return Math.round(seconds * 1000) / 1000;
+}
+
+function roundTimeWithin(seconds: number, minimum: number, maximum: number): number {
+  // Preserve millisecond rounding except where an exact source/core bound wins.
+  return clamp(roundTime(seconds), minimum, maximum);
 }
 
 function mergeIgnoredIntervals(
@@ -765,7 +818,7 @@ export function suppressionSuggestionState(
   ) {
     return "edited-kept";
   }
-  return "suppressed";
+  return draft.suppressionInitialBehavior === "highlight-only" ? "kept" : "suppressed";
 }
 
 export function suppressionSuggestionScope(
@@ -881,16 +934,16 @@ export function materializeFinalCutIntervals(
     for (const fragment of fragments) {
       const outerStart = Math.abs(fragment.start - cut.coreStart) < 0.000_5;
       const outerEnd = Math.abs(fragment.end - cut.coreEnd) < 0.000_5;
-      const paddedStart = roundTime(clamp(
+      // Rounded padding may extend a surviving core, never trim or erase it.
+      // Veto and ignored ranges are still subtracted at their exact boundaries.
+      const paddedStart = roundTimeWithin(
         outerStart ? cut.keepStart : fragment.start - draft.beforePaddingSeconds,
-        draft.analysisStart,
-        draft.analysisEnd,
-      ));
-      const paddedEnd = roundTime(clamp(
+        draft.analysisStart, fragment.start,
+      );
+      const paddedEnd = roundTimeWithin(
         outerEnd ? cut.keepEnd : fragment.end + draft.afterPaddingSeconds,
-        draft.analysisStart,
-        draft.analysisEnd,
-      ));
+        fragment.end, draft.analysisEnd,
+      );
       if (paddedEnd <= paddedStart) continue;
       const hardClipped = subtractRanges(
         { start: paddedStart, end: paddedEnd },

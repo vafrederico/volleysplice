@@ -37,6 +37,7 @@ import {
   setCutCoreEnd,
   setCutCoreStart,
   splitCutAt,
+  splitCutValidationMessage,
   type CutDraft,
   type CutDraftSeed,
   type EditableCut,
@@ -1099,7 +1100,7 @@ export function CutEditor({
       analysisEnd,
     );
     if (!result) {
-      setEditorMessage("Move the playhead inside the rally before splitting.");
+      setEditorMessage(splitCutValidationMessage(draft, selected.id) ?? "Move the playhead inside the rally before splitting.");
       return;
     }
     updateDraft(() => result.draft);

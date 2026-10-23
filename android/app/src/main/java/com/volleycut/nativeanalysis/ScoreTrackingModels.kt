@@ -131,18 +131,9 @@ internal object ScoreReducer {
                 rallyId = candidate.id,
             )).sortedWith(serveOrder))
         }
-        if (!sideSwitchEnabled) {
-            tracking = tracking.copy(
-                sideSwitchMarkers = tracking.sideSwitchMarkers.filter {
-                    it.origin == ServeMarkerOrigin.MANUAL
-                },
-            )
-        } else if (sideSwitchOutput != null) {
-            tracking = tracking.copy(
-                sideSwitchMarkers = tracking.sideSwitchMarkers.filter {
-                    it.origin == ServeMarkerOrigin.MANUAL
-                },
-            )
+        // Saved corrections remain authoritative until a new draft is created by reset.
+        // Disabling generation must not erase a previously reviewed automatic marker.
+        if (sideSwitchEnabled && sideSwitchOutput != null) {
             sideSwitchOutput.candidates.forEach { candidate ->
                 val id = "switch-${candidate.id}"
                 val used = tracking.serveMarkers.any { it.id == id } ||

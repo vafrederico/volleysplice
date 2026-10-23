@@ -258,6 +258,9 @@ function analysisFromFeedback(feedback: ParsedModelFeedback): OnDeviceAnalysis {
     ...(feedback.initialInference.servingSide
       ? { servingSide: servingSideOutput(feedback) }
       : {}),
+    ...(feedback.initialInference.sideSwitch
+      ? { sideSwitch: feedback.initialInference.sideSwitch }
+      : {}),
     ...(suppression
       ? {
           suppression: {
@@ -358,6 +361,7 @@ function draftFromFeedback(
     reviewedCutIds: preferences.reviewedCutIds ?? base.reviewedCutIds,
     selectedSuppressionPolicy:
       suppression?.selectedPolicy ?? base.selectedSuppressionPolicy,
+    suppressionInitialBehavior: feedback.corrections.suppressionInitialBehavior,
     suppressionDecisionOverrides: suppression?.decisionOverrides ?? {},
     suppressionScopeOverrides: suppression?.suppressionScopeOverrides ?? {},
     userTouchedCutIds: suppression?.userTouchedCutIds ?? [],
@@ -416,6 +420,7 @@ export function importModelFeedbackProject(
     info: mediaInfo(feedback),
     analysisWindow: { ...feedback.source.gameWindow },
     roi: { ...feedback.source.featureRoi },
+    sideSwitchEnabled: feedback.source.generateSideSwitchMarkers,
     status: "ready",
     analysis,
     error: null,

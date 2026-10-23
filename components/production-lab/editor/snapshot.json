@@ -86,8 +86,8 @@
     {
       "source": "prod/src/designs/taste/index.tsx",
       "destination": "components/production-lab/editor/designs/taste/index.tsx",
-      "sourceSha256": "33ea21a23ffa714d22bc203b833eeed0efb3668777d8969f000e60ce96c63f65",
-      "snapshotSha256": "546570dd366f88a33e15cb2d473af200c7fb8d64c62abb8eb8ec19156745be7e"
+      "sourceSha256": "194170f6e827f0b32a0f98022b5008b339c6ec936ebb5ed503205a88ac9ddd6f",
+      "snapshotSha256": "f0642a6415c2291315813bca39fab0883b6ea72ffa78c9ec6d2a722d38e83aa9"
     },
     {
       "source": "prod/src/designs/taste/keyboard-shortcuts.ts",
@@ -104,7 +104,7 @@
     {
       "source": "prod/src/designs/taste/taste-designs.css",
       "destination": "components/production-lab/editor/designs/taste/taste-designs.css",
-      "sourceSha256": "2866d2893c7d69a3701e6b316f9b80a8a1a998403d0bec658602cb66c8375203",
+      "sourceSha256": "29cd9908b9d8da7e559c1a50cdbef926818962d601ad6eedda282c0c28f52686",
       "snapshotSha256": "2866d2893c7d69a3701e6b316f9b80a8a1a998403d0bec658602cb66c8375203"
     },
     {
@@ -116,8 +116,8 @@
     {
       "source": "prod/src/designs/useDesignReview.ts",
       "destination": "components/production-lab/editor/designs/useDesignReview.ts",
-      "sourceSha256": "dd5dc8902de8dfbbdb8b11d11a413f32ff4ca45840c03a077f1bbcec7dd50230",
-      "snapshotSha256": "2cb43dec187d9d6076eae0f62966d089c42e0fc91111719e5361c18aed62a25a"
+      "sourceSha256": "7e7f0ffc90901dd0cf64506bc076ef4ab9e735915fc134d6be6647e60d07655c",
+      "snapshotSha256": "d48502b8e399f2137f13a43ab51fc1c56050f6314850199decf7e7e9b876f0fa"
     },
     {
       "source": "prod/src/lib/android-app.ts",
@@ -128,8 +128,8 @@
     {
       "source": "prod/src/lib/cut-draft.ts",
       "destination": "components/production-lab/editor/lib/cut-draft.ts",
-      "sourceSha256": "36ed5ce669fb68665f6b2e48990cfef499280364501a5cd37d1c33ddcceb6bfb",
-      "snapshotSha256": "d194ff8c3bf38f9fbf3c1418928d87c4434824ac10b46505b5ce9221ba3f5222"
+      "sourceSha256": "9dd7706b2366344b952032d2fc93683c800525ac16a60825d28a683275b69fd0",
+      "snapshotSha256": "bf7c7b4393f0cef6bef916c86660fc7fe97041af49afe46e378f3a890d65705d"
     },
     {
       "source": "prod/src/lib/edit-list.ts",
@@ -138,22 +138,16 @@
       "snapshotSha256": "379613bad4cfb6534766bfe4dafe76bd8da1e2cea535ccf4e1c9a0ea41e206c4"
     },
     {
-      "source": "prod/src/lib/feedback-ui.ts",
-      "destination": "components/production-lab/editor/lib/feedback-ui.ts",
-      "sourceSha256": "e1d8d60c5f7e572cdc3ecec6e3024f1083c410ecb934a1566639a07ddf2bf353",
-      "snapshotSha256": "e1d8d60c5f7e572cdc3ecec6e3024f1083c410ecb934a1566639a07ddf2bf353"
-    },
-    {
       "source": "prod/src/lib/model-feedback.ts",
       "destination": "components/production-lab/editor/lib/model-feedback.ts",
-      "sourceSha256": "a34eadf68390c7a077682abd8fff8898181f67498643e7f2cc56f858faeb710b",
-      "snapshotSha256": "b297d3e93935872da1971a5cc441c9e50e6cd07d9b596bdbbf654bd9e840b08f"
+      "sourceSha256": "d9354a0f66940f2b6c9c364fa9738d936073e612a3b5ea47f7817d91884383bf",
+      "snapshotSha256": "5ee9ad4ef56058681b4cd17f7880495695c56ac08c93d5f9b26f9692075b9764"
     },
     {
       "source": "prod/src/lib/model-review-draft.ts",
       "destination": "components/production-lab/editor/lib/model-review-draft.ts",
-      "sourceSha256": "98368990ab3a5ebb14f45a13f16d541476fb95bc305511e1b47ddf0b5a20aa23",
-      "snapshotSha256": "98368990ab3a5ebb14f45a13f16d541476fb95bc305511e1b47ddf0b5a20aa23"
+      "sourceSha256": "911c2c514886055bf8d83c3246d64046069932420fbcc67d2e3d87845274aa74",
+      "snapshotSha256": "d98e3fc949e8c6911c9bf40616c9f1e91e02006365812dfa03e025485fb5f27c"
     },
     {
       "source": "prod/src/lib/on-device/analysis-window.ts",
@@ -206,13 +200,13 @@
     {
       "source": "prod/src/lib/on-device/serving-side-cache.ts",
       "destination": "components/production-lab/editor/lib/on-device/serving-side-cache.ts",
-      "sourceSha256": "0729657db6b7b2ede8662b71949f31f1a5c676cad2c96de9069fe561f84423d1",
+      "sourceSha256": "c1421f0781fac9e1a1d4f45c7e0070407973b88fdce57d94b2743e813c1c61a0",
       "snapshotSha256": "0729657db6b7b2ede8662b71949f31f1a5c676cad2c96de9069fe561f84423d1"
     },
     {
       "source": "prod/src/lib/on-device/side-switch-model.ts",
       "destination": "components/production-lab/editor/lib/on-device/side-switch-model.ts",
-      "sourceSha256": "ebd3283a9292d95821f60bca52afd783f0cae960187b9f72a7e50ed3d61fe6b8",
+      "sourceSha256": "d9ef61fb3c40452c92edc62d1d0adea0239c84186d11c1d2a4ff55843ddbf421",
       "snapshotSha256": "ebd3283a9292d95821f60bca52afd783f0cae960187b9f72a7e50ed3d61fe6b8"
     },
     {
@@ -236,8 +230,8 @@
     {
       "source": "prod/src/lib/on-device/types.ts",
       "destination": "components/production-lab/editor/lib/on-device/types.ts",
-      "sourceSha256": "16a8ae7c1515c54e9cb782b6587d60e8beabfae9896380c155c8e4d57593f66f",
-      "snapshotSha256": "16a8ae7c1515c54e9cb782b6587d60e8beabfae9896380c155c8e4d57593f66f"
+      "sourceSha256": "f243f0093eb11e275359cc3331cfaac7dffa14fcc5b3f1a1920c8bf861bab5fe",
+      "snapshotSha256": "62473802e893d17e547a067068640bfde3b5cf7d231664bd4db50b25fad09a33"
     },
     {
       "source": "prod/src/lib/on-device/wake-lock.ts",
@@ -248,13 +242,13 @@
     {
       "source": "prod/src/lib/product-analysis.ts",
       "destination": "components/production-lab/editor/lib/product-analysis.ts",
-      "sourceSha256": "e6251f235510a85b82bd1ca749069a535f9d05728aa151a9843b424eae1d6f4b",
-      "snapshotSha256": "e6251f235510a85b82bd1ca749069a535f9d05728aa151a9843b424eae1d6f4b"
+      "sourceSha256": "c5437e6483e37e149bd7b9a2aacb8e6aa69fd3999ecab934fbff37d79b44cc62",
+      "snapshotSha256": "3aed07a55dfecdad4558d4013ac9d1d4f6d4c774805af049063d3ff277d00629"
     },
     {
       "source": "prod/src/lib/project-store.ts",
       "destination": "components/production-lab/editor/lib/project-store.ts",
-      "sourceSha256": "70cf0a7b443e940b375af306579efa34881de3da0928af8b010b658450b310d9",
+      "sourceSha256": "e855cb480f3c682d9f7e56a894d0ec0ee7df8563d4e5f1186042567a5f984c1e",
       "snapshotSha256": "a459e37f54d7ef01b23476aa7ac16f6219361fe422a2b4f2989d2c3028069edb"
     },
     {
@@ -298,6 +292,12 @@
       "destination": "components/production-lab/editor/lib/youtube-chapters.ts",
       "sourceSha256": "c0d980acbdefa9098f038768e2a91aefc66aa3bc929fdf0acd33e3dcd8274b42",
       "snapshotSha256": "c0d980acbdefa9098f038768e2a91aefc66aa3bc929fdf0acd33e3dcd8274b42"
+    },
+    {
+      "source": "prod/src/lib/feedback-ui.ts",
+      "destination": "components/production-lab/editor/lib/feedback-ui.ts",
+      "sourceSha256": "e1d8d60c5f7e572cdc3ecec6e3024f1083c410ecb934a1566639a07ddf2bf353",
+      "snapshotSha256": "e1d8d60c5f7e572cdc3ecec6e3024f1083c410ecb934a1566639a07ddf2bf353"
     }
   ]
 }

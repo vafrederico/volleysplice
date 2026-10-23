@@ -86,7 +86,7 @@ try {
   );
   const { putProject, listProjects, projectAnalysisId } =
     await server.ssrLoadModule("/src/lib/project-store.ts");
-  const { createCutDraft, cutDraftStorageKey } = await server.ssrLoadModule(
+  const { buildFinalCutIntervals, createCutDraft } = await server.ssrLoadModule(
     "/src/lib/cut-draft.ts",
   );
   const project = {
@@ -140,11 +140,12 @@ try {
     rallies: project.analysis.intervals,
     ignoredIntervals: [],
   };
-  const key = cutDraftStorageKey(seed.analysisId);
+  let key;
   // A v15 draft never persisted the final-video choice. Preview off must not
   // change its historical final-video default of on.
   project.reviewDraft = { ...createCutDraft(seed), version: 15, renderScoreOverlay: false };
   delete project.reviewDraft.renderScoreOnFinalVideo;
+  project.reviewDraft.cuts[0].editableGroupId = "split:synthetic-retained";
   const sourceFile = new File([], "match.mp4", { type: "video/mp4" });
   const exports = [];
   const queueVideoExport = (request) => exports.push(request);
@@ -169,12 +170,15 @@ try {
           review.message ?? "Loading",
         );
   }
-  await putProject(project);
+  Object.assign(project, await putProject(project));
+  const { projectDraftStorageKey } = await server.ssrLoadModule("/src/lib/review-draft-persistence.ts");
+  key = projectDraftStorageKey(seed.analysisId, project.instanceId);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () =>
     root.render(React.createElement(Editor, { savedProject: project })),
   );
   await waitFor(() => window.localStorage.getItem(key));
+  assert.equal(JSON.parse(window.localStorage.getItem(key)).cuts[0].editableGroupId, "split:synthetic-retained");
   const scoreCheckbox = (text) => {
     const label = [...document.querySelectorAll("label")].find(
       (node) => node.textContent.includes(text),
@@ -228,6 +232,7 @@ try {
     [reloaded] = await listProjects();
   });
   assert.equal(reloaded.reviewDraft.cuts[0].included, false);
+  assert.equal(reloaded.reviewDraft.cuts[0].editableGroupId, "split:synthetic-retained");
   await act(async () =>
     root.render(
       React.createElement(Editor, { key: "reload", savedProject: reloaded }),
@@ -299,6 +304,135 @@ try {
     "Latest edit is not saved",
   );
 
+  // Imported highlight-only reviews must retain footage through the real editor's
+  // immediate autosave. A deliberate active-level change opts into removal.
+  const cleanupDraft = { ...createCutDraft(seed), suppressionInitialBehavior: "highlight-only",
+    cuts: createCutDraft(seed).cuts.map(cut => ({ ...cut, agreement: "both-models" })) };
+  const suggestion = { id: "cleanup-1", logicalId: "cleanup-1", suppressionEventId: "S1", start: 12, end: 13,
+    score: .95, sourceProductionIds: ["R001"], eligiblePolicyIds: ["conservative", "balanced", "aggressive"] };
+  const cleanupSuppression = { suggestions: [suggestion] };
+  let savedCleanup;
+  const mountCleanup = async (name, draft, suggestions = [suggestion]) => {
+    savedCleanup = undefined;
+    const cleanupReview = { ...readyReview, projectId: `cleanup-${name}`, productAnalysis: null, draft, modelDraft: draft,
+      suppression: { suggestions }, cleanupSuggestions: suggestions.map(item => ({ ...item, cutId: null, decision: "pending" })),
+      saveDraft: async next => { savedCleanup = next; return { saved: true, message: "Saved" }; } };
+    await act(async () => root.render(React.createElement(RallyDesk, { key: name, review: cleanupReview })));
+    await waitFor(() => savedCleanup);
+  };
+  const cleanupNavigation = () => [...document.querySelectorAll('.td-review-shortcuts button')]
+    .find(node => node.textContent.includes("Review clean"));
+  const navigateCleanup = async (id, retained) => {
+    const target = cleanupNavigation();
+    assert.ok(target && !target.disabled, "pending cleanup navigation is available");
+    assert.equal(target.querySelector("span").textContent, "Review cleanup flags");
+    const before = structuredClone(savedCleanup);
+    await act(async () => target.click());
+    const message = document.querySelector(".rd-sidebar-tool-status").textContent;
+    assert.ok(message.startsWith(`${id} is flagged for automatic cleanup review`), message);
+    assert.ok(message.includes(retained ? "has footage retained in the final cut" : "is currently excluded from the final cut"), message);
+    assert.deepEqual(savedCleanup, before, "review navigation does not edit the cut or decisions");
+  };
+  const checkCleanupReadiness = async (pending) => {
+    await click("Export");
+    const row = [...document.querySelectorAll(".td-readiness li")]
+      .find(node => node.querySelector("strong")?.textContent === "Automatic cleanup");
+    assert.ok(row);
+    assert.equal(row.querySelector("span").textContent, pending === 0 ? "Every suggestion reviewed"
+      : `${pending} flagged ${pending === 1 ? "suggestion awaits" : "suggestions await"} review`);
+    assert.equal(row.hasAttribute("data-ready"), pending === 0);
+    await click("Review");
+  };
+  const cleanupIntervals = () => buildFinalCutIntervals(savedCleanup, cleanupSuppression);
+  const retainedRally = [{ start: 8, end: 22, cutIds: ["R001"] }];
+  const undoCleanup = async (key) => {
+    await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key, ctrlKey: true, bubbles: true })));
+  };
+  await mountCleanup("highlight-only", cleanupDraft);
+  assert.equal(savedCleanup.suppressionInitialBehavior, "highlight-only");
+  assert.deepEqual(cleanupIntervals(), retainedRally, "mount/autosave retains the exact highlighted footage");
+  await navigateCleanup("R001", true);
+  await checkCleanupReadiness(1);
+  await click("Remove rally");
+  assert.deepEqual(cleanupIntervals(), []);
+  assert.equal(savedCleanup.suppressionDecisionOverrides["rally:R001"], "suppress");
+  assert.equal(document.querySelector('.td-suppression-review').dataset.state, "excluded");
+  await checkCleanupReadiness(0);
+  await undoCleanup("z");
+  assert.deepEqual(cleanupIntervals(), retainedRally);
+  await navigateCleanup("R001", true);
+  await checkCleanupReadiness(1);
+  await undoCleanup("y");
+  assert.deepEqual(cleanupIntervals(), []);
+  await checkCleanupReadiness(0);
+  await click("Keep rally");
+  assert.deepEqual(cleanupIntervals(), retainedRally);
+  assert.equal(savedCleanup.suppressionDecisionOverrides["rally:R001"], "keep");
+  assert.equal(document.querySelector('.td-suppression-review').dataset.state, "kept");
+  await checkCleanupReadiness(0);
+
+  // Each fresh component must explain the effective cut, including explicit
+  // overrides of the initial behavior and retained manual/touched footage.
+  const removalDraft = { ...cleanupDraft, suppressionInitialBehavior: "disable-initially" };
+  const cleanupCases = [
+    { name: "automatic-removal", draft: removalDraft, expected: [], pending: 1 },
+    { name: "touched-retained", draft: { ...removalDraft, userTouchedCutIds: ["R001"] }, expected: retainedRally, pending: 1 },
+    { name: "manual-retained", draft: { ...removalDraft, cuts: removalDraft.cuts.map(cut => ({ ...cut, origin: "manual" })) }, expected: retainedRally, pending: 1 },
+    { name: "ineligible-retained", draft: { ...removalDraft, selectedSuppressionPolicy: "conservative" },
+      suggestions: [{ ...suggestion, eligiblePolicyIds: ["aggressive"] }], expected: retainedRally, pending: 0 },
+    { name: "highlight-rally-suppress", draft: { ...cleanupDraft, suppressionDecisionOverrides: { "rally:R001": "suppress" } }, expected: [], pending: 0 },
+    { name: "highlight-event-suppress", draft: { ...cleanupDraft, suppressionDecisionOverrides: { "cleanup-1": "suppress" } }, expected: [], pending: 0 },
+    { name: "rally-keep", draft: { ...removalDraft, suppressionDecisionOverrides: { "rally:R001": "keep" } }, expected: retainedRally, pending: 0 },
+    { name: "event-keep", draft: { ...removalDraft, suppressionDecisionOverrides: { "cleanup-1": "keep" } }, expected: retainedRally, pending: 0 },
+    { name: "rally-keep-over-event-suppress", draft: { ...removalDraft, suppressionDecisionOverrides: { "rally:R001": "keep", "cleanup-1": "suppress" } }, expected: retainedRally, pending: 0 },
+    { name: "rally-suppress-over-event-keep", draft: { ...cleanupDraft, suppressionDecisionOverrides: { "rally:R001": "suppress", "cleanup-1": "keep" } }, expected: [], pending: 0 },
+    { name: "partial-removal", draft: { ...removalDraft, suppressionScopeOverrides: { "cleanup-1": "veto-region" } },
+      expected: [{ start: 8, end: 12, cutIds: ["R001"] }, { start: 13, end: 22, cutIds: ["R001"] }], pending: 1 },
+    { name: "pending-with-explicit-event-removal", draft: { ...cleanupDraft, suppressionDecisionOverrides: { "cleanup-2": "suppress" } },
+      suggestions: [suggestion, { ...suggestion, id: "cleanup-2", logicalId: "cleanup-2", start: 14, end: 15 }], expected: [], pending: 1 },
+  ];
+  for (const { name, draft, suggestions = [suggestion], expected, pending } of cleanupCases) {
+    await mountCleanup(name, draft, suggestions);
+    assert.deepEqual(buildFinalCutIntervals(savedCleanup, { suggestions }), expected, name);
+    assert.equal(cleanupNavigation().disabled, pending === 0, name);
+    if (pending) await navigateCleanup("R001", expected.length > 0);
+    await checkCleanupReadiness(pending);
+    assert.deepEqual(buildFinalCutIntervals(savedCleanup, { suggestions }), expected, `${name}: review preserves geometry`);
+  }
+
+  const secondSuggestion = { ...suggestion, id: "cleanup-2", logicalId: "cleanup-2", start: 32, end: 33, sourceProductionIds: ["R002"] };
+  const mixedSuggestions = [suggestion, secondSuggestion];
+  await mountCleanup("mixed-pending", { ...removalDraft, userTouchedCutIds: ["R001"],
+    cuts: [...removalDraft.cuts, { ...removalDraft.cuts[0], id: "R002", coreStart: 30, coreEnd: 40, keepStart: 28, keepEnd: 42 }] }, mixedSuggestions);
+  assert.deepEqual(buildFinalCutIntervals(savedCleanup, { suggestions: mixedSuggestions }), retainedRally);
+  await checkCleanupReadiness(2);
+  await navigateCleanup("R002", false);
+  await navigateCleanup("R001", true);
+
+  await mountCleanup("cleanup-level-undo", cleanupDraft);
+  const settings = document.querySelector('button[aria-label="Final cut settings"]');
+  assert.ok(settings);
+  await act(async () => settings.click());
+  const cleanupSelect = [...document.querySelectorAll("label")].find(label => label.textContent.includes("Automatic cleanup"))?.querySelector("select");
+  assert.ok(cleanupSelect);
+  await act(async () => { cleanupSelect.value = "light"; cleanupSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
+  await waitFor(() => savedCleanup.suppressionInitialBehavior === "disable-initially");
+  assert.deepEqual(cleanupIntervals(), []);
+  await click("Done");
+  await navigateCleanup("R001", false);
+  await checkCleanupReadiness(1);
+  await undoCleanup("z");
+  assert.equal(savedCleanup.suppressionInitialBehavior, "highlight-only");
+  assert.deepEqual(cleanupIntervals(), retainedRally);
+  await navigateCleanup("R001", true);
+  await checkCleanupReadiness(1);
+  await undoCleanup("y");
+  assert.equal(savedCleanup.suppressionInitialBehavior, "disable-initially");
+  assert.deepEqual(cleanupIntervals(), []);
+  await navigateCleanup("R001", false);
+  await checkCleanupReadiness(1);
+  console.log(`Cleanup UI: ${cleanupCases.length + 3} real-component scenarios passed, including mixed pending flags, explicit decisions, partial removal and undo/redo; exact cut geometry preserved.`);
+
   const invalid = {
     ...createCutDraft(seed),
     sourceRevision: "incompatible-revision",
@@ -346,12 +480,12 @@ try {
   bundle.editorPreferences.renderScoreOnFinalVideo = false; // Canonical v1 wins.
   const imported = importModelFeedbackProject(JSON.stringify(bundle)).project;
   feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(imported), recordingId: imported.id };
-  const portableKey = cutDraftStorageKey(projectAnalysisId(imported));
   await act(async () => root.render(null));
   window.localStorage.clear();
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   window.localStorage.setItem("volleysplice:export:fade-scores", "false");
-  await putProject(imported);
+  Object.assign(imported, await putProject(imported, { expectedSource: null }));
+  const portableKey = projectDraftStorageKey(projectAnalysisId(imported), imported.instanceId);
   await act(async () => root.render(React.createElement(Editor, { key: "portable", savedProject: imported })));
   await waitFor(() => window.localStorage.getItem(portableKey));
   const speed = () => document.querySelector('select[aria-label="Playback speed"]');
@@ -435,14 +569,16 @@ try {
       const caseName = `${deskName}-reset-v${envelope.schemaVersion}`;
       const input = structuredClone(bundle);
       input.corrections.ui = envelope;
-      const resetProject = importModelFeedbackProject(JSON.stringify(input)).project;
-      const resetKey = cutDraftStorageKey(projectAnalysisId(resetProject));
+      const resetProject = importModelFeedbackProject(JSON.stringify(input), {
+        occupiedProjectIds: new Set((await listProjects()).map(project => project.id)),
+      }).project;
       feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(resetProject), recordingId: resetProject.id };
       await act(async () => root.render(null));
       window.localStorage.clear();
       window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
       window.localStorage.setItem("volleycut:production-lab:rally-desk-tour:v1", "dismissed");
-      await putProject(resetProject);
+      Object.assign(resetProject, await putProject(resetProject, { expectedSource: null }));
+      const resetKey = projectDraftStorageKey(projectAnalysisId(resetProject), resetProject.instanceId);
       await act(async () => root.render(React.createElement(Editor, { key: caseName, savedProject: resetProject, Desk, connected: false })));
       await waitFor(() => window.localStorage.getItem(resetKey));
       const currentDraft = () => JSON.parse(window.localStorage.getItem(resetKey));
@@ -453,7 +589,10 @@ try {
       const matchingSource = new File([new Uint8Array(1000)], "match.mp4", { type: "video/mp4", lastModified: 100 });
       Object.defineProperty(reconnect, "files", { configurable: true, value: [matchingSource] });
       await act(async () => reconnect.dispatchEvent(new dom.window.Event("change", { bubbles: true })));
-      await waitFor(() => !document.querySelector(".td-reconnect"));
+      // Score recovery shares this panel style and can remain after source attachment.
+      await waitFor(() => !document.querySelector('.td-reconnect input[type="file"]')).catch((cause) => {
+        throw new Error(`${caseName}: source reconnect failed: ${document.querySelector('.td-reconnect input[type="file"]')?.parentElement?.textContent}`, { cause });
+      });
       assert.equal(readyReview.sourceFile, matchingSource);
       assert.deepEqual(currentDraft().portableUi, envelope, `${caseName}: reconnect retention`);
       await click("Remove rally");
@@ -518,7 +657,6 @@ try {
     const savedProject = importModelFeedbackProject(JSON.stringify(input), {
       occupiedProjectIds: new Set((await listProjects()).map(project => project.id)),
     }).project;
-    const storageKey = cutDraftStorageKey(projectAnalysisId(savedProject));
     feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(savedProject), recordingId: savedProject.id };
     await act(async () => root.render(null));
     window.localStorage.clear();
@@ -526,7 +664,8 @@ try {
       window.localStorage.setItem(`${prefix}:rally-desk-tour:v1`, "dismissed");
     }
     window.localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, savedProject.id);
-    await putProject(savedProject);
+    Object.assign(savedProject, await putProject(savedProject, { expectedSource: null }));
+    const storageKey = projectDraftStorageKey(projectAnalysisId(savedProject), savedProject.instanceId);
     const mount = async (project, suffix) => {
       await act(async () => root.render(mode === "App"
         ? React.createElement(App, { key: `${mode}-${suffix}` })

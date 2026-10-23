@@ -3,8 +3,9 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 import { ModelFeedbackValidationError } from "../../lib/model-feedback.ts";
+import { buildFinalCutIntervals, createCutDraft, cutDraftStorageKeys, materializeFinalCutIntervals, parseCutDraft, resetProjectReview, splitCutAt } from "../../prod/src/lib/cut-draft.ts";
+import { moveHistory, recordEdit } from "../../prod/src/designs/taste/edit-history.ts";
 import { parseModelFeedbackText } from "../../prod/src/lib/model-feedback-validation.ts";
-import { createCutDraft, materializeFinalCutIntervals, parseCutDraft } from "../../prod/src/lib/cut-draft.ts";
 import {
   importModelFeedbackProject,
 } from "../../prod/src/lib/model-feedback-import.ts";
@@ -231,6 +232,93 @@ function feedbackText(keepRally = false) {
   );
   return JSON.stringify(bundle);
 }
+
+test("native explicit groups survive ordinary persistence/history/archive while full reset restores model cuts", () => {
+  const fixture = JSON.parse(readFileSync(new URL("../fixtures/explicit-rally-groups.json", import.meta.url), "utf8"));
+  const bundle = JSON.parse(feedbackText());
+  bundle.corrections.correctedRanges = fixture.correctedRanges;
+  const { project } = importModelFeedbackProject(JSON.stringify(bundle));
+  const draft = project.importedFeedback!.initialDraft;
+  assert.deepEqual(draft.cuts, fixture.correctedRanges);
+  const seed = { analysisId: draft.analysisId, recordingId: draft.recordingId, duration: analysis.duration,
+    analysisStart: 2, analysisEnd: 28, rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals };
+  const reopened = parseCutDraft(JSON.stringify(draft), seed)!;
+  assert.deepEqual(reopened.cuts, draft.cuts);
+  const reset = resetProjectReview(createCutDraft(seed), reopened);
+  const futureUi = { schemaVersion: 2, preferences: { chapterOptions: { future: [null] } } };
+  const opaqueReset = resetProjectReview(createCutDraft(seed), { ...reopened, ...{ portableUi: futureUi } });
+  assert.deepEqual("portableUi" in opaqueReset && opaqueReset.portableUi, futureUi);
+  assert.deepEqual(reset.cuts, createCutDraft(seed).cuts);
+  assert.equal(reset.cuts.some((cut) => cut.editableGroupId !== undefined), false);
+  const changed = { ...reopened, cuts: reopened.cuts.map((cut, index) => index ? cut : { ...cut, included: false }) };
+  const history = recordEdit({ past: [], present: reopened, future: [] }, changed);
+  assert.deepEqual(moveHistory(history, "undo").present.cuts, reopened.cuts);
+  assert.deepEqual(moveHistory(moveHistory(history, "undo"), "redo").present.cuts, changed.cuts);
+  const exported = createModelFeedbackBundle(analysis, changed, []);
+  const again = importModelFeedbackProject(JSON.stringify(exported)).project.importedFeedback!.initialDraft;
+  assert.deepEqual(again.cuts, changed.cuts);
+  const deleted = { ...changed, cuts: changed.cuts.filter((cut) => cut.id !== "M001") };
+  assert.equal(importModelFeedbackProject(JSON.stringify(createModelFeedbackBundle(analysis, deleted, [])))
+    .project.importedFeedback!.initialDraft.cuts.some((cut) => cut.id === "M001"), false);
+  const split = splitCutAt(reopened, "M002", 26, 2, 28)!;
+  assert.notEqual(split.newCut.editableGroupId, reopened.cuts.at(-1)!.editableGroupId);
+  for (const bad of [...fixture.invalidGroupIds, "a".repeat(129)]) {
+    const invalid = structuredClone(bundle);
+    invalid.corrections.correctedRanges[0].editableGroupId = bad;
+    assert.throws(() => importModelFeedbackProject(JSON.stringify(invalid)), ModelFeedbackValidationError);
+    assert.equal(parseCutDraft(JSON.stringify({ ...draft, cuts: [{ ...draft.cuts[0], editableGroupId: bad }] }), seed), null);
+  }
+  const duplicate = structuredClone(bundle);
+  duplicate.corrections.correctedRanges[1].id = "R001";
+  assert.throws(() => importModelFeedbackProject(JSON.stringify(duplicate)), ModelFeedbackValidationError);
+});
+
+test("native highlight-only cleanup preserves final footage and explicit decisions through exchange", () => {
+  for (const scope of ["whole-rally", "veto-region"] as const) {
+    const bundle = JSON.parse(feedbackText());
+    bundle.corrections.correctedRanges[0].included = true;
+    bundle.corrections.suppressionInitialBehavior = "highlight-only";
+    bundle.corrections.suppression.decisionOverrides = {};
+    bundle.corrections.suppression.suppressionScopeOverrides = { "logical-1": scope };
+    const imported = importModelFeedbackProject(JSON.stringify(bundle));
+    const draft = imported.project.importedFeedback!.initialDraft;
+    const suppression = imported.project.analysis!.suppression;
+    assert.equal(draft.suppressionInitialBehavior, "highlight-only");
+    assert.deepEqual(buildFinalCutIntervals(draft, suppression).map(({ start, end }) => [start, end]), [[3, 10]]);
+    assert.equal(parseCutDraft(JSON.stringify(draft), { analysisId: draft.analysisId, recordingId: draft.recordingId,
+      duration: analysis.duration, analysisStart: draft.analysisStart, analysisEnd: draft.analysisEnd,
+      rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals })?.suppressionInitialBehavior, "highlight-only");
+    const exported = createModelFeedbackBundle(analysis, draft, []);
+    assert.equal(exported.corrections.suppressionInitialBehavior, "highlight-only");
+    const second = importModelFeedbackProject(JSON.stringify(exported));
+    assert.deepEqual(buildFinalCutIntervals(second.project.importedFeedback!.initialDraft, second.project.analysis!.suppression), buildFinalCutIntervals(draft, suppression));
+    const explicit = { ...draft, suppressionDecisionOverrides: { "logical-1": "suppress" as const } };
+    assert.ok(buildFinalCutIntervals(explicit, suppression).reduce((sum, row) => sum + row.end - row.start, 0) < 7);
+    const kept = { ...draft, suppressionDecisionOverrides: { "logical-1": "keep" as const } };
+    assert.deepEqual(buildFinalCutIntervals(kept, suppression).map(({ start, end }) => [start, end]), [[3, 10]]);
+  }
+});
+
+test("older feedback keeps existing cleanup behavior and invalid behavior is rejected", () => {
+  const bundle = JSON.parse(feedbackText());
+  bundle.corrections.correctedRanges[0].included = true;
+  bundle.corrections.suppression.decisionOverrides = {};
+  delete bundle.corrections.suppressionInitialBehavior;
+  const imported = importModelFeedbackProject(JSON.stringify(bundle));
+  assert.equal(imported.project.importedFeedback!.initialDraft.suppressionInitialBehavior, "disable-initially");
+  assert.deepEqual(buildFinalCutIntervals(imported.project.importedFeedback!.initialDraft, imported.project.analysis!.suppression), []);
+  bundle.corrections.suppressionInitialBehavior = "unknown";
+  assert.throws(() => importModelFeedbackProject(JSON.stringify(bundle)), /suppressionInitialBehavior/);
+});
+
+test("version 16 browser reviews retain their original removal default and remain discoverable", () => {
+  const seed = { analysisId: analysis.id, recordingId: analysis.recordingId, duration: analysis.duration,
+    rallies: analysis.rallies, ignoredIntervals: analysis.ignoredIntervals };
+  const old = { ...createCutDraft(seed), version: 16 } as Record<string, unknown>;
+  delete old.suppressionInitialBehavior;
+  assert.equal(parseCutDraft(JSON.stringify(old), seed)?.suppressionInitialBehavior, "disable-initially");
+  assert.ok(cutDraftStorageKeys(analysis.id).some(key => key.includes(":v16:")));
+});
 
 test("imported moved serves survive the editor's model refresh in both directions", () => {
   for (const movedStart of [6, 4]) {

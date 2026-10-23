@@ -71,6 +71,7 @@ export type ModelFeedbackBundle = {
     gameWindow: ProductAnalysis["analysisWindow"];
     featureRoi: ProductAnalysis["roi"];
     runtimeVariant: ProductAnalysis["runtimeVariant"];
+    generateSideSwitchMarkers: boolean;
     videoBytesIncluded: false;
   };
   features: {
@@ -140,6 +141,7 @@ export type ModelFeedbackBundle = {
   corrections: {
     ui?: FeedbackUi;
     updatedAt: string;
+    suppressionInitialBehavior: CutDraft["suppressionInitialBehavior"];
     beforePaddingSeconds: number;
     afterPaddingSeconds: number;
     joinGapSeconds: number;
@@ -314,6 +316,7 @@ export function createModelFeedbackBundle(
       gameWindow: analysis.analysisWindow,
       featureRoi: analysis.roi,
       runtimeVariant: analysis.runtimeVariant,
+      generateSideSwitchMarkers: analysis.sideSwitchEnabled !== false,
       videoBytesIncluded: false,
     },
     features: analysis.features
@@ -495,6 +498,7 @@ export function createModelFeedbackBundle(
     corrections: {
       ui: feedbackUiFromDraft(draft),
       updatedAt: draft.updatedAt,
+      suppressionInitialBehavior: draft.suppressionInitialBehavior,
       beforePaddingSeconds: draft.beforePaddingSeconds,
       afterPaddingSeconds: draft.afterPaddingSeconds,
       joinGapSeconds: draft.joinGapSeconds,

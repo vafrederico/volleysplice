@@ -37,12 +37,16 @@ for (const [name, create, parse] of [
   ["production", createCutDraft, parseCutDraft],
   ["lab", createLabCutDraft, parseLabCutDraft],
 ] as const) {
-  test(`${name} v16 drafts retain bounded UI extensions and exact imported playback rates`, () => {
+  test(`${name} v16 and current drafts retain bounded UI extensions and exact imported playback rates`, () => {
     const draft = { ...create(seed), portableUi, playbackRate: 1.75 };
     const restored = parse(JSON.stringify(draft), seed);
-    assert.equal(restored?.version, 16);
+    assert.equal(restored?.version, 17);
     assert.equal(restored?.playbackRate, 1.75);
     assert.deepEqual(restored?.portableUi, portableUi);
+    const migrated = parse(JSON.stringify({ ...draft, version: 16 }), seed);
+    assert.equal(migrated?.version, 17);
+    assert.equal(migrated?.playbackRate, 1.75);
+    assert.deepEqual(migrated?.portableUi, portableUi);
     for (const invalid of [null, [], { preferences: [] }, { preferences: { playbackRate: "fast" } }]) {
       assert.equal(parse(JSON.stringify({ ...draft, portableUi: invalid }), seed), null);
     }

@@ -177,6 +177,8 @@
 .td-reconnect span { color: var(--td-muted); font-size: 9px; line-height: 1.45; }
 .td-reconnect small { color: var(--td-alert); font-size: 8px; line-height: 1.4; }
 .td-reconnect .td-secondary-button { flex: 0 0 auto; }
+.rd-score-recovery { margin: 12px 0; }
+.rd-score-recovery > div { min-width: 0; }
 
 .td-kicker,
 .td-field-label {
