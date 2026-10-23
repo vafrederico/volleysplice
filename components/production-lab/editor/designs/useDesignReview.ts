@@ -90,6 +90,17 @@ export type ReadyDesignReview = {
   }>;
   queueVideoExport: (request: DesignVideoExportRequest) => void;
   saveDraft: (draft: CutDraft) => void;
+  /** Optional production recovery contract. The recorded-model lab does not infer. */
+  scoreRecovery?: {
+    stages: Record<"servingSide" | "sideSwitch", {
+      status: "complete" | "missing" | "failed" | "unavailable" | "disabled";
+      message: string;
+    }>;
+    status: "idle" | "queued" | "running" | "cancelling";
+    detail: string;
+    retry?: () => void;
+    cancel?: () => void;
+  };
 };
 
 export type DesignReviewState =

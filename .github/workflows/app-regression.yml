@@ -1,0 +1,104 @@
+name: App regression
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-regression-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# No release environments, secrets, shared caches, or artifact API dependencies.
+# Forgejo's github context aliases its native context. Token permissions still
+# depend on the host; remove automatic tokens from every shell command below.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  web:
+    name: Web unit, persistence, UI contracts, and static build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: https://github.com/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: https://github.com/actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24.15.0'
+          package-manager-cache: false
+          token: ''
+
+      - name: Run public web regression gates
+        run: |
+          set -euo pipefail
+          unset GITHUB_TOKEN FORGEJO_TOKEN GITEA_TOKEN
+          npm ci --no-audit --no-fund
+          npm --prefix prod ci --no-audit --no-fund
+          npm run test:web
+          node --test scripts/browser-distilled-large-contract.test.mjs
+          npm --prefix prod run test:review-persistence
+          npm --prefix prod run test:app-export
+          npm --prefix prod run test:score-recovery
+          npm --prefix prod run test:score-source-integration
+          npm --prefix prod run test:side-switch-import
+          npm --prefix prod run test:project-roundtrip
+          npm --prefix prod run test:reconnect-ui
+          npm --prefix prod run test:inference-ui
+          npm --prefix prod run test:youtube-ui
+          # Includes asset preparation, tsc, Vite static export, and verify-build.
+          npm --prefix prod run build
+
+  android-jvm:
+    name: Android JVM contracts with verified packaged assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: https://github.com/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: https://github.com/actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          overwrite-settings: false
+
+      - uses: https://github.com/android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+          log-accepted-android-sdk-licenses: false
+
+      - name: Prepare and test public Android model bootstrap
+        run: |
+          set -euo pipefail
+          unset GITHUB_TOKEN FORGEJO_TOKEN GITEA_TOKEN
+          python3 -m venv "$RUNNER_TEMP/android-regression-env"
+          "$RUNNER_TEMP/android-regression-env/bin/python" -m pip install \
+            --disable-pip-version-check onnx==1.23.0
+          "$RUNNER_TEMP/android-regression-env/bin/python" -m unittest discover \
+            -s scripts -p test_prepare_android_neural_assets.py -v
+          "$RUNNER_TEMP/android-regression-env/bin/python" scripts/prepare-android-neural-assets.py \
+            --output "$RUNNER_TEMP/android-regression-neural"
+          echo "VOLLEYCUT_NEURAL_ASSETS_DIR=$RUNNER_TEMP/android-regression-neural" >> "$GITHUB_ENV"
+
+      - name: Run Android JVM gate without excluding asset preparation
+        working-directory: android
+        run: |
+          set -euo pipefail
+          unset GITHUB_TOKEN FORGEJO_TOKEN GITEA_TOKEN
+          test -n "${VOLLEYCUT_NEURAL_ASSETS_DIR:-}"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          test -s "$sdk_root/platforms/android-37.0/android.jar"
+          test -x "$sdk_root/build-tools/37.0.0/aapt2"
+          chmod +x ./gradlew
+          python3 -m unittest discover -s ../scripts -p test_android_regression_gate.py -v
+          python3 ../scripts/android-regression-gate.py

@@ -86,4 +86,148 @@ final class ChaptersTests: XCTestCase {
         XCTAssertEqual(YouTubeChapters.filename("Friday Night!.mp4"), "Friday-Night-youtube-chapters.txt")
         XCTAssertEqual(YouTubeChapters.filename("!!.mp4"), "volleysplice-youtube-chapters.txt")
     }
+
+    private func groups(_ draft: EditorDraft, pending: Set<String> = []) -> [EditableRallyGroup] {
+        EditorMath.editableRallyGroups(cuts: draft.cuts, intervals: EditorMath.finalIntervals(draft),
+            serveMarkers: [], hardBoundaryCutIds: pending)
+    }
+    func testExplicitSplitStaysIndependentForHighConfidenceReviewedAndManualRallies() throws {
+        for origin in [CutOrigin.inferred, .manual] {
+            var original = EditorDraft(sourceRevision: "split", cuts: [
+                .init(id: "R001", coreStartMs: 10000, coreEndMs: 20000, keepStartMs: 8000,
+                      keepEndMs: 22000, confidence: 1, origin: origin)])
+            original.reviewedCutIds = ["R001"]
+            let split = try XCTUnwrap(EditorMath.splitCut(original, cutId: "R001", positionMs: 15000,
+                bounds: .init(startMs: 0, endMs: 40000)))
+            XCTAssertEqual(groups(split).count, 2)
+            XCTAssertEqual(groups(split, pending: Set(split.cuts.map(\.id))).count, 2)
+            XCTAssertNotEqual(split.cuts[0].editableGroupId, split.cuts[1].editableGroupId)
+            XCTAssertEqual(split.cuts[0].id, "R001")
+            XCTAssertEqual(EditorMath.finalIntervals(split).map { [$0.startMs, $0.endMs] }, [[8000, 22000]])
+            let removed = EditorMath.setIncluded(split, cutId: split.cuts[1].id, included: false)
+            XCTAssertTrue(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
+            XCTAssertEqual(EditorMath.finalIntervals(removed).map { [$0.startMs, $0.endMs] }, [[8000, 17000]])
+            let trimmed = EditorMath.setCoreStart(removed, cutId: split.cuts[1].id, valueMs: 16000, minimumMs: 0)
+            XCTAssertEqual(trimmed.cuts[0], removed.cuts[0])
+            XCTAssertEqual(groups(trimmed).count, 2)
+            XCTAssertEqual(try JSONDecoder().decode(EditorDraft.self, from: JSONEncoder().encode(trimmed)), trimmed)
+        }
+    }
+    func testSplitPartitionsWholeSelectedGroupAndRepeatedSplitDoesNotChangeSibling() throws {
+        let bounds = TimeRange(startMs: 0, endMs: 50000)
+        let original = EditorDraft(sourceRevision: "split", cuts: [cut("R001", 10000, 18000), cut("R009", 19000, 25000)])
+        XCTAssertEqual(groups(original).count, 1)
+        let split = try XCTUnwrap(EditorMath.splitCut(original, cutId: "R001", positionMs: 14000,
+            bounds: bounds, groupCutIds: ["R001", "R009"]))
+        XCTAssertEqual(groups(split).map { $0.cuts.count }, [1, 2])
+        let repeated = try XCTUnwrap(EditorMath.splitCut(split, cutId: "R009", positionMs: 22000, bounds: bounds))
+        XCTAssertEqual(groups(repeated).map { $0.cuts.count }, [1, 2, 1])
+        XCTAssertEqual(repeated.cuts[0], split.cuts[0])
+        let options = YouTubeChapters.defaultOptions(hasScoreTracking: false, hasSideSwitches: false)
+        XCTAssertEqual(YouTubeChapters.build(intervals: EditorMath.finalIntervals(repeated), cuts: repeated.cuts,
+            scoreTracking: nil, options: options).count, 3)
+    }
+    func testSameExplicitGroupIgnoresConnectivityConfidenceAndServeBoundaries() {
+        var first = cut("R001", 1000, 2000), second = cut("R002", 10000, 11000)
+        first.editableGroupId = "opaque"; second.editableGroupId = "opaque"
+        second.origin = .manual; second.included = false
+        let result = EditorMath.editableRallyGroups(cuts: [first, second], intervals: [],
+            serveMarkers: [serve("S2", 10000, .near, "R002")], hardBoundaryCutIds: ["R002"])
+        XCTAssertEqual(result.count, 1); XCTAssertEqual(result[0].cutIds, ["R001", "R002"])
+        second.editableGroupId = nil
+        XCTAssertEqual(EditorMath.editableRallyGroups(cuts: [first, second], intervals: [
+            .init(startMs: 1000, endMs: 11000, cutIds: ["R001", "R002"])], serveMarkers: []).count, 2)
+    }
+    func testPausedExplicitSelectionSurvivesOverlappingPaddingAndPlaybackFollowsTime() throws {
+        let original = EditorDraft(sourceRevision: "split", cuts: [.init(id: "R001", coreStartMs: 10000,
+            coreEndMs: 20000, keepStartMs: 8000, keepEndMs: 22000)])
+        let split = try XCTUnwrap(EditorMath.splitCut(original, cutId: "R001", positionMs: 15000,
+            bounds: .init(startMs: 0, endMs: 40000)))
+        let rallies = groups(split), right = rallies[1].id
+        XCTAssertEqual(EditorMath.rallySelectionAtPlayhead(groups: rallies, selectedId: right,
+            positionMs: rallies[1].keepStartMs, playing: false)?.id, right)
+        XCTAssertEqual(EditorMath.rallySelectionAtPlayhead(groups: rallies, selectedId: right,
+            positionMs: 9000, playing: true)?.id, rallies[0].id)
+        let trimmed = EditorMath.setCoreStart(split, cutId: right, valueMs: 14000, minimumMs: 0)
+        let overlapping = groups(trimmed)
+        let selected = try XCTUnwrap(EditorMath.rallySelectionAtPlayhead(groups: overlapping, selectedId: right,
+            positionMs: 14000, playing: false))
+        XCTAssertEqual(selected.id, right)
+        let removed = EditorMath.setIncluded(trimmed, cutId: selected.id, included: false)
+        XCTAssertTrue(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
+    }
+    func testSplitLimitsAndCompleteDraftIdNamespaceAreCheckedBeforeMutation() throws {
+        let bounds = TimeRange(startMs: 0, endMs: 40000)
+        var draft = EditorDraft(sourceRevision: "split", cuts: [cut("R001", 10000, 20000)])
+        draft.ignoredIntervals = [.init(id: "R002", startMs: 1000, endMs: 2000)]
+        let split = try XCTUnwrap(EditorMath.splitCut(draft, cutId: "R001", positionMs: 15000, bounds: bounds))
+        XCTAssertEqual(split.cuts.map(\.id), ["R001", "R003"])
+        for id in [String(repeating: "x", count: 257), "  ", String(repeating: "😀", count: 129)] {
+            let old = EditorDraft(sourceRevision: "split", cuts: [cut(id, 10000, 20000)])
+            XCTAssertNil(EditorMath.splitCut(old, cutId: id, positionMs: 15000, bounds: bounds))
+            XCTAssertNil(old.cuts[0].editableGroupId)
+        }
+        for count in [2047, 2048] {
+            let cuts = (0..<count).map { index -> EditableCut in
+                var value = cut("C\(index)", 10000, 20000); value.editableGroupId = "g\(index)"; return value
+            }
+            let source = EditorDraft(sourceRevision: "limit", cuts: cuts)
+            let result = EditorMath.splitCut(source, cutId: "C0", positionMs: 15000, bounds: bounds)
+            XCTAssertEqual(result == nil, count == 2048)
+            XCTAssertEqual(source.cuts.count, count)
+            if let result { XCTAssertEqual(result.cuts.count, 2048); try result.validate(durationMs: 40000) }
+        }
+        for id in [String(repeating: "x", count: 256), String(repeating: "😀", count: 128)] {
+            XCTAssertNotNil(EditorMath.splitCut(.init(sourceRevision: "boundary", cuts: [cut(id, 10000, 20000)]),
+                cutId: id, positionMs: 15000, bounds: bounds))
+        }
+    }
+    func testSplitIdAllocationHandlesLargeAndOverflowingNumericSuffixesWithoutCollisions() throws {
+        for id in ["R4294967296", "R9223372036854775807", "R99999999999999999999999999999999999999"] {
+            var draft = EditorDraft(sourceRevision: "wide-id", cuts: [cut("R001", 10000, 20000)])
+            draft.ignoredIntervals = [.init(id: id, startMs: 1000, endMs: 2000)]
+            let split = try XCTUnwrap(EditorMath.splitCut(draft, cutId: "R001", positionMs: 15000,
+                bounds: .init(startMs: 0, endMs: 40000)))
+            XCTAssertEqual(split.cuts[0].id, "R001")
+            XCTAssertNotEqual(split.cuts[1].id, "R001"); XCTAssertNotEqual(split.cuts[1].id, id)
+            XCTAssertEqual(split.ignoredIntervals, draft.ignoredIntervals)
+            try split.validate(durationMs: 40000)
+        }
+        XCTAssertEqual(EditorMath.nextId(prefix: "R", ids: ["R001", "R4294967296"]), "R4294967297")
+        XCTAssertEqual(EditorMath.nextId(prefix: "R", ids: ["R001", "R009"]), "R010")
+    }
+    func testPausedSelectionUsesImmutableMembershipAfterTrimmingChangesGroupRepresentative() throws {
+        let original = EditorDraft(sourceRevision: "selection", cuts: [
+            .init(id: "R001", coreStartMs: 10000, coreEndMs: 20000, keepStartMs: 8000, keepEndMs: 22000, editableGroupId: "A"),
+            .init(id: "R002", coreStartMs: 12000, coreEndMs: 18000, keepStartMs: 10000, keepEndMs: 20000, editableGroupId: "A"),
+            .init(id: "R003", coreStartMs: 11000, coreEndMs: 19000, keepStartMs: 9000, keepEndMs: 21000, editableGroupId: "B")])
+        let selectedId = try XCTUnwrap(groups(original).first { $0.cutIds.contains("R001") }?.id)
+        let trimmed = EditorMath.setCoreStart(original, cutId: "R001", valueMs: 14000, minimumMs: 0)
+        let current = try XCTUnwrap(EditorMath.rallySelectionAtPlayhead(groups: groups(trimmed), selectedId: selectedId,
+            positionMs: 10000, playing: false))
+        XCTAssertEqual(current.id, "R002", "the representative legitimately changes after trimming")
+        XCTAssertEqual(current.cutIds, ["R001", "R002"], "selection remains on the same explicit group")
+        var removed = trimmed
+        for id in current.cutIds { removed = EditorMath.setIncluded(removed, cutId: id, included: false) }
+        XCTAssertFalse(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
+        XCTAssertTrue(removed.cuts[2].included)
+    }
+    func testPlaybackThenPauseKeepsTheCurrentSplitPartAfterReleasingThePausedSelection() throws {
+        let original = EditorDraft(sourceRevision: "playback-selection", cuts: [.init(id: "R001",
+            coreStartMs: 10000, coreEndMs: 30000, keepStartMs: 8000, keepEndMs: 32000)])
+        let split = try XCTUnwrap(EditorMath.splitCut(original, cutId: "R001", positionMs: 20000,
+            bounds: .init(startMs: 0, endMs: 40000)))
+        let rallies = groups(split)
+        XCTAssertEqual(EditorMath.rallySelectionAtPlayhead(groups: rallies, selectedId: "R001",
+            positionMs: 8000, playing: false)?.id, "R001")
+        // Starting playback releases the paused pin; pausing must retain time-based selection.
+        let selectedId: String? = nil
+        for playing in [true, false] {
+            let current = try XCTUnwrap(EditorMath.rallySelectionAtPlayhead(groups: rallies,
+                selectedId: selectedId, positionMs: 24000, playing: playing))
+            XCTAssertEqual(current.id, "R002")
+            let removed = EditorMath.setIncluded(split, cutId: current.id, included: false)
+            XCTAssertTrue(removed.cuts[0].included); XCTAssertFalse(removed.cuts[1].included)
+        }
+    }
 }

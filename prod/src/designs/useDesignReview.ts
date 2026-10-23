@@ -10,6 +10,8 @@ import {
   type VolleySpliceProject,
 } from "@/lib/project-store";
 import type { OnDeviceSuppression } from "@/lib/on-device/types";
+import { scoreSpecialistReadiness, type ScoreSpecialistReadiness } from "@/lib/score-specialist-state";
+import type { InferenceProgressStep } from "@/lib/inference-progress";
 import type {
   ExportInterval,
   ScoreOverlayOptions,
@@ -74,9 +76,20 @@ export type DesignCleanupSuggestion = {
   decision: "pending" | "keep" | "suppress";
 };
 
+export type DesignScoreRecovery = {
+  stages: ScoreSpecialistReadiness;
+  status: "idle" | "queued" | "running" | "cancelling";
+  detail: string;
+  steps?: InferenceProgressStep[];
+  retry?: () => void;
+  cancel?: () => void;
+};
+
 export type ReadyDesignReview = {
   state: "ready";
   projectId: string;
+  projectInstanceId?: string;
+  legacyDraftStorage?: boolean;
   projectName: string;
   sourceName: string;
   sourceSize: number;
@@ -108,6 +121,8 @@ export type ReadyDesignReview = {
   }>;
   queueVideoExport: (request: DesignVideoExportRequest) => void;
   saveDraft: (draft: CutDraft) => Promise<DraftSaveResult> | void;
+  /** Optional: source-copy labs can show readiness without running inference. */
+  scoreRecovery?: DesignScoreRecovery;
 };
 
 export type DesignReviewState =
@@ -248,8 +263,10 @@ type DesignReviewOptions = {
   videoUrl?: string | null;
   productAnalysis?: ProductAnalysis | null;
   onSelectProject?: (projectId: string | null) => void;
+  /** The owner validates and links once; it must reject if attachment fails. */
   onAttachSource?: (file: File) => void | Promise<void>;
   onQueueVideoExport?: (request: DesignVideoExportRequest) => void;
+  scoreRecovery?: DesignScoreRecovery;
 };
 
 export function useDesignReview(
@@ -293,14 +310,32 @@ export function useDesignReview(
         }
         const draft = restoreProjectReviewDraft(project, seed, browserDraftStorage());
         const attachSource = async (file: File) => {
-          if (!(await sourceCanReconnectFile(project.source, file))) {
+          try {
+            if (options.onAttachSource) {
+              // App owns both validation and linking. Rechecking here creates
+              // a second fallible read whose rejection must not be ignored.
+              await options.onAttachSource(file);
+            } else if (!(await sourceCanReconnectFile(project.source, file))) {
+              return {
+                ok: false,
+                message: `That file does not match ${project.source.name}. Choose the original video used by this project.`,
+                videoUrl: null,
+              };
+            }
+          } catch (cause) {
             return {
               ok: false,
-              message: `That file does not match ${project.source.name}. Choose the original video used by this project.`,
+              message: `Could not reconnect the video: ${cause instanceof Error ? cause.message : String(cause)}`,
               videoUrl: null,
             };
           }
-          await options.onAttachSource?.(file);
+          if (canceled) {
+            return {
+              ok: false,
+              message: "This review is no longer open. Open the project again to reconnect its source.",
+              videoUrl: null,
+            };
+          }
           const videoUrl = URL.createObjectURL(file);
           if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
           videoUrlRef.current = videoUrl;
@@ -321,10 +356,12 @@ export function useDesignReview(
           };
         };
         const saveDraft = (next: CutDraft) =>
-          saveProjectReviewDraft(project.id, seed, next, browserDraftStorage());
+          saveProjectReviewDraft(project.id, seed, next, browserDraftStorage(), project.instanceId);
         setReview({
           state: "ready",
           projectId: project.id,
+          projectInstanceId: project.instanceId,
+          legacyDraftStorage: project.legacyDraftStorage,
           projectName: project.source.name.replace(/\.[^.]+$/, ""),
           sourceName: project.source.name,
           sourceSize: project.source.size,
@@ -332,6 +369,7 @@ export function useDesignReview(
           sourceFile: options.sourceFile ?? null,
           videoUrl: options.videoUrl ?? null,
           productAnalysis: options.productAnalysis ?? null,
+          scoreRecovery: options.scoreRecovery ?? { stages: scoreSpecialistReadiness(project), status: "idle", detail: "" },
           duration: project.info.duration,
           width: project.info.width,
           height: project.info.height,
@@ -346,7 +384,10 @@ export function useDesignReview(
           projectStatus: project.status,
           draft,
           draftSeed: seed,
-          modelDraft: createModelReviewDraft(seed, project.analysis),
+          modelDraft: createModelReviewDraft(seed, {
+            ...project.analysis,
+            sideSwitchEnabled: project.sideSwitchEnabled,
+          }),
           suppression: project.analysis.suppression,
           cleanupSuggestions: cleanupSuggestions(project, draft),
           projects: projectChoices,
@@ -395,6 +436,13 @@ export function useDesignReview(
             ...(current.state === "ready"
               ? {
                   workActivity: options.workActivity ?? [],
+                  scoreRecovery: options.scoreRecovery ?? current.scoreRecovery,
+                  modelDraft: (() => {
+                    const project = options.projects?.find((candidate) => candidate.id === current.projectId);
+                    return project?.analysis ? createModelReviewDraft(current.draftSeed, {
+                      ...project.analysis, sideSwitchEnabled: project.sideSwitchEnabled,
+                    }) : current.modelDraft;
+                  })(),
                   exportJob:
                     options.exportJobs?.find(
                       (job) => job.projectId === current.projectId,
@@ -412,6 +460,7 @@ export function useDesignReview(
     options.onSelectProject,
     options.projects,
     options.workActivity,
+    options.scoreRecovery,
   ]);
 
   useEffect(() => {

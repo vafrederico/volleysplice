@@ -13,7 +13,7 @@ func checkProject(at path: String) throws -> JSONValue {
     let native = root["schema"]?.string == "volleycut-ios-project"
     let project: ProjectDocument
     if native {
-        project = try JSONDecoder().decode(ProjectDocument.self, from: data)
+        project = try JSONDecoder().decode(ProjectDocument.self, from: data).migratingLegacyLocalReviewIds()
         try project.validate()
     } else {
         project = try ProjectArchive.importData(data, expectedFeatureNames: FeatureSchema.base)

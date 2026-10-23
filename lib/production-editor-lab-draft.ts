@@ -90,6 +90,7 @@ export function draftWithLabEvents(draft: CutDraft, events: LabEvent[]): LabDraf
       keepStart: old && old.coreStart === event.start ? old.keepStart : Math.max(draft.analysisStart, event.start - draft.beforePaddingSeconds),
       keepEnd: old && old.coreEnd === event.end ? old.keepEnd : Math.min(draft.analysisEnd, event.end + draft.afterPaddingSeconds),
       included: true, confidence: old?.confidence ?? event.confidence ?? 0, origin: old?.origin ?? "cached-label" as const,
+      ...(old?.editableGroupId !== undefined ? { editableGroupId: old.editableGroupId } : {}),
       ...(event.agreement ? { agreement: event.agreement } : {}) };
   });
   const excluded = draft.cuts.filter(cut => !cut.included && !retained.has(cut.id));
