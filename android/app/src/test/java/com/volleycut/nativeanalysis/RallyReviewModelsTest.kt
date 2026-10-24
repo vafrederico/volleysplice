@@ -105,7 +105,7 @@ class RallyReviewModelsTest {
             setOf("R1", "R2", "R3", "R5"), 0, 90_000)
         assertEquals("R1", context.previous?.id)
         assertEquals("R5", context.next?.id)
-        assertEquals(DetailWindow(17_000, 38_000), context.window)
+        assertEquals(DetailWindow(22_500, 32_500), context.window)
     }
 
     @Test
@@ -115,7 +115,7 @@ class RallyReviewModelsTest {
             selected, setOf("R1", "R2", "R3"), 11_000, 55_000)
         assertNull(context.previous)
         assertEquals("R3", context.next?.id)
-        assertEquals(DetailWindow(17_000, 38_000), context.window)
+        assertEquals(DetailWindow(22_500, 32_500), context.window)
     }
 
     @Test
@@ -130,7 +130,11 @@ class RallyReviewModelsTest {
             setOf("R1", "R2", "R3", "R4"), 0, 3_700_000)
         assertEquals(previous, context.previous)
         assertEquals(next, context.next)
-        assertEquals(DetailWindow(1_792_000, 1_813_000), context.window)
+        assertEquals(DetailWindow(1_797_500, 1_807_500), context.window)
+        val scale = rallyTimelineScale(context, 0, 3_700_000)
+        assertTrue("Previous rally must have a visible bar", scale.fraction(previous.coreEndMs) - scale.fraction(previous.coreStartMs) >= .08f)
+        assertTrue("Next rally must have a visible bar", scale.fraction(next.coreEndMs) - scale.fraction(next.coreStartMs) >= .10f)
+        assertEquals(2, scale.segments.count { it.compressedGap })
         val handleSeparationDp = (306f - 44f) * (selected.coreEndMs - selected.coreStartMs) /
             (context.window.endMs - context.window.startMs)
         assertTrue("Both handles need distinct touch regions", handleSeparationDp >= 48f)
@@ -143,7 +147,7 @@ class RallyReviewModelsTest {
         val selected = rally("R2", 25_000, 25_500)
         val context = rallyTimelineContext(listOf(rally("R1", 1_000, 4_000), selected,
             rally("R3", 60_000, 65_000)), selected, setOf("R1", "R2", "R3"), 0, 70_000)
-        assertEquals(DetailWindow(24_000, 26_500), context.window)
+        assertEquals(DetailWindow(24_750, 25_750), context.window)
     }
 
     @Test
@@ -157,6 +161,30 @@ class RallyReviewModelsTest {
             assertTrue("$duration ms core must have separate 24dp touch regions", separationDp >= 48f)
             assertTrue(selected.keepStartMs < context.window.startMs)
             assertTrue(selected.keepEndMs > context.window.endMs)
+        }
+    }
+
+    @Test
+    fun visibleNeighboursNeverCollapseShortCoreHandlesAndEverySegmentSeeksExactly() {
+        listOf(100L, 500L, 5_000L).forEach { duration ->
+            val selected = rally("R2", 25_000, 25_000 + duration)
+            val rallies = listOf(rally("R1", 1_000, 4_000), selected, rally("R3", 60_000, 65_000))
+            val scale = rallyTimelineScale(rallyTimelineContext(rallies, selected, setOf("R1", "R2", "R3"), 0, 70_000), 0, 70_000)
+            val separationDp = (306f - 44f) * (scale.fraction(selected.coreEndMs) - scale.fraction(selected.coreStartMs))
+            assertTrue("$duration ms core must retain precise, distinct handles with both neighbours", separationDp >= 48f)
+            var previousTime = scale.startMs
+            (0..1_000).forEach { step ->
+                val time = scale.time(step / 1_000f)
+                assertTrue(time >= previousTime)
+                previousTime = time
+            }
+            scale.segments.forEach { segment ->
+                listOf(segment.startMs, (segment.startMs + segment.endMs) / 2, segment.endMs).forEach { time ->
+                    assertTrue("Source-time round trip at $time", kotlin.math.abs(scale.time(scale.fraction(time)) - time) <= 2)
+                }
+            }
+            assertEquals(scale.startMs, scale.time(-1f))
+            assertEquals(scale.endMs, scale.time(2f))
         }
     }
 
@@ -199,6 +227,6 @@ class RallyReviewModelsTest {
         val context = rallyTimelineContext(listOf(selected), selected, emptySet(), 20_000, 35_000)
         assertNull(context.previous)
         assertNull(context.next)
-        assertEquals(DetailWindow(20_000, 35_000), context.window)
+        assertEquals(DetailWindow(22_500, 32_500), context.window)
     }
 }

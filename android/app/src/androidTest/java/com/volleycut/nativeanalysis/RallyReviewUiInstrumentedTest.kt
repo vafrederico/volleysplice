@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Base64
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
@@ -104,6 +105,13 @@ class RallyReviewUiInstrumentedTest {
         }
     }
     private fun pill(text: String) = compose.onNode(hasText(text) and hasClickAction())
+    private fun detailScale(f: Fixture, cutId: String = "R001"): RallyTimelineScale {
+        val draft = requireNotNull(f.store.load())
+        val rallies = rallyGroupsForDraft(draft)
+        val selected = rallies.first { cutId in it.cutIds }
+        val effectiveIds = EditorMath.finalIntervals(draft).flatMapTo(mutableSetOf()) { it.cutIds }
+        return rallyTimelineScale(rallyTimelineContext(rallies, selected, effectiveIds, 0, 20_000), 0, 20_000)
+    }
     private fun capture(f: Fixture, name: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         compose.waitForIdle()
@@ -538,10 +546,10 @@ class RallyReviewUiInstrumentedTest {
         capture(f, "courtside-short-core-$duration.png")
         timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(10_000f + duration / 2f) }
         fun drag(from: Float, to: Float) {
-            val liveRange = timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+            val scale = detailScale(f)
             val inset = 22f * density
             timeline.performTouchInput {
-                fun x(value: Float) = inset + (width - inset * 2) * (value - liveRange.start) / (liveRange.endInclusive - liveRange.start)
+                fun x(value: Float) = inset + (width - inset * 2) * scale.fraction(value.toLong())
                 down(Offset(x(from), center.y)); moveTo(Offset(x(to), center.y)); up()
             }
         }
@@ -576,10 +584,10 @@ class RallyReviewUiInstrumentedTest {
             position(value)
         }
         fun drag(from: Float, to: Float) {
-            val range = timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+            val scale = detailScale(f)
             val inset = 22f * timeline.fetchSemanticsNode().layoutInfo.density.density
             timeline.performTouchInput {
-                fun x(value: Float) = inset + (width - inset * 2) * (value - range.start) / (range.endInclusive - range.start)
+                fun x(value: Float) = inset + (width - inset * 2) * scale.fraction(value.toLong())
                 down(Offset(x(from), center.y))
                 moveTo(Offset(x(to), center.y))
                 up()
@@ -638,9 +646,10 @@ class RallyReviewUiInstrumentedTest {
             timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current == 4_000f
         }
         val window = timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+        val scale = detailScale(f)
         val inset = 22f * timeline.fetchSemanticsNode().layoutInfo.density.density
         timeline.performTouchInput {
-            fun x(time: Float) = inset + (width - inset * 2) * (time - window.start) / (window.endInclusive - window.start)
+            fun x(time: Float) = inset + (width - inset * 2) * scale.fraction(time.toLong())
             down(Offset(x(2_000f), center.y))
             moveTo(Offset(x(3_500f), center.y))
         }
@@ -649,7 +658,7 @@ class RallyReviewUiInstrumentedTest {
         assertEquals("The focused window must stay fixed while a handle is held", window,
             timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range)
         timeline.performTouchInput {
-            val x = inset + (width - inset * 2) * (4_200f - window.start) / (window.endInclusive - window.start)
+            val x = inset + (width - inset * 2) * scale.fraction(4_200)
             moveTo(Offset(x, center.y))
         }
         awaitDraft(f) { it.cuts.first { c -> c.id == "R001" }.coreStartMs in 4_150..4_250 }
@@ -667,12 +676,11 @@ class RallyReviewUiInstrumentedTest {
     @Test
     fun timelinesRenderVideoAndSelectedRallyAlwaysOpensForEditing() = withProject { f ->
         awaitVideoFrame(Color.Red)
-        val window = compose.onNodeWithTag("rally-bounds-timeline").fetchSemanticsNode()
-            .config[SemanticsProperties.ProgressBarRangeInfo].range
+        val scale = detailScale(f)
         compose.onNodeWithTag("rally-bounds-timeline").performTouchInput {
             // Read the displayed context, which now includes the next retained rally.
             val inset = 22f * compose.onNodeWithTag("rally-bounds-timeline").fetchSemanticsNode().layoutInfo.density.density
-            click(Offset(inset + (width - inset * 2) * (8_000f - window.start) / (window.endInclusive - window.start), center.y))
+            click(Offset(inset + (width - inset * 2) * scale.fraction(8_000), center.y))
         }
         awaitVideoFrame(Color.Green)
         compose.onNodeWithText("All 2  →").performClick()
@@ -720,10 +728,9 @@ class RallyReviewUiInstrumentedTest {
         awaitDraft(f) { it.cuts.first { c -> c.id == "R001" }.coreStartMs == 1_000L }
         compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start 0:01.0")
         val density = compose.onNodeWithTag("rally-bounds-timeline").fetchSemanticsNode().layoutInfo.density.density
-        val window = compose.onNodeWithTag("rally-bounds-timeline").fetchSemanticsNode()
-            .config[SemanticsProperties.ProgressBarRangeInfo].range
+        val scale = detailScale(f)
         compose.onNodeWithTag("rally-bounds-timeline").performTouchInput {
-            val startX = 22f * density + (width - 44f * density) * (1_000f - window.start) / (window.endInclusive - window.start)
+            val startX = 22f * density + (width - 44f * density) * scale.fraction(1_000)
             swipe(Offset(startX, center.y), Offset(startX + 40f, center.y), 400)
         }
         awaitDraft(f) { it.cuts.first { c -> c.id == "R001" }.coreStartMs > 1_000L }
@@ -825,6 +832,65 @@ class RallyReviewUiInstrumentedTest {
             compose.onNodeWithTag("next-rally").performScrollTo().performClick()
             compose.onNodeWithText("Rally 5").assertExists()
         }
+
+    @Test
+    fun neighbourBarsRemainVisibleAndSeekVideoBesideAShortCore() = withProject(many = true, configureDraft = { draft ->
+        val ranges = listOf(500L to 1_500L, 10_000L to 10_500L, 18_000L to 19_000L)
+        draft.copy(cuts = draft.cuts.take(3).mapIndexed { index, cut ->
+            val (start, end) = ranges[index]
+            cut.copy(coreStartMs = start, coreEndMs = end, keepStartMs = start, keepEndMs = end)
+        }, scoreTracking = draft.scoreTracking.copy(enabled = false, serveMarkers = emptyList()))
+    }) { f ->
+        compose.onNodeWithText("Browse rallies").performClick()
+        compose.onNodeWithTag("rally-card-R002").performClick()
+        compose.onNodeWithTag("edit-selected-rally").performClick()
+        val timeline = compose.onNodeWithTag("rally-bounds-timeline")
+        fun assertVisibleBars() {
+            val node = timeline.fetchSemanticsNode()
+            val density = node.layoutInfo.density.density
+            val pixels = timeline.captureToImage().toPixelMap()
+            val row = (40 * density).toInt()
+            fun barWidth(from: Float, to: Float): Int = ((pixels.width * from).toInt() until (pixels.width * to).toInt()).count { x ->
+                val color = pixels[x, row]
+                color.green - color.red > .07f && color.green - color.blue > .02f
+            }
+            assertTrue("Previous rally needs a rendered bar, not only an edge arrow or label", barWidth(0f, .30f) / density >= 20f)
+            assertTrue("Next rally needs a rendered bar, not only an edge arrow or label", barWidth(.70f, 1f) / density >= 20f)
+        }
+        assertVisibleBars()
+        capture(f, "courtside-neighbour-context-portrait.png")
+        val original = requireNotNull(f.store.load()).cuts
+        fun seek(time: Long) {
+            val scale = detailScale(f, "R002")
+            val inset = 22f * timeline.fetchSemanticsNode().layoutInfo.density.density
+            timeline.performTouchInput { click(Offset(inset + (width - inset * 2) * scale.fraction(time), center.y)) }
+            compose.waitUntil(5_000) {
+                kotlin.math.abs(timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current - time) <= 5
+            }
+        }
+        seek(900); awaitVideoFrame(Color.Red)
+        seek(18_500); awaitVideoFrame(Color.Yellow)
+        compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start 0:10.0")
+        assertEquals("Seeking context must not edit it or retarget the trimmed rally", original, requireNotNull(f.store.load()).cuts)
+        seek(10_250)
+        val scale = detailScale(f, "R002")
+        val inset = 22f * timeline.fetchSemanticsNode().layoutInfo.density.density
+        timeline.performTouchInput {
+            fun x(time: Long) = inset + (width - inset * 2) * scale.fraction(time)
+            down(Offset(x(10_500), center.y)); moveTo(Offset(x(10_700), center.y)); up()
+        }
+        awaitDraft(f) { it.cuts[1].coreEndMs in 10_680..10_720 }
+        assertEquals(10_000L, requireNotNull(f.store.load()).cuts[1].coreStartMs)
+        assertVisibleBars()
+        try {
+            f.scenario.onActivity { it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            compose.waitUntil(10_000) { f.context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
+            assertVisibleBars()
+            capture(f, "courtside-neighbour-context-landscape.png")
+        } finally {
+            f.scenario.onActivity { it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        }
+    }
 
     @Test
     fun manualListScrollMovesOnlyItsMarkerAndSurvivesThePill() = withProject(many = true) { f ->

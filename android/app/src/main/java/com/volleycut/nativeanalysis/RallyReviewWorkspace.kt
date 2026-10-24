@@ -589,8 +589,9 @@ private fun RallyBoundsTimeline(
 ) {
     val identity = rally.id
     val context = rallyTimelineContext(rallies, rally, effectiveIds, sourceStart, sourceEnd)
-    var windowStart by remember(identity) { mutableLongStateOf(context.window.startMs) }
-    var windowEnd by remember(identity) { mutableLongStateOf(context.window.endMs) }
+    var scale by remember(identity) { mutableStateOf(rallyTimelineScale(context, sourceStart, sourceEnd)) }
+    val windowStart = scale.startMs
+    val windowEnd = scale.endMs
     var dragging by remember(identity) { mutableStateOf(false) }
     val liveStart by rememberUpdatedState(startMs)
     val liveEnd by rememberUpdatedState(endMs)
@@ -601,10 +602,9 @@ private fun RallyBoundsTimeline(
     val scrub by rememberUpdatedState(onScrubbingChange)
     val paddingBeforeView = rally.keepStartMs < windowStart
     val paddingAfterView = rally.keepEndMs > windowEnd
-    LaunchedEffect(context.window, dragging) {
+    LaunchedEffect(context, dragging) {
         if (!dragging) {
-            windowStart = context.window.startMs
-            windowEnd = context.window.endMs
+            scale = rallyTimelineScale(context, sourceStart, sourceEnd)
         }
     }
     fun change(side: String, value: Long) {
@@ -633,10 +633,7 @@ private fun RallyBoundsTimeline(
     val labelMeasurer = rememberTextMeasurer()
     val neighbours = listOfNotNull(context.previous, context.next)
     val neighbourLabels = neighbours.associate { neighbour ->
-        val before = neighbour.keepEndMs <= windowStart
-        val after = neighbour.keepStartMs >= windowEnd
-        neighbour.id to labelMeasurer.measure((if (before) "‹ " else "") +
-            "Rally " + (rallies.indexOfFirst { it.id == neighbour.id } + 1) + (if (after) " ›" else ""),
+        neighbour.id to labelMeasurer.measure("Rally " + (rallies.indexOfFirst { it.id == neighbour.id } + 1),
             style = TextStyle(fontFamily = CourtsideFont, fontSize = 11.sp, color = CourtsideMuted))
     }
     Box(Modifier.fillMaxWidth().height(64.dp)) {
@@ -656,13 +653,16 @@ private fun RallyBoundsTimeline(
             }.pointerInput(identity, sourceStart, sourceEnd) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
-                val min = windowStart; val max = windowEnd
+                val gestureScale = scale
                 val inset = 22.dp.toPx()
                 val width = (size.width - inset * 2).coerceAtLeast(1f)
-                fun x(time: Long) = inset + (time - min).toFloat() / (max - min).coerceAtLeast(1) * width
-                fun time(at: Float) = min + ((at - inset) / width * (max - min)).toLong()
+                fun x(time: Long) = inset + gestureScale.fraction(time) * width
+                fun time(at: Float) = gestureScale.time((at - inset) / width)
                 val a = abs(down.position.x - x(liveStart)); val b = abs(down.position.x - x(liveEnd))
-                val side = if (minOf(a, b) <= 24.dp.toPx()) { if (a <= b) "start" else "end" } else null
+                // Labels and neighbour bars seek; only the selected handles trim.
+                val side = if (down.position.y >= 18.dp.toPx() && minOf(a, b) <= 24.dp.toPx()) {
+                    if (a <= b) "start" else "end"
+                } else null
                 val offset = if (side == "start") liveStart - time(down.position.x) else liveEnd - time(down.position.x)
                 dragging = true
                 scrub(true)
@@ -685,17 +685,9 @@ private fun RallyBoundsTimeline(
             }
         }) {
             val inset = 22.dp.toPx(); val width = (size.width - inset * 2).coerceAtLeast(1f)
-            fun x(t: Long) = inset + ((t - windowStart).toFloat() / (windowEnd - windowStart).coerceAtLeast(1)).coerceIn(0f, 1f) * width
+            fun x(t: Long) = inset + scale.fraction(t) * width
             val a = x(startMs); val b = x(endMs)
             neighbours.forEach { neighbour ->
-                val before = neighbour.keepEndMs <= windowStart
-                val after = neighbour.keepStartMs >= windowEnd
-                if (before || after) {
-                    val edge = if (before) 5.dp.toPx() else size.width - 5.dp.toPx()
-                    val inner = edge + (if (before) 6.dp.toPx() else -6.dp.toPx())
-                    drawLine(Green.copy(alpha = .6f), Offset(inner, 32.dp.toPx()), Offset(edge, 38.dp.toPx()), 2.dp.toPx())
-                    drawLine(Green.copy(alpha = .6f), Offset(edge, 38.dp.toPx()), Offset(inner, 44.dp.toPx()), 2.dp.toPx())
-                }
                 neighbour.cuts.filter { it.included && it.id in effectiveIds &&
                     it.keepEndMs > windowStart && it.keepStartMs < windowEnd }.forEach { cut ->
                     drawRoundRect(TimelineKeptPaddingColor.copy(alpha = .6f), Offset(x(cut.keepStartMs), 22.dp.toPx()),
@@ -725,6 +717,15 @@ private fun RallyBoundsTimeline(
                     Size((x(cut.keepEndMs) - x(cut.keepStartMs)).coerceAtLeast(1f), 36.dp.toPx()), CornerRadius(4.dp.toPx()))
                 drawRoundRect(coreColor, Offset(x(cut.coreStartMs), 30.dp.toPx()),
                     Size((x(cut.coreEndMs) - x(cut.coreStartMs)).coerceAtLeast(1f), 20.dp.toPx()), CornerRadius(3.dp.toPx()))
+            }
+            scale.segments.filter { it.compressedGap }.forEach { segment ->
+                val middle = inset + (segment.startFraction + segment.endFraction) / 2 * width
+                // A scale break makes the compressed source gap explicit.
+                drawRect(TimelineTrackColor, Offset(middle - 4.dp.toPx(), 20.dp.toPx()), Size(8.dp.toPx(), 40.dp.toPx()))
+                listOf(-2f, 2f).forEach { shift ->
+                    drawLine(CourtsideMuted, Offset(middle + (shift - 2) * density, 43.dp.toPx()),
+                        Offset(middle + (shift + 2) * density, 34.dp.toPx()), 1.dp.toPx())
+                }
             }
             listOf(a, b).forEach { at ->
                 drawRoundRect(Color.White, Offset(at - 5.dp.toPx(), 18.dp.toPx()), Size(10.dp.toPx(), 44.dp.toPx()), CornerRadius(3.dp.toPx()))
