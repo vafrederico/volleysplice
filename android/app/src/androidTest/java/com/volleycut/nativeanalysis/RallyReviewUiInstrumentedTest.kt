@@ -295,7 +295,7 @@ class RallyReviewUiInstrumentedTest {
         }
         capture(f, "courtside-portrait-editor.png")
         compose.onNodeWithTag("editor-project-selector").performClick()
-        compose.onNode(hasText("Courtside test") and hasText("ready to review") and hasAnyAncestor(isPopup()))
+        compose.onNode(hasText("Courtside test") and hasText("Legacy model - ready to review") and hasAnyAncestor(isPopup()))
             .assertIsDisplayed()
         capture(f, "courtside-project-menu.png")
         compose.onNode(hasText("Courtside test") and hasAnyAncestor(isPopup())).performClick()

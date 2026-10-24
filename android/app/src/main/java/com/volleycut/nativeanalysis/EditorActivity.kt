@@ -1313,7 +1313,8 @@ private fun ProjectHeaderBar(
                 projects.forEach { project ->
                     DropdownMenuItem(text = { Column {
                         Text(project.source.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(projectStatusLabel(project, exportStatuses[project.id]), color = Muted, fontSize = 12.sp)
+                        Text("${RallyModels.shortLabel(project.modelId)} - ${projectStatusLabel(project, exportStatuses[project.id])}",
+                            color = Muted, fontSize = 12.sp)
                     } },
                         modifier = Modifier.semantics { this.selected = project.id == selected?.id },
                         onClick = { expanded = false; onSelect(project) })
