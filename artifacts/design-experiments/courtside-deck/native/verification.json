@@ -25,8 +25,8 @@
   },
   "build": {
     "variant": "debug",
-    "versionName": "0.10.27-debug",
-    "versionCode": 41,
+    "versionName": "0.10.28-debug",
+    "versionCode": 42,
     "compileSdk": 37,
     "minSdk": 34,
     "abis": [
@@ -34,23 +34,23 @@
       "x86_64"
     ],
     "apk": "android/app/build/outputs/apk/debug/app-debug.apk",
-    "sha256": "bbf2b9782ebb94ac7013d765f0ede900117a1f765b6d804b08e61baf9becdbe4",
+    "sha256": "82a2e6b7b0a432a3c58e2ce4fa8b49b5e8a76fb41e9821070bed681f30ac0758",
     "signatureVerified": true
   },
   "validation": {
-    "jvmTests": 243,
+    "jvmTests": 245,
     "jvmFailures": 0,
-    "androidUiTests": 1,
+    "androidUiTests": 17,
     "androidUiFailures": 0,
-    "androidUiEmulatorTests": 1,
-    "androidUiPhysicalTests": 1,
+    "androidUiEmulatorTests": 4,
+    "androidUiPhysicalTests": 17,
     "portraitResponsiveChecks": 2,
     "portraitResponsiveWidthsDp": [
       360,
       768
     ],
     "portraitResponsiveFailures": 0,
-    "validationNotes": "For the 0.10.27 layout-only change, debug assembly and signature verification pass. The focused landscape regression passes on the physical Pixel and emulator, in normal and reverse landscape, checking a single safe header, centered pills, clip/time summaries before review boxes, the last review box immediately before Settings, full Review labels and the full three-pane Editor. Both emulator screenshots were visually inspected. The prior 0.10.26 baseline retains the full fifteen-case physical suite, 243 JVM tests, and narrow/tablet tutorial and selector coverage; these suites were not repeated for this localized placement change.",
+    "validationNotes": "All seventeen unique UI cases pass on the physical Pixel: fifteen in the full class run and both trim cases in focused reruns after harness corrections. These corrections wait for the persisted draft, respect the 500ms minimum when an injected drag rounds by a millisecond, and calculate pointer positions using the actual Compose node density instead of system density, so the existing user UI-scale preference is respected. The held-gesture case asserts that its window stays fixed. Four unique focused cases pass on the emulator, covering padded/zero-padding trimming, retained-neighbour context and accessible Add seeking. All 245 JVM tests and lint pass. No production source changes followed the successful assembly; later rebuilds changed only the instrumentation APK.",
     "shortWideUiChecks": 2,
     "shortWideUiFailures": 0,
     "shortWideBaselineVersion": "0.10.23-debug",
@@ -84,14 +84,13 @@
         768
       ]
     },
-    "jvmBaselineVersion": "0.10.26-debug",
     "portraitResponsiveBaselineVersion": "0.10.26-debug"
   },
   "installation": {
     "device": "Google Pixel 10 Pro",
     "transport": "wireless ADB",
-    "result": "Final 0.10.27-debug payload installed in place. Installed APK SHA-256 matches the verified local APK. App data and first-install timestamp retained; the actual app reopened after the focused check.",
-    "validationScope": "Current iteration: debug assembly, signature verification, lint, and the focused header regression in both landscape rotations on physical Pixel and emulator. Full fifteen-case UI and 243-test JVM baseline is 0.10.26-debug. Native screenshots use only the synthetic fixture; physical live mirroring remains closed.",
+    "result": "Final 0.10.28-debug payload installed in place on the Pixel. Its installed APK digest matches the verified local APK; no uninstall or app-data reset.",
+    "validationScope": "Current iteration: debug assembly/signature verification, lint, 245 JVM tests, all seventeen unique physical UI cases and four focused emulator cases. Physical frame rendering, repeated seeking, shared edits, navigation and both landscape rotations are included. The prior narrow/tablet screenshot checks retain their explicit baseline versions.",
     "dataPreservation": "Physical checks use a temporary synthetic project and restore the prior selected project, layout preference, guided-tour state and global fade preference before deleting their own fixture. Delete confirmation is cancelled during the test. No app uninstall or data reset."
   },
   "deviceChecks": [
@@ -143,7 +142,7 @@
   "fonts": "Courtside Sans: renamed, outline-preserving IBM Plex Sans subsets with the original SIL OFL notices included.",
   "limitations": [
     "UI checks use a synthetic four-color H.264 video, not private recordings.",
-    "The emulator's hardware H.264 decoder fails during playback; emulator screenshots verify native layout only. Rendered-frame baseline checks passed on the physical Pixel with 0.10.26; the 0.10.27 check targets only header layout.",
+    "The emulator's hardware H.264 decoder fails during playback; emulator screenshots verify native layout only. Rendered-frame checks pass on the physical Pixel with 0.10.28.",
     "The live physical screen stream was left closed to avoid recreating the observed external encoder leak.",
     "Visual review used native screenshots and Compose interaction checks; the HTML/browser Taste inspector does not inspect native Compose screens. Long selected project names ellipsize when constrained; project-menu entries show their status separately."
   ],
@@ -172,5 +171,32 @@
   "trailingReviewScreenshots": [
     "trailing-review-landscape.png",
     "trailing-review-reverse-landscape.png"
+  ],
+  "auditFollowup": {
+    "reviewedCommit": "0c0f754f79e2da57ca4af29cbd9b638f2dd9b7cb",
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "Trimming clamped playback to core bounds while retained padding still contained the viewed frame.",
+        "repair": "Clamp in the shared draft callback using the actual updated retained bounds; remove duplicate core-only clamping from dragging and nudges.",
+        "coverage": "Two-second before/after padding, end and start nudges and drags, preserved frames in both padding regions, clamp only when the retained edge excludes the frame."
+      },
+      {
+        "severity": "P2",
+        "issue": "Distant retained neighbours expanded the focused window enough to collapse trim handles.",
+        "repair": "Bound local context around the selection with a proportional margin for short cores; retain far neighbours as labeled edge chevrons.",
+        "coverage": "A five-second selection between distant neighbours retains more than 48dp of handle separation on a 306dp track; removed intermediate rallies and game clipping remain covered. Native short-rally edge-marker screenshot inspected."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Add source timeline could only seek through pointer gestures.",
+        "repair": "WholeTimeline exposes progress range and SetProgress, validates finite values and uses the existing seek callback without creating footage.",
+        "coverage": "Enter Add inside an existing rally, seek a gap through semantics, verify confirmation enables and cuts are unchanged, seek back, reject NaN, then explicitly confirm one new cut."
+      }
+    ]
+  },
+  "auditFollowupScreenshotVersion": "0.10.28-debug",
+  "auditFollowupScreenshots": [
+    "local-context-audit-fix.png"
   ]
 }

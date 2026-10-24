@@ -596,7 +596,6 @@ private fun RallyBoundsTimeline(
     val liveEnd by rememberUpdatedState(endMs)
     val liveStartMax by rememberUpdatedState(startMax)
     val liveEndMin by rememberUpdatedState(endMin)
-    val livePosition by rememberUpdatedState(positionMs)
     val trim by rememberUpdatedState(onTrim)
     val seek by rememberUpdatedState(onSeek)
     val scrub by rememberUpdatedState(onScrubbingChange)
@@ -610,9 +609,6 @@ private fun RallyBoundsTimeline(
         val bounded = rallyBoundaryValue(side, value, if (side == "end") endMin else startMs,
             if (side == "start") startMax else endMs, sourceStart, sourceEnd)
         onTrim(side, bounded)
-        val position = positionMs.coerceIn(if (side == "start") bounded else startMs,
-            if (side == "end") bounded else endMs)
-        if (position != positionMs) onSeek(position)
     }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column {
@@ -635,7 +631,10 @@ private fun RallyBoundsTimeline(
     val labelMeasurer = rememberTextMeasurer()
     val neighbours = listOfNotNull(context.previous, context.next)
     val neighbourLabels = neighbours.associate { neighbour ->
-        neighbour.id to labelMeasurer.measure("Rally " + (rallies.indexOfFirst { it.id == neighbour.id } + 1),
+        val before = neighbour.keepEndMs <= windowStart
+        val after = neighbour.keepStartMs >= windowEnd
+        neighbour.id to labelMeasurer.measure((if (before) "‹ " else "") +
+            "Rally " + (rallies.indexOfFirst { it.id == neighbour.id } + 1) + (if (after) " ›" else ""),
             style = TextStyle(fontFamily = CourtsideFont, fontSize = 11.sp, color = CourtsideMuted))
     }
     Box(Modifier.fillMaxWidth().height(64.dp)) {
@@ -671,9 +670,6 @@ private fun RallyBoundsTimeline(
                                 if (side == "end") liveEndMin else liveStart,
                                 if (side == "start") liveStartMax else liveEnd, sourceStart, sourceEnd)
                             trim(side, value)
-                            val position = livePosition.coerceIn(if (side == "start") value else liveStart,
-                                if (side == "end") value else liveEnd)
-                            if (position != livePosition) seek(position)
                         } else seek(time(pointer.position.x).coerceIn(sourceStart, sourceEnd))
                         pointer.consume()
                         if (!pointer.pressed) break
@@ -685,7 +681,16 @@ private fun RallyBoundsTimeline(
             fun x(t: Long) = inset + ((t - windowStart).toFloat() / (windowEnd - windowStart).coerceAtLeast(1)).coerceIn(0f, 1f) * width
             val a = x(startMs); val b = x(endMs)
             neighbours.forEach { neighbour ->
-                neighbour.cuts.filter { it.included && it.id in effectiveIds }.forEach { cut ->
+                val before = neighbour.keepEndMs <= windowStart
+                val after = neighbour.keepStartMs >= windowEnd
+                if (before || after) {
+                    val edge = if (before) 5.dp.toPx() else size.width - 5.dp.toPx()
+                    val inner = edge + (if (before) 6.dp.toPx() else -6.dp.toPx())
+                    drawLine(Green.copy(alpha = .6f), Offset(inner, 32.dp.toPx()), Offset(edge, 38.dp.toPx()), 2.dp.toPx())
+                    drawLine(Green.copy(alpha = .6f), Offset(edge, 38.dp.toPx()), Offset(inner, 44.dp.toPx()), 2.dp.toPx())
+                }
+                neighbour.cuts.filter { it.included && it.id in effectiveIds &&
+                    it.keepEndMs > windowStart && it.keepStartMs < windowEnd }.forEach { cut ->
                     drawRoundRect(TimelineKeptPaddingColor.copy(alpha = .6f), Offset(x(cut.keepStartMs), 22.dp.toPx()),
                         Size((x(cut.keepEndMs) - x(cut.keepStartMs)).coerceAtLeast(1f), 36.dp.toPx()), CornerRadius(4.dp.toPx()))
                     drawRoundRect(Green.copy(alpha = .45f), Offset(x(cut.coreStartMs), 30.dp.toPx()),

@@ -105,7 +105,7 @@ class RallyReviewModelsTest {
             setOf("R1", "R2", "R3", "R5"), 0, 90_000)
         assertEquals("R1", context.previous?.id)
         assertEquals("R5", context.next?.id)
-        assertEquals(DetailWindow(1_000, 60_000), context.window)
+        assertEquals(DetailWindow(17_000, 38_000), context.window)
     }
 
     @Test
@@ -115,7 +115,35 @@ class RallyReviewModelsTest {
             selected, setOf("R1", "R2", "R3"), 11_000, 55_000)
         assertNull(context.previous)
         assertEquals("R3", context.next?.id)
-        assertEquals(DetailWindow(17_000, 55_000), context.window)
+        assertEquals(DetailWindow(17_000, 38_000), context.window)
+    }
+
+    @Test
+    fun longBreaksAndRemovedNeighboursDoNotCollapseTheTrimWindow() {
+        val previous = rally("R1", 5_000, 8_000)
+        val removed = rally("R2", 1_790_000, 1_795_000).let { r ->
+            r.copy(cuts = r.cuts.map { it.copy(included = false) })
+        }
+        val selected = rally("R3", 1_800_000, 1_805_000)
+        val next = rally("R4", 3_600_000, 3_605_000)
+        val context = rallyTimelineContext(listOf(previous, removed, selected, next), selected,
+            setOf("R1", "R2", "R3", "R4"), 0, 3_700_000)
+        assertEquals(previous, context.previous)
+        assertEquals(next, context.next)
+        assertEquals(DetailWindow(1_792_000, 1_813_000), context.window)
+        val handleSeparationDp = 306f * (selected.coreEndMs - selected.coreStartMs) /
+            (context.window.endMs - context.window.startMs)
+        assertTrue("Both handles need distinct touch regions", handleSeparationDp >= 48f)
+        assertEquals(context.window, rallyTimelineContext(listOf(selected), selected,
+            setOf("R3"), 0, 3_700_000).window)
+    }
+
+    @Test
+    fun shortRalliesKeepAProportionalLocalWindowAndTheirPadding() {
+        val selected = rally("R2", 25_000, 25_500)
+        val context = rallyTimelineContext(listOf(rally("R1", 1_000, 4_000), selected,
+            rally("R3", 60_000, 65_000)), selected, setOf("R1", "R2", "R3"), 0, 70_000)
+        assertEquals(DetailWindow(23_000, 27_500), context.window)
     }
 
     @Test

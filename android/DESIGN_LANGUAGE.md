@@ -228,10 +228,14 @@ The existing Editor retains its established palette and layout.
   thumbnail strip or preview placeholder is shown.
   It includes the previous and next retained rallies, skipping removed or fully
   excluded rallies. Neighbours use muted bars and rally numbers; only the selected
-  rally has trim handles. The visible time window stays fixed throughout a drag.
+  rally has trim handles. The local window stays bounded around the selected rally;
+  distant neighbours use labeled edge chevrons so long breaks cannot squeeze its
+  handles together. Short rallies use a proportional context margin. The visible
+  time window stays fixed throughout a drag.
   Trimming and boundary nudges retain the current viewed frame while it stays
-  inside the adjusted rally. A boundary that excludes it clamps the playhead to
-  the nearest remaining edge.
+  inside the adjusted retained range, including padding. A boundary that excludes
+  it clamps the playhead to the nearest remaining retained edge. This uses the
+  persisted draft's actual updated bounds for both dragging and nudges.
   Timeline gestures enable ExoPlayer's scrubbing mode while dragging and finish
   on the exact requested video frame. Playback remains paused for frame inspection.
 - Keep/Remove and Near/Far share the same editing callbacks as Editor.
@@ -264,7 +268,8 @@ The existing Editor retains its established palette and layout.
 - Seeking a gap stays in Browse and highlights Add missing rally. It never
   switches workspaces. The Editor pill always opens the existing Editor.
 - Add missing rally is a separate source-scrubbing flow using Editor's source
-  timeline. Cancel changes nothing.
+  timeline. It exposes an accessible progress value and seek action as well as
+  pointer gestures; moving the playhead creates nothing. Cancel changes nothing.
   Confirmation creates a real manual cut limited to a source gap, excluding
   ignored footage, then returns to Browse. Both workspaces see it immediately.
 - Workspace navigation, selection, playback position and list position survive

@@ -31,7 +31,8 @@ class RallyReviewUiInstrumentedTest {
     )
 
     private fun withProject(many: Boolean = false, removedRallyIds: Set<String> = emptySet(),
-        sourceName: String = "Courtside test", legacyEditorPreference: Boolean = false, block: (Fixture) -> Unit) {
+        sourceName: String = "Courtside test", legacyEditorPreference: Boolean = false,
+        paddingMs: Long = 0, block: (Fixture) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val preferences = context.getSharedPreferences("desktop_editor_layout", Context.MODE_PRIVATE)
@@ -57,7 +58,7 @@ class RallyReviewUiInstrumentedTest {
         } else listOf(
             ServeMarker("S1", 2_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL, rallyId = "R001"),
             ServeMarker("S2", 12_000, ServingSide.REVIEW, ServeMarkerOrigin.MANUAL, rallyId = "R002"))
-        val initialDraft = EditorMath.applyPadding(EditorMath.newDraft(seed), 0, 0, seed.durationMs)
+        val initialDraft = EditorMath.applyPadding(EditorMath.newDraft(seed), paddingMs, paddingMs, seed.durationMs)
         store.save(initialDraft.copy(
             cuts = initialDraft.cuts.map { it.copy(included = it.id !in removedRallyIds) },
             joinGapMs = 0, scoreTracking = ScoreTracking(team1Name = "Cedar", team2Name = "Harbor", serveMarkers = serves)))
@@ -94,7 +95,13 @@ class RallyReviewUiInstrumentedTest {
     }
 
     private fun awaitDraft(f: Fixture, predicate: (EditorDraft) -> Boolean) {
-        compose.waitUntil(8_000) { f.store.load()?.let(predicate) == true }
+        try {
+            compose.waitUntil(8_000) { f.store.load()?.let(predicate) == true }
+        } catch (error: androidx.compose.ui.test.ComposeTimeoutException) {
+            throw AssertionError("Fixture cut bounds: " + f.store.load()?.cuts?.map {
+                "${it.coreStartMs}..${it.coreEndMs} retained ${it.keepStartMs}..${it.keepEndMs}"
+            }, error)
+        }
     }
     private fun pill(text: String) = compose.onNode(hasText(text) and hasClickAction())
     private fun capture(f: Fixture, name: String) {
@@ -335,7 +342,7 @@ class RallyReviewUiInstrumentedTest {
         val label = compose.onNodeWithTag("editor-project-label", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val arrow = compose.onNodeWithTag("editor-project-chevron", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val trash = compose.onNodeWithTag("editor-delete-project").fetchSemanticsNode().boundsInRoot
-        val density = f.context.resources.displayMetrics.density
+        val density = compose.onNodeWithTag("editor-project-selector").fetchSemanticsNode().layoutInfo.density.density
         val textLayouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
         compose.onNodeWithText("Match", useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) {
             it(textLayouts)
@@ -372,7 +379,7 @@ class RallyReviewUiInstrumentedTest {
             val tabs = compose.onNodeWithTag("editor-version-pill").fetchSemanticsNode().boundsInRoot
             val brand = compose.onNodeWithTag("editor-brand").fetchSemanticsNode().boundsInRoot
             val cog = compose.onNodeWithTag("editor-settings-button").fetchSemanticsNode().boundsInRoot
-            val density = f.context.resources.displayMetrics.density
+            val density = compose.onNodeWithTag("editor-top-bar").fetchSemanticsNode().layoutInfo.density.density
             assertEquals(header.center.x, tabs.center.x, density)
             var windowWidth = 0
             var leftInset = 0
@@ -492,6 +499,73 @@ class RallyReviewUiInstrumentedTest {
     }
 
     @Test
+    fun paddedTrimmingRetainsTheViewedFrameForNudgesAndDragging() = withProject(paddingMs = 2_000) { f ->
+        val timeline = compose.onNodeWithTag("rally-bounds-timeline")
+        fun position(value: Float) {
+            compose.waitUntil(5_000) {
+                timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current == value
+            }
+        }
+        fun seek(value: Float) {
+            timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(value) }
+            position(value)
+        }
+        fun drag(from: Float, to: Float) {
+            val range = timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+            val inset = 22f * timeline.fetchSemanticsNode().layoutInfo.density.density
+            timeline.performTouchInput {
+                fun x(value: Float) = inset + (width - inset * 2) * (value - range.start) / (range.endInclusive - range.start)
+                down(Offset(x(from), center.y))
+                moveTo(Offset(x(to), center.y))
+                up()
+            }
+        }
+        seek(1_000f) // In retained start padding, before the core start at 2s.
+        compose.onNodeWithContentDescription("End later by 1 second").performClick()
+        awaitDraft(f) { it.cuts.first().coreEndMs == 6_000L }
+        position(1_000f)
+        drag(6_000f, 5_500f)
+        awaitDraft(f) { it.cuts.first().coreEndMs in 5_450..5_550 }
+        position(1_000f)
+        seek(7_000f) // In retained end padding.
+        compose.onNodeWithContentDescription("Start later by 1 second").performClick()
+        awaitDraft(f) { it.cuts.first().coreStartMs == 3_000L }
+        position(7_000f)
+        drag(3_000f, 4_000f)
+        awaitDraft(f) { it.cuts.first().coreStartMs in 3_950..4_050 }
+        position(7_000f)
+        val priorCut = requireNotNull(f.store.load()).cuts.first()
+        val expectedEnd = maxOf(priorCut.coreEndMs - 1_000, priorCut.coreStartMs + RALLY_MIN_DURATION_MS)
+        compose.onNodeWithContentDescription("End earlier by 1 second").performClick()
+        awaitDraft(f) { it.cuts.first().coreEndMs == expectedEnd }
+        val retainedEnd = requireNotNull(f.store.load()).cuts.first().keepEndMs
+        position(retainedEnd.toFloat())
+        assertTrue("Only the new retained edge may exclude the viewed frame", retainedEnd in 6_450..6_550)
+    }
+
+    @Test
+    fun addMissingTimelineCanSeekAGapThroughAccessibilityWithoutAdding() = withProject { f ->
+        val original = requireNotNull(f.store.load()).cuts
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithTag("add-missing-rally").performClick()
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsNotEnabled()
+        val timeline = compose.onNodeWithTag("whole-timeline")
+        timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(8_000f) }
+        compose.waitUntil(5_000) {
+            timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current == 8_000f
+        }
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsEnabled()
+        assertEquals(original, requireNotNull(f.store.load()).cuts)
+        timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(3_000f) }
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsNotEnabled()
+        assertEquals(original, requireNotNull(f.store.load()).cuts)
+        timeline.performSemanticsAction(SemanticsActions.SetProgress) { assertFalse(it(Float.NaN)) }
+        timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(8_000f) }
+        compose.onNodeWithTag("add-missing-rally-confirm").performScrollTo().performClick()
+        awaitDraft(f) { it.cuts.size == original.size + 1 }
+    }
+
+    @Test
     fun trimmingKeepsTheViewedFrameUntilTheBoundaryPassesIt() = withProject { f ->
         val timeline = compose.onNodeWithTag("rally-bounds-timeline")
         timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(4_000f) }
@@ -499,7 +573,7 @@ class RallyReviewUiInstrumentedTest {
             timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current == 4_000f
         }
         val window = timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
-        val inset = 22f * f.context.resources.displayMetrics.density
+        val inset = 22f * timeline.fetchSemanticsNode().layoutInfo.density.density
         timeline.performTouchInput {
             fun x(time: Float) = inset + (width - inset * 2) * (time - window.start) / (window.endInclusive - window.start)
             down(Offset(x(2_000f), center.y))
@@ -507,6 +581,8 @@ class RallyReviewUiInstrumentedTest {
         }
         awaitDraft(f) { it.cuts.first { c -> c.id == "R001" }.coreStartMs in 3_450..3_550 }
         assertEquals(4_000f, timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current, .1f)
+        assertEquals("The focused window must stay fixed while a handle is held", window,
+            timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range)
         timeline.performTouchInput {
             val x = inset + (width - inset * 2) * (4_200f - window.start) / (window.endInclusive - window.start)
             moveTo(Offset(x, center.y))
@@ -530,7 +606,7 @@ class RallyReviewUiInstrumentedTest {
             .config[SemanticsProperties.ProgressBarRangeInfo].range
         compose.onNodeWithTag("rally-bounds-timeline").performTouchInput {
             // Read the displayed context, which now includes the next retained rally.
-            val inset = 22f * InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            val inset = 22f * compose.onNodeWithTag("rally-bounds-timeline").fetchSemanticsNode().layoutInfo.density.density
             click(Offset(inset + (width - inset * 2) * (8_000f - window.start) / (window.endInclusive - window.start), center.y))
         }
         awaitVideoFrame(Color.Green)
@@ -578,7 +654,7 @@ class RallyReviewUiInstrumentedTest {
         compose.onNodeWithContentDescription("Start earlier by 1 second").performClick()
         awaitDraft(f) { it.cuts.first { c -> c.id == "R001" }.coreStartMs == 1_000L }
         compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start 0:01.0")
-        val density = f.context.resources.displayMetrics.density
+        val density = compose.onNodeWithTag("rally-bounds-timeline").fetchSemanticsNode().layoutInfo.density.density
         val window = compose.onNodeWithTag("rally-bounds-timeline").fetchSemanticsNode()
             .config[SemanticsProperties.ProgressBarRangeInfo].range
         compose.onNodeWithTag("rally-bounds-timeline").performTouchInput {

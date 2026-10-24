@@ -122,8 +122,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
@@ -3230,8 +3233,8 @@ private fun EditorScreen(
         }
     }
 
-    fun setCoreBoundary(side: String, valueMs: Long) {
-        val rally = selectedRally ?: return
+    fun setCoreBoundary(side: String, valueMs: Long): EditableRallyGroup? {
+        val rally = selectedRally ?: return null
         val cut = if (side == "start") rally.cuts.minBy { it.coreStartMs }
             else rally.cuts.maxBy { it.coreEndMs }
         updateDraft { current ->
@@ -3241,6 +3244,7 @@ private fun EditorScreen(
                 EditorMath.setCoreEnd(current, cut.id, valueMs, seed.gameEndMs)
             }
         }
+        return draft.cuts.filter { it.id in rally.cutIds }.takeIf { it.isNotEmpty() }?.let(::EditableRallyGroup)
     }
 
     fun splitSelectedAtPlayhead() {
@@ -3964,7 +3968,13 @@ private fun EditorScreen(
                                 ))
                             }
                         },
-                        onTrim = { side, time -> player.pause(); previewEndMs = null; setCoreBoundary(side, time) },
+                        onTrim = { side, time ->
+                            player.pause(); previewEndMs = null
+                            setCoreBoundary(side, time)?.let { updated ->
+                                val position = playbackPositionMs.coerceIn(updated.keepStartMs, updated.keepEndMs)
+                                if (position != playbackPositionMs) seekTo(position)
+                            }
+                        },
                         onAdd = { start, end ->
                             val overlaps = draft.cuts.any { it.keepStartMs < end && it.keepEndMs > start } ||
                                 visibleIgnoredIntervals.any { it.startMs < end && it.endMs > start }
@@ -6813,6 +6823,17 @@ internal fun WholeTimeline(
                 .clip(RoundedCornerShape(9.dp))
                 .background(TimelineTrackColor)
                 .semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(
+                        playheadMs.coerceIn(windowStartMs, windowEndMs).toFloat(),
+                        windowStartMs.toFloat()..windowEndMs.toFloat())
+                    setProgress { value ->
+                        if (!value.isFinite()) false else {
+                            val time = value.toLong().coerceIn(windowStartMs, windowEndMs)
+                            onSeek(time, cuts.lastOrNull { time in it.keepStartMs..it.keepEndMs }?.id,
+                                suggestions.lastOrNull { time >= it.startMs() && time <= it.endMs() }?.fragmentId())
+                            true
+                        }
+                    }
                     contentDescription = if (suggestions.isEmpty()) "Game timeline"
                     else "Game timeline with ${suggestions.size} cleanup suggestions: " +
                         suggestions.joinToString { suggestion ->

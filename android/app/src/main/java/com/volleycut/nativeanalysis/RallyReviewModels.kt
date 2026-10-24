@@ -94,11 +94,11 @@ internal fun rallyTimelineContext(
             rally.cuts.any { it.included && it.id in effectiveIds }
     val previous = ordered.take(index).lastOrNull(::retained)
     val next = ordered.drop(index + 1).firstOrNull(::retained)
+    // Distant neighbours are edge markers; they must not shrink the trim target.
+    val margin = minOf(8_000L, (selected.coreEndMs - selected.coreStartMs).coerceAtLeast(1) * 2)
     return RallyTimelineContext(previous, next, DetailWindow(
-        maxOf(sourceStartMs, minOf(selected.coreStartMs - 8_000, selected.keepStartMs,
-            previous?.let { it.keepStartMs - 2_000 } ?: Long.MAX_VALUE)),
-        minOf(sourceEndMs, maxOf(selected.coreEndMs + 8_000, selected.keepEndMs,
-            next?.let { it.keepEndMs + 2_000 } ?: Long.MIN_VALUE)),
+        maxOf(sourceStartMs, minOf(selected.coreStartMs - margin, selected.keepStartMs)),
+        minOf(sourceEndMs, maxOf(selected.coreEndMs + margin, selected.keepEndMs)),
     ))
 }
 
